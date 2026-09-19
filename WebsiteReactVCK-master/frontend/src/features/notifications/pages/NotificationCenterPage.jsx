@@ -13,7 +13,7 @@ import {
   FiAward,
   FiVideo,
   FiBook,
-  FiFlame,
+  FiZap,
 } from "react-icons/fi";
 import { useAuthContext } from "../../../context/AuthContext";
 import { EmptyState, LoadingState } from "../../../components/common/StateView";
@@ -135,7 +135,7 @@ export default function NotificationCenterPage() {
       case "live_class":
         return <FiVideo className="w-5 h-5 text-rose-400" />;
       case "streak":
-        return <FiFlame className="w-5 h-5 text-orange-400" />;
+        return <FiZap className="w-5 h-5 text-orange-400" />;
       default:
         return <FiBell className="w-5 h-5 text-purple-400" />;
     }
