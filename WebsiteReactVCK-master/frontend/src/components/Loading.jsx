@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// ── Các câu tips du học xoay vòng ──────────────────────────────────────────────
+// ── Tips xoay vòng ─────────────────────────────────────────────────────────────
 const TIPS = [
-  "Mỗi ngày học 10 từ mới, một năm bạn sẽ biết 3.650 từ!",
-  "HSK 4 là yêu cầu tối thiểu để du học Trung Quốc.",
-  "Hãy luyện nghe mỗi ngày, tai bạn sẽ quen với thanh điệu.",
-  "Viết chữ Hán giúp bạn nhớ lâu hơn gấp 3 lần đọc thuộc.",
-  "HSKK giúp bạn tự tin giao tiếp trong môi trường thực tế.",
-  "Trung Quốc có hơn 500 trường đại học mở cửa cho du học sinh.",
-  "Học bổng CSC là cơ hội tuyệt vời cho sinh viên Việt Nam.",
-  "Luyện đề thi thường xuyên giúp bạn quen với cấu trúc bài thi.",
+  "Mỗi ngày học 10 từ mới, một năm bạn sẽ tích lũy 3.650 từ vựng!",
+  "HSK 4 là mốc tối thiểu để chinh phục học bổng du học Trung Quốc.",
+  "Hãy luyện nghe mỗi ngày, tai bạn sẽ quen với 4 thanh điệu tiếng Trung.",
+  "Viết chữ Hán giúp bạn ghi nhớ lâu hơn gấp 3 lần so with đọc thuộc.",
+  "HSKK giúp bạn tự tin phản xạ giao tiếp trong môi trường thực tế.",
+  "Trung Quốc có hơn 500 trường đại học mở cửa chào đón du học sinh.",
+  "Học bổng CSC & Chỉnh phủ là cơ hội lớn cho sinh viên Việt Nam.",
+  "Luyện đề thi CSCA thường xuyên giúp bạn bứt phá điểm số tối đa.",
 ];
 
-// ── Các chữ Hán bay lơ lửng ────────────────────────────────────────────────────
+// ── Chữ Hán nghệ thuật bay lơ lửng ──────────────────────────────────────────────
 const HANZI = ["学", "梦", "书", "友", "思", "知", "行", "志"];
 
 const FloatingHanzi = () => (
@@ -21,22 +21,23 @@ const FloatingHanzi = () => (
     {HANZI.map((char, i) => (
       <motion.span
         key={i}
-        className="absolute text-red-500/[0.07] dark:text-red-400/[0.07] font-serif select-none"
+        className="absolute text-rose-500/10 font-serif select-none font-black"
         style={{
-          fontSize: `${28 + (i % 4) * 14}px`,
-          left: `${8 + i * 11}%`,
-          top: `${10 + ((i * 7) % 60)}%`,
+          fontSize: `${32 + (i % 4) * 16}px`,
+          left: `${6 + i * 12}%`,
+          top: `${12 + ((i * 11) % 65)}%`,
         }}
         animate={{
-          y: [0, -18, 0],
-          rotate: [0, (i % 2 === 0 ? 6 : -6), 0],
-          opacity: [0.5, 1, 0.5],
+          y: [0, -24, 0],
+          rotate: [0, (i % 2 === 0 ? 8 : -8), 0],
+          opacity: [0.3, 0.8, 0.3],
+          scale: [0.9, 1.1, 0.9],
         }}
         transition={{
-          duration: 3.5 + i * 0.4,
+          duration: 4 + i * 0.5,
           repeat: Infinity,
           ease: "easeInOut",
-          delay: i * 0.3,
+          delay: i * 0.25,
         }}
       >
         {char}
@@ -45,64 +46,68 @@ const FloatingHanzi = () => (
   </div>
 );
 
-// ── Máy bay giấy bay ───────────────────────────────────────────────────────────
+// ── Máy bay giấy phát sáng ──────────────────────────────────────────────────────
 const PaperPlane = () => (
-  <motion.svg
-    viewBox="0 0 64 64"
-    className="w-8 h-8 text-amber-500 dark:text-amber-400 drop-shadow"
-    fill="currentColor"
-    animate={{
-      x: [0, 12, 0, -12, 0],
-      y: [0, -6, 0, -6, 0],
-      rotate: [0, 8, 0, -8, 0],
-    }}
-    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-  >
-    <path d="M4.3 8.3 58 30.2a2 2 0 0 1 0 3.6L4.3 55.7a2 2 0 0 1-2.7-2.4l5.5-19.6a1 1 0 0 0 0-.5L1.6 10.7a2 2 0 0 1 2.7-2.4ZM10 32l42.3-1M10 32l4-14.4M10 32l4 14.4" />
-  </motion.svg>
+  <div className="relative flex items-center justify-center">
+    {/* Radial glow background */}
+    <div className="absolute w-20 h-20 bg-amber-500/20 rounded-full blur-xl animate-pulse" />
+    <motion.svg
+      viewBox="0 0 64 64"
+      className="w-12 h-12 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.8)]"
+      fill="currentColor"
+      animate={{
+        x: [0, 10, 0, -10, 0],
+        y: [0, -8, 0, -8, 0],
+        rotate: [0, 6, 0, -6, 0],
+      }}
+      transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
+    >
+      <path d="M4.3 8.3 58 30.2a2 2 0 0 1 0 3.6L4.3 55.7a2 2 0 0 1-2.7-2.4l5.5-19.6a1 1 0 0 0 0-.5L1.6 10.7a2 2 0 0 1 2.7-2.4ZM10 32l42.3-1M10 32l4-14.4M10 32l4 14.4" />
+    </motion.svg>
+  </div>
 );
 
-// ── Đèn lồng ───────────────────────────────────────────────────────────────────
-const Lantern = ({ delay = 0, size = "w-5 h-7" }) => (
+// ── Đèn lồng truyền thống mạ vàng ─────────────────────────────────────────────
+const Lantern = ({ delay = 0, size = "w-7 h-10" }) => (
   <motion.div
     className={`${size} relative`}
-    animate={{ rotate: [-4, 4, -4], y: [0, -3, 0] }}
-    transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay }}
+    animate={{ rotate: [-6, 6, -6], y: [0, -4, 0] }}
+    transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay }}
   >
-    {/* Dây treo */}
-    <div className="absolute left-1/2 -translate-x-1/2 -top-2 w-px h-2 bg-amber-700/50 dark:bg-amber-500/40" />
-    {/* Thân đèn */}
-    <div className="w-full h-full rounded-[40%] bg-gradient-to-b from-red-500 to-red-700 dark:from-red-600 dark:to-red-800 shadow-lg shadow-red-500/30 flex items-center justify-center">
-      <span className="text-[8px] text-amber-200 font-bold select-none">福</span>
+    {/* Dây treo vàng */}
+    <div className="absolute left-1/2 -translate-x-1/2 -top-3 w-0.5 h-3 bg-amber-400/80 shadow-[0_0_5px_rgba(251,191,36,0.6)]" />
+    {/* Thân đèn lồng */}
+    <div className="w-full h-full rounded-[45%] bg-gradient-to-b from-red-600 via-rose-600 to-red-800 shadow-[0_0_15px_rgba(225,29,72,0.6)] border border-amber-400/40 flex items-center justify-center">
+      <span className="text-[10px] text-amber-200 font-bold select-none font-serif drop-shadow">福</span>
     </div>
-    {/* Tua đèn */}
-    <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-px h-1.5 bg-amber-600/60" />
+    {/* Tua rua vàng */}
+    <div className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-0.5 h-2 bg-amber-400" />
   </motion.div>
 );
 
-// ── Progress dots ───────────────────────────────────────────────────────────────
+// ── Wave Dots Animation ────────────────────────────────────────────────────────
 const ProgressDots = () => (
-  <div className="flex items-center gap-1.5">
+  <div className="flex items-center gap-2 py-1">
     {[0, 1, 2, 3].map((i) => (
       <motion.div
         key={i}
-        className="w-2 h-2 rounded-full bg-red-500 dark:bg-red-400"
-        animate={{ scale: [1, 1.5, 1], opacity: [0.4, 1, 0.4] }}
+        className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-red-500 to-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"
+        animate={{ scale: [1, 1.6, 1], opacity: [0.3, 1, 0.3] }}
         transition={{
           duration: 1.2,
           repeat: Infinity,
           ease: "easeInOut",
-          delay: i * 0.2,
+          delay: i * 0.18,
         }}
       />
     ))}
   </div>
 );
 
-// ── Component chính ─────────────────────────────────────────────────────────────
+// ── Component Loading Cao Cấp ─────────────────────────────────────────────────
 const Loading = ({
   loading = true,
-  text = "Đang tải...",
+  text = "Đang tải phản hồi...",
   fullScreen = true,
   className = "",
 }) => {
@@ -112,7 +117,7 @@ const Loading = ({
     if (!loading) return;
     const id = setInterval(() => {
       setTipIndex((prev) => (prev + 1) % TIPS.length);
-    }, 3500);
+    }, 3800);
     return () => clearInterval(id);
   }, [loading]);
 
@@ -123,65 +128,67 @@ const Loading = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.35 }}
       className={`
-        ${fullScreen ? "fixed inset-0 z-50" : "w-full h-full min-h-[320px]"}
+        ${fullScreen ? "fixed inset-0 z-50" : "w-full h-full min-h-[360px]"}
         flex items-center justify-center
-        bg-gradient-to-br from-orange-50 via-white to-red-50
-        dark:from-gray-900 dark:via-gray-900 dark:to-gray-800
+        bg-slate-950/90 backdrop-blur-2xl
         ${className}
       `}
     >
-      {/* Chữ Hán bay lơ lửng nền */}
+      {/* Background Glowing Aura */}
+      <div className="absolute w-[500px] h-[500px] bg-gradient-to-tr from-red-600/20 via-rose-600/20 to-amber-500/20 rounded-full blur-[120px] pointer-events-none" />
+
+      {/* Chữ Hán bay lơ lửng */}
       <FloatingHanzi />
 
-      {/* Card chính */}
+      {/* Main Glassmorphism Card */}
       <motion.div
-        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+        initial={{ opacity: 0, y: 25, scale: 0.94 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-        className="relative z-10 flex flex-col items-center gap-5 px-8 py-10 sm:px-12 sm:py-12 rounded-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-md shadow-xl shadow-red-500/10 dark:shadow-red-500/5 border border-red-100/60 dark:border-gray-700/60 max-w-sm w-[90vw]"
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="relative z-10 flex flex-col items-center gap-6 px-8 py-10 sm:px-12 sm:py-12 rounded-3xl bg-slate-900/80 backdrop-blur-xl border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.6)] border-t-white/20 max-w-sm w-[90vw] text-center"
       >
-        {/* Đèn lồng trên header */}
+        {/* Đèn lồng treo header */}
         <div className="flex items-end gap-6 mb-1">
-          <Lantern delay={0} size="w-4 h-6" />
-          <Lantern delay={0.4} size="w-5 h-7" />
-          <Lantern delay={0.8} size="w-4 h-6" />
+          <Lantern delay={0} size="w-5 h-7" />
+          <Lantern delay={0.4} size="w-7 h-9" />
+          <Lantern delay={0.8} size="w-5 h-7" />
         </div>
 
-        {/* Máy bay + text */}
+        {/* Máy bay giấy + Text */}
         <div className="flex flex-col items-center gap-3">
           <PaperPlane />
-          <p className="text-base font-bold text-gray-800 dark:text-gray-100 tracking-wide">
+          <h4 className="text-lg font-black text-white tracking-wide bg-gradient-to-r from-white via-rose-100 to-amber-200 bg-clip-text text-transparent">
             {text}
-          </p>
+          </h4>
         </div>
 
         {/* Progress dots */}
         <ProgressDots />
 
         {/* Tips xoay vòng */}
-        <div className="h-12 flex items-center justify-center overflow-hidden">
+        <div className="h-14 flex items-center justify-center overflow-hidden w-full px-2">
           <AnimatePresence mode="wait">
             <motion.p
               key={tipIndex}
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.35 }}
-              className="text-xs text-center text-gray-500 dark:text-gray-400 leading-relaxed max-w-[260px]"
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.4 }}
+              className="text-xs text-slate-300 leading-relaxed font-medium max-w-[280px]"
             >
               {TIPS[tipIndex]}
             </motion.p>
           </AnimatePresence>
         </div>
 
-        {/* Branding nhỏ */}
-        <div className="flex items-center gap-1.5 mt-1">
-          <span className="text-xs font-black text-red-600 dark:text-red-500 tracking-tight">
+        {/* Branding Footer Badge */}
+        <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80 w-full justify-center">
+          <span className="text-xs font-black text-rose-500 tracking-wider">
             CSCA
           </span>
-          <span className="text-[10px] font-semibold text-orange-500 dark:text-orange-400 tracking-wider">
+          <span className="text-[11px] font-bold text-amber-400 tracking-widest uppercase font-mono">
             COURSE
           </span>
         </div>

@@ -44,6 +44,9 @@ export const toUserDto = (row) => ({
   emailVerified: Boolean(row.email_verified),
   authProvider: row.oauth_provider ?? "local",
   hasPassword: Boolean(row.password_hash),
+  isLocked: Boolean(row.is_locked),
+  isManagementManaged: Boolean(row.is_management_managed),
+  lmsAccountStatus: row.lms_account_status ?? "unmanaged",
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   studentProfile: toStudentProfileDto(row),
@@ -52,7 +55,8 @@ export const toUserDto = (row) => ({
 export const getUserDtoById = async (userId, db = { query }) => {
   const { rows } = await db.query(
     `SELECT u.id, u.username, u.email, u.role, u.gender, u.avatar_url,
-            u.is_vip, u.vip_expires_at, u.email_verified, u.oauth_provider,
+            u.is_vip, u.vip_expires_at, u.email_verified, u.is_locked, u.oauth_provider,
+            u.is_management_managed, u.lms_account_status,
             u.password_hash, u.created_at, u.updated_at,
             sp.full_name AS student_full_name,
             sp.current_education_level AS student_current_education_level,

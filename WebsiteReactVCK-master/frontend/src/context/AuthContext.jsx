@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import axios from 'axios';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import toast from "react-hot-toast";
@@ -14,6 +15,8 @@ export const normalizeUserDto = (user) => {
         emailVerified: user.emailVerified ?? user.email_verified ?? false,
         authProvider: user.authProvider ?? user.oauth_provider ?? 'local',
         hasPassword: user.hasPassword ?? Boolean(user.password_hash),
+        isManagementManaged: user.isManagementManaged ?? user.is_management_managed ?? false,
+        lmsAccountStatus: user.lmsAccountStatus ?? user.lms_account_status ?? 'unmanaged',
         createdAt: user.createdAt ?? user.created_at ?? null,
         updatedAt: user.updatedAt ?? user.updated_at ?? null,
         studentProfile: user.studentProfile ?? null,
@@ -51,9 +54,11 @@ export const AuthContextProvider = ({ children }) => {
             return false;
         }
     });
+    const [sessionExpired, setSessionExpired] = useState(false);
 
     const isMounted = React.useRef(true);
     const oauthResultHandled = React.useRef(false);
+    const activeSessionRef = React.useRef(Boolean(authUser));
 
     useEffect(() => {
         isMounted.current = true;
@@ -61,6 +66,10 @@ export const AuthContextProvider = ({ children }) => {
             isMounted.current = false;
         };
     }, []);
+
+    useEffect(() => {
+        activeSessionRef.current = Boolean(authUser) || isAuthenticated;
+    }, [authUser, isAuthenticated]);
 
     // Keep localStorage in sync whenever authUser changes
     const setAuthUser = useCallback((user) => {
@@ -76,6 +85,43 @@ export const AuthContextProvider = ({ children }) => {
             localStorage.removeItem('auth-user');
         }
     }, []);
+
+    const handleSessionExpired = useCallback(() => {
+        if (!activeSessionRef.current) return;
+
+        activeSessionRef.current = false;
+        setIsAuthenticated(false);
+        setAuthUser(null);
+        setSessionExpired(true);
+    }, [setAuthUser]);
+
+    const dismissSessionExpired = useCallback(() => {
+        setSessionExpired(false);
+    }, []);
+
+    // A session can expire while an LMS request is in flight. Keep the
+    // response policy in one place so both Axios and fetch-based LMS clients
+    // show the same recovery UI.
+    useEffect(() => {
+        const axiosInterceptor = axios.interceptors.response.use(
+            (response) => response,
+            (error) => {
+                const url = String(error.config?.url || '');
+                if (error.response?.status === 401 && !url.includes('/api/auth/')) {
+                    handleSessionExpired();
+                }
+                return Promise.reject(error);
+            },
+        );
+
+        const handleFetchSessionExpired = () => handleSessionExpired();
+        window.addEventListener('csca:session-expired', handleFetchSessionExpired);
+
+        return () => {
+            axios.interceptors.response.eject(axiosInterceptor);
+            window.removeEventListener('csca:session-expired', handleFetchSessionExpired);
+        };
+    }, [handleSessionExpired]);
 
     // useCallback (not useMemo) — it IS a function, not a derived value
     const fetchCurrentUser = useCallback(async (abortController) => {
@@ -107,7 +153,9 @@ export const AuthContextProvider = ({ children }) => {
             // AbortError is expected on component unmount — don't clear the user
             if (axios.isCancel(error) || error.name === 'CanceledError') return;
 
-            console.error('AuthContext fetchCurrentUser error:', error.message);
+            if (error.response?.status !== 401) {
+                console.error('AuthContext fetchCurrentUser error:', error.message);
+            }
             setIsAuthenticated(false);
             setAuthUser(null);
             return false;
@@ -143,6 +191,7 @@ export const AuthContextProvider = ({ children }) => {
                     state_invalid: 'Phiên đăng nhập Google không hợp lệ hoặc đã hết hạn.',
                     email_unverified: 'Email Google chưa được xác minh.',
                     account_conflict: 'Không thể liên kết tài khoản Google với email này.',
+                    account_locked: 'Tài khoản LMS chưa được kích hoạt hoặc đã bị tạm ngưng. Vui lòng liên hệ quản lý học viên.',
                     oauth_failed: 'Đăng nhập Google thất bại. Vui lòng thử lại.',
                 };
                 toast.error(messages[reason] || messages.oauth_failed);
@@ -288,6 +337,8 @@ export const AuthContextProvider = ({ children }) => {
         completeSignup,
         requestPasswordReset,
         resetPassword,
+        sessionExpired,
+        dismissSessionExpired,
     }), [
         authUser,
         setAuthUser,
@@ -298,6 +349,8 @@ export const AuthContextProvider = ({ children }) => {
         completeSignup,
         requestPasswordReset,
         resetPassword,
+        sessionExpired,
+        dismissSessionExpired,
     ]);
 
     return (

@@ -12,6 +12,7 @@ import { getUserDtoById, toUserDto } from "../utils/userDto.js";
 
 const PRESET_AVATAR_PATTERN = /^\/avatar\/avt_(?:[1-9]|[1-9]\d|1[01]\d|12[0-6])\.webp$/;
 const VALID_GENDERS = new Set(["male", "female", "other"]);
+const VALID_ROLES = new Set(["user", "creator", "admin"]);
 const VALID_EDUCATION_LEVELS = new Set(["high_school", "vocational", "undergraduate", "graduate", "other"]);
 const VALID_TARGET_PROGRAMS = new Set(["language", "bachelor", "master", "doctorate", "other"]);
 const VALID_INTAKE_TERMS = new Set(["spring", "fall"]);
@@ -39,6 +40,7 @@ const GOOGLE_AUTH_ERRORS = new Set([
   "state_invalid",
   "email_unverified",
   "account_conflict",
+  "account_locked",
   "oauth_failed",
 ]);
 
@@ -96,7 +98,9 @@ const findOrCreateGoogleUser = async ({ googleId, email, name, picture }) => {
       const emailUser = emailUsers[0];
 
       if (emailUser) {
-        if (!emailUser.email_verified) throw new Error("GOOGLE_ACCOUNT_CONFLICT");
+        // A Management-provisioned account has no local password yet. A Google
+        // sign-in with the same verified Google email is the safe activation path.
+        if (!emailUser.email_verified && !emailUser.is_management_managed) throw new Error("GOOGLE_ACCOUNT_CONFLICT");
         if (emailUser.google_id && emailUser.google_id !== googleId) {
           throw new Error("GOOGLE_ACCOUNT_CONFLICT");
         }
@@ -162,6 +166,9 @@ export const handleGoogleCallback = async (req, res) => {
     clearGoogleOAuthCookie(res);
 
     const user = await findOrCreateGoogleUser(profile);
+    if (user.is_locked) {
+      return redirectGoogleResult(res, "google-error", "account_locked");
+    }
     generateTokenAndSetCookie(user, res);
     return redirectGoogleResult(res, "google-success");
   } catch (error) {
@@ -186,17 +193,25 @@ export const handleGoogleCallback = async (req, res) => {
 // ============================================================
 export const signup = async (req, res) => {
   try {
-    const { username, email, password, confirmPassword, gender } = req.body;
+    const { username: rawUsername, email: rawEmail, password, confirmPassword, gender } = req.body;
+    const username = typeof rawUsername === "string" ? rawUsername.trim() : "";
+    const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
 
     // Validate
-    if (!username || !email || !password || !confirmPassword) {
+    if (!username || !email || typeof password !== "string" || typeof confirmPassword !== "string") {
       return res.status(400).json({ success: false, message: "Vui lòng điền đầy đủ thông tin" });
+    }
+    if (!/^[A-Za-z0-9_-]{3,50}$/.test(username) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, message: "Tên đăng nhập hoặc email không hợp lệ" });
     }
     if (password !== confirmPassword) {
       return res.status(400).json({ success: false, message: "Mật khẩu xác nhận không khớp" });
     }
-    if (password.length < 6) {
+    if (password.length < 6 || password.length > 200) {
       return res.status(400).json({ success: false, message: "Mật khẩu phải có ít nhất 6 ký tự" });
+    }
+    if (gender !== undefined && !VALID_GENDERS.has(gender)) {
+      return res.status(400).json({ success: false, message: "Giới tính không hợp lệ" });
     }
 
     // Kiểm tra email/username đã tồn tại
@@ -209,7 +224,7 @@ export const signup = async (req, res) => {
     }
 
     // Tạo OTP 6 số
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpCode = crypto.randomInt(100000, 1000000).toString();
 
     // Hash password trước
     const salt = await bcrypt.genSalt(10);
@@ -234,10 +249,11 @@ export const signup = async (req, res) => {
       expiresAt: Date.now() + 5 * 60 * 1000
     });
 
-    // TODO: Gửi email OTP thật (tạm thời log ra console)
-    console.log(`\n========================================`);
-    console.log(`OTP cho ${email}: ${otpCode}`);
-    console.log(`========================================\n`);
+    // Email delivery is still an infrastructure task. Never log a usable code
+    // unless an operator explicitly enables local-only debugging.
+    if (process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_CODES === "true") {
+      console.warn(`[AUTH_DEBUG] Signup OTP generated for ${email}: ${otpCode}`);
+    }
 
     return res.status(200).json({
       success: true,
@@ -255,9 +271,10 @@ export const signup = async (req, res) => {
 // ============================================================
 export const completeSignup = async (req, res) => {
   try {
-    const { email, verificationCode } = req.body;
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const verificationCode = typeof req.body?.verificationCode === "string" ? req.body.verificationCode.trim() : "";
 
-    if (!email || !verificationCode) {
+    if (!email || !/^\d{6}$/.test(verificationCode)) {
       return res.status(400).json({ success: false, message: "Thiếu email hoặc mã xác thực" });
     }
 
@@ -316,7 +333,8 @@ export const completeSignup = async (req, res) => {
 // ============================================================
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
 
     if (!email || !password) {
       return res.status(400).json({ success: false, message: "Vui lòng nhập email và mật khẩu" });
@@ -327,6 +345,10 @@ export const login = async (req, res) => {
 
     if (!user) {
       return res.status(400).json({ success: false, message: "Email hoặc mật khẩu không đúng" });
+    }
+
+    if (user.is_locked) {
+      return res.status(403).json({ success: false, message: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.", errorCode: "ACCOUNT_LOCKED" });
     }
 
     if (!user.password_hash) {
@@ -342,12 +364,11 @@ export const login = async (req, res) => {
     await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
 
     // Tạo JWT
-    const token = generateTokenAndSetCookie(user, res);
+    generateTokenAndSetCookie(user, res);
 
     return res.status(200).json({
       success: true,
       message: toUserDto(user),
-      token
     });
 
   } catch (error) {
@@ -534,7 +555,7 @@ export const getAllUsers = async (req, res) => {
   try {
     const { rows } = await query(
       `SELECT id, username, email, role, avatar_url, gender, is_vip,
-              vip_expires_at, email_verified, oauth_provider, password_hash,
+              vip_expires_at, email_verified, is_locked, oauth_provider, password_hash,
               created_at, updated_at
        FROM users ORDER BY created_at DESC`
     );
@@ -553,7 +574,13 @@ export const createUser = async (req, res) => {
     const { username, email, password, role, gender } = req.body;
 
     if (!username || !email || !password) {
-      return res.status(400).json({ success: false, message: "Thiếu thông tin bắt buộc" });
+      return res.status(422).json({ success: false, message: "Thiếu thông tin bắt buộc", errorCode: "VALIDATION_ERROR" });
+    }
+    if (role !== undefined && !VALID_ROLES.has(role)) {
+      return res.status(422).json({ success: false, message: "Vai trò không hợp lệ", errorCode: "VALIDATION_ERROR" });
+    }
+    if (gender !== undefined && !VALID_GENDERS.has(gender)) {
+      return res.status(422).json({ success: false, message: "Giới tính không hợp lệ", errorCode: "VALIDATION_ERROR" });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -594,10 +621,25 @@ export const updateUser = async (req, res) => {
 
     const allowedFields = ['username', 'gender', 'avatar_url', 'role'];
     if (updates.avatar_url !== undefined && !isValidAvatarUrl(updates.avatar_url)) {
-      return res.status(400).json({ success: false, message: "Ảnh đại diện không hợp lệ" });
+      return res.status(422).json({ success: false, message: "Ảnh đại diện không hợp lệ", errorCode: "VALIDATION_ERROR" });
     }
     if (updates.gender !== undefined && !VALID_GENDERS.has(updates.gender)) {
-      return res.status(400).json({ success: false, message: "Giới tính không hợp lệ" });
+      return res.status(422).json({ success: false, message: "Giới tính không hợp lệ", errorCode: "VALIDATION_ERROR" });
+    }
+    if (updates.role !== undefined && !VALID_ROLES.has(updates.role)) {
+      return res.status(422).json({ success: false, message: "Vai trò không hợp lệ", errorCode: "VALIDATION_ERROR" });
+    }
+    if (updates.role && updates.role !== "admin") {
+      const { rows: currentTarget } = await query('SELECT role FROM users WHERE id = $1', [id]);
+      if (currentTarget.length === 0) {
+        return res.status(404).json({ success: false, message: "User không tồn tại", errorCode: "NOT_FOUND" });
+      }
+      if (currentTarget[0].role === "admin") {
+        const { rows: adminCount } = await query("SELECT COUNT(*) FROM users WHERE role = 'admin'");
+        if (Number(adminCount[0].count) <= 1) {
+          return res.status(422).json({ success: false, message: "Không thể hạ cấp admin cuối cùng", errorCode: "VALIDATION_ERROR" });
+        }
+      }
     }
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
@@ -627,7 +669,7 @@ export const updateUser = async (req, res) => {
     }
 
     if (setClauses.length === 0) {
-      return res.status(400).json({ success: false, message: "Không có gì để cập nhật" });
+      return res.status(422).json({ success: false, message: "Không có gì để cập nhật", errorCode: "VALIDATION_ERROR" });
     }
 
     values.push(id);
@@ -640,7 +682,7 @@ export const updateUser = async (req, res) => {
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: "User không tồn tại" });
+      return res.status(404).json({ success: false, message: "User không tồn tại", errorCode: "NOT_FOUND" });
     }
 
     return res.status(200).json({ success: true, message: toUserDto(rows[0]) });
@@ -686,30 +728,25 @@ export const deleteUser = async (req, res) => {
 // ============================================================
 export const requestPasswordReset = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
 
     if (!email) {
       return res.status(400).json({ success: false, message: "Vui lòng nhập email" });
     }
 
     const { rows } = await query('SELECT id FROM users WHERE email = $1', [email]);
-    if (rows.length === 0) {
-      return res.status(400).json({ success: false, message: "Email không tồn tại trong hệ thống" });
+    if (rows.length > 0) {
+      const resetCode = crypto.randomInt(100000, 1000000).toString();
+      await query('DELETE FROM password_resets WHERE email = $1', [email]);
+      await query(
+        `INSERT INTO password_resets (email, reset_code, expires_at)
+         VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`,
+        [email, resetCode]
+      );
+      if (process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_CODES === "true") {
+        console.warn(`[AUTH_DEBUG] Password reset code generated for ${email}: ${resetCode}`);
+      }
     }
-
-    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-    await query('DELETE FROM password_resets WHERE email = $1', [email]);
-    await query(
-      `INSERT INTO password_resets (email, reset_code, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`,
-      [email, resetCode]
-    );
-
-    // TODO: Gửi email thật
-    console.log(`\n========================================`);
-    console.log(`RESET CODE cho ${email}: ${resetCode}`);
-    console.log(`========================================\n`);
 
     return res.status(200).json({
       success: true,
@@ -727,28 +764,54 @@ export const requestPasswordReset = async (req, res) => {
 // ============================================================
 export const resetPassword = async (req, res) => {
   try {
-    const { email, resetCode, newPassword } = req.body;
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const resetCode = typeof req.body?.resetCode === "string" ? req.body.resetCode.trim() : "";
+    const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
 
-    if (!email || !resetCode || !newPassword) {
+    if (!email || !/^\d{6}$/.test(resetCode) || newPassword.length < 6 || newPassword.length > 200) {
       return res.status(400).json({ success: false, message: "Thiếu thông tin" });
     }
 
-    const { rows: resets } = await query(
-      `SELECT * FROM password_resets
-       WHERE email = $1 AND reset_code = $2 AND used = FALSE AND expires_at > NOW()
-       ORDER BY created_at DESC LIMIT 1`,
-      [email, resetCode]
-    );
+    const client = await getClient();
+    try {
+      await client.query("BEGIN");
+      const resetResult = await client.query(
+        `SELECT id FROM password_resets
+         WHERE email = $1 AND reset_code = $2 AND used = FALSE AND expires_at > NOW()
+         ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+        [email, resetCode],
+      );
+      if (resetResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ success: false, message: "Mã xác thực không hợp lệ hoặc đã hết hạn" });
+      }
 
-    if (resets.length === 0) {
-      return res.status(400).json({ success: false, message: "Mã xác thực không hợp lệ hoặc đã hết hạn" });
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
+      const userResult = await client.query(
+        'UPDATE users SET password_hash = $1 WHERE email = $2 RETURNING id',
+        [hashedPassword, email],
+      );
+      if (userResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ success: false, message: "Mã xác thực không hợp lệ hoặc đã hết hạn" });
+      }
+      const usedResult = await client.query(
+        'UPDATE password_resets SET used = TRUE WHERE id = $1 AND used = FALSE RETURNING id',
+        [resetResult.rows[0].id],
+      );
+      if (usedResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ success: false, message: "Mã xác thực không hợp lệ hoặc đã hết hạn" });
+      }
+      await client.query('DELETE FROM user_sessions WHERE user_id = $1', [userResult.rows[0].id]);
+      await client.query("COMMIT");
+    } catch (transactionError) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw transactionError;
+    } finally {
+      client.release();
     }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(newPassword, salt);
-
-    await query('UPDATE users SET password_hash = $1 WHERE email = $2', [hashedPassword, email]);
-    await query('UPDATE password_resets SET used = TRUE WHERE id = $1', [resets[0].id]);
 
     return res.status(200).json({
       success: true,

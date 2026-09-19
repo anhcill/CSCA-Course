@@ -102,3 +102,42 @@
 - Phần tích hợp này là công việc để làm sau, **chưa triển khai ở thời điểm hiện tại**.
 
 ---
+
+## 8. Kế hoạch triển khai khóa học video (6 ngày)
+
+### Ngày 1: Thiết kế Database & Dựng Skeleton Nền Tảng
+- Backend: Schema migration PostgreSQL (`csca_course_db`): `courses`, `sections`, `lessons`, `video_assets`, `enrollments`, `lesson_progress`. Lock API contract & DTO.
+- Frontend: Cấu trúc thư mục feature (`features/learning`, `features/catalog`, `features/admin`), API client skeleton, route skeleton trong `App.jsx`.
+- Media: Setup Cloudflare R2 S3 client, bucket CORS & private policy.
+
+### Ngày 2: Danh Mục Khóa Học & Đăng Ký Học (Catalog & Enrollment)
+- Backend: Public Catalog API, Course Landing API, Enrollment API.
+- Frontend: Giao diện Catalog (bộ lọc HSK/HSKK/CSCA), Course Landing Page.
+
+### Ngày 3: Upload Video & Bảo Mật Streaming Cloudflare R2
+- Backend & R2: Presigned URL direct upload, Signed URL playback có hết hạn.
+- Frontend Admin: Giao diện Upload Video với Progress bar, preview video.
+
+### Ngày 4: Trải Nghiệm Phòng Học Video & Đồng Bộ Tiến Độ
+- Backend: API chi tiết bài học + Playback Signed URL, API lưu tiến độ học.
+- Frontend: Giao diện Phòng học (Custom Video Player, Sidebar Curriculum, auto heartbeat progress).
+
+### Ngày 5: Trang Quản Trị Admin (Quản Lý Chương & Bài Học)
+- Backend: API Admin CRUD Khóa học / Chương / Bài học, link Video Asset R2.
+- Frontend: Giao diện Admin quản lý Curriculum, dữ liệu mẫu (Seed Data) HSK/HSKK/CSCA.
+
+### Ngày 6: Kiểm Thử End-to-End, Tối Ưu UI/UX & Bàn Giao
+- Test E2E luồng học & upload R2, verify Signed URL expiration.
+- Tối ưu loading/empty state, responsive UI, hoàn thiện docs bàn giao.
+
+---
+
+## 9. Kế hoạch nâng cấp Lớp học trực tuyến Meet/Zoom & Bài tập LMS (15 ngày)
+
+Chi tiết xem tại tài liệu: [LMS_LIVE_CLASS_ASSIGNMENT_15_DAYS_PLAN.md](file:///c:/Users/ducan/Documents/Codex/2026-07-24/anhcill-csca-interview-git-https-github/CSCA-Course/WebsiteReactVCK-master/docs/LMS_LIVE_CLASS_ASSIGNMENT_15_DAYS_PLAN.md)
+
+- **Phase 1 (Ngày 1 - 3)**: Lớp học trực tuyến Live (Migration `004_live_classes.sql`, Lịch học tuần, Nút "Vào lớp ngay" Meet/Zoom bảo mật).
+- **Phase 2 (Ngày 4 - 8)**: Hệ thống Bài tập & Trắc nghiệm (Migration `005_assignments_quizzes.sql`, Quiz Player, Nộp bài tự luận/nghe nói HSKK, Portal chấm bài & thông báo deadline).
+- **Phase 3 (Ngày 9 - 12)**: Quản lý học viên & Gamification (Điểm danh chuyên cần, Bảng xếp hạng Streak, Cấp chứng chỉ điện tử Digital Certificate).
+- **Phase 4 (Ngày 13 - 15)**: E2E Integration QA, Tối ưu Mobile UX & Đóng gói bàn giao Production.
+

@@ -3,8 +3,11 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "serve": "cross-env NODE_ENV=development nodemon ./backend/server.js",
+    "serve": "cross-env NODE_ENV=development nodemon --watch backend --watch database --ignore frontend --ignore frontend/node_modules ./backend/server.js",
     "build": "npm install && npm install --prefix frontend && npm run build --prefix frontend",
+    "test:auth": "node --test backend/middleware/requireRole.test.js",
+    "test:security": "node --test backend/middleware/requireRole.test.js backend/middleware/security.test.js",
+    "test:integration": "node --test backend/middleware/requireManagementIntegration.test.js",
     "start": "cross-env NODE_ENV=production node ./backend/server.js"
   },
   "type": "module",

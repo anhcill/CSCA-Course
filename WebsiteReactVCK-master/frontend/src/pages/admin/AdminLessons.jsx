@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { FiPlus, FiEdit2, FiTrash2, FiArrowLeft, FiArrowLeftCircle } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiArrowLeft } from 'react-icons/fi';
 import useGetLessons from '../../hooks/useGetLessons';
 import useGetCourse from '../../hooks/useGetCourse';
 import { toast } from 'react-hot-toast';
@@ -16,7 +16,7 @@ const AdminLessons = () => {
   const { t } = useTranslation();
   const { courseId } = useParams();
   const { courses } = useGetCourse();
-  const { lessons, loading, error, setLessons } = useGetLessons(courseId);
+  const { lessons, loading, error } = useGetLessons(courseId);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState(null);
   const [formData, setFormData] = useState({
@@ -25,7 +25,7 @@ const AdminLessons = () => {
     description: '',
     timeVideo: '00:00'
   });
-  const [forceUpdate, setForceUpdate] = useState({});
+  const [expandedLessonId, setExpandedLessonId] = useState(null);
 
   const currentCourse = courses.find(course => course._id === courseId);
 
@@ -45,7 +45,7 @@ const AdminLessons = () => {
         await axios.delete(`/api/lesson/${lessonId}`);
         toast.success(t('adminLessons_deleteSuccess'));
         window.location.reload();
-      } catch (error) {
+      } catch {
         toast.error(t('adminLessons_deleteError'));
       }
     }
@@ -78,14 +78,6 @@ const AdminLessons = () => {
       toast.error(t('common_errorPrefix') + (error.response?.data?.message || error.message));
     }
   };
-
-  useEffect(() => {
-    if (Array.isArray(lessons)) {
-      lessons.forEach(lesson => {
-        lesson.showFullDescription = false;
-      });
-    }
-  }, [lessons]);
 
   useEffect(() => {
     if (editingLesson) {
@@ -208,18 +200,17 @@ const AdminLessons = () => {
                       {lesson.description.length > 100 ? (
                         <div className="flex flex-col items-center">
                           <p className="text-left mb-1 text-xs">
-                            {!lesson.showFullDescription
+                            {expandedLessonId !== lesson._id
                               ? `${lesson.description.slice(0, 100)}...`
                               : lesson.description}
                           </p>
                           <button
                             onClick={() => {
-                              lesson.showFullDescription = !lesson.showFullDescription;
-                              setForceUpdate({});
+                              setExpandedLessonId(expandedLessonId === lesson._id ? null : lesson._id);
                             }}
                             className=" text-xs bg-gray-100 dark:bg-gray-700 text-blue-600 hover:text-blue-800 font-medium hover:underline mt-1"
                           >
-                            {!lesson.showFullDescription ? t('adminLessons_actions_viewMore') : t('adminLessons_actions_collapse')}
+                            {expandedLessonId !== lesson._id ? t('adminLessons_actions_viewMore') : t('adminLessons_actions_collapse')}
                           </button>
                         </div>
                       ) : (

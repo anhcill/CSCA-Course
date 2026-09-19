@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import { FiPlus, FiEdit2, FiTrash2, FiArrowLeft } from 'react-icons/fi';
 import useGetExercises from '../../hooks/useGetExercises';
@@ -32,7 +32,7 @@ const AdminExercises = () => {
         await axios.delete(`/api/exercise/${exerciseId}`);
         toast.success(t('adminExercises_deleteSuccess'));
         window.location.reload();
-      } catch (error) {
+      } catch {
         toast.error(t('adminExercises_deleteError'));
       }
     }
@@ -56,7 +56,7 @@ const AdminExercises = () => {
       }
       setIsModalOpen(false);
       window.location.reload();
-    } catch (error) {
+    } catch {
       toast.error(t('common_errorPrefix'));
     }
   };

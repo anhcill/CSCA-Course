@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { FiPlus, FiEdit2, FiTrash2, FiCheck, FiX } from 'react-icons/fi';
 import useCRUDPost from '../../hooks/useCRUDPost';
 import Loading from '../../components/Loading';

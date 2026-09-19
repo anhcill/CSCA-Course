@@ -1,0 +1,673 @@
+import express from "express";
+import { query } from "../db/connect.js";
+import protectRoute from "../middleware/protectRoute.js";
+import requireTeacher from "../middleware/requireTeacher.js";
+import requireRole from "../middleware/requireRole.js";
+
+const router = express.Router();
+
+const validationError = (res, message) => res.status(422).json({
+  success: false,
+  message,
+  errorCode: "VALIDATION_ERROR",
+});
+
+const notFound = (res, message) => res.status(404).json({
+  success: false,
+  message,
+  errorCode: "NOT_FOUND",
+});
+
+const forbidden = (res, message) => res.status(403).json({
+  success: false,
+  message,
+  errorCode: "FORBIDDEN",
+});
+
+const internalError = (res, message) => res.status(500).json({
+  success: false,
+  message,
+  errorCode: "INTERNAL_ERROR",
+});
+
+const parsePositiveId = (value) => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeSlug = (value) => value
+  .trim()
+  .toLowerCase()
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/đ/g, "d")
+  .replace(/[^a-z0-9]+/g, "-")
+  .replace(/^-+|-+$/g, "")
+  .slice(0, 300);
+
+const COURSE_FIELDS = `
+  c.id, c.name, COALESCE(c.title, c.name) AS title, c.slug, c.description,
+  c.category, c.level, COALESCE(c.price, 0) AS price,
+  COALESCE(c.is_free, true) AS is_free, c.is_published,
+  COALESCE(c.thumbnail_url, c.image_url) AS thumbnail_url,
+  c.total_lessons, c.ratings_count, c.ratings_avg, c.enrolled_count,
+  c.author_id, c.created_at, c.updated_at,
+  u.username AS instructor_name, u.avatar_url AS instructor_avatar_url`;
+
+const checkCourseOwner = async (courseId, user) => {
+  const result = await query("SELECT author_id FROM courses WHERE id = $1", [courseId]);
+  if (result.rows.length === 0) return { status: 404 };
+  if (user.role !== "admin" && String(result.rows[0].author_id) !== String(user.id)) return { status: 403 };
+  return { status: 200 };
+};
+
+const checkEnrollment = async (courseId, userId) => {
+  const result = await query("SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'", [userId, courseId]);
+  return result.rows.length > 0;
+};
+
+// GET /api/courses - Public Catalog with filters
+router.get("/", async (req, res) => {
+  try {
+    const category = typeof req.query.category === "string" ? req.query.category.trim() : "";
+    const level = typeof req.query.level === "string" ? req.query.level.trim() : "";
+    const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+    if (search.length > 100) return validationError(res, "Từ khóa tìm kiếm quá dài");
+    const sort = req.query.sort || "newest";
+    const sortSql = {
+      newest: "c.created_at DESC",
+      popular: "c.enrolled_count DESC NULLS LAST, c.created_at DESC",
+      rating: "c.ratings_avg DESC NULLS LAST, c.ratings_count DESC NULLS LAST, c.created_at DESC",
+    }[sort] || "c.created_at DESC";
+    let sql = `
+      SELECT ${COURSE_FIELDS}
+      FROM courses c
+      LEFT JOIN users u ON u.id = c.author_id
+      WHERE c.is_published = true`;
+    const params = [];
+
+    if (category && category !== "ALL") {
+      params.push(category);
+      sql += ` AND c.category = $${params.length}`;
+    }
+    if (level && level !== "ALL") {
+      params.push(level);
+      sql += ` AND c.level = $${params.length}`;
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      sql += ` AND (COALESCE(c.title, c.name) ILIKE $${params.length} OR c.description ILIKE $${params.length})`;
+    }
+
+    sql += ` ORDER BY ${sortSql}, c.id DESC LIMIT 100`;
+    const result = await query(sql, params);
+    const publicCourses = result.rows.map(({ author_id: _authorId, ...course }) => course);
+
+    return res.json({
+      success: true,
+      data: publicCourses,
+    });
+  } catch (error) {
+    console.error("Error fetching courses catalog:", error);
+    return internalError(res, "Lỗi khi lấy danh sách khóa học");
+  }
+});
+
+// GET /api/courses/admin - Teacher/Admin catalog, including drafts
+router.get("/admin", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const params = [];
+    let ownerClause = "";
+    if (req.user.role !== "admin") {
+      params.push(req.user.id);
+      ownerClause = ` AND c.author_id = $${params.length}`;
+    }
+
+    const result = await query(
+      `SELECT ${COURSE_FIELDS}
+       FROM courses c
+       LEFT JOIN users u ON u.id = c.author_id
+       WHERE true${ownerClause}
+       ORDER BY c.updated_at DESC, c.created_at DESC`,
+      params,
+    );
+
+    return res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error("Error fetching teacher course catalog:", error);
+    return internalError(res, "Lỗi khi lấy danh sách khóa học quản trị");
+  }
+});
+
+// GET /api/courses/admin/:courseId - Teacher/Admin curriculum detail, including drafts
+router.get("/admin/:courseId", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.params.courseId);
+    if (!courseId) return validationError(res, "courseId không hợp lệ");
+    const ownership = await checkCourseOwner(courseId, req.user);
+    if (ownership.status === 404) return notFound(res, "Không tìm thấy khóa học");
+    if (ownership.status === 403) return forbidden(res, "Bạn không có quyền xem curriculum này");
+
+    const courseRes = await query(
+      `SELECT ${COURSE_FIELDS}
+       FROM courses c
+       LEFT JOIN users u ON u.id = c.author_id
+       WHERE c.id = $1`,
+      [courseId],
+    );
+    if (courseRes.rows.length === 0) return notFound(res, "Không tìm thấy khóa học");
+    const [sectionsRes, lessonsRes] = await Promise.all([
+      query(
+        "SELECT id, course_id, title, sort_order FROM sections WHERE course_id = $1 ORDER BY sort_order ASC, id ASC",
+        [courseId],
+      ),
+      query(
+        `SELECT l.id, l.course_id, l.section_id, COALESCE(l.title, l.name) AS title, l.description,
+                COALESCE(l.duration_seconds, l.video_duration_seconds, 0) AS duration_seconds,
+                l.is_preview, l.is_published, l.sort_order, (va.id IS NOT NULL) AS has_video
+         FROM lessons l
+         LEFT JOIN video_assets va ON va.id = l.video_asset_id AND va.status = 'ready'
+         WHERE l.course_id = $1 ORDER BY l.sort_order ASC, l.id ASC`,
+        [courseId],
+      ),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        course: { ...courseRes.rows[0], author_id: undefined },
+        sections: sectionsRes.rows,
+        lessons: lessonsRes.rows,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching curriculum detail:", error);
+    return internalError(res, "Lỗi khi lấy curriculum khóa học");
+  }
+});
+
+// GET /api/courses/lessons/:lessonId/comments - Published lessons only, bounded payload.
+router.get("/lessons/:lessonId/comments", async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    if (!parsePositiveId(lessonId)) return validationError(res, "lessonId không hợp lệ");
+
+    const result = await query(
+      `SELECT c.id, c.user_id, c.course_id, c.lesson_id, c.parent_id, c.content, c.is_edited, c.created_at, c.updated_at,
+              u.username, u.avatar_url, u.avatar_url AS profile_pic
+       FROM comments c
+       JOIN users u ON c.user_id = u.id
+       JOIN lessons l ON l.id = c.lesson_id AND l.is_published = true
+       JOIN courses co ON co.id = l.course_id AND co.is_published = true
+       WHERE c.lesson_id = $1
+       ORDER BY c.created_at ASC, c.id ASC
+       LIMIT 500`,
+      [lessonId]
+    );
+
+    const rows = result.rows;
+    const commentMap = {};
+    const rootComments = [];
+
+    // Map all comments and add empty replies array
+    rows.forEach(row => {
+      commentMap[row.id] = { ...row, replies: [] };
+    });
+
+    // Nest replies under parent comments
+    rows.forEach(row => {
+      const comment = commentMap[row.id];
+      if (row.parent_id) {
+        const parent = commentMap[row.parent_id];
+        if (parent) {
+          parent.replies.push(comment);
+        } else {
+          rootComments.push(comment);
+        }
+      } else {
+        rootComments.push(comment);
+      }
+    });
+
+    return res.json({
+      success: true,
+      data: rootComments
+    });
+  } catch (error) {
+    console.error("Error fetching comments:", error);
+    return res.status(500).json({ success: false, message: "Lỗi khi lấy danh sách bình luận" });
+  }
+});
+
+// POST /api/courses/lessons/:lessonId/comments - Create comment (requires auth)
+router.post("/lessons/:lessonId/comments", protectRoute, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const userId = req.user.id;
+    const { content, parentId } = req.body;
+    const parsedLessonId = parsePositiveId(lessonId);
+    const parsedParentId = parentId === undefined || parentId === null || parentId === ""
+      ? null
+      : parsePositiveId(parentId);
+
+    if (!parsedLessonId || typeof content !== "string" || !content.trim()) {
+      return validationError(res, "Nội dung bình luận không được trống");
+    }
+    if (content.length > 5000 || (parentId !== undefined && parentId !== null && parentId !== "" && !parsedParentId)) {
+      return validationError(res, "Nội dung bình luận quá dài");
+    }
+
+    // Find course_id from lessonId
+    const lessonRes = await query(
+      `SELECT l.course_id, l.is_published, c.is_published AS course_is_published, c.author_id
+       FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = $1`,
+      [parsedLessonId],
+    );
+    if (lessonRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài học" });
+    }
+    const lesson = lessonRes.rows[0];
+    const courseId = lesson.course_id;
+    if (req.user.role === "user" && (!lesson.is_published || !lesson.course_is_published)) {
+      return notFound(res, "Không tìm thấy bài học");
+    }
+
+    if (req.user.role === "user" && !(await checkEnrollment(courseId, userId))) {
+      return forbidden(res, "Bạn chưa đăng ký khóa học này");
+    }
+    if (req.user.role === "creator" && String(lesson.author_id) !== String(req.user.id)) {
+      return forbidden(res, "Bạn không có quyền bình luận trong bài học này");
+    }
+
+    if (parsedParentId) {
+      const parentRes = await query(
+        `SELECT id FROM comments
+         WHERE id = $1 AND lesson_id = $2 AND course_id = $3`,
+        [parsedParentId, parsedLessonId, courseId],
+      );
+      if (parentRes.rows.length === 0) {
+        return notFound(res, "Không tìm thấy bình luận cha trong bài học này");
+      }
+    }
+
+    const insertRes = await query(
+      `INSERT INTO comments (user_id, course_id, lesson_id, parent_id, content)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [userId, courseId, parsedLessonId, parsedParentId, content.trim()]
+    );
+
+    const newCommentId = insertRes.rows[0].id;
+    const populatedRes = await query(
+      `SELECT c.*, u.username, u.avatar_url, u.avatar_url AS profile_pic
+       FROM comments c
+       JOIN users u ON c.user_id = u.id
+       WHERE c.id = $1`,
+      [newCommentId]
+    );
+
+    const newComment = { ...populatedRes.rows[0], replies: [] };
+
+    return res.status(201).json({
+      success: true,
+      data: newComment
+    });
+  } catch (error) {
+    console.error("Error creating comment:", error);
+    return res.status(500).json({ success: false, message: "Lỗi khi gửi bình luận" });
+  }
+});
+
+// GET /api/courses/:courseId/ratings - Ratings for published courses only.
+router.get("/:courseId/ratings", async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    if (!parsePositiveId(courseId)) return validationError(res, "courseId không hợp lệ");
+
+    const result = await query(
+      `SELECT r.id, r.user_id, r.rating AS score, r.review_text AS review, r.created_at, r.updated_at,
+              u.username, u.avatar_url, u.avatar_url AS profile_pic
+       FROM ratings r
+       JOIN users u ON r.user_id = u.id
+       JOIN courses c ON c.id = r.course_id AND c.is_published = true
+       WHERE r.course_id = $1
+       ORDER BY r.created_at DESC, r.id DESC
+       LIMIT 200`,
+      [courseId]
+    );
+
+    const ratings = result.rows;
+    const count = ratings.length;
+    let sum = 0;
+    const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+    ratings.forEach(r => {
+      const score = r.score;
+      sum += score;
+      if (distribution[score] !== undefined) {
+        distribution[score]++;
+      }
+    });
+
+    const avgScore = count > 0 ? Number((sum / count).toFixed(2)) : 0;
+
+    return res.json({
+      success: true,
+      data: {
+        summary: {
+          avgScore,
+          count,
+          distribution
+        },
+        ratings
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching ratings:", error);
+    return res.status(500).json({ success: false, message: "Lỗi khi lấy danh sách đánh giá" });
+  }
+});
+
+// POST /api/courses/:courseId/ratings - Learner rating (requires enrollment, upsert).
+router.post("/:courseId/ratings", protectRoute, requireRole("user"), async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const userId = req.user.id;
+    const { score, review } = req.body;
+    if (!parsePositiveId(courseId)) return validationError(res, "courseId không hợp lệ");
+    if (review !== undefined && (typeof review !== "string" || review.length > 5000)) {
+      return validationError(res, "Nội dung đánh giá không hợp lệ");
+    }
+
+    const numericScore = Number(score);
+    if (!Number.isInteger(numericScore) || numericScore < 1 || numericScore > 5) {
+      return validationError(res, "Điểm đánh giá phải là số nguyên từ 1 đến 5");
+    }
+    const courseResult = await query("SELECT id FROM courses WHERE id = $1", [courseId]);
+    if (courseResult.rows.length === 0) return notFound(res, "Không tìm thấy khóa học");
+    if (req.user.role === "user" && !(await checkEnrollment(courseId, userId))) {
+      return forbidden(res, "Bạn cần đăng ký khóa học trước khi đánh giá");
+    }
+
+    const result = await query(
+      `INSERT INTO ratings (user_id, course_id, rating, review_text)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, course_id) DO UPDATE SET
+         rating = EXCLUDED.rating,
+         review_text = EXCLUDED.review_text,
+         updated_at = NOW()
+       RETURNING id, user_id, course_id, rating AS score, review_text AS review, created_at, updated_at`,
+      [userId, courseId, numericScore, review?.trim() || ""]
+    );
+
+    return res.json({
+      success: true,
+      data: result.rows[0],
+      message: "Gửi đánh giá thành công"
+    });
+  } catch (error) {
+    console.error("Error submitting rating:", error);
+    return res.status(500).json({ success: false, message: "Lỗi khi gửi đánh giá" });
+  }
+});
+
+// GET /api/courses/:slug/classroom - Protected course content for enrolled learners
+router.get("/:slug/classroom", protectRoute, async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const courseRes = await query(
+      `SELECT ${COURSE_FIELDS}
+       FROM courses c
+       LEFT JOIN users u ON u.id = c.author_id
+       WHERE (c.slug = $1 OR c.id::text = $1)`,
+      [slug],
+    );
+    if (courseRes.rows.length === 0) return notFound(res, "Không tìm thấy khóa học");
+
+    const course = courseRes.rows[0];
+    let isEnrolled = false;
+    if (req.user.role === "user") {
+      if (!course.is_published) return notFound(res, "Không tìm thấy khóa học");
+      isEnrolled = await checkEnrollment(course.id, req.user.id);
+      if (!isEnrolled) return forbidden(res, "Bạn cần đăng ký khóa học trước khi vào phòng học");
+    } else if (req.user.role === "creator" && String(course.author_id) !== String(req.user.id)) {
+      return forbidden(res, "Bạn chỉ được xem phòng học của khóa học do mình phụ trách");
+    }
+
+    const [sectionsRes, lessonsRes] = await Promise.all([
+      query(
+        `SELECT id, course_id, title, sort_order
+         FROM sections WHERE course_id = $1 ORDER BY sort_order ASC, id ASC`,
+        [course.id],
+      ),
+      query(
+        `SELECT l.id, l.course_id, l.section_id, COALESCE(l.title, l.name) AS title, l.description,
+                COALESCE(l.duration_seconds, l.video_duration_seconds, 0) AS duration_seconds,
+                l.is_preview, l.sort_order, (va.id IS NOT NULL) AS has_video
+         FROM lessons l
+         LEFT JOIN video_assets va ON va.id = l.video_asset_id AND va.status = 'ready'
+         WHERE l.course_id = $1 AND l.is_published = true
+         ORDER BY l.sort_order ASC, l.id ASC`,
+        [course.id],
+      ),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        course: { ...course, author_id: undefined },
+        sections: sectionsRes.rows,
+        lessons: lessonsRes.rows,
+        isEnrolled,
+        access: { canLearn: true },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching protected classroom:", error);
+    return internalError(res, "Lỗi khi mở phòng học");
+  }
+});
+
+// GET /api/courses/:slug - Course Detail Landing Page
+router.get("/:slug", async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const courseRes = await query(
+      `SELECT ${COURSE_FIELDS}
+       FROM courses c
+       LEFT JOIN users u ON u.id = c.author_id
+       WHERE (c.slug = $1 OR c.id::text = $1) AND c.is_published = true`,
+      [slug],
+    );
+    if (courseRes.rows.length === 0) return notFound(res, "Không tìm thấy khóa học");
+
+    const course = courseRes.rows[0];
+    const [sectionsRes, lessonsRes] = await Promise.all([
+      query(
+        "SELECT id, course_id, title, sort_order FROM sections WHERE course_id = $1 ORDER BY sort_order ASC, id ASC",
+        [course.id],
+      ),
+      query(
+        `SELECT id, course_id, section_id, COALESCE(title, name) AS title, description,
+                COALESCE(duration_seconds, video_duration_seconds, 0) AS duration_seconds,
+                is_preview, sort_order
+         FROM lessons WHERE course_id = $1 AND is_published = true
+         ORDER BY sort_order ASC, id ASC`,
+        [course.id],
+      ),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        course: { ...course, author_id: undefined },
+        sections: sectionsRes.rows,
+        lessons: lessonsRes.rows,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching course detail:", error);
+    return internalError(res, "Lỗi khi lấy chi tiết khóa học");
+  }
+});
+
+// PATCH /api/courses/admin/:courseId/status - Publish or unpublish a course
+router.patch("/admin/:courseId/status", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.params.courseId);
+    if (!courseId) return validationError(res, "courseId không hợp lệ");
+
+    const { isPublished, status } = req.body;
+    const nextStatus = typeof isPublished === "boolean"
+      ? isPublished
+      : status === "published"
+        ? true
+        : status === "draft"
+          ? false
+          : null;
+    if (nextStatus === null) return validationError(res, "Trạng thái khóa học không hợp lệ");
+
+    const ownership = await checkCourseOwner(courseId, req.user);
+    if (ownership.status === 404) return notFound(res, "Không tìm thấy khóa học");
+    if (ownership.status === 403) return forbidden(res, "Bạn không có quyền thay đổi khóa học này");
+
+    const result = await query(
+      "UPDATE courses SET is_published = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+      [nextStatus, courseId],
+    );
+    return res.json({
+      success: true,
+      data: result.rows[0],
+      message: nextStatus ? "Đã công khai khóa học" : "Đã chuyển khóa học về bản nháp",
+    });
+  } catch (error) {
+    console.error("Error updating course status:", error);
+    return internalError(res, "Lỗi khi cập nhật trạng thái khóa học");
+  }
+});
+
+// Admin: Create Course
+router.post("/admin", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const { title, slug, description, category, level, price, isFree, thumbnailUrl } = req.body;
+    if (typeof title !== "string" || !title.trim() || typeof slug !== "string" || !slug.trim()) {
+      return validationError(res, "Thiếu title hoặc slug");
+    }
+    const normalizedSlug = normalizeSlug(slug);
+    if (!normalizedSlug || normalizedSlug.length < 3) return validationError(res, "Slug phải có ít nhất 3 ký tự hợp lệ");
+    if (title.trim().length > 255) return validationError(res, "Tiêu đề không được dài quá 255 ký tự");
+    if (typeof description === "string" && description.length > 10000) return validationError(res, "Mô tả không được dài quá 10.000 ký tự");
+    if (category !== undefined && !["HSK", "HSKK", "CSCA"].includes(category)) return validationError(res, "category không hợp lệ");
+    if (level !== undefined && !["beginner", "intermediate", "advanced"].includes(level)) return validationError(res, "level không hợp lệ");
+    if (price !== undefined && (!Number.isFinite(Number(price)) || Number(price) < 0)) return validationError(res, "price không hợp lệ");
+    const isPublished = req.body.isPublished === true || req.body.status === "published";
+
+    const result = await query(
+      `INSERT INTO courses (name, title, slug, description, author_id, category, level, price, is_free, thumbnail_url, is_published)
+       VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *`,
+      [title.trim(), normalizedSlug, description || "", req.user.id, category || "HSK", level || "beginner", price || 0, isFree ?? true, thumbnailUrl || "", isPublished],
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: result.rows[0],
+      message: "Tạo khóa học mới thành công",
+    });
+  } catch (error) {
+    console.error("Error creating course:", error);
+    if (error.code === "23505") return res.status(409).json({ success: false, message: "Slug khóa học đã tồn tại", errorCode: "CONFLICT" });
+    return res.status(500).json({ success: false, message: "Lỗi khi tạo khóa học", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+// Admin: Create Section
+router.post("/admin/:courseId/sections", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.params.courseId);
+    const { title, sortOrder } = req.body;
+    if (!courseId || typeof title !== "string" || !title.trim()) {
+      return validationError(res, "Thiếu tiêu đề chương");
+    }
+    if (title.trim().length > 255) return validationError(res, "Tiêu đề chương không được dài quá 255 ký tự");
+    const ownership = await checkCourseOwner(courseId, req.user);
+    if (ownership.status === 404) return notFound(res, "Không tìm thấy khóa học");
+    if (ownership.status === 403) return forbidden(res, "Bạn không có quyền sửa khóa học này");
+    if (sortOrder !== undefined && (!Number.isInteger(Number(sortOrder)) || Number(sortOrder) < 0)) {
+      return validationError(res, "sortOrder không hợp lệ");
+    }
+
+    const result = await query(
+      `INSERT INTO sections (course_id, title, sort_order)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [courseId, title.trim(), sortOrder === undefined ? 1 : Number(sortOrder)],
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: result.rows[0],
+      message: "Tạo chương học thành công",
+    });
+  } catch (error) {
+    console.error("Error creating section:", error);
+    return res.status(500).json({ success: false, message: "Lỗi khi tạo chương học", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+// Admin: Create Lesson
+router.post("/admin/sections/:sectionId/lessons", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const sectionId = parsePositiveId(req.params.sectionId);
+    const { courseId, title, videoAssetId, durationSeconds, isPreview, sortOrder } = req.body;
+    const parsedCourseId = parsePositiveId(courseId);
+    if (!sectionId || !parsedCourseId || typeof title !== "string" || !title.trim()) {
+      return validationError(res, "Thiếu tiêu đề hoặc courseId");
+    }
+    if (title.trim().length > 255) return validationError(res, "Tiêu đề bài học không được dài quá 255 ký tự");
+
+    const ownership = await checkCourseOwner(parsedCourseId, req.user);
+    if (ownership.status === 404) return notFound(res, "Không tìm thấy khóa học");
+    if (ownership.status === 403) return forbidden(res, "Bạn không có quyền sửa khóa học này");
+
+    const sectionResult = await query(
+      "SELECT id FROM sections WHERE id = $1 AND course_id = $2",
+      [sectionId, parsedCourseId],
+    );
+    if (sectionResult.rows.length === 0) return notFound(res, "Không tìm thấy chương học trong khóa học này");
+
+    const parsedVideoAssetId = videoAssetId === undefined || videoAssetId === null || videoAssetId === ""
+      ? null
+      : parsePositiveId(videoAssetId);
+    if (videoAssetId !== undefined && videoAssetId !== null && videoAssetId !== "" && !parsedVideoAssetId) {
+      return validationError(res, "videoAssetId không hợp lệ");
+    }
+    if (parsedVideoAssetId) {
+      const videoResult = await query("SELECT id FROM video_assets WHERE id = $1 AND status = 'ready'", [parsedVideoAssetId]);
+      if (videoResult.rows.length === 0) return notFound(res, "Không tìm thấy video đã sẵn sàng");
+    }
+    const parsedDuration = durationSeconds === undefined ? 0 : Number(durationSeconds);
+    const parsedSortOrder = sortOrder === undefined ? 0 : Number(sortOrder);
+    if (!Number.isInteger(parsedDuration) || parsedDuration < 0 || parsedDuration > 86400) return validationError(res, "durationSeconds không hợp lệ");
+    if (!Number.isInteger(parsedSortOrder) || parsedSortOrder < 0) return validationError(res, "sortOrder không hợp lệ");
+    if (isPreview !== undefined && typeof isPreview !== "boolean") return validationError(res, "isPreview không hợp lệ");
+
+    const result = await query(
+      `INSERT INTO lessons (section_id, course_id, name, title, video_asset_id, duration_seconds, is_preview, sort_order, is_published)
+       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, true)
+       RETURNING *`,
+      [sectionId, parsedCourseId, title.trim(), parsedVideoAssetId, parsedDuration, Boolean(isPreview), parsedSortOrder],
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: result.rows[0],
+      message: "Tạo bài học thành công",
+    });
+  } catch (error) {
+    console.error("Error creating lesson:", error);
+    return res.status(500).json({ success: false, message: "Lỗi khi tạo bài học", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+export default router;

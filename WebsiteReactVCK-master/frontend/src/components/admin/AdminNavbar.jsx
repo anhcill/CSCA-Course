@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+/* eslint-disable react/prop-types */
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FiMenu, FiSun, FiMoon } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';

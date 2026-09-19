@@ -149,7 +149,7 @@ const HeroBanner = () => {
 
   return (
     <section
-      className="relative mt-16 w-full overflow-hidden"
+      className="relative w-full overflow-hidden"
       style={{ height: 'calc(100svh - 68px)', minHeight: '520px' }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}

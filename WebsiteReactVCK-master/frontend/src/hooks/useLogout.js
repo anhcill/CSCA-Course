@@ -5,7 +5,7 @@ import { useAuthContext } from "../context/AuthContext";
 
 const useLogout = () => {
     const [loading, setLoading] = useState(false);
-    const { setAuthUser, setIsAuthenticated } = useAuthContext();
+    const { setAuthUser, setIsAuthenticated, dismissSessionExpired } = useAuthContext();
 
     const logout = async () => {
         setLoading(true);
@@ -28,6 +28,7 @@ const useLogout = () => {
             // Reset auth state — navigation is handled by the calling component
             setAuthUser(null);
             setIsAuthenticated(false);
+            dismissSessionExpired?.();
         } catch (error) {
             const serverMessage = error.response?.data?.message || error.response?.data?.error;
             toast.error(serverMessage || error.message || "Logout failed");
