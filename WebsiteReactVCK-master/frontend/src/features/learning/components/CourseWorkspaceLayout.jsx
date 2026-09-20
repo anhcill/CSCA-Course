@@ -65,7 +65,7 @@ export default function CourseWorkspaceLayout() {
           message={error}
           onRetry={loadWorkspace}
         />
-        <div className="text-center"><Link to="/lms/my-learning" className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-slate-100 hover:bg-slate-700"><ArrowLeft className="h-4 w-4" /> Khóa học của tôi</Link></div>
+        <div className="text-center"><Link to="/lms/catalog" className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-slate-100 hover:bg-slate-700"><ArrowLeft className="h-4 w-4" /> Danh mục khóa học</Link></div>
       </div>
     );
   }
@@ -79,7 +79,7 @@ export default function CourseWorkspaceLayout() {
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
           <Link to="/lms/catalog" className="hover:text-white">Danh mục khóa học</Link>
           <span>/</span>
-          <Link to="/lms/my-learning" className="hover:text-white">Khóa học của tôi</Link>
+          <Link to="/lms/catalog" className="hover:text-white">Danh mục khóa học</Link>
           <span>/</span>
           <span className="max-w-[240px] truncate text-slate-200">{course.title}</span>
         </div>

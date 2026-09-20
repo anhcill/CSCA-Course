@@ -241,7 +241,7 @@ const Navbar = () => {
                         <Link to="/profile" className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold hover:bg-red-50 hover:text-red-700 dark:hover:bg-white/10">
                           <Settings className="h-3.5 w-3.5" /> {t('profileLink')}
                         </Link>
-                        <Link to="/lms/my-learning" className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black text-white hover:bg-slate-700 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">
+                        <Link to="/lms/catalog" className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black text-white hover:bg-slate-700 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">
                           <Bookmark className="h-3.5 w-3.5" /> Vào LMS học viên
                         </Link>
 
@@ -311,7 +311,7 @@ const Navbar = () => {
               {/* LMS là khu vực riêng, chỉ thêm một lối vào cho học viên đã đăng nhập */}
               {authUser && (
                 <Link
-                  to="/lms/my-learning"
+                  to="/lms/catalog"
                   className="ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-black text-white shadow-sm transition hover:bg-slate-700 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300"
                 >
                   <BookOpen className="h-3.5 w-3.5" /> LMS học viên
@@ -365,7 +365,7 @@ const Navbar = () => {
                 {authUser && (
                   <>
                     <p className="px-4 pb-1 pt-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Khu vực học viên</p>
-                    <Link to="/lms/my-learning" className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">
+                    <Link to="/lms/catalog" className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">
                       <span className="flex items-center gap-3"><GraduationCap className="h-4 w-4" /> Vào LMS học viên</span>
                       <span aria-hidden="true">→</span>
                     </Link>

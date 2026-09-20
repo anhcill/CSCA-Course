@@ -10,7 +10,6 @@ import {
   Flame,
   GraduationCap,
   Home,
-  LayoutDashboard,
   LogOut,
   Menu,
   Settings,
@@ -27,7 +26,6 @@ import { useTranslation } from 'react-i18next';
 
 const STUDENT_NAV = [
   { label: 'Danh mục khóa học', path: '/lms/catalog', icon: BookOpen },
-  { label: 'Khóa học của tôi', path: '/lms/my-learning', icon: LayoutDashboard },
   { label: 'Lịch học tất cả khóa', path: '/lms/live-schedule', icon: CalendarDays },
   { label: 'Bài tập tất cả khóa', path: '/lms/assignments', icon: ClipboardCheck },
   { label: 'Bảng xếp hạng', path: '/lms/leaderboard', icon: Flame },
@@ -103,7 +101,7 @@ function StudentSidebarContent({ onNavigate }) {
               item={item}
               active={
                 location.pathname === item.path ||
-                (item.path !== '/lms/my-learning' && location.pathname.startsWith(item.path))
+                location.pathname.startsWith(item.path)
               }
               onNavigate={onNavigate}
             />

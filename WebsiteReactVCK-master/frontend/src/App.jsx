@@ -59,7 +59,6 @@ import TeacherGradingPage from "./features/assignments/pages/TeacherGradingPage.
 import LeaderboardPage from "./features/gamification/pages/LeaderboardPage.jsx";
 import CertificatePage from "./features/certificates/pages/CertificatePage.jsx";
 import TeacherHubPage from "./features/admin/pages/TeacherHubPage.jsx";
-import MyLearningPage from "./features/learning/pages/MyLearningPage.jsx";
 import TeacherSchedulePage from "./features/teacher/pages/TeacherSchedulePage.jsx";
 import TeacherAttendancePage from "./features/teacher/pages/TeacherAttendancePage.jsx";
 import TeacherClassDetailPage from "./features/teacher/pages/TeacherClassDetailPage.jsx";
@@ -128,7 +127,8 @@ function AppRoutes() {
         <Route path="results" element={<CourseResultsPage />} />
       </Route>
       <Route path="/lms/learn/:courseId" element={<ClassroomPage />} />
-      <Route path="/lms/my-learning" element={<MyLearningPage />} />
+      {/* Legacy entry: the LMS now always begins with the course catalog. */}
+      <Route path="/lms/my-learning" element={<Navigate to="/lms/catalog" replace />} />
       <Route path="/lms/live-schedule" element={<LiveClassSchedulePage />} />
       <Route path="/lms/assignments" element={<AssignmentListPage />} />
       <Route path="/lms/assignment/:id/submit" element={<AssignmentSubmitPage />} />
