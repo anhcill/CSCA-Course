@@ -84,30 +84,64 @@ const getClassById = async (classId) => {
 
 const canViewClass = async (liveClass, user) => {
   if (!liveClass) return false;
-  if (user.role === "admin" || String(liveClass.instructor_id) === String(user.id)) return true;
+  if (user.role === "admin") return true;
+  if (user.role === "creator") return canManageClass(liveClass, user);
   if (user.role !== "user" || liveClass.status !== "active") return false;
 
   const result = await query(
     `SELECT 1
-     FROM class_enrollments
-     WHERE live_class_id = $1 AND user_id = $2 AND status = 'active'`,
-    [liveClass.id, user.id],
+     FROM class_enrollments ce
+     LEFT JOIN courses c ON c.id = $3
+     WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
+       AND (
+         COALESCE(c.is_management_managed, FALSE) = FALSE
+         OR EXISTS (
+           SELECT 1 FROM lms_access_grants g
+           WHERE g.user_id = $2 AND g.course_id = c.id AND g.access_status = 'active'
+             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+         )
+       )`,
+    [liveClass.id, user.id, liveClass.course_id],
   );
   return result.rows.length > 0;
 };
 
-const canManageClass = (liveClass, user) => (
-  Boolean(liveClass)
-  && (user.role === "admin" || String(liveClass.instructor_id) === String(user.id))
-);
+const canManageClass = async (liveClass, user) => {
+  if (!liveClass || user.role === "user") return false;
+  if (user.role === "admin" || String(liveClass.instructor_id) === String(user.id)) return true;
+  const classId = liveClass.live_class_id || liveClass.id;
+  const result = await query(
+    `SELECT 1 FROM class_teachers
+     WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'`,
+    [classId, user.id],
+  );
+  return result.rows.length > 0;
+};
 
 const classListVisibility = (user) => {
   if (user.role === "admin") return { clause: "TRUE", params: [] };
-  if (user.role === "creator") return { clause: "lc.instructor_id = $1", params: [user.id] };
+  if (user.role === "creator") {
+    return {
+      clause: `(lc.instructor_id = $1 OR EXISTS (
+        SELECT 1 FROM class_teachers ct
+        WHERE ct.live_class_id = lc.id AND ct.teacher_id = $1 AND ct.status = 'active'
+      ))`,
+      params: [user.id],
+    };
+  }
   return {
     clause: `EXISTS (
       SELECT 1 FROM class_enrollments ce
+      LEFT JOIN courses course_access ON course_access.id = lc.course_id
       WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
+        AND (
+          COALESCE(course_access.is_management_managed, FALSE) = FALSE
+          OR EXISTS (
+            SELECT 1 FROM lms_access_grants g
+            WHERE g.user_id = $1 AND g.course_id = course_access.id AND g.access_status = 'active'
+              AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+          )
+        )
     )`,
     params: [user.id],
   };
@@ -115,11 +149,28 @@ const classListVisibility = (user) => {
 
 const sessionVisibility = (user) => {
   if (user.role === "admin") return { clause: "TRUE", params: [] };
-  if (user.role === "creator") return { clause: "lc.instructor_id = $1", params: [user.id] };
+  if (user.role === "creator") {
+    return {
+      clause: `(lc.instructor_id = $1 OR EXISTS (
+        SELECT 1 FROM class_teachers ct
+        WHERE ct.live_class_id = lc.id AND ct.teacher_id = $1 AND ct.status = 'active'
+      ))`,
+      params: [user.id],
+    };
+  }
   return {
     clause: `EXISTS (
       SELECT 1 FROM class_enrollments ce
+      LEFT JOIN courses course_access ON course_access.id = lc.course_id
       WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
+        AND (
+          COALESCE(course_access.is_management_managed, FALSE) = FALSE
+          OR EXISTS (
+            SELECT 1 FROM lms_access_grants g
+            WHERE g.user_id = $1 AND g.course_id = course_access.id AND g.access_status = 'active'
+              AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+          )
+        )
     )`,
     params: [user.id],
   };
@@ -242,7 +293,7 @@ router.patch("/:classId", protectRoute, requireTeacher, requirePermission("lms.c
     if (!classId) return validationError(res, "classId không hợp lệ");
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!canManageClass(liveClass, req.user)) return forbidden(res, "Bạn không có quyền sửa lớp này");
+    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền sửa lớp này");
 
     const body = req.body || {};
     const title = body.title === undefined ? liveClass.title : body.title;
@@ -402,7 +453,7 @@ router.get("/:classId/enrollments", protectRoute, requireTeacher, async (req, re
     if (!classId) return validationError(res, "classId không hợp lệ");
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!canManageClass(liveClass, req.user)) return forbidden(res, "Bạn không có quyền xem danh sách lớp này");
+    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xem danh sách lớp này");
 
     const result = await query(
       `SELECT u.id, u.username, u.email, u.avatar_url,
@@ -449,7 +500,7 @@ router.post("/:classId/enrollments", protectRoute, requireTeacher, requirePermis
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy lớp học trực tuyến");
     }
-    if (!canManageClass(liveClass, req.user)) {
+    if (!(await canManageClass(liveClass, req.user))) {
       await client.query("ROLLBACK");
       return forbidden(res, "Bạn không có quyền quản lý lớp này");
     }
@@ -513,7 +564,7 @@ router.delete("/:classId/enrollments/:userId", protectRoute, requireTeacher, req
     if (!classId || !userId) return validationError(res, "classId hoặc userId không hợp lệ");
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!canManageClass(liveClass, req.user)) return forbidden(res, "Bạn không có quyền quản lý lớp này");
+    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền quản lý lớp này");
     await query(
       `UPDATE class_enrollments SET status = 'removed'
        WHERE live_class_id = $1 AND user_id = $2 AND status = 'active'`,
@@ -558,7 +609,7 @@ router.post("/:classId/schedules", protectRoute, requireTeacher, requirePermissi
     }
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!canManageClass(liveClass, req.user)) return forbidden(res, "Bạn không có quyền sửa lịch lớp này");
+    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền sửa lịch lớp này");
     const result = await query(
       `INSERT INTO class_schedules (live_class_id, day_of_week, start_time, end_time)
        VALUES ($1, $2, $3, $4)
@@ -584,7 +635,7 @@ router.patch("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, re
     }
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!canManageClass(liveClass, req.user)) return forbidden(res, "Bạn không có quyền sửa lịch lớp này");
+    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền sửa lịch lớp này");
     const result = await query(
       `UPDATE class_schedules
        SET day_of_week = $1, start_time = $2, end_time = $3
@@ -607,7 +658,7 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, r
     if (!classId || !scheduleId) return validationError(res, "classId hoặc scheduleId không hợp lệ");
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!canManageClass(liveClass, req.user)) return forbidden(res, "Bạn không có quyền xóa lịch lớp này");
+    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xóa lịch lớp này");
     const result = await query("DELETE FROM class_schedules WHERE id = $1 AND live_class_id = $2 RETURNING id", [scheduleId, classId]);
     if (!result.rows[0]) return notFound(res, "Không tìm thấy lịch định kỳ");
     return res.json({ success: true, data: { id: scheduleId } });
@@ -646,7 +697,7 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
     if (!classId) return validationError(res, "classId không hợp lệ");
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!canManageClass(liveClass, req.user)) return forbidden(res, "Bạn không có quyền tạo session cho lớp này");
+    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền tạo session cho lớp này");
 
     const { errors, startTime, endTime } = validateSessionInput(req.body || {});
     if (errors.length > 0) return validationError(res, errors.join("; "));
@@ -682,7 +733,7 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
     );
     const current = currentResult.rows[0];
     if (!current) return notFound(res, "Không tìm thấy buổi học");
-    if (!canManageClass(current, req.user)) return forbidden(res, "Bạn không có quyền sửa buổi học này");
+    if (!(await canManageClass(current, req.user))) return forbidden(res, "Bạn không có quyền sửa buổi học này");
 
     const body = req.body || {};
     const merged = {
@@ -721,11 +772,21 @@ router.get("/sessions/:sessionId/access", protectRoute, async (req, res) => {
       `SELECT cs.id, cs.live_class_id, cs.meet_url, cs.status, cs.start_time, cs.end_time,
               lc.status AS class_status, lc.instructor_id,
               COALESCE(c.is_published, true) AS course_is_published,
+              COALESCE(c.is_management_managed, false) AS course_is_management_managed,
               EXISTS (
                 SELECT 1 FROM class_enrollments ce
                 WHERE ce.live_class_id = cs.live_class_id
                   AND ce.user_id = $2 AND ce.status = 'active'
-              ) AS is_enrolled
+              ) AS is_enrolled,
+              EXISTS (
+                SELECT 1 FROM lms_access_grants g
+                WHERE g.user_id = $2 AND g.course_id = lc.course_id AND g.access_status = 'active'
+                  AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+              ) AS has_management_entitlement,
+              EXISTS (
+                SELECT 1 FROM class_teachers ct
+                WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+              ) AS is_class_teacher
        FROM class_sessions cs
        JOIN live_classes lc ON cs.live_class_id = lc.id
        LEFT JOIN courses c ON c.id = lc.course_id
@@ -738,8 +799,9 @@ router.get("/sessions/:sessionId/access", protectRoute, async (req, res) => {
     }
 
     const isOwner = req.user.role === "admin"
-      || (req.user.role === "creator" && String(session.instructor_id) === String(req.user.id));
-    const canAccess = isOwner || (req.user.role === "user" && session.is_enrolled && session.course_is_published);
+      || (req.user.role === "creator" && (String(session.instructor_id) === String(req.user.id) || session.is_class_teacher));
+    const canAccess = isOwner || (req.user.role === "user" && session.is_enrolled && session.course_is_published
+      && (!session.course_is_management_managed || session.has_management_entitlement));
     if (!canAccess) return forbidden(res, "Bạn không có quyền vào buổi học này");
     if (!session.meet_url) return notFound(res, "Buổi học chưa có link tham gia");
 

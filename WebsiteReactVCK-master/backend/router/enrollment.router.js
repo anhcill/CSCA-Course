@@ -24,17 +24,28 @@ router.get("/check/:courseId", protectRoute, async (req, res) => {
     if (!/^\d+$/.test(String(courseId)) || Number(courseId) < 1) return validationError(res, "courseId không hợp lệ");
 
     const result = await query(
-      `SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'
-       UNION ALL
-       SELECT 1 FROM lms_access_grants
-       WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
-         AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
-       UNION ALL
-       SELECT 1 FROM class_enrollments ce
-       JOIN live_classes lc ON lc.id = ce.live_class_id
-       WHERE ce.user_id = $1 AND lc.course_id = $2
-         AND ce.status = 'active' AND lc.status = 'active'
-       LIMIT 1`,
+      `SELECT 1
+       FROM courses c
+       WHERE c.id = $2
+         AND (
+           EXISTS (
+             SELECT 1 FROM lms_access_grants g
+             WHERE g.user_id = $1 AND g.course_id = c.id AND g.access_status = 'active'
+               AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+           )
+           OR (
+             COALESCE(c.is_management_managed, FALSE) = FALSE
+             AND (
+               EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = c.id AND e.status = 'active')
+               OR EXISTS (
+                 SELECT 1 FROM class_enrollments ce
+                 JOIN live_classes lc ON lc.id = ce.live_class_id
+                 WHERE ce.user_id = $1 AND lc.course_id = c.id
+                   AND ce.status = 'active' AND lc.status = 'active'
+               )
+             )
+           )
+         )`,
       [userId, courseId],
     );
     const isEnrolled = result.rows.length > 0;
@@ -58,7 +69,7 @@ router.post("/", protectRoute, async (req, res) => {
     if (!/^\d+$/.test(String(courseId || "")) || Number(courseId) < 1) return validationError(res, "courseId không hợp lệ");
 
     const courseResult = await query(
-      "SELECT id, is_published, COALESCE(is_free, true) AS is_free, external_course_id FROM courses WHERE id = $1",
+      "SELECT id, is_published, COALESCE(is_free, true) AS is_free, external_course_id, COALESCE(is_management_managed, false) AS is_management_managed FROM courses WHERE id = $1",
       [courseId],
     );
     if (courseResult.rows.length === 0) {
@@ -67,7 +78,7 @@ router.post("/", protectRoute, async (req, res) => {
     if (!courseResult.rows[0].is_published) {
       return res.status(403).json({ success: false, message: "Khóa học chưa được mở đăng ký", errorCode: "FORBIDDEN" });
     }
-    if (!courseResult.rows[0].is_free || courseResult.rows[0].external_course_id) {
+    if (!courseResult.rows[0].is_free || courseResult.rows[0].external_course_id || courseResult.rows[0].is_management_managed) {
       return res.status(403).json({
         success: false,
         message: "Khóa học này cần được cấp quyền từ hệ thống quản lý",
@@ -100,8 +111,9 @@ router.get("/my", protectRoute, async (req, res) => {
     const userId = req.user.id;
     const result = await query(
       `WITH access_rows AS (
-         SELECT course_id, enrolled_at AS access_granted_at FROM enrollments
-         WHERE user_id = $1 AND status = 'active'
+         SELECT e.course_id, e.enrolled_at AS access_granted_at
+         FROM enrollments e JOIN courses c ON c.id = e.course_id
+         WHERE e.user_id = $1 AND e.status = 'active' AND COALESCE(c.is_management_managed, FALSE) = FALSE
          UNION ALL
          SELECT course_id, valid_from AS access_granted_at FROM lms_access_grants
          WHERE user_id = $1 AND access_status = 'active'
@@ -110,7 +122,9 @@ router.get("/my", protectRoute, async (req, res) => {
          SELECT lc.course_id, ce.enrolled_at AS access_granted_at
          FROM class_enrollments ce
          JOIN live_classes lc ON lc.id = ce.live_class_id
-         WHERE ce.user_id = $1 AND ce.status = 'active' AND lc.status = 'active' AND lc.course_id IS NOT NULL
+         JOIN courses c ON c.id = lc.course_id
+         WHERE ce.user_id = $1 AND ce.status = 'active' AND lc.status = 'active'
+           AND lc.course_id IS NOT NULL AND COALESCE(c.is_management_managed, FALSE) = FALSE
        ), accessible_courses AS (
          SELECT course_id, MIN(access_granted_at) AS access_granted_at
          FROM access_rows GROUP BY course_id
@@ -139,8 +153,9 @@ router.get("/my-courses", protectRoute, async (req, res) => {
     const userId = req.user.id;
     const result = await query(
         `WITH access_rows AS (
-           SELECT course_id, enrolled_at AS access_granted_at FROM enrollments
-           WHERE user_id = $1 AND status = 'active'
+           SELECT e.course_id, e.enrolled_at AS access_granted_at
+           FROM enrollments e JOIN courses c ON c.id = e.course_id
+           WHERE e.user_id = $1 AND e.status = 'active' AND COALESCE(c.is_management_managed, FALSE) = FALSE
            UNION ALL
            SELECT course_id, valid_from AS access_granted_at FROM lms_access_grants
            WHERE user_id = $1 AND access_status = 'active'
@@ -149,7 +164,9 @@ router.get("/my-courses", protectRoute, async (req, res) => {
            SELECT lc.course_id, ce.enrolled_at AS access_granted_at
            FROM class_enrollments ce
            JOIN live_classes lc ON lc.id = ce.live_class_id
-           WHERE ce.user_id = $1 AND ce.status = 'active' AND lc.status = 'active' AND lc.course_id IS NOT NULL
+           JOIN courses c ON c.id = lc.course_id
+           WHERE ce.user_id = $1 AND ce.status = 'active' AND lc.status = 'active'
+             AND lc.course_id IS NOT NULL AND COALESCE(c.is_management_managed, FALSE) = FALSE
          ), accessible_courses AS (
            SELECT course_id, MIN(access_granted_at) AS access_granted_at
            FROM access_rows GROUP BY course_id

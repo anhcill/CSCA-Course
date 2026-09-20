@@ -22,6 +22,11 @@ const serializeJob = (row) => ({
   lastError: row.last_error || null,
   idempotencyKey: row.idempotency_key || null,
   correlationId: row.correlation_id || null,
+  inboxId: row.inbox_id ? String(row.inbox_id) : null,
+  nextAttemptAt: row.next_attempt_at || null,
+  lockedAt: row.locked_at || null,
+  lockedBy: row.locked_by || null,
+  lastAttemptAt: row.last_attempt_at || null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   payload: row.payload || {},
@@ -32,6 +37,7 @@ router.get("/overview", ...adminOnly, async (req, res) => {
     const result = await query(
       `SELECT COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::int AS total_jobs,
               COUNT(*) FILTER (WHERE status IN ('PENDING', 'PROCESSING'))::int AS outbox_pending,
+              COUNT(*) FILTER (WHERE status = 'PENDING' AND retry_count > 0)::int AS retry_scheduled,
               COUNT(*) FILTER (WHERE status = 'DEAD_LETTER')::int AS dead_letter_count,
               COUNT(*) FILTER (WHERE status = 'SUCCESS' AND created_at >= NOW() - INTERVAL '24 hours')::int AS successes,
               COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::int AS window_total,
@@ -44,6 +50,7 @@ router.get("/overview", ...adminOnly, async (req, res) => {
     return res.json({ success: true, data: {
       totalJobs: Number(row.total_jobs || 0),
       outboxPending: Number(row.outbox_pending || 0),
+      retryScheduled: Number(row.retry_scheduled || 0),
       deadLetterCount: Number(row.dead_letter_count || 0),
       successRate: total ? `${((successes / total) * 100).toFixed(1)}%` : "0.0%",
       lastSyncTime: row.last_sync_time || null,
@@ -92,7 +99,8 @@ router.post("/delivery-queue/:id/retry", ...adminOnly, async (req, res) => {
     const result = await query(
       `UPDATE lms_sync_jobs
        SET status = 'PENDING', retry_count = 0, last_error = NULL,
-           next_attempt_at = NOW(), processed_at = NULL, updated_at = NOW()
+           next_attempt_at = NOW(), processed_at = NULL, locked_at = NULL,
+           locked_by = NULL, updated_at = NOW()
        WHERE id = $1 AND status IN ('FAILED', 'DEAD_LETTER')
        RETURNING *`,
       [id],

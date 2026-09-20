@@ -2,8 +2,45 @@ import crypto from "crypto";
 import express from "express";
 import { getClient } from "../db/connect.js";
 import requireManagementIntegration from "../middleware/requireManagementIntegration.js";
+import { enqueueManagementEvent, parseManagementEvent, SyncValidationError } from "../services/managementSync.service.js";
 
 const router = express.Router();
+
+// POST /api/integrations/v1/events
+// Durable ingress for the Management outbox. The API acknowledges only after
+// the event and its executable sync job share one committed transaction; the
+// separate worker applies the projection with retries and a dead-letter state.
+router.post("/events", requireManagementIntegration, async (req, res) => {
+  try {
+    const event = parseManagementEvent(req.body);
+    const queued = await enqueueManagementEvent({
+      event,
+      rawBody: req.rawBody,
+      idempotencyKey: req.managementIntegration.idempotencyKey,
+      correlationId: req.managementIntegration.correlationId,
+    });
+    if (queued.conflict) {
+      return res.status(409).json(errorBody("eventId hoặc Idempotency-Key đã được dùng cho dữ liệu khác", "IDEMPOTENCY_CONFLICT"));
+    }
+    return res.status(queued.duplicate ? 200 : 202).json({
+      success: true,
+      data: {
+        eventId: event.eventId,
+        eventType: event.eventType,
+        inboxId: queued.inboxId,
+        jobId: queued.jobId,
+        status: queued.status,
+        duplicate: queued.duplicate,
+        correlationId: req.managementIntegration.correlationId,
+      },
+    });
+  } catch (error) {
+    if (error instanceof SyncValidationError) return validationError(res, error.message);
+    if (error?.code === "23505") return res.status(409).json(errorBody("Event đồng bộ bị trùng", "IDEMPOTENCY_CONFLICT"));
+    console.error("Management event enqueue error:", error.message);
+    return internalError(res);
+  }
+});
 
 const ACCOUNT_STATUS_MAP = new Map([
   ["pendingpayment", "pending_payment"],

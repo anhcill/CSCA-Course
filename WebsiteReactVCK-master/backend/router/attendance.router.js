@@ -48,6 +48,18 @@ const getSessionForTeacher = async (sessionId) => {
   return result.rows[0] || null;
 };
 
+const canManageSession = async (session, user, db = { query }) => {
+  if (!session) return false;
+  if (user.role === "admin" || String(session.instructor_id) === String(user.id)) return true;
+  if (user.role !== "creator") return false;
+  const result = await db.query(
+    `SELECT 1 FROM class_teachers
+     WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'`,
+    [session.live_class_id, user.id],
+  );
+  return result.rows.length > 0;
+};
+
 const parseLeaderboardOptions = (req) => {
   const rawScope = String(req.query.scope || "public").toLowerCase();
   const scope = rawScope === "global" ? "public" : rawScope;
@@ -126,9 +138,21 @@ const handleLeaderboard = async (req, res) => {
       // class without broadening access; admin/creator must choose explicitly.
       if (!classId && req.user?.role === "user") {
         const currentClass = await query(
-          `SELECT live_class_id FROM class_enrollments
-           WHERE user_id = $1 AND status = 'active'
-           ORDER BY enrolled_at DESC, id DESC LIMIT 1`,
+          `SELECT ce.live_class_id
+           FROM class_enrollments ce
+           JOIN live_classes lc ON lc.id = ce.live_class_id
+           LEFT JOIN courses c ON c.id = lc.course_id
+           WHERE ce.user_id = $1 AND ce.status = 'active'
+             AND (
+               COALESCE(c.is_management_managed, FALSE) = FALSE
+               OR EXISTS (
+                 SELECT 1 FROM lms_access_grants g
+                 WHERE g.user_id = ce.user_id AND g.course_id = lc.course_id
+                   AND g.access_status = 'active' AND g.valid_from <= NOW()
+                   AND (g.valid_until IS NULL OR g.valid_until > NOW())
+               )
+             )
+           ORDER BY ce.enrolled_at DESC, ce.id DESC LIMIT 1`,
           [req.user.id],
         );
         classId = currentClass.rows[0]?.live_class_id || null;
@@ -136,7 +160,11 @@ const handleLeaderboard = async (req, res) => {
       if (!classId) return validationError(res, "classId là bắt buộc cho bảng xếp hạng lớp");
       resolvedScopeId = classId;
       const classResult = await query(
-        "SELECT id, instructor_id FROM live_classes WHERE id = $1",
+        `SELECT lc.id, lc.instructor_id, lc.course_id,
+                COALESCE(c.is_management_managed, FALSE) AS is_management_managed
+         FROM live_classes lc
+         LEFT JOIN courses c ON c.id = lc.course_id
+         WHERE lc.id = $1`,
         [classId],
       );
       if (!classResult.rows[0]) return notFound(res, "Không tìm thấy lớp học");
@@ -145,17 +173,38 @@ const handleLeaderboard = async (req, res) => {
       }
       if (req.user.role === "user") {
         const membership = await query(
-          `SELECT 1 FROM class_enrollments
-           WHERE live_class_id = $1 AND user_id = $2 AND status = 'active'`,
-          [classId, req.user.id],
+          `SELECT 1
+           FROM class_enrollments ce
+           WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
+             AND (
+               $3::boolean = FALSE
+               OR EXISTS (
+                 SELECT 1 FROM lms_access_grants g
+                 WHERE g.user_id = $2 AND g.course_id = $4
+                   AND g.access_status = 'active' AND g.valid_from <= NOW()
+                   AND (g.valid_until IS NULL OR g.valid_until > NOW())
+               )
+             )`,
+          [classId, req.user.id, Boolean(classResult.rows[0].is_management_managed), classResult.rows[0].course_id],
         );
         if (!membership.rows[0]) return forbidden(res, "Bạn chưa tham gia lớp học này");
       }
       values.push(classId);
       filters.push(`EXISTS (
         SELECT 1 FROM class_enrollments ce
+        JOIN live_classes lc_scope ON lc_scope.id = ce.live_class_id
+        LEFT JOIN courses c_scope ON c_scope.id = lc_scope.course_id
         WHERE ce.live_class_id = $${values.length}
           AND ce.user_id = u.id AND ce.status = 'active'
+          AND (
+            COALESCE(c_scope.is_management_managed, FALSE) = FALSE
+            OR EXISTS (
+              SELECT 1 FROM lms_access_grants g
+              WHERE g.user_id = ce.user_id AND g.course_id = lc_scope.course_id
+                AND g.access_status = 'active' AND g.valid_from <= NOW()
+                AND (g.valid_until IS NULL OR g.valid_until > NOW())
+            )
+          )
       )`);
     }
 
@@ -164,7 +213,7 @@ const handleLeaderboard = async (req, res) => {
       if (!courseId) return validationError(res, "courseId là bắt buộc cho bảng xếp hạng khóa học");
       resolvedScopeId = courseId;
       const courseResult = await query(
-        "SELECT id, author_id FROM courses WHERE id = $1",
+        "SELECT id, author_id, COALESCE(is_management_managed, FALSE) AS is_management_managed FROM courses WHERE id = $1",
         [courseId],
       );
       if (!courseResult.rows[0]) return notFound(res, "Không tìm thấy khóa học");
@@ -173,17 +222,36 @@ const handleLeaderboard = async (req, res) => {
       }
       if (req.user.role === "user") {
         const membership = await query(
-          `SELECT 1 FROM enrollments
-           WHERE course_id = $1 AND user_id = $2 AND status = 'active'`,
-          [courseId, req.user.id],
+          `SELECT 1 FROM enrollments e
+           WHERE e.course_id = $1 AND e.user_id = $2 AND e.status = 'active'
+             AND (
+               $3::boolean = FALSE
+               OR EXISTS (
+                 SELECT 1 FROM lms_access_grants g
+                 WHERE g.user_id = $2 AND g.course_id = $1
+                   AND g.access_status = 'active' AND g.valid_from <= NOW()
+                   AND (g.valid_until IS NULL OR g.valid_until > NOW())
+               )
+             )`,
+          [courseId, req.user.id, Boolean(courseResult.rows[0].is_management_managed)],
         );
         if (!membership.rows[0]) return forbidden(res, "Bạn chưa đăng ký khóa học này");
       }
       values.push(courseId);
       filters.push(`EXISTS (
         SELECT 1 FROM enrollments e
+        LEFT JOIN courses c_scope ON c_scope.id = e.course_id
         WHERE e.course_id = $${values.length}
           AND e.user_id = u.id AND e.status = 'active'
+          AND (
+            COALESCE(c_scope.is_management_managed, FALSE) = FALSE
+            OR EXISTS (
+              SELECT 1 FROM lms_access_grants g
+              WHERE g.user_id = e.user_id AND g.course_id = e.course_id
+                AND g.access_status = 'active' AND g.valid_from <= NOW()
+                AND (g.valid_until IS NULL OR g.valid_until > NOW())
+            )
+          )
       )`);
     }
 
@@ -240,7 +308,7 @@ router.get("/session/:sessionId", protectRoute, requireTeacher, async (req, res)
     if (!sessionId) return validationError(res, "sessionId không hợp lệ");
     const session = await getSessionForTeacher(sessionId);
     if (!session) return notFound(res, "Không tìm thấy buổi học");
-    if (req.user.role !== "admin" && String(session.instructor_id) !== String(req.user.id)) {
+    if (!(await canManageSession(session, req.user))) {
       return forbidden(res, "Bạn không có quyền xem điểm danh buổi học này");
     }
 
@@ -332,7 +400,7 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy buổi học");
     }
-    if (req.user.role !== "admin" && String(session.instructor_id) !== String(req.user.id)) {
+    if (!(await canManageSession(session, req.user, client))) {
       await client.query("ROLLBACK");
       return forbidden(res, "Bạn không có quyền điểm danh buổi học này");
     }

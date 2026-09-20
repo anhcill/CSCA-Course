@@ -64,23 +64,29 @@ const checkCourseOwner = async (courseId, user) => {
 const checkEnrollment = async (courseId, userId) => {
   const result = await query(
     `SELECT 1
-     FROM enrollments
-     WHERE user_id = $1 AND course_id = $2 AND status = 'active'
-     UNION ALL
-     SELECT 1
-     FROM lms_access_grants
-     WHERE user_id = $1 AND course_id = $2
-       AND access_status = 'active'
-       AND valid_from <= NOW()
-       AND (valid_until IS NULL OR valid_until > NOW())
-     UNION ALL
-     SELECT 1
-     FROM class_enrollments ce
-     JOIN live_classes lc ON lc.id = ce.live_class_id
-     WHERE ce.user_id = $1 AND lc.course_id = $2
-       AND ce.status = 'active' AND lc.status = 'active'
-     LIMIT 1`,
-    [userId, courseId],
+     FROM courses c
+     WHERE c.id = $2
+       AND (
+         EXISTS (
+           SELECT 1 FROM lms_access_grants g
+           WHERE g.user_id = $1 AND g.course_id = c.id
+             AND g.access_status = 'active' AND g.valid_from <= NOW()
+             AND (g.valid_until IS NULL OR g.valid_until > NOW())
+         )
+         OR (
+           COALESCE(c.is_management_managed, FALSE) = FALSE
+           AND (
+             EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = c.id AND e.status = 'active')
+             OR EXISTS (
+               SELECT 1 FROM class_enrollments ce
+               JOIN live_classes lc ON lc.id = ce.live_class_id
+               WHERE ce.user_id = $1 AND lc.course_id = c.id
+                 AND ce.status = 'active' AND lc.status = 'active'
+             )
+           )
+         )
+       )`,
+      [userId, courseId],
   );
   return result.rows.length > 0;
 };
@@ -455,10 +461,18 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     const isAdmin = req.user.role === "admin";
     const isTeacherOwner = req.user.role === "creator" && String(course.author_id) === String(req.user.id);
     const isLearner = req.user.role === "user";
+    const isAssignedTeacher = !isLearner && !isAdmin && req.user.role === "creator" && selectedClassId
+      ? (await query(
+        `SELECT 1 FROM class_teachers ct
+         JOIN live_classes lc ON lc.id = ct.live_class_id
+         WHERE ct.teacher_id = $1 AND ct.status = 'active' AND lc.id = $2 AND lc.course_id = $3`,
+        [req.user.id, selectedClassId, courseId],
+      )).rows.length > 0
+      : false;
     if (isLearner && (!course.is_published || !(await checkEnrollment(courseId, req.user.id)))) {
       return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
     }
-    if (!isLearner && !isAdmin && !isTeacherOwner) {
+    if (!isLearner && !isAdmin && !isTeacherOwner && !isAssignedTeacher) {
       return forbidden(res, "Bạn không có quyền xem workspace khóa học này");
     }
 
@@ -474,7 +488,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         )`;
       } else if (!isAdmin) {
         selectedClassParams.push(req.user.id);
-        selectedClassVisibility = "lc.instructor_id = $3";
+        selectedClassVisibility = `(lc.instructor_id = $3 OR EXISTS (
+          SELECT 1 FROM class_teachers ct
+          WHERE ct.live_class_id = lc.id AND ct.teacher_id = $3 AND ct.status = 'active'
+        ))`;
       }
       const selectedClassResult = await query(
         `SELECT lc.id, lc.title, lc.description, lc.instructor_id, lc.max_students,
@@ -499,7 +516,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       )`;
     } else if (!isAdmin) {
       scopedClassParams.push(req.user.id);
-      scopedClassVisibility = "lc.instructor_id = $2";
+      scopedClassVisibility = `(lc.instructor_id = $2 OR EXISTS (
+        SELECT 1 FROM class_teachers ct
+        WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+      ))`;
     }
     const selectedClassScope = selectedClassId ? ` AND lc.id = $${scopedClassParams.length + 1}` : "";
     if (selectedClassId) scopedClassParams.push(selectedClassId);

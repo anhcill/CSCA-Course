@@ -7,7 +7,8 @@
     "build": "npm install && npm install --prefix frontend && npm run build --prefix frontend",
     "test:auth": "node --test backend/middleware/requireRole.test.js",
     "test:security": "node --test backend/middleware/requireRole.test.js backend/middleware/security.test.js",
-    "test:integration": "node --test backend/middleware/requireManagementIntegration.test.js",
+    "test:integration": "node --test backend/middleware/requireManagementIntegration.test.js backend/services/managementSync.service.test.js",
+    "worker": "cross-env NODE_ENV=production node ./backend/worker.js",
     "start": "cross-env NODE_ENV=production node ./backend/server.js"
   },
   "type": "module",

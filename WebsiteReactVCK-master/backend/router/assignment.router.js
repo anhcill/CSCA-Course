@@ -81,7 +81,9 @@ const getAssignment = async (assignmentId, db = { query }) => {
             a.description, a.max_score, a.due_date, a.attachment_url,
             a.created_at, a.updated_at,
             COALESCE(c.title, c.name) AS course_title,
-            c.is_published AS course_is_published,
+            COALESCE(c.is_published, class_course.is_published, TRUE) AS course_is_published,
+            COALESCE(c.is_management_managed, class_course.is_management_managed, FALSE) AS course_is_management_managed,
+            COALESCE(a.course_id, lc.course_id) AS resolved_course_id,
             c.author_id AS course_author_id,
             lc.status AS live_class_status,
             lc.instructor_id AS live_class_instructor_id,
@@ -90,6 +92,7 @@ const getAssignment = async (assignmentId, db = { query }) => {
      FROM assignments a
      LEFT JOIN courses c ON c.id = a.course_id
      LEFT JOIN live_classes lc ON lc.id = a.live_class_id
+     LEFT JOIN courses class_course ON class_course.id = lc.course_id
      LEFT JOIN users instructor ON instructor.id = a.instructor_id
      WHERE a.id = $1`,
     [assignmentId],
@@ -98,21 +101,23 @@ const getAssignment = async (assignmentId, db = { query }) => {
 };
 
 const ensureAssignmentVisibleToStudent = async (assignment, userId, db = { query }) => {
-  if (assignment.course_id !== null) {
+  const courseId = assignment.resolved_course_id || assignment.course_id;
+  if (courseId !== null) {
     if (!assignment.course_is_published) return false;
     const result = await db.query(
-      `SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'
-       UNION ALL
-       SELECT 1 FROM lms_access_grants
+      `SELECT 1 FROM lms_access_grants
        WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
          AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
        UNION ALL
+       SELECT 1 FROM enrollments
+       WHERE $3::boolean = FALSE AND user_id = $1 AND course_id = $2 AND status = 'active'
+       UNION ALL
        SELECT 1 FROM class_enrollments ce
        JOIN live_classes lc ON lc.id = ce.live_class_id
-       WHERE ce.user_id = $1 AND lc.course_id = $2
+       WHERE $3::boolean = FALSE AND ce.user_id = $1 AND lc.course_id = $2
          AND ce.status = 'active' AND lc.status = 'active'
        LIMIT 1`,
-      [userId, assignment.course_id],
+      [userId, courseId, Boolean(assignment.course_is_management_managed)],
     );
     if (result.rows.length === 0) return false;
   }
@@ -124,7 +129,7 @@ const ensureAssignmentVisibleToStudent = async (assignment, userId, db = { query
     );
     if (result.rows.length === 0) return false;
   }
-  return assignment.course_id !== null || assignment.live_class_id !== null;
+  return courseId !== null || assignment.live_class_id !== null;
 };
 
 const canManageAssignment = (assignment, user) => user.role === "admin" || String(assignment.instructor_id) === String(user.id);
@@ -181,12 +186,24 @@ router.get("/", protectRoute, async (req, res) => {
       let classAccessClause = "TRUE";
       if (isTeacher) {
         classAccessParams.push(req.user.id);
-        classAccessClause = "lc.instructor_id = $3";
+        classAccessClause = `(lc.instructor_id = $3 OR EXISTS (
+          SELECT 1 FROM class_teachers ct
+          WHERE ct.live_class_id = lc.id AND ct.teacher_id = $3 AND ct.status = 'active'
+        ))`;
       } else if (!isAdmin) {
         classAccessParams.push(req.user.id);
         classAccessClause = `EXISTS (
           SELECT 1 FROM class_enrollments ce
+          LEFT JOIN courses course_access ON course_access.id = lc.course_id
           WHERE ce.live_class_id = lc.id AND ce.user_id = $3 AND ce.status = 'active'
+            AND (
+              COALESCE(course_access.is_management_managed, FALSE) = FALSE
+              OR EXISTS (
+                SELECT 1 FROM lms_access_grants g
+                WHERE g.user_id = $3 AND g.course_id = course_access.id AND g.access_status = 'active'
+                  AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+              )
+            )
         )`;
       }
       const classAccess = await query(
@@ -203,21 +220,31 @@ router.get("/", protectRoute, async (req, res) => {
         ? "a.instructor_id = $1"
         : `(
              (a.course_id IS NULL OR (c.is_published = true AND (
-               EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = a.course_id AND e.status = 'active')
+               (COALESCE(c.is_management_managed, FALSE) = FALSE AND EXISTS (
+                 SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = a.course_id AND e.status = 'active'
+               ))
                OR EXISTS (
                  SELECT 1 FROM lms_access_grants g
                  WHERE g.user_id = $1 AND g.course_id = a.course_id AND g.access_status = 'active'
                    AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
                )
-               OR EXISTS (
+               OR (COALESCE(c.is_management_managed, FALSE) = FALSE AND EXISTS (
                  SELECT 1 FROM class_enrollments course_ce
                  JOIN live_classes course_lc ON course_lc.id = course_ce.live_class_id
                  WHERE course_ce.user_id = $1 AND course_lc.course_id = a.course_id
                    AND course_ce.status = 'active' AND course_lc.status = 'active'
-               )
+               ))
              )))
              AND (a.live_class_id IS NULL OR (lc.status = 'active' AND EXISTS (
                SELECT 1 FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.live_class_id = a.live_class_id AND ce.status = 'active'
+             ) AND (
+               COALESCE(class_course.is_management_managed, FALSE) = FALSE
+               OR EXISTS (
+                 SELECT 1 FROM lms_access_grants class_grant
+                 WHERE class_grant.user_id = $1 AND class_grant.course_id = class_course.id
+                   AND class_grant.access_status = 'active' AND class_grant.valid_from <= NOW()
+                   AND (class_grant.valid_until IS NULL OR class_grant.valid_until > NOW())
+               )
              )))
              AND (a.course_id IS NOT NULL OR a.live_class_id IS NOT NULL)
            )`;
@@ -226,18 +253,20 @@ router.get("/", protectRoute, async (req, res) => {
       : isTeacher
         ? "c.author_id = $1"
         : `c.is_published = true AND (
-             EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = c.id AND e.status = 'active')
+             (COALESCE(c.is_management_managed, FALSE) = FALSE AND EXISTS (
+               SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = c.id AND e.status = 'active'
+             ))
              OR EXISTS (
                SELECT 1 FROM lms_access_grants g
                WHERE g.user_id = $1 AND g.course_id = c.id AND g.access_status = 'active'
                  AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
              )
-             OR EXISTS (
+             OR (COALESCE(c.is_management_managed, FALSE) = FALSE AND EXISTS (
                SELECT 1 FROM class_enrollments course_ce
                JOIN live_classes course_lc ON course_lc.id = course_ce.live_class_id
                WHERE course_ce.user_id = $1 AND course_lc.course_id = c.id
                  AND course_ce.status = 'active' AND course_lc.status = 'active'
-             )
+             ))
            )`;
     const assignmentCourseScope = requestedCourseId
       ? "AND COALESCE(a.course_id, lc.course_id) = $2"
@@ -266,6 +295,7 @@ router.get("/", protectRoute, async (req, res) => {
          FROM assignments a
          LEFT JOIN courses c ON c.id = a.course_id
          LEFT JOIN live_classes lc ON lc.id = a.live_class_id
+         LEFT JOIN courses class_course ON class_course.id = lc.course_id
          LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.user_id = $1
          LEFT JOIN submission_assets fa ON fa.id = s.file_asset_id
          LEFT JOIN submission_assets aa ON aa.id = s.audio_asset_id
@@ -649,7 +679,14 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
     if (liveClassId) {
       const classResult = await query("SELECT course_id, instructor_id FROM live_classes WHERE id = $1", [liveClassId]);
       if (classResult.rows.length === 0) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-      if (req.user.role !== "admin" && String(classResult.rows[0].instructor_id) !== String(req.user.id)) return forbidden(res, "Bạn không có quyền tạo bài tập cho lớp học này");
+      if (req.user.role !== "admin" && String(classResult.rows[0].instructor_id) !== String(req.user.id)) {
+        const classTeacher = await query(
+          `SELECT 1 FROM class_teachers
+           WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'`,
+          [liveClassId, req.user.id],
+        );
+        if (classTeacher.rows.length === 0) return forbidden(res, "Bạn không có quyền tạo bài tập cho lớp học này");
+      }
       if (courseId && classResult.rows[0].course_id !== null && String(classResult.rows[0].course_id) !== String(courseId)) return validationError(res, "Khóa học và lớp trực tuyến không cùng một phạm vi");
     }
     const result = await query(
@@ -848,7 +885,9 @@ const getQuiz = async (quizId, db = { query }) => {
   const result = await db.query(
     `SELECT q.id, q.title, q.status AS quiz_status, q.duration_minutes, q.passing_score, q.course_id AS quiz_course_id, q.lesson_id,
             COALESCE(q.course_id, l.course_id) AS resolved_course_id,
-            c.is_published AS course_is_published, c.author_id AS course_author_id,
+            c.is_published AS course_is_published,
+            COALESCE(c.is_management_managed, FALSE) AS course_is_management_managed,
+            c.author_id AS course_author_id,
             l.is_published AS lesson_is_published
      FROM quizzes q LEFT JOIN lessons l ON l.id = q.lesson_id
      LEFT JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
@@ -863,7 +902,7 @@ const ensureQuizAccess = async (quiz, user, db = { query }) => {
   if (user.role === "creator") return String(quiz.course_author_id) === String(user.id);
   if (user.role !== "user" || quiz.quiz_status !== "PUBLISHED" || !quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
   const enrollment = await db.query(
-    `SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'
+    `SELECT 1 FROM enrollments WHERE $3::boolean = FALSE AND user_id = $1 AND course_id = $2 AND status = 'active'
      UNION ALL
      SELECT 1 FROM lms_access_grants
      WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
@@ -871,10 +910,11 @@ const ensureQuizAccess = async (quiz, user, db = { query }) => {
      UNION ALL
      SELECT 1 FROM class_enrollments ce
      JOIN live_classes lc ON lc.id = ce.live_class_id
-     WHERE ce.user_id = $1 AND lc.course_id = $2
+     JOIN courses c ON c.id = lc.course_id
+     WHERE COALESCE(c.is_management_managed, FALSE) = FALSE AND ce.user_id = $1 AND lc.course_id = $2
        AND ce.status = 'active' AND lc.status = 'active'
      LIMIT 1`,
-    [user.id, quiz.resolved_course_id],
+    [user.id, quiz.resolved_course_id, Boolean(quiz.course_is_management_managed)],
   );
   return enrollment.rows.length > 0;
 };

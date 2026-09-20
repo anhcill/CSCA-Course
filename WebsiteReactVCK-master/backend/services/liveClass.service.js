@@ -62,7 +62,18 @@ export const notifyClassStudents = async (session, mode = "upcoming") => {
     `INSERT INTO notifications (user_id, title, message, type, link_url, dedupe_key)
      SELECT ce.user_id, $2, $3, 'live_class', $4, $5
      FROM class_enrollments ce
+     JOIN live_classes lc ON lc.id = ce.live_class_id
+     LEFT JOIN courses c ON c.id = lc.course_id
      WHERE ce.live_class_id = $1 AND ce.status = 'active'
+       AND (
+         COALESCE(c.is_management_managed, FALSE) = FALSE
+         OR EXISTS (
+           SELECT 1 FROM lms_access_grants g
+           WHERE g.user_id = ce.user_id AND g.course_id = lc.course_id
+             AND g.access_status = 'active' AND g.valid_from <= NOW()
+             AND (g.valid_until IS NULL OR g.valid_until > NOW())
+         )
+       )
      ON CONFLICT (user_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
     [session.live_class_id, notification.title, notification.message, "/lms/live-schedule", notification.dedupeKey],
   );
