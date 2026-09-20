@@ -281,33 +281,6 @@ export default function CourseCatalogPage() {
         </div>
       </div>
 
-      {/* Quick Stats Bar */}
-      <div className="bg-slate-900/60 border-b border-white/10 py-4 px-4 sm:px-6 lg:px-8">
-        <div className="container mx-auto max-w-7xl flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-8">
-            {[
-              { label: "Khóa Học", value: courses.length > 0 ? courses.length : "12+" },
-              { label: "Giảng Viên", value: "8 Thầy Cô" },
-              { label: "Học Viên", value: "1,200+" },
-            ].map((s) => (
-              <div key={s.label} className="text-left">
-                <div className="text-base sm:text-lg font-black text-white font-mono">{s.value}</div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link to="/lms/my-learning" className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 transition border border-rose-500/20">
-              Khóa Học Của Tôi
-            </Link>
-            <Link to="/lms/live-schedule" className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition border border-amber-500/20">
-              Lịch Học Live
-            </Link>
-          </div>
-        </div>
-      </div>
-
       {/* Main Content Area */}
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 max-w-7xl space-y-8">
         {/* Filters Row */}
