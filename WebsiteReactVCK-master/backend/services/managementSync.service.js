@@ -611,12 +611,17 @@ const syncEntitlement = async (client, event, forceRevoked = false) => {
       grants.push({ courseSourceId, lmsCourseId: Number(course.id), staleIgnored: true });
       continue;
     }
+    const revokedAt = ["revoked", "suspended"].includes(input.accessStatus)
+      ? input.sourceUpdatedAt
+      : null;
+
     const saved = await client.query(
       `INSERT INTO lms_access_grants
          (user_id, course_id, access_status, source_payment_id, reason, valid_from,
           valid_until, source_updated_at, revoked_at, correlation_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-               CASE WHEN $3 IN ('revoked', 'suspended') THEN $8 ELSE NULL END, $9)
+       VALUES ($1::bigint, $2::bigint, $3::varchar, $4::varchar, $5::varchar,
+               $6::timestamptz, $7::timestamptz, $8::timestamptz,
+               $9::timestamptz, $10::varchar)
        ON CONFLICT (user_id, course_id) DO UPDATE SET
          access_status = EXCLUDED.access_status, source_payment_id = EXCLUDED.source_payment_id,
          reason = EXCLUDED.reason, valid_from = EXCLUDED.valid_from, valid_until = EXCLUDED.valid_until,
@@ -624,7 +629,7 @@ const syncEntitlement = async (client, event, forceRevoked = false) => {
          correlation_id = EXCLUDED.correlation_id
        RETURNING id, access_status, valid_until`,
       [user.id, course.id, input.accessStatus, input.sourcePaymentId, input.reason,
-        input.validFrom, input.validUntil, input.sourceUpdatedAt, event.correlationId],
+        input.validFrom, input.validUntil, input.sourceUpdatedAt, revokedAt, event.correlationId],
     );
     const enrollmentStatus = effectiveEnrollmentStatus(saved.rows[0].access_status, saved.rows[0].valid_until ? new Date(saved.rows[0].valid_until) : null);
     await client.query(
