@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   FiFolder,
@@ -15,6 +16,7 @@ import { fetchStudentFiles } from "../../api/lmsClient";
 import { EmptyState, LoadingState } from "../../../components/common/StateView";
 
 export default function StudentFilesPage() {
+  const { courseId } = useParams();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -23,7 +25,7 @@ export default function StudentFilesPage() {
   const loadFiles = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchStudentFiles();
+      const res = await fetchStudentFiles({ courseId });
       if (res?.data) {
         setFiles(res.data);
       }
@@ -33,7 +35,7 @@ export default function StudentFilesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [courseId]);
 
   useEffect(() => {
     loadFiles();
@@ -81,7 +83,7 @@ export default function StudentFilesPage() {
               <span>Cloudflare R2 Learning Repository</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Tài Liệu Học Tập Của Tôi
+              {courseId ? "Tài Liệu Của Khóa Học" : "Tài Liệu Học Tập Của Tôi"}
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
               Truy cập và tải về toàn bộ giáo trình, bài tập mẫu và bảng từ vựng từ các lớp học đã ghi danh.

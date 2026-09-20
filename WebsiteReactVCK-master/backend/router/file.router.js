@@ -180,13 +180,19 @@ router.post("/teacher/files/:fileId/confirm", protectRoute, requireTeacher, requ
 router.get("/student/files", protectRoute, async (req, res) => {
   if (req.user.role !== "user") return errorResponse(res, 403, "Chỉ học viên mới dùng endpoint này", "FORBIDDEN");
   try {
+    const courseId = req.query.courseId === undefined ? null : parseId(req.query.courseId);
+    if (req.query.courseId !== undefined && !courseId) {
+      return errorResponse(res, 422, "courseId không hợp lệ", "VALIDATION_ERROR");
+    }
     const result = await query(
       `SELECT DISTINCT f.*, COALESCE(c.title, c.name) AS course_title,
               u.username AS uploaded_by_name, u.email AS uploader_email
        FROM lms_learning_files f
        LEFT JOIN courses c ON c.id = f.course_id
+       LEFT JOIN live_classes lc ON lc.id = f.live_class_id
        LEFT JOIN users u ON u.id = f.uploaded_by
        WHERE f.status = 'ready'
+         AND ($2::bigint IS NULL OR COALESCE(f.course_id, lc.course_id) = $2)
          AND (
            (f.live_class_id IS NOT NULL AND EXISTS (
              SELECT 1 FROM class_enrollments ce
@@ -197,9 +203,9 @@ router.get("/student/files", protectRoute, async (req, res) => {
              OR EXISTS (SELECT 1 FROM lms_access_grants g WHERE g.course_id = f.course_id AND g.user_id = $1 AND g.access_status = 'active'
                        AND (g.valid_until IS NULL OR g.valid_until > NOW()))
            ))
-         )
+       )
        ORDER BY f.created_at DESC, f.id DESC`,
-      [req.user.id],
+      [req.user.id, courseId],
     );
     return res.json({ success: true, data: result.rows.map(serializeFile) });
   } catch (error) {

@@ -1,5 +1,6 @@
 /* eslint-disable react/prop-types */
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { fetchMyLiveSchedule, getLiveSessionAccess } from "../../api/lmsClient";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
@@ -75,6 +76,7 @@ const FILTERS = [
 ];
 
 export default function LiveClassSchedulePage() {
+  const { courseId } = useParams();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -86,7 +88,7 @@ export default function LiveClassSchedulePage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const res = await fetchMyLiveSchedule();
+      const res = await fetchMyLiveSchedule({ courseId });
       if (res.success && res.data) {
         setSessions(res.data);
       } else {
@@ -98,7 +100,7 @@ export default function LiveClassSchedulePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [courseId]);
 
   useEffect(() => {
     loadSchedule();
@@ -329,7 +331,7 @@ export default function LiveClassSchedulePage() {
               </span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-              Lịch Học & Phòng Học Live
+              {courseId ? "Lịch Học Live Của Khóa Học" : "Lịch Học & Phòng Học Live"}
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
               Luyện đề thi thử CSCA trực tiếp và sửa ngữ âm HSKK qua Google Meet & Zoom.

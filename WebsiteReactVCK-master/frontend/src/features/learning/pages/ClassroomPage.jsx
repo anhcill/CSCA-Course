@@ -370,10 +370,10 @@ export default function ClassroomPage() {
             onRetry={loadClassroomData}
             secondaryAction={
               <Link
-                to="/lms/catalog"
+                to={`/lms/courses/${courseId}/workspace`}
                 className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition"
               >
-                ← Quay Về Catalog
+                ← Quay Về Khóa Học
               </Link>
             }
           />
@@ -497,7 +497,7 @@ export default function ClassroomPage() {
         <div className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-4">
             <Link
-              to={`/lms/catalog/course/${course?.slug || course?.id}`}
+              to={`/lms/courses/${course?.slug || course?.id}`}
               className="text-slate-400 hover:text-white text-xs font-semibold transition flex items-center gap-1"
             >
               <span>←</span>

@@ -95,7 +95,7 @@ export default function CourseDetailPage() {
       if (res.success) {
         setIsEnrolled(true);
         toast.success("Đăng ký khóa học thành công! Chúc bạn học tốt 🎉");
-        navigate(`/lms/learn/${courseData.course.id}`);
+        navigate(`/lms/courses/${courseData.course.id}/workspace`);
       }
     } catch (err) {
       console.error("Error enrolling:", err);
@@ -257,7 +257,7 @@ export default function CourseDetailPage() {
       <div className="space-y-3">
         {isEnrolled ? (
           <button
-            onClick={() => navigate(`/lms/learn/${course.id}`)}
+            onClick={() => navigate(`/lms/courses/${course.id}/workspace`)}
             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-2xl transition duration-200 shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 text-base"
           >
             <span>Vào Học Ngay</span>
@@ -619,7 +619,7 @@ export default function CourseDetailPage() {
                 {relatedCourses.map((relCourse) => (
                   <div
                     key={relCourse.id}
-                    onClick={() => navigate(`/lms/catalog/course/${relCourse.slug || relCourse.id}`)}
+                    onClick={() => navigate(`/lms/courses/${relCourse.slug || relCourse.id}`)}
                     className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden cursor-pointer hover:border-slate-700 transition group flex flex-col h-full shadow-lg"
                   >
                     <div className="h-32 bg-slate-950 overflow-hidden relative">

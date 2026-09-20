@@ -72,6 +72,10 @@ export const fetchClassroomDetail = async (courseIdOrSlug) => (
   request(`/courses/${encodeURIComponent(courseIdOrSlug)}/classroom`)
 );
 
+export const fetchCourseWorkspace = async (courseId) => (
+  request(`/courses/${encodeURIComponent(courseId)}/workspace`)
+);
+
 export const checkEnrollmentStatus = async (courseId) => (
   request(`/enrollments/check/${encodeURIComponent(courseId)}`)
 );
@@ -162,7 +166,11 @@ export const updateLiveClass = async ({ classId, title, description, maxStudents
   })
 );
 
-export const fetchMyLiveSchedule = async () => request("/live-classes/my-schedule");
+export const fetchMyLiveSchedule = async ({ courseId } = {}) => {
+  const params = new URLSearchParams();
+  if (courseId) params.set("courseId", courseId);
+  return request(`/live-classes/my-schedule${params.size ? `?${params.toString()}` : ""}`);
+};
 
 export const createLiveSession = async ({ liveClassId, title, startTime, endTime, meetUrl, passcode, status }) => (
   request(`/live-classes/${encodeURIComponent(liveClassId)}/sessions`, {
@@ -244,7 +252,11 @@ export const fetchAttendanceRoster = async (sessionId) => (
 );
 
 // Assignment & Quiz Helpers
-export const fetchAssignments = async () => request("/assignments");
+export const fetchAssignments = async ({ courseId } = {}) => {
+  const params = new URLSearchParams();
+  if (courseId) params.set("courseId", courseId);
+  return request(`/assignments${params.size ? `?${params.toString()}` : ""}`);
+};
 
 export const createAssignment = async ({ title, description, liveClassId, assignmentType, maxScore, dueDate }) => request("/assignments", {
   method: "POST",
@@ -470,8 +482,10 @@ export const fetchClassFiles = async (classId) => {
   return request(`/teacher/classes/${encodeURIComponent(classId)}/files`);
 };
 
-export const fetchStudentFiles = async () => {
-  return request("/student/files");
+export const fetchStudentFiles = async ({ courseId } = {}) => {
+  const params = new URLSearchParams();
+  if (courseId) params.set("courseId", courseId);
+  return request(`/student/files${params.size ? `?${params.toString()}` : ""}`);
 };
 
 export const uploadClassFile = async (classId, file, { visibility = "CLASS_ONLY" } = {}) => {

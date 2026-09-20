@@ -271,7 +271,12 @@ router.patch("/:classId", protectRoute, requireTeacher, requirePermission("lms.c
 // GET /api/live-classes/my-schedule — no meeting URL or passcode is returned here.
 router.get("/my-schedule", protectRoute, async (req, res) => {
   try {
+    const courseId = req.query.courseId === undefined ? null : parsePositiveId(req.query.courseId);
+    if (req.query.courseId !== undefined && !courseId) return validationError(res, "courseId không hợp lệ");
     const visibility = sessionVisibility(req.user);
+    const params = [...visibility.params];
+    const courseScope = courseId ? `AND lc.course_id = $${params.length + 1}` : "";
+    if (courseId) params.push(courseId);
     const result = await query(
       `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
               lc.title AS class_title, lc.course_id, lc.instructor_id, lc.max_students,
@@ -288,9 +293,10 @@ router.get("/my-schedule", protectRoute, async (req, res) => {
          AND cs.status <> 'cancelled'
          AND (lc.course_id IS NULL OR COALESCE(c.is_published, false) = true)
          AND ${visibility.clause}
+         ${courseScope}
        GROUP BY cs.id, lc.id, c.title, c.name
        ORDER BY cs.start_time ASC`,
-      visibility.params,
+      params,
     );
 
     const now = Date.now();

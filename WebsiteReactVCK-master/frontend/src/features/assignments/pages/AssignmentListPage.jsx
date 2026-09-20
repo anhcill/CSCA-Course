@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { fetchAssignments } from "../../api/lmsClient";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
 
@@ -68,6 +68,13 @@ function timeRemaining(dueDate) {
 }
 
 export default function AssignmentListPage() {
+  const { courseId } = useParams();
+  const assignmentPath = (assignmentId) => courseId
+    ? `/lms/courses/${courseId}/workspace/assignments/${assignmentId}/submit`
+    : `/lms/assignment/${assignmentId}/submit`;
+  const quizPath = (quizId) => courseId
+    ? `/lms/courses/${courseId}/workspace/quizzes/${quizId}`
+    : `/lms/quiz/${quizId}`;
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
@@ -82,7 +89,7 @@ export default function AssignmentListPage() {
     setLoading(true);
     setErrorMsg("");
     try {
-      const res = await fetchAssignments();
+      const res = await fetchAssignments({ courseId });
       if (res.success && res.data) {
         setAssignments(res.data);
       } else {
@@ -94,7 +101,7 @@ export default function AssignmentListPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [courseId]);
 
   useEffect(() => {
     loadData();
@@ -188,7 +195,7 @@ export default function AssignmentListPage() {
               </span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-              Bài Tập & Đề Thi Trắc Nghiệm
+              {courseId ? "Bài Tập & Quiz Của Khóa Học" : "Bài Tập & Đề Thi Trắc Nghiệm"}
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
               Theo dõi hạn nộp, làm bài trắc nghiệm và nộp bài khẩu ngữ HSKK/tự luận CSCA.
@@ -386,14 +393,14 @@ export default function AssignmentListPage() {
                       {itemType === "quiz" ? (
                         itemStatus === "graded" ? (
                           <Link
-                            to={`/lms/quiz/${item.id}`}
+                            to={quizPath(item.id)}
                             className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-emerald-600/20"
                           >
                             Xem Kết Quả Quiz →
                           </Link>
                         ) : (
                           <Link
-                            to={`/lms/quiz/${item.id}`}
+                            to={quizPath(item.id)}
                             className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-sky-600/20"
                           >
                             Làm Trắc Nghiệm →
@@ -401,28 +408,28 @@ export default function AssignmentListPage() {
                         )
                       ) : itemStatus === "graded" ? (
                         <Link
-                          to={`/lms/assignment/${item.id}/submit`}
+                          to={assignmentPath(item.id)}
                           className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
                         >
                           <span>★ Xem Điểm & Nhận Xét</span>
                         </Link>
                       ) : itemStatus === "submitted" ? (
                         <Link
-                          to={`/lms/assignment/${item.id}/submit`}
+                          to={assignmentPath(item.id)}
                           className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs transition border border-slate-700"
                         >
                           Xem Bài Đã Nộp →
                         </Link>
                       ) : itemStatus === "late" ? (
                         <Link
-                          to={`/lms/assignment/${item.id}/submit`}
+                          to={assignmentPath(item.id)}
                           className="px-5 py-2.5 bg-rose-600/80 hover:bg-rose-600 text-white font-bold rounded-xl text-xs transition"
                         >
                           Nộp Bài Trễ →
                         </Link>
                       ) : (
                         <Link
-                          to={`/lms/assignment/${item.id}/submit`}
+                          to={assignmentPath(item.id)}
                           className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-rose-600/20"
                         >
                           Nộp Bài Ngay →

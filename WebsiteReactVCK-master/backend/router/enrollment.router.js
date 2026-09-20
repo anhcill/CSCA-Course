@@ -24,7 +24,17 @@ router.get("/check/:courseId", protectRoute, async (req, res) => {
     if (!/^\d+$/.test(String(courseId)) || Number(courseId) < 1) return validationError(res, "courseId không hợp lệ");
 
     const result = await query(
-      `SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'`,
+      `SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'
+       UNION ALL
+       SELECT 1 FROM lms_access_grants
+       WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
+         AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
+       UNION ALL
+       SELECT 1 FROM class_enrollments ce
+       JOIN live_classes lc ON lc.id = ce.live_class_id
+       WHERE ce.user_id = $1 AND lc.course_id = $2
+         AND ce.status = 'active' AND lc.status = 'active'
+       LIMIT 1`,
       [userId, courseId],
     );
     const isEnrolled = result.rows.length > 0;
@@ -89,11 +99,27 @@ router.get("/my", protectRoute, async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await query(
-      `SELECT e.id as enrollment_id, e.enrolled_at, c.*
-       FROM enrollments e
-       JOIN courses c ON e.course_id = c.id
-       WHERE e.user_id = $1 AND e.status = 'active'
-       ORDER BY e.enrolled_at DESC`,
+      `WITH access_rows AS (
+         SELECT course_id, enrolled_at AS access_granted_at FROM enrollments
+         WHERE user_id = $1 AND status = 'active'
+         UNION ALL
+         SELECT course_id, valid_from AS access_granted_at FROM lms_access_grants
+         WHERE user_id = $1 AND access_status = 'active'
+           AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
+         UNION ALL
+         SELECT lc.course_id, ce.enrolled_at AS access_granted_at
+         FROM class_enrollments ce
+         JOIN live_classes lc ON lc.id = ce.live_class_id
+         WHERE ce.user_id = $1 AND ce.status = 'active' AND lc.status = 'active' AND lc.course_id IS NOT NULL
+       ), accessible_courses AS (
+         SELECT course_id, MIN(access_granted_at) AS access_granted_at
+         FROM access_rows GROUP BY course_id
+       )
+       SELECT c.id AS enrollment_id, ac.access_granted_at AS enrolled_at, c.*
+       FROM accessible_courses ac
+       JOIN courses c ON c.id = ac.course_id
+       WHERE c.is_published = true
+       ORDER BY ac.access_granted_at DESC`,
       [userId],
     );
 
@@ -112,9 +138,25 @@ router.get("/my-courses", protectRoute, async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await query(
-        `SELECT
-          e.id AS enrollment_id,
-          e.enrolled_at,
+        `WITH access_rows AS (
+           SELECT course_id, enrolled_at AS access_granted_at FROM enrollments
+           WHERE user_id = $1 AND status = 'active'
+           UNION ALL
+           SELECT course_id, valid_from AS access_granted_at FROM lms_access_grants
+           WHERE user_id = $1 AND access_status = 'active'
+             AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
+           UNION ALL
+           SELECT lc.course_id, ce.enrolled_at AS access_granted_at
+           FROM class_enrollments ce
+           JOIN live_classes lc ON lc.id = ce.live_class_id
+           WHERE ce.user_id = $1 AND ce.status = 'active' AND lc.status = 'active' AND lc.course_id IS NOT NULL
+         ), accessible_courses AS (
+           SELECT course_id, MIN(access_granted_at) AS access_granted_at
+           FROM access_rows GROUP BY course_id
+         )
+         SELECT
+          c.id AS enrollment_id,
+          ac.access_granted_at AS enrolled_at,
           c.id AS course_id,
           COALESCE(c.title, c.name) AS title,
           c.slug,
@@ -143,10 +185,10 @@ router.get("/my-courses", protectRoute, async (req, res) => {
             ORDER BY lp.updated_at DESC
             LIMIT 1
           ) AS last_lesson
-        FROM enrollments e
-        JOIN courses c ON e.course_id = c.id
-        WHERE e.user_id = $1 AND e.status = 'active'
-        ORDER BY e.enrolled_at DESC`,
+        FROM accessible_courses ac
+        JOIN courses c ON c.id = ac.course_id
+        WHERE c.is_published = true
+        ORDER BY ac.access_granted_at DESC`,
         [userId]
       );
 

@@ -47,6 +47,9 @@ import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
 import CourseCatalogPage from "./features/catalog/pages/CourseCatalogPage.jsx";
 import CourseDetailPage from "./features/catalog/pages/CourseDetailPage.jsx";
 import ClassroomPage from "./features/learning/pages/ClassroomPage.jsx";
+import CourseWorkspaceLayout from "./features/learning/components/CourseWorkspaceLayout.jsx";
+import CourseWorkspaceOverviewPage from "./features/learning/pages/CourseWorkspaceOverviewPage.jsx";
+import CourseResultsPage from "./features/learning/pages/CourseResultsPage.jsx";
 import AdminCurriculumPage from "./features/admin/pages/AdminCurriculumPage.jsx";
 import LiveClassSchedulePage from "./features/liveClass/pages/LiveClassSchedulePage.jsx";
 import AssignmentListPage from "./features/assignments/pages/AssignmentListPage.jsx";
@@ -111,9 +114,19 @@ function AppRoutes() {
       } />
 
       {/* === Student LMS === */}
-      <Route path="/lms" element={<Navigate to="/lms/my-learning" replace />} />
+      <Route path="/lms" element={<Navigate to="/lms/catalog" replace />} />
       <Route path="/lms/catalog" element={<CourseCatalogPage />} />
       <Route path="/lms/courses/:slug" element={<CourseDetailPage />} />
+      <Route path="/lms/courses/:courseId/workspace" element={<CourseWorkspaceLayout />}>
+        <Route index element={<CourseWorkspaceOverviewPage />} />
+        <Route path="learn" element={<ClassroomPage />} />
+        <Route path="assignments" element={<AssignmentListPage />} />
+        <Route path="assignments/:id/submit" element={<AssignmentSubmitPage />} />
+        <Route path="quizzes/:quizId" element={<QuizPlayerPage />} />
+        <Route path="schedule" element={<LiveClassSchedulePage />} />
+        <Route path="files" element={<StudentFilesPage />} />
+        <Route path="results" element={<CourseResultsPage />} />
+      </Route>
       <Route path="/lms/learn/:courseId" element={<ClassroomPage />} />
       <Route path="/lms/my-learning" element={<MyLearningPage />} />
       <Route path="/lms/live-schedule" element={<LiveClassSchedulePage />} />

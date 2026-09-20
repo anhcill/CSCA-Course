@@ -26,10 +26,10 @@ import Breadcrumbs from '../common/Breadcrumbs';
 import { useTranslation } from 'react-i18next';
 
 const STUDENT_NAV = [
-  { label: 'Tổng quan học tập', path: '/lms/my-learning', icon: LayoutDashboard },
   { label: 'Danh mục khóa học', path: '/lms/catalog', icon: BookOpen },
-  { label: 'Lịch học Live', path: '/lms/live-schedule', icon: CalendarDays },
-  { label: 'Bài tập & Quiz', path: '/lms/assignments', icon: ClipboardCheck },
+  { label: 'Khóa học của tôi', path: '/lms/my-learning', icon: LayoutDashboard },
+  { label: 'Lịch học tất cả khóa', path: '/lms/live-schedule', icon: CalendarDays },
+  { label: 'Bài tập tất cả khóa', path: '/lms/assignments', icon: ClipboardCheck },
   { label: 'Bảng xếp hạng', path: '/lms/leaderboard', icon: Flame },
   { label: 'Chứng chỉ', path: '/lms/certificates', icon: Award },
 ];

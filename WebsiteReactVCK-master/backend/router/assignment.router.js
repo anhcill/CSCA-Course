@@ -101,7 +101,17 @@ const ensureAssignmentVisibleToStudent = async (assignment, userId, db = { query
   if (assignment.course_id !== null) {
     if (!assignment.course_is_published) return false;
     const result = await db.query(
-      `SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'`,
+      `SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'
+       UNION ALL
+       SELECT 1 FROM lms_access_grants
+       WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
+         AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
+       UNION ALL
+       SELECT 1 FROM class_enrollments ce
+       JOIN live_classes lc ON lc.id = ce.live_class_id
+       WHERE ce.user_id = $1 AND lc.course_id = $2
+         AND ce.status = 'active' AND lc.status = 'active'
+       LIMIT 1`,
       [userId, assignment.course_id],
     );
     if (result.rows.length === 0) return false;
@@ -153,6 +163,10 @@ const serializeAssignment = (row) => ({
 // GET /api/assignments — students get only active enrolled work; teachers get their own queue.
 router.get("/", protectRoute, async (req, res) => {
   try {
+    const requestedCourseId = parseOptionalId(req.query.courseId);
+    if (req.query.courseId !== undefined && !requestedCourseId) {
+      return validationError(res, "courseId không hợp lệ");
+    }
     const isAdmin = req.user.role === "admin";
     const isTeacher = req.user.role === "creator";
     const visibilityClause = isAdmin
@@ -160,8 +174,19 @@ router.get("/", protectRoute, async (req, res) => {
       : isTeacher
         ? "a.instructor_id = $1"
         : `(
-             (a.course_id IS NULL OR (c.is_published = true AND EXISTS (
-               SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = a.course_id AND e.status = 'active'
+             (a.course_id IS NULL OR (c.is_published = true AND (
+               EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = a.course_id AND e.status = 'active')
+               OR EXISTS (
+                 SELECT 1 FROM lms_access_grants g
+                 WHERE g.user_id = $1 AND g.course_id = a.course_id AND g.access_status = 'active'
+                   AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+               )
+               OR EXISTS (
+                 SELECT 1 FROM class_enrollments course_ce
+                 JOIN live_classes course_lc ON course_lc.id = course_ce.live_class_id
+                 WHERE course_ce.user_id = $1 AND course_lc.course_id = a.course_id
+                   AND course_ce.status = 'active' AND course_lc.status = 'active'
+               )
              )))
              AND (a.live_class_id IS NULL OR (lc.status = 'active' AND EXISTS (
                SELECT 1 FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.live_class_id = a.live_class_id AND ce.status = 'active'
@@ -172,7 +197,27 @@ router.get("/", protectRoute, async (req, res) => {
       ? "TRUE"
       : isTeacher
         ? "c.author_id = $1"
-        : "c.is_published = true AND EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = c.id AND e.status = 'active')";
+        : `c.is_published = true AND (
+             EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = c.id AND e.status = 'active')
+             OR EXISTS (
+               SELECT 1 FROM lms_access_grants g
+               WHERE g.user_id = $1 AND g.course_id = c.id AND g.access_status = 'active'
+                 AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+             )
+             OR EXISTS (
+               SELECT 1 FROM class_enrollments course_ce
+               JOIN live_classes course_lc ON course_lc.id = course_ce.live_class_id
+               WHERE course_ce.user_id = $1 AND course_lc.course_id = c.id
+                 AND course_ce.status = 'active' AND course_lc.status = 'active'
+             )
+           )`;
+    const assignmentCourseScope = requestedCourseId
+      ? "AND COALESCE(a.course_id, lc.course_id) = $2"
+      : "";
+    const quizCourseScope = requestedCourseId
+      ? "AND COALESCE(q.course_id, l.course_id) = $2"
+      : "";
+    const params = requestedCourseId ? [req.user.id, requestedCourseId] : [req.user.id];
     const result = await query(
       `WITH assignment_rows AS (
          SELECT a.id, a.title, a.assignment_type AS type, a.course_id, a.live_class_id, a.description,
@@ -196,7 +241,7 @@ router.get("/", protectRoute, async (req, res) => {
            SELECT score, feedback_text, graded_at FROM submission_grades
            WHERE submission_id = s.id ORDER BY graded_at DESC, id DESC LIMIT 1
          ) sg ON true
-         WHERE ${visibilityClause}
+         WHERE ${visibilityClause} ${assignmentCourseScope}
        ), quiz_rows AS (
          SELECT q.id, q.title, 'quiz' AS type, COALESCE(q.course_id, l.course_id) AS course_id, NULL::bigint AS live_class_id, NULL::text AS description,
                 (SELECT COALESCE(SUM(qq.points), 0) FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS max_score,
@@ -211,7 +256,7 @@ router.get("/", protectRoute, async (req, res) => {
          LEFT JOIN lessons l ON l.id = q.lesson_id
          JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
          LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.user_id = $1
-         WHERE ${quizVisibilityClause}
+         WHERE ${quizVisibilityClause} ${quizCourseScope}
        )
        SELECT * FROM (
          SELECT * FROM assignment_rows
@@ -219,7 +264,7 @@ router.get("/", protectRoute, async (req, res) => {
          SELECT * FROM quiz_rows
        ) combined_rows
        ORDER BY COALESCE(due_date, '9999-12-31'::timestamptz), created_at DESC`,
-      [req.user.id],
+      params,
     );
     return res.json({ success: true, data: result.rows.map(serializeAssignment) });
   } catch (error) {
@@ -785,7 +830,20 @@ const ensureQuizAccess = async (quiz, user, db = { query }) => {
   if (user.role === "admin") return true;
   if (user.role === "creator") return String(quiz.course_author_id) === String(user.id);
   if (user.role !== "user" || quiz.quiz_status !== "PUBLISHED" || !quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
-  const enrollment = await db.query("SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'", [user.id, quiz.resolved_course_id]);
+  const enrollment = await db.query(
+    `SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'
+     UNION ALL
+     SELECT 1 FROM lms_access_grants
+     WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
+       AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
+     UNION ALL
+     SELECT 1 FROM class_enrollments ce
+     JOIN live_classes lc ON lc.id = ce.live_class_id
+     WHERE ce.user_id = $1 AND lc.course_id = $2
+       AND ce.status = 'active' AND lc.status = 'active'
+     LIMIT 1`,
+    [user.id, quiz.resolved_course_id],
+  );
   return enrollment.rows.length > 0;
 };
 

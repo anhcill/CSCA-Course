@@ -95,7 +95,10 @@ function ProgressBar({ answered, total }) {
 }
 
 export default function QuizPlayerPage() {
-  const { quizId } = useParams();
+  const { quizId, courseId } = useParams();
+  const assignmentListPath = courseId
+    ? `/lms/courses/${courseId}/workspace/assignments`
+    : "/lms/assignments";
 
   const [quizData, setQuizData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -292,7 +295,7 @@ export default function QuizPlayerPage() {
             onRetry={loadQuiz}
             secondaryAction={
               <Link
-                to="/lms/assignments"
+                to={assignmentListPath}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
               >
                 ← Quay Lại Danh Sách Bài Tập
@@ -387,7 +390,7 @@ export default function QuizPlayerPage() {
               </button>
 
               <Link
-                to="/lms/assignments"
+                to={assignmentListPath}
                 className="flex-1 px-5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs transition border border-slate-700 text-center"
               >
                 ← Danh Sách Bài Tập
@@ -412,7 +415,7 @@ export default function QuizPlayerPage() {
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
               <Link
-                to="/lms/assignments"
+                to={assignmentListPath}
                 className="text-xs text-slate-400 hover:text-white transition"
               >
                 ← Bài Tập

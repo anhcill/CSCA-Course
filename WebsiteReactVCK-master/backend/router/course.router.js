@@ -62,7 +62,26 @@ const checkCourseOwner = async (courseId, user) => {
 };
 
 const checkEnrollment = async (courseId, userId) => {
-  const result = await query("SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'", [userId, courseId]);
+  const result = await query(
+    `SELECT 1
+     FROM enrollments
+     WHERE user_id = $1 AND course_id = $2 AND status = 'active'
+     UNION ALL
+     SELECT 1
+     FROM lms_access_grants
+     WHERE user_id = $1 AND course_id = $2
+       AND access_status = 'active'
+       AND valid_from <= NOW()
+       AND (valid_until IS NULL OR valid_until > NOW())
+     UNION ALL
+     SELECT 1
+     FROM class_enrollments ce
+     JOIN live_classes lc ON lc.id = ce.live_class_id
+     WHERE ce.user_id = $1 AND lc.course_id = $2
+       AND ce.status = 'active' AND lc.status = 'active'
+     LIMIT 1`,
+    [userId, courseId],
+  );
   return result.rows.length > 0;
 };
 
@@ -408,6 +427,203 @@ router.post("/:courseId/ratings", protectRoute, requireRole("user"), async (req,
   } catch (error) {
     console.error("Error submitting rating:", error);
     return res.status(500).json({ success: false, message: "Lỗi khi gửi đánh giá" });
+  }
+});
+
+// GET /api/courses/:courseId/workspace - One course-scoped LMS workspace.
+// The LMS never grants access here on its own: enrollment/access-grant/class
+// membership must already have been provisioned by InternalManagement.
+router.get("/:courseId/workspace", protectRoute, async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.params.courseId);
+    if (!courseId) return validationError(res, "courseId không hợp lệ");
+
+    const courseResult = await query(
+      `SELECT ${COURSE_FIELDS}
+       FROM courses c
+       LEFT JOIN users u ON u.id = c.author_id
+       WHERE c.id = $1`,
+      [courseId],
+    );
+    const course = courseResult.rows[0];
+    if (!course) return notFound(res, "Không tìm thấy khóa học");
+
+    const isAdmin = req.user.role === "admin";
+    const isTeacherOwner = req.user.role === "creator" && String(course.author_id) === String(req.user.id);
+    const isLearner = req.user.role === "user";
+    if (isLearner && (!course.is_published || !(await checkEnrollment(courseId, req.user.id)))) {
+      return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
+    }
+    if (!isLearner && !isAdmin && !isTeacherOwner) {
+      return forbidden(res, "Bạn không có quyền xem workspace khóa học này");
+    }
+
+    const scopedClassParams = [courseId];
+    let scopedClassVisibility = "TRUE";
+    if (isLearner) {
+      scopedClassParams.push(req.user.id);
+      scopedClassVisibility = `EXISTS (
+        SELECT 1 FROM class_enrollments ce
+        WHERE ce.live_class_id = lc.id AND ce.user_id = $2 AND ce.status = 'active'
+      )`;
+    } else if (!isAdmin) {
+      scopedClassParams.push(req.user.id);
+      scopedClassVisibility = "lc.instructor_id = $2";
+    }
+
+    const assignmentParams = [courseId];
+    let assignmentVisibility = "TRUE";
+    if (isLearner) {
+      assignmentParams.push(req.user.id);
+      assignmentVisibility = `(
+        a.live_class_id IS NULL OR EXISTS (
+          SELECT 1 FROM class_enrollments ce
+          WHERE ce.live_class_id = a.live_class_id AND ce.user_id = $2 AND ce.status = 'active'
+        )
+      )`;
+    } else if (!isAdmin) {
+      assignmentParams.push(req.user.id);
+      assignmentVisibility = "a.instructor_id = $2";
+    }
+
+    const fileParams = [courseId];
+    let fileVisibility = "TRUE";
+    if (isLearner) {
+      fileParams.push(req.user.id);
+      fileVisibility = `(
+        f.live_class_id IS NULL OR EXISTS (
+          SELECT 1 FROM class_enrollments ce
+          WHERE ce.live_class_id = f.live_class_id AND ce.user_id = $2 AND ce.status = 'active'
+        )
+      )`;
+    }
+
+    const [sectionsResult, progressResult, classesResult, sessionsResult, assignmentsResult, quizCountResult, filesResult] = await Promise.all([
+      query(
+        `SELECT s.id, s.title, s.sort_order,
+                COUNT(l.id)::int AS lesson_count,
+                COALESCE(SUM(COALESCE(l.duration_seconds, l.video_duration_seconds, 0)), 0)::int AS duration_seconds
+         FROM sections s
+         LEFT JOIN lessons l ON l.section_id = s.id AND l.is_published = true
+         WHERE s.course_id = $1
+         GROUP BY s.id
+         ORDER BY s.sort_order ASC, s.id ASC`,
+        [courseId],
+      ),
+      query(
+        `SELECT COUNT(l.id)::int AS total_lessons,
+                COUNT(lp.id) FILTER (WHERE lp.is_completed = true)::int AS completed_lessons
+         FROM lessons l
+         LEFT JOIN lesson_progress lp
+           ON lp.lesson_id = l.id AND lp.course_id = l.course_id AND lp.user_id = $2
+         WHERE l.course_id = $1 AND l.is_published = true`,
+        [courseId, req.user.id],
+      ),
+      query(
+        `SELECT lc.id, lc.title, lc.description, lc.instructor_id, lc.max_students,
+                COALESCE(u.username, u.email) AS instructor_name,
+                COUNT(ce.id) FILTER (WHERE ce.status = 'active')::int AS enrolled_count
+         FROM live_classes lc
+         LEFT JOIN users u ON u.id = lc.instructor_id
+         LEFT JOIN class_enrollments ce ON ce.live_class_id = lc.id
+         WHERE lc.course_id = $1 AND lc.status = 'active' AND ${scopedClassVisibility}
+         GROUP BY lc.id, u.username, u.email
+         ORDER BY lc.created_at DESC, lc.id DESC`,
+        scopedClassParams,
+      ),
+      query(
+        `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
+                lc.title AS class_title,
+                CASE WHEN LOWER(cs.meet_url) LIKE '%zoom.us%' THEN 'Zoom'
+                     WHEN cs.meet_url IS NOT NULL THEN 'Google Meet' ELSE NULL END AS provider
+         FROM class_sessions cs
+         JOIN live_classes lc ON lc.id = cs.live_class_id
+         WHERE lc.course_id = $1 AND lc.status = 'active' AND cs.status <> 'cancelled'
+           AND cs.end_time >= NOW() - INTERVAL '2 hours'
+           AND ${scopedClassVisibility}
+         ORDER BY cs.start_time ASC
+         LIMIT 8`,
+        scopedClassParams,
+      ),
+      query(
+        `SELECT a.id, a.title, a.assignment_type AS type, a.course_id, a.live_class_id,
+                a.description, a.max_score, a.due_date, a.created_at,
+                lc.title AS class_title,
+                s.id AS submission_id, s.status AS submission_status, s.submitted_at,
+                grade.score, grade.feedback_text, grade.graded_at,
+                CASE WHEN grade.score IS NOT NULL THEN 'graded'
+                     WHEN s.id IS NOT NULL THEN s.status
+                     WHEN a.due_date IS NOT NULL AND a.due_date < NOW() THEN 'late'
+                     ELSE 'todo' END AS status
+         FROM assignments a
+         LEFT JOIN live_classes lc ON lc.id = a.live_class_id
+         LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.user_id = $2
+         LEFT JOIN LATERAL (
+           SELECT score, feedback_text, graded_at
+           FROM submission_grades
+           WHERE submission_id = s.id
+           ORDER BY graded_at DESC, id DESC
+           LIMIT 1
+         ) grade ON TRUE
+         WHERE COALESCE(a.course_id, lc.course_id) = $1 AND ${assignmentVisibility}
+         ORDER BY COALESCE(a.due_date, '9999-12-31'::timestamptz), a.created_at DESC
+         LIMIT 8`,
+        isLearner ? assignmentParams : [courseId, req.user.id],
+      ),
+      query(
+        `SELECT COUNT(*)::int AS count
+         FROM quizzes q
+         LEFT JOIN lessons l ON l.id = q.lesson_id
+         WHERE COALESCE(q.course_id, l.course_id) = $1
+           AND COALESCE(q.status, 'published') = 'published'`,
+        [courseId],
+      ),
+      query(
+        `SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at,
+                f.visibility, COALESCE(u.username, u.email, 'Giáo viên') AS uploaded_by
+         FROM lms_learning_files f
+         LEFT JOIN live_classes lc ON lc.id = f.live_class_id
+         LEFT JOIN users u ON u.id = f.uploaded_by
+         WHERE f.status = 'ready' AND COALESCE(f.course_id, lc.course_id) = $1
+           AND ${fileVisibility}
+         ORDER BY f.created_at DESC, f.id DESC
+         LIMIT 8`,
+        fileParams,
+      ),
+    ]);
+
+    const progress = progressResult.rows[0] || { total_lessons: 0, completed_lessons: 0 };
+    const totalLessons = Number(progress.total_lessons) || 0;
+    const completedLessons = Number(progress.completed_lessons) || 0;
+    return res.json({
+      success: true,
+      data: {
+        course: { ...course, author_id: undefined },
+        progress: {
+          totalLessons,
+          completedLessons,
+          percent: totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0,
+        },
+        sections: sectionsResult.rows,
+        classes: classesResult.rows,
+        upcomingSessions: sessionsResult.rows,
+        assignments: assignmentsResult.rows,
+        quizCount: Number(quizCountResult.rows[0]?.count) || 0,
+        files: filesResult.rows.map((file) => ({
+          id: String(file.id),
+          name: file.original_name,
+          mimeType: file.mime_type,
+          sizeBytes: Number(file.size_bytes),
+          uploadedAt: file.created_at,
+          uploadedBy: file.uploaded_by,
+          visibility: file.visibility,
+          downloadUrl: `/api/files/${file.id}/download`,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching course workspace:", error);
+    return internalError(res, "Không thể mở workspace khóa học");
   }
 });
 

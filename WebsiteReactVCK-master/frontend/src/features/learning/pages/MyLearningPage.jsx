@@ -242,7 +242,7 @@ export default function MyLearningPage() {
                   {recentCourse.completed_lessons || 0} / {recentCourse.total_lessons || 0} bài hoàn thành
                 </span>
                 <Link
-                  to={`/lms/learn/${recentCourse.course_id}`}
+                  to={`/lms/courses/${recentCourse.course_id}/workspace`}
                   className="inline-flex items-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 px-6 py-3 text-sm font-black text-white shadow-lg shadow-rose-600/30 transition active:scale-[0.98]"
                 >
                   <Play className="w-4 h-4 fill-current" /> Vào Phòng Học Ngay
@@ -457,7 +457,7 @@ export default function MyLearningPage() {
                       <div className="flex items-center gap-2">
                       <Link
                         id={`resume-course-btn-${course.course_id}`}
-                        to={`/lms/learn/${course.course_id}`}
+                        to={`/lms/courses/${course.course_id}/workspace`}
                         className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition shadow-sm ${
                           isCompleted
                             ? "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10"

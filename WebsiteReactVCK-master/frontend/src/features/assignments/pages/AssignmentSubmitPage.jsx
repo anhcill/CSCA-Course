@@ -36,7 +36,10 @@ function timeRemaining(dueDate) {
 }
 
 export default function AssignmentSubmitPage() {
-  const { id } = useParams();
+  const { id, courseId } = useParams();
+  const assignmentListPath = courseId
+    ? `/lms/courses/${courseId}/workspace/assignments`
+    : "/lms/assignments";
 
   const [assignment, setAssignment] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -265,7 +268,7 @@ export default function AssignmentSubmitPage() {
             onRetry={loadAssignment}
             secondaryAction={
               <Link
-                to="/lms/assignments"
+                to={assignmentListPath}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
               >
                 ← Quay Về Danh Sách Bài Tập
@@ -283,7 +286,7 @@ export default function AssignmentSubmitPage() {
       <div className="bg-slate-900 border-b border-slate-800">
         <div className="container mx-auto max-w-4xl px-4 py-3">
           <nav className="flex items-center gap-2 text-xs text-slate-400">
-            <Link to="/lms/assignments" className="hover:text-white transition">
+            <Link to={assignmentListPath} className="hover:text-white transition">
               Danh Sách Bài Tập
             </Link>
             <span>/</span>
@@ -483,7 +486,7 @@ export default function AssignmentSubmitPage() {
                   <span>Chính sách: Khóa chỉnh sửa bài làm sau khi đã nộp để chống trùng lặp.</span>
                 </span>
                 <Link
-                  to="/lms/assignments"
+                  to={assignmentListPath}
                   className="text-rose-400 hover:text-rose-300 font-semibold"
                 >
                   ← Về Danh Sách Bài Tập
@@ -703,7 +706,7 @@ export default function AssignmentSubmitPage() {
 
               <div className="flex gap-3 w-full sm:w-auto">
                 <Link
-                  to="/lms/assignments"
+                  to={assignmentListPath}
                   className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold text-center transition"
                 >
                   Hủy Bỏ
