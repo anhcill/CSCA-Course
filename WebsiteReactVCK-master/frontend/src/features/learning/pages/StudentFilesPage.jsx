@@ -16,7 +16,7 @@ import { fetchStudentFiles } from "../../api/lmsClient";
 import { EmptyState, LoadingState } from "../../../components/common/StateView";
 
 export default function StudentFilesPage() {
-  const { courseId } = useParams();
+  const { courseId, classId } = useParams();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -25,7 +25,7 @@ export default function StudentFilesPage() {
   const loadFiles = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchStudentFiles({ courseId });
+      const res = await fetchStudentFiles({ courseId, classId });
       if (res?.data) {
         setFiles(res.data);
       }
@@ -35,7 +35,7 @@ export default function StudentFilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [courseId]);
+  }, [classId, courseId]);
 
   useEffect(() => {
     loadFiles();
@@ -83,7 +83,7 @@ export default function StudentFilesPage() {
               <span>Cloudflare R2 Learning Repository</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              {courseId ? "Tài Liệu Của Khóa Học" : "Tài Liệu Học Tập Của Tôi"}
+              {classId ? "Tài Liệu Của Lớp" : courseId ? "Tài Liệu Của Khóa Học" : "Tài Liệu Học Tập Của Tôi"}
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
               Truy cập và tải về toàn bộ giáo trình, bài tập mẫu và bảng từ vựng từ các lớp học đã ghi danh.

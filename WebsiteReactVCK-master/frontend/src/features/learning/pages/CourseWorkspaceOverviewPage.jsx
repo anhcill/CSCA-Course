@@ -13,10 +13,10 @@ const formatFileSize = (bytes) => {
 };
 
 export default function CourseWorkspaceOverviewPage() {
-  const { courseId } = useParams();
+  const { courseId, classId } = useParams();
   const workspace = useOutletContext();
   const { course, progress, sections, classes, upcomingSessions, assignments, quizCount, files } = workspace;
-  const basePath = `/lms/courses/${courseId}/workspace`;
+  const basePath = `/lms/courses/${courseId}/classes/${classId}`;
   const pendingAssignments = assignments.filter((item) => ["todo", "late"].includes(item.status));
   const gradedAssignments = assignments.filter((item) => item.score !== null && item.score !== undefined);
   const averageScore = gradedAssignments.length

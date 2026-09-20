@@ -167,8 +167,36 @@ router.get("/", protectRoute, async (req, res) => {
     if (req.query.courseId !== undefined && !requestedCourseId) {
       return validationError(res, "courseId không hợp lệ");
     }
+    const requestedClassId = parseOptionalId(req.query.classId);
+    if (req.query.classId !== undefined && !requestedClassId) {
+      return validationError(res, "classId không hợp lệ");
+    }
+    if (requestedClassId && !requestedCourseId) {
+      return validationError(res, "classId cần đi kèm courseId");
+    }
     const isAdmin = req.user.role === "admin";
     const isTeacher = req.user.role === "creator";
+    if (requestedClassId) {
+      const classAccessParams = [requestedClassId, requestedCourseId];
+      let classAccessClause = "TRUE";
+      if (isTeacher) {
+        classAccessParams.push(req.user.id);
+        classAccessClause = "lc.instructor_id = $3";
+      } else if (!isAdmin) {
+        classAccessParams.push(req.user.id);
+        classAccessClause = `EXISTS (
+          SELECT 1 FROM class_enrollments ce
+          WHERE ce.live_class_id = lc.id AND ce.user_id = $3 AND ce.status = 'active'
+        )`;
+      }
+      const classAccess = await query(
+        `SELECT 1 FROM live_classes lc
+         WHERE lc.id = $1 AND lc.course_id = $2 AND lc.status = 'active'
+           AND ${classAccessClause}`,
+        classAccessParams,
+      );
+      if (classAccess.rows.length === 0) return forbidden(res, "Bạn không có quyền xem bài tập của lớp này");
+    }
     const visibilityClause = isAdmin
       ? "TRUE"
       : isTeacher
@@ -217,7 +245,11 @@ router.get("/", protectRoute, async (req, res) => {
     const quizCourseScope = requestedCourseId
       ? "AND COALESCE(q.course_id, l.course_id) = $2"
       : "";
+    const assignmentClassScope = requestedClassId
+      ? `AND (a.live_class_id IS NULL OR a.live_class_id = $${requestedCourseId ? 3 : 2})`
+      : "";
     const params = requestedCourseId ? [req.user.id, requestedCourseId] : [req.user.id];
+    if (requestedClassId) params.push(requestedClassId);
     const result = await query(
       `WITH assignment_rows AS (
          SELECT a.id, a.title, a.assignment_type AS type, a.course_id, a.live_class_id, a.description,
@@ -241,7 +273,7 @@ router.get("/", protectRoute, async (req, res) => {
            SELECT score, feedback_text, graded_at FROM submission_grades
            WHERE submission_id = s.id ORDER BY graded_at DESC, id DESC LIMIT 1
          ) sg ON true
-         WHERE ${visibilityClause} ${assignmentCourseScope}
+         WHERE ${visibilityClause} ${assignmentCourseScope} ${assignmentClassScope}
        ), quiz_rows AS (
          SELECT q.id, q.title, 'quiz' AS type, COALESCE(q.course_id, l.course_id) AS course_id, NULL::bigint AS live_class_id, NULL::text AS description,
                 (SELECT COALESCE(SUM(qq.points), 0) FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS max_score,

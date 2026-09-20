@@ -23,7 +23,7 @@ const workspaceItems = [
 ];
 
 export default function CourseWorkspaceLayout() {
-  const { courseId } = useParams();
+  const { courseId, classId } = useParams();
   const [workspace, setWorkspace] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -32,7 +32,7 @@ export default function CourseWorkspaceLayout() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetchCourseWorkspace(courseId);
+      const response = await fetchCourseWorkspace(courseId, { classId });
       if (!response?.success || !response.data) throw new Error(response?.message || "Không thể tải khóa học");
       setWorkspace(response.data);
     } catch (requestError) {
@@ -41,7 +41,7 @@ export default function CourseWorkspaceLayout() {
     } finally {
       setLoading(false);
     }
-  }, [courseId]);
+  }, [classId, courseId]);
 
   useEffect(() => {
     loadWorkspace();
@@ -65,23 +65,23 @@ export default function CourseWorkspaceLayout() {
           message={error}
           onRetry={loadWorkspace}
         />
-        <div className="text-center"><Link to="/lms/catalog" className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-slate-100 hover:bg-slate-700"><ArrowLeft className="h-4 w-4" /> Danh mục khóa học</Link></div>
+        <div className="text-center"><Link to={`/lms/courses/${courseId}/classes`} className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-slate-100 hover:bg-slate-700"><ArrowLeft className="h-4 w-4" /> Chọn lớp học</Link></div>
       </div>
     );
   }
 
-  const { course, progress } = workspace;
-  const basePath = `/lms/courses/${courseId}/workspace`;
+  const { course, progress, selectedClass } = workspace;
+  const basePath = `/lms/courses/${courseId}/classes/${classId}`;
 
   return (
     <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-5">
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-          <Link to="/lms/catalog" className="hover:text-white">Danh mục khóa học</Link>
+          <Link to="/lms/catalog" className="hover:text-white">Khóa học của tôi</Link>
           <span>/</span>
-          <Link to="/lms/catalog" className="hover:text-white">Danh mục khóa học</Link>
+          <Link to={`/lms/courses/${courseId}/classes`} className="hover:text-white">Lớp học</Link>
           <span>/</span>
-          <span className="max-w-[240px] truncate text-slate-200">{course.title}</span>
+          <span className="max-w-[240px] truncate text-slate-200">{selectedClass?.title || course.title}</span>
         </div>
 
         <section className="overflow-hidden rounded-3xl border border-rose-500/20 bg-gradient-to-br from-rose-950/45 via-slate-900 to-slate-950 p-5 shadow-xl shadow-rose-950/10 sm:p-7">
@@ -91,6 +91,7 @@ export default function CourseWorkspaceLayout() {
               <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">{course.title}</h1>
               <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-300">{course.description || "Theo dõi bài học, lịch học và kết quả của riêng khóa học này."}</p>
               <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                {selectedClass?.title && <span className="rounded-full border border-violet-400/25 bg-violet-500/10 px-2.5 py-1 font-bold text-violet-200">Lớp: {selectedClass.title}</span>}
                 {course.category && <span className="rounded-full border border-rose-400/25 bg-rose-500/10 px-2.5 py-1 font-bold text-rose-200">{course.category}</span>}
                 {course.level && <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-2.5 py-1 font-bold text-sky-200">{course.level}</span>}
                 <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-slate-300">Giảng viên: {course.instructor_name || "CSCA Academy"}</span>

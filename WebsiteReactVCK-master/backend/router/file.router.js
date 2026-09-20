@@ -184,6 +184,25 @@ router.get("/student/files", protectRoute, async (req, res) => {
     if (req.query.courseId !== undefined && !courseId) {
       return errorResponse(res, 422, "courseId không hợp lệ", "VALIDATION_ERROR");
     }
+    const classId = req.query.classId === undefined ? null : parseId(req.query.classId);
+    if (req.query.classId !== undefined && !classId) {
+      return errorResponse(res, 422, "classId không hợp lệ", "VALIDATION_ERROR");
+    }
+    if (classId && !courseId) {
+      return errorResponse(res, 422, "classId cần đi kèm courseId", "VALIDATION_ERROR");
+    }
+    if (classId) {
+      const classAccessResult = await query(
+        `SELECT 1 FROM live_classes lc
+         JOIN class_enrollments ce ON ce.live_class_id = lc.id
+         WHERE lc.id = $1 AND lc.course_id = $2 AND lc.status = 'active'
+           AND ce.user_id = $3 AND ce.status = 'active'`,
+        [classId, courseId, req.user.id],
+      );
+      if (classAccessResult.rows.length === 0) {
+        return errorResponse(res, 403, "Bạn không có quyền xem tài liệu của lớp này", "FORBIDDEN");
+      }
+    }
     const result = await query(
       `SELECT DISTINCT f.*, COALESCE(c.title, c.name) AS course_title,
               u.username AS uploaded_by_name, u.email AS uploader_email
@@ -191,8 +210,9 @@ router.get("/student/files", protectRoute, async (req, res) => {
        LEFT JOIN courses c ON c.id = f.course_id
        LEFT JOIN live_classes lc ON lc.id = f.live_class_id
        LEFT JOIN users u ON u.id = f.uploaded_by
-       WHERE f.status = 'ready'
+         WHERE f.status = 'ready'
          AND ($2::bigint IS NULL OR COALESCE(f.course_id, lc.course_id) = $2)
+         AND ($3::bigint IS NULL OR f.live_class_id IS NULL OR f.live_class_id = $3)
          AND (
            (f.live_class_id IS NOT NULL AND EXISTS (
              SELECT 1 FROM class_enrollments ce
@@ -205,7 +225,7 @@ router.get("/student/files", protectRoute, async (req, res) => {
            ))
        )
        ORDER BY f.created_at DESC, f.id DESC`,
-      [req.user.id, courseId],
+      [req.user.id, courseId, classId],
     );
     return res.json({ success: true, data: result.rows.map(serializeFile) });
   } catch (error) {

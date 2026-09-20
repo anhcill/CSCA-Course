@@ -370,7 +370,7 @@ export default function ClassroomPage() {
             onRetry={loadClassroomData}
             secondaryAction={
               <Link
-                to={`/lms/courses/${courseId}/workspace`}
+                to={`/lms/courses/${courseId}/classes`}
                 className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition"
               >
                 ← Quay Về Khóa Học

@@ -95,9 +95,9 @@ function ProgressBar({ answered, total }) {
 }
 
 export default function QuizPlayerPage() {
-  const { quizId, courseId } = useParams();
-  const assignmentListPath = courseId
-    ? `/lms/courses/${courseId}/workspace/assignments`
+  const { quizId, courseId, classId } = useParams();
+  const assignmentListPath = courseId && classId
+    ? `/lms/courses/${courseId}/classes/${classId}/assignments`
     : "/lms/assignments";
 
   const [quizData, setQuizData] = useState(null);

@@ -437,6 +437,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
   try {
     const courseId = parsePositiveId(req.params.courseId);
     if (!courseId) return validationError(res, "courseId không hợp lệ");
+    const selectedClassId = req.query.classId === undefined ? null : parsePositiveId(req.query.classId);
+    if (req.query.classId !== undefined && !selectedClassId) {
+      return validationError(res, "classId không hợp lệ");
+    }
 
     const courseResult = await query(
       `SELECT ${COURSE_FIELDS}
@@ -458,6 +462,33 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       return forbidden(res, "Bạn không có quyền xem workspace khóa học này");
     }
 
+    let selectedClass = null;
+    if (selectedClassId) {
+      const selectedClassParams = [selectedClassId, courseId];
+      let selectedClassVisibility = "TRUE";
+      if (isLearner) {
+        selectedClassParams.push(req.user.id);
+        selectedClassVisibility = `EXISTS (
+          SELECT 1 FROM class_enrollments ce
+          WHERE ce.live_class_id = lc.id AND ce.user_id = $3 AND ce.status = 'active'
+        )`;
+      } else if (!isAdmin) {
+        selectedClassParams.push(req.user.id);
+        selectedClassVisibility = "lc.instructor_id = $3";
+      }
+      const selectedClassResult = await query(
+        `SELECT lc.id, lc.title, lc.description, lc.instructor_id, lc.max_students,
+                COALESCE(u.username, u.email) AS instructor_name
+         FROM live_classes lc
+         LEFT JOIN users u ON u.id = lc.instructor_id
+         WHERE lc.id = $1 AND lc.course_id = $2 AND lc.status = 'active'
+           AND ${selectedClassVisibility}`,
+        selectedClassParams,
+      );
+      selectedClass = selectedClassResult.rows[0] || null;
+      if (!selectedClass) return forbidden(res, "Bạn không có quyền vào lớp học này");
+    }
+
     const scopedClassParams = [courseId];
     let scopedClassVisibility = "TRUE";
     if (isLearner) {
@@ -470,11 +501,12 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       scopedClassParams.push(req.user.id);
       scopedClassVisibility = "lc.instructor_id = $2";
     }
+    const selectedClassScope = selectedClassId ? ` AND lc.id = $${scopedClassParams.length + 1}` : "";
+    if (selectedClassId) scopedClassParams.push(selectedClassId);
 
-    const assignmentParams = [courseId];
+    const assignmentParams = [courseId, req.user.id];
     let assignmentVisibility = "TRUE";
     if (isLearner) {
-      assignmentParams.push(req.user.id);
       assignmentVisibility = `(
         a.live_class_id IS NULL OR EXISTS (
           SELECT 1 FROM class_enrollments ce
@@ -482,9 +514,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         )
       )`;
     } else if (!isAdmin) {
-      assignmentParams.push(req.user.id);
       assignmentVisibility = "a.instructor_id = $2";
     }
+    const assignmentClassScope = selectedClassId ? ` AND (a.live_class_id IS NULL OR a.live_class_id = $${assignmentParams.length + 1})` : "";
+    if (selectedClassId) assignmentParams.push(selectedClassId);
 
     const fileParams = [courseId];
     let fileVisibility = "TRUE";
@@ -497,6 +530,8 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         )
       )`;
     }
+    const fileClassScope = selectedClassId ? ` AND (f.live_class_id IS NULL OR f.live_class_id = $${fileParams.length + 1})` : "";
+    if (selectedClassId) fileParams.push(selectedClassId);
 
     const [sectionsResult, progressResult, classesResult, sessionsResult, assignmentsResult, quizCountResult, filesResult] = await Promise.all([
       query(
@@ -526,7 +561,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
          FROM live_classes lc
          LEFT JOIN users u ON u.id = lc.instructor_id
          LEFT JOIN class_enrollments ce ON ce.live_class_id = lc.id
-         WHERE lc.course_id = $1 AND lc.status = 'active' AND ${scopedClassVisibility}
+         WHERE lc.course_id = $1 AND lc.status = 'active' AND ${scopedClassVisibility}${selectedClassScope}
          GROUP BY lc.id, u.username, u.email
          ORDER BY lc.created_at DESC, lc.id DESC`,
         scopedClassParams,
@@ -540,7 +575,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
          JOIN live_classes lc ON lc.id = cs.live_class_id
          WHERE lc.course_id = $1 AND lc.status = 'active' AND cs.status <> 'cancelled'
            AND cs.end_time >= NOW() - INTERVAL '2 hours'
-           AND ${scopedClassVisibility}
+           AND ${scopedClassVisibility}${selectedClassScope}
          ORDER BY cs.start_time ASC
          LIMIT 8`,
         scopedClassParams,
@@ -565,10 +600,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
            ORDER BY graded_at DESC, id DESC
            LIMIT 1
          ) grade ON TRUE
-         WHERE COALESCE(a.course_id, lc.course_id) = $1 AND ${assignmentVisibility}
+         WHERE COALESCE(a.course_id, lc.course_id) = $1 AND ${assignmentVisibility}${assignmentClassScope}
          ORDER BY COALESCE(a.due_date, '9999-12-31'::timestamptz), a.created_at DESC
          LIMIT 8`,
-        isLearner ? assignmentParams : [courseId, req.user.id],
+        assignmentParams,
       ),
       query(
         `SELECT COUNT(*)::int AS count
@@ -585,7 +620,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
          LEFT JOIN live_classes lc ON lc.id = f.live_class_id
          LEFT JOIN users u ON u.id = f.uploaded_by
          WHERE f.status = 'ready' AND COALESCE(f.course_id, lc.course_id) = $1
-           AND ${fileVisibility}
+           AND ${fileVisibility}${fileClassScope}
          ORDER BY f.created_at DESC, f.id DESC
          LIMIT 8`,
         fileParams,
@@ -605,6 +640,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
           percent: totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0,
         },
         sections: sectionsResult.rows,
+        selectedClass,
         classes: classesResult.rows,
         upcomingSessions: sessionsResult.rows,
         assignments: assignmentsResult.rows,

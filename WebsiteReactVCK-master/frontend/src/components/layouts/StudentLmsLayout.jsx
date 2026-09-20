@@ -2,12 +2,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Award,
   BookOpen,
-  CalendarDays,
   ChevronRight,
-  ClipboardCheck,
-  Flame,
   GraduationCap,
   Home,
   LogOut,
@@ -25,11 +21,7 @@ import Breadcrumbs from '../common/Breadcrumbs';
 import { useTranslation } from 'react-i18next';
 
 const STUDENT_NAV = [
-  { label: 'Danh mục khóa học', path: '/lms/catalog', icon: BookOpen },
-  { label: 'Lịch học tất cả khóa', path: '/lms/live-schedule', icon: CalendarDays },
-  { label: 'Bài tập tất cả khóa', path: '/lms/assignments', icon: ClipboardCheck },
-  { label: 'Bảng xếp hạng', path: '/lms/leaderboard', icon: Flame },
-  { label: 'Chứng chỉ', path: '/lms/certificates', icon: Award },
+  { label: 'Khóa học của tôi', path: '/lms/catalog', icon: BookOpen },
 ];
 
 function StudentNavItem({ item, active, onNavigate }) {

@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 
 // Public website pages
@@ -44,9 +44,9 @@ import { LMS_ROLES, TEACHER_ROLES, USER_ROLES, isTeacherRole } from "./constants
 import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
 
 // LMS feature pages
-import CourseCatalogPage from "./features/catalog/pages/CourseCatalogPage.jsx";
-import CourseDetailPage from "./features/catalog/pages/CourseDetailPage.jsx";
 import ClassroomPage from "./features/learning/pages/ClassroomPage.jsx";
+import StudentCourseListPage from "./features/learning/pages/StudentCourseListPage.jsx";
+import CourseClassListPage from "./features/learning/pages/CourseClassListPage.jsx";
 import CourseWorkspaceLayout from "./features/learning/components/CourseWorkspaceLayout.jsx";
 import CourseWorkspaceOverviewPage from "./features/learning/pages/CourseWorkspaceOverviewPage.jsx";
 import CourseResultsPage from "./features/learning/pages/CourseResultsPage.jsx";
@@ -76,6 +76,11 @@ const isTeacherLmsPath = (pathname) => (
 const isSharedTeacherPath = (pathname, authUser) => (
   pathname === "/lms/live-schedule" && isTeacherRole(authUser?.role)
 );
+
+function CourseClassRedirect() {
+  const { courseId } = useParams();
+  return <Navigate to={`/lms/courses/${courseId}/classes`} replace />;
+}
 
 function AppRoutes() {
   return (
@@ -114,9 +119,9 @@ function AppRoutes() {
 
       {/* === Student LMS === */}
       <Route path="/lms" element={<Navigate to="/lms/catalog" replace />} />
-      <Route path="/lms/catalog" element={<CourseCatalogPage />} />
-      <Route path="/lms/courses/:slug" element={<CourseDetailPage />} />
-      <Route path="/lms/courses/:courseId/workspace" element={<CourseWorkspaceLayout />}>
+      <Route path="/lms/catalog" element={<StudentCourseListPage />} />
+      <Route path="/lms/courses/:courseId/classes" element={<CourseClassListPage />} />
+      <Route path="/lms/courses/:courseId/classes/:classId" element={<CourseWorkspaceLayout />}>
         <Route index element={<CourseWorkspaceOverviewPage />} />
         <Route path="learn" element={<ClassroomPage />} />
         <Route path="assignments" element={<AssignmentListPage />} />
@@ -126,17 +131,19 @@ function AppRoutes() {
         <Route path="files" element={<StudentFilesPage />} />
         <Route path="results" element={<CourseResultsPage />} />
       </Route>
-      <Route path="/lms/learn/:courseId" element={<ClassroomPage />} />
+      <Route path="/lms/courses/:courseId/workspace" element={<CourseClassRedirect />} />
+      <Route path="/lms/courses/:slug" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/learn/:courseId" element={<CourseClassRedirect />} />
       {/* Legacy entry: the LMS now always begins with the course catalog. */}
       <Route path="/lms/my-learning" element={<Navigate to="/lms/catalog" replace />} />
-      <Route path="/lms/live-schedule" element={<LiveClassSchedulePage />} />
-      <Route path="/lms/assignments" element={<AssignmentListPage />} />
-      <Route path="/lms/assignment/:id/submit" element={<AssignmentSubmitPage />} />
-      <Route path="/lms/quiz/:quizId" element={<QuizPlayerPage />} />
-      <Route path="/lms/leaderboard" element={<LeaderboardPage />} />
-      <Route path="/lms/certificates" element={<CertificatePage />} />
-      <Route path="/lms/files" element={<StudentFilesPage />} />
-      <Route path="/lms/notifications" element={<NotificationCenterPage />} />
+      <Route path="/lms/live-schedule" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/assignments" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/assignment/:id/submit" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/quiz/:quizId" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/leaderboard" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/certificates" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/files" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/notifications" element={<Navigate to="/lms/catalog" replace />} />
 
       {/* === Teacher LMS: canonical routes plus migration aliases === */}
       <Route path="/lms/teacher-hub" element={<TeacherHubPage />} />

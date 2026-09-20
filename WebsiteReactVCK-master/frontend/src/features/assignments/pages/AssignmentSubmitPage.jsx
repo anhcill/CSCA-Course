@@ -36,9 +36,9 @@ function timeRemaining(dueDate) {
 }
 
 export default function AssignmentSubmitPage() {
-  const { id, courseId } = useParams();
-  const assignmentListPath = courseId
-    ? `/lms/courses/${courseId}/workspace/assignments`
+  const { id, courseId, classId } = useParams();
+  const assignmentListPath = courseId && classId
+    ? `/lms/courses/${courseId}/classes/${classId}/assignments`
     : "/lms/assignments";
 
   const [assignment, setAssignment] = useState(null);

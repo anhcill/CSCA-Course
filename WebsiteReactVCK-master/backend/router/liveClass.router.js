@@ -273,10 +273,15 @@ router.get("/my-schedule", protectRoute, async (req, res) => {
   try {
     const courseId = req.query.courseId === undefined ? null : parsePositiveId(req.query.courseId);
     if (req.query.courseId !== undefined && !courseId) return validationError(res, "courseId không hợp lệ");
+    const classId = req.query.classId === undefined ? null : parsePositiveId(req.query.classId);
+    if (req.query.classId !== undefined && !classId) return validationError(res, "classId không hợp lệ");
+    if (classId && !courseId) return validationError(res, "classId cần đi kèm courseId");
     const visibility = sessionVisibility(req.user);
     const params = [...visibility.params];
     const courseScope = courseId ? `AND lc.course_id = $${params.length + 1}` : "";
     if (courseId) params.push(courseId);
+    const classScope = classId ? `AND lc.id = $${params.length + 1}` : "";
+    if (classId) params.push(classId);
     const result = await query(
       `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
               lc.title AS class_title, lc.course_id, lc.instructor_id, lc.max_students,
@@ -294,6 +299,7 @@ router.get("/my-schedule", protectRoute, async (req, res) => {
          AND (lc.course_id IS NULL OR COALESCE(c.is_published, false) = true)
          AND ${visibility.clause}
          ${courseScope}
+         ${classScope}
        GROUP BY cs.id, lc.id, c.title, c.name
        ORDER BY cs.start_time ASC`,
       params,

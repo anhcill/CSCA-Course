@@ -68,12 +68,12 @@ function timeRemaining(dueDate) {
 }
 
 export default function AssignmentListPage() {
-  const { courseId } = useParams();
-  const assignmentPath = (assignmentId) => courseId
-    ? `/lms/courses/${courseId}/workspace/assignments/${assignmentId}/submit`
+  const { courseId, classId } = useParams();
+  const assignmentPath = (assignmentId) => courseId && classId
+    ? `/lms/courses/${courseId}/classes/${classId}/assignments/${assignmentId}/submit`
     : `/lms/assignment/${assignmentId}/submit`;
-  const quizPath = (quizId) => courseId
-    ? `/lms/courses/${courseId}/workspace/quizzes/${quizId}`
+  const quizPath = (quizId) => courseId && classId
+    ? `/lms/courses/${courseId}/classes/${classId}/quizzes/${quizId}`
     : `/lms/quiz/${quizId}`;
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +89,7 @@ export default function AssignmentListPage() {
     setLoading(true);
     setErrorMsg("");
     try {
-      const res = await fetchAssignments({ courseId });
+      const res = await fetchAssignments({ courseId, classId });
       if (res.success && res.data) {
         setAssignments(res.data);
       } else {
@@ -101,7 +101,7 @@ export default function AssignmentListPage() {
     } finally {
       setLoading(false);
     }
-  }, [courseId]);
+  }, [classId, courseId]);
 
   useEffect(() => {
     loadData();
@@ -195,7 +195,7 @@ export default function AssignmentListPage() {
               </span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-              {courseId ? "Bài Tập & Quiz Của Khóa Học" : "Bài Tập & Đề Thi Trắc Nghiệm"}
+              {classId ? "Bài Tập & Quiz Của Lớp" : courseId ? "Bài Tập & Quiz Của Khóa Học" : "Bài Tập & Đề Thi Trắc Nghiệm"}
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
               Theo dõi hạn nộp, làm bài trắc nghiệm và nộp bài khẩu ngữ HSKK/tự luận CSCA.
