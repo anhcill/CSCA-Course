@@ -1,447 +1,89 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { BookOpenCheck, CheckCircle2, ClipboardList, Clock3, FilePenLine, GraduationCap, Search, Timer } from "lucide-react";
 import { fetchAssignments } from "../../api/lmsClient";
-import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
+import { EmptyState, ErrorState, LoadingState } from "../../../components/common/StateView";
 
-/* ── SVG Icons ────────────────────────────────────────────────── */
-const IconPen = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-  </svg>
-);
-const IconQuiz = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-  </svg>
-);
-const IconMic = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-  </svg>
-);
-const IconSearch = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-  </svg>
-);
-
-function getItemType(item) {
-  const t = (item.type || "homework").toLowerCase();
-  if (t.includes("quiz") || t.includes("trac_nghiem")) return "quiz";
-  if (t.includes("speak") || t.includes("hskk") || t.includes("noi")) return "hskk";
+function itemType(item) {
+  const value = String(item.type || item.assignment_type || "homework").toLowerCase();
+  if (value.includes("quiz") || value.includes("trac_nghiem")) return "quiz";
+  if (value.includes("speak") || value.includes("hskk") || value.includes("noi")) return "speaking";
   return "homework";
 }
-
-function getTypeConfig(item) {
-  const type = getItemType(item);
-  if (type === "quiz") return { icon: <IconQuiz />, label: "Trắc Nghiệm", cls: "bg-sky-500/20 text-sky-400 border-sky-500/30" };
-  if (type === "hskk") return { icon: <IconMic />, label: "HSKK Khẩu Ngữ", cls: "bg-violet-500/20 text-violet-400 border-violet-500/30" };
-  return { icon: <IconPen />, label: "Bài Tập Tự Luận", cls: "bg-rose-500/20 text-rose-400 border-rose-500/30" };
-}
-
-function getItemStatus(item) {
+function itemStatus(item) {
   if (item.score !== undefined && item.score !== null) return "graded";
   if (item.status === "late") return "late";
   if (item.submitted_at || item.status === "submitted") return "submitted";
-  const due = new Date(item.due_date);
-  if (due < new Date()) return "late";
-  return "todo";
+  return item.due_date && new Date(item.due_date) < new Date() ? "late" : "todo";
+}
+function deadlineText(value) {
+  if (!value) return "Theo thời lượng bài";
+  const distance = new Date(value).getTime() - Date.now();
+  if (distance <= 0) return "Đã hết hạn";
+  const days = Math.floor(distance / 86400000);
+  const hours = Math.floor((distance % 86400000) / 3600000);
+  return days ? `Còn ${days} ngày ${hours} giờ` : `Còn ${Math.max(1, hours)} giờ`;
 }
 
-function getStatusChip(item) {
-  const status = getItemStatus(item);
-  if (status === "graded") return { label: `Đã Chấm: ${item.score}đ`, cls: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" };
-  if (status === "submitted") return { label: "Đã Nộp • Đang Chấm", cls: "bg-sky-500/20 text-sky-400 border-sky-500/30" };
-  if (status === "late") return { label: "Quá Hạn", cls: "bg-rose-500/20 text-rose-400 border-rose-500/30" };
-  return { label: "Cần Làm", cls: "bg-amber-500/20 text-amber-400 border-amber-500/30" };
-}
-
-function timeRemaining(dueDate) {
-  if (!dueDate) return "Theo thời lượng đề";
-  const diff = new Date(dueDate) - new Date();
-  if (diff <= 0) return "Hết hạn";
-  const d = Math.floor(diff / 86400000);
-  const h = Math.floor((diff % 86400000) / 3600000);
-  if (d > 0) return `Còn ${d} ngày ${h} giờ`;
-  const m = Math.floor((diff % 3600000) / 60000);
-  return `Còn ${h} giờ ${m} phút`;
-}
+const typeStyle = {
+  quiz: { label: "Trắc nghiệm", icon: ClipboardList, className: "bg-violet-50 text-violet-700" },
+  speaking: { label: "Khẩu ngữ HSKK", icon: GraduationCap, className: "bg-sky-50 text-sky-700" },
+  homework: { label: "Bài tập", icon: FilePenLine, className: "bg-blue-50 text-blue-700" },
+};
+const statusStyle = {
+  todo: { label: "Cần hoàn thành", className: "bg-amber-50 text-amber-700 ring-amber-100" },
+  submitted: { label: "Đã nộp · chờ chấm", className: "bg-blue-50 text-blue-700 ring-blue-100" },
+  graded: { label: "Đã chấm điểm", className: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
+  late: { label: "Quá hạn", className: "bg-rose-50 text-rose-700 ring-rose-100" },
+};
 
 export default function AssignmentListPage() {
   const { courseId, classId } = useParams();
-  const assignmentPath = (assignmentId) => courseId && classId
-    ? `/lms/courses/${courseId}/classes/${classId}/assignments/${assignmentId}/submit`
-    : `/lms/assignment/${assignmentId}/submit`;
-  const quizPath = (quizId) => courseId && classId
-    ? `/lms/courses/${courseId}/classes/${classId}/quizzes/${quizId}`
-    : `/lms/quiz/${quizId}`;
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState("");
-
-  // Filter States: status tab & type filter
-  const [statusFilter, setStatusFilter] = useState("ALL"); // ALL | TODO | SUBMITTED | GRADED | LATE
-  const [typeFilter, setTypeFilter] = useState("ALL"); // ALL | HOMEWORK | QUIZ | HSKK
+  const [errorMessage, setErrorMessage] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState("deadline");
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setErrorMsg("");
+  const loadAssignments = useCallback(async () => {
+    setLoading(true); setErrorMessage("");
     try {
-      const res = await fetchAssignments({ courseId, classId });
-      if (res.success && res.data) {
-        setAssignments(res.data);
-      } else {
-        setAssignments([]);
-      }
-    } catch (err) {
-      console.error("Error loading assignments:", err);
-      setErrorMsg("Không thể tải danh sách bài tập. Vui lòng kiểm tra kết nối mạng!");
-    } finally {
-      setLoading(false);
-    }
+      const result = await fetchAssignments({ courseId, classId });
+      setAssignments(result?.success && Array.isArray(result.data) ? result.data : []);
+    } catch (error) {
+      console.error("Unable to load assignments", error);
+      setErrorMessage("Không thể tải danh sách bài tập. Vui lòng thử lại sau.");
+    } finally { setLoading(false); }
   }, [classId, courseId]);
+  useEffect(() => { loadAssignments(); }, [loadAssignments]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  // Statistics calculation across all items
-  const stats = useMemo(() => {
-    let todoCount = 0;
-    let submittedCount = 0;
-    let gradedCount = 0;
-    let lateCount = 0;
-
-    assignments.forEach((a) => {
-      const st = getItemStatus(a);
-      if (st === "todo") todoCount += 1;
-      else if (st === "submitted") submittedCount += 1;
-      else if (st === "graded") gradedCount += 1;
-      else if (st === "late") lateCount += 1;
-    });
-
-    return {
-      total: assignments.length,
-      todo: todoCount,
-      submitted: submittedCount,
-      graded: gradedCount,
-      late: lateCount,
-    };
-  }, [assignments]);
-
-  // Filtered & Sorted list
-  const list = useMemo(() => {
-    let items = [...assignments];
-
-    // Status filter
-    if (statusFilter !== "ALL") {
-      items = items.filter((a) => getItemStatus(a) === statusFilter.toLowerCase());
-    }
-
-    // Type filter
-    if (typeFilter !== "ALL") {
-      items = items.filter((a) => getItemType(a) === typeFilter.toLowerCase());
-    }
-
-    // Search
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      items = items.filter(
-        (a) =>
-          (a.title || "").toLowerCase().includes(q) ||
-          (a.description || "").toLowerCase().includes(q) ||
-          (a.course_title || "").toLowerCase().includes(q)
-      );
-    }
-
-    // Sort
-    if (sortBy === "deadline") {
-      items.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
-    } else if (sortBy === "score") {
-      items.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
-    } else if (sortBy === "newest") {
-      items.sort((a, b) => new Date(b.created_at || b.due_date) - new Date(a.created_at || a.due_date));
-    }
-
-    return items;
-  }, [assignments, statusFilter, typeFilter, search, sortBy]);
-
-  const STATUS_TABS = [
-    { id: "ALL",       label: "Tất Cả",           count: stats.total },
-    { id: "TODO",      label: "Cần Làm",          count: stats.todo },
-    { id: "SUBMITTED", label: "Đã Nộp (Chờ Chấm)", count: stats.submitted },
-    { id: "GRADED",    label: "Đã Chấm Điểm",      count: stats.graded },
-    { id: "LATE",      label: "Quá Hạn",          count: stats.late },
-  ];
-
-  const TYPE_FILTERS = [
-    { id: "ALL",      label: "Tất Cả Định Dạng" },
-    { id: "HOMEWORK", label: "Bài Tập Tự Luận" },
-    { id: "QUIZ",     label: "Trắc Nghiệm Quiz" },
-    { id: "HSKK",     label: "Khẩu Ngữ HSKK" },
-  ];
+  const counts = useMemo(() => assignments.reduce((result, assignment) => {
+    result[itemStatus(assignment)] += 1;
+    return result;
+  }, { todo: 0, submitted: 0, graded: 0, late: 0 }), [assignments]);
+  const visibleAssignments = useMemo(() => assignments.filter((assignment) => {
+    const matchesStatus = statusFilter === "all" || itemStatus(assignment) === statusFilter;
+    const needle = search.trim().toLocaleLowerCase();
+    const matchesSearch = !needle || [assignment.title, assignment.description, assignment.course_title].some((value) => String(value || "").toLocaleLowerCase().includes(needle));
+    return matchesStatus && matchesSearch;
+  }).sort((left, right) => new Date(left.due_date || 0) - new Date(right.due_date || 0)), [assignments, search, statusFilter]);
+  const completionRate = assignments.length ? Math.round(((counts.submitted + counts.graded) / assignments.length) * 100) : 0;
+  const buildPath = (assignment) => {
+    const isQuiz = itemType(assignment) === "quiz";
+    if (courseId && classId) return isQuiz ? `/lms/courses/${courseId}/classes/${classId}/quizzes/${assignment.id}` : `/lms/courses/${courseId}/classes/${classId}/assignments/${assignment.id}/submit`;
+    return isQuiz ? `/lms/quiz/${assignment.id}` : `/lms/assignment/${assignment.id}/submit`;
+  };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
-      {/* Compact Dashboard Header */}
-      <div className="border-b border-white/[0.08] bg-slate-900/40 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-5">
-        <div className="container mx-auto max-w-5xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                LMS • Luyện Đề & Bài Tập
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-              {classId ? "Bài Tập & Quiz Của Lớp" : courseId ? "Bài Tập & Quiz Của Khóa Học" : "Bài Tập & Đề Thi Trắc Nghiệm"}
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-              Theo dõi hạn nộp, làm bài trắc nghiệm và nộp bài khẩu ngữ HSKK/tự luận CSCA.
-            </p>
-          </div>
-          <div className="flex items-center gap-3 self-start sm:self-auto">
-            <div className="px-3.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-right">
-              <span className="text-[10px] font-mono text-slate-400 block">Tỷ lệ hoàn thành</span>
-              <span className="text-xs font-mono font-bold text-emerald-400">
-                {stats.total > 0 ? Math.round(((stats.submitted + stats.graded) / stats.total) * 100) : 0}% ({stats.submitted + stats.graded}/{stats.total})
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="container mx-auto px-4 py-6 max-w-5xl space-y-6">
-        {/* Statistics Metric Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: "Cần hoàn thành", value: stats.todo, color: "text-amber-400", bg: "from-amber-500/10 to-transparent border-amber-500/20" },
-            { label: "Đã nộp chờ chấm", value: stats.submitted, color: "text-sky-400", bg: "from-sky-500/10 to-transparent border-sky-500/20" },
-            { label: "Đã chấm điểm", value: stats.graded, color: "text-emerald-400", bg: "from-emerald-500/10 to-transparent border-emerald-500/20" },
-            { label: "Quá hạn nộp", value: stats.late, color: "text-rose-400", bg: "from-rose-500/10 to-transparent border-rose-500/20" },
-          ].map((s) => (
-            <div key={s.label} className={`bg-gradient-to-br ${s.bg} bg-slate-900/60 border rounded-2xl p-3.5 text-center`}>
-              <p className={`text-2xl font-black font-mono ${s.color}`}>{s.value}</p>
-              <p className="text-[11px] text-slate-400 font-medium mt-0.5">{s.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Status Tabs Navigation - Linear Glass Segmented Pill */}
-        <div className="inline-flex p-1 rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.3)] overflow-x-auto max-w-full">
-          <div className="flex items-center gap-1">
-            {STATUS_TABS.map((tab) => {
-              const active = statusFilter === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setStatusFilter(tab.id)}
-                  className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all duration-200 select-none whitespace-nowrap ${
-                    active
-                      ? "bg-gradient-to-b from-rose-500 to-rose-600 text-white shadow-[0_4px_16px_-2px_rgba(244,63,94,0.45),inset_0_1px_0_0_rgba(255,255,255,0.25)]"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
-                  }`}
-                >
-                  {tab.id === "LATE" && !active && tab.count > 0 && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                  )}
-                  <span>{tab.label}</span>
-                  <span
-                    className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md transition-colors ${
-                      active
-                        ? "bg-black/20 text-white"
-                        : "bg-slate-800 text-slate-400"
-                    }`}
-                  >
-                    {tab.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Secondary Filter & Search Bar */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/60 border border-slate-800/80 p-4 rounded-2xl">
-          {/* Type filters */}
-          <div className="flex gap-2 flex-wrap">
-            {TYPE_FILTERS.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setTypeFilter(f.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  typeFilter === f.id
-                    ? "bg-slate-800 text-white border border-slate-700 font-bold"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Search & Sort */}
-          <div className="flex gap-3 w-full md:w-auto items-center">
-            <div className="relative flex-1 md:w-60">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
-                <IconSearch />
-              </span>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Tìm tên bài tập..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
-              />
-            </div>
-
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-rose-500"
-            >
-              <option value="deadline">Hạn chót gần nhất</option>
-              <option value="score">Điểm số cao nhất</option>
-              <option value="newest">Bài mới giao</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Assignment List Content */}
-        {loading ? (
-          <LoadingState message="Đang nạp danh sách bài tập của bạn..." count={3} />
-        ) : errorMsg ? (
-          <ErrorState title="Lỗi Nạp Bài Tập" message={errorMsg} onRetry={loadData} />
-        ) : list.length === 0 ? (
-          <EmptyState
-            title="Không Có Bài Tập Phù Hợp"
-            message={
-              statusFilter === "ALL" && typeFilter === "ALL"
-                ? "Hiện tại bạn không có bài tập nào cần thực hiện."
-                : "Không có bài tập nào phù hợp với bộ lọc bạn đang chọn."
-            }
-            actionLabel={statusFilter !== "ALL" || typeFilter !== "ALL" ? "Đặt Lại Bộ Lọc" : null}
-            onAction={() => {
-              setStatusFilter("ALL");
-              setTypeFilter("ALL");
-              setSearch("");
-            }}
-          />
-        ) : (
-          <div className="space-y-4">
-            {list.map((item) => {
-              const tc = getTypeConfig(item);
-              const sc = getStatusChip(item);
-              const remaining = timeRemaining(item.due_date);
-              const itemType = getItemType(item);
-              const itemStatus = getItemStatus(item);
-
-              return (
-                <div
-                  key={item.id}
-                  className="group bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 md:p-6 transition-all hover:shadow-xl space-y-4"
-                >
-                  <div className="flex flex-col md:flex-row md:items-center gap-4">
-                    {/* Format Icon */}
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${tc.cls}`}>
-                      {tc.icon}
-                    </div>
-
-                    {/* Content Details */}
-                    <div className="flex-1 min-w-0 space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${tc.cls}`}>
-                          {tc.label}
-                        </span>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${sc.cls}`}>
-                          {sc.label}
-                        </span>
-                        {item.course_title && (
-                          <span className="text-[11px] text-slate-400 font-medium truncate max-w-[200px]">
-                            {item.course_title}
-                          </span>
-                        )}
-                      </div>
-
-                      <h3 className="text-base md:text-lg font-bold text-white group-hover:text-rose-400 transition truncate">
-                        {item.title}
-                      </h3>
-
-                      {item.description && (
-                        <p className="text-xs text-slate-400 line-clamp-1 font-light">
-                          {item.description}
-                        </p>
-                      )}
-
-                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1">
-                        <span>
-                          Hạn nộp: <strong className="text-slate-300">{new Date(item.due_date).toLocaleDateString("vi-VN")}</strong>
-                        </span>
-                        <span className={remaining === "Hết hạn" ? "text-rose-400 font-bold" : "text-amber-400 font-medium"}>
-                          {remaining}
-                        </span>
-                        {item.max_score && (
-                          <span className="text-slate-500 font-mono">
-                            Thang điểm: {item.max_score}đ
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Smart Contextual Action Button */}
-                    <div className="shrink-0 flex items-center">
-                      {itemType === "quiz" ? (
-                        itemStatus === "graded" ? (
-                          <Link
-                            to={quizPath(item.id)}
-                            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-emerald-600/20"
-                          >
-                            Xem Kết Quả Quiz →
-                          </Link>
-                        ) : (
-                          <Link
-                            to={quizPath(item.id)}
-                            className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-sky-600/20"
-                          >
-                            Làm Trắc Nghiệm →
-                          </Link>
-                        )
-                      ) : itemStatus === "graded" ? (
-                        <Link
-                          to={assignmentPath(item.id)}
-                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
-                        >
-                          <span>★ Xem Điểm & Nhận Xét</span>
-                        </Link>
-                      ) : itemStatus === "submitted" ? (
-                        <Link
-                          to={assignmentPath(item.id)}
-                          className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs transition border border-slate-700"
-                        >
-                          Xem Bài Đã Nộp →
-                        </Link>
-                      ) : itemStatus === "late" ? (
-                        <Link
-                          to={assignmentPath(item.id)}
-                          className="px-5 py-2.5 bg-rose-600/80 hover:bg-rose-600 text-white font-bold rounded-xl text-xs transition"
-                        >
-                          Nộp Bài Trễ →
-                        </Link>
-                      ) : (
-                        <Link
-                          to={assignmentPath(item.id)}
-                          className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-rose-600/20"
-                        >
-                          Nộp Bài Ngay →
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+    <div className="min-h-full bg-[#f6f9fd] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <section className="rounded-3xl border border-blue-100 bg-gradient-to-r from-[#edf6ff] via-white to-[#f4f8ff] p-6 shadow-sm sm:p-8"><div className="flex flex-col justify-between gap-5 md:flex-row md:items-center"><div><span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-600 shadow-sm ring-1 ring-blue-100"><BookOpenCheck className="h-3.5 w-3.5" /> Bài tập & thi</span><h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Nộp bài, làm đề và theo dõi kết quả</h1><p className="mt-2 text-sm leading-6 text-slate-600">Toàn bộ bài tập và đề thi được sắp theo hạn nộp để bạn không bỏ lỡ việc quan trọng.</p></div><div className="rounded-2xl bg-white px-5 py-4 text-center shadow-sm ring-1 ring-blue-100"><p className="text-xs font-medium text-slate-500">Tiến độ hoàn thành</p><p className="mt-1 text-2xl font-bold text-blue-600">{completionRate}%</p></div></div></section>
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[["Cần làm", counts.todo, Clock3, "bg-amber-50 text-amber-700"], ["Đã nộp", counts.submitted, Timer, "bg-blue-50 text-blue-700"], ["Đã chấm", counts.graded, CheckCircle2, "bg-emerald-50 text-emerald-700"], ["Quá hạn", counts.late, FilePenLine, "bg-rose-50 text-rose-700"]].map(([label, value, Icon, iconClass]) => <div key={label} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"><div className={`flex h-9 w-9 items-center justify-center rounded-xl ${iconClass}`}><Icon className="h-4 w-4" /></div><p className="mt-3 text-2xl font-bold text-slate-900">{value}</p><p className="mt-1 text-xs font-medium text-slate-500">{label}</p></div>)}</section>
+        <section className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm md:flex-row md:items-center md:justify-between"><div className="flex overflow-x-auto">{[["all", "Tất cả", assignments.length], ["todo", "Cần làm", counts.todo], ["submitted", "Đã nộp", counts.submitted], ["graded", "Đã chấm", counts.graded], ["late", "Quá hạn", counts.late]].map(([value, label, count]) => <button key={value} type="button" onClick={() => setStatusFilter(value)} className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition ${statusFilter === value ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}>{label} <span className={`ml-1 rounded-md px-1.5 py-0.5 text-[10px] ${statusFilter === value ? "bg-white/20" : "bg-slate-100"}`}>{count}</span></button>)}</div><label className="relative block w-full md:w-72"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm bài tập hoặc khóa học..." className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white" /></label></section>
+        {loading ? <LoadingState message="Đang tải bài tập..." count={3} /> : errorMessage ? <ErrorState title="Không tải được bài tập" message={errorMessage} onRetry={loadAssignments} /> : visibleAssignments.length === 0 ? <EmptyState icon={BookOpenCheck} title="Không có bài tập phù hợp" description="Các bài tập mới sẽ xuất hiện tại đây." /> : <section className="space-y-3">{visibleAssignments.map((assignment) => {
+          const type = itemType(assignment); const typeConfig = typeStyle[type]; const status = itemStatus(assignment); const statusConfig = statusStyle[status]; const Icon = typeConfig.icon;
+          return <article key={assignment.id} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><div className="flex flex-col gap-4 md:flex-row md:items-center"><div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${typeConfig.className}`}><Icon className="h-5 w-5" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${typeConfig.className}`}>{typeConfig.label}</span><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${statusConfig.className}`}>{statusConfig.label}{status === "graded" ? ` · ${assignment.score}/${assignment.max_score || 10}` : ""}</span>{assignment.course_title && <span className="text-xs font-medium text-slate-500">{assignment.course_title}</span>}</div><h2 className="mt-2 truncate text-base font-bold text-slate-900">{assignment.title}</h2>{assignment.description && <p className="mt-1 line-clamp-1 text-xs leading-5 text-slate-500">{assignment.description}</p>}<div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500"><span>Hạn nộp: {assignment.due_date ? new Date(assignment.due_date).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Không giới hạn"}</span><span className={status === "late" ? "font-semibold text-rose-600" : "font-semibold text-amber-600"}>{deadlineText(assignment.due_date)}</span></div></div><Link to={buildPath(assignment)} className={`inline-flex shrink-0 items-center justify-center rounded-xl px-4 py-2.5 text-xs font-bold transition ${status === "graded" ? "bg-emerald-600 text-white hover:bg-emerald-700" : status === "submitted" ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-blue-600 text-white shadow-sm shadow-blue-200 hover:bg-blue-700"}`}>{status === "graded" ? "Xem kết quả" : status === "submitted" ? "Xem bài đã nộp" : type === "quiz" ? "Làm bài thi" : "Mở bài tập"}</Link></div></article>;
+        })}</section>}
       </div>
     </div>
   );

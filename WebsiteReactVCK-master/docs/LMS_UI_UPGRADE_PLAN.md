@@ -48,3 +48,11 @@
 - `/lms/catalog` chỉ hiển thị course từ `fetchMyEnrolledCourses`.
 - Progress card và CTA dẫn đúng sang chọn lớp/workspace.
 - Build frontend pass và không làm mất các thay đổi đang có ở teacher workspace.
+
+## Tiêu chí nghiệm thu Phase 2
+
+- Các tab `/lms/live-schedule`, `/lms/assignments`, `/lms/files` và `/lms/notifications` dùng cùng visual system sáng với dashboard.
+- Lớp trực tiếp giữ cơ chế join-window 15 phút và chỉ nhận URL phòng từ endpoint đã kiểm tra quyền.
+- Bài tập/quiz ở cấp LMS dẫn tới màn làm bài thực, không còn bị redirect về catalog.
+- Tài nguyên vẫn mở signed URL do backend phát hành; không lưu URL giả trên frontend.
+- Thông báo tải, đánh dấu một/tất cả đã đọc qua notification API; không còn khởi tạo thông báo mẫu hoặc mô phỏng broadcast.

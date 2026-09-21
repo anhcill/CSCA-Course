@@ -142,8 +142,8 @@ function AppRoutes() {
       <Route path="/lms/learn/:courseId" element={<CourseClassRedirect />} />
       {/* Legacy entry: the LMS now always begins with the course catalog. */}
       <Route path="/lms/my-learning" element={<Navigate to="/lms/dashboard" replace />} />
-      <Route path="/lms/assignment/:id/submit" element={<Navigate to="/lms/catalog" replace />} />
-      <Route path="/lms/quiz/:quizId" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/assignment/:id/submit" element={<AssignmentSubmitPage />} />
+      <Route path="/lms/quiz/:quizId" element={<QuizPlayerPage />} />
       <Route path="/lms/leaderboard" element={<Navigate to="/lms/catalog" replace />} />
       <Route path="/lms/certificates" element={<Navigate to="/lms/catalog" replace />} />
 
