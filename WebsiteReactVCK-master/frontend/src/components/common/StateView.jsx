@@ -200,7 +200,7 @@ export function SuccessState({
 export function PermissionDeniedState({ 
   title = 'Truy Cập Bị Từ Chối', 
   message = 'Bạn không có quyền truy cập vào khu vực này. Khu vực này yêu cầu quyền Giảng Viên hoặc Quản Trị Viên.', 
-  redirectPath = '/lms/my-learning' 
+  redirectPath = '/lms/dashboard'
 }) {
   return (
     <div className="w-full rounded-3xl border border-amber-500/20 bg-slate-900/80 p-8 sm:p-12 text-center backdrop-blur-md">

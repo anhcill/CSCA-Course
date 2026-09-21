@@ -47,7 +47,7 @@ export default function Forbidden() {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
-            to="/lms/my-learning"
+              to="/lms/dashboard"
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 px-6 py-3 text-sm font-black text-white shadow-lg shadow-rose-600/30 transition active:scale-[0.98]"
           >
             <BookOpen className="h-4 w-4" /> Về LMS Học Viên

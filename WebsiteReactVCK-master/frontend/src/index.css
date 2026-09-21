@@ -163,3 +163,63 @@ a {
     overflow-y: auto;
   }
 }
+
+/* Student LMS uses a bright operational surface by default.  These scoped
+   tokens let every student workspace (including loading and empty states)
+   switch together without changing the public site or the admin console. */
+.dark .student-lms,
+.dark .student-lms [class~="bg-[#f6f9fd]"] {
+  background-color: #0b1220;
+}
+
+.dark .student-lms [class~="bg-white"],
+.dark .student-lms [class*="bg-white/"],
+.dark .student-lms [class~="bg-slate-50"],
+.dark .student-lms [class~="bg-slate-100"] {
+  background-color: #111b2e;
+}
+
+.dark .student-lms [class~="bg-blue-50"],
+.dark .student-lms [class~="bg-emerald-50"],
+.dark .student-lms [class~="bg-amber-50"],
+.dark .student-lms [class~="bg-violet-50"],
+.dark .student-lms [class~="bg-rose-50"] {
+  background-color: #17243a;
+}
+
+.dark .student-lms [class~="bg-gradient-to-r"],
+.dark .student-lms [class~="bg-gradient-to-br"] {
+  background-image: linear-gradient(130deg, #14213d 0%, #111b2e 54%, #0d1a30 100%);
+}
+
+.dark .student-lms .border-slate-100,
+.dark .student-lms .border-slate-200,
+.dark .student-lms .border-slate-200\/80,
+.dark .student-lms .border-blue-100,
+.dark .student-lms .border-blue-200,
+.dark .student-lms .ring-slate-100,
+.dark .student-lms .ring-blue-100 {
+  border-color: #263650;
+  --tw-ring-color: #263650;
+}
+
+.dark .student-lms .text-slate-950,
+.dark .student-lms .text-slate-900,
+.dark .student-lms .text-slate-800,
+.dark .student-lms .text-slate-700 {
+  color: #f1f5f9;
+}
+
+.dark .student-lms .text-slate-600,
+.dark .student-lms .text-slate-500,
+.dark .student-lms .text-slate-400 {
+  color: #a7b6cc;
+}
+
+.dark .student-lms input,
+.dark .student-lms select,
+.dark .student-lms textarea {
+  border-color: #31435f;
+  background-color: #0d1728;
+  color: #e2e8f0;
+}

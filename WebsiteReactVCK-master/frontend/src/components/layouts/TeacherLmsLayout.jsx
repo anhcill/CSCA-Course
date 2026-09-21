@@ -11,7 +11,6 @@ import {
   Menu,
   Presentation,
   Settings,
-  ShieldCheck,
   Users,
   X,
 } from 'lucide-react';
@@ -113,7 +112,7 @@ function TeacherSidebarContent({ onNavigate }) {
       {/* Footer links */}
       <div className="space-y-2 border-t border-white/10 pt-4">
         <Link
-          to="/lms/my-learning"
+          to="/lms/dashboard"
           onClick={onNavigate}
           className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-slate-400 transition hover:bg-white/10 hover:text-white"
         >
@@ -155,7 +154,7 @@ export default function TeacherLmsLayout({ children }) {
           <PermissionDeniedState
             title="Quyền Giảng Viên Yêu Cầu"
             message="Chỉ tài khoản có vai trò Giảng Viên (Creator) hoặc Quản Trị Viên (Admin) mới có quyền truy cập vào Teacher Hub và các công cụ giảng dạy."
-            redirectPath="/lms/my-learning"
+            redirectPath="/lms/dashboard"
           />
         </div>
       </div>
@@ -190,7 +189,7 @@ export default function TeacherLmsLayout({ children }) {
 
           <div className="flex items-center gap-2">
             <Link
-              to="/lms/my-learning"
+              to="/lms/dashboard"
               className="hidden items-center gap-2 rounded-xl border border-white/10 px-3 py-1.5 text-xs font-bold text-slate-300 transition hover:border-emerald-400/40 hover:bg-white/10 hover:text-white sm:flex"
             >
               <Users className="h-3.5 w-3.5" /> Chế độ học viên

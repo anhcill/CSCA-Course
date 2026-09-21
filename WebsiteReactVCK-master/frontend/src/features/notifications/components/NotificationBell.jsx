@@ -1,274 +1,165 @@
-import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Bell, CheckCheck, ChevronRight, LoaderCircle } from "lucide-react";
+import { useAuthContext } from "../../../context/AuthContext";
+import { useTheme } from "../../../context/ThemeContext";
+import { fetchNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "../../api/lmsClient";
+import { resolveLmsDestination } from "../../../utils/lmsNavigation";
 
-/* MOCK_UI_ONLY: Dữ liệu mẫu thông báo dự phòng khi backend chưa có thông báo mới */
-const MOCK_NOTIFICATIONS = [
-  {
-    id: "notif-1",
-    type: "grade",
-    title: "Điểm bài tập Viết đoạn văn HSK 4",
-    message: "Giáo viên Trần Thị Lan đã chấm bài của đại ca: 9.5/10 kèm lời khen ngợi xuất sắc.",
-    link_url: "/lms/assignments",
-    is_read: false,
-    created_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-  },
-  {
-    id: "notif-2",
-    type: "live_class",
-    title: "Lớp học trực tuyến sắp bắt đầu",
-    message: "Buổi luyện khẩu ngữ HSKK Trung cấp sẽ diễn ra lúc 19:30 tối nay trên Google Meet.",
-    link_url: "/lms/live-classes",
-    is_read: false,
-    created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-  },
-  {
-    id: "notif-3",
-    type: "streak",
-    title: "Duy trì chuỗi học 14 ngày!",
-    message: "Chúc mừng đại ca đã giữ vững chuỗi Daily Streak và mở khóa 50 XP cùng Huy hiệu Cần Cù.",
-    link_url: "/lms/leaderboard",
-    is_read: false,
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-  },
-  {
-    id: "notif-4",
-    type: "certificate",
-    title: "Chứng chỉ khóa học đã sẵn sàng",
-    message: "Chứng chỉ hoàn thành xuất sắc Khóa học HSK 3 đã được cấp phát chính thức trên hệ thống.",
-    link_url: "/lms/certificates",
-    is_read: true,
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-  },
-  {
-    id: "notif-5",
-    type: "assignment",
-    title: "Bài tập mới được giao",
-    message: "Thầy Hoàng vừa giao bài tập: Dịch thuật ngữ pháp bài 12. Hạn nộp 23:59 Chủ nhật này.",
-    link_url: "/lms/assignments",
-    is_read: true,
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-  },
-];
+const formatTime = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+};
+
+const typeMeta = (type) => {
+  const normalized = String(type || "system").toLowerCase();
+  if (normalized.includes("assignment")) return { icon: "📝", label: "Bài tập" };
+  if (normalized.includes("grade")) return { icon: "🌟", label: "Kết quả" };
+  if (normalized.includes("live")) return { icon: "🔴", label: "Lớp trực tiếp" };
+  if (normalized.includes("certificate")) return { icon: "🎓", label: "Chứng chỉ" };
+  return { icon: "🔔", label: "Hệ thống" };
+};
 
 export default function NotificationBell() {
+  const navigate = useNavigate();
+  const menuRef = useRef(null);
+  const { authUser } = useAuthContext();
+  const { isDarkMode } = useTheme();
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("all"); // "all" | "unread"
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const menuRef = useRef(null);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    fetchNotifs();
+  const loadNotifications = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await fetchNotifications({ page: 1, limit: 6 });
+      const data = result?.data || {};
+      const items = Array.isArray(data.notifications) ? data.notifications : [];
+      setNotifications(items);
+      setUnreadCount(Number(data.unreadCount ?? items.filter((item) => !item.is_read).length));
+    } catch {
+      // An empty bell is safer than demo alerts with inaccessible links.
+      setNotifications([]);
+      setUnreadCount(0);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Close dropdown on outside click
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setOpen(false);
-      }
+    loadNotifications();
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) setOpen(false);
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
   }, []);
 
-  const fetchNotifs = async () => {
+  const markOne = async (notification) => {
+    if (notification.is_read) return;
     try {
-      const res = await fetch("/api/notifications");
-      const data = await res.json();
-      if (data.success && data.data && Array.isArray(data.data.notifications) && data.data.notifications.length > 0) {
-        setNotifications(data.data.notifications);
-        setUnreadCount(data.data.unreadCount ?? data.data.notifications.filter((n) => !n.is_read).length);
-      } else {
-        // Sử dụng dữ liệu mẫu MOCK_UI_ONLY
-        setNotifications(MOCK_NOTIFICATIONS);
-        setUnreadCount(MOCK_NOTIFICATIONS.filter((n) => !n.is_read).length);
-      }
+      await markNotificationAsRead(notification.id);
+      setNotifications((items) => items.map((item) => (item.id === notification.id ? { ...item, is_read: true } : item)));
+      setUnreadCount((count) => Math.max(0, count - 1));
     } catch {
-      // Fallback khi lỗi API
-      setNotifications(MOCK_NOTIFICATIONS);
-      setUnreadCount(MOCK_NOTIFICATIONS.filter((n) => !n.is_read).length);
+      // A read-state failure must not stop the learner from opening the item.
     }
   };
 
-  const handleMarkAllRead = async () => {
+  const openNotification = async (notification) => {
+    await markOne(notification);
+    const destination = resolveLmsDestination(notification.link_url, authUser);
+    setOpen(false);
+    if (!destination) return;
+    if (destination.kind === "external") {
+      window.open(destination.value, "_blank", "noopener,noreferrer");
+      return;
+    }
+    navigate(destination.value);
+  };
+
+  const markAll = async () => {
     try {
-      await fetch("/api/notifications/read-all", { method: "POST" });
+      await markAllNotificationsAsRead();
+      setNotifications((items) => items.map((item) => ({ ...item, is_read: true })));
+      setUnreadCount(0);
     } catch {
-      // Bỏ qua lỗi kết nối
-    }
-    setUnreadCount(0);
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-  };
-
-  const handleMarkAsRead = (id) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-    );
-    setUnreadCount((prev) => Math.max(0, prev - 1));
-  };
-
-  const getNotifMeta = (type) => {
-    switch (type) {
-      case "assignment":
-        return { icon: "📝", label: "Bài tập", tagClass: "bg-blue-500/10 text-blue-400 border-blue-500/20" };
-      case "grade":
-        return { icon: "🌟", label: "Điểm số", tagClass: "bg-amber-500/10 text-amber-400 border-amber-500/20" };
-      case "live_class":
-        return { icon: "🔴", label: "Lớp Live", tagClass: "bg-rose-500/10 text-rose-400 border-rose-500/20" };
-      case "streak":
-        return { icon: "🔥", label: "Cột mốc", tagClass: "bg-orange-500/10 text-orange-400 border-orange-500/20" };
-      case "certificate":
-        return { icon: "🎓", label: "Chứng chỉ", tagClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" };
-      default:
-        return { icon: "🔔", label: "Hệ thống", tagClass: "bg-slate-500/10 text-slate-400 border-slate-500/20" };
+      // Keep the current state if the server rejected the change.
     }
   };
 
-  const filteredNotifications = notifications.filter((n) => {
-    if (activeTab === "unread") return !n.is_read;
-    return true;
-  });
+  const palette = isDarkMode
+    ? {
+      button: "border border-slate-700 bg-slate-900 text-slate-200 hover:border-slate-600 hover:bg-slate-800 hover:text-white",
+      menu: "border-slate-700 bg-slate-900 text-slate-100 shadow-slate-950/45",
+      header: "border-slate-800 bg-slate-950/80",
+      muted: "text-slate-400",
+      item: "hover:bg-slate-800/80",
+      unread: "bg-blue-500/10",
+      icon: "border-slate-700 bg-slate-950",
+      footer: "border-slate-800 bg-slate-950/60",
+      mark: "text-blue-300 hover:text-blue-200",
+    }
+    : {
+      button: "border border-slate-200 bg-white text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700",
+      menu: "border-slate-200 bg-white text-slate-900 shadow-slate-900/15",
+      header: "border-slate-100 bg-slate-50/80",
+      muted: "text-slate-500",
+      item: "hover:bg-slate-50",
+      unread: "bg-blue-50/70",
+      icon: "border-slate-100 bg-white",
+      footer: "border-slate-100 bg-slate-50/70",
+      mark: "text-blue-600 hover:text-blue-700",
+    };
 
   return (
-    <div className="relative inline-block text-left" ref={menuRef}>
-      {/* Bell Button */}
+    <div ref={menuRef} className="relative text-left">
       <button
-        id="notification-bell-btn"
-        onClick={() => setOpen(!open)}
-        className="relative p-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white transition focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+        type="button"
+        onClick={() => setOpen((visible) => !visible)}
+        className={`relative rounded-xl p-2.5 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 ${palette.button}`}
         title="Trung tâm thông báo"
+        aria-label={unreadCount ? `Thông báo, ${unreadCount} chưa đọc` : "Trung tâm thông báo"}
+        aria-expanded={open}
       >
-        <span className="text-lg leading-none select-none">🔔</span>
-        {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 text-[10px] font-black text-white shadow-md animate-pulse">
-            {unreadCount > 9 ? "9+" : unreadCount}
-          </span>
-        )}
+        <Bell className="h-[18px] w-[18px]" />
+        {unreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white shadow-sm">{unreadCount > 9 ? "9+" : unreadCount}</span>}
       </button>
 
-      {/* Dropdown Menu */}
       {open && (
-        <div className="absolute right-0 mt-3 w-84 sm:w-96 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl z-50 overflow-hidden divide-y divide-slate-800 animate-in fade-in slide-in-from-top-2 duration-150">
-          {/* Header */}
-          <div className="p-4 bg-slate-950/80 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-sm text-white">Trung Tâm Thông Báo</span>
-              {unreadCount > 0 && (
-                <span className="bg-rose-500/20 text-rose-400 text-xs px-2 py-0.5 rounded-full font-mono border border-rose-500/30 font-bold">
-                  {unreadCount} mới
-                </span>
-              )}
+        <div className={`absolute right-0 z-[60] mt-3 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border shadow-2xl ${palette.menu}`}>
+          <div className={`flex items-center justify-between border-b p-4 ${palette.header}`}>
+            <div>
+              <p className="text-sm font-black">Thông báo</p>
+              <p className={`mt-0.5 text-[11px] ${palette.muted}`}>{unreadCount ? `${unreadCount} thông báo chưa đọc` : "Bạn đã đọc hết thông báo"}</p>
             </div>
-            {unreadCount > 0 && (
-              <button
-                onClick={handleMarkAllRead}
-                className="text-[11px] text-amber-400 hover:text-amber-300 hover:underline font-semibold transition"
-              >
-                Đã đọc tất cả
-              </button>
-            )}
+            {unreadCount > 0 && <button type="button" onClick={markAll} className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition ${palette.mark}`}><CheckCheck className="h-3.5 w-3.5" /> Đọc tất cả</button>}
           </div>
 
-          {/* Filter Tabs */}
-          <div className="px-4 py-2 bg-slate-950/40 flex items-center gap-2 text-xs border-b border-slate-800">
-            <button
-              onClick={() => setActiveTab("all")}
-              className={`px-3 py-1 rounded-lg font-bold transition ${
-                activeTab === "all"
-                  ? "bg-slate-800 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              Tất cả ({notifications.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("unread")}
-              className={`px-3 py-1 rounded-lg font-bold transition flex items-center gap-1.5 ${
-                activeTab === "unread"
-                  ? "bg-slate-800 text-amber-400 shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              Chưa đọc
-              {unreadCount > 0 && (
-                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
-              )}
-            </button>
+          <div className="max-h-[min(29rem,65vh)] overflow-y-auto">
+            {loading ? <div className={`flex items-center justify-center gap-2 px-4 py-10 text-xs ${palette.muted}`}><LoaderCircle className="h-4 w-4 animate-spin" /> Đang tải thông báo...</div> : notifications.length === 0 ? <div className={`px-5 py-10 text-center text-xs ${palette.muted}`}>Chưa có thông báo mới.</div> : notifications.map((notification) => {
+              const meta = typeMeta(notification.type);
+              const destination = resolveLmsDestination(notification.link_url, authUser);
+              return <button key={notification.id} type="button" onClick={() => openNotification(notification)} className={`flex w-full items-start gap-3 border-b border-slate-100 p-4 text-left transition last:border-b-0 dark:border-slate-800 ${palette.item} ${notification.is_read ? "" : palette.unread}`}>
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-base ${palette.icon}`}>{meta.icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2"><span className={`text-[10px] font-bold ${palette.muted}`}>{meta.label}</span>{!notification.is_read && <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />}</span>
+                  <span className="mt-1 block truncate text-xs font-bold">{notification.title}</span>
+                  <span className={`mt-1 block line-clamp-2 text-[11px] leading-4 ${palette.muted}`}>{notification.message}</span>
+                  <span className={`mt-1.5 block text-[10px] ${palette.muted}`}>{formatTime(notification.created_at)}</span>
+                </span>
+                {destination && <ChevronRight className={`mt-3 h-4 w-4 shrink-0 ${palette.muted}`} />}
+              </button>;
+            })}
           </div>
 
-          {/* Notifications List */}
-          <div className="max-h-96 overflow-y-auto divide-y divide-slate-800/60">
-            {filteredNotifications.length === 0 ? (
-              <div className="p-8 text-center space-y-2">
-                <span className="text-3xl block">✨</span>
-                <p className="text-xs font-semibold text-slate-300">
-                  {activeTab === "unread"
-                    ? "Đại ca đã xem hết mọi thông báo mới rồi!"
-                    : "Chưa có thông báo nào dành cho đại ca."}
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  Thông báo về lớp học, điểm thi và chứng chỉ sẽ hiển thị tại đây.
-                </p>
-              </div>
-            ) : (
-              filteredNotifications.map((n) => {
-                const meta = getNotifMeta(n.type);
-                return (
-                  <Link
-                    key={n.id}
-                    to={n.link_url || "#"}
-                    onClick={() => {
-                      handleMarkAsRead(n.id);
-                      setOpen(false);
-                    }}
-                    className={`p-4 flex items-start gap-3 transition block hover:bg-slate-850/80 group ${
-                      !n.is_read ? "bg-amber-500/[0.03]" : "bg-transparent opacity-85"
-                    }`}
-                  >
-                    <div className="text-lg p-2.5 rounded-xl bg-slate-950 border border-slate-800 shrink-0 group-hover:border-slate-700 transition">
-                      {meta.icon}
-                    </div>
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${meta.tagClass}`}>
-                          {meta.label}
-                        </span>
-                        {!n.is_read && (
-                          <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" title="Chưa đọc"></span>
-                        )}
-                      </div>
-                      <p className="text-xs font-bold text-white leading-snug group-hover:text-amber-400 transition-colors line-clamp-1">
-                        {n.title}
-                      </p>
-                      <p className="text-xs text-slate-400 leading-normal line-clamp-2">
-                        {n.message}
-                      </p>
-                      <span className="text-[10px] text-slate-500 font-mono block pt-0.5">
-                        {new Date(n.created_at).toLocaleTimeString("vi-VN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          day: "2-digit",
-                          month: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })
-            )}
-          </div>
-
-          {/* Dropdown Footer */}
-          <div className="p-3 bg-slate-950/60 text-center border-t border-slate-800">
-            <Link
-              to="/lms/assignments"
-              onClick={() => setOpen(false)}
-              className="text-xs text-slate-400 hover:text-amber-400 font-semibold transition"
-            >
-              Xem danh sách bài tập & lịch học →
-            </Link>
-          </div>
+          <div className={`border-t p-2.5 text-center ${palette.footer}`}><Link to="/lms/notifications" onClick={() => setOpen(false)} className={`inline-flex items-center gap-1 text-xs font-bold ${palette.mark}`}>Xem tất cả thông báo <ChevronRight className="h-3.5 w-3.5" /></Link></div>
         </div>
       )}
     </div>

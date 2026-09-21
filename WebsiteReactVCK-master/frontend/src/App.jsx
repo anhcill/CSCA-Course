@@ -123,6 +123,7 @@ function AppRoutes() {
       <Route path="/lms/catalog" element={<StudentCourseListPage />} />
       <Route path="/lms/analytics" element={<StudentAnalyticsPage />} />
       <Route path="/lms/live-schedule" element={<LiveClassSchedulePage />} />
+      <Route path="/lms/live-classes" element={<Navigate to="/lms/live-schedule" replace />} />
       <Route path="/lms/assignments" element={<AssignmentListPage />} />
       <Route path="/lms/files" element={<StudentFilesPage />} />
       <Route path="/lms/notifications" element={<NotificationCenterPage />} />
@@ -145,7 +146,7 @@ function AppRoutes() {
       <Route path="/lms/assignment/:id/submit" element={<AssignmentSubmitPage />} />
       <Route path="/lms/quiz/:quizId" element={<QuizPlayerPage />} />
       <Route path="/lms/leaderboard" element={<Navigate to="/lms/catalog" replace />} />
-      <Route path="/lms/certificates" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/certificates" element={<Navigate to="/profile" replace />} />
 
       {/* === Teacher LMS: canonical routes plus migration aliases === */}
       <Route path="/lms/teacher-hub" element={<TeacherHubPage />} />
