@@ -279,13 +279,13 @@ export default function TeacherClassDetailPage() {
         </section>
 
         {/* 5-Tab Segmented Control */}
-        <div className="flex flex-wrap gap-1 border-b border-slate-800">
+        <div className="flex items-center gap-1 border-b border-slate-800 overflow-x-auto no-scrollbar">
           {tabs.map(([id, label, Icon, count]) => (
             <button
               key={id}
               type="button"
               onClick={() => setActiveTab(id)}
-              className={`inline-flex items-center gap-2 px-3.5 sm:px-5 py-3.5 border-b-2 text-xs sm:text-sm font-bold transition ${
+              className={`shrink-0 inline-flex items-center gap-2 px-3.5 sm:px-5 py-3.5 border-b-2 text-xs sm:text-sm font-bold transition ${
                 activeTab === id
                   ? "border-emerald-500 text-emerald-400 bg-emerald-500/5"
                   : "border-transparent text-slate-400 hover:text-white"

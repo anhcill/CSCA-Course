@@ -64,36 +64,37 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in font-sans">
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl max-w-xl w-full p-6 sm:p-7 space-y-5 shadow-2xl relative">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4">
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 animate-fade-in font-sans">
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl relative flex flex-col max-h-[88vh] overflow-hidden">
+        {/* Fixed Header */}
+        <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-indigo-500/10 text-indigo-500">
-              <FiFileText className="w-5 h-5" />
+            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+              <FiFileText className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-lg font-black text-gray-900 dark:text-white">
+              <h3 className="text-base font-bold text-gray-900 dark:text-white leading-tight">
                 Giao Bài Tập Mới Cho Lớp
               </h3>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Thiết lập nội dung, hạn nộp và tiêu chuẩn chấm điểm.
+              <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">
+                Thiết lập tiêu đề, hạn nộp và hướng dẫn bài tập.
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 hover:text-white transition"
+            className="p-1.5 rounded-lg bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400 hover:text-white transition"
           >
-            <FiX className="w-5 h-5" />
+            <FiX className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        {/* Scrollable Form Body */}
+        <form id="create-assignment-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 text-xs">
           {/* Title */}
           <div>
-            <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+            <label className="block font-bold text-gray-700 dark:text-slate-300 mb-1">
               Tiêu đề bài tập <span className="text-rose-500">*</span>:
             </label>
             <input
@@ -101,31 +102,31 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Ví dụ: Viết đoạn văn HSK 4 — Chủ đề Du học Trung Quốc"
-              className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500 transition"
+              className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500 transition"
               required
             />
           </div>
 
-          {/* Type & Max Score */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Type, Score & Deadline Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+              <label className="block font-bold text-gray-700 dark:text-slate-300 mb-1">
                 Loại bài tập:
               </label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value)}
-                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500 transition"
+                className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500 transition"
               >
                 <option value="homework">Bài tập về nhà (Homework)</option>
-                <option value="essay">Bài viết luận (Writing / Essay)</option>
-                <option value="speaking">Ghi âm nói (Speaking / Audio)</option>
+                <option value="essay">Bài viết luận (Writing)</option>
+                <option value="speaking">Ghi âm nói (Speaking)</option>
                 <option value="quiz">Trắc nghiệm nhanh (Quiz)</option>
               </select>
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+              <label className="block font-bold text-gray-700 dark:text-slate-300 mb-1">
                 Thang điểm tối đa:
               </label>
               <input
@@ -134,47 +135,45 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
                 max={100}
                 value={maxScore}
                 onChange={(e) => setMaxScore(e.target.value)}
-                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-xs text-gray-900 dark:text-white font-mono outline-none focus:border-indigo-500 transition"
+                className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-mono outline-none focus:border-indigo-500 transition"
               />
             </div>
           </div>
 
           {/* Due Date */}
           <div>
-            <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+            <label className="block font-bold text-gray-700 dark:text-slate-300 mb-1">
               Hạn nộp bài (Deadline) <span className="text-rose-500">*</span>:
             </label>
-            <div className="relative">
-              <input
-                type="datetime-local"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500 transition"
-                required
-              />
-            </div>
+            <input
+              type="datetime-local"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500 transition"
+              required
+            />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+            <label className="block font-bold text-gray-700 dark:text-slate-300 mb-1">
               Mô tả chi tiết & Hướng dẫn:
             </label>
             <textarea
-              rows={4}
+              rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Nhập yêu cầu bài làm, tiêu chí đánh giá hoặc liên kết tài liệu tham khảo..."
-              className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3.5 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500 transition resize-none leading-relaxed"
+              placeholder="Nhập yêu cầu bài làm, tiêu chí đánh giá hoặc hướng dẫn..."
+              className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl p-3 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500 transition resize-none leading-relaxed"
             />
           </div>
 
           {/* File attachment */}
           <div>
-            <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-              Đính kèm file đề bài / tài liệu mẫu (R2 / Cloudinary):
+            <label className="block font-bold text-gray-700 dark:text-slate-300 mb-1">
+              Đính kèm file đề bài / tài liệu mẫu:
             </label>
-            <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl p-4 text-center hover:border-indigo-500 transition bg-gray-50/50 dark:bg-gray-800/30">
+            <div className="border border-dashed border-gray-300 dark:border-slate-800 rounded-xl p-3 text-center hover:border-indigo-500 transition bg-gray-50/50 dark:bg-slate-950/50">
               <input
                 type="file"
                 id="assignment-file"
@@ -186,9 +185,9 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
                   }
                 }}
               />
-              <label htmlFor="assignment-file" className="cursor-pointer space-y-1 block">
-                <FiUploadCloud className="w-6 h-6 mx-auto text-indigo-500" />
-                <p className="text-gray-600 dark:text-gray-300 font-medium">
+              <label htmlFor="assignment-file" className="cursor-pointer space-y-0.5 block">
+                <FiUploadCloud className="w-5 h-5 mx-auto text-indigo-400" />
+                <p className="text-gray-700 dark:text-slate-300 font-medium text-[11px]">
                   {selectedFile ? selectedFile.name : "Nhấn để chọn tệp hoặc kéo thả vào đây"}
                 </p>
                 <p className="text-[10px] text-gray-400">PDF, DOCX, XLSX, MP3 hoặc ZIP (Tối đa 25MB)</p>
@@ -197,10 +196,10 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
           </div>
 
           {/* Allow Resubmission Toggle */}
-          <div className="flex items-center justify-between p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800">
             <div>
-              <span className="font-bold text-gray-900 dark:text-white block">Cho phép nộp lại (Resubmission)</span>
-              <span className="text-[11px] text-gray-500">Học viên có thể cập nhật bài làm trước hạn chót</span>
+              <span className="font-bold text-gray-900 dark:text-white block text-[11px]">Cho phép nộp lại (Resubmission)</span>
+              <span className="text-[10px] text-gray-500 dark:text-slate-400">Học viên có thể cập nhật bài làm trước deadline</span>
             </div>
             <input
               type="checkbox"
@@ -209,27 +208,28 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
               className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
             />
           </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-            >
-              Hủy bỏ
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition disabled:opacity-50"
-            >
-              <FiCheckCircle className={`w-4 h-4 ${submitting ? "animate-spin" : ""}`} />
-              <span>{submitting ? "Đang xuất bản..." : "Xuất bản bài tập"}</span>
-            </button>
-          </div>
         </form>
+
+        {/* Fixed Footer */}
+        <div className="shrink-0 px-5 py-3.5 border-t border-gray-100 dark:border-slate-800 bg-gray-50/90 dark:bg-slate-900/95 backdrop-blur flex justify-end gap-2.5">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-slate-800 text-xs font-bold text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-700 transition"
+          >
+            Hủy bỏ
+          </button>
+          <button
+            type="submit"
+            form="create-assignment-form"
+            disabled={submitting}
+            className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition disabled:opacity-50"
+          >
+            <FiCheckCircle className={`w-3.5 h-3.5 ${submitting ? "animate-spin" : ""}`} />
+            <span>{submitting ? "Đang xuất bản..." : "Xuất bản bài tập"}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
