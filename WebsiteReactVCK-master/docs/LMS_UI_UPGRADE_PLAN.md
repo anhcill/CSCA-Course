@@ -61,5 +61,5 @@
 
 - Chọn lớp hiển thị riêng các lớp active mà học viên đã được cấp quyền từ Management.
 - Workspace duy trì `courseId + classId` cho toàn bộ điều hướng Tổng quan, Bài học, Bài tập, Lịch, Tài liệu và Kết quả.
-- Tổng quan, kết quả và lựa chọn lớp dùng visual system sáng của LMS; video player vẫn có nền tối để bảo đảm trải nghiệm xem bài học.
+- Tổng quan, kết quả, lựa chọn lớp và chrome của phòng học dùng visual system sáng của LMS; vùng phát video vẫn có nền tối để bảo đảm trải nghiệm xem bài học.
 - Điểm, tài liệu, lịch và CTA chỉ lấy từ workspace API của lớp đang mở.

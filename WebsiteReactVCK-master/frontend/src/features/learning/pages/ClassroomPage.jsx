@@ -15,7 +15,7 @@ import {
 import { LoadingState, ErrorState } from "../../../components/common/StateView";
 
 export default function ClassroomPage() {
-  const { courseId } = useParams();
+  const { courseId, classId } = useParams();
   const videoRef = useRef(null);
   const videoRequestRef = useRef(0);
 
@@ -352,7 +352,7 @@ export default function ClassroomPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen bg-slate-950 text-white items-center justify-center p-6">
+      <div className="flex min-h-[60vh] bg-[#f6f9fd] items-center justify-center p-6">
         <div className="max-w-md w-full">
           <LoadingState message="Đang chuẩn bị không gian học tập bảo mật..." count={3} />
         </div>
@@ -362,7 +362,7 @@ export default function ClassroomPage() {
 
   if (errorMessage || !courseData || !courseData.course) {
     return (
-      <div className="flex h-screen bg-slate-950 text-white items-center justify-center p-6">
+      <div className="flex min-h-[60vh] bg-[#f6f9fd] items-center justify-center p-6">
         <div className="max-w-md w-full">
           <ErrorState
             title="Không Thể Mở Phòng Học"
@@ -371,7 +371,7 @@ export default function ClassroomPage() {
             secondaryAction={
               <Link
                 to={`/lms/courses/${courseId}/classes`}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition"
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition"
               >
                 ← Quay Về Khóa Học
               </Link>
@@ -421,10 +421,10 @@ export default function ClassroomPage() {
         return (
           <div key={section.id} className="space-y-2">
             <div className="flex items-center justify-between px-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 truncate max-w-[70%]">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 truncate max-w-[70%]">
                 Chương {idx + 1}: {section.title}
               </h4>
-              <span className="text-[10px] text-slate-500 font-mono flex-shrink-0">
+              <span className="text-[10px] text-slate-400 font-mono flex-shrink-0">
                 {completedInSection}/{totalInSection} bài
               </span>
             </div>
@@ -441,10 +441,10 @@ export default function ClassroomPage() {
                     onClick={() => handleSelectLesson(lesson)}
                     className={`w-full p-3 rounded-xl text-left flex items-center justify-between transition text-sm ${
                       isCurrent
-                        ? "bg-rose-600 text-white font-bold shadow-md shadow-rose-600/30"
+                        ? "bg-blue-600 text-white font-bold shadow-md shadow-blue-600/25"
                         : accessible
-                        ? "bg-slate-950/60 hover:bg-slate-800/80 text-slate-300"
-                        : "bg-slate-950/40 text-slate-500 hover:bg-slate-900/60 cursor-pointer"
+                        ? "bg-slate-50 hover:bg-blue-50 text-slate-700 border border-slate-100"
+                        : "bg-slate-50 text-slate-400 hover:bg-slate-100 cursor-pointer border border-slate-100"
                     }`}
                   >
                     <div className="flex items-center gap-3 truncate">
@@ -452,11 +452,11 @@ export default function ClassroomPage() {
                         {isDone ? (
                           <span className="text-emerald-400 font-bold">✓</span>
                         ) : !accessible ? (
-                          <span className="text-slate-500" title="Bài học bị khóa">🔒</span>
+                          <span className="text-slate-400" title="Bài học bị khóa">🔒</span>
                         ) : isCurrent ? (
                           <span>▶</span>
                         ) : (
-                          <span className="text-slate-500">○</span>
+                          <span className="text-slate-400">○</span>
                         )}
                       </span>
                       <span className="truncate">{lesson.title}</span>
@@ -464,7 +464,7 @@ export default function ClassroomPage() {
 
                     <div className="flex items-center gap-2 flex-shrink-0 pl-2">
                       {lesson.is_preview && (
-                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">
                           Thử
                         </span>
                       )}
@@ -483,7 +483,7 @@ export default function ClassroomPage() {
   );
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col lg:flex-row min-h-[calc(100vh-72px)] bg-[#f6f9fd] text-slate-900 overflow-hidden font-sans">
       {/* Left / Main Classroom Media Area */}
       <div className="flex-1 flex flex-col h-full overflow-y-auto">
         {/* Course 100% Completion Celebration Banner */}
@@ -494,32 +494,32 @@ export default function ClassroomPage() {
         )}
 
         {/* Top Header Bar */}
-        <div className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+        <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-4">
             <Link
-              to={`/lms/courses/${course?.slug || course?.id}`}
-              className="text-slate-400 hover:text-white text-xs font-semibold transition flex items-center gap-1"
+              to={`/lms/courses/${courseId}/classes/${classId}`}
+              className="text-slate-500 hover:text-blue-700 text-xs font-semibold transition flex items-center gap-1"
             >
               <span>←</span>
               <span>Chi Tiết Khóa</span>
             </Link>
-            <div className="h-4 w-[1px] bg-slate-800 hidden sm:block"></div>
-            <h1 className="text-base md:text-lg font-bold text-white truncate max-w-[220px] md:max-w-md">
+            <div className="h-4 w-[1px] bg-slate-200 hidden sm:block"></div>
+            <h1 className="text-base md:text-lg font-bold text-slate-900 truncate max-w-[220px] md:max-w-md">
               {course?.title || "Phòng Học Trực Tuyến"}
             </h1>
           </div>
 
           {/* Progress Indicator */}
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-400 font-medium hidden sm:inline">Tiến độ khóa học:</span>
-            <div className="w-28 md:w-36 bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700">
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline">Tiến độ khóa học:</span>
+            <div className="w-28 md:w-36 bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
               <div
                 className="bg-emerald-500 h-full rounded-full transition-all duration-300 shadow-sm shadow-emerald-500/50"
                 style={{ width: `${progressPercent}%` }}
               ></div>
             </div>
-            <span className="text-xs font-bold text-emerald-400 font-mono">{progressPercent}%</span>
-            <span className="text-[11px] text-slate-500 hidden md:inline font-mono">
+            <span className="text-xs font-bold text-emerald-600 font-mono">{progressPercent}%</span>
+            <span className="text-[11px] text-slate-400 hidden md:inline font-mono">
               ({completedLessonsCount}/{totalLessonsCount})
             </span>
           </div>
@@ -587,20 +587,20 @@ export default function ClassroomPage() {
         </div>
 
         {/* Lesson Information & Navigation Bar */}
-        <div className="bg-slate-900 border-t border-slate-800 p-5 md:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="bg-white border-t border-slate-200 p-5 md:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/25">
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
                 R2 Secure Stream
               </span>
               {progressMap[activeLesson?.id]?.is_completed && (
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">
                   ✓ Đã hoàn thành
                 </span>
               )}
             </div>
-            <h2 className="text-lg md:text-xl font-bold text-white">{activeLesson?.title}</h2>
-            <p className="text-xs text-slate-400 font-mono">
+            <h2 className="text-lg md:text-xl font-bold text-slate-900">{activeLesson?.title}</h2>
+            <p className="text-xs text-slate-500 font-mono">
               Thời lượng bài giảng: {Math.floor((activeLesson?.duration_seconds || 600) / 60)} phút
             </p>
           </div>
@@ -612,8 +612,8 @@ export default function ClassroomPage() {
               onClick={handleManualComplete}
               className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                 progressMap[activeLesson?.id]?.is_completed
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30"
-                  : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white"
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100"
+                  : "bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200"
               }`}
             >
               <span>{progressMap[activeLesson?.id]?.is_completed ? "✓ Đã Học Xong" : "○ Đánh Dấu Đã Học"}</span>
@@ -623,9 +623,9 @@ export default function ClassroomPage() {
             <button
               disabled={!prevLesson}
               onClick={() => prevLesson && handleSelectLesson(prevLesson)}
-              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs transition disabled:opacity-30 disabled:hover:bg-slate-800 text-left min-w-[110px]"
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition disabled:opacity-30 disabled:hover:bg-slate-100 text-left min-w-[110px]"
             >
-              <span className="text-[9px] text-slate-400 uppercase font-bold block">← Bài Trước</span>
+              <span className="text-[9px] text-slate-500 uppercase font-bold block">← Bài Trước</span>
               <span className="truncate block max-w-[120px]">{prevLesson ? prevLesson.title : "Hết"}</span>
             </button>
 
@@ -633,74 +633,74 @@ export default function ClassroomPage() {
             <button
               disabled={!nextLesson}
               onClick={() => nextLesson && handleSelectLesson(nextLesson)}
-              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition disabled:opacity-30 disabled:hover:bg-rose-600 shadow-md shadow-rose-600/20 text-right min-w-[110px]"
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition disabled:opacity-30 disabled:hover:bg-blue-600 shadow-md shadow-blue-600/20 text-right min-w-[110px]"
             >
-              <span className="text-[9px] text-rose-200 uppercase font-bold block">Bài Tiếp Theo →</span>
+              <span className="text-[9px] text-blue-100 uppercase font-bold block">Bài Tiếp Theo →</span>
               <span className="truncate block max-w-[120px]">{nextLesson ? nextLesson.title : "Hết"}</span>
             </button>
           </div>
         </div>
 
         {/* Tab System below video */}
-        <div className="bg-slate-900 border-t border-slate-800 flex-1 flex flex-col min-h-[420px]">
+        <div className="bg-white border-t border-slate-200 flex-1 flex flex-col min-h-[420px]">
           {/* Vercel Underline Glow Tab Navigation */}
-          <div className="flex border-b border-white/[0.08] bg-slate-950/40 backdrop-blur-md overflow-x-auto px-6 gap-6">
+          <div className="flex border-b border-slate-200 bg-white overflow-x-auto px-6 gap-6">
             <button
               onClick={() => setActiveTab("content")}
               className={`group relative py-3.5 text-xs font-semibold tracking-wide transition-colors duration-200 flex items-center gap-2 whitespace-nowrap ${
-                activeTab === "content" ? "text-white" : "text-slate-400 hover:text-slate-200"
+                activeTab === "content" ? "text-blue-700" : "text-slate-500 hover:text-slate-900"
               }`}
             >
               <span>📚 Tổng Quan</span>
               {activeTab === "content" && (
-                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-rose-500 via-rose-400 to-rose-500 shadow-[0_-2px_10px_rgba(244,63,94,0.8)] rounded-full" />
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-600 rounded-full" />
               )}
             </button>
             <button
               onClick={() => setActiveTab("notes")}
               className={`group relative py-3.5 text-xs font-semibold tracking-wide transition-colors duration-200 flex items-center gap-2 whitespace-nowrap ${
-                activeTab === "notes" ? "text-white" : "text-slate-400 hover:text-slate-200"
+                activeTab === "notes" ? "text-blue-700" : "text-slate-500 hover:text-slate-900"
               }`}
             >
               <span>📝 Ghi Chú Cá Nhân</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono border ${
                 activeTab === "notes"
-                  ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
-                  : "bg-slate-800 text-slate-400 border-white/[0.06]"
+                  ? "bg-blue-50 text-blue-700 border-blue-100"
+                  : "bg-slate-100 text-slate-500 border-slate-200"
               }`}>
                 {notes.length}
               </span>
               {activeTab === "notes" && (
-                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-rose-500 via-rose-400 to-rose-500 shadow-[0_-2px_10px_rgba(244,63,94,0.8)] rounded-full" />
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-600 rounded-full" />
               )}
             </button>
             <button
               onClick={() => setActiveTab("qa")}
               className={`group relative py-3.5 text-xs font-semibold tracking-wide transition-colors duration-200 flex items-center gap-2 whitespace-nowrap ${
-                activeTab === "qa" ? "text-white" : "text-slate-400 hover:text-slate-200"
+                activeTab === "qa" ? "text-blue-700" : "text-slate-500 hover:text-slate-900"
               }`}
             >
               <span>💬 Hỏi Đáp & Thảo Luận</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono border ${
                 activeTab === "qa"
-                  ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
-                  : "bg-slate-800 text-slate-400 border-white/[0.06]"
+                  ? "bg-blue-50 text-blue-700 border-blue-100"
+                  : "bg-slate-100 text-slate-500 border-slate-200"
               }`}>
                 {comments.length}
               </span>
               {activeTab === "qa" && (
-                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-rose-500 via-rose-400 to-rose-500 shadow-[0_-2px_10px_rgba(244,63,94,0.8)] rounded-full" />
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-600 rounded-full" />
               )}
             </button>
             <button
               onClick={() => setActiveTab("resources")}
               className={`group relative py-3.5 text-xs font-semibold tracking-wide transition-colors duration-200 flex items-center gap-2 whitespace-nowrap ${
-                activeTab === "resources" ? "text-white" : "text-slate-400 hover:text-slate-200"
+                activeTab === "resources" ? "text-blue-700" : "text-slate-500 hover:text-slate-900"
               }`}
             >
               <span>📎 Tài Liệu Bài Giảng</span>
               {activeTab === "resources" && (
-                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-rose-500 via-rose-400 to-rose-500 shadow-[0_-2px_10px_rgba(244,63,94,0.8)] rounded-full" />
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-600 rounded-full" />
               )}
             </button>
           </div>
@@ -711,21 +711,21 @@ export default function ClassroomPage() {
             {activeTab === "content" && (
               <div className="space-y-6 max-w-3xl leading-relaxed">
                 <div>
-                  <h3 className="text-base font-bold text-white mb-2">Giới thiệu bài học</h3>
-                  <p className="text-sm text-slate-300">
-                    <strong className="text-rose-400">&ldquo;{activeLesson?.title}&rdquo;</strong>
+                  <h3 className="text-base font-bold text-slate-900 mb-2">Giới thiệu bài học</h3>
+                  <p className="text-sm text-slate-600">
+                    <strong className="text-blue-700">&ldquo;{activeLesson?.title}&rdquo;</strong>
                     {activeLesson?.description
                       ? ` — ${activeLesson.description}`
                       : " chưa có mô tả chi tiết. Hãy theo dõi video và hoàn thành bài học theo lộ trình."}
                   </p>
                 </div>
 
-                <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-3">
-                  <h4 className="font-bold text-slate-200 text-sm flex items-center gap-2">
-                    <span className="text-rose-400">🎯</span>
+                <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <span className="text-blue-600">🎯</span>
                     <span>Thông tin bài học:</span>
                   </h4>
-                  <p className="text-xs text-slate-300">
+                  <p className="text-xs text-slate-600">
                     {activeLesson?.has_video ? "Video đã được cấp quyền theo enrollment của bạn." : "Video chưa được gắn cho bài học này."}
                   </p>
                 </div>
@@ -736,11 +736,11 @@ export default function ClassroomPage() {
             {activeTab === "notes" && (
               <div className="space-y-6 max-w-3xl">
                 {/* Note creation input form */}
-                <form onSubmit={handleAddNote} className="space-y-3 bg-slate-950/50 p-4 border border-slate-800 rounded-2xl">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
+                <form onSubmit={handleAddNote} className="space-y-3 bg-slate-50 p-4 border border-slate-200 rounded-2xl">
+                  <div className="flex items-center justify-between text-xs text-slate-500">
                     <span>Thêm ghi chú học tập</span>
                     <span>
-                      Vị trí video: <strong className="text-rose-400 font-mono bg-rose-500/10 px-2 py-0.5 rounded">{formatTime(currentTime)}</strong>
+                      Vị trí video: <strong className="text-blue-700 font-mono bg-blue-50 px-2 py-0.5 rounded">{formatTime(currentTime)}</strong>
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -749,12 +749,12 @@ export default function ClassroomPage() {
                       value={noteText}
                       onChange={(e) => setNoteText(e.target.value)}
                       placeholder="Ghi chú kiến thức hoặc câu hỏi cần xem lại..."
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500"
+                      className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-blue-400"
                     />
                     <button
                       type="submit"
                       disabled={submittingNote || !noteText.trim()}
-                      className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-5 rounded-xl transition text-sm flex-shrink-0"
+                      className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold px-5 rounded-xl transition text-sm flex-shrink-0"
                     >
                       {submittingNote ? "Đang lưu..." : "Lưu Ghi Chú"}
                     </button>
@@ -768,21 +768,21 @@ export default function ClassroomPage() {
                     {notes.map((note) => (
                       <div
                         key={note.id}
-                        className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-start justify-between gap-4"
+                        className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start justify-between gap-4"
                       >
                         <div className="space-y-1.5">
                           <button
                             onClick={() => handleSeek(note.timestamp_s || 0)}
-                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-rose-500/10 text-rose-400 text-xs font-bold font-mono hover:bg-rose-500/20 transition border border-rose-500/20"
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold font-mono hover:bg-blue-100 transition border border-blue-100"
                             title="Nhấp để phát video tại thời điểm này"
                           >
                             ⏱️ {formatTime(note.timestamp_s || 0)}
                           </button>
-                          <p className="text-sm text-slate-200">{note.content}</p>
+                          <p className="text-sm text-slate-700">{note.content}</p>
                         </div>
                         <button
                           onClick={() => handleDeleteNote(note.id)}
-                          className="text-slate-500 hover:text-rose-400 p-1 transition text-xs flex-shrink-0"
+                          className="text-slate-400 hover:text-rose-600 p-1 transition text-xs flex-shrink-0"
                           title="Xóa ghi chú"
                         >
                           ✕
@@ -805,12 +805,12 @@ export default function ClassroomPage() {
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
                       placeholder="Đặt câu hỏi thảo luận với giảng viên & học viên..."
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-rose-500"
+                      className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-blue-400"
                     />
                     <button
                       type="submit"
                       disabled={submittingComment || !commentText.trim()}
-                      className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-6 rounded-xl transition text-sm flex-shrink-0"
+                      className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold px-6 rounded-xl transition text-sm flex-shrink-0"
                     >
                       Gửi
                     </button>
@@ -828,28 +828,28 @@ export default function ClassroomPage() {
                       const commentReplies = comment.replies || comments.filter((c) => String(c.parent_id) === String(comment.id));
 
                       return (
-                        <div key={comment.id} className="space-y-3 border-b border-slate-800/60 pb-5 last:border-0">
+                        <div key={comment.id} className="space-y-3 border-b border-slate-100 pb-5 last:border-0">
                           <div className="flex gap-3.5 items-start">
-                            <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-800 flex-shrink-0 border border-slate-700">
+                            <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200">
                               <img src={avatar} alt={username} className="w-full h-full object-cover" />
                             </div>
                             <div className="flex-1 space-y-1">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold text-white">{username}</span>
+                                <span className="text-sm font-bold text-slate-900">{username}</span>
                                 {role === "admin" && (
-                                  <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                                  <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-100">
                                     Giảng viên
                                   </span>
                                 )}
-                                <span className="text-[10px] text-slate-500 font-mono">
+                                <span className="text-[10px] text-slate-400 font-mono">
                                   {comment.created_at ? new Date(comment.created_at).toLocaleDateString("vi-VN") : "Hôm nay"}
                                 </span>
                               </div>
-                              <p className="text-sm text-slate-300 leading-relaxed font-light">{comment.content}</p>
+                              <p className="text-sm text-slate-700 leading-relaxed font-light">{comment.content}</p>
                               <div className="flex items-center gap-4 text-xs pt-1">
                                 <button
                                   onClick={() => setReplyToId(replyToId === comment.id ? null : comment.id)}
-                                  className="text-slate-400 hover:text-white font-semibold transition text-[11px]"
+                                  className="text-slate-500 hover:text-blue-700 font-semibold transition text-[11px]"
                                 >
                                   {replyToId === comment.id ? "Đóng trả lời" : "Trả lời"}
                                 </button>
@@ -866,20 +866,20 @@ export default function ClassroomPage() {
                                 const replyRole = reply.role || reply.user?.role;
 
                                 return (
-                                  <div key={reply.id} className="flex gap-3 items-start bg-slate-900/40 p-3 rounded-xl border border-slate-800/60">
-                                    <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-800 flex-shrink-0 border border-slate-700">
+                                  <div key={reply.id} className="flex gap-3 items-start bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                    <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200">
                                       <img src={replyAvatar} alt={replyUsername} className="w-full h-full object-cover" />
                                     </div>
                                     <div className="flex-1 space-y-1">
                                       <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-white">{replyUsername}</span>
+                                        <span className="text-xs font-bold text-slate-900">{replyUsername}</span>
                                         {replyRole === "admin" && (
-                                          <span className="text-[8px] uppercase font-bold px-1 py-0.2 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                                          <span className="text-[8px] uppercase font-bold px-1 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-100">
                                             Giảng viên
                                           </span>
                                         )}
                                       </div>
-                                      <p className="text-xs text-slate-300 leading-relaxed font-light">{reply.content}</p>
+                                      <p className="text-xs text-slate-700 leading-relaxed font-light">{reply.content}</p>
                                     </div>
                                   </div>
                                 );
@@ -895,12 +895,12 @@ export default function ClassroomPage() {
                                 value={replyText}
                                 onChange={(e) => setReplyText(e.target.value)}
                                 placeholder={`Trả lời ${username}...`}
-                                className="flex-1 bg-slate-950/70 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
+                                className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-400"
                               />
                               <button
                                 type="submit"
                                 disabled={submittingComment || !replyText.trim()}
-                                className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-bold px-4 rounded-xl transition text-xs flex-shrink-0"
+                                className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold px-4 rounded-xl transition text-xs flex-shrink-0"
                               >
                                 Gửi
                               </button>
@@ -917,7 +917,7 @@ export default function ClassroomPage() {
             {/* RESOURCES TAB */}
             {activeTab === "resources" && (
               <div className="space-y-4 max-w-3xl">
-                <h3 className="text-base font-bold text-white mb-2">Tài liệu học tập đi kèm bài giảng</h3>
+                <h3 className="text-base font-bold text-slate-900 mb-2">Tài liệu học tập đi kèm bài giảng</h3>
                 <p className="text-sm text-slate-500 py-8 text-center">
                   Bài học này chưa có tài liệu đính kèm.
                 </p>
@@ -928,10 +928,10 @@ export default function ClassroomPage() {
       </div>
 
       {/* Curriculum Sidebar (Desktop - hidden on mobile) */}
-      <div className="hidden lg:flex w-96 bg-slate-900 border-l border-slate-800 flex-col h-full">
-        <div className="p-5 border-b border-slate-800">
-          <h3 className="font-bold text-base text-white mb-1">Nội Dung Khóa Học</h3>
-          <p className="text-xs text-slate-400">
+      <div className="hidden lg:flex w-96 bg-white border-l border-slate-200 flex-col h-full">
+        <div className="p-5 border-b border-slate-200">
+          <h3 className="font-bold text-base text-slate-900 mb-1">Nội Dung Khóa Học</h3>
+          <p className="text-xs text-slate-500">
             Đã hoàn thành {completedLessonsCount} / {totalLessonsCount} bài giảng
           </p>
         </div>
@@ -944,7 +944,7 @@ export default function ClassroomPage() {
       {/* Mobile Drawer Trigger Floating Button */}
       <button
         onClick={() => setShowMobileSidebar(true)}
-        className="lg:hidden fixed bottom-6 right-6 z-40 bg-rose-600 hover:bg-rose-500 text-white font-bold p-4 rounded-full shadow-2xl flex items-center justify-center border border-rose-500/30"
+        className="lg:hidden fixed bottom-6 right-6 z-40 bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-full shadow-2xl flex items-center justify-center border border-blue-500/30"
         title="Xem danh sách bài học"
       >
         📚
@@ -954,17 +954,17 @@ export default function ClassroomPage() {
       {showMobileSidebar && (
         <div className="fixed inset-0 z-50 lg:hidden flex flex-col justify-end bg-black/70 backdrop-blur-sm">
           <div className="absolute inset-0" onClick={() => setShowMobileSidebar(false)}></div>
-          <div className="bg-slate-900 border-t border-slate-800 rounded-t-3xl max-h-[75vh] w-full flex flex-col z-10 overflow-hidden shadow-2xl">
-            <div className="p-4.5 border-b border-slate-800 flex items-center justify-between px-5 py-4">
+          <div className="bg-white border-t border-slate-200 rounded-t-3xl max-h-[75vh] w-full flex flex-col z-10 overflow-hidden shadow-2xl">
+            <div className="p-4.5 border-b border-slate-200 flex items-center justify-between px-5 py-4">
               <div>
-                <h3 className="font-bold text-white text-base">Nội Dung Khóa Học</h3>
-                <p className="text-xs text-slate-400">
+                <h3 className="font-bold text-slate-900 text-base">Nội Dung Khóa Học</h3>
+                <p className="text-xs text-slate-500">
                   Đã hoàn thành {completedLessonsCount} / {totalLessonsCount} bài học
                 </p>
               </div>
               <button
                 onClick={() => setShowMobileSidebar(false)}
-                className="text-slate-400 hover:text-white font-bold text-lg p-2"
+                className="text-slate-500 hover:text-slate-900 font-bold text-lg p-2"
               >
                 ✕
               </button>
