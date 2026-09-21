@@ -10,6 +10,8 @@ import {
   FiEye,
   FiX,
   FiActivity,
+  FiChevronLeft,
+  FiChevronRight,
   FiZap,
 } from "react-icons/fi";
 import { fetchAdminSyncOverview, fetchAdminDeliveryQueue, retryDeliveryQueueItem } from "../../features/api/lmsClient";
@@ -22,23 +24,30 @@ export default function AdminSyncPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
   const [retryingId, setRetryingId] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, limit: 20 });
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setErrorMessage("");
     try {
       const [ovRes, qRes] = await Promise.all([
         fetchAdminSyncOverview(),
-        fetchAdminDeliveryQueue({ status: statusFilter }),
+        fetchAdminDeliveryQueue({ status: statusFilter, page, limit: 20 }),
       ]);
-      if (ovRes?.data) setOverview(ovRes.data);
-      if (qRes?.data?.items) setQueue(qRes.data.items);
+      if (!ovRes?.success || !qRes?.success) throw new Error(ovRes?.message || qRes?.message || "Không thể tải dữ liệu đồng bộ.");
+      setOverview(ovRes.data || null);
+      setQueue(Array.isArray(qRes.data?.items) ? qRes.data.items : []);
+      setPagination({ total: Number(qRes.data?.total || 0), limit: Number(qRes.data?.limit || 20) });
     } catch (err) {
       console.error("Error loading sync data:", err);
-      toast.error("Không thể tải dữ liệu đồng bộ!");
+      setQueue([]);
+      setErrorMessage(err.message || "Không thể tải dữ liệu đồng bộ!");
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [page, statusFilter]);
 
   useEffect(() => {
     loadData();
@@ -47,16 +56,13 @@ export default function AdminSyncPage() {
   const handleRetry = async (item) => {
     setRetryingId(item.id);
     try {
-      await retryDeliveryQueueItem(item.id);
+      const response = await retryDeliveryQueueItem(item.id);
+      const retriedItem = response?.data;
+      if (!response?.success || !retriedItem) throw new Error(response?.message || "Không thể thử lại job.");
       toast.success(`Đã phát lệnh thử lại cho job #${item.id}! Hệ thống đang tái xử lý.`);
-      // Optimistic update
-      setQueue((prev) =>
-        prev.map((q) =>
-          q.id === item.id ? { ...q, status: "PENDING", retryCount: q.retryCount + 1 } : q
-        )
-      );
-    } catch {
-      toast.error(`Thử lại job #${item.id} thất bại! Kiểm tra kết nối MolyInternal.`);
+      await loadData();
+    } catch (error) {
+      toast.error(error.message || `Thử lại job #${item.id} thất bại!`);
     } finally {
       setRetryingId(null);
     }
@@ -66,12 +72,18 @@ export default function AdminSyncPage() {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
     return (
-      item.id.toLowerCase().includes(term) ||
-      item.eventType.toLowerCase().includes(term) ||
-      item.entityId.toLowerCase().includes(term) ||
-      (item.lastError && item.lastError.toLowerCase().includes(term))
+      String(item.id || "").toLowerCase().includes(term) ||
+      String(item.eventType || "").toLowerCase().includes(term) ||
+      String(item.entityId || "").toLowerCase().includes(term) ||
+      String(item.lastError || "").toLowerCase().includes(term)
     );
   });
+  const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.limit));
+  const canRetry = (item) => ["FAILED", "DEAD_LETTER"].includes(item.status);
+  const changeStatus = (status) => {
+    setStatusFilter(status);
+    setPage(1);
+  };
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -127,6 +139,7 @@ export default function AdminSyncPage() {
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
             Theo dõi trạng thái đồng bộ hai chiều giữa LMS và hệ thống MolyInternal trung tâm.
           </p>
+          {overview?.lastSyncTime && <p className="mt-2 text-[11px] font-mono text-gray-400">Cập nhật queue gần nhất: {new Date(overview.lastSyncTime).toLocaleString("vi-VN")}</p>}
         </div>
         <button
           onClick={loadData}
@@ -205,10 +218,10 @@ export default function AdminSyncPage() {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
         {/* Status Pills */}
         <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-          {["ALL", "PENDING", "FAILED", "DEAD_LETTER"].map((st) => (
+          {["ALL", "PENDING", "PROCESSING", "FAILED", "DEAD_LETTER", "SUCCESS"].map((st) => (
             <button
               key={st}
-              onClick={() => setStatusFilter(st)}
+              onClick={() => changeStatus(st)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
                 statusFilter === st
                   ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
@@ -232,6 +245,13 @@ export default function AdminSyncPage() {
           />
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+          <span>{errorMessage}</span>
+          <button type="button" onClick={loadData} className="shrink-0 font-bold underline">Thử lại</button>
+        </div>
+      )}
 
       {/* Delivery Queue Table */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
@@ -294,14 +314,16 @@ export default function AdminSyncPage() {
                         >
                           <FiEye className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => handleRetry(item)}
-                          disabled={retryingId === item.id}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-[11px] transition shadow-sm"
-                        >
-                          <FiZap className={`w-3.5 h-3.5 ${retryingId === item.id ? "animate-spin" : ""}`} />
-                          <span>Thử lại</span>
-                        </button>
+                        {canRetry(item) && (
+                          <button
+                            onClick={() => handleRetry(item)}
+                            disabled={retryingId === item.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-[11px] transition shadow-sm"
+                          >
+                            <FiZap className={`w-3.5 h-3.5 ${retryingId === item.id ? "animate-spin" : ""}`} />
+                            <span>Thử lại</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -311,6 +333,16 @@ export default function AdminSyncPage() {
           </table>
         </div>
       </div>
+
+      {pagination.total > pagination.limit && (
+        <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+          <span>Hiển thị trang {page}/{totalPages} · {pagination.total} giao dịch</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40"><FiChevronLeft className="h-3.5 w-3.5" /> Trước</button>
+            <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40">Sau <FiChevronRight className="h-3.5 w-3.5" /></button>
+          </div>
+        </div>
+      )}
 
       {/* Payload Drawer / Modal */}
       {selectedItem && (
@@ -367,7 +399,7 @@ export default function AdminSyncPage() {
               >
                 Đóng
               </button>
-              <button
+              {canRetry(selectedItem) && <button
                 onClick={() => {
                   handleRetry(selectedItem);
                   setSelectedItem(null);
@@ -376,7 +408,7 @@ export default function AdminSyncPage() {
               >
                 <FiZap className="w-4 h-4" />
                 <span>Kích hoạt Thử lại ngay</span>
-              </button>
+              </button>}
             </div>
           </div>
         </div>

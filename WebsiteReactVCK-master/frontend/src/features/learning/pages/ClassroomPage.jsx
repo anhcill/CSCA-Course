@@ -354,7 +354,7 @@ export default function ClassroomPage() {
     return (
       <div className="flex min-h-[60vh] bg-[#f6f9fd] items-center justify-center p-6">
         <div className="max-w-md w-full">
-          <LoadingState message="Đang chuẩn bị không gian học tập bảo mật..." count={3} />
+          <LoadingState variant="light" message="Đang chuẩn bị không gian học tập bảo mật..." count={3} />
         </div>
       </div>
     );
@@ -365,6 +365,7 @@ export default function ClassroomPage() {
       <div className="flex min-h-[60vh] bg-[#f6f9fd] items-center justify-center p-6">
         <div className="max-w-md w-full">
           <ErrorState
+            variant="light"
             title="Không Thể Mở Phòng Học"
             message={errorMessage || "Không tìm thấy thông tin khóa học hoặc bạn chưa đăng ký khóa học này."}
             onRetry={loadClassroomData}

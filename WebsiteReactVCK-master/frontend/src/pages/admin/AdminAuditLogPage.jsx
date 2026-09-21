@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import toast from "react-hot-toast";
 import {
   FiFileText,
   FiSearch,
@@ -11,6 +10,8 @@ import {
   FiClock,
   FiEye,
   FiX,
+  FiChevronLeft,
+  FiChevronRight,
 } from "react-icons/fi";
 import { fetchAdminAuditLogs } from "../../features/api/lmsClient";
 
@@ -20,21 +21,26 @@ export default function AdminAuditLogPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [actionFilter, setActionFilter] = useState("ALL");
   const [selectedLog, setSelectedLog] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, limit: 20 });
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
+    setErrorMessage("");
     try {
-      const res = await fetchAdminAuditLogs({ action: actionFilter });
-      if (res?.data?.logs) {
-        setLogs(res.data.logs);
-      }
+      const res = await fetchAdminAuditLogs({ action: actionFilter, page, limit: 20 });
+      if (!res?.success) throw new Error(res?.message || "Không thể tải nhật ký kiểm toán.");
+      setLogs(Array.isArray(res.data?.logs) ? res.data.logs : []);
+      setPagination({ total: Number(res.data?.total || 0), limit: Number(res.data?.limit || 20) });
     } catch (err) {
       console.error("Error loading audit logs:", err);
-      toast.error("Không thể tải nhật ký kiểm toán!");
+      setLogs([]);
+      setErrorMessage(err.message || "Không thể tải nhật ký kiểm toán!");
     } finally {
       setLoading(false);
     }
-  }, [actionFilter]);
+  }, [actionFilter, page]);
 
   useEffect(() => {
     loadLogs();
@@ -45,12 +51,17 @@ export default function AdminAuditLogPage() {
     const term = searchTerm.toLowerCase();
     const matchesSearch =
       !searchTerm ||
-      log.actor.toLowerCase().includes(term) ||
-      log.action.toLowerCase().includes(term) ||
-      log.target.toLowerCase().includes(term) ||
-      log.details.toLowerCase().includes(term);
+      String(log.actor || "").toLowerCase().includes(term) ||
+      String(log.action || "").toLowerCase().includes(term) ||
+      String(log.target || "").toLowerCase().includes(term) ||
+      String(log.details || "").toLowerCase().includes(term);
     return matchesAction && matchesSearch;
   });
+  const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.limit));
+  const changeAction = (action) => {
+    setActionFilter(action);
+    setPage(1);
+  };
 
   return (
     <div className="space-y-8 font-sans pb-16">
@@ -85,7 +96,7 @@ export default function AdminAuditLogPage() {
           {["ALL", "ENTITLEMENT_GRANT", "GRADE_SUBMISSION", "MOLY_BRIDGE_SYNC"].map((act) => (
             <button
               key={act}
-              onClick={() => setActionFilter(act)}
+              onClick={() => changeAction(act)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
                 actionFilter === act
                   ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
@@ -109,6 +120,13 @@ export default function AdminAuditLogPage() {
           />
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+          <span>{errorMessage}</span>
+          <button type="button" onClick={loadLogs} className="shrink-0 font-bold underline">Thử lại</button>
+        </div>
+      )}
 
       {/* Audit Log Table */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
@@ -194,6 +212,16 @@ export default function AdminAuditLogPage() {
           </table>
         </div>
       </div>
+
+      {pagination.total > pagination.limit && (
+        <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+          <span>Hiển thị trang {page}/{totalPages} · {pagination.total} bản ghi</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40"><FiChevronLeft className="h-3.5 w-3.5" /> Trước</button>
+            <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40">Sau <FiChevronRight className="h-3.5 w-3.5" /></button>
+          </div>
+        </div>
+      )}
 
       {/* Log Detail Modal */}
       {selectedLog && (

@@ -63,3 +63,9 @@
 - Workspace duy trì `courseId + classId` cho toàn bộ điều hướng Tổng quan, Bài học, Bài tập, Lịch, Tài liệu và Kết quả.
 - Tổng quan, kết quả, lựa chọn lớp và chrome của phòng học dùng visual system sáng của LMS; vùng phát video vẫn có nền tối để bảo đảm trải nghiệm xem bài học.
 - Điểm, tài liệu, lịch và CTA chỉ lấy từ workspace API của lớp đang mở.
+
+## Tiêu chí nghiệm thu Phase 4
+
+- Mọi loading, empty và error state trên visual system sáng dùng state component sáng tương ứng; các màn tối legacy không bị thay đổi mặc định.
+- Admin sync queue và audit log phân trang từ API thay vì chỉ đọc trang đầu, đồng thời có retry/error state rõ ràng.
+- Chỉ delivery job ở trạng thái `FAILED` hoặc `DEAD_LETTER` mới hiển thị hành động retry; retry luôn tải lại overview/queue từ backend.

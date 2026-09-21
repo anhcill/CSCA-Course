@@ -58,7 +58,7 @@ export default function StudentCourseListPage() {
   }
 
   if (error) {
-    return <div className="bg-[#f6f9fd] px-4 py-12 sm:px-8"><ErrorState title="Chưa thể tải khóa học" message={error} onRetry={loadCourses} /></div>;
+    return <div className="bg-[#f6f9fd] px-4 py-12 sm:px-8"><ErrorState variant="light" title="Chưa thể tải khóa học" message={error} onRetry={loadCourses} /></div>;
   }
 
   return (

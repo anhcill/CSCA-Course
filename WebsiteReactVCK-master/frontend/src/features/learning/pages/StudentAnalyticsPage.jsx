@@ -41,7 +41,7 @@ export default function StudentAnalyticsPage() {
   }
 
   if (error) {
-    return <div className="bg-[#f6f9fd] px-4 py-12 sm:px-8"><ErrorState title="Chưa thể tải phân tích" message={error} onRetry={loadAnalytics} /></div>;
+    return <div className="bg-[#f6f9fd] px-4 py-12 sm:px-8"><ErrorState variant="light" title="Chưa thể tải phân tích" message={error} onRetry={loadAnalytics} /></div>;
   }
 
   return (

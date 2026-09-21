@@ -162,7 +162,7 @@ export default function StudentDashboardPage() {
   if (error) {
     return (
       <div className="bg-[#f6f9fd] px-4 py-12 sm:px-8">
-        <ErrorState title="Chưa thể tải dashboard" message={error} onRetry={loadDashboard} />
+        <ErrorState variant="light" title="Chưa thể tải dashboard" message={error} onRetry={loadDashboard} />
       </div>
     );
   }

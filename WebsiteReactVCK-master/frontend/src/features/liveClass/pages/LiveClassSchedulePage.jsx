@@ -109,7 +109,7 @@ export default function LiveClassSchedulePage() {
 
         <section className="rounded-2xl border border-slate-100 bg-white p-2 shadow-sm"><div className="flex flex-wrap gap-1">{[["all", "Tất cả"], ["today", "Hôm nay"], ["upcoming", "Sắp diễn ra"], ["completed", "Đã kết thúc"]].map(([value, label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${filter === value ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}>{label}</button>)}</div></section>
 
-        {loading ? <LoadingState message="Đang tải lịch học..." count={3} /> : errorMessage ? <ErrorState title="Không tải được lịch học" message={errorMessage} onRetry={loadSchedule} /> : visibleSessions.length === 0 ? <EmptyState icon={CalendarDays} title="Chưa có buổi học phù hợp" description="Lịch học sẽ xuất hiện tại đây khi giáo viên lên lịch cho lớp của bạn." /> : (
+        {loading ? <LoadingState variant="light" message="Đang tải lịch học..." count={3} /> : errorMessage ? <ErrorState variant="light" title="Không tải được lịch học" message={errorMessage} onRetry={loadSchedule} /> : visibleSessions.length === 0 ? <EmptyState variant="light" icon={CalendarDays} title="Chưa có buổi học phù hợp" description="Lịch học sẽ xuất hiện tại đây khi giáo viên lên lịch cho lớp của bạn." /> : (
           <section className="space-y-3">{visibleSessions.map((session) => {
             const state = stateStyle[session.uiState];
             const isJoinable = ["live", "open"].includes(session.uiState);

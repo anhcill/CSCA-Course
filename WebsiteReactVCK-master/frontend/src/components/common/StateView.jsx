@@ -16,12 +16,17 @@ import {
 export function LoadingState({ 
   type = 'cards', 
   count = 3, 
-  message = 'Đang tải dữ liệu...' 
+  message = 'Đang tải dữ liệu...',
+  variant = 'dark',
 }) {
+  const isLight = variant === 'light';
+  const skeletonCard = isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/60 border-white/10';
+  const skeletonFill = isLight ? 'bg-slate-100' : 'bg-slate-800';
+  const skeletonMuted = isLight ? 'bg-slate-50' : 'bg-slate-800/60';
   return (
     <div className="w-full py-8 space-y-6" aria-live="polite" aria-busy="true">
-      <div className="flex items-center gap-3 text-slate-400 text-xs font-semibold uppercase tracking-wider">
-        <div className="h-4 w-4 rounded-full border-2 border-rose-500 border-t-transparent animate-spin" />
+      <div className={`flex items-center gap-3 text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+        <div className={`h-4 w-4 rounded-full border-2 border-t-transparent animate-spin ${isLight ? 'border-blue-600' : 'border-rose-500'}`} />
         <span>{message}</span>
       </div>
 
@@ -30,17 +35,17 @@ export function LoadingState({
           {Array.from({ length: count }).map((_, idx) => (
             <div 
               key={idx} 
-              className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 space-y-4 animate-pulse"
+              className={`${skeletonCard} border rounded-2xl p-6 space-y-4 animate-pulse`}
             >
-              <div className="h-36 bg-slate-800/70 rounded-xl" />
+              <div className={`h-36 rounded-xl ${skeletonMuted}`} />
               <div className="space-y-2">
-                <div className="h-4 bg-slate-800 rounded w-1/3" />
-                <div className="h-6 bg-slate-800 rounded w-3/4" />
-                <div className="h-3 bg-slate-800/60 rounded w-full" />
+                <div className={`h-4 rounded w-1/3 ${skeletonFill}`} />
+                <div className={`h-6 rounded w-3/4 ${skeletonFill}`} />
+                <div className={`h-3 rounded w-full ${skeletonMuted}`} />
               </div>
-              <div className="pt-4 border-t border-white/5 flex justify-between items-center">
-                <div className="h-4 bg-slate-800 rounded w-1/4" />
-                <div className="h-8 bg-slate-800 rounded-lg w-1/3" />
+              <div className={`pt-4 border-t flex justify-between items-center ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
+                <div className={`h-4 rounded w-1/4 ${skeletonFill}`} />
+                <div className={`h-8 rounded-lg w-1/3 ${skeletonFill}`} />
               </div>
             </div>
           ))}
@@ -52,23 +57,23 @@ export function LoadingState({
           {Array.from({ length: count }).map((_, idx) => (
             <div 
               key={idx} 
-              className="bg-slate-900/60 border border-white/10 rounded-xl p-4 flex items-center justify-between animate-pulse"
+              className={`${skeletonCard} border rounded-xl p-4 flex items-center justify-between animate-pulse`}
             >
               <div className="space-y-2 w-2/3">
-                <div className="h-4 bg-slate-800 rounded w-1/2" />
-                <div className="h-3 bg-slate-800/60 rounded w-3/4" />
+                <div className={`h-4 rounded w-1/2 ${skeletonFill}`} />
+                <div className={`h-3 rounded w-3/4 ${skeletonMuted}`} />
               </div>
-              <div className="h-8 bg-slate-800 rounded-lg w-24" />
+              <div className={`h-8 rounded-lg w-24 ${skeletonFill}`} />
             </div>
           ))}
         </div>
       )}
 
       {type === 'detail' && (
-        <div className="bg-slate-900/60 border border-white/10 rounded-3xl p-8 space-y-6 animate-pulse">
-          <div className="h-8 bg-slate-800 rounded w-1/2" />
-          <div className="h-4 bg-slate-800/60 rounded w-3/4" />
-          <div className="h-64 bg-slate-800/40 rounded-2xl" />
+        <div className={`${skeletonCard} border rounded-3xl p-8 space-y-6 animate-pulse`}>
+          <div className={`h-8 rounded w-1/2 ${skeletonFill}`} />
+          <div className={`h-4 rounded w-3/4 ${skeletonMuted}`} />
+          <div className={`h-64 rounded-2xl ${skeletonMuted}`} />
         </div>
       )}
     </div>
@@ -84,22 +89,24 @@ export function EmptyState({
   description = 'Hiện tại chưa có nội dung nào để hiển thị trong mục này.', 
   actionLabel, 
   actionTo, 
-  onAction 
+  onAction,
+  variant = 'dark',
 }) {
+  const isLight = variant === 'light';
   return (
-    <div className="w-full rounded-3xl border border-white/10 bg-slate-900/40 p-8 sm:p-12 text-center backdrop-blur-sm">
-      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-slate-800/60 text-slate-400 shadow-inner">
+    <div className={`w-full rounded-3xl border p-8 sm:p-12 text-center ${isLight ? 'border-slate-200 bg-white shadow-sm' : 'border-white/10 bg-slate-900/40 backdrop-blur-sm'}`}>
+      <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border shadow-inner ${isLight ? 'border-blue-100 bg-blue-50 text-blue-600' : 'border-white/10 bg-slate-800/60 text-slate-400'}`}>
         <Icon className="h-8 w-8" />
       </div>
-      <h3 className="text-lg sm:text-xl font-bold text-white mb-2">{title}</h3>
-      <p className="mx-auto max-w-md text-sm text-slate-400 mb-6 leading-relaxed">
+      <h3 className={`text-lg sm:text-xl font-bold mb-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>{title}</h3>
+      <p className={`mx-auto max-w-md text-sm mb-6 leading-relaxed ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
         {description}
       </p>
 
       {actionLabel && (actionTo ? (
         <Link 
           to={actionTo}
-          className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-rose-600/30 transition hover:bg-rose-500"
+          className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-lg transition ${isLight ? 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700' : 'bg-rose-600 shadow-rose-600/30 hover:bg-rose-500'}`}
         >
           {actionLabel}
         </Link>
@@ -107,7 +114,7 @@ export function EmptyState({
         <button
           type="button"
           onClick={onAction}
-          className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-rose-600/30 transition hover:bg-rose-500"
+          className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-lg transition ${isLight ? 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700' : 'bg-rose-600 shadow-rose-600/30 hover:bg-rose-500'}`}
         >
           {actionLabel}
         </button>
@@ -122,22 +129,24 @@ export function EmptyState({
 export function ErrorState({ 
   title = 'Đã xảy ra lỗi tải dữ liệu', 
   message = 'Không thể kết nối đến máy chủ hoặc phiên làm việc đã hết hạn.', 
-  onRetry 
+  onRetry,
+  variant = 'dark',
 }) {
+  const isLight = variant === 'light';
   return (
-    <div className="w-full rounded-3xl border border-red-500/20 bg-red-950/20 p-8 sm:p-10 text-center">
-      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-red-500/30 bg-red-900/30 text-red-400">
+    <div className={`w-full rounded-3xl border p-8 sm:p-10 text-center ${isLight ? 'border-rose-100 bg-rose-50/70' : 'border-red-500/20 bg-red-950/20'}`}>
+      <div className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border ${isLight ? 'border-rose-100 bg-white text-rose-600' : 'border-red-500/30 bg-red-900/30 text-red-400'}`}>
         <AlertCircle className="h-7 w-7" />
       </div>
-      <h3 className="text-lg sm:text-xl font-bold text-white mb-2">{title}</h3>
-      <p className="mx-auto max-w-md text-sm text-red-200/70 mb-6">
+      <h3 className={`text-lg sm:text-xl font-bold mb-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>{title}</h3>
+      <p className={`mx-auto max-w-md text-sm mb-6 ${isLight ? 'text-slate-600' : 'text-red-200/70'}`}>
         {message}
       </p>
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
-          className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-600/20 px-5 py-2.5 text-sm font-bold text-red-300 transition hover:bg-red-600/30"
+          className={`inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-sm font-bold transition ${isLight ? 'border-rose-200 bg-white text-rose-700 hover:bg-rose-100' : 'border-red-500/30 bg-red-600/20 text-red-300 hover:bg-red-600/30'}`}
         >
           <RefreshCw className="h-4 w-4" /> Thử lại
         </button>

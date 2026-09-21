@@ -34,7 +34,7 @@ export default function CourseWorkspaceLayout() {
   useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
 
   if (loading) return <div className="flex min-h-[55vh] items-center justify-center bg-[#f6f9fd]"><div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-600 shadow-sm"><LoaderCircle className="h-5 w-5 animate-spin text-blue-600" /> Đang mở không gian khóa học...</div></div>;
-  if (!workspace) return <div className="bg-[#f6f9fd] px-4 py-12"><div className="mx-auto max-w-xl space-y-4"><ErrorState title="Chưa thể mở khóa học" message={error} onRetry={loadWorkspace} /><div className="text-center"><Link to={`/lms/courses/${courseId}/classes`} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"><ArrowLeft className="h-4 w-4" /> Chọn lớp học</Link></div></div></div>;
+  if (!workspace) return <div className="bg-[#f6f9fd] px-4 py-12"><div className="mx-auto max-w-xl space-y-4"><ErrorState variant="light" title="Chưa thể mở khóa học" message={error} onRetry={loadWorkspace} /><div className="text-center"><Link to={`/lms/courses/${courseId}/classes`} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"><ArrowLeft className="h-4 w-4" /> Chọn lớp học</Link></div></div></div>;
 
   const { course = {}, progress = {}, selectedClass = {} } = workspace;
   const completedLessons = Number(progress.completedLessons || 0);
