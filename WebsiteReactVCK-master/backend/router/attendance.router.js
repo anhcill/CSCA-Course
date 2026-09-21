@@ -1,8 +1,13 @@
 import express from "express";
+import crypto from "crypto";
 import { getClient, query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
+import {
+  attemptManagementAttendanceDeliveryById,
+  enqueueManagementAttendanceDelivery,
+} from "../services/managementAttendanceDelivery.service.js";
 
 const router = express.Router();
 
@@ -388,8 +393,9 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
   try {
     await client.query("BEGIN");
     const sessionResult = await client.query(
-      `SELECT cs.id, cs.live_class_id, cs.status, lc.instructor_id
-       FROM class_sessions cs
+       `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
+               lc.instructor_id, lc.management_class_source_id
+        FROM class_sessions cs
        JOIN live_classes lc ON lc.id = cs.live_class_id
        WHERE cs.id = $1
        FOR UPDATE`,
@@ -411,9 +417,10 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
 
     const userIds = normalized.map((item) => item.userId);
     const enrolledResult = await client.query(
-      `SELECT user_id
-       FROM class_enrollments
-       WHERE live_class_id = $1 AND status = 'active' AND user_id = ANY($2::bigint[])`,
+      `SELECT ce.user_id, u.external_student_id
+       FROM class_enrollments ce
+       JOIN users u ON u.id = ce.user_id
+       WHERE ce.live_class_id = $1 AND ce.status = 'active' AND ce.user_id = ANY($2::bigint[])`,
       [session.live_class_id, userIds],
     );
     const enrolledIds = new Set(enrolledResult.rows.map((row) => String(row.user_id)));
@@ -422,6 +429,7 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
       return validationError(res, "Chỉ được điểm danh học viên thuộc lớp của buổi học");
     }
 
+    const checkedAt = new Date().toISOString();
     for (const item of normalized) {
       await client.query(
         `INSERT INTO class_attendance (session_id, user_id, status, note)
@@ -431,12 +439,64 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
         [sessionId, item.userId, item.status, item.note],
       );
     }
+
+    let managementDelivery = {
+      status: "NOT_MANAGED",
+      automatic: false,
+      message: "Lớp này chưa được liên kết với InternalManagement.",
+    };
+    let managementOutboxId = null;
+    if (session.management_class_source_id) {
+      const managementStudentIds = new Map(
+        enrolledResult.rows.map((row) => [String(row.user_id), row.external_student_id]),
+      );
+      const missingMappings = normalized
+        .filter((item) => !managementStudentIds.get(String(item.userId)))
+        .map((item) => item.userId);
+      if (missingMappings.length > 0) {
+        managementDelivery = {
+          status: "BLOCKED",
+          automatic: false,
+          message: "Một số học viên chưa có mã liên kết InternalManagement.",
+          missingLmsUserIds: missingMappings,
+        };
+      } else {
+        const correlationId = `attendance:${sessionId}:${crypto.randomUUID()}`;
+        const outbox = await enqueueManagementAttendanceDelivery(client, {
+          managementClassId: session.management_class_source_id,
+          lmsSession: session,
+          attendance: normalized.map((item) => ({
+            managementStudentId: String(managementStudentIds.get(String(item.userId))),
+            status: item.status,
+            checkedAt,
+            note: item.note || null,
+          })),
+          correlationId,
+        });
+        managementOutboxId = outbox.id;
+        managementDelivery = {
+          status: "PENDING",
+          automatic: true,
+          eventId: outbox.event_id,
+        };
+      }
+    }
     await client.query("COMMIT");
+
+    if (managementOutboxId) {
+      managementDelivery = {
+        ...managementDelivery,
+        ...(await attemptManagementAttendanceDeliveryById(managementOutboxId)),
+        automatic: true,
+      };
+    }
 
     return res.json({
       success: true,
-      data: { sessionId, updatedCount: normalized.length },
-      message: "Điểm danh học viên thành công",
+      data: { sessionId, updatedCount: normalized.length, managementDelivery },
+      message: managementDelivery.status === "SUCCESS"
+        ? "Điểm danh đã được lưu vào InternalManagement"
+        : "Điểm danh học viên thành công",
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});

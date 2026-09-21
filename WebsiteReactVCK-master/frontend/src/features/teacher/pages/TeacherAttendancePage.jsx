@@ -146,9 +146,20 @@ export default function TeacherAttendancePage() {
       });
 
       if (res.success) {
-        toast.success("Đã lưu kết quả điểm danh học viên thành công! 🎉", {
+        const delivery = res.data?.managementDelivery;
+        const message = delivery?.status === "SUCCESS"
+          ? "Đã lưu điểm danh vào hệ thống quản lý."
+          : delivery?.automatic
+            ? "Đã lưu điểm danh; hệ thống quản lý đang tự cập nhật."
+            : "Đã lưu kết quả điểm danh học viên thành công!";
+        toast.success(message, {
           duration: 3500,
         });
+        if (delivery?.status === "BLOCKED") {
+          toast.error("Điểm danh đã lưu tại LMS, nhưng thiếu liên kết học viên với hệ thống quản lý.", {
+            duration: 5000,
+          });
+        }
       } else {
         toast.error(res.message || "Lỗi khi lưu điểm danh!");
       }
