@@ -45,19 +45,19 @@ import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
 
 // LMS feature pages
 import ClassroomPage from "./features/learning/pages/ClassroomPage.jsx";
+import StudentDashboardPage from "./features/learning/pages/StudentDashboardPage.jsx";
 import StudentCourseListPage from "./features/learning/pages/StudentCourseListPage.jsx";
 import CourseClassListPage from "./features/learning/pages/CourseClassListPage.jsx";
 import CourseWorkspaceLayout from "./features/learning/components/CourseWorkspaceLayout.jsx";
 import CourseWorkspaceOverviewPage from "./features/learning/pages/CourseWorkspaceOverviewPage.jsx";
 import CourseResultsPage from "./features/learning/pages/CourseResultsPage.jsx";
+import StudentAnalyticsPage from "./features/learning/pages/StudentAnalyticsPage.jsx";
 import AdminCurriculumPage from "./features/admin/pages/AdminCurriculumPage.jsx";
 import LiveClassSchedulePage from "./features/liveClass/pages/LiveClassSchedulePage.jsx";
 import AssignmentListPage from "./features/assignments/pages/AssignmentListPage.jsx";
 import AssignmentSubmitPage from "./features/assignments/pages/AssignmentSubmitPage.jsx";
 import QuizPlayerPage from "./features/assignments/pages/QuizPlayerPage.jsx";
 import TeacherGradingPage from "./features/assignments/pages/TeacherGradingPage.jsx";
-import LeaderboardPage from "./features/gamification/pages/LeaderboardPage.jsx";
-import CertificatePage from "./features/certificates/pages/CertificatePage.jsx";
 import TeacherHubPage from "./features/admin/pages/TeacherHubPage.jsx";
 import TeacherSchedulePage from "./features/teacher/pages/TeacherSchedulePage.jsx";
 import TeacherAttendancePage from "./features/teacher/pages/TeacherAttendancePage.jsx";
@@ -118,8 +118,14 @@ function AppRoutes() {
       } />
 
       {/* === Student LMS === */}
-      <Route path="/lms" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms" element={<Navigate to="/lms/dashboard" replace />} />
+      <Route path="/lms/dashboard" element={<StudentDashboardPage />} />
       <Route path="/lms/catalog" element={<StudentCourseListPage />} />
+      <Route path="/lms/analytics" element={<StudentAnalyticsPage />} />
+      <Route path="/lms/live-schedule" element={<LiveClassSchedulePage />} />
+      <Route path="/lms/assignments" element={<AssignmentListPage />} />
+      <Route path="/lms/files" element={<StudentFilesPage />} />
+      <Route path="/lms/notifications" element={<NotificationCenterPage />} />
       <Route path="/lms/courses/:courseId/classes" element={<CourseClassListPage />} />
       <Route path="/lms/courses/:courseId/classes/:classId" element={<CourseWorkspaceLayout />}>
         <Route index element={<CourseWorkspaceOverviewPage />} />
@@ -135,15 +141,11 @@ function AppRoutes() {
       <Route path="/lms/courses/:slug" element={<Navigate to="/lms/catalog" replace />} />
       <Route path="/lms/learn/:courseId" element={<CourseClassRedirect />} />
       {/* Legacy entry: the LMS now always begins with the course catalog. */}
-      <Route path="/lms/my-learning" element={<Navigate to="/lms/catalog" replace />} />
-      <Route path="/lms/live-schedule" element={<Navigate to="/lms/catalog" replace />} />
-      <Route path="/lms/assignments" element={<Navigate to="/lms/catalog" replace />} />
+      <Route path="/lms/my-learning" element={<Navigate to="/lms/dashboard" replace />} />
       <Route path="/lms/assignment/:id/submit" element={<Navigate to="/lms/catalog" replace />} />
       <Route path="/lms/quiz/:quizId" element={<Navigate to="/lms/catalog" replace />} />
       <Route path="/lms/leaderboard" element={<Navigate to="/lms/catalog" replace />} />
       <Route path="/lms/certificates" element={<Navigate to="/lms/catalog" replace />} />
-      <Route path="/lms/files" element={<Navigate to="/lms/catalog" replace />} />
-      <Route path="/lms/notifications" element={<Navigate to="/lms/catalog" replace />} />
 
       {/* === Teacher LMS: canonical routes plus migration aliases === */}
       <Route path="/lms/teacher-hub" element={<TeacherHubPage />} />
