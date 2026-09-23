@@ -107,46 +107,46 @@ const AdminLessons = () => {
   if (!currentCourse) return <div className="p-4 text-lg font-semibold">{t('adminLessons_courseNotFound')}</div>;
 
   return (
-    <>
+    <div className="space-y-6 font-sans pb-16">
       <Link
         to="/admin/courses"
-        className="flex items-center px-2 py-1 text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
       >
-        <FiArrowLeft className="mr-2" />
-        {t('adminLessons_backToCourses')}
+        <FiArrowLeft className="w-4 h-4" />
+        <span>{t('adminLessons_backToCourses')}</span>
       </Link>
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400">
-              {t('adminLessons_title')}
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              {t('adminLessons_course')}: {currentCourse.nameCourse}
-              <span className="ml-2 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm">
-                {Array.isArray(lessons) ? lessons.length : 0} {t('adminLessons_lessonsSuffix')}
-              </span>
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setEditingLesson(null);
-                setFormData({
-                  nameLesson: '',
-                  videoUrl: '',
-                  description: '',
-                  timeVideo: '00:00'
-                });
-                setIsModalOpen(true);
-              }}
-              className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-            >
-              <FiPlus className="mr-2" />
-              {t('adminLessons_addLessonButton')}
-            </button>
-          </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-gray-700">
+        <div>
+          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">
+            {t('adminLessons_title')}
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm mt-1">
+            {t('adminLessons_course')}: <strong className="text-blue-600 dark:text-blue-400">{currentCourse?.nameCourse}</strong>
+            <span className="ml-2 px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 rounded-full text-xs font-bold">
+              {Array.isArray(lessons) ? lessons.length : 0} {t('adminLessons_lessonsSuffix')}
+            </span>
+          </p>
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setEditingLesson(null);
+              setFormData({
+                nameLesson: '',
+                videoUrl: '',
+                description: '',
+                timeVideo: '00:00'
+              });
+              setIsModalOpen(true);
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/30"
+          >
+            <FiPlus className="w-4 h-4" />
+            <span>{t('adminLessons_addLessonButton')}</span>
+          </button>
+        </div>
+      </div>
 
         <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -343,8 +343,7 @@ const AdminLessons = () => {
             </div>
           </div>
         )}
-      </div>
-    </>
+    </div>
   );
 };
 

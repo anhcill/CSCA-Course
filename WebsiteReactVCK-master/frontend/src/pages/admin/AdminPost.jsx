@@ -97,25 +97,25 @@ const AdminPost = () => {
         : posts;
 
     return (
-        <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
+        <div className="space-y-6 font-sans pb-16">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-gray-700">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
+                    <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">
                         {t('adminPost_title')}
                     </h1>
-                    <p className="text-gray-600 dark:text-gray-400">
+                    <p className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm mt-1">
                         {t('adminPost_totalPosts')}:
-                        <span className="ml-2 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm">
+                        <span className="ml-2 px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 rounded-full text-xs font-bold">
                             {filteredPosts?.length || 0} {t('adminPost_postsSuffix')}
                         </span>
                     </p>
                 </div>
                 <button
                     onClick={() => setIsModalOpen(true)}
-                    className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/30"
                 >
-                    <FiPlus className="mr-2" />
-                    {t('adminPost_addPostButton')}
+                    <FiPlus className="w-4 h-4" />
+                    <span>{t('adminPost_addPostButton')}</span>
                 </button>
             </div>
 

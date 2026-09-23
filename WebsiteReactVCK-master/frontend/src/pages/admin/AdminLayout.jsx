@@ -7,23 +7,32 @@ const AdminLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
+    setIsSidebarOpen((prev) => !prev);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-800">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       <AdminNavbar toggleSidebar={toggleSidebar} />
-      {/* Thêm overlay khi sidebar mở trên mobile */}
+      
+      {/* Mobile backdrop overlay when sidebar is open */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-30 lg:hidden transition-opacity"
           onClick={toggleSidebar}
+          aria-hidden="true"
         />
       )}
+
+      {/* Admin Sidebar */}
       <Sidebar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
-      {/* Bỏ ml-64 và thêm padding-left cho màn hình lớn */}
-      <main className="pt-16 transition-all duration-300">
-        <div className="p-4">
+
+      {/* Main Content Area - dynamically adjusts padding when sidebar opens/collapses on desktop */}
+      <main
+        className={`pt-16 min-h-screen transition-all duration-300 ease-in-out ${
+          isSidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
+        }`}
+      >
+        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
           <Outlet />
         </div>
       </main>

@@ -68,53 +68,48 @@ const AdminExercises = () => {
 
 
   return (
-    <>
+    <div className="space-y-6 font-sans pb-16">
       <Link
         to={`/admin/courses/${courseId}/lessons`}
-        className="flex items-center px-2 py-1 text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
       >
-        <FiArrowLeft className="mr-2" />
-        {t('adminExercises_backToLessons')}
+        <FiArrowLeft className="w-4 h-4" />
+        <span>{t('adminExercises_backToLessons')}</span>
       </Link>
 
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <div className="relative">
-              <div className="absolute -inset-1 rounded-lg "></div>
-              <div className="relative">
-                <h1 className="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400">
-                  {t('adminExercises_title')}
-                </h1>
-                <div className="mt-3 space-y-2">
-                  <p className="flex items-center text-gray-700 dark:text-gray-300">
-                    <span className="inline-block w-3 h-3 mr-2 bg-blue-500 rounded-full"></span>
-                    {t('adminExercises_lessonNumber')}: <span className="ml-2 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm">{lessonIndex + 1}</span>
-                  </p>
-                  <p className="flex items-center text-gray-700 dark:text-gray-300">
-                    <span className="inline-block w-3 h-3 mr-2 bg-purple-500 rounded-full"></span>
-                    {t('adminExercises_exerciseCount')}: <span className="ml-2 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm">{exercises.length}</span>
-                  </p>
-                </div>
-              </div>
-            </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-gray-700">
+        <div>
+          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">
+            {t('adminExercises_title')}
+          </h1>
+          <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              {t('adminExercises_lessonNumber')}: <strong className="text-gray-900 dark:text-white">{lessonIndex + 1}</strong>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-purple-500" />
+              {t('adminExercises_exerciseCount')}: <strong className="text-gray-900 dark:text-white">{exercises.length}</strong>
+            </span>
           </div>
-          <button
-            onClick={() => {
-              setEditingExercise(null);
-              setFormData({
-                question: '',
-                options: ['', '', '', ''],
-                correctAnswer: ''
-              });
-              setIsModalOpen(true);
-            }}
-            className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-          >
-            <FiPlus className="mr-2" />
-            {t('adminExercises_addExerciseButton')}
-          </button>
         </div>
+
+        <button
+          onClick={() => {
+            setEditingExercise(null);
+            setFormData({
+              question: '',
+              options: ['', '', '', ''],
+              correctAnswer: ''
+            });
+            setIsModalOpen(true);
+          }}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/30"
+        >
+          <FiPlus className="w-4 h-4" />
+          <span>{t('adminExercises_addExerciseButton')}</span>
+        </button>
+      </div>
 
         <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -269,8 +264,7 @@ const AdminExercises = () => {
             </div>
           </div>
         )}
-      </div>
-    </>
+    </div>
   );
 };
 

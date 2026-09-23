@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FiMenu, FiSun, FiMoon } from 'react-icons/fi';
+import { FiMenu, FiSun, FiMoon, FiUser, FiHome, FiLogOut } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuthContext } from '../../context/AuthContext';
@@ -19,125 +19,162 @@ const AdminNavbar = ({ toggleSidebar }) => {
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
+  const langRef = useRef(null);
+  const profileRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (langRef.current && !langRef.current.contains(e.target)) {
+        setShowLangMenu(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setShowProfileMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const changeLanguage = (lng) => {
     i18n.changeLanguage(lng);
+    setShowLangMenu(false);
   };
 
   return (
-    <nav className="bg-white dark:bg-gray-900 fixed w-full z-50 shadow-md">
-      <div className="max-w-7xl mx-auto ">
-        <div className="relative flex items-center h-16 p-5 md:p-10 md:justify-center"> {/* Loại bỏ justify-center mặc định, thêm md:justify-center */}
-          {/* Left side */}
-          <div className="flex items-center md:absolute md:left-5"> {/* Loại bỏ absolute mặc định, thêm md:absolute md:left-5 */}
+    <nav className="fixed top-0 left-0 w-full h-16 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-gray-200 dark:border-slate-800 shadow-sm transition-colors">
+      <div className="w-full h-full px-4 sm:px-6 flex items-center justify-between">
+        {/* Left: Sidebar toggle + Logo */}
+        <div className="flex items-center gap-3 sm:gap-4">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-300 transition"
+            title="Bật/Tắt Menu Sidebar"
+            aria-label="Toggle Sidebar"
+          >
+            <FiMenu className="h-5 w-5" />
+          </button>
+
+          <Link to="/admin/dashboard" className="flex items-center gap-2.5">
+            <Logo className="h-8" />
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              Admin Console
+            </span>
+          </Link>
+        </div>
+
+        {/* Right: Theme Toggle, Language Selector, User Profile */}
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          {/* Dark Mode Toggle */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="p-2.5 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-300 transition"
+            title={isDarkMode ? t('lightMode') : t('darkMode')}
+            aria-label="Toggle Theme"
+          >
+            {isDarkMode ? (
+              <FiSun className="h-4 w-4 text-amber-400" />
+            ) : (
+              <FiMoon className="h-4 w-4 text-gray-600" />
+            )}
+          </button>
+
+          {/* Language Selector */}
+          <div className="relative" ref={langRef}>
             <button
-              onClick={toggleSidebar}
-              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+              type="button"
+              onClick={() => setShowLangMenu(!showLangMenu)}
+              className="flex items-center space-x-1.5 bg-gray-100 dark:bg-slate-800 text-xs font-bold text-gray-700 dark:text-slate-300 rounded-xl px-3 py-2 hover:bg-gray-200 dark:hover:bg-slate-700 transition"
             >
-              <FiMenu className="h-6 w-6 text-gray-600 dark:text-gray-300" />
+              <img
+                src={i18n.language === 'vi' ? VNFlag : UKFlag}
+                alt={i18n.language?.toUpperCase()}
+                className="w-4 h-3 object-cover rounded-sm"
+              />
+              <span>{i18n.language?.toUpperCase() || 'VI'}</span>
             </button>
-          </div>
-          {/* Logo */}
-          <div className="flex-1 flex justify-start md:justify-center"> {/* Thêm justify-start cho mobile */}
-            <Logo className="" />
+
+            {showLangMenu && (
+              <div className="absolute right-0 mt-2 w-32 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-gray-100 dark:border-slate-800 py-1 z-50 animate-fade-in text-xs">
+                <button
+                  type="button"
+                  onClick={() => changeLanguage('vi')}
+                  className="flex items-center space-x-2 w-full px-3 py-2 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
+                >
+                  <img src={VNFlag} alt="VN" className="w-4 h-3 object-cover rounded-sm" />
+                  <span>Tiếng Việt</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeLanguage('en')}
+                  className="flex items-center space-x-2 w-full px-3 py-2 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
+                >
+                  <img src={UKFlag} alt="UK" className="w-4 h-3 object-cover rounded-sm" />
+                  <span>English</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Right side */}
-          <div className="flex items-center space-x-4 md:absolute md:right-5"> {/* Loại bỏ absolute mặc định, thêm md:absolute md:right-5 */}
-            {/* Dark Mode Toggle */}
+          {/* Profile Dropdown */}
+          <div className="relative" ref={profileRef}>
             <button
-              onClick={toggleTheme}
-              className="p-2 rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
-              title={isDarkMode ? t('lightMode') : t('darkMode')}
+              type="button"
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="flex items-center rounded-full hover:ring-2 hover:ring-blue-500/50 transition focus:outline-none"
             >
-              {isDarkMode ? (
-                <FiSun className="h-5 w-5 text-yellow-500" />
-              ) : (
-                <FiMoon className="h-5 w-5 text-gray-600" />
-              )}
+              <img
+                src={getAvatarUrl(authUser)}
+                onError={handleAvatarError}
+                alt={authUser?.username || 'User'}
+                className="h-9 w-9 rounded-full object-cover border border-gray-200 dark:border-slate-700 shadow-sm"
+              />
             </button>
 
-            {/* Language Selector */}
-            <div className="relative">
-              <button
-                onClick={() => setShowLangMenu(!showLangMenu)}
-                className="flex items-center space-x-2 bg-white dark:bg-gray-800 text-sm text-gray-600 dark:text-gray-300 rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <img
-                  src={i18n.language === 'vi' ? VNFlag : UKFlag}
-                  alt={i18n.language.toUpperCase()}
-                  className="w-6 h-4"
-                />
-                <span>{i18n.language.toUpperCase()}</span>
-              </button>
-
-              {showLangMenu && (
-                <div className="absolute right-0 mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border dark:border-gray-700">
-                  <button
-                    onClick={() => {
-                      changeLanguage('vi');
-                      setShowLangMenu(false);
-                    }}
-                    className="flex items-center justify-center bg-white dark:bg-gray-800 space-x-3 w-full px-5 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    <img src={VNFlag} alt="VN" className="w-6 h-4" />
-                    <span>VN</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      changeLanguage('en');
-                      setShowLangMenu(false);
-                    }}
-                    className="flex items-center justify-center bg-white dark:bg-gray-800 space-x-3 w-full px-5 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    <img src={UKFlag} alt="UK" className="w-6 h-4" />
-                    <span>EN</span>
-                  </button>
+            {showProfileMenu && (
+              <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl py-2 border border-gray-100 dark:border-slate-800 z-50 animate-fade-in">
+                <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-800 mb-1">
+                  <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                    {authUser?.fullName || authUser?.username}
+                  </p>
+                  <p className="text-[10px] text-gray-400 font-mono truncate">{authUser?.email}</p>
                 </div>
-              )}
-            </div>
 
-            {/* Profile Menu */}
-            <div className="relative">
-              <button
-                onClick={() => setShowProfileMenu(!showProfileMenu)}
-                className="flex items-center p-0 bg-white dark:bg-gray-800 text-sm text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <img
-                  src={getAvatarUrl(authUser)}
-                  onError={handleAvatarError}
-                  alt={authUser?.username || 'User'}
-                  className="h-10 w-10 rounded-full object-cover border-2 border-gray-200 dark:border-gray-400"
-                />
-              </button>
+                <Link
+                  to="/profile"
+                  className="flex items-center gap-2.5 px-4 py-2 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
+                  onClick={() => setShowProfileMenu(false)}
+                >
+                  <FiUser className="w-4 h-4 text-gray-400" />
+                  <span>{t('profileLink')}</span>
+                </Link>
 
-              {showProfileMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 border dark:border-gray-700">
-                  <Link
-                    to="/profile"
-                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    onClick={() => setShowProfileMenu(false)}
-                  >
-                    {t('profileLink')}
-                  </Link>
-                  <Link
-                    to="/"
-                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    onClick={() => setShowProfileMenu(false)}
-                  >
-                    {t('home')}
-                  </Link>
+                <Link
+                  to="/"
+                  className="flex items-center gap-2.5 px-4 py-2 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
+                  onClick={() => setShowProfileMenu(false)}
+                >
+                  <FiHome className="w-4 h-4 text-gray-400" />
+                  <span>{t('home')}</span>
+                </Link>
+
+                <div className="border-t border-gray-100 dark:border-slate-800 mt-1 pt-1">
                   <button
+                    type="button"
                     onClick={() => {
                       logout();
                       setShowProfileMenu(false);
                     }}
-                    className="block w-full text-left px-4 py-2 text-sm text-red-600 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="flex items-center gap-2.5 w-full text-left px-4 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                   >
-                    {t('logout')}
+                    <FiLogOut className="w-4 h-4" />
+                    <span>{t('logout')}</span>
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

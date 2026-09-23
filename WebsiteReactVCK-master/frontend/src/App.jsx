@@ -39,6 +39,7 @@ import TeacherLmsLayout from "./components/layouts/TeacherLmsLayout.jsx";
 import LmsRouteGuard from "./components/LmsRouteGuard.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { ThemeProvider } from "./context/ThemeContext";
+import { LoadingProvider } from "./context/LoadingContext.jsx";
 import { useAuthContext } from "./context/AuthContext.jsx";
 import { LMS_ROLES, TEACHER_ROLES, USER_ROLES, isTeacherRole } from "./constants/roles";
 import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
@@ -240,7 +241,9 @@ function AppContent() {
 function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <LoadingProvider>
+        <AppContent />
+      </LoadingProvider>
     </ThemeProvider>
   );
 }
