@@ -48,7 +48,8 @@ async function main() {
   try {
     console.log("Connecting to Railway PostgreSQL database...");
     await client.connect();
-    console.log("Connected successfully!");
+    await client.query("SET client_encoding = 'UTF8';");
+    console.log("Connected successfully (encoding: UTF-8)!");
 
     for (const relativePath of filesToRun) {
       console.log(`Running SQL script: ${relativePath}...`);
