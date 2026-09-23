@@ -12,7 +12,7 @@ const useGetCourse = ({ demoFallback = false } = {}) => {
     useEffect(() => {
         const fetchCourses = async () => {
             try {
-                const response = await axios.get('/api/course');
+                const response = await axios.get('/api/courses');
                 const apiCourses = Array.isArray(response.data?.data) ? response.data.data : [];
                 if (apiCourses.length > 0 || !demoFallback) {
                     setCourses(apiCourses);

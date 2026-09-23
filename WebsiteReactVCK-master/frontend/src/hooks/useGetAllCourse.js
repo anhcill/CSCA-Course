@@ -10,7 +10,7 @@ const useGetAllCourses = () => {
     const fetchCourses = async () => {
       try {
         setLoading(true);
-        const response = await axios.get(`/api/course/`);
+        const response = await axios.get(`/api/courses`);
         if (response.data.success) {
           setCourses(response.data.data);
         } else {
