@@ -232,36 +232,36 @@ export default function TeacherGradingPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16">
       {/* Top Breadcrumb & Header */}
-      <div className="bg-slate-900 border-b border-slate-800">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
         <div className="container mx-auto max-w-7xl px-4 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="text-emerald-400 font-bold uppercase tracking-wider font-mono">
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider font-mono">
                 Teacher Workspace
               </span>
               <span>/</span>
               <span>Chấm Điểm & Phản Hồi Bài Tập</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-black text-white">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
               Cổng Chấm Bài Giáo Viên (Grading Workspace)
             </h1>
           </div>
 
           {/* Key Metrics Chips */}
           <div className="flex items-center gap-2">
-            <div className="bg-slate-950 border border-slate-800 px-3.5 py-1.5 rounded-xl text-center">
+            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3.5 py-1.5 rounded-xl text-center shadow-sm">
               <span className="text-[10px] text-slate-500 uppercase font-bold block">Chờ Chấm</span>
-              <span className="text-amber-400 font-mono font-black text-base">{stats.pending}</span>
+              <span className="text-amber-500 dark:text-amber-400 font-mono font-black text-base">{stats.pending}</span>
             </div>
-            <div className="bg-slate-950 border border-slate-800 px-3.5 py-1.5 rounded-xl text-center">
+            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3.5 py-1.5 rounded-xl text-center shadow-sm">
               <span className="text-[10px] text-slate-500 uppercase font-bold block">Đã Chấm</span>
-              <span className="text-emerald-400 font-mono font-black text-base">{stats.graded}</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-mono font-black text-base">{stats.graded}</span>
             </div>
-            <div className="bg-slate-950 border border-slate-800 px-3.5 py-1.5 rounded-xl text-center">
+            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3.5 py-1.5 rounded-xl text-center shadow-sm">
               <span className="text-[10px] text-slate-500 uppercase font-bold block">Điểm TB</span>
-              <span className="text-sky-400 font-mono font-black text-base">{stats.avgScore}</span>
+              <span className="text-sky-600 dark:text-sky-400 font-mono font-black text-base">{stats.avgScore}</span>
             </div>
           </div>
         </div>
@@ -273,15 +273,15 @@ export default function TeacherGradingPage() {
           {/* ══════════════════════════════════════════════════════════
               COLUMN 1: SUBMISSIONS QUEUE (LEFT - 3.5 COLUMNS)
               ══════════════════════════════════════════════════════════ */}
-          <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300">
+          <div className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
                 Hàng Đợi Bài Nộp ({filteredSubs.length})
               </h3>
               <button
                 type="button"
                 onClick={() => setSortByDeadline((p) => (p === "asc" ? "desc" : "asc"))}
-                className="text-[11px] text-slate-400 hover:text-white font-mono flex items-center gap-1"
+                className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-mono flex items-center gap-1"
                 title="Sắp xếp theo hạn nộp"
               >
                 <span>Hạn nộp</span>
@@ -290,7 +290,7 @@ export default function TeacherGradingPage() {
             </div>
 
             {/* Filter Tabs */}
-            <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px]">
+            <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px]">
               {[
                 { id: "pending", label: `Chờ (${stats.pending})` },
                 { id: "graded", label: `Đã chấm (${stats.graded})` },
@@ -303,7 +303,7 @@ export default function TeacherGradingPage() {
                   className={`py-1.5 rounded-lg font-bold transition text-center ${
                     filterStatus === f.id
                       ? "bg-emerald-600 text-white shadow-sm"
-                      : "text-slate-400 hover:text-white"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
                   {f.label}
@@ -318,14 +318,14 @@ export default function TeacherGradingPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Tìm theo tên học viên, bài tập..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-emerald-500"
               />
 
               <div className="flex gap-2">
                 <select
                   value={filterClass}
                   onChange={(e) => setFilterClass(e.target.value)}
-                  className="w-1/2 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-300 focus:outline-none"
+                  className="w-1/2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-700 dark:text-slate-300 focus:outline-none"
                 >
                   <option value="all">Tất cả lớp</option>
                   <option value="HSK4-LIVE-01">HSK4-LIVE-01</option>
@@ -336,7 +336,7 @@ export default function TeacherGradingPage() {
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value)}
-                  className="w-1/2 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-300 focus:outline-none"
+                  className="w-1/2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-700 dark:text-slate-300 focus:outline-none"
                 >
                   <option value="all">Mọi loại bài</option>
                   <option value="homework">Bài luận</option>
@@ -350,14 +350,14 @@ export default function TeacherGradingPage() {
             {loading ? (
               <div className="space-y-3 pt-2">
                 {[1, 2, 3].map((n) => (
-                  <div key={n} className="bg-slate-950 border border-slate-800 rounded-2xl p-4 animate-pulse space-y-2">
-                    <div className="h-4 bg-slate-800 rounded w-1/2" />
-                    <div className="h-3 bg-slate-800 rounded w-3/4" />
+                  <div key={n} className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 animate-pulse space-y-2">
+                    <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/2" />
+                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-3/4" />
                   </div>
                 ))}
               </div>
             ) : filteredSubs.length === 0 ? (
-              <div className="py-12 text-center text-slate-500 text-xs bg-slate-950 rounded-2xl border border-slate-800/80">
+              <div className="py-12 text-center text-slate-500 text-xs bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800/80">
                 Không tìm thấy bài nộp nào trong bộ lọc.
               </div>
             ) : (
@@ -374,11 +374,11 @@ export default function TeacherGradingPage() {
                       className={`w-full text-left p-3.5 rounded-2xl border transition-all ${
                         isSelected
                           ? "bg-emerald-600/10 border-emerald-500 ring-1 ring-emerald-500 shadow-lg shadow-emerald-500/10"
-                          : "bg-slate-950/80 border-slate-800/80 hover:border-slate-700"
+                          : "bg-slate-50/80 dark:bg-slate-950/80 border-slate-200 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700"
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-full bg-slate-800 shrink-0 overflow-hidden flex items-center justify-center border border-white/10">
+                        <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0 overflow-hidden flex items-center justify-center border border-slate-300 dark:border-white/10 text-slate-600 dark:text-slate-300">
                           {sub.student_avatar ? (
                             <img src={sub.student_avatar} alt="" className="w-full h-full object-cover" />
                           ) : (
@@ -388,19 +388,19 @@ export default function TeacherGradingPage() {
 
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-center justify-between gap-1">
-                            <span className="font-bold text-xs text-white truncate">{sub.student_name}</span>
+                            <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{sub.student_name}</span>
                             <span
                               className={`shrink-0 text-[10px] font-black font-mono px-2 py-0.5 rounded-full border ${
                                 sub.status === "graded"
-                                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                  : "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                                  ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                  : "bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30"
                               }`}
                             >
                               {sub.status === "graded" ? `${sub.score}đ` : "Chờ chấm"}
                             </span>
                           </div>
 
-                          <p className="text-[11px] text-slate-300 truncate font-medium">{sub.assignment_title}</p>
+                          <p className="text-[11px] text-slate-700 dark:text-slate-300 truncate font-medium">{sub.assignment_title}</p>
 
                           <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
                             <span className={`px-1.5 py-0.5 rounded border font-semibold ${tb.cls}`}>
@@ -423,7 +423,7 @@ export default function TeacherGradingPage() {
           {/* ══════════════════════════════════════════════════════════
               COLUMN 2: SUBMISSION VIEWER (CENTER - 5 COLUMNS)
               ══════════════════════════════════════════════════════════ */}
-          <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl min-h-[500px]">
+          <div className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl min-h-[500px]">
             {!selectedSub ? (
               <div className="h-full flex items-center justify-center py-24 text-center text-slate-500 text-xs">
                 Chọn một bài nộp ở cột bên trái để bắt đầu xem và chấm điểm.
@@ -431,31 +431,31 @@ export default function TeacherGradingPage() {
             ) : (
               <>
                 {/* Submission Header */}
-                <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-800">
+                <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                      <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-mono">
                         {selectedSub.class_code || "CSCA-LMS"}
                       </span>
                       {selectedSub.is_late && (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/30">
                           Nộp Quá Hạn
                         </span>
                       )}
                     </div>
-                    <h2 className="text-base sm:text-lg font-bold text-white leading-snug">
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-snug">
                       {selectedSub.assignment_title}
                     </h2>
-                    <p className="text-xs text-slate-400">
-                      Học viên: <strong className="text-white">{selectedSub.student_name}</strong> •{" "}
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      Học viên: <strong className="text-slate-900 dark:text-white">{selectedSub.student_name}</strong> •{" "}
                       <span className="font-mono text-slate-500">{selectedSub.student_email}</span>
                     </p>
                   </div>
 
                   {selectedSub.status === "graded" && (
                     <div className="bg-emerald-500/20 border border-emerald-500/30 rounded-2xl px-4 py-2 text-center shrink-0">
-                      <span className="text-xl font-black text-emerald-400 font-mono">{selectedSub.score}</span>
-                      <span className="text-[9px] text-emerald-500/80 uppercase font-bold block">Đã chấm</span>
+                      <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{selectedSub.score}</span>
+                      <span className="text-[9px] text-emerald-600 dark:text-emerald-500/80 uppercase font-bold block">Đã chấm</span>
                     </div>
                   )}
                 </div>
@@ -463,13 +463,13 @@ export default function TeacherGradingPage() {
                 {/* Text Content with Chinese Character Counter */}
                 {selectedSub.content_text && (
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span className="font-bold uppercase tracking-wider text-[10px]">Nội Dung Bài Luận:</span>
-                      <span className="font-mono bg-slate-950 px-2.5 py-0.5 rounded-lg border border-slate-800 text-[11px]">
-                        Số chữ Hán: <strong className="text-rose-400">{countChineseChars(selectedSub.content_text)}</strong> ký tự
+                      <span className="font-mono bg-slate-100 dark:bg-slate-950 px-2.5 py-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px]">
+                        Số chữ Hán: <strong className="text-rose-500 dark:text-rose-400">{countChineseChars(selectedSub.content_text)}</strong> ký tự
                       </span>
                     </div>
-                    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-200 leading-relaxed font-sans whitespace-pre-wrap selection:bg-rose-500/30">
+                    <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-sans whitespace-pre-wrap selection:bg-rose-500/30">
                       {selectedSub.content_text}
                     </div>
                   </div>
@@ -478,26 +478,26 @@ export default function TeacherGradingPage() {
                 {/* File Attachment Preview */}
                 {selectedSub.file_url && (
                   <div className="space-y-2">
-                    <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400">
+                    <span className="font-bold uppercase tracking-wider text-[10px] text-slate-500 dark:text-slate-400">
                       Tệp Đính Kèm Của Học Viên:
                     </span>
-                    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex items-center justify-between">
+                    <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <span className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-sky-400">
+                        <span className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-sky-500 dark:text-sky-400">
                           <IconFile />
                         </span>
                         <div>
-                          <p className="text-xs font-bold text-white truncate max-w-[200px]">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[200px]">
                             {selectedSub.file_url.split("/").pop() || "Tai_lieu_bai_tap.pdf"}
                           </p>
-                          <p className="text-[10px] text-emerald-400 font-mono">Định dạng tệp đã được quét virus</p>
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Định dạng tệp đã được quét virus</p>
                         </div>
                       </div>
                       <a
                         href={selectedSub.file_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded-xl text-xs font-semibold transition border border-slate-700"
+                        className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-sky-600 dark:text-sky-400 rounded-xl text-xs font-semibold transition border border-slate-300 dark:border-slate-700"
                       >
                         Mở Xem Tệp
                       </a>
@@ -507,8 +507,8 @@ export default function TeacherGradingPage() {
 
                 {/* Audio Player for HSKK with Speed Controls */}
                 {selectedSub.audio_url && (
-                  <div className="space-y-2 bg-slate-950/70 p-4 rounded-2xl border border-violet-500/20">
-                    <div className="flex items-center justify-between text-xs text-violet-400 font-bold">
+                  <div className="space-y-2 bg-slate-50 dark:bg-slate-950/70 p-4 rounded-2xl border border-violet-500/20">
+                    <div className="flex items-center justify-between text-xs text-violet-600 dark:text-violet-400 font-bold">
                       <span className="flex items-center gap-1.5">
                         <IconMic /> Bản Ghi Âm Khẩu Ngữ HSKK
                       </span>
@@ -527,7 +527,7 @@ export default function TeacherGradingPage() {
                             className={`px-2 py-0.5 rounded ${
                               playbackRate === rate
                                 ? "bg-violet-600 text-white font-bold"
-                                : "bg-slate-800 text-slate-400 hover:text-white"
+                                : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                             }`}
                           >
                             {rate}x
@@ -551,9 +551,9 @@ export default function TeacherGradingPage() {
           {/* ══════════════════════════════════════════════════════════
               COLUMN 3: GRADING & FEEDBACK PANEL (RIGHT - 3 COLUMNS)
               ══════════════════════════════════════════════════════════ */}
-          <div className="lg:col-span-3 bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-5 shadow-xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+          <div className="lg:col-span-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 space-y-5 shadow-xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <span>⭐</span>
                 <span>Chấm Điểm & Lời Phê</span>
               </h3>
@@ -561,9 +561,9 @@ export default function TeacherGradingPage() {
             </div>
 
             {/* Score Input (Keyboard Friendly + Slider) */}
-            <div className="space-y-3 bg-slate-950 p-4 rounded-2xl border border-slate-800">
+            <div className="space-y-3 bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
               <div className="flex items-center justify-between">
-                <label htmlFor="score-input" className="text-xs font-bold text-slate-400 uppercase">
+                <label htmlFor="score-input" className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">
                   Điểm Số (Thang 10):
                 </label>
                 <div className="flex items-center gap-1">
@@ -575,7 +575,7 @@ export default function TeacherGradingPage() {
                     step="0.25"
                     value={score}
                     onChange={(e) => setScore(e.target.value)}
-                    className="w-20 bg-slate-900 border border-amber-500/50 rounded-xl px-2.5 py-1 text-center font-mono font-black text-amber-400 text-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    className="w-20 bg-white dark:bg-slate-900 border border-amber-500/50 rounded-xl px-2.5 py-1 text-center font-mono font-black text-amber-500 dark:text-amber-400 text-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                   <span className="text-xs text-slate-500 font-mono">/ 10</span>
                 </div>
@@ -589,9 +589,9 @@ export default function TeacherGradingPage() {
                 step="0.5"
                 value={score}
                 onChange={(e) => setScore(e.target.value)}
-                className="w-full h-2 bg-slate-800 rounded-full appearance-none cursor-pointer accent-amber-500"
+                className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full appearance-none cursor-pointer accent-amber-500"
               />
-              <div className="flex justify-between text-[10px] text-slate-600 font-mono">
+              <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-600 font-mono">
                 <span>0</span>
                 <span>2.5</span>
                 <span>5.0</span>
@@ -602,7 +602,7 @@ export default function TeacherGradingPage() {
 
             {/* Quick Feedback Chips */}
             <div className="space-y-2">
-              <label className="text-[11px] font-bold uppercase text-slate-400 block">
+              <label className="text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 block">
                 Mẫu Nhận Xét Nhanh (Click 1-chạm):
               </label>
               <div className="flex flex-wrap gap-1.5">
@@ -621,7 +621,7 @@ export default function TeacherGradingPage() {
 
             {/* Detailed Feedback Textarea */}
             <div className="space-y-1.5">
-              <label htmlFor="feedback-input" className="text-[11px] font-bold uppercase text-slate-400 block">
+              <label htmlFor="feedback-input" className="text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 block">
                 Lời Nhận Xét Chi Tiết:
               </label>
               <textarea
@@ -630,7 +630,7 @@ export default function TeacherGradingPage() {
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 placeholder="Nhập góp ý sửa lỗi ngữ pháp, thanh điệu, biểu dương học viên..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 resize-none font-sans leading-relaxed"
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-2xl p-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-emerald-500 resize-none font-sans leading-relaxed"
               />
             </div>
 
@@ -650,7 +650,7 @@ export default function TeacherGradingPage() {
                 type="button"
                 onClick={() => handleGradeSubmit(false)}
                 disabled={grading || !selectedSub}
-                className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 hover:text-white font-bold py-2 rounded-xl text-xs transition border border-white/10 flex items-center justify-center gap-1.5"
+                className="w-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-bold py-2 rounded-xl text-xs transition border border-slate-300 dark:border-white/10 flex items-center justify-center gap-1.5"
               >
                 <span>Chỉ Lưu Điểm (Không Chuyển Bài)</span>
                 <IconArrowRight />

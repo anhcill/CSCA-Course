@@ -166,7 +166,7 @@ export default function TeacherClassDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex items-center justify-center p-6">
         <div className="max-w-md w-full">
           <LoadingState message="Đang tổng hợp roster, bài tập, tài liệu R2 và lịch học..." count={3} />
         </div>
@@ -176,14 +176,14 @@ export default function TeacherClassDetailPage() {
 
   if (error || !classData) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex items-center justify-center p-6">
         <div className="max-w-md w-full">
           <ErrorState
             title="Không thể tải chi tiết lớp"
             message={error || "Lớp không tồn tại hoặc bạn không có quyền xem."}
             onRetry={loadData}
             secondaryAction={
-              <Link to="/lms/teacher-hub" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 text-xs font-bold">
+              <Link to="/lms/teacher-hub" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold transition">
                 <ArrowLeft className="w-4 h-4" /> Về Teacher Hub
               </Link>
             }
@@ -202,39 +202,39 @@ export default function TeacherClassDetailPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 py-8 px-4 sm:px-6 lg:px-8 pb-20 font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 pb-20 font-sans">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <Link to="/lms/teacher-hub" className="hover:text-white">Teacher Hub</Link>
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <Link to="/lms/teacher-hub" className="hover:text-slate-900 dark:hover:text-white">Teacher Hub</Link>
           <span>/</span>
-          <span className="text-emerald-400 font-mono font-bold">{classData.code}</span>
+          <span className="text-emerald-600 dark:text-emerald-400 font-mono font-bold">{classData.code}</span>
         </div>
 
         {/* Hero Header Bento */}
-        <section className="bg-slate-900 border border-white/10 rounded-3xl p-6 sm:p-8 space-y-6">
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
           <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
-                <span className="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-xs font-black font-mono">
+                <span className="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-xs font-black font-mono">
                   {classData.code}
                 </span>
-                <span className="px-3 py-1 rounded-full bg-slate-800 border border-white/10 text-slate-300 text-xs">
+                <span className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 text-xs">
                   {classData.instructor}
                 </span>
                 {classData.managementClassId && (
-                  <span className="px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/25 text-purple-300 text-xs font-mono">
+                  <span className="px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/25 text-purple-600 dark:text-purple-300 text-xs font-mono">
                     Moly Bridge: {classData.managementClassId}
                   </span>
                 )}
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black text-white">{classData.title}</h1>
-              <p className="text-sm text-slate-400 max-w-3xl leading-relaxed">
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">{classData.title}</h1>
+              <p className="text-sm text-slate-600 dark:text-slate-400 max-w-3xl leading-relaxed">
                 {classData.description || "Chưa có mô tả lớp học."}
               </p>
-              <div className="flex flex-wrap gap-4 text-xs text-slate-400 font-mono">
+              <div className="flex flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-400 font-mono">
                 <span className="inline-flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-sky-400" />
+                  <Clock className="w-4 h-4 text-sky-500 dark:text-sky-400" />
                   {classData.schedule}
                 </span>
                 <span>Đã học {classData.completedSessions}/{classData.totalSessions} sessions</span>
@@ -245,9 +245,9 @@ export default function TeacherClassDetailPage() {
               <button
                 type="button"
                 onClick={exportCsv}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-xs font-bold transition"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-white/10 text-slate-700 dark:text-slate-200 text-xs font-bold transition"
               >
-                <Download className="w-4 h-4 text-sky-400" /> Xuất CSV Roster
+                <Download className="w-4 h-4 text-sky-500 dark:text-sky-400" /> Xuất CSV Roster
               </button>
               {classData.meetUrl && (
                 <a
@@ -263,14 +263,14 @@ export default function TeacherClassDetailPage() {
           </div>
 
           {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 border-t border-white/10 pt-5">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 border-t border-slate-200 dark:border-white/10 pt-5">
             {[
-              ["Sĩ số lớp", `${classData.students?.length || 0} học viên`, "text-white"],
-              ["Chuyên cần trung bình", classData.avgAttendance || "92.5%", "text-emerald-400"],
-              ["Điểm trung bình (GPA)", classData.avgGpa === null ? "—" : `${classData.avgGpa}/10`, "text-amber-400"],
-              ["Tiến độ giáo trình", `${classData.progressPct || 0}%`, "text-sky-400"],
+              ["Sĩ số lớp", `${classData.students?.length || 0} học viên`, "text-slate-900 dark:text-white"],
+              ["Chuyên cần trung bình", classData.avgAttendance || "92.5%", "text-emerald-600 dark:text-emerald-400"],
+              ["Điểm trung bình (GPA)", classData.avgGpa === null ? "—" : `${classData.avgGpa}/10`, "text-amber-600 dark:text-amber-400"],
+              ["Tiến độ giáo trình", `${classData.progressPct || 0}%`, "text-sky-600 dark:text-sky-400"],
             ].map(([label, value, color]) => (
-              <div key={label} className="bg-slate-950 rounded-2xl border border-white/10 p-4">
+              <div key={label} className="bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-white/10 p-4">
                 <p className="text-[10px] text-slate-500 uppercase font-bold">{label}</p>
                 <p className={`text-xl font-black font-mono mt-1 ${color}`}>{value}</p>
               </div>
@@ -279,7 +279,7 @@ export default function TeacherClassDetailPage() {
         </section>
 
         {/* 5-Tab Segmented Control */}
-        <div className="flex items-center gap-1 border-b border-slate-800 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 overflow-x-auto no-scrollbar">
           {tabs.map(([id, label, Icon, count]) => (
             <button
               key={id}
@@ -287,14 +287,14 @@ export default function TeacherClassDetailPage() {
               onClick={() => setActiveTab(id)}
               className={`shrink-0 inline-flex items-center gap-2 px-3.5 sm:px-5 py-3.5 border-b-2 text-xs sm:text-sm font-bold transition ${
                 activeTab === id
-                  ? "border-emerald-500 text-emerald-400 bg-emerald-500/5"
-                  : "border-transparent text-slate-400 hover:text-white"
+                  ? "border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5"
+                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
               <Icon className="w-4 h-4" />
               <span>{label}</span>
               {count !== undefined && (
-                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] font-mono">
+                <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-mono">
                   {count}
                 </span>
               )}
@@ -305,14 +305,14 @@ export default function TeacherClassDetailPage() {
         {/* TAB 1: ROSTER (DANH SÁCH HỌC VIÊN) */}
         {activeTab === "roster" && (
           <section className="space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-900/70 border border-white/10 rounded-2xl p-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-white/10 rounded-2xl p-4 shadow-sm">
               <div className="relative w-full lg:w-96">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Tìm theo tên hoặc email học viên..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-white outline-none focus:border-emerald-500"
                 />
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -329,7 +329,7 @@ export default function TeacherClassDetailPage() {
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                       riskFilter === value
                         ? "bg-emerald-600 text-white"
-                        : "bg-slate-950 border border-slate-800 text-slate-400 hover:text-white"
+                        : "bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                   >
                     {label}
@@ -345,9 +345,9 @@ export default function TeacherClassDetailPage() {
                 description="Bộ lọc hiện tại không trả về học viên nào trong roster của lớp."
               />
             ) : (
-              <div className="bg-slate-900/80 border border-white/10 rounded-2xl overflow-x-auto shadow-sm">
+              <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 rounded-2xl overflow-x-auto shadow-sm">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-white/5">
+                  <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-white/5">
                     <tr>
                       <th className="py-3.5 px-5">Học viên</th>
                       <th className="py-3.5 px-3">Mức độ rủi ro</th>
@@ -357,36 +357,36 @@ export default function TeacherClassDetailPage() {
                       <th className="py-3.5 px-5">Hoạt động gần nhất</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                     {filteredStudents.map((student) => (
-                      <tr key={student.id} className="hover:bg-slate-800/40 transition">
+                      <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
                         <td className="py-4 px-5">
-                          <p className="font-bold text-white">{student.name}</p>
+                          <p className="font-bold text-slate-900 dark:text-white">{student.name}</p>
                           <p className="text-[11px] text-slate-500 mt-0.5">{student.email}</p>
                         </td>
                         <td className="py-4 px-3">
                           <span
                             className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
                               student.riskLevel === "danger"
-                                ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                                ? "bg-rose-500/10 text-rose-500 dark:text-rose-400 border border-rose-500/20"
                                 : student.riskLevel === "warning"
-                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                                : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                             }`}
                           >
                             {riskText[student.riskLevel] || "Ổn định"}
                           </span>
                         </td>
-                        <td className="py-4 px-3 text-center font-mono font-bold text-amber-400">
+                        <td className="py-4 px-3 text-center font-mono font-bold text-amber-600 dark:text-amber-400">
                           {student.gpa === null ? "—" : student.gpa}
                         </td>
-                        <td className="py-4 px-3 text-center font-mono font-bold text-emerald-400">
+                        <td className="py-4 px-3 text-center font-mono font-bold text-emerald-600 dark:text-emerald-400">
                           {student.attendanceRate === null ? "—" : `${student.attendanceRate}%`}
                         </td>
-                        <td className="py-4 px-3 text-center font-mono">
+                        <td className="py-4 px-3 text-center font-mono text-slate-700 dark:text-slate-300">
                           {student.assignmentsSubmitted || 0}/{student.totalAssignments || 0}
                         </td>
-                        <td className="py-4 px-5 text-slate-400">{formatRelative(student.lastActive)}</td>
+                        <td className="py-4 px-5 text-slate-500 dark:text-slate-400">{formatRelative(student.lastActive)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -399,10 +399,10 @@ export default function TeacherClassDetailPage() {
         {/* TAB 2: ASSIGNMENTS (BÀI TẬP) */}
         {activeTab === "assignments" && (
           <section className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/70 border border-white/10 rounded-2xl p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-white/10 rounded-2xl p-4 shadow-sm">
               <div>
-                <h2 className="text-sm font-bold text-white">Quản Lý Bài Tập Lớp Học</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Tạo bài tập, theo dõi tiến độ nộp và chấm bài trực tiếp.</p>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Quản Lý Bài Tập Lớp Học</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Tạo bài tập, theo dõi tiến độ nộp và chấm bài trực tiếp.</p>
               </div>
               <button
                 type="button"
@@ -417,39 +417,39 @@ export default function TeacherClassDetailPage() {
             {classData.assignments?.length ? (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {classData.assignments.map((assignment) => (
-                  <article key={assignment.id} className="bg-slate-900/80 border border-white/10 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+                  <article key={assignment.id} className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 rounded-2xl p-5 space-y-4 flex flex-col justify-between shadow-sm">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] uppercase font-black">
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] uppercase font-black">
                           {assignment.type || "Homework"}
                         </span>
-                        <span className="text-[11px] text-slate-400 font-mono">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                           Hạn: {formatDate(assignment.dueDate, "Không có")}
                         </span>
                       </div>
-                      <h3 className="text-sm font-bold text-white line-clamp-2">{assignment.title}</h3>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-2">{assignment.title}</h3>
                       {assignment.description && (
-                        <p className="text-xs text-slate-400 line-clamp-2">{assignment.description}</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">{assignment.description}</p>
                       )}
                     </div>
 
-                    <div className="space-y-3 pt-3 border-t border-white/5">
-                      <div className="bg-slate-950 rounded-xl p-3 space-y-2 text-xs">
-                        <div className="flex justify-between text-slate-400">
+                    <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-white/5">
+                      <div className="bg-slate-50 dark:bg-slate-950 rounded-xl p-3 space-y-2 text-xs">
+                        <div className="flex justify-between text-slate-500 dark:text-slate-400">
                           <span>Đã nộp:</span>
-                          <span className="font-mono text-white font-bold">
+                          <span className="font-mono text-slate-900 dark:text-white font-bold">
                             {assignment.submittedCount || 0}/{assignment.totalCount || classData.students?.length || 32}
                           </span>
                         </div>
-                        <div className="flex justify-between text-slate-400">
+                        <div className="flex justify-between text-slate-500 dark:text-slate-400">
                           <span>Chờ chấm:</span>
-                          <span className="font-mono text-amber-400 font-bold">
+                          <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
                             {assignment.pendingGradingCount || 0}
                           </span>
                         </div>
-                        <div className="flex justify-between text-slate-400">
+                        <div className="flex justify-between text-slate-500 dark:text-slate-400">
                           <span>Điểm trung bình:</span>
-                          <span className="font-mono text-emerald-400 font-bold">
+                          <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
                             {assignment.avgScore === null ? "—" : assignment.avgScore}
                           </span>
                         </div>
@@ -471,13 +471,13 @@ export default function TeacherClassDetailPage() {
                               toast.error(submissionError?.message || "Không thể tải hàng chờ chấm");
                             }
                           }}
-                          className="w-full inline-flex justify-center items-center gap-2 py-2.5 rounded-xl bg-amber-600/15 hover:bg-amber-600/25 border border-amber-500/30 text-amber-400 text-xs font-bold transition"
+                          className="w-full inline-flex justify-center items-center gap-2 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold transition"
                         >
                           <ClipboardCheck className="w-3.5 h-3.5" /> Chấm bài ngay
                         </button>
                         <Link
                           to={`/lms/teacher/grading?assignmentId=${assignment.id}`}
-                          className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                          className="px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition"
                           title="Mở toàn bộ hàng chờ chấm"
                         >
                           <ArrowRight className="w-3.5 h-3.5" />
@@ -500,10 +500,10 @@ export default function TeacherClassDetailPage() {
         {/* TAB 3: FILES (TÀI LIỆU R2) */}
         {activeTab === "files" && (
           <section className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/70 border border-white/10 rounded-2xl p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-white/10 rounded-2xl p-4 shadow-sm">
               <div>
-                <h2 className="text-sm font-bold text-white">Kho Tài Liệu Học Tập (Cloudflare R2)</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Giáo trình PDF, bảng từ vựng, tài liệu nghe nhìn bảo mật có chữ ký số (Signed URL).</p>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Kho Tài Liệu Học Tập (Cloudflare R2)</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Giáo trình PDF, bảng từ vựng, tài liệu nghe nhìn bảo mật có chữ ký số (Signed URL).</p>
               </div>
               <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer transition shadow-md shadow-indigo-600/20">
                 <UploadCloud className="w-4 h-4" />
@@ -515,14 +515,14 @@ export default function TeacherClassDetailPage() {
             {files.length ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {files.map((file) => (
-                  <div key={file.id} className="bg-slate-900/80 border border-white/10 rounded-2xl p-4 flex items-center justify-between gap-4">
+                  <div key={file.id} className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-sm">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
                         <FileText className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
-                        <h4 className="text-xs font-bold text-white truncate">{file.name}</h4>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">{file.name}</h4>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
                           <span>{(file.sizeBytes / (1024 * 1024)).toFixed(2)} MB</span>
                           <span>•</span>
                           <span>{file.uploadedBy}</span>
@@ -537,15 +537,15 @@ export default function TeacherClassDetailPage() {
                         href={file.downloadUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition"
                         title="Tải tài liệu"
                       >
-                        <Download className="w-4 h-4 text-sky-400" />
+                        <Download className="w-4 h-4 text-sky-500 dark:text-sky-400" />
                       </a>
                       <button
                         type="button"
                         onClick={() => handleDeleteFile(file.id)}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 transition"
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
                         title="Xóa tài liệu"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -567,10 +567,10 @@ export default function TeacherClassDetailPage() {
         {/* TAB 4: SCHEDULE & LIVE SESSIONS */}
         {activeTab === "schedule" && (
           <section className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/70 border border-white/10 rounded-2xl p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-white/10 rounded-2xl p-4 shadow-sm">
               <div>
-                <h2 className="text-sm font-bold text-white">Lịch Học & Buổi Trực Tuyến (Live Meet)</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Quản lý các buổi học Google Meet / Zoom và phòng live tương tác.</p>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Lịch Học & Buổi Trực Tuyến (Live Meet)</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Quản lý các buổi học Google Meet / Zoom và phòng live tương tác.</p>
               </div>
               <button
                 type="button"
@@ -605,24 +605,24 @@ export default function TeacherClassDetailPage() {
 
             <div className="space-y-3">
               {sessions.map((ses) => (
-                <div key={ses.id} className="bg-slate-900/80 border border-white/10 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div key={ses.id} className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono ${
                           ses.status === "UPCOMING"
-                            ? "bg-rose-500/15 text-rose-400 border border-rose-500/30 animate-pulse"
-                            : "bg-slate-800 text-slate-400"
+                            ? "bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/30 animate-pulse"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                         }`}
                       >
                         {ses.status}
                       </span>
-                      <span className="text-xs text-slate-400 font-mono">
+                      <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
                         {new Date(ses.startTime).toLocaleString("vi-VN")}
                       </span>
                     </div>
-                    <h3 className="text-sm font-bold text-white">{ses.title}</h3>
-                    <div className="flex items-center gap-3 text-xs text-slate-400 font-mono">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">{ses.title}</h3>
+                    <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 font-mono">
                       <span>Mã phòng: {ses.passcode}</span>
                     </div>
                   </div>
@@ -647,20 +647,20 @@ export default function TeacherClassDetailPage() {
         {/* TAB 5: ATTENDANCE (ĐIỂM DANH) */}
         {activeTab === "attendance" && (
           <section className="space-y-4">
-            <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
               <div>
                 <div className="flex items-center gap-2">
-                  <UserCheck className="w-5 h-5 text-emerald-400" />
-                  <h2 className="text-lg font-bold text-white">Điểm Danh & Báo Cáo Chuyên Cần</h2>
+                  <UserCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">Điểm Danh & Báo Cáo Chuyên Cần</h2>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   Đánh dấu trạng thái tham dự của từng học viên cho buổi học gần nhất.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => toast.success("Đã đồng bộ dữ liệu điểm danh về MolyInternal! 🔄")}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition border border-white/10"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-white transition border border-slate-300 dark:border-white/10"
               >
                 <span>Đồng Bộ Điểm Danh Về Moly</span>
               </button>
@@ -669,49 +669,49 @@ export default function TeacherClassDetailPage() {
             {classData.students?.length ? (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {classData.students.map((student) => (
-                  <article key={student.id} className="bg-slate-900/80 border border-white/10 rounded-2xl p-4 space-y-3">
+                  <article key={student.id} className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 rounded-2xl p-4 space-y-3 shadow-sm">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-white">{student.name}</span>
-                      <span className="font-mono text-sm text-emerald-400 font-bold">
+                      <span className="text-sm font-bold text-slate-900 dark:text-white">{student.name}</span>
+                      <span className="font-mono text-sm text-emerald-600 dark:text-emerald-400 font-bold">
                         {student.attendanceRate === null ? "—" : `${student.attendanceRate}%`}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
-                      <div className="bg-slate-950 rounded-xl p-2">
-                        <p className="font-mono text-emerald-400 font-bold text-base">{student.attendedCount || 0}</p>
+                      <div className="bg-slate-50 dark:bg-slate-950 rounded-xl p-2 border border-slate-100 dark:border-transparent">
+                        <p className="font-mono text-emerald-600 dark:text-emerald-400 font-bold text-base">{student.attendedCount || 0}</p>
                         <p className="text-slate-500 mt-1 font-bold">Có mặt</p>
                       </div>
-                      <div className="bg-slate-950 rounded-xl p-2">
-                        <p className="font-mono text-rose-400 font-bold text-base">{student.absentCount || 0}</p>
+                      <div className="bg-slate-50 dark:bg-slate-950 rounded-xl p-2 border border-slate-100 dark:border-transparent">
+                        <p className="font-mono text-rose-600 dark:text-rose-400 font-bold text-base">{student.absentCount || 0}</p>
                         <p className="text-slate-500 mt-1 font-bold">Vắng</p>
                       </div>
-                      <div className="bg-slate-950 rounded-xl p-2">
-                        <p className="font-mono text-amber-400 font-bold text-base">{student.excusedCount || 0}</p>
+                      <div className="bg-slate-50 dark:bg-slate-950 rounded-xl p-2 border border-slate-100 dark:border-transparent">
+                        <p className="font-mono text-amber-600 dark:text-amber-400 font-bold text-base">{student.excusedCount || 0}</p>
                         <p className="text-slate-500 mt-1 font-bold">Có phép</p>
                       </div>
                     </div>
 
                     {/* Quick action buttons */}
-                    <div className="flex items-center gap-1.5 pt-2 border-t border-white/5">
+                    <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-white/5">
                       <button
                         type="button"
                         onClick={() => toast.success(`Đã đánh dấu [Có mặt] cho ${student.name}`)}
-                        className="flex-1 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-bold text-[11px] transition"
+                        className="flex-1 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-[11px] transition"
                       >
                         Có mặt
                       </button>
                       <button
                         type="button"
                         onClick={() => toast.success(`Đã đánh dấu [Có phép] cho ${student.name}`)}
-                        className="flex-1 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold text-[11px] transition"
+                        className="flex-1 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold text-[11px] transition"
                       >
                         Có phép
                       </button>
                       <button
                         type="button"
                         onClick={() => toast.error(`Đã đánh dấu [Vắng] cho ${student.name}`)}
-                        className="flex-1 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-[11px] transition"
+                        className="flex-1 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-[11px] transition"
                       >
                         Vắng
                       </button>

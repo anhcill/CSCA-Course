@@ -192,19 +192,19 @@ export default function TeacherAttendancePage() {
   }, [attendanceRecords, students.length]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16">
       {/* Header Bar */}
-      <div className="bg-slate-900 border-b border-slate-800 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 py-8 px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 mb-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 mb-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400" />
               <span>Nghiệp Vụ Giảng Viên • Attendance Management</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+            <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               Điểm Danh & Theo Dõi Chuyên Cần
             </h1>
-            <p className="text-slate-400 text-xs md:text-sm mt-1">
+            <p className="text-slate-600 dark:text-slate-400 text-xs md:text-sm mt-1">
               Ghi nhận tình trạng tham gia học trực tuyến của học viên, đánh dấu vắng/có phép và lưu hồ sơ lớp học.
             </p>
           </div>
@@ -212,7 +212,7 @@ export default function TeacherAttendancePage() {
           <div className="flex items-center gap-3">
             <Link
               to="/lms/teacher/schedule"
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition border border-slate-700"
+              className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition border border-slate-300 dark:border-slate-700"
             >
               ← Về Lịch Dạy
             </Link>
@@ -231,16 +231,16 @@ export default function TeacherAttendancePage() {
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Session Selector & Quick Info */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xl">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xl">
           <div className="space-y-1 flex-1">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Chọn Buổi Học Trực Tuyến
             </label>
             {sessions.length > 0 ? (
               <select
                 value={selectedSessionId}
                 onChange={handleSessionChange}
-                className="w-full md:max-w-md bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                className="w-full md:max-w-md bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 font-semibold"
               >
                 {sessions.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -254,25 +254,25 @@ export default function TeacherAttendancePage() {
           </div>
 
           {selectedSession && (
-            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300 bg-slate-950/70 px-4 py-3 rounded-2xl border border-slate-800">
+            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-950/70 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800">
               <div>
                 <span className="text-slate-500 block text-[10px]">Thời gian:</span>
-                <span className="font-semibold text-white">
+                <span className="font-semibold text-slate-900 dark:text-white">
                   {new Date(selectedSession.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} -{" "}
                   {new Date(selectedSession.end_time || selectedSession.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                 </span>
               </div>
-              <div className="h-6 w-[1px] bg-slate-800"></div>
+              <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-800"></div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Ngày học:</span>
-                <span className="font-semibold text-white">
+                <span className="font-semibold text-slate-900 dark:text-white">
                   {new Date(selectedSession.start_time).toLocaleDateString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })}
                 </span>
               </div>
-              <div className="h-6 w-[1px] bg-slate-800"></div>
+              <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-800"></div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Nền tảng:</span>
-                <span className="font-semibold text-emerald-400">{selectedSession.provider || "Google Meet"}</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{selectedSession.provider || "Google Meet"}</span>
               </div>
             </div>
           )}
@@ -280,49 +280,49 @@ export default function TeacherAttendancePage() {
 
         {/* Metrics Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-            <p className="text-2xl font-black text-white">{stats.total}</p>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">Tổng học viên</p>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-center shadow-sm">
+            <p className="text-2xl font-black text-slate-900 dark:text-white">{stats.total}</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">Tổng học viên</p>
           </div>
-          <div className="bg-slate-900 border border-emerald-500/30 bg-emerald-500/5 rounded-2xl p-4 text-center">
-            <p className="text-2xl font-black text-emerald-400">{stats.present}</p>
-            <p className="text-[11px] text-emerald-300 font-medium mt-1">Có mặt</p>
+          <div className="bg-emerald-50 dark:bg-slate-900 border border-emerald-500/30 rounded-2xl p-4 text-center shadow-sm">
+            <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{stats.present}</p>
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium mt-1">Có mặt</p>
           </div>
-          <div className="bg-slate-900 border border-rose-500/30 bg-rose-500/5 rounded-2xl p-4 text-center">
-            <p className="text-2xl font-black text-rose-400">{stats.absent}</p>
-            <p className="text-[11px] text-rose-300 font-medium mt-1">Vắng mặt</p>
+          <div className="bg-rose-50 dark:bg-slate-900 border border-rose-500/30 rounded-2xl p-4 text-center shadow-sm">
+            <p className="text-2xl font-black text-rose-600 dark:text-rose-400">{stats.absent}</p>
+            <p className="text-[11px] text-rose-700 dark:text-rose-300 font-medium mt-1">Vắng mặt</p>
           </div>
-          <div className="bg-slate-900 border border-amber-500/30 bg-amber-500/5 rounded-2xl p-4 text-center">
-            <p className="text-2xl font-black text-amber-400">{stats.excused}</p>
-            <p className="text-[11px] text-amber-300 font-medium mt-1">Có phép</p>
+          <div className="bg-amber-50 dark:bg-slate-900 border border-amber-500/30 rounded-2xl p-4 text-center shadow-sm">
+            <p className="text-2xl font-black text-amber-600 dark:text-amber-400">{stats.excused}</p>
+            <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium mt-1">Có phép</p>
           </div>
-          <div className="col-span-2 md:col-span-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-            <p className="text-2xl font-black text-white font-mono">{stats.rate}%</p>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">Tỷ lệ chuyên cần</p>
+          <div className="col-span-2 md:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-center shadow-sm">
+            <p className="text-2xl font-black text-slate-900 dark:text-white font-mono">{stats.rate}%</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">Tỷ lệ chuyên cần</p>
           </div>
         </div>
 
         {/* Attendance Main Table Container */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-2xl">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-2xl">
           {/* Action Bar */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
             <div>
-              <h2 className="text-lg font-bold text-white">Danh Sách Điểm Danh Học Viên</h2>
-              <p className="text-xs text-slate-400">Chọn trạng thái và nhập ghi chú chi tiết cho từng học viên</p>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Danh Sách Điểm Danh Học Viên</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Chọn trạng thái và nhập ghi chú chi tiết cho từng học viên</p>
             </div>
 
             {/* Bulk Action Buttons */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleMarkAll("present")}
-                className="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1.5"
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1.5"
               >
                 <span>✓</span>
                 <span>Tất Cả Có Mặt</span>
               </button>
               <button
                 onClick={() => handleMarkAll("absent")}
-                className="px-3.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition flex items-center gap-1.5"
+                className="px-3.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 border border-rose-500/30 text-xs font-bold transition flex items-center gap-1.5"
               >
                 <span>✕</span>
                 <span>Tất Cả Vắng</span>
@@ -341,51 +341,51 @@ export default function TeacherAttendancePage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     <th className="py-3 px-3 w-12 text-center">STT</th>
                     <th className="py-3 px-4">Học Viên</th>
                     <th className="py-3 px-4 w-72 text-center">Trạng Thái Điểm Danh</th>
                     <th className="py-3 px-4">Ghi Chú Giáo Viên</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 text-sm">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-sm">
                   {students.map((student, idx) => {
                     const record = attendanceRecords[student.id] || { status: "present", note: "" };
 
                     return (
-                      <tr key={student.id} className="hover:bg-slate-950/40 transition">
-                        <td className="py-4 px-3 text-center text-xs font-mono text-slate-500">
+                      <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-950/40 transition">
+                        <td className="py-4 px-3 text-center text-xs font-mono text-slate-400 dark:text-slate-500">
                           {idx + 1}
                         </td>
 
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-800 border border-slate-700 flex-shrink-0">
+                            <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex-shrink-0">
                               {student.avatar_url ? (
                                 <img src={student.avatar_url} alt={student.username} className="w-full h-full object-cover" />
                               ) : (
-                                <span className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-300">
+                                <span className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-700 dark:text-slate-300">
                                   {(student.username || student.email || "?").slice(0, 1).toUpperCase()}
                                 </span>
                               )}
                             </div>
                             <div>
-                              <p className="font-bold text-white text-sm">{student.username || student.email}</p>
-                              <p className="text-xs text-slate-400 font-mono">{student.email}</p>
+                              <p className="font-bold text-slate-900 dark:text-white text-sm">{student.username || student.email}</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{student.email}</p>
                             </div>
                           </div>
                         </td>
 
                         {/* 3 Status Radio Buttons */}
                         <td className="py-4 px-4 text-center">
-                          <div className="inline-flex bg-slate-950 p-1 rounded-xl border border-slate-800 gap-1">
+                          <div className="inline-flex bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 gap-1">
                             <button
                               type="button"
                               onClick={() => handleStatusChange(student.id, "present")}
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                                 record.status === "present"
                                   ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
-                                  : "text-slate-400 hover:text-white"
+                                  : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                               }`}
                             >
                               Có mặt
@@ -396,7 +396,7 @@ export default function TeacherAttendancePage() {
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                                 record.status === "absent"
                                   ? "bg-rose-600 text-white shadow-md shadow-rose-600/30"
-                                  : "text-slate-400 hover:text-white"
+                                  : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                               }`}
                             >
                               Vắng
@@ -407,7 +407,7 @@ export default function TeacherAttendancePage() {
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                                 record.status === "excused"
                                   ? "bg-amber-600 text-white shadow-md shadow-amber-600/30"
-                                  : "text-slate-400 hover:text-white"
+                                  : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                               }`}
                             >
                               Có phép
@@ -422,7 +422,7 @@ export default function TeacherAttendancePage() {
                             placeholder="Nhập ghi chú (VD: Vào muộn 15p, xin nghỉ phép...)"
                             value={record.note}
                             onChange={(e) => handleNoteChange(student.id, e.target.value)}
-                            className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                            className="w-full bg-slate-50 dark:bg-slate-950/70 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-slate-200 focus:outline-none focus:border-emerald-500"
                           />
                         </td>
                       </tr>
@@ -434,11 +434,11 @@ export default function TeacherAttendancePage() {
           )}
 
           {/* Bottom Save Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-800">
-            <span className="text-xs text-slate-400 font-mono">
-              Đã ghi nhận: <strong className="text-emerald-400">{stats.present}</strong> có mặt •{" "}
-              <strong className="text-rose-400">{stats.absent}</strong> vắng •{" "}
-              <strong className="text-amber-400">{stats.excused}</strong> có phép
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-200 dark:border-slate-800">
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+              Đã ghi nhận: <strong className="text-emerald-600 dark:text-emerald-400">{stats.present}</strong> có mặt •{" "}
+              <strong className="text-rose-600 dark:text-rose-400">{stats.absent}</strong> vắng •{" "}
+              <strong className="text-amber-600 dark:text-amber-400">{stats.excused}</strong> có phép
             </span>
 
             <button

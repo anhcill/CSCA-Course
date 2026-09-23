@@ -58,8 +58,8 @@ const STATUS_CFG = {
   LIVE:     { label: "ĐANG DẠY LIVE",    cls: "bg-rose-500/20 text-rose-400 border-rose-500/40", dot: true },
   IMMINENT: { label: "CHUẨN BỊ MỞ LỚP",  cls: "bg-amber-500/20 text-amber-400 border-amber-500/40", dot: true },
   TODAY:    { label: "LỊCH HÔM NAY",      cls: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" },
-  UPCOMING: { label: "SẮP DIỄN RA",     cls: "bg-slate-700/40 text-slate-300 border-slate-600/40" },
-  ENDED:    { label: "ĐÃ HOÀN THÀNH",   cls: "bg-slate-800/60 text-slate-500 border-slate-700/40" },
+  UPCOMING: { label: "SẮP DIỄN RA",     cls: "bg-slate-100 dark:bg-slate-700/40 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600/40" },
+  ENDED:    { label: "ĐÃ HOÀN THÀNH",   cls: "bg-slate-100 dark:bg-slate-800/60 text-slate-500 border-slate-200 dark:border-slate-700/40" },
 };
 
 const WEEKDAYS = ["Chủ Nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
@@ -238,19 +238,19 @@ export default function TeacherSchedulePage() {
   }, [filtered]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16">
       {/* Top Header Bar */}
-      <div className="bg-slate-900 border-b border-slate-800 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 py-8 px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 mb-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 mb-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
               <span>Khu Vực Giảng Viên • Teacher Hub</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+            <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               Quản Lý Lịch Dạy & Lớp Học Live
             </h1>
-            <p className="text-slate-400 text-xs md:text-sm mt-1">
+            <p className="text-slate-600 dark:text-slate-400 text-xs md:text-sm mt-1">
               Khởi tạo buổi học Meet/Zoom, mở phòng giảng dạy trực tuyến và theo dõi học viên theo từng lớp.
             </p>
           </div>
@@ -258,7 +258,7 @@ export default function TeacherSchedulePage() {
           <div className="flex items-center gap-3">
             <Link
               to="/lms/teacher/attendance"
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700 flex items-center gap-2"
+              className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition border border-slate-300 dark:border-slate-700 flex items-center gap-2"
             >
               <IconChecklist />
               <span>Bảng Điểm Danh</span>
@@ -280,20 +280,20 @@ export default function TeacherSchedulePage() {
         {/* Stats Metrics Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Tổng số buổi dạy", value: stats.total, color: "text-white" },
-            { label: "Đang diễn ra Live", value: stats.live, color: "text-rose-400" },
-            { label: "Đã hoàn thành", value: stats.done, color: "text-emerald-400" },
-            { label: "Buổi dạy sắp tới", value: stats.upcoming, color: "text-amber-400" },
+            { label: "Tổng số buổi dạy", value: stats.total, color: "text-slate-900 dark:text-white" },
+            { label: "Đang diễn ra Live", value: stats.live, color: "text-rose-500 dark:text-rose-400" },
+            { label: "Đã hoàn thành", value: stats.done, color: "text-emerald-600 dark:text-emerald-400" },
+            { label: "Buổi dạy sắp tới", value: stats.upcoming, color: "text-amber-500 dark:text-amber-400" },
           ].map((st) => (
-            <div key={st.label} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+            <div key={st.label} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-center shadow-sm">
               <p className={`text-2xl font-black ${st.color}`}>{st.value}</p>
-              <p className="text-[11px] text-slate-400 font-medium mt-1">{st.label}</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">{st.label}</p>
             </div>
           ))}
         </div>
 
         {/* Filter and View Toggles */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800/80 pb-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 dark:border-slate-800/80 pb-4">
           <div className="flex gap-2 flex-wrap">
             {[
               { id: "ALL", label: "Tất Cả Buổi Dạy" },
@@ -307,7 +307,7 @@ export default function TeacherSchedulePage() {
                 className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
                   filter === f.id
                     ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/30"
-                    : "bg-slate-900 text-slate-400 hover:text-white border border-slate-800"
+                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800"
                 }`}
               >
                 {f.label}
@@ -315,11 +315,11 @@ export default function TeacherSchedulePage() {
             ))}
           </div>
 
-          <div className="flex gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1">
+          <div className="flex gap-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1">
             <button
               onClick={() => setViewMode("list")}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                viewMode === "list" ? "bg-slate-800 text-white" : "text-slate-400 hover:text-white"
+                viewMode === "list" ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
               Danh Sách
@@ -327,7 +327,7 @@ export default function TeacherSchedulePage() {
             <button
               onClick={() => setViewMode("calendar")}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                viewMode === "calendar" ? "bg-slate-800 text-white" : "text-slate-400 hover:text-white"
+                viewMode === "calendar" ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
               Lịch Tuần
@@ -357,8 +357,8 @@ export default function TeacherSchedulePage() {
               return (
                 <div
                   key={s.id}
-                  className={`bg-slate-900 rounded-2xl border transition-all p-5 md:p-6 hover:border-slate-700 ${
-                    isLive ? "border-emerald-500/60 shadow-lg shadow-emerald-500/10 bg-gradient-to-r from-slate-900 to-emerald-950/20" : "border-slate-800"
+                  className={`bg-white dark:bg-slate-900 rounded-2xl border transition-all p-5 md:p-6 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm ${
+                    isLive ? "border-emerald-500/60 shadow-lg shadow-emerald-500/10 bg-gradient-to-r from-emerald-50/50 to-white dark:from-slate-900 dark:to-emerald-950/20" : "border-slate-200 dark:border-slate-800"
                   }`}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
@@ -369,21 +369,21 @@ export default function TeacherSchedulePage() {
                           {cfg.dot && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
                           {cfg.label}
                         </span>
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                           {s.provider || "Google Meet"}
                         </span>
                         {s.class_title && (
-                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 truncate max-w-[220px]">
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/20 truncate max-w-[220px]">
                             {s.class_title}
                           </span>
                         )}
                       </div>
 
-                      <h3 className="text-base md:text-lg font-bold text-white truncate">
+                      <h3 className="text-base md:text-lg font-bold text-slate-900 dark:text-white truncate">
                         {s.title}
                       </h3>
 
-                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1">
+                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400 pt-1">
                         <span className="inline-flex items-center gap-1.5">
                           <IconClock />
                           <span>
@@ -424,7 +424,7 @@ export default function TeacherSchedulePage() {
                       {/* Attendance Direct Link */}
                       <button
                         onClick={() => navigate(`/lms/teacher/attendance?sessionId=${s.id}`)}
-                        className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition border border-slate-700 flex items-center gap-1.5"
+                        className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition border border-slate-300 dark:border-slate-700 flex items-center gap-1.5"
                       >
                         <IconChecklist />
                         <span>Điểm Danh</span>
@@ -433,7 +433,7 @@ export default function TeacherSchedulePage() {
                       {/* Student Roster Button */}
                       <button
                         onClick={() => handleOpenRoster(s)}
-                        className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition border border-slate-700"
+                        className="px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium transition border border-slate-300 dark:border-slate-700"
                         title="Xem danh sách học viên lớp"
                       >
                         <IconUsers />
@@ -448,12 +448,12 @@ export default function TeacherSchedulePage() {
           /* Calendar Grid View */
           <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
             {WEEKDAYS.map((day, i) => (
-              <div key={day} className="space-y-2 bg-slate-900/50 border border-slate-800/70 rounded-2xl p-3">
-                <div className="text-center text-xs font-bold text-slate-400 pb-2 border-b border-slate-800">
+              <div key={day} className="space-y-2 bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/70 rounded-2xl p-3 shadow-sm">
+                <div className="text-center text-xs font-bold text-slate-600 dark:text-slate-400 pb-2 border-b border-slate-200 dark:border-slate-800">
                   {day}
                 </div>
                 {calGrid[i].length === 0 ? (
-                  <div className="h-24 rounded-xl flex items-center justify-center text-[10px] text-slate-600">
+                  <div className="h-24 rounded-xl flex items-center justify-center text-[10px] text-slate-400 dark:text-slate-600">
                     Trống
                   </div>
                 ) : (
@@ -463,13 +463,13 @@ export default function TeacherSchedulePage() {
                       <div
                         key={s.id}
                         onClick={() => handleHostMeeting(s)}
-                        className="cursor-pointer w-full text-left bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-[11px] space-y-1 transition hover:border-emerald-500/50"
+                        className="cursor-pointer w-full text-left bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 text-[11px] space-y-1 transition hover:border-emerald-500/50"
                       >
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold ${cfg.cls}`}>
                           {cfg.label}
                         </span>
-                        <p className="font-semibold text-white truncate">{s.title}</p>
-                        <p className="text-slate-400 font-mono text-[10px]">
+                        <p className="font-semibold text-slate-900 dark:text-white truncate">{s.title}</p>
+                        <p className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
                           {new Date(s.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                         </p>
                       </div>
@@ -485,13 +485,13 @@ export default function TeacherSchedulePage() {
       {/* Modal: Create Live Session */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 animate-fade-in font-sans">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl flex flex-col max-h-[88vh] overflow-hidden">
-            <div className="shrink-0 flex justify-between items-center px-5 py-4 border-b border-slate-800 bg-slate-900/95 backdrop-blur">
-              <h3 className="text-base font-bold text-white">Lên Lịch Buổi Dạy Mới</h3>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl flex flex-col max-h-[88vh] overflow-hidden">
+            <div className="shrink-0 flex justify-between items-center px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Lên Lịch Buổi Dạy Mới</h3>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-white p-1 text-base transition"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 text-base transition"
               >
                 ✕
               </button>
@@ -499,19 +499,19 @@ export default function TeacherSchedulePage() {
 
             <form id="create-live-session-form" onSubmit={handleCreateSessionSubmit} className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 text-xs">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Tiêu Đề Buổi Dạy</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Tiêu Đề Buổi Dạy</label>
                 <input
                   type="text"
                   required
                   placeholder="Ví dụ: Ôn Tập Thuật Ngữ CSCA Chuyên Sâu & Giải Đề Mẫu"
                   value={sessionForm.title}
                   onChange={(e) => setSessionForm({ ...sessionForm, title: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Lớp Học Trực Tuyến</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Lớp Học Trực Tuyến</label>
                 {liveClasses.length > 0 ? (
                   <select
                     required
@@ -520,7 +520,7 @@ export default function TeacherSchedulePage() {
                       const selected = liveClasses.find((liveClass) => String(liveClass.id) === e.target.value);
                       setSessionForm({ ...sessionForm, liveClassId: e.target.value, classTitle: selected?.title || sessionForm.classTitle });
                     }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   >
                     {liveClasses.map((liveClass) => (
                       <option key={liveClass.id} value={liveClass.id}>{liveClass.title}</option>
@@ -533,7 +533,7 @@ export default function TeacherSchedulePage() {
                     placeholder="Lớp CSCA Toán - Lý - Hóa Đợt 1"
                     value={sessionForm.classTitle}
                     onChange={(e) => setSessionForm({ ...sessionForm, classTitle: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   />
                 )}
                 <p className="mt-1 text-[10px] text-slate-500">Buổi học sẽ lưu theo lớp thật trong database.</p>
@@ -541,68 +541,68 @@ export default function TeacherSchedulePage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Thời Gian Bắt Đầu</label>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Thời Gian Bắt Đầu</label>
                   <input
                     type="datetime-local"
                     required
                     value={sessionForm.startTime}
                     onChange={(e) => setSessionForm({ ...sessionForm, startTime: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Thời Gian Kết Thúc</label>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Thời Gian Kết Thúc</label>
                   <input
                     type="datetime-local"
                     value={sessionForm.endTime}
                     onChange={(e) => setSessionForm({ ...sessionForm, endTime: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Nền Tảng Trực Tuyến</label>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Nền Tảng Trực Tuyến</label>
                   <select
                     value={sessionForm.provider}
                     onChange={(e) => setSessionForm({ ...sessionForm, provider: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   >
                     <option value="Google Meet">Google Meet</option>
                     <option value="Zoom">Zoom Meeting</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Sức Chứa (Học viên)</label>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Sức Chứa (Học viên)</label>
                   <input
                     type="number"
                     min="5"
                     max="200"
                     value={sessionForm.maxStudents}
                     onChange={(e) => setSessionForm({ ...sessionForm, maxStudents: Number(e.target.value) })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Link Phòng Học (Meet / Zoom URL)</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Link Phòng Học (Meet / Zoom URL)</label>
                 <input
                   type="url"
                   placeholder="https://meet.google.com/abc-defg-hij"
                   value={sessionForm.meetUrl}
                   onChange={(e) => setSessionForm({ ...sessionForm, meetUrl: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>
             </form>
 
-            <div className="shrink-0 px-5 py-3.5 border-t border-slate-800 bg-slate-950/90 backdrop-blur flex justify-end gap-2.5">
+            <div className="shrink-0 px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/90 backdrop-blur flex justify-end gap-2.5">
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 transition"
+                className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 transition"
               >
                 Hủy
               </button>
@@ -622,16 +622,16 @@ export default function TeacherSchedulePage() {
       {/* Modal: Student Roster */}
       {rosterSession && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 animate-fade-in font-sans">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl max-w-2xl w-full shadow-2xl flex flex-col max-h-[88vh] overflow-hidden">
-            <div className="shrink-0 flex justify-between items-center px-5 py-4 border-b border-slate-800 bg-slate-900/95 backdrop-blur">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl max-w-2xl w-full shadow-2xl flex flex-col max-h-[88vh] overflow-hidden">
+            <div className="shrink-0 flex justify-between items-center px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
               <div>
-                <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-400">Danh Sách Học Viên Ghi Danh</span>
-                <h3 className="text-base font-bold text-white mt-0.5">{rosterSession.title}</h3>
+                <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-600 dark:text-emerald-400">Danh Sách Học Viên Ghi Danh</span>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white mt-0.5">{rosterSession.title}</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setRosterSession(null)}
-                className="text-slate-400 hover:text-white p-1 text-base transition"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 text-base transition"
               >
                 ✕
               </button>
@@ -645,27 +645,27 @@ export default function TeacherSchedulePage() {
               ) : rosterStudents.map((stu, idx) => (
                 <div
                   key={stu.id}
-                  className="p-3 bg-slate-950/70 border border-slate-800/80 rounded-xl flex items-center justify-between gap-4"
+                  className="p-3 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 rounded-xl flex items-center justify-between gap-4"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-slate-500">{idx + 1}.</span>
-                    <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-800 border border-slate-700">
+                    <span className="text-xs font-mono text-slate-400 dark:text-slate-500">{idx + 1}.</span>
+                    <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
                       {stu.avatar_url ? (
                         <img src={stu.avatar_url} alt={stu.username} className="w-full h-full object-cover" />
                       ) : (
-                        <span className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-300">
+                        <span className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-700 dark:text-slate-300">
                           {(stu.username || stu.email || "?").slice(0, 1).toUpperCase()}
                         </span>
                       )}
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white">{stu.username || stu.email}</p>
-                      <p className="text-xs text-slate-400 font-mono">{stu.email}</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{stu.username || stu.email}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{stu.email}</p>
                     </div>
                   </div>
 
                   <div className="text-right">
-                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                       Chuyên cần: {stu.attendance_rate || 0}%
                     </span>
                   </div>
@@ -673,15 +673,15 @@ export default function TeacherSchedulePage() {
               ))}
             </div>
 
-            <div className="shrink-0 px-5 py-3.5 border-t border-slate-800 bg-slate-950/90 backdrop-blur flex justify-between items-center">
-              <span className="text-xs text-slate-400 font-mono">
-                Tổng cộng: <strong className="text-white">{rosterStudents.length}</strong> học viên
+            <div className="shrink-0 px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/90 backdrop-blur flex justify-between items-center">
+              <span className="text-xs text-slate-600 dark:text-slate-400 font-mono">
+                Tổng cộng: <strong className="text-slate-900 dark:text-white">{rosterStudents.length}</strong> học viên
               </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setRosterSession(null)}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-700 transition"
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300 dark:hover:bg-slate-700 transition"
                 >
                   Đóng
                 </button>

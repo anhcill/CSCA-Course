@@ -161,16 +161,16 @@ const AdminExercises = () => {
                         setIsModalOpen(true);
                       }}
                       title={t('adminExercises_actions_editExerciseTitle')}
-                      className="text-blue-600 bg-gray-100 dark:bg-gray-700 hover:text-blue-900 hover:dark:bg-gray-900 mr-4"
+                      className="p-1.5 rounded-lg text-blue-600 dark:text-blue-400 bg-gray-100 dark:bg-gray-700 hover:text-blue-900 dark:hover:bg-gray-600 mr-2 transition"
                     >
-                      <FiEdit2 className="w-5 h-5" />
+                      <FiEdit2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(exercise._id)}
                       title={t('adminExercises_actions_deleteExerciseTitle')}
-                      className="text-red-600 bg-gray-100 dark:bg-gray-700 hover:text-red-900 hover:dark:bg-gray-900"
+                      className="p-1.5 rounded-lg text-red-600 dark:text-red-400 bg-gray-100 dark:bg-gray-700 hover:text-red-900 dark:hover:bg-gray-600 transition"
                     >
-                      <FiTrash2 className="w-5 h-5" />
+                      <FiTrash2 className="w-4 h-4" />
                     </button>
                   </td>
                 </tr>

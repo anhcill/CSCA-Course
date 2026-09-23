@@ -21,7 +21,7 @@ function TimerRing({ seconds, total }) {
   return (
     <div className={`relative w-20 h-20 shrink-0 ${isUrgent ? "animate-pulse" : ""}`}>
       <svg viewBox="0 0 90 90" className="w-full h-full -rotate-90">
-        <circle cx="45" cy="45" r={r} fill="none" stroke="#1e293b" strokeWidth="6" />
+        <circle cx="45" cy="45" r={r} fill="none" stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeWidth="6" />
         <circle
           cx="45"
           cy="45"
@@ -57,7 +57,7 @@ function ScoreRing({ score, total }) {
   return (
     <div className="relative w-36 h-36 mx-auto">
       <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-        <circle cx="60" cy="60" r={r} fill="none" stroke="#1e293b" strokeWidth="8" />
+        <circle cx="60" cy="60" r={r} fill="none" stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeWidth="8" />
         <circle
           cx="60"
           cy="60"
@@ -75,7 +75,7 @@ function ScoreRing({ score, total }) {
         <span className="text-3xl font-black font-mono tracking-tight" style={{ color }}>
           {score}
         </span>
-        <span className="text-xs text-slate-400 font-medium">/ {total} điểm</span>
+        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">/ {total} điểm</span>
       </div>
     </div>
   );
@@ -85,7 +85,7 @@ function ScoreRing({ score, total }) {
 function ProgressBar({ answered, total }) {
   const pct = total > 0 ? (answered / total) * 100 : 0;
   return (
-    <div className="w-full h-1 bg-slate-800">
+    <div className="w-full h-1 bg-slate-200 dark:bg-slate-800">
       <div
         className="h-full bg-gradient-to-r from-rose-500 to-emerald-500 transition-all duration-300"
         style={{ width: `${pct}%` }}
@@ -276,7 +276,7 @@ export default function QuizPlayerPage() {
   // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex items-center justify-center p-6">
         <div className="max-w-md w-full">
           <LoadingState message="Đang khởi tạo đề thi trắc nghiệm và câu hỏi..." count={3} />
         </div>
@@ -287,7 +287,7 @@ export default function QuizPlayerPage() {
   // Error state
   if (loadError || !quizData) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex items-center justify-center p-6">
         <div className="max-w-md w-full">
           <ErrorState
             title="Không Thể Nạp Đề Thi"
@@ -296,7 +296,7 @@ export default function QuizPlayerPage() {
             secondaryAction={
               <Link
                 to={assignmentListPath}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold"
               >
                 ← Quay Lại Danh Sách Bài Tập
               </Link>
@@ -320,29 +320,29 @@ export default function QuizPlayerPage() {
     const tsSecs = timeSpent % 60;
 
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 py-12 px-4">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-12 px-4">
         <div className="container mx-auto max-w-2xl space-y-8">
           <div
             className={`bg-gradient-to-b ${
-              passed ? "from-emerald-950/40 border-emerald-500/40" : "from-rose-950/40 border-rose-500/40"
-            } to-slate-900 border rounded-3xl p-8 text-center space-y-6 shadow-2xl backdrop-blur-sm`}
+              passed ? "from-emerald-500/10 dark:from-emerald-950/40 border-emerald-500/40" : "from-rose-500/10 dark:from-rose-950/40 border-rose-500/40"
+            } to-white dark:to-slate-900 border rounded-3xl p-8 text-center space-y-6 shadow-sm dark:shadow-2xl backdrop-blur-sm`}
           >
             <div className="text-5xl">{passed ? "🎉" : "📖"}</div>
 
             <div className="space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Kết Quả Đánh Giá Năng Lực
               </span>
-              <h2 className="text-2xl md:text-3xl font-black text-white">{quizData.title}</h2>
+              <h2 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">{quizData.title}</h2>
             </div>
 
             <ScoreRing score={score} total={maxScore} />
 
             <div className="space-y-2">
-              <p className={`text-lg font-black ${passed ? "text-emerald-400" : "text-rose-400"}`}>
+              <p className={`text-lg font-black ${passed ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
                 {passed ? "CHÚC MỪNG: BẠN ĐÃ ĐẠT YÊU CẦU!" : "CHƯA ĐẠT: CẦN ÔN TẬP THÊM KIẾN THỨC!"}
               </p>
-              <p className="text-xs md:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+              <p className="text-xs md:text-sm text-slate-600 dark:text-slate-300 max-w-md mx-auto leading-relaxed">
                 {result.message ||
                   (passed
                     ? "Bạn nắm vững kiến trúc ngữ pháp và từ vựng trọng tâm bài thi."
@@ -352,18 +352,18 @@ export default function QuizPlayerPage() {
 
             {/* Metrics Breakdown Grid */}
             <div className="grid grid-cols-3 gap-3 pt-2">
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
-                <p className="text-xl font-black text-amber-400 font-mono">{pct}%</p>
+              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
+                <p className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono">{pct}%</p>
                 <p className="text-[10px] text-slate-500 uppercase font-semibold mt-1">Độ chính xác</p>
               </div>
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
-                <p className="text-xl font-black text-sky-400 font-mono">
+              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
+                <p className="text-xl font-black text-sky-600 dark:text-sky-400 font-mono">
                   {tsMins}:{String(tsSecs).padStart(2, "0")}
                 </p>
                 <p className="text-[10px] text-slate-500 uppercase font-semibold mt-1">Thời gian làm</p>
               </div>
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
-                <p className="text-xl font-black text-emerald-400 font-mono">
+              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
+                <p className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
                   {answeredCount}/{questions.length}
                 </p>
                 <p className="text-[10px] text-slate-500 uppercase font-semibold mt-1">Số câu đã làm</p>
@@ -371,7 +371,7 @@ export default function QuizPlayerPage() {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-800/80">
+            <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200 dark:border-slate-800/80">
               <button
                 type="button"
                 onClick={() => setReviewMode(true)}
@@ -383,7 +383,7 @@ export default function QuizPlayerPage() {
               <button
                 type="button"
                 disabled
-                className="flex-1 px-5 py-3 bg-slate-800 text-slate-500 font-bold rounded-xl text-xs border border-slate-700 cursor-not-allowed"
+                className="flex-1 px-5 py-3 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 font-bold rounded-xl text-xs border border-slate-200 dark:border-slate-700 cursor-not-allowed"
                 title="Mỗi đề chỉ được nộp một lượt"
               >
                 🔒 Lượt Làm Bài Đã Khóa
@@ -391,7 +391,7 @@ export default function QuizPlayerPage() {
 
               <Link
                 to={assignmentListPath}
-                className="flex-1 px-5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs transition border border-slate-700 text-center"
+                className="flex-1 px-5 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition border border-slate-200 dark:border-slate-700 text-center"
               >
                 ← Danh Sách Bài Tập
               </Link>
@@ -406,9 +406,9 @@ export default function QuizPlayerPage() {
      VIEW MODE 2: ACTIVE QUIZ PLAYER OR REVIEW MODE
      ══════════════════════════════════════════════════════════════ */
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-24 md:pb-12">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-24 md:pb-12">
       {/* Top Header & Sticky Progress */}
-      <div className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-md">
+      <div className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-md">
         <ProgressBar answered={answeredCount} total={questions.length} />
 
         <div className="container mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-4">
@@ -416,16 +416,16 @@ export default function QuizPlayerPage() {
             <div className="flex items-center gap-2">
               <Link
                 to={assignmentListPath}
-                className="text-xs text-slate-400 hover:text-white transition"
+                className="text-xs text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition"
               >
                 ← Bài Tập
               </Link>
-              <span className="text-slate-600">/</span>
-              <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wider">
+              <span className="text-slate-300 dark:text-slate-600">/</span>
+              <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
                 {reviewMode ? "CHẾ ĐỘ XEM LẠI ĐÁP ÁN" : "BÀI THI TRẮC NGHIỆM"}
               </span>
             </div>
-            <h1 className="text-sm md:text-base font-black text-white truncate max-w-sm md:max-w-md">
+            <h1 className="text-sm md:text-base font-black text-slate-900 dark:text-white truncate max-w-sm md:max-w-md">
               {quizData.title}
             </h1>
           </div>
@@ -433,16 +433,16 @@ export default function QuizPlayerPage() {
           <div className="flex items-center gap-4 shrink-0">
             {/* Autosave UI Indicator */}
             {!reviewMode && !result && (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950 border border-slate-800 text-[11px]">
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-[11px]">
                 {saveStatus === "saving" ? (
                   <>
                     <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                    <span className="text-amber-400 font-medium">Đang lưu...</span>
+                    <span className="text-amber-500 font-medium">Đang lưu...</span>
                   </>
                 ) : (
                   <>
-                    <span className="text-emerald-400">✓</span>
-                    <span className="text-slate-400 font-mono">💾 Tự động lưu</span>
+                    <span className="text-emerald-500">✓</span>
+                    <span className="text-slate-500 dark:text-slate-400 font-mono">💾 Tự động lưu</span>
                   </>
                 )}
               </div>
@@ -450,10 +450,10 @@ export default function QuizPlayerPage() {
 
             {/* Answered Counter */}
             <div className="hidden md:block text-right">
-              <p className="text-xs font-bold text-white">
+              <p className="text-xs font-bold text-slate-900 dark:text-white">
                 {answeredCount}/{questions.length}
               </p>
-              <p className="text-[10px] text-slate-400 uppercase">Đã trả lời</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Đã trả lời</p>
             </div>
 
             {/* Timer Ring */}
@@ -464,7 +464,7 @@ export default function QuizPlayerPage() {
               <button
                 type="button"
                 onClick={() => setReviewMode(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white rounded-xl transition border border-slate-700"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-800 dark:text-white rounded-xl transition border border-slate-200 dark:border-slate-700"
               >
                 Về Kết Quả
               </button>
@@ -475,7 +475,7 @@ export default function QuizPlayerPage() {
 
       {/* Review Mode Banner */}
       {reviewMode && (
-        <div className="bg-sky-950/40 border-b border-sky-800/40 px-4 py-2 text-center text-xs text-sky-300">
+        <div className="bg-sky-50 dark:bg-sky-950/40 border-b border-sky-200 dark:border-sky-800/40 px-4 py-2 text-center text-xs text-sky-800 dark:text-sky-300">
           💡 Bạn đang ở chế độ xem lại đáp án chi tiết. Mỗi câu hỏi hiển thị đáp án đúng cùng giải thích ngữ pháp HSK.
         </div>
       )}
@@ -485,16 +485,16 @@ export default function QuizPlayerPage() {
         <div className="container mx-auto max-w-5xl px-4 py-6">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Left/Center: Current Question Card */}
-            <div className="lg:col-span-3 bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl">
+            <div className="lg:col-span-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-sm dark:shadow-xl">
               {/* Question Header */}
-              <div className="flex items-center justify-between text-xs font-mono text-slate-400 pb-4 border-b border-slate-800">
-                <span className="font-bold text-slate-200">
+              <div className="flex items-center justify-between text-xs font-mono text-slate-500 dark:text-slate-400 pb-4 border-b border-slate-200 dark:border-slate-800">
+                <span className="font-bold text-slate-800 dark:text-slate-200">
                   Câu hỏi {idx + 1} / {questions.length}
                 </span>
 
                 <div className="flex items-center gap-3">
-                  <span className="bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px]">
-                    Điểm: <strong className="text-rose-400">{currentQ.points || 2}</strong>
+                  <span className="bg-slate-100 dark:bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px]">
+                    Điểm: <strong className="text-rose-600 dark:text-rose-400">{currentQ.points || 2}</strong>
                   </span>
 
                   {!result && !reviewMode && (
@@ -503,8 +503,8 @@ export default function QuizPlayerPage() {
                       onClick={() => toggleFlag(currentQ.id)}
                       className={`px-3 py-1 rounded-lg text-xs font-bold transition border flex items-center gap-1.5 ${
                         flagged.has(currentQ.id)
-                          ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm"
-                          : "bg-slate-950 text-slate-400 border-slate-800 hover:text-white"
+                          ? "bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40 shadow-sm"
+                          : "bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white"
                       }`}
                     >
                       <span>🚩</span>
@@ -516,7 +516,7 @@ export default function QuizPlayerPage() {
 
               {/* Question Text */}
               <div className="space-y-2">
-                <h3 className="text-lg md:text-xl font-bold text-white leading-relaxed font-sans">
+                <h3 className="text-lg md:text-xl font-bold text-slate-900 dark:text-white leading-relaxed font-sans">
                   {currentQ.question_text}
                 </h3>
               </div>
@@ -537,12 +537,12 @@ export default function QuizPlayerPage() {
                       disabled={!!result || reviewMode}
                       className={`w-full p-4 rounded-2xl text-left border transition-all duration-150 flex items-center justify-between text-sm ${
                         isCorrect
-                          ? "bg-emerald-500/15 border-emerald-500 text-emerald-200 font-bold ring-1 ring-emerald-500"
+                          ? "bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500 text-emerald-800 dark:text-emerald-200 font-bold ring-1 ring-emerald-500"
                           : isWrong
-                          ? "bg-rose-500/15 border-rose-500 text-rose-200 ring-1 ring-rose-500"
+                          ? "bg-rose-500/10 dark:bg-rose-500/15 border-rose-500 text-rose-800 dark:text-rose-200 ring-1 ring-rose-500"
                           : isSelected
                           ? "bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/30 font-semibold"
-                          : "bg-slate-950/70 border-slate-800 text-slate-300 hover:bg-slate-800/80 hover:border-slate-700"
+                          : "bg-slate-50 dark:bg-slate-950/70 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700"
                       }`}
                     >
                       <div className="flex items-center gap-3.5">
@@ -554,7 +554,7 @@ export default function QuizPlayerPage() {
                               ? "bg-rose-500 text-white"
                               : isSelected
                               ? "bg-white text-rose-600"
-                              : "bg-slate-800 text-slate-400"
+                              : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                           }`}
                         >
                           {opt.key}
@@ -563,10 +563,10 @@ export default function QuizPlayerPage() {
                       </div>
 
                       <div className="text-xs shrink-0 font-medium">
-                        {isCorrect && <span className="text-emerald-400">✓ Đáp án đúng</span>}
-                        {isWrong && <span className="text-rose-400">✕ Bạn đã chọn sai</span>}
+                        {isCorrect && <span className="text-emerald-600 dark:text-emerald-400">✓ Đáp án đúng</span>}
+                        {isWrong && <span className="text-rose-600 dark:text-rose-400">✕ Bạn đã chọn sai</span>}
                         {!result && !reviewMode && isSelected && (
-                          <span className="text-white/80 font-mono">Đã chọn</span>
+                          <span className="text-white/90 font-mono">Đã chọn</span>
                         )}
                       </div>
                     </button>
@@ -576,21 +576,21 @@ export default function QuizPlayerPage() {
 
               {/* Grammar & Vocabulary Explanation (in Review / Result Mode) */}
               {result && currentReview?.explanation && (
-                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 text-xs space-y-2 mt-4">
-                  <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase tracking-wider">
+                <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 text-xs space-y-2 mt-4">
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider">
                     <span>💡 Phân Tích Ngữ Pháp & Đáp Án</span>
                   </div>
-                  <p className="text-slate-300 leading-relaxed font-light">{currentReview.explanation}</p>
+                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-light">{currentReview.explanation}</p>
                 </div>
               )}
 
               {/* Card Bottom Navigation */}
-              <div className="flex justify-between items-center pt-6 border-t border-slate-800">
+              <div className="flex justify-between items-center pt-6 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   disabled={idx === 0}
                   onClick={() => setIdx((p) => Math.max(0, p - 1))}
-                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold disabled:opacity-30 transition"
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white rounded-xl text-xs font-semibold disabled:opacity-30 transition"
                 >
                   ← Câu Trước
                 </button>
@@ -598,7 +598,7 @@ export default function QuizPlayerPage() {
                 <button
                   type="button"
                   onClick={() => setShowMobileNav(!showMobileNav)}
-                  className="lg:hidden px-3.5 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-mono"
+                  className="lg:hidden px-3.5 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-mono"
                 >
                   Câu {idx + 1}/{questions.length} ▤
                 </button>
@@ -643,17 +643,17 @@ export default function QuizPlayerPage() {
               <div
                 className={`${
                   showMobileNav
-                    ? "w-full bg-slate-900 rounded-t-3xl p-6 max-h-[75vh] overflow-y-auto"
-                    : "bg-slate-900 border border-slate-800 rounded-3xl p-5"
-                } space-y-4 shadow-xl`}
+                    ? "w-full bg-white dark:bg-slate-900 rounded-t-3xl p-6 max-h-[75vh] overflow-y-auto"
+                    : "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5"
+                } space-y-4 shadow-sm dark:shadow-xl`}
               >
                 {showMobileNav && (
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                    <span className="text-xs font-bold text-white uppercase">Danh Sách Câu Hỏi</span>
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white uppercase">Danh Sách Câu Hỏi</span>
                     <button
                       type="button"
                       onClick={() => setShowMobileNav(false)}
-                      className="text-xs text-slate-400 hover:text-white font-bold px-2 py-1"
+                      className="text-xs text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-bold px-2 py-1"
                     >
                       Đóng ✕
                     </button>
@@ -661,14 +661,14 @@ export default function QuizPlayerPage() {
                 )}
 
                 <div className="hidden lg:block">
-                  <h4 className="font-bold text-xs text-slate-300 uppercase tracking-wider">
+                  <h4 className="font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                     Danh Sách Câu Hỏi
                   </h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">Nhấp vào số câu để chuyển nhanh</p>
                 </div>
 
                 {/* Filter Tabs */}
-                <div className="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
+                <div className="grid grid-cols-4 gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-[10px]">
                   {[
                     { id: "all", label: "Tất cả" },
                     { id: "answered", label: "Đã làm" },
@@ -681,8 +681,8 @@ export default function QuizPlayerPage() {
                       onClick={() => setNavFilter(f.id)}
                       className={`py-1.5 rounded-lg font-bold transition text-center ${
                         navFilter === f.id
-                          ? "bg-slate-800 text-white shadow-sm"
-                          : "text-slate-400 hover:text-white"
+                          ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                          : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                       }`}
                     >
                       {f.label}
@@ -713,14 +713,14 @@ export default function QuizPlayerPage() {
                           isCurrent
                             ? "ring-2 ring-rose-500 bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/30"
                             : isCorrect
-                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
                             : isWrong
-                            ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                            ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40"
                             : isFlagged
-                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                            ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40"
                             : isAnswered
-                            ? "bg-slate-800 text-emerald-400 border-emerald-500/30"
-                            : "bg-slate-950 text-slate-500 border-slate-800 hover:border-slate-700"
+                            ? "bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                            : "bg-slate-50 dark:bg-slate-950 text-slate-500 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
                         }`}
                       >
                         {qi + 1}
@@ -733,7 +733,7 @@ export default function QuizPlayerPage() {
                 </div>
 
                 {/* Color Legend */}
-                <div className="text-[10px] text-slate-400 space-y-1.5 pt-3 border-t border-slate-800">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 space-y-1.5 pt-3 border-t border-slate-200 dark:border-slate-800">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                     <span>Đã trả lời ({answeredCount})</span>
@@ -743,7 +743,7 @@ export default function QuizPlayerPage() {
                     <span>Cần xem lại ({flagged.size})</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700" />
                     <span>Chưa trả lời ({unansweredCount})</span>
                   </div>
                 </div>
@@ -769,39 +769,39 @@ export default function QuizPlayerPage() {
 
       {/* Confirmation Modal */}
       {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-sm w-full space-y-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 max-w-sm w-full space-y-4 shadow-2xl">
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 mx-auto flex items-center justify-center text-xl">
+              <div className="w-12 h-12 rounded-full bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 dark:border-rose-500/30 mx-auto flex items-center justify-center text-xl">
                 ⏱️
               </div>
-              <h3 className="text-lg font-bold text-white">Xác Nhận Nộp Bài Trắc Nghiệm?</h3>
-              <p className="text-xs text-slate-300 leading-relaxed font-light">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Xác Nhận Nộp Bài Trắc Nghiệm?</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-light">
                 Hệ thống sẽ ghi nhận điểm số của bạn ngay lập tức và tính vào kết quả môn học.
               </p>
             </div>
 
             {/* Answered Metrics */}
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 text-xs text-slate-300">
+            <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs text-slate-700 dark:text-slate-300">
               <div className="flex justify-between">
                 <span>Đã trả lời:</span>
-                <span className="text-emerald-400 font-bold">
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">
                   {answeredCount} / {questions.length} câu
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Chưa trả lời:</span>
-                <span className="text-rose-400 font-bold">{unansweredCount} câu</span>
+                <span className="text-rose-600 dark:text-rose-400 font-bold">{unansweredCount} câu</span>
               </div>
               <div className="flex justify-between">
                 <span>Đánh dấu xem lại:</span>
-                <span className="text-amber-400 font-bold">{flagged.size} câu</span>
+                <span className="text-amber-600 dark:text-amber-400 font-bold">{flagged.size} câu</span>
               </div>
             </div>
 
             {/* Unanswered questions alert */}
             {unansweredCount > 0 && (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 text-xs text-amber-300 flex items-start gap-2">
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
                 <span>⚠️</span>
                 <span>
                   Bạn còn <strong>{unansweredCount} câu</strong> chưa điền đáp án. Các câu chưa trả lời sẽ nhận 0 điểm!
@@ -813,7 +813,7 @@ export default function QuizPlayerPage() {
               <button
                 type="button"
                 onClick={() => setShowConfirm(false)}
-                className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
+                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition"
               >
                 Làm Tiếp
               </button>
@@ -831,20 +831,20 @@ export default function QuizPlayerPage() {
       )}
 
       {/* Mobile Sticky Bottom Bar */}
-      <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-slate-900/95 backdrop-blur-md border-t border-slate-800 p-3 z-20 shadow-2xl">
+      <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 p-3 z-20 shadow-2xl">
         <div className="flex items-center justify-between max-w-lg mx-auto gap-2">
           <button
             type="button"
             disabled={idx === 0}
             onClick={() => setIdx((p) => Math.max(0, p - 1))}
-            className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold disabled:opacity-30"
+            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white rounded-xl text-xs font-bold disabled:opacity-30"
           >
             ← Trước
           </button>
           <button
             type="button"
             onClick={() => setShowMobileNav(true)}
-            className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-mono"
+            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-mono"
           >
             {idx + 1}/{questions.length} (Lưới)
           </button>

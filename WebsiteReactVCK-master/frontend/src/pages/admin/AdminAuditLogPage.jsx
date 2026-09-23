@@ -122,7 +122,7 @@ export default function AdminAuditLogPage() {
       </div>
 
       {errorMessage && (
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 px-4 py-3 text-xs text-rose-700 dark:text-rose-300">
           <span>{errorMessage}</span>
           <button type="button" onClick={loadLogs} className="shrink-0 font-bold underline">Thử lại</button>
         </div>
@@ -214,11 +214,11 @@ export default function AdminAuditLogPage() {
       </div>
 
       {pagination.total > pagination.limit && (
-        <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+        <div className="flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
           <span>Hiển thị trang {page}/{totalPages} · {pagination.total} bản ghi</span>
           <div className="flex gap-2">
-            <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40"><FiChevronLeft className="h-3.5 w-3.5" /> Trước</button>
-            <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40">Sau <FiChevronRight className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40 transition"><FiChevronLeft className="h-3.5 w-3.5" /> Trước</button>
+            <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40 transition">Sau <FiChevronRight className="h-3.5 w-3.5" /></button>
           </div>
         </div>
       )}

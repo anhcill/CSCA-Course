@@ -250,7 +250,7 @@ export default function AssignmentSubmitPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex items-center justify-center p-6">
         <div className="max-w-md w-full">
           <LoadingState message="Đang nạp dữ liệu bài tập và hồ sơ nộp bài..." count={3} />
         </div>
@@ -260,7 +260,7 @@ export default function AssignmentSubmitPage() {
 
   if (errorMessage || !assignment) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex items-center justify-center p-6">
         <div className="max-w-md w-full">
           <ErrorState
             title="Không Tìm Thấy Bài Tập"
@@ -269,7 +269,7 @@ export default function AssignmentSubmitPage() {
             secondaryAction={
               <Link
                 to={assignmentListPath}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold"
               >
                 ← Quay Về Danh Sách Bài Tập
               </Link>
@@ -281,16 +281,16 @@ export default function AssignmentSubmitPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16">
       {/* Breadcrumb Navigation */}
-      <div className="bg-slate-900 border-b border-slate-800">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
         <div className="container mx-auto max-w-4xl px-4 py-3">
-          <nav className="flex items-center gap-2 text-xs text-slate-400">
-            <Link to={assignmentListPath} className="hover:text-white transition">
+          <nav className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <Link to={assignmentListPath} className="hover:text-slate-900 dark:hover:text-white transition">
               Danh Sách Bài Tập
             </Link>
             <span>/</span>
-            <span className="text-slate-200 font-medium truncate max-w-[240px]">
+            <span className="text-slate-900 dark:text-slate-200 font-medium truncate max-w-[240px]">
               {assignment.title}
             </span>
           </nav>
@@ -299,46 +299,46 @@ export default function AssignmentSubmitPage() {
 
       <div className="container mx-auto max-w-4xl px-4 py-8 space-y-8">
         {/* Assignment Header Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-4 shadow-xl">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-4 shadow-sm dark:shadow-xl">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             <div className="space-y-2 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="px-3 py-1 bg-rose-500/15 text-rose-400 border border-rose-500/25 text-xs font-bold rounded-full uppercase tracking-wider">
+                <span className="px-3 py-1 bg-rose-500/10 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20 dark:border-rose-500/25 text-xs font-bold rounded-full uppercase tracking-wider">
                   {assignment.type || "Bài Tập Về Nhà"}
                 </span>
                 {assignment.course_title && (
-                  <span className="px-3 py-1 bg-slate-800 text-slate-300 border border-slate-700 text-xs font-medium rounded-full">
+                  <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs font-medium rounded-full">
                     {assignment.course_title}
                   </span>
                 )}
               </div>
 
-              <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+              <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
                 {assignment.title}
               </h1>
 
-              <p className="text-slate-300 text-sm leading-relaxed font-light">
+              <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed font-light">
                 {assignment.description || "Hãy hoàn thành các yêu cầu bài tập và gửi bài trước thời hạn quy định."}
               </p>
             </div>
 
             {/* Score & Deadline Metrics */}
             <div className="flex md:flex-col gap-3 shrink-0">
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-center min-w-[120px]">
-                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Thang điểm</p>
-                <p className="text-2xl font-black text-white font-mono">{assignment.max_score || "10.0"}</p>
+              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-center min-w-[120px]">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Thang điểm</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white font-mono">{assignment.max_score || "10.0"}</p>
               </div>
 
               <div
-                className={`bg-slate-950 border rounded-2xl p-4 text-center min-w-[120px] ${
-                  remaining?.urgent ? "border-rose-500/40" : "border-slate-800"
+                className={`bg-slate-50 dark:bg-slate-950 border rounded-2xl p-4 text-center min-w-[120px] ${
+                  remaining?.urgent ? "border-rose-500/40" : "border-slate-200 dark:border-slate-800"
                 }`}
               >
-                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Hạn nộp bài</p>
-                <p className={`text-xs font-bold ${remaining?.urgent ? "text-rose-400" : "text-amber-400"}`}>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Hạn nộp bài</p>
+                <p className={`text-xs font-bold ${remaining?.urgent ? "text-rose-500 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"}`}>
                   {remaining?.text}
                 </p>
-                <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
                   {assignment.due_date ? new Date(assignment.due_date).toLocaleDateString("vi-VN") : "Hôm nay"}
                 </p>
               </div>
@@ -351,32 +351,32 @@ export default function AssignmentSubmitPage() {
           <div className="space-y-6">
             {/* Graded Score Banner */}
             {isGraded ? (
-              <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-emerald-950/40 border border-emerald-500/30 rounded-3xl p-6 md:p-8 space-y-6 shadow-2xl">
+              <div className="bg-gradient-to-r from-emerald-50 via-white to-emerald-50 dark:from-emerald-950/40 dark:via-slate-900 dark:to-emerald-950/40 border border-emerald-500/30 rounded-3xl p-6 md:p-8 space-y-6 shadow-sm dark:shadow-2xl">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-emerald-500/20 pb-5">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-2xl">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-2xl">
                       🏆
                     </div>
                     <div>
-                      <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
+                      <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
                         Đã Hoàn Thành Chấm Điểm
                       </span>
-                      <h2 className="text-xl font-bold text-white">Kết Quả Đánh Giá Bài Tập</h2>
+                      <h2 className="text-xl font-bold text-slate-900 dark:text-white">Kết Quả Đánh Giá Bài Tập</h2>
                     </div>
                   </div>
 
-                  <div className="text-center sm:text-right bg-slate-950/70 px-5 py-3 rounded-2xl border border-emerald-500/30">
-                    <span className="text-xs text-slate-400 block">Điểm số đạt được:</span>
-                    <span className="text-3xl font-black text-emerald-400 font-mono">
-                      {assignment.score} <span className="text-base text-slate-500">/ {assignment.max_score}</span>
+                  <div className="text-center sm:text-right bg-white dark:bg-slate-950/70 px-5 py-3 rounded-2xl border border-emerald-500/30 shadow-sm">
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Điểm số đạt được:</span>
+                    <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                      {assignment.score} <span className="text-base text-slate-400 dark:text-slate-500">/ {assignment.max_score}</span>
                     </span>
                   </div>
                 </div>
 
                 {/* Teacher Feedback Comment Box */}
-                <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 space-y-3">
+                <div className="bg-white dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full overflow-hidden border border-emerald-500 bg-slate-800">
+                    <div className="w-9 h-9 rounded-full overflow-hidden border border-emerald-500 bg-slate-100 dark:bg-slate-800">
                       <img
                         src={assignment.instructor_avatar || "/logo192.png"}
                         alt={assignment.instructor_name || "Giảng viên"}
@@ -384,31 +384,31 @@ export default function AssignmentSubmitPage() {
                       />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                         <span>{assignment.instructor_name || "Giảng viên phụ trách"}</span>
-                        <span className="text-emerald-400 text-[10px]">✓ Giảng viên phụ trách</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 text-[10px]">✓ Giảng viên phụ trách</span>
                       </p>
-                      <p className="text-[10px] text-slate-500 font-mono">
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                         Đã chấm vào ngày {assignment.graded_at ? new Date(assignment.graded_at).toLocaleDateString("vi-VN") : "-"}
                       </p>
                     </div>
                   </div>
 
-                  <p className="text-sm text-slate-200 leading-relaxed font-light pl-1">
+                  <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed font-light pl-1">
                     &ldquo;{assignment.feedback_text || "Giảng viên chưa để lại nhận xét."}&rdquo;
                   </p>
                 </div>
               </div>
             ) : (
               /* Submitted Pending Grading Banner */
-              <div className="bg-slate-900 border border-sky-500/30 rounded-3xl p-6 md:p-8 space-y-4 shadow-xl">
+              <div className="bg-white dark:bg-slate-900 border border-sky-500/30 rounded-3xl p-6 md:p-8 space-y-4 shadow-sm dark:shadow-xl">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center text-xl">
+                  <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/30 flex items-center justify-center text-xl">
                     ⏳
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-white">Bài Làm Đã Nộp Thành Công</h2>
-                    <p className="text-xs text-slate-400">
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">Bài Làm Đã Nộp Thành Công</h2>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
                       Bài làm của bạn đang trong hàng đợi chấm điểm của giảng viên. Bạn sẽ nhận được thông báo ngay khi có kết quả.
                     </p>
                   </div>
@@ -417,18 +417,18 @@ export default function AssignmentSubmitPage() {
             )}
 
             {/* Submitted Content Review Box */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-5">
-              <h3 className="text-base font-bold text-white border-b border-slate-800 pb-3">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-5 shadow-sm dark:shadow-xl">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">
                 Nội Dung Bài Làm Đã Nộp
               </h3>
 
               {/* Text submission preview */}
               {contentText && (
                 <div className="space-y-2">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                     Nội dung văn bản:
                   </span>
-                  <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">
+                  <div className="bg-slate-50 dark:bg-slate-950/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 text-sm text-slate-800 dark:text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">
                     {contentText}
                   </div>
                 </div>
@@ -437,22 +437,22 @@ export default function AssignmentSubmitPage() {
               {/* Attached file preview */}
               {fileUrl && (
                 <div className="space-y-2">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                     Tệp đính kèm:
                   </span>
-                  <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+                  <div className="bg-slate-50 dark:bg-slate-950/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className="text-2xl">📄</span>
                       <div>
-                        <p className="text-sm font-bold text-white">{fileName || "tai-lieu-bai-lam.pdf"}</p>
-                        <p className="text-xs text-slate-500 font-mono">Định dạng nộp trực tuyến</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{fileName || "tai-lieu-bai-lam.pdf"}</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 font-mono">Định dạng nộp trực tuyến</p>
                       </div>
                     </div>
                     <a
                       href={fileUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition"
                     >
                       Tải / Xem Lại
                     </a>
@@ -463,15 +463,15 @@ export default function AssignmentSubmitPage() {
               {/* Audio recording preview */}
               {audioUrl && (
                 <div className="space-y-2">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                     Bản ghi âm khẩu ngữ HSKK:
                   </span>
-                  <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-3">
+                  <div className="bg-slate-50 dark:bg-slate-950/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
                     <div className="flex items-center gap-3">
                       <span className="text-xl">🎙️</span>
                       <div>
-                        <p className="text-xs font-bold text-white">Bản thu phát âm & hội thoại</p>
-                        <p className="text-[10px] text-slate-500 font-mono">Audio Stream • Định dạng MP3/WAV</p>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">Bản thu phát âm & hội thoại</p>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">Audio Stream • Định dạng MP3/WAV</p>
                       </div>
                     </div>
                     <audio src={audioUrl} controls className="w-full h-10 rounded-lg" />
@@ -480,14 +480,14 @@ export default function AssignmentSubmitPage() {
               )}
 
               {/* Policy note & resubmit lock */}
-              <div className="pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500">
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500">
                 <span className="flex items-center gap-1.5">
                   <span>🔒</span>
                   <span>Chính sách: Khóa chỉnh sửa bài làm sau khi đã nộp để chống trùng lặp.</span>
                 </span>
                 <Link
                   to={assignmentListPath}
-                  className="text-rose-400 hover:text-rose-300 font-semibold"
+                  className="text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 font-semibold"
                 >
                   ← Về Danh Sách Bài Tập
                 </Link>
@@ -496,16 +496,16 @@ export default function AssignmentSubmitPage() {
           </div>
         ) : (
           /* VIEW MODE 2: SUBMIT WORKSPACE FORM */
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-2xl">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-sm dark:shadow-2xl">
             {/* Tab navigation for submission methods */}
-            <div className="flex border-b border-slate-800 gap-2 pb-3">
+            <div className="flex border-b border-slate-200 dark:border-slate-800 gap-2 pb-3">
               <button
                 type="button"
                 onClick={() => setActiveTab("text")}
                 className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
                   activeTab === "text"
                     ? "bg-rose-600 text-white shadow-md shadow-rose-600/25"
-                    : "text-slate-400 hover:text-white"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 <span>✏️ Soạn Thảo Văn Bản</span>
@@ -537,10 +537,10 @@ export default function AssignmentSubmitPage() {
             {/* TAB 1: TEXT SUBMISSION */}
             {activeTab === "text" && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <label className="font-semibold text-slate-300">Nội dung bài làm trực tuyến:</label>
-                  <span className="font-mono bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-                    Số chữ Hán: <strong className="text-rose-400">{chineseCount}</strong> ký tự
+                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                  <label className="font-semibold text-slate-700 dark:text-slate-300">Nội dung bài làm trực tuyến:</label>
+                  <span className="font-mono bg-slate-100 dark:bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800">
+                    Số chữ Hán: <strong className="text-rose-600 dark:text-rose-400">{chineseCount}</strong> ký tự
                   </span>
                 </div>
                 <textarea
@@ -548,7 +548,7 @@ export default function AssignmentSubmitPage() {
                   value={contentText}
                   onChange={(e) => setContentText(e.target.value)}
                   placeholder="Nhập nội dung bài luận, trả lời câu hỏi bằng tiếng Trung hoặc tiếng Việt..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-rose-500 font-sans leading-relaxed"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-rose-500 font-sans leading-relaxed"
                 />
               </div>
             )}
@@ -570,18 +570,18 @@ export default function AssignmentSubmitPage() {
                     }
                   }}
                   className={`border-2 border-dashed rounded-3xl p-8 text-center transition space-y-3 ${
-                    dragOver ? "border-rose-500 bg-rose-500/10" : "border-slate-800 bg-slate-950/60 hover:border-slate-700"
+                    dragOver ? "border-rose-500 bg-rose-500/10" : "border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 hover:border-slate-300 dark:hover:border-slate-700"
                   }`}
                 >
-                  <div className="text-slate-500 flex justify-center">
+                  <div className="text-slate-400 dark:text-slate-500 flex justify-center">
                     <IconUpload />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-white">Kéo và thả tệp bài làm vào đây</p>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">Kéo và thả tệp bài làm vào đây</p>
                     <p className="text-xs text-slate-500 mt-1">Hỗ trợ định dạng PDF, DOCX, ZIP hoặc ảnh (Tối đa 25MB)</p>
                   </div>
                   <div>
-                    <label className="cursor-pointer inline-flex px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition">
+                    <label className="cursor-pointer inline-flex px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-800 dark:text-white transition">
                       <span>Chọn tệp từ máy tính</span>
                       <input
                         type="file"
@@ -594,12 +594,12 @@ export default function AssignmentSubmitPage() {
 
                 {/* Upload Progress Bar */}
                 {isUploadingFile && (
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
-                    <div className="flex justify-between text-xs text-slate-400">
+                  <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span>Đang tải lên: {fileName}</span>
-                      <span className="font-mono text-rose-400 font-bold">{uploadProgress}%</span>
+                      <span className="font-mono text-rose-600 dark:text-rose-400 font-bold">{uploadProgress}%</span>
                     </div>
-                    <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                    <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                       <div
                         className="bg-rose-600 h-full rounded-full transition-all duration-300"
                         style={{ width: `${uploadProgress}%` }}
@@ -610,11 +610,11 @@ export default function AssignmentSubmitPage() {
 
                 {/* Upload Error Display */}
                 {uploadError && (
-                  <div className="bg-rose-500/15 border border-rose-500/30 p-3 rounded-xl text-xs text-rose-300 flex items-center justify-between">
+                  <div className="bg-rose-500/10 dark:bg-rose-500/15 border border-rose-500/30 p-3 rounded-xl text-xs text-rose-600 dark:text-rose-300 flex items-center justify-between">
                     <span>⚠️ {uploadError}</span>
                     <button
                       onClick={() => setUploadError("")}
-                      className="text-slate-400 hover:text-white font-bold"
+                      className="text-slate-400 hover:text-slate-900 dark:hover:text-white font-bold"
                     >
                       ✕
                     </button>
@@ -623,12 +623,12 @@ export default function AssignmentSubmitPage() {
 
                 {/* Attached File Ready */}
                 {fileUrl && !isUploadingFile && (
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+                  <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className="text-2xl">📄</span>
                       <div>
-                        <p className="text-sm font-bold text-white">{fileName || "Tệp bài làm đính kèm"}</p>
-                        <p className="text-xs text-emerald-400 font-mono">✓ Đã sẵn sàng nộp</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{fileName || "Tệp bài làm đính kèm"}</p>
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono">✓ Đã sẵn sàng nộp</p>
                       </div>
                     </div>
                     <button
@@ -636,7 +636,7 @@ export default function AssignmentSubmitPage() {
                         setFileUrl("");
                         setFileName("");
                       }}
-                      className="text-xs text-slate-500 hover:text-rose-400 transition"
+                      className="text-xs text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 transition"
                     >
                       Xóa tệp
                     </button>
@@ -647,23 +647,23 @@ export default function AssignmentSubmitPage() {
 
             {/* TAB 3: AUDIO HSKK RECORDER */}
             {activeTab === "audio" && (
-              <div className="space-y-5 bg-slate-950/60 p-6 rounded-3xl border border-slate-800 text-center">
+              <div className="space-y-5 bg-slate-50 dark:bg-slate-950/60 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 text-center">
                 <div className="max-w-md mx-auto space-y-3">
                   <div
                     className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center transition shadow-lg ${
                       isRecording
                         ? "bg-rose-600 text-white animate-pulse shadow-rose-600/50"
-                        : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                        : "bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                     }`}
                   >
                     <IconMic />
                   </div>
 
                   <div>
-                    <h4 className="text-sm font-bold text-white">
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
                       {isRecording ? "Đang Ghi Âm Khẩu Ngữ HSKK..." : "Ghi Âm Bài Nói HSKK"}
                     </h4>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                       {isRecording
                         ? `Thời lượng: ${recordingSeconds} giây`
                         : "Nhấp nút bên dưới để bắt đầu thu âm câu trả lời"}
@@ -687,10 +687,10 @@ export default function AssignmentSubmitPage() {
 
                 {/* Audio Preview Player */}
                 {audioUrl && !isRecording && (
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 max-w-lg mx-auto">
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                  <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2 max-w-lg mx-auto">
+                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span>Nghe lại bản thu trước khi nộp:</span>
-                      <span className="text-emerald-400 font-bold">✓ Bản ghi sẵn sàng</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ Bản ghi sẵn sàng</span>
                     </div>
                     <audio src={audioUrl} controls className="w-full h-10 rounded-lg" />
                   </div>
@@ -699,7 +699,7 @@ export default function AssignmentSubmitPage() {
             )}
 
             {/* Action Buttons */}
-            <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
               <span className="text-xs text-slate-500">
                 Lưu ý: Sau khi nộp, hệ thống sẽ gửi bài đến giáo viên để chấm điểm.
               </span>
@@ -707,7 +707,7 @@ export default function AssignmentSubmitPage() {
               <div className="flex gap-3 w-full sm:w-auto">
                 <Link
                   to={assignmentListPath}
-                  className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold text-center transition"
+                  className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold text-center transition"
                 >
                   Hủy Bỏ
                 </Link>
@@ -728,31 +728,31 @@ export default function AssignmentSubmitPage() {
 
       {/* Submit Confirmation Modal */}
       {showConfirm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-md w-full space-y-4 shadow-2xl">
+        <div className="fixed inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 max-w-md w-full space-y-4 shadow-2xl">
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 mx-auto flex items-center justify-center text-xl">
+              <div className="w-12 h-12 rounded-full bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 dark:border-rose-500/30 mx-auto flex items-center justify-center text-xl">
                 📝
               </div>
-              <h3 className="text-lg font-bold text-white">Xác Nhận Nộp Bài Tập</h3>
-              <p className="text-xs text-slate-300 leading-relaxed font-light">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Xác Nhận Nộp Bài Tập</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-light">
                 Bài làm của bạn sẽ được nộp chính thức lên hệ thống LMS CSCA Academy và không thể tự ý sửa đổi sau khi nộp.
               </p>
             </div>
 
             {/* Submission preview summary */}
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 text-xs text-slate-400">
+            <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs text-slate-600 dark:text-slate-400">
               <div className="flex justify-between">
                 <span>Văn bản bài làm:</span>
-                <span className="text-white font-bold">{contentText ? `${chineseCount} chữ Hán` : "Không có"}</span>
+                <span className="text-slate-900 dark:text-white font-bold">{contentText ? `${chineseCount} chữ Hán` : "Không có"}</span>
               </div>
               <div className="flex justify-between">
                 <span>Tệp đính kèm:</span>
-                  <span className="text-white font-bold">{fileAssetId ? fileName || "1 tệp" : "Không có"}</span>
+                <span className="text-slate-900 dark:text-white font-bold">{fileAssetId ? fileName || "1 tệp" : "Không có"}</span>
               </div>
               <div className="flex justify-between">
                 <span>Khẩu ngữ HSKK:</span>
-                  <span className="text-white font-bold">{audioAssetId ? "1 bản ghi âm" : "Không có"}</span>
+                <span className="text-slate-900 dark:text-white font-bold">{audioAssetId ? "1 bản ghi âm" : "Không có"}</span>
               </div>
             </div>
 
@@ -760,7 +760,7 @@ export default function AssignmentSubmitPage() {
               <button
                 type="button"
                 onClick={() => setShowConfirm(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
               >
                 Kiểm tra lại
               </button>

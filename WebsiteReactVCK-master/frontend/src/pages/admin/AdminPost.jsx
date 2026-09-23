@@ -199,27 +199,27 @@ const AdminPost = () => {
                                             setIsModalOpen(true);
                                         }}
                                         title={t('adminPost_actions_editPostTitle')}
-                                        className="text-blue-600 bg-gray-100 dark:bg-gray-700 hover:text-blue-900 hover:dark:bg-gray-900 mr-4"
+                                        className="p-1.5 rounded-lg text-blue-600 dark:text-blue-400 bg-gray-100 dark:bg-gray-700 hover:text-blue-900 dark:hover:bg-gray-600 mr-2 transition"
                                     >
-                                        <FiEdit2 className="w-5 h-5" />
+                                        <FiEdit2 className="w-4 h-4" />
                                     </button>
                                     {isAdmin && (
                                         <button
                                             onClick={() => togglePermission(post)}
-                                            className={`${post.permission
-                                                ? 'text-red-600 hover:text-red-900'
-                                                : 'text-green-600 hover:text-green-900'
-                                                } bg-gray-100 dark:bg-gray-700 hover:dark:bg-gray-900 mr-4`}
+                                            className={`p-1.5 rounded-lg ${post.permission
+                                                ? 'text-red-600 dark:text-red-400 hover:text-red-900'
+                                                : 'text-green-600 dark:text-green-400 hover:text-green-900'
+                                                } bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 mr-2 transition`}
                                         >
-                                            {post.permission ? <FiX className="w-5 h-5" title={t('adminPost_actions_unapprovePostTitle')} /> : <FiCheck className="w-5 h-5" title={t('adminPost_actions_approvePostTitle')}/>}
+                                            {post.permission ? <FiX className="w-4 h-4" title={t('adminPost_actions_unapprovePostTitle')} /> : <FiCheck className="w-4 h-4" title={t('adminPost_actions_approvePostTitle')}/>}
                                         </button>
                                     )}
                                     <button
                                         onClick={() => handleDelete(post._id)}
                                         title={t('adminPost_actions_deletePostTitle')}
-                                        className="text-red-600 bg-gray-100 dark:bg-gray-700 hover:text-red-900 hover:dark:bg-gray-900"
+                                        className="p-1.5 rounded-lg text-red-600 dark:text-red-400 bg-gray-100 dark:bg-gray-700 hover:text-red-900 dark:hover:bg-gray-600 transition"
                                     >
-                                        <FiTrash2 className="w-5 h-5" />
+                                        <FiTrash2 className="w-4 h-4" />
                                     </button>
                                 </td>
                             </tr>
