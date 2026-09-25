@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useParams } from "react-router-dom";
-import { ArrowLeft, BookOpen, CalendarDays, ClipboardList, FileText, LayoutDashboard, LoaderCircle, Trophy } from "lucide-react";
+import { ArrowLeft, BookOpen, CalendarDays, ClipboardList, FileText, LayoutDashboard, Trophy } from "lucide-react";
 import { fetchCourseWorkspace } from "../../api/lmsClient";
 import { ErrorState } from "../../../components/common/StateView";
+import Loading from "../../../components/Loading.jsx";
 
 const workspaceItems = [
   { to: "", label: "Tổng quan", icon: LayoutDashboard, end: true },
@@ -39,13 +40,7 @@ export default function CourseWorkspaceLayout() {
   }, [loadWorkspace]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-[55vh] items-center justify-center bg-[#f6f9fd] dark:bg-slate-950">
-        <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300 shadow-sm">
-          <LoaderCircle className="h-5 w-5 animate-spin text-blue-600 dark:text-sky-400" /> Đang mở không gian khóa học...
-        </div>
-      </div>
-    );
+    return <Loading loading={true} text="Đang mở không gian khóa học..." fullScreen={false} className="min-h-[55vh] py-16" />;
   }
 
   if (!workspace) {

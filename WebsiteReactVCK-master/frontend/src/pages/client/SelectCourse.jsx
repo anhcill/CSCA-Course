@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import useGetCourse from '../../hooks/useGetCourse';
-import { FaSpinner, FaCheckCircle } from 'react-icons/fa';
+import { FaCheckCircle } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
+import Loading from '../../components/Loading';
 import { useAuthContext } from '../../context/AuthContext'; // Import AuthContext
 import { useTranslation } from 'react-i18next';
 
@@ -53,7 +54,7 @@ const SelectCourse = () => {
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
-                <FaSpinner className="text-4xl text-blue-500 animate-spin" />
+                <Loading loading={true} text="Đang tải danh sách khóa học..." fullScreen={false} />
             </div>
         );
     }

@@ -11,6 +11,7 @@ import {
   FiAlertCircle,
 } from "react-icons/fi";
 import { fetchAdminPermissions, updateAdminPermission } from "../../features/api/lmsClient";
+import Loading from "../../components/Loading.jsx";
 
 export default function AdminPermissionsPage() {
   const [permissions, setPermissions] = useState([]);
@@ -182,7 +183,13 @@ export default function AdminPermissionsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-200">
-              {filteredPermissions.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="py-12">
+                    <Loading loading={true} text="Đang tải ma trận phân quyền..." fullScreen={false} />
+                  </td>
+                </tr>
+              ) : filteredPermissions.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-gray-400">
                     Không tìm thấy quyền hạn phù hợp với bộ lọc.

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BarChart3, BookOpen, CheckCircle2, LoaderCircle, RefreshCw, TrendingUp } from "lucide-react";
+import { BarChart3, BookOpen, CheckCircle2, RefreshCw, TrendingUp } from "lucide-react";
 import { fetchMyEnrolledCourses } from "../../api/lmsClient";
 import { ErrorState } from "../../../components/common/StateView";
+import Loading from "../../../components/Loading.jsx";
 
 const getProgress = (course) => {
   const value = Number(course?.progress_percent ?? course?.progressPercent ?? 0);
@@ -37,13 +38,7 @@ export default function StudentAnalyticsPage() {
   ), [courses]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center bg-[#f6f9fd] dark:bg-slate-950">
-        <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300 shadow-sm">
-          <LoaderCircle className="h-5 w-5 animate-spin text-blue-600 dark:text-sky-400" /> Đang tải phân tích...
-        </div>
-      </div>
-    );
+    return <Loading loading={true} text="Đang tải phân tích..." fullScreen={false} className="min-h-[60vh] py-16" />;
   }
 
   if (error) {

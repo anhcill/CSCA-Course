@@ -8,10 +8,11 @@ import useGetUsers from '../../hooks/useGetUsers';
 import { marked } from "marked";
 import Meta from '../../components/Meta.jsx';
 import { useTheme } from "../../context/ThemeContext";
+import Loading from "../../components/Loading";
 
 const Post = () => {
   const { t } = useTranslation();
-  const { posts } = useCRUDPost();
+  const { posts, loading } = useCRUDPost();
   const { authUser } = useAuthContext();
   const { users } = useGetUsers();
   const { isDarkMode } = useTheme();
@@ -186,60 +187,64 @@ const Post = () => {
       />
       {/* Main Content */}
       <div className="container mx-auto px-4 mt-20 relative z-10">
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Left Column - Latest Posts */}
-          <div className="lg:w-2/3">
-            <h2 className={`text-3xl ${isDarkMode ? "text-gray-100" : "text-black"} font-bold mb-8 flex items-center`}>
-              <FaFire className={`${isDarkMode ? "text-orange-400" : "text-orange-500"} mr-3 animate-pulse`} />
-              {t('postTitle')}
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {postsToDisplay.map((post) => (
-                <PostCard key={post._id} post={post} isCompact={true} />
-              ))}
-            </div>
-          </div>
-
-          {/* Right Column - Search and Featured Posts */}
-          <div className="lg:w-1/3">
-            {/* Search Section */}
-            <div className={`${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-slate-50'} rounded-xl shadow-md p-6 mb-8 backdrop-blur-sm ${isDarkMode ? 'bg-opacity-70' : 'bg-opacity-90'}`}>
-              <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} mb-4`}>
-                {t('postSearch')}
+        {loading ? (
+          <Loading loading={true} text="Đang tải danh sách bài viết..." fullScreen={false} className="min-h-[50vh] py-16" />
+        ) : (
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Left Column - Latest Posts */}
+            <div className="lg:w-2/3">
+              <h2 className={`text-3xl ${isDarkMode ? "text-gray-100" : "text-black"} font-bold mb-8 flex items-center`}>
+                <FaFire className={`${isDarkMode ? "text-orange-400" : "text-orange-500"} mr-3 animate-pulse`} />
+                {t('postTitle')}
               </h2>
-              <div className="flex flex-col gap-4">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder={t('postInputSearch')}
-                    className={`w-full px-4 py-3 rounded-lg ${
-                      isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white'
-                    } border focus:ring-2 ${
-                      isDarkMode ? 'focus:ring-blue-400' : 'focus:ring-blue-500'
-                    } focus:border-transparent transition-all duration-300`}
-                  />
-                  <FaSearch className={`absolute right-3 top-1/2 transform -translate-y-1/2 ${
-                    isDarkMode ? 'text-gray-400 hover:text-blue-400' : 'text-gray-400 hover:text-blue-500'
-                  } transition-colors duration-300`} />
-                </div>
-              </div>
-            </div>
-
-            {/* Featured Posts */}
-            <div className={`${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'} rounded-xl shadow-md p-6 backdrop-blur-sm ${isDarkMode ? 'bg-opacity-70' : 'bg-opacity-90'}`}>
-              <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} mb-6`}>
-                {t('postFeatured')}
-              </h2>
-              <div className="space-y-6">
-                {featuredPosts.map((post) => (
-                  <PostCard key={post._id} post={post} isFeatured={true} />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {postsToDisplay.map((post) => (
+                  <PostCard key={post._id} post={post} isCompact={true} />
                 ))}
               </div>
             </div>
+
+            {/* Right Column - Search and Featured Posts */}
+            <div className="lg:w-1/3">
+              {/* Search Section */}
+              <div className={`${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-slate-50'} rounded-xl shadow-md p-6 mb-8 backdrop-blur-sm ${isDarkMode ? 'bg-opacity-70' : 'bg-opacity-90'}`}>
+                <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} mb-4`}>
+                  {t('postSearch')}
+                </h2>
+                <div className="flex flex-col gap-4">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder={t('postInputSearch')}
+                      className={`w-full px-4 py-3 rounded-lg ${
+                        isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white'
+                      } border focus:ring-2 ${
+                        isDarkMode ? 'focus:ring-blue-400' : 'focus:ring-blue-500'
+                      } focus:border-transparent transition-all duration-300`}
+                    />
+                    <FaSearch className={`absolute right-3 top-1/2 transform -translate-y-1/2 ${
+                      isDarkMode ? 'text-gray-400 hover:text-blue-400' : 'text-gray-400 hover:text-blue-500'
+                    } transition-colors duration-300`} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Featured Posts */}
+              <div className={`${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'} rounded-xl shadow-md p-6 backdrop-blur-sm ${isDarkMode ? 'bg-opacity-70' : 'bg-opacity-90'}`}>
+                <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} mb-6`}>
+                  {t('postFeatured')}
+                </h2>
+                <div className="space-y-6">
+                  {featuredPosts.map((post) => (
+                    <PostCard key={post._id} post={post} isFeatured={true} />
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

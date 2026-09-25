@@ -7,6 +7,7 @@ import useGetUsers from "../../hooks/useGetUsers";
 import { marked } from "marked";
 import useCRUDPost from "../../hooks/useCRUDPost";
 import { useTranslation } from "react-i18next";
+import Loading from "../../components/Loading";
 
 const PostDetail = () => {
   const [post, setPost] = useState(null);
@@ -41,19 +42,8 @@ const PostDetail = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4">
-        <div className="container mx-auto mt-20">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-4"></div>
-            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-8"></div>
-            <div className="h-96 bg-gray-200 dark:bg-gray-700 rounded mb-6"></div>
-            <div className="space-y-3">
-              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
-              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
-              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-            </div>
-          </div>
-        </div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 flex items-center justify-center">
+        <Loading loading={true} text="Đang tải nội dung bài viết..." fullScreen={false} />
       </div>
     );
   }

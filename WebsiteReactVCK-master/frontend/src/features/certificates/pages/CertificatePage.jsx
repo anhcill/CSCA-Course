@@ -17,6 +17,7 @@ import {
   RotateCcw
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import Loading from "../../../components/Loading.jsx";
 
 export default function CertificatePage() {
   const [certificates, setCertificates] = useState([]);
@@ -359,12 +360,7 @@ export default function CertificatePage() {
 
         {/* NỘI DUNG CHÍNH */}
         {loading ? (
-          /* Loading State */
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:hidden">
-            {[1, 2].map((n) => (
-              <div key={n} className="h-64 bg-slate-900/60 border border-slate-800 rounded-2xl animate-pulse"></div>
-            ))}
-          </div>
+          <Loading loading={true} text="Đang tải danh sách chứng chỉ..." fullScreen={false} className="min-h-[40vh] py-16" />
         ) : certificates.length === 0 ? (
 
           /* PHẦN 6: Empty State (Trạng thái trống) */

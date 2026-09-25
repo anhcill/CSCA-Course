@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, ChevronRight, LoaderCircle } from "lucide-react";
+import { Bell, CheckCheck, ChevronRight } from "lucide-react";
+import Loading from "../../../components/Loading.jsx";
 import { useAuthContext } from "../../../context/AuthContext";
 import { useTheme } from "../../../context/ThemeContext";
 import { fetchNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "../../api/lmsClient";
@@ -143,7 +144,7 @@ export default function NotificationBell() {
           </div>
 
           <div className="max-h-[min(29rem,65vh)] overflow-y-auto">
-            {loading ? <div className={`flex items-center justify-center gap-2 px-4 py-10 text-xs ${palette.muted}`}><LoaderCircle className="h-4 w-4 animate-spin" /> Đang tải thông báo...</div> : notifications.length === 0 ? <div className={`px-5 py-10 text-center text-xs ${palette.muted}`}>Chưa có thông báo mới.</div> : notifications.map((notification) => {
+            {loading ? <Loading loading={true} text="Đang tải thông báo..." fullScreen={false} className="py-8" /> : notifications.length === 0 ? <div className={`px-5 py-10 text-center text-xs ${palette.muted}`}>Chưa có thông báo mới.</div> : notifications.map((notification) => {
               const meta = typeMeta(notification.type);
               const destination = resolveLmsDestination(notification.link_url, authUser);
               return <button key={notification.id} type="button" onClick={() => openNotification(notification)} className={`flex w-full items-start gap-3 border-b border-slate-100 p-4 text-left transition last:border-b-0 dark:border-slate-800 ${palette.item} ${notification.is_read ? "" : palette.unread}`}>

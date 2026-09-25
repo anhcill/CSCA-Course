@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useAuthContext } from '../context/AuthContext';
 import { LoadingState } from './common/StateView';
+import Loading from './Loading';
 import Unauthorized from '../pages/client/Unauthorized';
 import Forbidden from '../pages/client/Forbidden';
 
@@ -26,11 +27,7 @@ export default function LmsRouteGuard({
   const { authUser, loading } = useAuthContext();
 
   if (loading) {
-    return (
-      <div className="min-h-[70vh] flex items-center justify-center p-6">
-        <LoadingState type="detail" message="Đang kiểm tra quyền hạn tài khoản..." />
-      </div>
-    );
+    return <Loading loading text="Đang kiểm tra quyền hạn tài khoản..." />;
   }
 
   if (requireAuth && !authUser) {

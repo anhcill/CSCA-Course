@@ -7,6 +7,7 @@ import { useAuthContext } from '../../context/AuthContext';
 import useGetAllLessons from '../../hooks/useGetAllLessson';
 import useGetProgress from '../../hooks/useGetProgress';
 import Meta from '../../components/Meta.jsx';
+import Loading from '../../components/Loading.jsx';
 
 const MonthlySchedule = () => {
   const { t } = useTranslation();
@@ -208,6 +209,14 @@ const MonthlySchedule = () => {
       </div>
     );
   };
+
+  if (loading || loadingLessons) {
+    return (
+      <div className="min-h-screen pt-24 bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <Loading loading={true} text="Đang tải thời khóa biểu..." fullScreen={false} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen pt-24 bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800">

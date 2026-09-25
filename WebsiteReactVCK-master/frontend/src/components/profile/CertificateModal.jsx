@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { FaDownload, FaSpinner, FaTimes } from 'react-icons/fa';
+import { FaDownload, FaTimes } from 'react-icons/fa';
 import toast from 'react-hot-toast';
+import Loading from '../Loading.jsx';
 
 const loadImage = (source) => new Promise((resolve, reject) => {
     const image = new Image();
@@ -98,7 +99,11 @@ const CertificateModal = ({ certificate, studentName, onClose }) => {
                 </div>
                 <div className="relative mt-5 min-h-64 overflow-hidden rounded-2xl border border-cyan-200 bg-white p-3 dark:border-stone-700 dark:bg-slate-900">
                     <canvas ref={canvasRef} className={`h-auto w-full rounded-xl ${status === 'ready' ? 'opacity-100' : 'opacity-20'}`} />
-                    {status === 'rendering' && <div className="absolute inset-0 flex items-center justify-center gap-3 text-stone-700 dark:text-stone-200"><FaSpinner className="animate-spin" />Đang tạo chứng chỉ…</div>}
+                    {status === 'rendering' && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Loading loading={true} text="Đang tạo chứng chỉ…" fullScreen={false} />
+                        </div>
+                    )}
                     {status === 'error' && <div className="absolute inset-0 flex items-center justify-center text-teal-700 dark:text-teal-300">Không thể tải mẫu chứng chỉ.</div>}
                 </div>
                 <div className="mt-5 flex justify-end"><button onClick={download} disabled={status !== 'ready'} className="flex items-center gap-2 rounded-xl bg-teal-700 px-6 py-3 font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50"><FaDownload />Tải PNG</button></div>

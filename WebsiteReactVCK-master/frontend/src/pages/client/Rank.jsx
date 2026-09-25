@@ -7,6 +7,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useTranslation } from 'react-i18next';
 import { useAuthContext } from "../../context/AuthContext";
 import Meta from '../../components/Meta.jsx';
+import Loading from '../../components/Loading';
 
 const Rank = () => {
   const { progress, loading: progressLoading } = useGetProgress();
@@ -100,9 +101,7 @@ const Rank = () => {
       />
       
       {loading ? (
-        <div className="flex justify-center items-center h-screen">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
-        </div>
+        <Loading loading={true} text="Đang tải bảng xếp hạng..." fullScreen={false} className="min-h-[60vh] py-16" />
       ) : (
         <div className="container mx-auto px-4 mt-12 relative z-10">
           <div className="flex flex-col lg:flex-row gap-8">

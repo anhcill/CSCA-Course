@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import toast from "react-hot-toast";
 import { fetchSubmissions, gradeSubmission } from "../../api/lmsClient";
+import Loading from "../../../components/Loading.jsx";
 
 /* ── SVG Icons ────────────────────────────────────────────────── */
 const IconUser = () => (
@@ -348,14 +349,7 @@ export default function TeacherGradingPage() {
 
             {/* List of Submissions */}
             {loading ? (
-              <div className="space-y-3 pt-2">
-                {[1, 2, 3].map((n) => (
-                  <div key={n} className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 animate-pulse space-y-2">
-                    <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/2" />
-                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-3/4" />
-                  </div>
-                ))}
-              </div>
+              <Loading loading={true} text="Đang tải danh sách bài nộp..." fullScreen={false} className="py-12" />
             ) : filteredSubs.length === 0 ? (
               <div className="py-12 text-center text-slate-500 text-xs bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800/80">
                 Không tìm thấy bài nộp nào trong bộ lọc.

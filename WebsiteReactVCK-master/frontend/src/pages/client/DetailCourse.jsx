@@ -19,6 +19,7 @@ import ChatbotWidget from "../../components/course/ChatbotWidget.jsx";
 import { AuthContext } from "../../context/AuthContext"; // <--- Import AuthContext
 import { useTranslation } from "react-i18next";
 import Meta from "../../components/Meta.jsx";
+import Loading from "../../components/Loading";
 
 const DetailCourse = () => {
   const { t } = useTranslation();
@@ -152,9 +153,7 @@ const DetailCourse = () => {
         keywords={t("courseDetailMetaKeywords")} // Sử dụng translation cho keywords
       />
       {loading ? (
-        <div className="flex justify-center items-center h-screen">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
-        </div>
+        <Loading loading={true} text="Đang tải thông tin bài học..." fullScreen={false} className="min-h-[60vh] py-16" />
       ) : (
         <div className="pt-4 mt-12">
           <div className="relative">

@@ -13,6 +13,7 @@ import {
   FiPlus,
 } from "react-icons/fi";
 import { fetchAdminClasses, updateAdminClassMapping } from "../../features/api/lmsClient";
+import Loading from "../../components/Loading.jsx";
 
 export default function AdminClassesPage() {
   const [classes, setClasses] = useState([]);
@@ -200,7 +201,13 @@ export default function AdminClassesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-200">
-              {filteredClasses.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-12">
+                    <Loading loading={true} text="Đang tải danh sách lớp học & Moly..." fullScreen={false} />
+                  </td>
+                </tr>
+              ) : filteredClasses.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-gray-400">
                     Không tìm thấy lớp học nào phù hợp.

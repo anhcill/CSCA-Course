@@ -13,6 +13,7 @@ import {
   postLessonComment,
 } from "../../api/lmsClient";
 import { LoadingState, ErrorState } from "../../../components/common/StateView";
+import Loading from "../../../components/Loading.jsx";
 
 export default function ClassroomPage() {
   const { courseId, classId } = useParams();
@@ -481,9 +482,8 @@ export default function ClassroomPage() {
         <div className="bg-black flex items-center justify-center p-0 md:p-4 relative min-h-[300px] md:min-h-[480px]">
           {/* Loading Video Overlay */}
           {loadingVideo && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/85 space-y-3 z-20">
-              <div className="w-10 h-10 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-xs font-mono text-slate-300">Đang nạp luồng video Cloudflare R2...</p>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20">
+              <Loading loading={true} text="Đang nạp luồng video Cloudflare R2..." fullScreen={false} />
             </div>
           )}
 

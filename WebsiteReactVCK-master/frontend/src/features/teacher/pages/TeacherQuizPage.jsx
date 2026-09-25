@@ -13,7 +13,8 @@ import {
   FiShuffle,
   FiSend,
 } from "react-icons/fi";
-import { EmptyState, LoadingState } from "../../../components/common/StateView";
+import { EmptyState } from "../../../components/common/StateView";
+import Loading from "../../../components/Loading.jsx";
 import { createTeacherQuiz, deleteTeacherQuiz, fetchTeacherQuizzes } from "../../api/lmsClient";
 
 export default function TeacherQuizPage() {
@@ -136,7 +137,17 @@ export default function TeacherQuizPage() {
         </div>
 
         {/* Quizzes List Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {loading ? (
+          <Loading loading={true} text="Đang tải danh sách đề kiểm tra..." fullScreen={false} className="min-h-[40vh] py-16" />
+        ) : quizzes.length === 0 ? (
+          <EmptyState
+            title="Chưa có đề thi nào"
+            description="Hãy bắt đầu tạo đề kiểm tra đầu tiên để đánh giá học viên của bạn."
+            actionLabel="Tạo Đề Thi"
+            onAction={() => setIsBuilderOpen(true)}
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {quizzes.map((quiz) => (
             <article
               key={quiz.id}
@@ -210,6 +221,7 @@ export default function TeacherQuizPage() {
             </article>
           ))}
         </div>
+      )}
       </div>
 
       {/* Quiz Builder Drawer / Modal */}

@@ -14,6 +14,7 @@ import {
   FiChevronRight,
 } from "react-icons/fi";
 import { fetchAdminAuditLogs } from "../../features/api/lmsClient";
+import Loading from "../../components/Loading.jsx";
 
 export default function AdminAuditLogPage() {
   const [logs, setLogs] = useState([]);
@@ -144,7 +145,13 @@ export default function AdminAuditLogPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-200">
-              {filteredLogs.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-12">
+                    <Loading loading={true} text="Đang tải nhật ký kiểm toán..." fullScreen={false} />
+                  </td>
+                </tr>
+              ) : filteredLogs.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-gray-400">
                     Không có bản ghi nhật ký kiểm toán nào.

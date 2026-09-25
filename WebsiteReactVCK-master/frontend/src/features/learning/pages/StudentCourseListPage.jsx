@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, BookOpen, CheckCircle2, LoaderCircle, Search, ShieldCheck } from "lucide-react";
+import { ArrowRight, BookOpen, CheckCircle2, Search, ShieldCheck } from "lucide-react";
 import { ErrorState } from "../../../components/common/StateView";
+import Loading from "../../../components/Loading.jsx";
 import { fetchMyEnrolledCourses } from "../../api/lmsClient";
 
 const getProgress = (course) => {
@@ -54,13 +55,7 @@ export default function StudentCourseListPage() {
   }, [courses, filter, search]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-[65vh] items-center justify-center bg-[#f6f9fd] dark:bg-slate-950">
-        <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300 shadow-sm">
-          <LoaderCircle className="h-5 w-5 animate-spin text-blue-600 dark:text-sky-400" /> Đang tải khóa học...
-        </div>
-      </div>
-    );
+    return <Loading loading={true} text="Đang tải khóa học..." fullScreen={false} className="min-h-[65vh] py-16" />;
   }
 
   if (error) {

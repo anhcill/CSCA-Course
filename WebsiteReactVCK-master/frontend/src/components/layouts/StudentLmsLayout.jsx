@@ -44,7 +44,6 @@ function Brand() {
       </span>
       <span className="leading-none">
         <span className="block text-lg font-black tracking-tight text-slate-950 dark:text-white">CSCA LMS</span>
-        <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-blue-600 dark:text-sky-400">Học · Tăng trưởng · Bứt phá</span>
       </span>
     </Link>
   );

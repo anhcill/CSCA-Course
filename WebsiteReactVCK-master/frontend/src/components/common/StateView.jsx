@@ -10,95 +10,31 @@ import {
   BookOpen 
 } from 'lucide-react';
 
+import Loading from '../Loading';
+
 /**
- * 1. LOADING SKELETON STATE
+ * 1. LOADING STATE - Đồng bộ chuẩn toàn hệ thống:
+ * - Vòng tròn xoay chính giữa (Center Circular Spinner)
+ * - Dòng chữ hiển thị bên dưới
+ * - 100% không nền (transparent)
  */
 export function LoadingState({ 
-  type = 'cards', 
-  count = 3, 
   message = 'Đang tải dữ liệu...',
-  variant = 'auto',
+  fullScreen = false,
+  className = '',
+  // Giữ lại các props cũ để tương thích ngược hoàn toàn
+  type,
+  count,
+  variant,
 }) {
-  const isExplicitLight = variant === 'light';
-  const isExplicitDark = variant === 'dark';
-
-  const skeletonCard = isExplicitLight
-    ? 'bg-white border-slate-200 shadow-sm'
-    : isExplicitDark
-    ? 'bg-slate-900/60 border-white/10'
-    : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-none';
-
-  const skeletonFill = isExplicitLight
-    ? 'bg-slate-100'
-    : isExplicitDark
-    ? 'bg-slate-800'
-    : 'bg-slate-100 dark:bg-slate-800';
-
-  const skeletonMuted = isExplicitLight
-    ? 'bg-slate-50'
-    : isExplicitDark
-    ? 'bg-slate-800/60'
-    : 'bg-slate-50 dark:bg-slate-800/60';
-
   return (
-    <div className="w-full py-8 space-y-6" aria-live="polite" aria-busy="true">
-      <div className={`flex items-center gap-3 text-xs font-semibold uppercase tracking-wider ${
-        isExplicitLight ? 'text-slate-500' : isExplicitDark ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400'
-      }`}>
-        <div className={`h-4 w-4 rounded-full border-2 border-t-transparent animate-spin ${
-          isExplicitLight ? 'border-blue-600' : isExplicitDark ? 'border-sky-500' : 'border-blue-600 dark:border-sky-400'
-        }`} />
-        <span>{message}</span>
-      </div>
-
-      {type === 'cards' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: count }).map((_, idx) => (
-            <div 
-              key={idx} 
-              className={`${skeletonCard} border rounded-2xl p-6 space-y-4 animate-pulse`}
-            >
-              <div className={`h-36 rounded-xl ${skeletonMuted}`} />
-              <div className="space-y-2">
-                <div className={`h-4 rounded w-1/3 ${skeletonFill}`} />
-                <div className={`h-6 rounded w-3/4 ${skeletonFill}`} />
-                <div className={`h-3 rounded w-full ${skeletonMuted}`} />
-              </div>
-              <div className={`pt-4 border-t flex justify-between items-center ${
-                isExplicitLight ? 'border-slate-100' : isExplicitDark ? 'border-white/5' : 'border-slate-100 dark:border-slate-800'
-              }`}>
-                <div className={`h-4 rounded w-1/4 ${skeletonFill}`} />
-                <div className={`h-8 rounded-lg w-1/3 ${skeletonFill}`} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {type === 'list' && (
-        <div className="space-y-3">
-          {Array.from({ length: count }).map((_, idx) => (
-            <div 
-              key={idx} 
-              className={`${skeletonCard} border rounded-xl p-4 flex items-center justify-between animate-pulse`}
-            >
-              <div className="space-y-2 w-2/3">
-                <div className={`h-4 rounded w-1/2 ${skeletonFill}`} />
-                <div className={`h-3 rounded w-3/4 ${skeletonMuted}`} />
-              </div>
-              <div className={`h-8 rounded-lg w-24 ${skeletonFill}`} />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {type === 'detail' && (
-        <div className={`${skeletonCard} border rounded-3xl p-8 space-y-6 animate-pulse`}>
-          <div className={`h-8 rounded w-1/2 ${skeletonFill}`} />
-          <div className={`h-4 rounded w-3/4 ${skeletonMuted}`} />
-          <div className={`h-64 rounded-2xl ${skeletonMuted}`} />
-        </div>
-      )}
+    <div className={`w-full py-8 flex items-center justify-center ${className}`} aria-live="polite" aria-busy="true">
+      <Loading 
+        loading={true} 
+        text={message} 
+        fullScreen={fullScreen} 
+        className="min-h-[180px]"
+      />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   FiZap,
 } from "react-icons/fi";
 import { fetchAdminSyncOverview, fetchAdminDeliveryQueue, retryDeliveryQueueItem } from "../../features/api/lmsClient";
+import Loading from "../../components/Loading.jsx";
 
 export default function AdminSyncPage() {
   const [overview, setOverview] = useState(null);
@@ -269,7 +270,13 @@ export default function AdminSyncPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-200">
-              {filteredQueue.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-12">
+                    <Loading loading={true} text="Đang nạp dữ liệu hàng đợi Outbox..." fullScreen={false} />
+                  </td>
+                </tr>
+              ) : filteredQueue.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-gray-400">
                     Không có bản ghi hàng đợi nào phù hợp.

@@ -17,6 +17,7 @@ import {
 import useGetAllCourses from "../../hooks/useGetAllCourse";
 import useGetUsers from "../../hooks/useGetUsers";
 import { fetchAdminDashboardKpi } from "../../features/api/lmsClient";
+import Loading from "../../components/Loading.jsx";
 
 const EMPTY_ADMIN_KPIS = {
   activeLearnersCount: 0,
@@ -130,6 +131,10 @@ export default function Dashboard() {
   };
 
   const isLoading = loadingCourses || loadingUsers || loadingKpi;
+
+  if (isLoading) {
+    return <Loading loading={true} text="Đang đồng bộ dữ liệu KPI hệ thống..." fullScreen={false} className="min-h-[60vh] py-16" />;
+  }
 
   return (
     <div className="space-y-8 font-sans pb-16">

@@ -47,6 +47,15 @@ const optionalText = (value, maxLength, field) => {
   return text(value, maxLength, field);
 };
 
+// Descriptions supplied by the management integration are shown to learners.
+// Strip operational/test labels instead of persisting them into learner-facing data.
+const learnerSafeDescription = (value) => {
+  const description = optionalText(value, 5000, "description") || "";
+  return /\b(?:internal\s*management|management|lms\s*-?\s*pilot|pilot)\b/i.test(description)
+    ? ""
+    : description;
+};
+
 const email = (value, field = "email") => {
   const normalized = text(value, 255, field).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) throw new SyncValidationError(`${field} không hợp lệ`);
@@ -262,7 +271,7 @@ const syncTeacher = async (client, event) => {
 const parseCourse = (payload, occurredAt) => ({
   courseSourceId: sourceId(payload.courseSourceId, "courseSourceId"),
   title: text(payload.title, 255, "title"),
-  description: optionalText(payload.description, 5000, "description") || "",
+  description: learnerSafeDescription(payload.description),
   category: optionalText(payload.category, 50, "category") || "CSCA",
   level: enumValue(payload.level, COURSE_LEVELS, "beginner", "level"),
   teacherSourceId: sourceId(payload.teacherSourceId || payload.ownerTeacherSourceId, "teacherSourceId"),
@@ -312,7 +321,7 @@ const parseClass = (payload, occurredAt) => ({
   classSourceId: sourceId(payload.classSourceId, "classSourceId"),
   courseSourceId: sourceId(payload.courseSourceId, "courseSourceId"),
   title: text(payload.title, 255, "title"),
-  description: optionalText(payload.description, 5000, "description") || "",
+  description: learnerSafeDescription(payload.description),
   maxStudents: payload.maxStudents === undefined ? 30 : Number(payload.maxStudents),
   status: enumValue(payload.status, CLASS_STATUSES, "active", "status"),
   leadTeacherSourceId: optionalText(payload.leadTeacherSourceId || payload.teacherSourceId, 128, "leadTeacherSourceId"),

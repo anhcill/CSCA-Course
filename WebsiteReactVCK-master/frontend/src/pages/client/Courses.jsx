@@ -9,8 +9,8 @@ import { useTheme } from '../../context/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useAuthContext } from '../../context/AuthContext';
 import CourseRatingForm from '../../components/course/CourseRatingForm';
-import useGetUsers from '../../hooks/useGetUsers';
 import Meta from '../../components/Meta.jsx';
+import Loading from '../../components/Loading';
 
 const Courses = () => {
   const { t } = useTranslation();
@@ -88,9 +88,7 @@ const Courses = () => {
         keywords={t('coursesMetaKeywords')} // Sử dụng translation cho keywords
       />
       {loading ? (
-        <div className="flex justify-center items-center h-screen">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
-        </div>
+        <Loading loading={true} text="Đang tải danh sách khóa học..." fullScreen={false} className="min-h-[60vh] py-16" />
       ) : (
         <div className="container mx-auto px-4 pb-16 pt-24">
           <div className="mb-10 overflow-hidden rounded-3xl bg-gradient-to-r from-red-700 via-red-600 to-amber-500 px-6 py-10 text-white shadow-xl sm:px-10">

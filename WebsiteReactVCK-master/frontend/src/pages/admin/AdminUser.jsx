@@ -17,6 +17,7 @@ import { useAuthContext } from "../../context/AuthContext";
 import useGetUsers from "../../hooks/useGetUsers";
 import useCUDUser from "../../hooks/useCUDUser";
 import { toggleUserLockStatus } from "../../features/api/lmsClient";
+import Loading from "../../components/Loading.jsx";
 
 export default function AdminUser() {
   const { users, loading, refetchUsers } = useGetUsers();
@@ -337,8 +338,8 @@ export default function AdminUser() {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60 font-sans">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-gray-500">
-                    Đang nạp danh sách tài khoản...
+                  <td colSpan={6} className="py-12">
+                    <Loading loading={true} text="Đang nạp danh sách tài khoản..." fullScreen={false} />
                   </td>
                 </tr>
               ) : paginatedUsers.length === 0 ? (
