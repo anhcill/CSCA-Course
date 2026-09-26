@@ -12,7 +12,7 @@ const WEEKDAYS = {
 const timeValue = (value) => String(value || "").slice(0, 5);
 const dateValue = (value) => String(value || "").slice(0, 10);
 
-export default function ClassScheduleManager({ classId, schedules = [], onRefresh, onCreate }) {
+export default function ClassScheduleManager({ classId, schedules = [], onRefresh, onCreate, canManageFixedSchedule = false }) {
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -65,14 +65,18 @@ export default function ClassScheduleManager({ classId, schedules = [], onRefres
           <h3 className="flex items-center gap-2 text-base font-black text-slate-900 dark:text-white"><CalendarClock className="h-4 w-4 text-blue-600 dark:text-sky-400" /> Lịch cố định của lớp</h3>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Đây là nguồn tạo các buổi học; sửa lịch sẽ áp dụng cho các buổi tương lai.</p>
         </div>
-        <button type="button" onClick={onCreate} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700">
-          <Plus className="h-4 w-4" /> Thêm lịch cố định
-        </button>
+        {canManageFixedSchedule ? (
+          <button type="button" onClick={onCreate} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700">
+            <Plus className="h-4 w-4" /> Thêm lịch cố định
+          </button>
+        ) : (
+          <span className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-[11px] font-bold text-slate-500 dark:text-slate-300">Chỉ quản trị viên được chỉnh lịch cố định</span>
+        )}
       </div>
 
       {schedules.length === 0 ? (
         <div className="mt-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-4 py-5 text-xs text-slate-500 dark:text-slate-400">
-          Chưa có lịch cố định. Bạn vẫn có thể tạo buổi bù riêng, nhưng nên thiết lập lịch tuần để học viên luôn thấy thời khóa biểu.
+          Chưa có lịch cố định. {canManageFixedSchedule ? "Bạn có thể thiết lập lịch tuần cho khóa học này." : "Bạn vẫn có thể tạo buổi bù riêng; quản trị viên sẽ thiết lập lịch tuần."}
         </div>
       ) : (
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
@@ -86,14 +90,18 @@ export default function ClassScheduleManager({ classId, schedules = [], onRefres
                 </div>
                 <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">Đang áp dụng</span>
               </div>
-              <div className="mt-3 flex gap-2">
-                <button type="button" onClick={() => setEditing({ ...schedule, start_time: timeValue(schedule.start_time), end_time: timeValue(schedule.end_time), start_date: dateValue(schedule.start_date), end_date: dateValue(schedule.end_date), changeReason: "" })} className="inline-flex items-center gap-1 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700">
-                  <Pencil className="h-3.5 w-3.5" /> Sửa lịch
-                </button>
-                <button type="button" onClick={() => archive(schedule)} className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30">
-                  <Trash2 className="h-3.5 w-3.5" /> Ngừng
-                </button>
-              </div>
+              {canManageFixedSchedule ? (
+                <div className="mt-3 flex gap-2">
+                  <button type="button" onClick={() => setEditing({ ...schedule, start_time: timeValue(schedule.start_time), end_time: timeValue(schedule.end_time), start_date: dateValue(schedule.start_date), end_date: dateValue(schedule.end_date), changeReason: "" })} className="inline-flex items-center gap-1 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700">
+                    <Pencil className="h-3.5 w-3.5" /> Sửa lịch
+                  </button>
+                  <button type="button" onClick={() => archive(schedule)} className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30">
+                    <Trash2 className="h-3.5 w-3.5" /> Ngừng
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400">Lịch này do quản trị viên quản lý.</p>
+              )}
             </article>
           ))}
         </div>

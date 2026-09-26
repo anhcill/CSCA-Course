@@ -7,6 +7,7 @@ import {
   List,
   Plus
 } from "lucide-react";
+import PropTypes from "prop-types";
 
 const getHeaderTitle = (date, viewMode) => {
   const d = new Date(date);
@@ -42,6 +43,7 @@ export default function CalendarViewHeader({
   viewMode,
   onViewModeChange,
   isTeacher = false,
+  canManageFixedSchedule = false,
   onCreateClick
 }) {
   const handlePrev = () => {
@@ -137,10 +139,20 @@ export default function CalendarViewHeader({
             onClick={onCreateClick}
             className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
           >
-            <Plus className="h-4 w-4" /> Tạo lịch học
+            <Plus className="h-4 w-4" /> {canManageFixedSchedule ? "Tạo lịch học" : "Bổ sung buổi học"}
           </button>
         )}
       </div>
     </div>
   );
 }
+
+CalendarViewHeader.propTypes = {
+  currentDate: PropTypes.oneOfType([PropTypes.instanceOf(Date), PropTypes.string, PropTypes.number]).isRequired,
+  onDateChange: PropTypes.func.isRequired,
+  viewMode: PropTypes.oneOf(["week", "day", "month", "list"]).isRequired,
+  onViewModeChange: PropTypes.func.isRequired,
+  isTeacher: PropTypes.bool,
+  canManageFixedSchedule: PropTypes.bool,
+  onCreateClick: PropTypes.func,
+};

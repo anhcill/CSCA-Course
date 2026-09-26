@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  createLiveClass,
   createLiveSession,
   fetchLiveClassRoster,
   fetchLiveClasses,
@@ -80,12 +79,9 @@ export default function TeacherSchedulePage() {
   const [sessionForm, setSessionForm] = useState({
     title: "",
     liveClassId: "",
-    classTitle: "Lớp CSCA Toán - Lý - Hóa Chuyên Sâu",
     startTime: "",
     endTime: "",
-    provider: "Google Meet",
     meetUrl: "",
-    maxStudents: 30,
   });
   const [submittingSession, setSubmittingSession] = useState(false);
 
@@ -104,10 +100,16 @@ export default function TeacherSchedulePage() {
       ]);
       setSessions(scheduleRes.success ? (scheduleRes.data || []) : []);
       const classes = classesRes.success ? (classesRes.data || []) : [];
-      setLiveClasses(classes);
-      setSessionForm((previous) => previous.liveClassId || !classes[0]
-        ? previous
-        : { ...previous, liveClassId: String(classes[0].id), classTitle: classes[0].title });
+      const courseClasses = classes.filter((liveClass) => liveClass.course_id);
+      setLiveClasses(courseClasses);
+      setSessionForm((previous) => {
+        if (courseClasses.some((liveClass) => String(liveClass.id) === String(previous.liveClassId))) {
+          return previous;
+        }
+        return courseClasses[0]
+          ? { ...previous, liveClassId: String(courseClasses[0].id) }
+          : { ...previous, liveClassId: "" };
+      });
     } catch (err) {
       console.error("Error loading teacher schedule:", err);
       setErrorMessage("Không thể tải danh sách lớp học và lịch dạy của giáo viên.");
@@ -165,15 +167,10 @@ export default function TeacherSchedulePage() {
     }
     setSubmittingSession(true);
     try {
-      let liveClassId = sessionForm.liveClassId;
+      const liveClassId = sessionForm.liveClassId;
       if (!liveClassId) {
-        const classResponse = await createLiveClass({
-          title: sessionForm.classTitle.trim(),
-          maxStudents: Number(sessionForm.maxStudents) || 30,
-        });
-        liveClassId = classResponse.data?.id;
+        throw new Error("Chọn một lớp đã gắn với khóa học. Quản trị viên tạo lớp và lịch cố định trước.");
       }
-      if (!liveClassId) throw new Error("Không xác định được lớp học trực tuyến");
 
       await createLiveSession({
         liveClassId,
@@ -193,7 +190,7 @@ export default function TeacherSchedulePage() {
         meetUrl: "",
       }));
       await loadSchedule();
-      toast.success("Đã tạo buổi học trực tuyến mới thành công! 📅");
+      toast.success("Đã bổ sung buổi học cho khóa học thành công! 📅");
     } catch (err) {
       console.error("Error creating live session:", err);
       toast.error(err?.message || "Không thể tạo buổi học. Vui lòng thử lại.");
@@ -502,7 +499,7 @@ export default function TeacherSchedulePage() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 animate-fade-in font-sans">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl flex flex-col max-h-[88vh] overflow-hidden">
             <div className="shrink-0 flex justify-between items-center px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Lên Lịch Buổi Dạy Mới</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Bổ Sung Buổi Dạy</h3>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
@@ -526,32 +523,26 @@ export default function TeacherSchedulePage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Lớp Học Trực Tuyến</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Lớp thuộc khóa học</label>
                 {liveClasses.length > 0 ? (
                   <select
                     required
                     value={sessionForm.liveClassId}
                     onChange={(e) => {
-                      const selected = liveClasses.find((liveClass) => String(liveClass.id) === e.target.value);
-                      setSessionForm({ ...sessionForm, liveClassId: e.target.value, classTitle: selected?.title || sessionForm.classTitle });
+                      setSessionForm({ ...sessionForm, liveClassId: e.target.value });
                     }}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   >
                     {liveClasses.map((liveClass) => (
-                      <option key={liveClass.id} value={liveClass.id}>{liveClass.title}</option>
+                      <option key={liveClass.id} value={liveClass.id}>{liveClass.title}{liveClass.course_title ? ` — ${liveClass.course_title}` : ""}</option>
                     ))}
                   </select>
                 ) : (
-                  <input
-                    type="text"
-                    required
-                    placeholder="Lớp CSCA Toán - Lý - Hóa Đợt 1"
-                    value={sessionForm.classTitle}
-                    onChange={(e) => setSessionForm({ ...sessionForm, classTitle: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
-                  />
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                    Chưa có lớp nào gắn với khóa học. Quản trị viên cần tạo lớp và lịch cố định trước.
+                  </div>
                 )}
-                <p className="mt-1 text-[10px] text-slate-500">Buổi học sẽ lưu theo lớp thật trong database.</p>
+                <p className="mt-1 text-[10px] text-slate-500">Đây là buổi bổ sung, không thay đổi lịch cố định của khóa học.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -571,31 +562,6 @@ export default function TeacherSchedulePage() {
                     type="datetime-local"
                     value={sessionForm.endTime}
                     onChange={(e) => setSessionForm({ ...sessionForm, endTime: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Nền Tảng Trực Tuyến</label>
-                  <select
-                    value={sessionForm.provider}
-                    onChange={(e) => setSessionForm({ ...sessionForm, provider: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="Google Meet">Google Meet</option>
-                    <option value="Zoom">Zoom Meeting</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Sức Chứa (Học viên)</label>
-                  <input
-                    type="number"
-                    min="5"
-                    max="200"
-                    value={sessionForm.maxStudents}
-                    onChange={(e) => setSessionForm({ ...sessionForm, maxStudents: Number(e.target.value) })}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
@@ -624,10 +590,10 @@ export default function TeacherSchedulePage() {
               <button
                 type="submit"
                 form="create-live-session-form"
-                disabled={submittingSession}
+                disabled={submittingSession || !sessionForm.liveClassId}
                 className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-xs transition shadow-lg shadow-emerald-600/30"
               >
-                {submittingSession ? "Đang lưu..." : "Lên Lịch Buổi Dạy"}
+                {submittingSession ? "Đang lưu..." : "Bổ Sung Buổi Dạy"}
               </button>
             </div>
           </div>

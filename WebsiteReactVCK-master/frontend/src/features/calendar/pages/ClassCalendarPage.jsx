@@ -31,6 +31,7 @@ export default function ClassCalendarPage() {
   const outletContext = useOutletContext();
   const { authUser } = useAuthContext();
   const isTeacher = isTeacherRole(authUser?.role);
+  const canManageFixedSchedule = authUser?.role === "admin";
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState("week"); // "week" | "day" | "month" | "list"
@@ -163,6 +164,7 @@ export default function ClassCalendarPage() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         isTeacher={isTeacher}
+        canManageFixedSchedule={canManageFixedSchedule}
         onCreateClick={() => setShowCreateModal(true)}
       />
 
@@ -216,10 +218,11 @@ export default function ClassCalendarPage() {
         />
       )}
 
-      {/* Modal tạo lịch (cho Giảng viên / Admin) */}
+      {/* Teachers may only add a supplemental session; fixed schedules belong to admins. */}
       {showCreateModal && (
         <CreateScheduleModal
           classId={classId}
+          canManageFixedSchedule={canManageFixedSchedule}
           onClose={() => setShowCreateModal(false)}
           onSuccess={loadData}
         />

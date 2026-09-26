@@ -234,6 +234,9 @@ const safeSession = (row) => {
   const { meet_url: meetingUrl, passcode: _passcode, ...data } = row;
   return {
     ...data,
+    // A generated recurring session belongs to the fixed timetable. A NULL
+    // schedule_id marks a teacher/admin supplemental lesson.
+    session_type: row.schedule_id ? "recurring" : "supplemental",
     provider: getMeetingProvider(meetingUrl),
   };
 };
@@ -287,6 +290,11 @@ const canManageClass = async (liveClass, user) => {
     [classId, user.id],
   );
   return result.rows.length > 0;
+};
+
+const requireCourseBoundClass = (res, liveClass) => {
+  if (liveClass?.course_id) return null;
+  return validationError(res, "Lịch học phải thuộc một lớp đã gắn với khóa học cố định");
 };
 
 const classListVisibility = (user) => {
@@ -549,7 +557,13 @@ router.get("/my-schedule", protectRoute, async (req, res) => {
     });
     if (upcoming.length > 0) await notifyUpcomingSessions(upcoming);
 
-    return res.json({ success: true, data: result.rows });
+    return res.json({
+      success: true,
+      data: result.rows.map((session) => ({
+        ...session,
+        session_type: session.schedule_id ? "recurring" : "supplemental",
+      })),
+    });
   } catch (error) {
     console.error("Error fetching my live schedule:", error);
     return internalError(res, "Lỗi khi lấy lịch học trực tuyến");
@@ -785,7 +799,9 @@ router.get("/:classId/schedules", protectRoute, async (req, res) => {
   }
 });
 
-router.post("/:classId/schedules", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
+// A fixed recurring schedule defines the course timetable. Only administrators
+// can create, edit or archive it; teachers can add one-off supplemental lessons.
+router.post("/:classId/schedules", protectRoute, requireRole("admin"), requirePermission("lms.schedule.manage"), async (req, res) => {
   let client;
   try {
     const classId = parsePositiveId(req.params.classId);
@@ -794,7 +810,8 @@ router.post("/:classId/schedules", protectRoute, requireTeacher, requirePermissi
     if (scheduleInput.errors.length > 0) return validationError(res, scheduleInput.errors.join("; "));
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền sửa lịch lớp này");
+    const courseBindingError = requireCourseBoundClass(res, liveClass);
+    if (courseBindingError) return courseBindingError;
 
     client = await getClient();
     await client.query("BEGIN");
@@ -844,7 +861,7 @@ router.post("/:classId/schedules", protectRoute, requireTeacher, requirePermissi
   }
 });
 
-router.patch("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
+router.patch("/:classId/schedules/:scheduleId", protectRoute, requireRole("admin"), requirePermission("lms.schedule.manage"), async (req, res) => {
   let client;
   try {
     const classId = parsePositiveId(req.params.classId);
@@ -853,7 +870,8 @@ router.patch("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, re
 
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền sửa lịch lớp này");
+    const courseBindingError = requireCourseBoundClass(res, liveClass);
+    if (courseBindingError) return courseBindingError;
 
     const body = req.body || {};
     const expectedVersion = body.version === undefined ? null : Number(body.version);
@@ -1009,7 +1027,7 @@ router.patch("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, re
   }
 });
 
-router.delete("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
+router.delete("/:classId/schedules/:scheduleId", protectRoute, requireRole("admin"), requirePermission("lms.schedule.manage"), async (req, res) => {
   let client;
   try {
     const classId = parsePositiveId(req.params.classId);
@@ -1017,7 +1035,8 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, r
     if (!classId || !scheduleId) return validationError(res, "classId hoặc scheduleId không hợp lệ");
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xóa lịch lớp này");
+    const courseBindingError = requireCourseBoundClass(res, liveClass);
+    if (courseBindingError) return courseBindingError;
     const reason = req.body?.changeReason === undefined ? "Ngừng lịch học định kỳ" : req.body.changeReason;
     if (typeof reason !== "string" || !reason.trim() || reason.trim().length > 2000) {
       return validationError(res, "changeReason không hợp lệ");
@@ -1070,7 +1089,8 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, r
   }
 });
 
-// Specific session CRUD.
+// Specific session CRUD. Sessions created here have no schedule_id and are
+// explicit supplemental lessons for an already course-bound class.
 router.get("/:classId/sessions", protectRoute, async (req, res) => {
   try {
     const classId = parsePositiveId(req.params.classId);
@@ -1102,6 +1122,8 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
     if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền tạo session cho lớp này");
+    const courseBindingError = requireCourseBoundClass(res, liveClass);
+    if (courseBindingError) return courseBindingError;
 
     const { errors, startTime, endTime } = validateSessionInput(req.body || {});
     if (errors.length > 0) return validationError(res, errors.join("; "));
@@ -1129,7 +1151,7 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
     if (new Date(session.start_time).getTime() <= Date.now() + 24 * 60 * 60 * 1000) {
       await notifyClassStudents(session, "upcoming");
     }
-    return res.status(201).json({ success: true, data: safeSession(session), message: "Tạo buổi học thành công" });
+    return res.status(201).json({ success: true, data: safeSession(session), message: "Đã bổ sung buổi học cho khóa học" });
   } catch (error) {
     if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error creating class session:", error);
@@ -1150,7 +1172,7 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
       `SELECT cs.id, cs.live_class_id, cs.schedule_id, cs.title, cs.meet_url, cs.passcode,
               cs.start_time, cs.end_time, cs.status, cs.original_start_at, cs.original_end_at,
               cs.change_reason, cs.changed_by, cs.changed_at, cs.version, cs.created_at, cs.updated_at,
-              lc.instructor_id, lc.management_class_source_id
+              lc.instructor_id, lc.management_class_source_id, lc.course_id
        FROM class_sessions cs
        JOIN live_classes lc ON lc.id = cs.live_class_id
        WHERE cs.id = $1`,
@@ -1164,6 +1186,15 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
     if (!(await canManageClass(current, req.user))) {
       await client.query("ROLLBACK");
       return forbidden(res, "Bạn không có quyền sửa buổi học này");
+    }
+    const courseBindingError = requireCourseBoundClass(res, current);
+    if (courseBindingError) {
+      await client.query("ROLLBACK");
+      return courseBindingError;
+    }
+    if (current.schedule_id && req.user.role !== "admin") {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Lịch cố định chỉ do quản trị viên chỉnh sửa. Giáo viên chỉ được bổ sung buổi học riêng.");
     }
 
     const body = req.body || {};

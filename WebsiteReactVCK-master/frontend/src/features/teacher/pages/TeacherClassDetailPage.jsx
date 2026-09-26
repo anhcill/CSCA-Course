@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import { useAuthContext } from "../../../context/AuthContext";
 import {
   ArrowLeft,
   Award,
@@ -50,6 +51,7 @@ const TABS = [
 export default function TeacherClassDetailPage() {
   const { classId } = useParams();
   const navigate = useNavigate();
+  const { authUser } = useAuthContext();
   const [classData, setClassData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -165,6 +167,7 @@ export default function TeacherClassDetailPage() {
   }
 
   const { classInfo = {}, stats = {}, students = [], assignments = [], sections = [] } = classData;
+  const canManageFixedSchedule = authUser?.role === "admin";
   const nextSession = sessions.find((s) => new Date(s.end_time || s.endTime).getTime() > Date.now()) || sessions[0] || null;
   const atRiskStudents = students.filter((s) => s.riskLevel === "danger" || s.riskLevel === "warning");
 
@@ -234,6 +237,7 @@ export default function TeacherClassDetailPage() {
             classId={classId}
             onOpenCreateSession={() => setIsCreateSessionOpen(true)}
             onRefreshSchedules={loadData}
+            canManageFixedSchedule={canManageFixedSchedule}
           />
         )}
 
@@ -286,6 +290,7 @@ export default function TeacherClassDetailPage() {
       {isCreateSessionOpen && (
         <CreateScheduleModal
           classId={classId}
+          canManageFixedSchedule={canManageFixedSchedule}
           onClose={() => setIsCreateSessionOpen(false)}
           onSuccess={loadData}
         />

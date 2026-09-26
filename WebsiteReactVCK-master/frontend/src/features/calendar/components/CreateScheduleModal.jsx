@@ -14,8 +14,8 @@ const DAYS_OF_WEEK = [
   { value: 7, label: "Chủ Nhật" },
 ];
 
-export default function CreateScheduleModal({ classId, onClose, onSuccess }) {
-  const [tab, setTab] = useState("series"); // "series" hoặc "single"
+export default function CreateScheduleModal({ classId, onClose, onSuccess, canManageFixedSchedule = false }) {
+  const [tab, setTab] = useState(canManageFixedSchedule ? "series" : "single");
   const [submitting, setSubmitting] = useState(false);
 
   // Form tạo lịch cố định (Series)
@@ -80,7 +80,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess }) {
         status: "scheduled",
       });
       if (!res?.success) throw new Error(res?.message || "Không thể tạo buổi học");
-      toast.success("Tạo buổi học thành công!");
+      toast.success("Đã bổ sung buổi học thành công!");
       onSuccess && onSuccess();
       onClose();
     } catch (err) {
@@ -96,7 +96,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess }) {
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4 bg-slate-50/50 dark:bg-slate-800/30">
           <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
             <Calendar className="h-5 w-5 text-blue-600 dark:text-sky-400" />
-            Tạo Lịch & Buổi Học
+            {canManageFixedSchedule ? "Tạo Lịch & Buổi Học" : "Bổ Sung Buổi Học"}
           </h3>
           <button type="button" onClick={onClose} className="rounded-full p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
             <X className="h-5 w-5" />
@@ -105,15 +105,17 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess }) {
 
         {/* Tab switch */}
         <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 px-6 pt-3">
-          <button
-            type="button"
-            onClick={() => setTab("series")}
-            className={`pb-3 text-xs font-bold border-b-2 px-3 transition ${
-              tab === "series" ? "border-blue-600 text-blue-600 dark:text-sky-400" : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-white"
-            }`}
-          >
-            Lịch cố định hàng tuần (Series)
-          </button>
+          {canManageFixedSchedule && (
+            <button
+              type="button"
+              onClick={() => setTab("series")}
+              className={`pb-3 text-xs font-bold border-b-2 px-3 transition ${
+                tab === "series" ? "border-blue-600 text-blue-600 dark:text-sky-400" : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-white"
+              }`}
+            >
+              Lịch cố định hàng tuần
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setTab("single")}
@@ -121,13 +123,13 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess }) {
               tab === "single" ? "border-blue-600 text-blue-600 dark:text-sky-400" : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-white"
             }`}
           >
-            Buổi học riêng / Buổi bù
+            Buổi bổ sung / Buổi bù
           </button>
         </div>
 
         {/* Form content */}
         <div className="p-6">
-          {tab === "series" ? (
+          {canManageFixedSchedule && tab === "series" ? (
             <form onSubmit={handleSeriesSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Tên lịch (tùy chọn)</label>
@@ -207,6 +209,9 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess }) {
             </form>
           ) : (
             <form onSubmit={handleSessionSubmit} className="space-y-4">
+              <p className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
+                Buổi bổ sung thuộc lớp của khóa học này, không thay đổi lịch cố định.
+              </p>
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Tên buổi học</label>
                 <input

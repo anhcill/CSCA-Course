@@ -20,6 +20,7 @@ export default function ClassWorkspaceScheduleTab({
   classId,
   onOpenCreateSession,
   onRefreshSchedules,
+  canManageFixedSchedule = false,
 }) {
   return (
     <div className="space-y-4">
@@ -41,7 +42,7 @@ export default function ClassWorkspaceScheduleTab({
             onClick={onOpenCreateSession}
             className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition"
           >
-            <Plus className="h-4 w-4" /> Thêm lịch / buổi bù
+            <Plus className="h-4 w-4" /> {canManageFixedSchedule ? "Thêm lịch / buổi bù" : "Bổ sung buổi học"}
           </button>
         </div>
       </div>
@@ -51,6 +52,7 @@ export default function ClassWorkspaceScheduleTab({
         schedules={schedules}
         onRefresh={onRefreshSchedules}
         onCreate={onOpenCreateSession}
+        canManageFixedSchedule={canManageFixedSchedule}
       />
 
       {/* Danh sách sessions */}
@@ -64,7 +66,7 @@ export default function ClassWorkspaceScheduleTab({
             onClick={onOpenCreateSession}
             className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700"
           >
-            <Plus className="h-4 w-4" /> Thiết lập lịch học
+            <Plus className="h-4 w-4" /> {canManageFixedSchedule ? "Thiết lập lịch học" : "Bổ sung buổi học"}
           </button>
         </div>
       ) : (
@@ -88,6 +90,13 @@ export default function ClassWorkspaceScheduleTab({
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-black text-slate-900 dark:text-white truncate">
                         {s.title}
+                      </span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        (s.session_type === "recurring" || s.schedule_id)
+                          ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
+                          : "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300"
+                      }`}>
+                        {(s.session_type === "recurring" || s.schedule_id) ? "Lịch cố định" : "Buổi bổ sung"}
                       </span>
                       {s.status === "RESCHEDULED" && (
                         <span className="rounded-full bg-rose-500 text-white px-2 py-0.5 text-[10px] font-bold">
