@@ -1,17 +1,20 @@
 /* eslint-disable react/prop-types */
 import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   FiX,
   FiFileText,
   FiUploadCloud,
   FiCheckCircle,
+  FiList,
 } from "react-icons/fi";
 import { createAssignment, uploadClassFile } from "../../api/lmsClient";
 
 const MAX_ASSIGNMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 export default function CreateAssignmentModal({ isOpen, onClose, classId, onCreated }) {
+  const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -25,6 +28,11 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
   const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
+
+  const openQuizBuilder = () => {
+    onClose();
+    navigate(`/lms/teacher/quizzes?classId=${encodeURIComponent(classId)}&new=1`);
+  };
 
   const uploadAttachment = async (file) => {
     if (!file || uploadingFile || submitting) return;
@@ -61,6 +69,10 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (type === "quiz") {
+      openQuizBuilder();
+      return;
+    }
     if (!title.trim()) {
       toast.error("Vui lòng nhập tiêu đề bài tập!");
       return;
@@ -122,17 +134,33 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400 hover:text-white transition"
-          >
-            <FiX className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openQuizBuilder}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-2.5 py-1.5 text-[11px] font-black text-violet-700 transition hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-950/70"
+            >
+              <FiList className="h-3.5 w-3.5" /> Tạo Quiz
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400 hover:text-white transition"
+            >
+              <FiX className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Form Body */}
         <form id="create-assignment-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 text-xs">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-900/70 dark:bg-violet-950/25">
+            <div>
+              <p className="font-black text-violet-950 dark:text-violet-100">Đây là form bài tập tự luận</p>
+              <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Quiz có màn soạn đề riêng: PDF bên trái, bảng đáp án A/B/C/D bên phải.</p>
+            </div>
+            <button type="button" onClick={openQuizBuilder} className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-black text-white transition hover:bg-violet-500">Mở Quiz</button>
+          </div>
           {/* Title */}
           <div>
             <label className="block font-bold text-gray-700 dark:text-slate-300 mb-1">
@@ -156,7 +184,10 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
               </label>
               <select
                 value={type}
-                onChange={(e) => setType(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value === "quiz") openQuizBuilder();
+                  else setType(e.target.value);
+                }}
                 className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500 transition"
               >
                 <option value="homework">Bài tập về nhà (Homework)</option>

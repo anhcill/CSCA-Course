@@ -1,5 +1,6 @@
 /* eslint-disable react/prop-types */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   FiAlertCircle,
@@ -19,6 +20,7 @@ import {
   createTeacherQuiz,
   deleteTeacherQuiz,
   fetchAdminCourses,
+  fetchClassDetails,
   fetchTeacherQuizzes,
   uploadCourseQuizPaper,
 } from "../../api/lmsClient";
@@ -108,6 +110,10 @@ function AnswerKeySheet({ questions, onChooseAnswer, onScrollToQuestion }) {
 }
 
 export default function TeacherQuizPage() {
+  const [searchParams] = useSearchParams();
+  const requestedClassId = searchParams.get("classId");
+  const shouldOpenBuilder = searchParams.get("new") === "1";
+  const quickCreateHandledRef = useRef(false);
   const [quizzes, setQuizzes] = useState([]);
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -134,15 +140,25 @@ export default function TeacherQuizPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [quizResponse, courseResponse] = await Promise.all([fetchTeacherQuizzes(), fetchAdminCourses()]);
+      const [quizResponse, courseResponse, classResponse] = await Promise.all([
+        fetchTeacherQuizzes(),
+        fetchAdminCourses(),
+        requestedClassId ? fetchClassDetails(requestedClassId) : Promise.resolve(null),
+      ]);
       setQuizzes(quizResponse?.data || []);
       setCourses(courseResponse?.data || []);
+      const preferredCourseId = classResponse?.data?.courseId;
+      if (shouldOpenBuilder && !quickCreateHandledRef.current) {
+        if (preferredCourseId) setCourseId(String(preferredCourseId));
+        setIsBuilderOpen(true);
+        quickCreateHandledRef.current = true;
+      }
     } catch (error) {
       toast.error(error?.message || "Không thể tải dữ liệu đề kiểm tra");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [requestedClassId, shouldOpenBuilder]);
 
   useEffect(() => {
     loadData();
