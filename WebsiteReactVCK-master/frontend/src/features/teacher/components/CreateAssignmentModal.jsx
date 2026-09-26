@@ -1,15 +1,15 @@
-import { useState } from "react";
+/* eslint-disable react/prop-types */
+import { useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
   FiX,
   FiFileText,
-  FiCalendar,
-  FiAward,
   FiUploadCloud,
   FiCheckCircle,
-  FiAlertCircle,
 } from "react-icons/fi";
-import { createAssignment } from "../../api/lmsClient";
+import { createAssignment, uploadClassFile } from "../../api/lmsClient";
+
+const MAX_ASSIGNMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 export default function CreateAssignmentModal({ isOpen, onClose, classId, onCreated }) {
   const [title, setTitle] = useState("");
@@ -20,8 +20,44 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
   const [type, setType] = useState("homework"); // homework | essay | speaking | quiz
   const [submitting, setSubmitting] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [attachmentUrl, setAttachmentUrl] = useState("");
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
+
+  const uploadAttachment = async (file) => {
+    if (!file || uploadingFile || submitting) return;
+    if (file.size > MAX_ASSIGNMENT_ATTACHMENT_BYTES) {
+      toast.error("Tệp đính kèm phải nhỏ hơn hoặc bằng 25MB.");
+      return;
+    }
+
+    setUploadingFile(true);
+    setAttachmentUrl("");
+    try {
+      const response = await uploadClassFile(classId, file);
+      const uploadedUrl = response?.data?.downloadUrl;
+      if (!response?.success || !uploadedUrl) {
+        throw new Error(response?.message || "Không thể xác nhận tệp đính kèm");
+      }
+      setSelectedFile({ name: file.name, size: file.size });
+      setAttachmentUrl(uploadedUrl);
+      toast.success(`Đã tải tệp đính kèm: ${file.name}`);
+    } catch (error) {
+      setSelectedFile(null);
+      toast.error(error?.message || "Không thể tải tệp lên. Vui lòng thử lại.");
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    // Reset allows choosing the same file again after an upload error.
+    event.target.value = "";
+    await uploadAttachment(file);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -31,6 +67,10 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
     }
     if (!dueDate) {
       toast.error("Vui lòng chọn hạn nộp bài!");
+      return;
+    }
+    if (uploadingFile) {
+      toast("Tệp đính kèm đang tải lên, vui lòng chờ hoàn tất.");
       return;
     }
 
@@ -43,6 +83,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
         dueDate,
         maxScore: Number(maxScore),
         assignmentType: type === "speaking" ? "hskk" : type === "essay" ? "homework" : type,
+        attachmentUrl: attachmentUrl || undefined,
       });
       const created = response?.data;
       if (onCreated) onCreated({
@@ -173,25 +214,35 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
             <label className="block font-bold text-gray-700 dark:text-slate-300 mb-1">
               Đính kèm file đề bài / tài liệu mẫu:
             </label>
-            <div className="border border-dashed border-gray-300 dark:border-slate-800 rounded-xl p-3 text-center hover:border-indigo-500 transition bg-gray-50/50 dark:bg-slate-950/50">
+            <div
+              className="border border-dashed border-gray-300 dark:border-slate-800 rounded-xl p-3 text-center hover:border-indigo-500 transition bg-gray-50/50 dark:bg-slate-950/50"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                uploadAttachment(event.dataTransfer.files?.[0]);
+              }}
+            >
               <input
                 type="file"
                 id="assignment-file"
+                ref={fileInputRef}
                 className="hidden"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    setSelectedFile(e.target.files[0]);
-                    toast.success(`Đã chọn tệp: ${e.target.files[0].name}`);
-                  }
-                }}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg,.png,.webp,.zip,.mp3,.m4a,.wav,.webm,.ogg"
+                onChange={handleFileChange}
+                disabled={uploadingFile || submitting}
               />
-              <label htmlFor="assignment-file" className="cursor-pointer space-y-0.5 block">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingFile || submitting}
+                className="w-full cursor-pointer space-y-0.5 disabled:cursor-wait disabled:opacity-60"
+              >
                 <FiUploadCloud className="w-5 h-5 mx-auto text-indigo-400" />
                 <p className="text-gray-700 dark:text-slate-300 font-medium text-[11px]">
-                  {selectedFile ? selectedFile.name : "Nhấn để chọn tệp hoặc kéo thả vào đây"}
+                  {uploadingFile ? "Đang tải tệp lên..." : selectedFile ? `Đã đính kèm: ${selectedFile.name}` : "Nhấn để chọn tệp hoặc kéo thả vào đây"}
                 </p>
                 <p className="text-[10px] text-gray-400">PDF, DOCX, XLSX, MP3 hoặc ZIP (Tối đa 25MB)</p>
-              </label>
+              </button>
             </div>
           </div>
 
@@ -215,7 +266,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
           <button
             type="button"
             onClick={onClose}
-            disabled={submitting}
+            disabled={submitting || uploadingFile}
             className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-slate-800 text-xs font-bold text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-700 transition"
           >
             Hủy bỏ
@@ -223,11 +274,11 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
           <button
             type="submit"
             form="create-assignment-form"
-            disabled={submitting}
+            disabled={submitting || uploadingFile}
             className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition disabled:opacity-50"
           >
             <FiCheckCircle className={`w-3.5 h-3.5 ${submitting ? "animate-spin" : ""}`} />
-            <span>{submitting ? "Đang xuất bản..." : "Xuất bản bài tập"}</span>
+            <span>{uploadingFile ? "Đang tải tệp..." : submitting ? "Đang xuất bản..." : "Xuất bản bài tập"}</span>
           </button>
         </div>
       </div>

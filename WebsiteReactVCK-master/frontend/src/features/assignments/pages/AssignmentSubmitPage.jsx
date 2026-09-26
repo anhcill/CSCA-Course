@@ -320,6 +320,16 @@ export default function AssignmentSubmitPage() {
               <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed font-light">
                 {assignment.description || "Hãy hoàn thành các yêu cầu bài tập và gửi bài trước thời hạn quy định."}
               </p>
+              {assignment.attachment_url && (
+                <a
+                  href={assignment.attachment_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
+                >
+                  <span aria-hidden="true">📎</span> Mở file đề bài / tài liệu mẫu
+                </a>
+              )}
             </div>
 
             {/* Score & Deadline Metrics */}

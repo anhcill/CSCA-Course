@@ -40,6 +40,18 @@ const parseOptionalId = (value) => {
   return parsePositiveId(value);
 };
 
+// A teacher attachment can be a secure LMS file route or an external HTTPS
+// resource. Arbitrary relative paths and non-HTTPS external links are denied.
+const isSafeAssignmentAttachmentUrl = (value) => {
+  if (typeof value !== "string" || !value.trim()) return false;
+  if (/^\/api\/files\/\d+\/download$/.test(value)) return true;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const isPlainObject = (value) => value && typeof value === "object" && !Array.isArray(value);
 
 const parseOptions = (value) => {
@@ -667,13 +679,8 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
     if (!Number.isFinite(parsedMaxScore) || parsedMaxScore <= 0 || parsedMaxScore > 999.99) return validationError(res, "maxScore không hợp lệ");
     if (description !== undefined && (typeof description !== "string" || description.length > 50000)) return validationError(res, "description không hợp lệ");
     if (dueDate !== undefined && dueDate !== null && dueDate !== "" && Number.isNaN(Date.parse(dueDate))) return validationError(res, "dueDate không hợp lệ");
-    if (attachmentUrl !== undefined && attachmentUrl !== null && attachmentUrl !== "") {
-      try {
-        const url = new URL(attachmentUrl);
-        if (url.protocol !== "https:") return validationError(res, "attachmentUrl phải dùng HTTPS");
-      } catch {
-        return validationError(res, "attachmentUrl không hợp lệ");
-      }
+    if (attachmentUrl !== undefined && attachmentUrl !== null && attachmentUrl !== "" && !isSafeAssignmentAttachmentUrl(attachmentUrl)) {
+      return validationError(res, "attachmentUrl phải là link HTTPS hoặc tài liệu bảo mật của LMS");
     }
     if (courseId) {
       const courseResult = await query("SELECT author_id FROM courses WHERE id = $1", [courseId]);
@@ -736,13 +743,8 @@ router.patch("/:id", protectRoute, requireTeacher, requirePermission("lms.assign
     if (typeof nextDescription !== "string" || nextDescription.length > 50000) return validationError(res, "description không hợp lệ");
     if (!Number.isFinite(nextMaxScore) || nextMaxScore <= 0 || nextMaxScore > 999.99) return validationError(res, "maxScore không hợp lệ");
     if (nextDueDate !== null && nextDueDate !== "" && Number.isNaN(Date.parse(nextDueDate))) return validationError(res, "dueDate không hợp lệ");
-    if (nextAttachmentUrl !== null && nextAttachmentUrl !== "") {
-      try {
-        const url = new URL(nextAttachmentUrl);
-        if (url.protocol !== "https:") return validationError(res, "attachmentUrl phải dùng HTTPS");
-      } catch {
-        return validationError(res, "attachmentUrl không hợp lệ");
-      }
+    if (nextAttachmentUrl !== null && nextAttachmentUrl !== "" && !isSafeAssignmentAttachmentUrl(nextAttachmentUrl)) {
+      return validationError(res, "attachmentUrl phải là link HTTPS hoặc tài liệu bảo mật của LMS");
     }
 
     const result = await query(

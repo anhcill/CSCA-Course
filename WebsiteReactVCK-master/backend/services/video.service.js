@@ -49,6 +49,14 @@ export const ALLOWED_LEARNING_FILE_MIME_TYPES = new Set([
   "image/png",
   "image/webp",
   "application/zip",
+  "application/x-zip-compressed",
+  "application/x-zip",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/webm",
+  "audio/ogg",
 ]);
 
 export const MAX_LEARNING_FILE_SIZE_BYTES = 100 * 1024 * 1024;

@@ -303,9 +303,9 @@ export const fetchAssignments = async ({ courseId, classId } = {}) => {
   return request(`/assignments${params.size ? `?${params.toString()}` : ""}`);
 };
 
-export const createAssignment = async ({ title, description, liveClassId, assignmentType, maxScore, dueDate }) => request("/assignments", {
+export const createAssignment = async ({ title, description, liveClassId, assignmentType, maxScore, dueDate, attachmentUrl }) => request("/assignments", {
   method: "POST",
-  body: JSON.stringify({ title, description, liveClassId, assignmentType, maxScore, dueDate }),
+  body: JSON.stringify({ title, description, liveClassId, assignmentType, maxScore, dueDate, attachmentUrl }),
 });
 
 export const fetchAssignmentDetail = async (assignmentId) => (

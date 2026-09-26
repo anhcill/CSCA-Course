@@ -120,7 +120,7 @@ export default function TeacherClassDetailPage() {
     if (!file) return;
     setIsUploadingFile(true);
     try {
-      const res = await uploadClassFile({ classId, file });
+      const res = await uploadClassFile(classId, file);
       if (!res?.success) throw new Error(res?.message || "Không thể tải lên tài liệu");
       toast.success("Tải lên tài liệu thành công!");
       const filesRes = await fetchClassFiles(classId);
@@ -137,7 +137,7 @@ export default function TeacherClassDetailPage() {
   const handleDeleteFile = async (fileId) => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa tài liệu này?")) return;
     try {
-      const res = await deleteClassFile({ classId, fileId });
+      const res = await deleteClassFile(fileId);
       if (!res?.success) throw new Error(res?.message || "Không thể xóa tài liệu");
       toast.success("Đã xóa tài liệu.");
       setFiles((prev) => prev.filter((f) => f.id !== fileId));
