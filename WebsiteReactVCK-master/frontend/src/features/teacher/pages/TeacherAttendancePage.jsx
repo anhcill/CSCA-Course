@@ -8,6 +8,24 @@ import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import AttendanceSessionHeader from "../components/AttendanceSessionHeader";
 import AttendanceStudentTable from "../components/AttendanceStudentTable";
 
+const ACADEMY_TIME_ZONE = "Asia/Ho_Chi_Minh";
+
+const academyDateKey = (value) => {
+  if (!value) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: ACADEMY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const part = (type) => parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+};
+
+const isAttendanceToday = (session) => (
+  academyDateKey(session?.start_time) === academyDateKey(new Date())
+);
+
 export default function TeacherAttendancePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialSessionId = searchParams.get("sessionId");
@@ -19,46 +37,64 @@ export default function TeacherAttendancePage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [students, setStudents] = useState([]);
+  const [attendancePolicy, setAttendancePolicy] = useState(null);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
 
   // Attendance state: { [userId]: { status: 'present'|'absent'|'excused', note: string } }
   const [attendanceRecords, setAttendanceRecords] = useState({});
+
+  const canMarkAttendance = Boolean(selectedSessionId && attendancePolicy?.canMarkAttendance);
 
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
     setErrorMsg("");
     try {
       const res = await fetchMyLiveSchedule();
-      if (res?.success && res.data && res.data.length > 0) {
-        setSessions(res.data);
-        if (!selectedSessionId) {
-          setSelectedSessionId(String(res.data[0].id));
+      const todaySessions = res?.success && Array.isArray(res.data)
+        ? res.data.filter(isAttendanceToday)
+        : [];
+      setSessions(todaySessions);
+      setSelectedSessionId((currentSessionId) => {
+        if (todaySessions.some((session) => String(session.id) === String(currentSessionId))) {
+          return currentSessionId;
         }
-      } else {
-        setSessions([]);
-      }
+        return todaySessions[0] ? String(todaySessions[0].id) : "";
+      });
     } catch (err) {
       console.error("Error loading sessions for attendance:", err);
       setErrorMsg("Không thể tải danh sách buổi học để điểm danh.");
+      setSessions([]);
+      setSelectedSessionId("");
     } finally {
       setLoadingSessions(false);
+      setSessionsLoaded(true);
     }
-  }, [selectedSessionId]);
+  }, []);
 
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
 
   const loadRoster = useCallback(async () => {
-    if (!selectedSessionId) {
+    if (!sessionsLoaded || !selectedSessionId) {
       setStudents([]);
       setAttendanceRecords({});
+      setAttendancePolicy(null);
       return;
     }
     setLoadingRoster(true);
     setErrorMsg("");
     try {
       const res = await fetchAttendanceRoster(selectedSessionId);
+      if (!res?.success || !res.data?.session) {
+        throw new Error(res?.message || "Không thể tải sổ điểm danh.");
+      }
       const roster = res.data?.students || [];
+      setAttendancePolicy(res.data.attendancePolicy || {
+        canMarkAttendance: false,
+        isLocked: false,
+        reason: "Không thể xác minh quyền điểm danh của buổi học này.",
+      });
       setStudents(roster);
       setAttendanceRecords(
         Object.fromEntries(
@@ -76,11 +112,12 @@ export default function TeacherAttendancePage() {
       console.error("Error loading attendance roster:", err);
       setStudents([]);
       setAttendanceRecords({});
+      setAttendancePolicy(null);
       setErrorMsg("Không thể tải danh sách học viên của buổi học.");
     } finally {
       setLoadingRoster(false);
     }
-  }, [selectedSessionId]);
+  }, [selectedSessionId, sessionsLoaded]);
 
   useEffect(() => {
     loadRoster();
@@ -93,6 +130,7 @@ export default function TeacherAttendancePage() {
   };
 
   const handleStatusChange = (userId, newStatus) => {
+    if (!canMarkAttendance) return;
     setAttendanceRecords((prev) => ({
       ...prev,
       [userId]: {
@@ -103,6 +141,7 @@ export default function TeacherAttendancePage() {
   };
 
   const handleNoteChange = (userId, newNote) => {
+    if (!canMarkAttendance) return;
     setAttendanceRecords((prev) => ({
       ...prev,
       [userId]: {
@@ -114,6 +153,7 @@ export default function TeacherAttendancePage() {
 
   // Bulk Actions
   const handleMarkAll = (status) => {
+    if (!canMarkAttendance) return;
     setAttendanceRecords((prev) => {
       const updated = { ...prev };
       students.forEach((s) => {
@@ -137,6 +177,10 @@ export default function TeacherAttendancePage() {
       toast.error("Chưa chọn buổi học để điểm danh!");
       return;
     }
+    if (!canMarkAttendance) {
+      toast.error(attendancePolicy?.reason || "Buổi học này không thể điểm danh.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -152,7 +196,13 @@ export default function TeacherAttendancePage() {
       });
 
       if (res.success) {
-        toast.success("Đã lưu kết quả điểm danh học viên thành công!");
+        setAttendancePolicy((current) => ({
+          ...current,
+          isLocked: true,
+          canMarkAttendance: false,
+          reason: "Điểm danh của buổi học này đã được chốt và không thể chỉnh sửa.",
+        }));
+        toast.success(res.message || "Đã chốt điểm danh và khóa chỉnh sửa.");
       } else {
         toast.error(res.message || "Lỗi khi lưu điểm danh!");
       }
@@ -196,6 +246,8 @@ export default function TeacherAttendancePage() {
           selectedSessionId={selectedSessionId}
           onSessionChange={handleSessionChange}
           stats={stats}
+          policy={attendancePolicy}
+          loading={loadingSessions}
         />
 
         {/* Table & Bulk Actions */}
@@ -209,14 +261,16 @@ export default function TeacherAttendancePage() {
               <button
                 type="button"
                 onClick={() => handleMarkAll("present")}
-                className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 transition"
+                disabled={!canMarkAttendance}
+                className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 transition"
               >
                 Tất cả có mặt
               </button>
               <button
                 type="button"
                 onClick={() => handleMarkAll("absent")}
-                className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 transition"
+                disabled={!canMarkAttendance}
+                className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 transition"
               >
                 Tất cả vắng
               </button>
@@ -227,6 +281,8 @@ export default function TeacherAttendancePage() {
             <Loading loading={true} text="Đang tải danh sách điểm danh..." fullScreen={false} className="py-12" />
           ) : errorMsg ? (
             <ErrorState title="Lỗi điểm danh" message={errorMsg} onRetry={loadRoster} />
+          ) : !selectedSessionId ? (
+            <EmptyState title="Chưa có buổi học hôm nay" message="Chỉ có thể điểm danh trong đúng ngày diễn ra buổi học." />
           ) : students.length === 0 ? (
             <EmptyState title="Không có học viên" message="Lớp học này chưa có học viên nào được xếp lớp." />
           ) : (
@@ -235,6 +291,7 @@ export default function TeacherAttendancePage() {
               attendanceRecords={attendanceRecords}
               onStatusChange={handleStatusChange}
               onNoteChange={handleNoteChange}
+              readOnly={!canMarkAttendance}
             />
           )}
 
@@ -246,10 +303,10 @@ export default function TeacherAttendancePage() {
             <button
               type="button"
               onClick={handleSaveAttendance}
-              disabled={saving}
+              disabled={saving || !canMarkAttendance || students.length === 0}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
             >
-              <CheckCircle2 className="h-4 w-4" /> {saving ? "Đang lưu..." : "Lưu kết quả điểm danh"}
+              <CheckCircle2 className="h-4 w-4" /> {saving ? "Đang chốt..." : "Chốt & khóa điểm danh"}
             </button>
           </div>
         </div>

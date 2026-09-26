@@ -35,6 +35,43 @@ const internalError = (res, message) => res.status(500).json({
   errorCode: "INTERNAL_ERROR",
 });
 
+const conflict = (res, message, errorCode) => res.status(409).json({
+  success: false,
+  message,
+  errorCode,
+});
+
+const dateKey = (value) => String(value || "").slice(0, 10);
+
+// Attendance is a same-day, write-once record. Dates are calculated by
+// PostgreSQL in the academy timezone so a browser clock cannot bypass this
+// policy. Once a single attendance row exists for a session, the complete
+// session is considered locked and no role (including admin) can alter it.
+export const buildAttendancePolicy = ({
+  attendanceDate,
+  todayDate,
+  status,
+  attendanceLocked = false,
+} = {}) => {
+  const isAttendanceDay = Boolean(attendanceDate)
+    && dateKey(attendanceDate) === dateKey(todayDate);
+  const isCancelled = status === "cancelled";
+  const isLocked = Boolean(attendanceLocked);
+
+  let reason = null;
+  if (isCancelled) reason = "Buổi học đã hủy nên không thể điểm danh.";
+  else if (!isAttendanceDay) reason = "Chỉ được điểm danh trong đúng ngày diễn ra buổi học.";
+  else if (isLocked) reason = "Điểm danh của buổi học này đã được chốt và không thể chỉnh sửa.";
+
+  return {
+    attendanceDate: dateKey(attendanceDate),
+    isAttendanceDay,
+    isLocked,
+    canMarkAttendance: !isCancelled && isAttendanceDay && !isLocked,
+    reason,
+  };
+};
+
 const parsePositiveId = (value) => {
   if (!/^\d+$/.test(String(value || ""))) return null;
   const parsed = Number(value);
@@ -44,7 +81,12 @@ const parsePositiveId = (value) => {
 const getSessionForTeacher = async (sessionId) => {
   const result = await query(
     `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
-            lc.title AS class_title, lc.instructor_id
+            lc.title AS class_title, lc.instructor_id,
+            (cs.start_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date::text AS attendance_date,
+            (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date::text AS attendance_today,
+            EXISTS (
+              SELECT 1 FROM class_attendance ca WHERE ca.session_id = cs.id
+            ) AS attendance_locked
      FROM class_sessions cs
      JOIN live_classes lc ON lc.id = cs.live_class_id
      WHERE cs.id = $1`,
@@ -316,6 +358,12 @@ router.get("/session/:sessionId", protectRoute, requireTeacher, async (req, res)
     if (!(await canManageSession(session, req.user))) {
       return forbidden(res, "Bạn không có quyền xem điểm danh buổi học này");
     }
+    const attendancePolicy = buildAttendancePolicy({
+      attendanceDate: session.attendance_date,
+      todayDate: session.attendance_today,
+      status: session.status,
+      attendanceLocked: session.attendance_locked,
+    });
 
     const result = await query(
       `SELECT u.id, u.username, u.email, u.avatar_url,
@@ -352,6 +400,7 @@ router.get("/session/:sessionId", protectRoute, requireTeacher, async (req, res)
           end_time: session.end_time,
           status: session.status,
         },
+        attendancePolicy,
         students: result.rows.map((row) => ({
           ...row,
           attendance_rate: Number(row.total_sessions) > 0
@@ -366,7 +415,7 @@ router.get("/session/:sessionId", protectRoute, requireTeacher, async (req, res)
   }
 });
 
-// POST /api/attendance/check — transactional and idempotent per (session_id, user_id).
+// POST /api/attendance/check — transactional, same-day and write-once per session.
 router.post("/check", protectRoute, requireTeacher, requirePermission("lms.attendance.manage"), async (req, res) => {
   const sessionId = parsePositiveId(req.body?.sessionId);
   const attendanceList = req.body?.attendanceList;
@@ -394,7 +443,9 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
     await client.query("BEGIN");
     const sessionResult = await client.query(
        `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
-               lc.instructor_id, lc.management_class_source_id
+               lc.instructor_id, lc.management_class_source_id,
+               (cs.start_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date::text AS attendance_date,
+               (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date::text AS attendance_today
         FROM class_sessions cs
        JOIN live_classes lc ON lc.id = cs.live_class_id
        WHERE cs.id = $1
@@ -410,32 +461,62 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
       await client.query("ROLLBACK");
       return forbidden(res, "Bạn không có quyền điểm danh buổi học này");
     }
+
+    // The session row is locked first, which serializes all attendance writes
+    // through this endpoint. It prevents two concurrent submissions from both
+    // passing the write-once check below.
+    const existingAttendance = await client.query(
+      `SELECT 1 FROM class_attendance WHERE session_id = $1 LIMIT 1`,
+      [sessionId],
+    );
+    const attendancePolicy = buildAttendancePolicy({
+      attendanceDate: session.attendance_date,
+      todayDate: session.attendance_today,
+      status: session.status,
+      attendanceLocked: existingAttendance.rows.length > 0,
+    });
     if (session.status === "cancelled") {
       await client.query("ROLLBACK");
       return validationError(res, "Không thể điểm danh buổi học đã hủy");
     }
+    if (!attendancePolicy.isAttendanceDay) {
+      await client.query("ROLLBACK");
+      return conflict(
+        res,
+        `Chỉ được điểm danh trong ngày ${attendancePolicy.attendanceDate.split("-").reverse().join("/")} của buổi học.`,
+        "ATTENDANCE_OUTSIDE_SESSION_DAY",
+      );
+    }
+    if (attendancePolicy.isLocked) {
+      await client.query("ROLLBACK");
+      return conflict(
+        res,
+        "Điểm danh của buổi học này đã được chốt và không thể chỉnh sửa.",
+        "ATTENDANCE_LOCKED",
+      );
+    }
 
-    const userIds = normalized.map((item) => item.userId);
     const enrolledResult = await client.query(
       `SELECT ce.user_id, u.external_student_id
        FROM class_enrollments ce
        JOIN users u ON u.id = ce.user_id
-       WHERE ce.live_class_id = $1 AND ce.status = 'active' AND ce.user_id = ANY($2::bigint[])`,
-      [session.live_class_id, userIds],
+       WHERE ce.live_class_id = $1 AND ce.status = 'active'`,
+      [session.live_class_id],
     );
     const enrolledIds = new Set(enrolledResult.rows.map((row) => String(row.user_id)));
-    if (normalized.some((item) => !enrolledIds.has(String(item.userId)))) {
+    if (
+      normalized.length !== enrolledIds.size
+      || normalized.some((item) => !enrolledIds.has(String(item.userId)))
+    ) {
       await client.query("ROLLBACK");
-      return validationError(res, "Chỉ được điểm danh học viên thuộc lớp của buổi học");
+      return validationError(res, "Phải điểm danh đầy đủ tất cả học viên đang thuộc lớp của buổi học");
     }
 
     const checkedAt = new Date().toISOString();
     for (const item of normalized) {
       await client.query(
         `INSERT INTO class_attendance (session_id, user_id, status, note)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (user_id, session_id) DO UPDATE
-           SET status = EXCLUDED.status, note = EXCLUDED.note, checked_at = NOW()`,
+         VALUES ($1, $2, $3, $4)`,
         [sessionId, item.userId, item.status, item.note],
       );
     }
@@ -493,10 +574,16 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
 
     return res.json({
       success: true,
-      data: { sessionId, updatedCount: normalized.length, managementDelivery },
+      data: {
+        sessionId,
+        recordedCount: normalized.length,
+        recordedAt: checkedAt,
+        attendanceLocked: true,
+        managementDelivery,
+      },
       message: managementDelivery.status === "SUCCESS"
         ? "Điểm danh đã được lưu vào InternalManagement"
-        : "Điểm danh học viên thành công",
+        : "Điểm danh đã được chốt và khóa chỉnh sửa",
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});

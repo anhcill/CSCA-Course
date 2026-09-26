@@ -1,8 +1,11 @@
+import PropTypes from "prop-types";
+
 export default function AttendanceStudentTable({
   students = [],
   attendanceRecords = {},
   onStatusChange,
-  onNoteChange
+  onNoteChange,
+  readOnly = false,
 }) {
   return (
     <div className="overflow-x-auto">
@@ -48,8 +51,9 @@ export default function AttendanceStudentTable({
                   <div className="inline-flex bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 gap-1">
                     <button
                       type="button"
+                      disabled={readOnly}
                       onClick={() => onStatusChange(student.id, "present")}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-70 ${
                         record.status === "present"
                           ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
                           : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -59,8 +63,9 @@ export default function AttendanceStudentTable({
                     </button>
                     <button
                       type="button"
+                      disabled={readOnly}
                       onClick={() => onStatusChange(student.id, "absent")}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-70 ${
                         record.status === "absent"
                           ? "bg-rose-600 text-white shadow-md shadow-rose-600/30"
                           : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -70,8 +75,9 @@ export default function AttendanceStudentTable({
                     </button>
                     <button
                       type="button"
+                      disabled={readOnly}
                       onClick={() => onStatusChange(student.id, "excused")}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-70 ${
                         record.status === "excused"
                           ? "bg-amber-600 text-white shadow-md shadow-amber-600/30"
                           : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -88,8 +94,9 @@ export default function AttendanceStudentTable({
                     type="text"
                     placeholder="Nhập ghi chú (VD: Vào muộn 15p, xin nghỉ phép...)"
                     value={record.note}
+                  disabled={readOnly}
                     onChange={(e) => onNoteChange(student.id, e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-950/70 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-slate-200 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950/70 border border-slate-300 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-slate-200 focus:outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-70"
                   />
                 </td>
               </tr>
@@ -100,3 +107,19 @@ export default function AttendanceStudentTable({
     </div>
   );
 }
+
+AttendanceStudentTable.propTypes = {
+  students: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    username: PropTypes.string,
+    email: PropTypes.string,
+    avatar_url: PropTypes.string,
+  })),
+  attendanceRecords: PropTypes.objectOf(PropTypes.shape({
+    status: PropTypes.oneOf(["present", "absent", "excused"]),
+    note: PropTypes.string,
+  })),
+  onStatusChange: PropTypes.func.isRequired,
+  onNoteChange: PropTypes.func.isRequired,
+  readOnly: PropTypes.bool,
+};
