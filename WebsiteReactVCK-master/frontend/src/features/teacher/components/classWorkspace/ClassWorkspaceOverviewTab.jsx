@@ -1,34 +1,16 @@
-import { Link } from "react-router-dom";
+/* eslint-disable react/prop-types */
 import {
   AlertCircle,
   ArrowRight,
   BookOpen,
   CalendarDays,
   CheckCircle2,
-  Clock,
-  Plus,
-  Radio,
   Users,
-  Video
 } from "lucide-react";
 
-const formatDateTime = (value) => {
-  if (!value) return "Chưa có lịch";
-  return new Date(value).toLocaleString("vi-VN", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-};
-
 export default function ClassWorkspaceOverviewTab({
-  classInfo = {},
   stats = {},
-  nextSession = null,
   atRiskStudents = [],
-  classId,
   onTabChange,
   onOpenCreateAssignment,
   onOpenCreateSession
@@ -53,62 +35,8 @@ export default function ClassWorkspaceOverviewTab({
         ))}
       </section>
 
-      {/* Buổi học tiếp theo & Thao tác nhanh */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <section className="overflow-hidden rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 p-6 text-white shadow-md">
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-bold backdrop-blur">
-                <Radio className="h-3 w-3" /> Buổi dạy tiếp theo
-              </span>
-              {nextSession?.status === "LIVE" && (
-                <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold animate-pulse">
-                  Đang diễn ra
-                </span>
-              )}
-            </div>
-
-            {nextSession ? (
-              <>
-                <h3 className="text-xl font-black text-white">{nextSession.title}</h3>
-                <p className="mt-2 flex items-center gap-1.5 text-sm text-blue-100">
-                  <Clock className="h-4 w-4 text-blue-200" />
-                  {formatDateTime(nextSession.start_time || nextSession.startTime)}
-                </p>
-                <div className="mt-5 flex flex-wrap gap-2.5">
-                  <Link
-                    to={`/lms/teach/classes/${classId}/attendance?sessionId=${nextSession.id}`}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-bold text-blue-700 shadow-sm hover:bg-blue-50 transition"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Điểm danh buổi này
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => onTabChange("schedule")}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-white/15 border border-white/20 px-4 py-2 text-xs font-bold text-white hover:bg-white/25 transition"
-                  >
-                    Xem toàn bộ lịch lớp
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div>
-                <h3 className="text-lg font-bold text-white">Chưa có lịch buổi học sắp tới</h3>
-                <p className="mt-1 text-xs text-blue-100">Hãy thêm buổi học hoặc thiết lập lịch cố định hàng tuần cho lớp.</p>
-                <button
-                  type="button"
-                  onClick={onOpenCreateSession}
-                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 transition"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Thêm buổi học ngay
-                </button>
-              </div>
-            )}
-          </section>
-        </div>
-
-        {/* Phím tắt thao tác giảng dạy */}
-        <aside className="lg:col-span-2 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-3">
+      {/* Phím tắt thao tác giảng dạy */}
+      <aside className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-3">
           <h4 className="text-sm font-black text-slate-900 dark:text-white">Thao tác giảng dạy nhanh</h4>
           <div className="space-y-2">
             <button
@@ -144,8 +72,7 @@ export default function ClassWorkspaceOverviewTab({
               <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
             </button>
           </div>
-        </aside>
-      </div>
+      </aside>
 
       {/* Học viên cần chú ý */}
       {atRiskStudents.length > 0 && (

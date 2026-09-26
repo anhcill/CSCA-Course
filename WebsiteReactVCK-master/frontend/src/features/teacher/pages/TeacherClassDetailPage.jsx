@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ArrowLeft,
   Award,
   BookOpen,
   CalendarDays,
-  CheckCircle2,
-  Clock,
   FileText,
   LayoutDashboard,
   Users
@@ -17,8 +15,11 @@ import {
   fetchClassDetails,
   fetchClassFiles,
   fetchLiveClassSessions,
+  fetchLiveClassSchedules,
+  getLiveSessionAccess,
   uploadClassFile
 } from "../../api/lmsClient";
+import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
 import Loading from "../../../components/Loading.jsx";
 import { ErrorState } from "../../../components/common/StateView";
 
@@ -33,6 +34,8 @@ import ClassWorkspaceGradesTab from "../components/classWorkspace/ClassWorkspace
 import CreateAssignmentModal from "../components/CreateAssignmentModal";
 import TeacherGradingModal from "../components/TeacherGradingModal";
 import CreateScheduleModal from "../../calendar/components/CreateScheduleModal";
+import SessionDetailModal from "../../calendar/components/SessionDetailModal";
+import TeacherNextSessionHero from "../components/classWorkspace/TeacherNextSessionHero";
 
 const TABS = [
   { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
@@ -46,6 +49,7 @@ const TABS = [
 
 export default function TeacherClassDetailPage() {
   const { classId } = useParams();
+  const navigate = useNavigate();
   const [classData, setClassData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -54,27 +58,31 @@ export default function TeacherClassDetailPage() {
   // Files & Sessions State
   const [files, setFiles] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [schedules, setSchedules] = useState([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   // Modals
   const [isCreateAssignmentOpen, setIsCreateAssignmentOpen] = useState(false);
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false);
   const [gradingModalSubmission, setGradingModalSubmission] = useState(null);
+  const [selectedSession, setSelectedSession] = useState(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [resClass, resFiles, resSessions] = await Promise.all([
+      const [resClass, resFiles, resSessions, resSchedules] = await Promise.all([
         fetchClassDetails(classId),
         fetchClassFiles(classId),
         fetchLiveClassSessions(classId),
+        fetchLiveClassSchedules(classId),
       ]);
 
       if (!resClass?.data) throw new Error("Không tìm thấy dữ liệu lớp học");
       setClassData(resClass.data);
       setFiles(Array.isArray(resFiles?.data) ? resFiles.data : []);
       setSessions(Array.isArray(resSessions?.data) ? resSessions.data : []);
+      setSchedules(Array.isArray(resSchedules?.data) ? resSchedules.data : []);
     } catch (err) {
       setClassData(null);
       setError(err.message || "Không thể tải chi tiết lớp học");
@@ -85,6 +93,20 @@ export default function TeacherClassDetailPage() {
 
   useEffect(() => {
     loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToCalendarChanges(loadData);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") loadData();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [loadData]);
 
   // Upload file
@@ -119,6 +141,17 @@ export default function TeacherClassDetailPage() {
     }
   };
 
+  const handleJoinSession = async (session) => {
+    try {
+      const result = await getLiveSessionAccess(session.id);
+      if (!result?.success || !result?.data?.meetUrl) throw new Error(result?.message || "Phòng học chưa sẵn sàng");
+      window.open(result.data.meetUrl, "_blank", "noopener,noreferrer");
+      toast.success(`Đang mở phòng dạy ${result.data.provider || "trực tuyến"}...`);
+    } catch (requestError) {
+      toast.error(requestError.message || "Không thể mở phòng dạy.");
+    }
+  };
+
   if (loading) {
     return <Loading loading={true} text="Đang mở không gian lớp học..." fullScreen={false} className="min-h-[60vh] py-16" />;
   }
@@ -146,18 +179,15 @@ export default function TeacherClassDetailPage() {
           <ArrowLeft className="h-4 w-4" /> Quay lại trang Giảng dạy
         </Link>
 
-        {/* Header lớp học */}
-        <header className="overflow-hidden rounded-3xl border border-blue-100 dark:border-slate-800 bg-gradient-to-r from-[#eaf4ff] via-white to-[#f3f8ff] dark:from-slate-900 dark:via-slate-900/95 dark:to-blue-950/30 p-6 shadow-sm sm:p-8">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 px-3 py-1 text-xs font-semibold text-blue-600 dark:text-sky-300 shadow-sm ring-1 ring-blue-100 dark:ring-slate-700">
-            <Users className="h-3.5 w-3.5" /> Không gian lớp giảng dạy
-          </span>
-          <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">
-            {classInfo.title}
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-            {classInfo.description || "Quản lý học viên, lịch học, giáo trình, bài tập và điểm số của lớp."}
-          </p>
-        </header>
+        <TeacherNextSessionHero
+          classTitle={classInfo.title}
+          classId={classId}
+          nextSession={nextSession}
+          onOpenSession={setSelectedSession}
+          onOpenAttendance={(session) => navigate(`/lms/teach/classes/${classId}/attendance?sessionId=${session.id}`)}
+          onOpenSchedule={() => setActiveTab("schedule")}
+          onCreateSession={() => setIsCreateSessionOpen(true)}
+        />
 
         {/* Thanh chuyển tab chuẩn Section 3.3.B */}
         <nav className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1.5 shadow-sm" aria-label="Các tab không gian lớp">
@@ -184,9 +214,7 @@ export default function TeacherClassDetailPage() {
         {/* Nội dung tab */}
         {activeTab === "overview" && (
           <ClassWorkspaceOverviewTab
-            classInfo={classInfo}
             stats={stats}
-            nextSession={nextSession}
             atRiskStudents={atRiskStudents}
             classId={classId}
             onTabChange={setActiveTab}
@@ -202,8 +230,10 @@ export default function TeacherClassDetailPage() {
         {activeTab === "schedule" && (
           <ClassWorkspaceScheduleTab
             sessions={sessions}
+            schedules={schedules}
             classId={classId}
             onOpenCreateSession={() => setIsCreateSessionOpen(true)}
+            onRefreshSchedules={loadData}
           />
         )}
 
@@ -266,6 +296,16 @@ export default function TeacherClassDetailPage() {
           submission={gradingModalSubmission}
           onClose={() => setGradingModalSubmission(null)}
           onGraded={loadData}
+        />
+      )}
+
+      {selectedSession && (
+        <SessionDetailModal
+          session={{ ...selectedSession, uiState: "upcoming", live_class_id: selectedSession.live_class_id || classId }}
+          onClose={() => setSelectedSession(null)}
+          onJoin={handleJoinSession}
+          isTeacher={true}
+          basePath=""
         />
       )}
     </div>

@@ -20,9 +20,12 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess }) {
 
   // Form tạo lịch cố định (Series)
   const [seriesForm, setSeriesForm] = useState({
+    title: "",
     dayOfWeek: 1,
     startTime: "19:00",
     endTime: "21:00",
+    startDate: new Date().toISOString().split("T")[0],
+    endDate: new Date(Date.now() + 180 * 86400000).toISOString().split("T")[0],
   });
 
   // Form tạo buổi học riêng (Single session)
@@ -44,6 +47,9 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess }) {
         dayOfWeek: Number(seriesForm.dayOfWeek),
         startTime: seriesForm.startTime,
         endTime: seriesForm.endTime,
+        title: seriesForm.title.trim() || undefined,
+        startDate: seriesForm.startDate,
+        endDate: seriesForm.endDate,
       });
       if (!res?.success) throw new Error(res?.message || "Không thể tạo lịch cố định");
       toast.success("Tạo lịch cố định thành công!");
@@ -124,6 +130,16 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess }) {
           {tab === "series" ? (
             <form onSubmit={handleSeriesSubmit} className="space-y-4">
               <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Tên lịch (tùy chọn)</label>
+                <input
+                  type="text"
+                  value={seriesForm.title}
+                  onChange={(e) => setSeriesForm({ ...seriesForm, title: e.target.value })}
+                  placeholder="Ví dụ: Lịch học tối thứ Hai"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white"
+                />
+              </div>
+              <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Thứ trong tuần</label>
                 <select
                   value={seriesForm.dayOfWeek}
@@ -152,6 +168,30 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess }) {
                     type="time"
                     value={seriesForm.endTime}
                     onChange={(e) => setSeriesForm({ ...seriesForm, endTime: e.target.value })}
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Áp dụng từ ngày</label>
+                  <input
+                    type="date"
+                    required
+                    value={seriesForm.startDate}
+                    onChange={(e) => setSeriesForm({ ...seriesForm, startDate: e.target.value })}
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Áp dụng đến ngày</label>
+                  <input
+                    type="date"
+                    required
+                    min={seriesForm.startDate}
+                    value={seriesForm.endDate}
+                    onChange={(e) => setSeriesForm({ ...seriesForm, endDate: e.target.value })}
                     className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
                   />
                 </div>

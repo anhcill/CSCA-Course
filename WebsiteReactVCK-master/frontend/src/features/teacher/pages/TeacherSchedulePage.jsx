@@ -10,6 +10,7 @@ import {
   getLiveSessionAccess,
 } from "../../api/lmsClient";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
+import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
 
 /* ── SVG Icons ───────────────────────────────────────────────── */
 const IconVideo = () => (
@@ -117,6 +118,20 @@ export default function TeacherSchedulePage() {
 
   useEffect(() => {
     loadSchedule();
+  }, [loadSchedule]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToCalendarChanges(loadSchedule);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") loadSchedule();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [loadSchedule]);
 
   // Host starts or opens meeting

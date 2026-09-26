@@ -27,11 +27,11 @@ import { useTheme } from "../../context/ThemeContext";
 import { getLmsWorkspaceLink } from "../../utils/lmsNavigation";
 
 const STUDENT_NAV = [
-  { label: "Khóa học", path: "/lms/my-learning", icon: BookOpen, end: true },
-  { label: "Lịch học", path: "/lms/live-schedule", icon: CalendarDays },
-  { label: "Bài tập", path: "/lms/assignments", icon: FileCheck2 },
-  { label: "Tài liệu", path: "/lms/files", icon: FolderOpen },
-  { label: "Kết quả", path: "/lms/analytics", icon: BarChart3 },
+  { label: "Khóa học của tôi", path: "/lms/my-learning", icon: BookOpen, end: true },
+  { label: "Lịch tổng thể", path: "/lms/live-schedule", icon: CalendarDays },
+  { label: "Bài tập & hạn nộp", path: "/lms/assignments", icon: FileCheck2 },
+  { label: "Tài liệu các lớp", path: "/lms/files", icon: FolderOpen },
+  { label: "Điểm tổng quan", path: "/lms/analytics", icon: BarChart3 },
   { label: "Thông báo", path: "/lms/notifications", icon: Bell },
 ];
 
@@ -84,7 +84,7 @@ function Sidebar({ onNavigate }) {
     <div className="flex h-full flex-col px-4 py-6">
       <div className="px-2"><Brand /></div>
       <div className="my-6 h-px bg-slate-100 dark:bg-slate-800" />
-      <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Học tập</p>
+      <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Tổng quan học tập</p>
       <nav className="space-y-1" aria-label="Điều hướng LMS học viên">
         {STUDENT_NAV.map((item) => <StudentNavItem key={item.path} item={item} onNavigate={onNavigate} />)}
       </nav>

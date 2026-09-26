@@ -1,3 +1,5 @@
+import { publishCalendarChange } from "../calendar/calendarSync";
+
 const API_BASE = "/api";
 
 export class LmsApiError extends Error {
@@ -54,6 +56,12 @@ const request = async (path, options = {}) => {
   });
 
   return parseResponse(response);
+};
+
+const requestCalendarMutation = async (path, options, detail) => {
+  const response = await request(path, options);
+  if (response?.success) publishCalendarChange(detail);
+  return response;
 };
 
 export const fetchCoursesCatalog = async ({ category, level, search, sort } = {}) => {
@@ -178,10 +186,10 @@ export const fetchMyLiveSchedule = async ({ courseId, classId, from, to } = {}) 
 };
 
 export const createLiveSession = async ({ liveClassId, title, startTime, endTime, meetUrl, passcode, status }) => (
-  request(`/live-classes/${encodeURIComponent(liveClassId)}/sessions`, {
+  requestCalendarMutation(`/live-classes/${encodeURIComponent(liveClassId)}/sessions`, {
     method: "POST",
     body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status }),
-  })
+  }, { classId: liveClassId, type: "session-created" })
 );
 
 export const fetchLiveClassSessions = async (classId) => (
@@ -189,10 +197,10 @@ export const fetchLiveClassSessions = async (classId) => (
 );
 
 export const updateLiveSession = async ({ sessionId, title, startTime, endTime, meetUrl, passcode, status, changeReason }) => (
-  request(`/live-classes/sessions/${encodeURIComponent(sessionId)}`, {
+  requestCalendarMutation(`/live-classes/sessions/${encodeURIComponent(sessionId)}`, {
     method: "PATCH",
     body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status, changeReason }),
-  })
+  }, { sessionId, type: "session-updated" })
 );
 
 export const fetchLiveClassRoster = async (classId) => (
@@ -223,29 +231,29 @@ export const fetchLiveClassSchedules = async (classId) => (
 export const createLiveClassSchedule = async ({
   classId, dayOfWeek, startTime, endTime, title, timezone, startDate, endDate,
 }) => (
-  request(`/live-classes/${encodeURIComponent(classId)}/schedules`, {
+  requestCalendarMutation(`/live-classes/${encodeURIComponent(classId)}/schedules`, {
     method: "POST",
     body: JSON.stringify({ dayOfWeek, startTime, endTime, title, timezone, startDate, endDate }),
-  })
+  }, { classId, type: "schedule-created" })
 );
 
 export const updateLiveClassSchedule = async ({
   classId, scheduleId, dayOfWeek, startTime, endTime, title, timezone,
   startDate, endDate, version, changeReason,
 }) => (
-  request(`/live-classes/${encodeURIComponent(classId)}/schedules/${encodeURIComponent(scheduleId)}`, {
+  requestCalendarMutation(`/live-classes/${encodeURIComponent(classId)}/schedules/${encodeURIComponent(scheduleId)}`, {
     method: "PATCH",
     body: JSON.stringify({
       dayOfWeek, startTime, endTime, title, timezone, startDate, endDate, version, changeReason,
     }),
-  })
+  }, { classId, scheduleId, type: "schedule-updated" })
 );
 
 export const deleteLiveClassSchedule = async ({ classId, scheduleId, changeReason }) => (
-  request(`/live-classes/${encodeURIComponent(classId)}/schedules/${encodeURIComponent(scheduleId)}`, {
+  requestCalendarMutation(`/live-classes/${encodeURIComponent(classId)}/schedules/${encodeURIComponent(scheduleId)}`, {
     method: "DELETE",
     ...(changeReason === undefined ? {} : { body: JSON.stringify({ changeReason }) }),
-  })
+  }, { classId, scheduleId, type: "schedule-deleted" })
 );
 
 export const getLiveSessionAccess = async (sessionId) => (

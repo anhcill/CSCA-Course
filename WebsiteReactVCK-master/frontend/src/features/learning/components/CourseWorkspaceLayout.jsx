@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, BookOpen, CalendarDays, ChevronDown, ClipboardList, FileText, LayoutDashboard, Trophy, Users } from "lucide-react";
 import { fetchCourseWorkspace } from "../../api/lmsClient";
+import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
 import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
+import ClassNextSessionHero from "./overview/ClassNextSessionHero";
 
 const workspaceItems = [
   { to: "", label: "Tổng quan", icon: LayoutDashboard, end: true },
@@ -39,6 +41,28 @@ export default function CourseWorkspaceLayout() {
   useEffect(() => {
     loadWorkspace();
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToCalendarChanges(loadWorkspace);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") loadWorkspace();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [loadWorkspace]);
+
+  const upcomingSessions = useMemo(() => (workspace?.upcomingSessions || [])
+    .filter((session) => session.status !== "cancelled" && new Date(session.end_time).getTime() > Date.now())
+    .sort((left, right) => new Date(left.start_time).getTime() - new Date(right.start_time).getTime()), [workspace?.upcomingSessions]);
+  const nextSession = upcomingSessions[0] || null;
+  const isTodaySession = Boolean(
+    nextSession?.start_time && new Date(nextSession.start_time).toDateString() === new Date().toDateString(),
+  );
 
   if (loading) {
     return <Loading loading={true} text="Đang mở không gian khóa học..." fullScreen={false} className="min-h-[55vh] py-16" />;
@@ -88,17 +112,25 @@ export default function CourseWorkspaceLayout() {
           </span>
         </div>
 
-        <section className="overflow-hidden rounded-3xl border border-blue-100 dark:border-slate-800 bg-gradient-to-r from-[#e9f3ff] via-white to-[#f2f8ff] dark:from-slate-900 dark:via-slate-900/95 dark:to-blue-950/30 p-6 shadow-sm dark:shadow-none sm:p-8">
-          <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
+        <ClassNextSessionHero
+          nextSession={nextSession}
+          isTodaySession={isTodaySession}
+          otherSessions={upcomingSessions.slice(1, 3)}
+          instructorName={selectedClass.instructor_name}
+          classTitle={selectedClass.title}
+          basePath={basePath}
+        />
+
+        <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm dark:shadow-none sm:px-5">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-600 dark:text-sky-400">Không gian khóa học</p>
-              <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">
-                {course.title}
+              <h1 className="text-lg font-black tracking-tight text-slate-950 dark:text-white sm:text-xl">
+                {selectedClass.title || course.title}
               </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-                {course.description || "Theo dõi bài học, lịch học, tài liệu và kết quả của riêng lớp này."}
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500 dark:text-slate-400">
+                {course.title}{course.category ? ` · ${course.category}` : ""}{course.level ? ` · ${course.level}` : ""}
               </p>
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
                 {classes.length > 1 ? (
                   <div className="relative inline-flex items-center">
                     <span className="sr-only">Đổi lớp học</span>
@@ -122,20 +154,10 @@ export default function CourseWorkspaceLayout() {
                     <Users className="h-3.5 w-3.5" /> Lớp: {selectedClass.title || "Đang cập nhật"}
                   </span>
                 )}
-                {course.category && (
-                  <span className="rounded-full bg-white dark:bg-slate-800 px-3 py-1.5 text-slate-600 dark:text-slate-300 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700">
-                    {course.category}
-                  </span>
-                )}
-                {course.level && (
-                  <span className="rounded-full bg-white dark:bg-slate-800 px-3 py-1.5 text-slate-600 dark:text-slate-300 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700">
-                    {course.level}
-                  </span>
-                )}
               </div>
             </div>
 
-            <div className="min-w-[220px] rounded-2xl border border-white dark:border-slate-800 bg-white/90 dark:bg-slate-800/80 p-4 shadow-sm">
+            <div className="min-w-[210px] rounded-xl bg-slate-50 dark:bg-slate-800/70 p-3.5">
               <div className="flex items-center justify-between text-xs font-semibold">
                 <span className="text-slate-500 dark:text-slate-400">Tiến độ bài học</span>
                 <span className="text-blue-600 dark:text-sky-400 font-bold">{percent}%</span>

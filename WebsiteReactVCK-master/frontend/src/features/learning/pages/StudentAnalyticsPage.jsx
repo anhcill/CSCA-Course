@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, BookOpen, CheckCircle2, RefreshCw, TrendingUp } from "lucide-react";
-import { fetchMyEnrolledCourses } from "../../api/lmsClient";
+import { fetchAssignments, fetchMyEnrolledCourses } from "../../api/lmsClient";
 import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 
@@ -11,6 +11,7 @@ const getProgress = (course) => {
 
 export default function StudentAnalyticsPage() {
   const [courses, setCourses] = useState([]);
+  const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -18,11 +19,16 @@ export default function StudentAnalyticsPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetchMyEnrolledCourses();
+      const [response, assignmentsResponse] = await Promise.all([
+        fetchMyEnrolledCourses(),
+        fetchAssignments(),
+      ]);
       if (!response?.success) throw new Error(response?.message || "Không thể tải tiến độ học tập.");
       setCourses(Array.isArray(response.data) ? response.data : []);
+      setAssignments(assignmentsResponse?.success && Array.isArray(assignmentsResponse.data) ? assignmentsResponse.data : []);
     } catch (requestError) {
       setCourses([]);
+      setAssignments([]);
       setError(requestError.message || "Không thể tải tiến độ học tập.");
     } finally {
       setLoading(false);
@@ -36,6 +42,18 @@ export default function StudentAnalyticsPage() {
   const average = useMemo(() => (
     courses.length ? Math.round(courses.reduce((sum, course) => sum + getProgress(course), 0) / courses.length) : 0
   ), [courses]);
+
+  const gradeSummary = useMemo(() => {
+    const graded = assignments.filter((item) => item.score !== null && item.score !== undefined && Number.isFinite(Number(item.score)));
+    const possible = graded.reduce((sum, item) => sum + Math.max(0, Number(item.max_score || item.maxScore || 0)), 0);
+    const earned = graded.reduce((sum, item) => sum + Math.max(0, Number(item.score)), 0);
+    return {
+      gradedCount: graded.length,
+      percentage: possible > 0 ? Math.round((earned / possible) * 100) : 0,
+      earned,
+      possible,
+    };
+  }, [assignments]);
 
   if (loading) {
     return <Loading loading={true} text="Đang tải phân tích..." fullScreen={false} className="min-h-[60vh] py-16" />;
@@ -57,8 +75,8 @@ export default function StudentAnalyticsPage() {
             <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 dark:border-violet-900/60 bg-violet-50 dark:bg-violet-950/60 px-3 py-1.5 text-xs font-bold text-violet-700 dark:text-violet-300">
               <BarChart3 className="h-3.5 w-3.5" /> Phân tích học tập
             </span>
-            <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 dark:text-white">Tiến độ của bạn</h1>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Số liệu được tính từ các khóa học đã được cấp quyền trong LMS.</p>
+            <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 dark:text-white">Kết quả tổng quan</h1>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Tổng hợp tiến độ và điểm các bài đã được chấm ở mọi khóa học/lớp của bạn.</p>
           </div>
           <button
             type="button"
@@ -69,7 +87,12 @@ export default function StudentAnalyticsPage() {
           </button>
         </header>
 
-        <section className="grid gap-4 sm:grid-cols-3">
+        <section className="grid gap-4 sm:grid-cols-4">
+          <div className="rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 bg-white dark:bg-slate-900 p-5 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <p className="mt-5 text-3xl font-black text-slate-950 dark:text-white">{gradeSummary.percentage}%</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Điểm tổng ({gradeSummary.gradedCount} bài đã chấm)</p>
+          </div>
           <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
             <TrendingUp className="h-5 w-5 text-blue-600 dark:text-sky-400" />
             <p className="mt-5 text-3xl font-black text-slate-950 dark:text-white">{average}%</p>
@@ -85,6 +108,11 @@ export default function StudentAnalyticsPage() {
             <p className="mt-5 text-3xl font-black text-slate-950 dark:text-white">{courses.filter((course) => getProgress(course) === 100).length}</p>
             <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Khóa học hoàn thành</p>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-emerald-100 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 px-5 py-4 text-sm text-emerald-900 dark:text-emerald-100">
+          <span className="font-black">Tổng điểm đã chấm: </span>
+          {gradeSummary.gradedCount ? `${gradeSummary.earned}/${gradeSummary.possible} điểm` : "Chưa có bài nào được chấm điểm."}
         </section>
 
         <section className="rounded-[22px] border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none sm:p-6">

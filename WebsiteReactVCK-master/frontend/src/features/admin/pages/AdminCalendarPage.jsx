@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Calendar, AlertTriangle, Clock, RefreshCw, CheckCircle2, History } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Calendar } from "lucide-react";
 import { fetchAdminCalendar } from "../../api/lmsClient";
 import { LoadingState, ErrorState, EmptyState } from "../../../components/common/StateView";
 import AdminCalendarConflictBanner from "../components/calendar/AdminCalendarConflictBanner";
 import AdminCalendarFilterBar from "../components/calendar/AdminCalendarFilterBar";
 import AdminCalendarSessionRow from "../components/calendar/AdminCalendarSessionRow";
 import SessionChangeHistoryModal from "../../calendar/components/SessionChangeHistoryModal";
+import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
 
 export default function AdminCalendarPage() {
   const [loading, setLoading] = useState(true);
@@ -69,6 +70,20 @@ export default function AdminCalendarPage() {
 
   useEffect(() => {
     loadCalendar();
+  }, [loadCalendar]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToCalendarChanges(loadCalendar);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") loadCalendar();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [loadCalendar]);
 
   const handleFilterChange = (key, val) => {

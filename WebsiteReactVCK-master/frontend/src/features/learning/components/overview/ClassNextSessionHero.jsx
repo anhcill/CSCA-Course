@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { Link } from "react-router-dom";
 import { CalendarDays, Clock, Play, Video } from "lucide-react";
 
@@ -75,7 +76,7 @@ export default function ClassNextSessionHero({
 
         <div className="flex shrink-0 flex-col gap-2.5 sm:flex-row lg:flex-col">
           <Link
-            to={`${basePath}/calendar`}
+            to={nextSession ? `${basePath}/sessions/${nextSession.id}` : `${basePath}/calendar`}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-black text-blue-700 shadow-md transition hover:bg-blue-50 active:scale-95"
           >
             <CalendarDays className="h-4 w-4" />

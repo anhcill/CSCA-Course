@@ -22,6 +22,9 @@ router.get("/", adminOnly, async (req, res) => {
 
     const fromDate = from ? new Date(from) : new Date(Date.now() - 7 * 86400000);
     const toDate = to ? new Date(to) : new Date(Date.now() + 35 * 86400000);
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime()) || toDate < fromDate) {
+      return res.status(422).json({ success: false, message: "Khoảng thời gian lọc không hợp lệ" });
+    }
 
     const values = [fromDate.toISOString(), toDate.toISOString()];
     const filters = ["cs.start_time >= $1", "cs.start_time <= $2"];
@@ -36,28 +39,33 @@ router.get("/", adminOnly, async (req, res) => {
     }
     if (teacherId && /^\d+$/.test(teacherId)) {
       values.push(Number(teacherId));
-      filters.push(`lc.teacher_id = $${values.length}`);
+      filters.push(`lc.instructor_id = $${values.length}`);
     }
     if (status && ["scheduled", "live", "completed", "cancelled", "rescheduled"].includes(status)) {
-      values.push(status);
+      // Session storage uses `ended`; the UI uses the learner-friendly `completed`.
+      values.push(status === "completed" ? "ended" : status);
       filters.push(`cs.status = $${values.length}`);
     }
 
     const sessionsSql = `
       SELECT 
-        cs.id, cs.live_class_id, cs.session_number, cs.title, cs.description,
-        cs.start_time, cs.end_time, cs.meeting_url, cs.status,
+        cs.id, cs.live_class_id, cs.title,
+        cs.start_time, cs.end_time, cs.meet_url AS meeting_url,
+        CASE WHEN cs.status = 'ended' THEN 'completed' ELSE cs.status END AS status,
         cs.original_start_at, cs.original_end_at, cs.change_reason,
         cs.schedule_id, cs.version,
         lc.title AS live_class_title,
         c.id AS course_id, c.title AS course_title,
-        u.id AS teacher_id, u.full_name AS teacher_name, u.email AS teacher_email,
+        u.id AS teacher_id, COALESCE(u.username, u.email) AS teacher_name, u.email AS teacher_email,
         (SELECT COUNT(*)::int FROM class_enrollments ce WHERE ce.live_class_id = cs.live_class_id AND ce.status = 'active') AS enrolled_count,
-        (SELECT COUNT(*)::int FROM class_session_change_logs cl WHERE cl.session_id = cs.id) AS change_log_count
+        (SELECT COUNT(*)::int
+         FROM class_session_change_logs cl
+         WHERE cl.session_id = cs.id
+            OR (cs.schedule_id IS NOT NULL AND cl.schedule_id = cs.schedule_id)) AS change_log_count
       FROM class_sessions cs
       JOIN live_classes lc ON lc.id = cs.live_class_id
       LEFT JOIN courses c ON c.id = lc.course_id
-      LEFT JOIN users u ON u.id = lc.teacher_id
+      LEFT JOIN users u ON u.id = lc.instructor_id
       WHERE ${filters.join(" AND ")}
       ORDER BY cs.start_time ASC
     `;
@@ -95,18 +103,19 @@ router.get("/", adminOnly, async (req, res) => {
 
     // Filter dropdown metadata
     const classesRes = await query(`
-      SELECT lc.id, lc.title, c.title AS course_title, u.full_name AS teacher_name
+      SELECT lc.id, lc.title, c.title AS course_title,
+             COALESCE(u.username, u.email) AS teacher_name
       FROM live_classes lc
       LEFT JOIN courses c ON c.id = lc.course_id
-      LEFT JOIN users u ON u.id = lc.teacher_id
+      LEFT JOIN users u ON u.id = lc.instructor_id
       ORDER BY lc.title ASC
     `);
 
     const teachersRes = await query(`
-      SELECT DISTINCT u.id, u.full_name, u.email
+      SELECT DISTINCT u.id, COALESCE(u.username, u.email) AS full_name, u.email
       FROM users u
-      JOIN live_classes lc ON lc.teacher_id = u.id
-      ORDER BY u.full_name ASC
+      JOIN live_classes lc ON lc.instructor_id = u.id
+      ORDER BY COALESCE(u.username, u.email) ASC
     `);
 
     const summary = {
@@ -144,15 +153,18 @@ router.get("/sessions/:sessionId/history", adminOnly, async (req, res) => {
       SELECT 
         cl.id, cl.session_id, cl.schedule_id, cl.scope,
         cl.before_state, cl.after_state, cl.reason, cl.created_at,
-        u.id AS actor_id, u.full_name AS actor_name, u.email AS actor_email, u.role AS actor_role
+        u.id AS actor_id, COALESCE(u.username, u.email) AS actor_name,
+        u.email AS actor_email, u.role AS actor_role
       FROM class_session_change_logs cl
       LEFT JOIN users u ON u.id = cl.actor_id
       WHERE cl.session_id = $1
+         OR cl.schedule_id = (SELECT schedule_id FROM class_sessions WHERE id = $1)
       ORDER BY cl.created_at DESC
     `, [sessionId]);
 
     const sessionRes = await query(`
-      SELECT cs.id, cs.title, cs.session_number, cs.start_time, cs.end_time, cs.status,
+      SELECT cs.id, cs.title, cs.start_time, cs.end_time,
+             CASE WHEN cs.status = 'ended' THEN 'completed' ELSE cs.status END AS status,
              lc.id AS live_class_id, lc.title AS live_class_title
       FROM class_sessions cs
       JOIN live_classes lc ON lc.id = cs.live_class_id

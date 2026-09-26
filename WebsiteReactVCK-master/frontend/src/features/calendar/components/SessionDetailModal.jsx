@@ -1,10 +1,10 @@
+/* eslint-disable react/prop-types */
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
   CheckCircle2,
   Clock,
-  ExternalLink,
   FileText,
   History,
   Lock,
@@ -34,14 +34,15 @@ export default function SessionDetailModal({
   isTeacher = false,
   basePath = ""
 }) {
+  const [showHistory, setShowHistory] = useState(false);
   if (!session) return null;
 
   const isLive = session.uiState === "live";
-  const isJoinable = isLive || session.uiState === "open";
+  // A teacher can always open their own room to prepare; learners retain the
+  // normal 15-minute opening rule enforced again by the server.
+  const isJoinable = isTeacher || isLive || session.uiState === "open";
   const isCompleted = session.uiState === "completed";
   const isRescheduled = session.status === "rescheduled";
-  const [showHistory, setShowHistory] = useState(false);
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"

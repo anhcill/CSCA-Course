@@ -1,5 +1,7 @@
+/* eslint-disable react/prop-types */
 import { Link } from "react-router-dom";
 import { CalendarDays, CheckCircle2, Clock, Plus, Video } from "lucide-react";
+import ClassScheduleManager from "./ClassScheduleManager";
 
 const formatDateTime = (value) => {
   if (!value) return "Chưa có thời hạn";
@@ -14,8 +16,10 @@ const formatDateTime = (value) => {
 
 export default function ClassWorkspaceScheduleTab({
   sessions = [],
+  schedules = [],
   classId,
-  onOpenCreateSession
+  onOpenCreateSession,
+  onRefreshSchedules,
 }) {
   return (
     <div className="space-y-4">
@@ -37,23 +41,30 @@ export default function ClassWorkspaceScheduleTab({
             onClick={onOpenCreateSession}
             className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition"
           >
-            <Plus className="h-4 w-4" /> Thêm buổi học
+            <Plus className="h-4 w-4" /> Thêm lịch / buổi bù
           </button>
         </div>
       </div>
+
+      <ClassScheduleManager
+        classId={classId}
+        schedules={schedules}
+        onRefresh={onRefreshSchedules}
+        onCreate={onOpenCreateSession}
+      />
 
       {/* Danh sách sessions */}
       {sessions.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 p-12 text-center shadow-sm">
           <CalendarDays className="mx-auto h-9 w-9 text-slate-400" />
           <p className="mt-3 text-sm font-bold text-slate-800 dark:text-white">Lớp chưa có buổi học nào</p>
-          <p className="mt-1 text-xs text-slate-500">Hãy thêm buổi học đầu tiên để học viên có thể vào lớp đúng giờ.</p>
+          <p className="mt-1 text-xs text-slate-500">Thiết lập lịch cố định hoặc tạo buổi bù để học viên thấy đúng thời khóa biểu.</p>
           <button
             type="button"
             onClick={onOpenCreateSession}
             className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700"
           >
-            <Plus className="h-4 w-4" /> Tạo buổi học mới
+            <Plus className="h-4 w-4" /> Thiết lập lịch học
           </button>
         </div>
       ) : (

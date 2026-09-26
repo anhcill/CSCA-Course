@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useOutletContext } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuthContext } from "../../../context/AuthContext";
@@ -14,6 +14,7 @@ import CalendarMonthView from "../components/CalendarMonthView";
 import CalendarListView from "../components/CalendarListView";
 import SessionDetailModal from "../components/SessionDetailModal";
 import CreateScheduleModal from "../components/CreateScheduleModal";
+import { subscribeToCalendarChanges } from "../calendarSync";
 
 function getSessionUiState(session) {
   const now = Date.now();
@@ -39,13 +40,28 @@ export default function ClassCalendarPage() {
 
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const didPositionInitialCalendar = useRef(false);
+
+  useEffect(() => {
+    didPositionInitialCalendar.current = false;
+  }, [classId, courseId]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setErrorMessage("");
     try {
       const scheduleRes = await fetchMyLiveSchedule({ courseId, classId });
-      setSessions(scheduleRes?.success && Array.isArray(scheduleRes.data) ? scheduleRes.data : []);
+      const nextSessions = scheduleRes?.success && Array.isArray(scheduleRes.data) ? scheduleRes.data : [];
+      setSessions(nextSessions);
+
+      // A common source of confusion was opening the current week on Sunday
+      // while the next generated lesson is Monday. First open now goes to the
+      // closest real lesson, without overriding dates the user later chooses.
+      if (!didPositionInitialCalendar.current) {
+        const nextSession = nextSessions.find((session) => new Date(session.end_time).getTime() > Date.now());
+        if (nextSession?.start_time) setCurrentDate(new Date(nextSession.start_time));
+        didPositionInitialCalendar.current = true;
+      }
     } catch (err) {
       console.error("Unable to load calendar", err);
       setErrorMessage("Không thể tải lịch học. Vui lòng thử lại sau.");
@@ -56,6 +72,20 @@ export default function ClassCalendarPage() {
 
   useEffect(() => {
     loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToCalendarChanges(loadData);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") loadData();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [loadData]);
 
   // Hợp nhất sessions và các deadline bài tập/quiz từ workspace nếu có
@@ -120,6 +150,9 @@ export default function ClassCalendarPage() {
   }
 
   const basePath = courseId && classId ? `/lms/courses/${courseId}/classes/${classId}` : "";
+  const selectedEventBasePath = selectedEvent?.course_id && selectedEvent?.live_class_id
+    ? `/lms/courses/${selectedEvent.course_id}/classes/${selectedEvent.live_class_id}`
+    : basePath;
 
   return (
     <div className="space-y-4 pb-12 transition-colors duration-200">
@@ -179,7 +212,7 @@ export default function ClassCalendarPage() {
           onClose={() => setSelectedEvent(null)}
           onJoin={handleJoinSession}
           isTeacher={isTeacher}
-          basePath={basePath}
+          basePath={selectedEventBasePath}
         />
       )}
 
