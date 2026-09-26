@@ -13,7 +13,7 @@ import { createAssignment, uploadClassFile } from "../../api/lmsClient";
 
 const MAX_ASSIGNMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
-export default function CreateAssignmentModal({ isOpen, onClose, classId, sessionId, sessionTitle, onCreated }) {
+export default function CreateAssignmentModal({ isOpen, onClose, classId, sessionId, sessionTitle, homeworkOnly = false, onCreated }) {
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -31,7 +31,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
 
   const openQuizBuilder = () => {
     onClose();
-    const params = new URLSearchParams({ classId: String(classId), new: "1" });
+    const params = new URLSearchParams({ classId: String(classId), new: "1", scope: homeworkOnly ? "homework" : "session" });
     if (sessionId) params.set("sessionId", String(sessionId));
     navigate(`/lms/teacher/quizzes?${params.toString()}`);
   };
@@ -130,10 +130,10 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
             </div>
             <div>
               <h3 className="text-base font-bold text-gray-900 dark:text-white leading-tight">
-                Giao Bài Tập Mới Cho Lớp
+                {homeworkOnly ? "Giao Bài Tập Về Nhà" : "Giao Bài Tập Mới Cho Lớp"}
               </h3>
               <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">
-                {sessionTitle ? `Giao cho ${sessionTitle}.` : "Thiết lập tiêu đề, hạn nộp và hướng dẫn bài tập."}
+                {sessionTitle ? `Gắn sau buổi ${sessionTitle}.` : "Thiết lập tiêu đề, hạn nộp và hướng dẫn bài tập."}
               </p>
             </div>
           </div>
@@ -159,8 +159,8 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
         <form id="create-assignment-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 text-xs">
           <div className="flex items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-900/70 dark:bg-violet-950/25">
             <div>
-              <p className="font-black text-violet-950 dark:text-violet-100">{sessionTitle ? `Buổi học: ${sessionTitle}` : "Đây là form bài tập tự luận"}</p>
-              <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Bài tập, Quiz và tệp đính kèm tạo ở đây đều chỉ thuộc buổi học này.</p>
+              <p className="font-black text-violet-950 dark:text-violet-100">{sessionTitle ? `Buổi gốc: ${sessionTitle}` : "Đây là form bài tập tự luận"}</p>
+              <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Đây là bài tập về nhà có hạn nộp. Bài file cần giáo viên chấm ở Cổng chấm tổng; nút bên phải tạo Quiz về nhà tự chấm.</p>
             </div>
             <button type="button" onClick={openQuizBuilder} className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-black text-white transition hover:bg-violet-500">Mở Quiz</button>
           </div>
@@ -196,7 +196,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
                 <option value="homework">Bài tập về nhà (Homework)</option>
                 <option value="essay">Bài viết luận (Writing)</option>
                 <option value="speaking">Ghi âm nói (Speaking)</option>
-                <option value="quiz">Trắc nghiệm nhanh (Quiz)</option>
+                {!homeworkOnly && <option value="quiz">Trắc nghiệm nhanh (Quiz)</option>}
               </select>
             </div>
 

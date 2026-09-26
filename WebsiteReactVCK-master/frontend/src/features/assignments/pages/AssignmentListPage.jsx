@@ -150,6 +150,7 @@ export default function AssignmentListPage() {
               const status = itemStatus(assignment);
               const statusConfig = statusStyle[status];
               const Icon = typeConfig.icon;
+              const isHomeworkQuiz = type === "quiz" && (assignment.activity_scope || assignment.activityScope) === "homework";
               return (
                 <article
                   key={assignment.id}
@@ -179,7 +180,7 @@ export default function AssignmentListPage() {
                         <p className="mt-1 line-clamp-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{assignment.description}</p>
                       )}
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                        {type === "quiz" ? <><span className="font-semibold text-violet-700 dark:text-violet-300">Buổi học: {assignment.session_start ? new Date(assignment.session_start).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Chưa xác định"}</span>{assignment.class_title && <span>Lớp: {assignment.class_title}</span>}</> : <><span>Hạn nộp: {assignment.due_date ? new Date(assignment.due_date).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Không giới hạn"}</span><span className={status === "late" ? "font-semibold text-rose-600 dark:text-rose-400" : "font-semibold text-amber-600 dark:text-amber-400"}>{deadlineText(assignment.due_date)}</span></>}
+                        {type === "quiz" && !isHomeworkQuiz ? <><span className="font-semibold text-violet-700 dark:text-violet-300">Quiz trong buổi: {assignment.session_start ? new Date(assignment.session_start).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Chưa xác định"}</span>{assignment.class_title && <span>Lớp: {assignment.class_title}</span>}</> : <><span>{isHomeworkQuiz ? "Quiz về nhà · " : ""}Hạn nộp: {assignment.due_date ? new Date(assignment.due_date).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Không giới hạn"}</span><span className={status === "late" ? "font-semibold text-rose-600 dark:text-rose-400" : "font-semibold text-amber-600 dark:text-amber-400"}>{deadlineText(assignment.due_date)}</span></>}
                       </div>
                     </div>
                     <Link

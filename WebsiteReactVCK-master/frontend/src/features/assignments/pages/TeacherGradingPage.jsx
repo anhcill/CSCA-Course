@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { fetchSubmissions, gradeSubmission } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
@@ -60,6 +61,10 @@ function getTypeBadge(type) {
 }
 
 export default function TeacherGradingPage() {
+  const [searchParams] = useSearchParams();
+  const requestedAssignmentId = searchParams.get("assignmentId") || "all";
+  const requestedClassId = searchParams.get("classId") || "";
+  const requestedSessionId = searchParams.get("sessionId") || "";
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSub, setSelectedSub] = useState(null);
@@ -71,7 +76,7 @@ export default function TeacherGradingPage() {
 
   // Filters & Sorting
   const [filterStatus, setFilterStatus] = useState("pending"); // all | pending | graded
-  const [filterClass, setFilterClass] = useState("all");
+  const [filterClass, setFilterClass] = useState(requestedClassId || "all");
   const [filterType, setFilterType] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortByDeadline, setSortByDeadline] = useState("asc"); // asc | desc
@@ -82,7 +87,10 @@ export default function TeacherGradingPage() {
   const loadSubmissions = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchSubmissions("all");
+      const res = await fetchSubmissions(requestedAssignmentId, {
+        classId: requestedClassId || undefined,
+        sessionId: requestedSessionId || undefined,
+      });
       const rows = res.success && Array.isArray(res.data) ? res.data : [];
       setSubmissions(rows);
       setSelectedSub(rows[0] || null);
@@ -95,17 +103,21 @@ export default function TeacherGradingPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [requestedAssignmentId, requestedClassId, requestedSessionId]);
 
   useEffect(() => {
     loadSubmissions();
   }, [loadSubmissions]);
 
+  useEffect(() => {
+    setFilterClass(requestedClassId || "all");
+  }, [requestedClassId]);
+
   // Handle selecting a submission from queue
   const handleSelectSub = useCallback((sub) => {
     setSelectedSub(sub);
     setScore(sub.score !== null && sub.score !== undefined ? sub.score : 8.5);
-    setFeedback(sub.feedback_text || "");
+    setFeedback(sub.feedbackText || "");
   }, []);
 
   // Filtered and sorted submissions
@@ -116,27 +128,28 @@ export default function TeacherGradingPage() {
     if (filterStatus === "graded") list = list.filter((s) => s.status === "graded");
 
     if (filterClass !== "all") {
-      list = list.filter((s) => s.class_code === filterClass);
+      list = list.filter((s) => s.classId === filterClass);
     }
 
     if (filterType !== "all") {
-      list = list.filter((s) => s.assignment_type === filterType);
+      list = list.filter((s) => s.assignmentType === filterType);
     }
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (s) =>
-          (s.student_name || "").toLowerCase().includes(q) ||
-          (s.assignment_title || "").toLowerCase().includes(q) ||
-          (s.class_code || "").toLowerCase().includes(q)
+          (s.studentName || "").toLowerCase().includes(q) ||
+          (s.assignmentTitle || "").toLowerCase().includes(q) ||
+          (s.classTitle || "").toLowerCase().includes(q) ||
+          (s.sessionTitle || "").toLowerCase().includes(q)
       );
     }
 
     // Sort by deadline
     list.sort((a, b) => {
-      const timeA = new Date(a.due_date || a.submitted_at).getTime();
-      const timeB = new Date(b.due_date || b.submitted_at).getTime();
+      const timeA = new Date(a.dueDate || a.submittedAt).getTime();
+      const timeB = new Date(b.dueDate || b.submittedAt).getTime();
       return sortByDeadline === "asc" ? timeA - timeB : timeB - timeA;
     });
 
@@ -149,7 +162,7 @@ export default function TeacherGradingPage() {
       if (!selectedSub) return;
 
       const numScore = Number(score);
-      const maxScore = selectedSub.max_score || 10;
+      const maxScore = selectedSub.maxScore || 10;
 
       if (isNaN(numScore) || numScore < 0 || numScore > maxScore) {
         toast.error(`Điểm số phải nằm trong thang điểm từ 0 đến ${maxScore}!`);
@@ -165,13 +178,13 @@ export default function TeacherGradingPage() {
         });
 
         if (res?.success !== false) {
-          toast.success(`Đã lưu điểm cho ${selectedSub.student_name}: ${numScore}/${maxScore} điểm! 🎉`);
+          toast.success(`Đã lưu điểm cho ${selectedSub.studentName}: ${numScore}/${maxScore} điểm! 🎉`);
 
           // Update local list
           setSubmissions((prev) =>
             prev.map((s) =>
               s.id === selectedSub.id
-                ? { ...s, status: "graded", score: numScore, feedback_text: feedback }
+                ? { ...s, status: "graded", score: numScore, feedbackText: feedback }
                 : s
             )
           );
@@ -179,7 +192,7 @@ export default function TeacherGradingPage() {
             ...prev,
             status: "graded",
             score: numScore,
-            feedback_text: feedback,
+            feedbackText: feedback,
           }));
 
           // Automatically advance to the next pending submission if requested
@@ -246,8 +259,13 @@ export default function TeacherGradingPage() {
               <span>Chấm Điểm & Phản Hồi Bài Tập</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-              Cổng Chấm Bài Giáo Viên (Grading Workspace)
+              Cổng Chấm Bài Tổng (Grading Workspace)
             </h1>
+            {requestedSessionId && (
+              <p className="text-xs text-sky-600 dark:text-sky-300 font-medium">
+                Đang mở hàng chờ bài tập về nhà của buổi học đã chọn.
+              </p>
+            )}
           </div>
 
           {/* Key Metrics Chips */}
@@ -329,9 +347,12 @@ export default function TeacherGradingPage() {
                   className="w-1/2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-700 dark:text-slate-300 focus:outline-none"
                 >
                   <option value="all">Tất cả lớp</option>
-                  <option value="HSK4-LIVE-01">HSK4-LIVE-01</option>
-                  <option value="HSKK-INT-02">HSKK-INT-02</option>
-                  <option value="CSCA-MATH-03">CSCA-MATH-03</option>
+                  {[...new Map(submissions
+                    .filter((sub) => sub.classId)
+                    .map((sub) => [sub.classId, sub.classTitle || `Lớp #${sub.classId}`]))]
+                    .map(([classId, classTitle]) => (
+                      <option key={classId} value={classId}>{classTitle}</option>
+                    ))}
                 </select>
 
                 <select
@@ -357,7 +378,7 @@ export default function TeacherGradingPage() {
             ) : (
               <div className="space-y-2.5 max-h-[calc(100vh-360px)] overflow-y-auto pr-1">
                 {filteredSubs.map((sub) => {
-                  const tb = getTypeBadge(sub.assignment_type);
+                  const tb = getTypeBadge(sub.assignmentType);
                   const isSelected = selectedSub?.id === sub.id;
 
                   return (
@@ -373,8 +394,8 @@ export default function TeacherGradingPage() {
                     >
                       <div className="flex items-start gap-3">
                         <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0 overflow-hidden flex items-center justify-center border border-slate-300 dark:border-white/10 text-slate-600 dark:text-slate-300">
-                          {sub.student_avatar ? (
-                            <img src={sub.student_avatar} alt="" className="w-full h-full object-cover" />
+                          {sub.studentAvatar ? (
+                            <img src={sub.studentAvatar} alt="" className="w-full h-full object-cover" />
                           ) : (
                             <IconUser />
                           )}
@@ -382,7 +403,7 @@ export default function TeacherGradingPage() {
 
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-center justify-between gap-1">
-                            <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{sub.student_name}</span>
+                            <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{sub.studentName}</span>
                             <span
                               className={`shrink-0 text-[10px] font-black font-mono px-2 py-0.5 rounded-full border ${
                                 sub.status === "graded"
@@ -394,7 +415,7 @@ export default function TeacherGradingPage() {
                             </span>
                           </div>
 
-                          <p className="text-[11px] text-slate-700 dark:text-slate-300 truncate font-medium">{sub.assignment_title}</p>
+                          <p className="text-[11px] text-slate-700 dark:text-slate-300 truncate font-medium">{sub.assignmentTitle}</p>
 
                           <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
                             <span className={`px-1.5 py-0.5 rounded border font-semibold ${tb.cls}`}>
@@ -402,7 +423,7 @@ export default function TeacherGradingPage() {
                             </span>
                             <span className="font-mono flex items-center gap-1">
                               <IconClock />
-                              {new Date(sub.submitted_at).toLocaleDateString("vi-VN")}
+                              {new Date(sub.submittedAt).toLocaleDateString("vi-VN")}
                             </span>
                           </div>
                         </div>
@@ -429,21 +450,26 @@ export default function TeacherGradingPage() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-mono">
-                        {selectedSub.class_code || "CSCA-LMS"}
+                        {selectedSub.classTitle || "CSCA-LMS"}
                       </span>
-                      {selectedSub.is_late && (
+                      {selectedSub.status === "late" && (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/30">
                           Nộp Quá Hạn
                         </span>
                       )}
                     </div>
                     <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-snug">
-                      {selectedSub.assignment_title}
+                      {selectedSub.assignmentTitle}
                     </h2>
                     <p className="text-xs text-slate-600 dark:text-slate-400">
-                      Học viên: <strong className="text-slate-900 dark:text-white">{selectedSub.student_name}</strong> •{" "}
-                      <span className="font-mono text-slate-500">{selectedSub.student_email}</span>
+                      Học viên: <strong className="text-slate-900 dark:text-white">{selectedSub.studentName}</strong> •{" "}
+                      <span className="font-mono text-slate-500">{selectedSub.studentEmail}</span>
                     </p>
+                    {selectedSub.sessionTitle && (
+                      <p className="text-[11px] text-sky-600 dark:text-sky-300">
+                        Buổi học: {selectedSub.sessionTitle}
+                      </p>
+                    )}
                   </div>
 
                   {selectedSub.status === "graded" && (
@@ -455,22 +481,22 @@ export default function TeacherGradingPage() {
                 </div>
 
                 {/* Text Content with Chinese Character Counter */}
-                {selectedSub.content_text && (
+                {selectedSub.contentText && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span className="font-bold uppercase tracking-wider text-[10px]">Nội Dung Bài Luận:</span>
                       <span className="font-mono bg-slate-100 dark:bg-slate-950 px-2.5 py-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px]">
-                        Số chữ Hán: <strong className="text-rose-500 dark:text-rose-400">{countChineseChars(selectedSub.content_text)}</strong> ký tự
+                        Số chữ Hán: <strong className="text-rose-500 dark:text-rose-400">{countChineseChars(selectedSub.contentText)}</strong> ký tự
                       </span>
                     </div>
                     <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-sans whitespace-pre-wrap selection:bg-rose-500/30">
-                      {selectedSub.content_text}
+                      {selectedSub.contentText}
                     </div>
                   </div>
                 )}
 
                 {/* File Attachment Preview */}
-                {selectedSub.file_url && (
+                {selectedSub.fileUrl && (
                   <div className="space-y-2">
                     <span className="font-bold uppercase tracking-wider text-[10px] text-slate-500 dark:text-slate-400">
                       Tệp Đính Kèm Của Học Viên:
@@ -482,13 +508,13 @@ export default function TeacherGradingPage() {
                         </span>
                         <div>
                           <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[200px]">
-                            {selectedSub.file_url.split("/").pop() || "Tai_lieu_bai_tap.pdf"}
+                            {selectedSub.fileName || "Tai_lieu_bai_tap.pdf"}
                           </p>
                           <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Định dạng tệp đã được quét virus</p>
                         </div>
                       </div>
                       <a
-                        href={selectedSub.file_url}
+                        href={selectedSub.fileUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-sky-600 dark:text-sky-400 rounded-xl text-xs font-semibold transition border border-slate-300 dark:border-slate-700"
@@ -500,7 +526,7 @@ export default function TeacherGradingPage() {
                 )}
 
                 {/* Audio Player for HSKK with Speed Controls */}
-                {selectedSub.audio_url && (
+                {selectedSub.audioUrl && (
                   <div className="space-y-2 bg-slate-50 dark:bg-slate-950/70 p-4 rounded-2xl border border-violet-500/20">
                     <div className="flex items-center justify-between text-xs text-violet-600 dark:text-violet-400 font-bold">
                       <span className="flex items-center gap-1.5">
@@ -532,7 +558,7 @@ export default function TeacherGradingPage() {
 
                     <audio
                       id="hskk-audio-player"
-                      src={selectedSub.audio_url}
+                      src={selectedSub.audioUrl}
                       controls
                       className="w-full h-10 rounded-xl"
                     />
@@ -558,20 +584,20 @@ export default function TeacherGradingPage() {
             <div className="space-y-3 bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
               <div className="flex items-center justify-between">
                 <label htmlFor="score-input" className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">
-                  Điểm Số (Thang 10):
+                  Điểm số:
                 </label>
                 <div className="flex items-center gap-1">
                   <input
                     id="score-input"
                     type="number"
                     min="0"
-                    max={selectedSub?.max_score || 10}
+                    max={selectedSub?.maxScore || 10}
                     step="0.25"
                     value={score}
                     onChange={(e) => setScore(e.target.value)}
                     className="w-20 bg-white dark:bg-slate-900 border border-amber-500/50 rounded-xl px-2.5 py-1 text-center font-mono font-black text-amber-500 dark:text-amber-400 text-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
-                  <span className="text-xs text-slate-500 font-mono">/ 10</span>
+                  <span className="text-xs text-slate-500 font-mono">/ {selectedSub?.maxScore || 10}</span>
                 </div>
               </div>
 
@@ -579,7 +605,7 @@ export default function TeacherGradingPage() {
               <input
                 type="range"
                 min="0"
-                max={selectedSub?.max_score || 10}
+                max={selectedSub?.maxScore || 10}
                 step="0.5"
                 value={score}
                 onChange={(e) => setScore(e.target.value)}

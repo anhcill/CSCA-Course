@@ -666,22 +666,24 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         assignmentParams,
       ),
       query(
-        `SELECT q.id, q.title, 'quiz' AS type, q.course_id, q.live_class_id, q.class_session_id,
+        `SELECT q.id, q.title, 'quiz' AS type, q.course_id, q.live_class_id, q.class_session_id, q.activity_scope,
                 q.description, (SELECT COALESCE(SUM(qq.points), 0) FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS max_score,
-                quiz_session.end_time AS due_date, q.created_at,
+                q.due_date, q.created_at,
                 quiz_lc.title AS class_title, quiz_session.title AS session_title,
                 quiz_session.start_time AS session_start, quiz_session.end_time AS session_end,
                 qa.id AS submission_id, qa.status AS submission_status, qa.submitted_at,
                 qa.score, NULL::text AS feedback_text, qa.submitted_at AS graded_at,
-                CASE WHEN qa.status = 'submitted' THEN 'graded' ELSE 'todo' END AS status
+                CASE WHEN qa.status = 'submitted' THEN 'graded'
+                     WHEN q.activity_scope = 'homework' AND q.due_date IS NOT NULL AND q.due_date < NOW() THEN 'late'
+                     ELSE 'todo' END AS status
          FROM quizzes q
          JOIN courses course_for_quiz ON course_for_quiz.id = q.course_id
          LEFT JOIN live_classes quiz_lc ON quiz_lc.id = q.live_class_id
          LEFT JOIN class_sessions quiz_session ON quiz_session.id = q.class_session_id
          LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.user_id = $2
          WHERE q.course_id = $1 AND ${quizVisibility}${quizClassScope}
-         ORDER BY CASE WHEN quiz_session.start_time >= NOW() THEN 0 WHEN quiz_session.start_time IS NULL THEN 1 ELSE 2 END,
-                  quiz_session.start_time ASC NULLS LAST, q.created_at DESC
+         ORDER BY CASE WHEN q.activity_scope = 'homework' THEN 0 WHEN quiz_session.start_time >= NOW() THEN 1 WHEN quiz_session.start_time IS NULL THEN 2 ELSE 3 END,
+                  COALESCE(q.due_date, quiz_session.start_time) ASC NULLS LAST, q.created_at DESC
          LIMIT 8`,
         assignmentParams,
       ),

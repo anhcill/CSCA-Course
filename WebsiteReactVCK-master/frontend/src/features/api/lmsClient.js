@@ -334,9 +334,13 @@ export const submitAssignment = async ({ assignmentId, contentText, fileAssetId,
   })
 );
 
-export const fetchSubmissions = async (assignmentId = "all") => (
-  request(`/assignments/${encodeURIComponent(assignmentId)}/submissions`)
-);
+export const fetchSubmissions = async (assignmentId = "all", { classId, sessionId } = {}) => {
+  const params = new URLSearchParams();
+  if (classId) params.set("classId", classId);
+  if (sessionId) params.set("sessionId", sessionId);
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
+  return request(`/assignments/${encodeURIComponent(assignmentId)}/submissions${suffix}`);
+};
 
 export const gradeSubmission = async ({ submissionId, score, feedbackText }) => (
   request(`/assignments/submissions/${encodeURIComponent(submissionId)}/grade`, {

@@ -159,6 +159,7 @@ const serializeAssignment = (row) => ({
   course_id: row.course_id,
   live_class_id: row.live_class_id,
   class_session_id: row.class_session_id || null,
+  activity_scope: row.activity_scope || (row.type === "quiz" ? "session" : "homework"),
   class_title: row.class_title || null,
   session_title: row.session_title || null,
   session_start: row.session_start || null,
@@ -338,7 +339,7 @@ router.get("/", protectRoute, async (req, res) => {
                 s.submitted_at, s.content_text, s.file_asset_id, s.audio_asset_id,
                 fa.original_filename AS file_name, aa.original_filename AS audio_name,
                 sg.score, sg.feedback_text, sg.graded_at,
-                a.class_session_id, assignment_session.title AS session_title,
+                a.class_session_id, NULL::varchar AS activity_scope, assignment_session.title AS session_title,
                 assignment_session.start_time AS session_start, assignment_session.end_time AS session_end, lc.title AS class_title,
                 CASE WHEN sg.score IS NOT NULL THEN 'graded'
                      WHEN s.id IS NOT NULL THEN s.status
@@ -360,15 +361,17 @@ router.get("/", protectRoute, async (req, res) => {
        ), quiz_rows AS (
          SELECT q.id, q.title, 'quiz' AS type, COALESCE(q.course_id, l.course_id) AS course_id, q.live_class_id, q.description,
                 (SELECT COALESCE(SUM(qq.points), 0) FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS max_score,
-                NULL::timestamptz AS due_date, NULL::varchar AS attachment_url, q.created_at, q.updated_at,
+                q.due_date, NULL::varchar AS attachment_url, q.created_at, q.updated_at,
                 COALESCE(c.title, c.name) AS course_title,
                 qa.id AS submission_id, qa.status AS submission_status, qa.submitted_at,
                 NULL::text AS content_text, NULL::bigint AS file_asset_id, NULL::bigint AS audio_asset_id,
                 NULL::varchar AS file_name, NULL::varchar AS audio_name,
                 qa.score, NULL::text AS feedback_text, qa.submitted_at AS graded_at,
-                q.class_session_id, quiz_session.title AS session_title,
+                q.class_session_id, q.activity_scope, quiz_session.title AS session_title,
                 quiz_session.start_time AS session_start, quiz_session.end_time AS session_end, quiz_lc.title AS class_title,
-                CASE WHEN qa.status = 'submitted' THEN 'graded' ELSE 'todo' END AS status
+                CASE WHEN qa.status = 'submitted' THEN 'graded'
+                     WHEN q.activity_scope = 'homework' AND q.due_date IS NOT NULL AND q.due_date < NOW() THEN 'late'
+                     ELSE 'todo' END AS status
          FROM quizzes q
          LEFT JOIN lessons l ON l.id = q.lesson_id
          JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
@@ -399,7 +402,7 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
     const ownerFilter = req.user.role === "admin" ? "TRUE" : "(q.instructor_id = $1 OR c.author_id = $1)";
     const params = req.user.role === "admin" ? [] : [req.user.id];
     const result = await query(
-      `SELECT q.id, q.title, q.description, q.paper_file_id, q.live_class_id, q.class_session_id, q.duration_minutes, q.passing_score,
+      `SELECT q.id, q.title, q.description, q.paper_file_id, q.live_class_id, q.class_session_id, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score,
               q.status, q.shuffle_questions, q.created_at,
               COALESCE(c.title, c.name) AS course_title,
               lc.title AS class_title, cs.title AS session_title, cs.start_time AS session_start, cs.end_time AS session_end,
@@ -424,6 +427,7 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
       classId: row.live_class_id ? String(row.live_class_id) : null,
       classTitle: row.class_title || "Chưa gắn lớp", sessionId: row.class_session_id ? String(row.class_session_id) : null,
       sessionTitle: row.session_title || "Chưa gắn buổi học", sessionStart: row.session_start || null, sessionEnd: row.session_end || null,
+      activityScope: row.activity_scope || "session", dueDate: row.due_date || null,
       hasPaper: Boolean(row.paper_file_id),
       timeLimitMinutes: Number(row.duration_minutes || 0), passingScore: Number(row.passing_score || 0),
       status: row.status, attemptsCount: Number(row.attempts_count || 0),
@@ -490,10 +494,15 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     const liveClassId = parseOptionalId(req.body?.liveClassId);
     const classSessionId = parseOptionalId(req.body?.classSessionId);
     const paperFileId = parseOptionalId(req.body?.paperFileId);
+    const activityScope = req.body?.activityScope === undefined ? "session" : req.body.activityScope;
+    const dueDate = req.body?.dueDate || null;
     if (!title || title.length > 255 || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 240 || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100) return validationError(res, "Thông tin đề kiểm tra không hợp lệ");
     if (questions.length < 1 || questions.length > 200) return validationError(res, "Đề kiểm tra cần từ 1 đến 200 câu hỏi");
     if (!courseId) return validationError(res, "Quiz phải được gắn với một khóa học");
     if (!liveClassId || !classSessionId) return validationError(res, "Quiz phải được gắn với một lớp và một buổi học chưa kết thúc");
+    if (!["session", "homework"].includes(activityScope)) return validationError(res, "Loại hoạt động quiz không hợp lệ");
+    if (dueDate && Number.isNaN(Date.parse(dueDate))) return validationError(res, "Hạn nộp Quiz không hợp lệ");
+    if (activityScope === "homework" && (!dueDate || new Date(dueDate).getTime() <= Date.now())) return validationError(res, "Quiz về nhà cần có hạn nộp ở tương lai");
     // Keep the session lock from validation through the insert. This prevents a
     // schedule update from moving the selected session into the past mid-request.
     await client.query("BEGIN");
@@ -547,10 +556,10 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
       };
     });
     const quizResult = await client.query(
-      `INSERT INTO quizzes (title, description, course_id, live_class_id, class_session_id, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       RETURNING id, title, description, course_id, live_class_id, class_session_id, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, created_at`,
-      [title, description, courseId, liveClassId, classSessionId, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id],
+      `INSERT INTO quizzes (title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       RETURNING id, title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, created_at`,
+      [title, description, courseId, liveClassId, classSessionId, activityScope, activityScope === "homework" ? dueDate : null, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id],
     );
     for (const question of normalizedQuestions) {
       await client.query(
@@ -559,7 +568,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
         [quizResult.rows[0].id, question.text, question.type, JSON.stringify(question.options), question.correct, question.explanation, question.points, question.order],
       );
     }
-    await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.created", entityType: "quiz", entityId: quizResult.rows[0].id, afterState: quizResult.rows[0], metadata: { ip: req.ip, questionCount: normalizedQuestions.length, liveClassId, classSessionId } });
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.created", entityType: "quiz", entityId: quizResult.rows[0].id, afterState: quizResult.rows[0], metadata: { ip: req.ip, questionCount: normalizedQuestions.length, liveClassId, classSessionId, activityScope } });
     await client.query("COMMIT");
     return res.status(201).json({ success: true, data: { ...quizResult.rows[0], questionCount: normalizedQuestions.length }, message: "Tạo đề kiểm tra thành công" });
   } catch (error) {
@@ -721,6 +730,10 @@ router.get("/submission-assets/:assetId/access", protectRoute, async (req, res) 
 router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (req, res) => {
   try {
     const { assignmentId } = req.params;
+    const classId = parseOptionalId(req.query.classId);
+    const sessionId = parseOptionalId(req.query.sessionId);
+    if (req.query.classId !== undefined && !classId) return validationError(res, "classId không hợp lệ");
+    if (req.query.sessionId !== undefined && !sessionId) return validationError(res, "sessionId không hợp lệ");
     const values = [];
     const filters = [];
     if (assignmentId !== "all") {
@@ -735,10 +748,20 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
       values.push(req.user.id);
       filters.push(`a.instructor_id = $${values.length}`);
     }
+    if (classId) {
+      values.push(classId);
+      filters.push(`a.live_class_id = $${values.length}`);
+    }
+    if (sessionId) {
+      values.push(sessionId);
+      filters.push(`a.class_session_id = $${values.length}`);
+    }
     const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
     const result = await query(
       `SELECT s.id, s.assignment_id, s.user_id, s.content_text, s.status, s.submitted_at,
               s.file_asset_id, s.audio_asset_id, a.title AS assignment_title, a.assignment_type, a.max_score, a.due_date,
+              a.live_class_id, a.class_session_id, lc.title AS class_title,
+              class_session.title AS session_title, class_session.start_time AS session_start,
               u.username AS student_username, u.username AS student_name, u.email AS student_email, u.avatar_url AS student_avatar,
               fa.original_filename AS file_name, aa.original_filename AS audio_name,
               CASE WHEN s.file_asset_id IS NOT NULL THEN '/api/assignments/submission-assets/' || s.file_asset_id || '/access' END AS file_url,
@@ -747,6 +770,8 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
        FROM assignment_submissions s
        JOIN assignments a ON a.id = s.assignment_id
        JOIN users u ON u.id = s.user_id
+       LEFT JOIN live_classes lc ON lc.id = a.live_class_id
+       LEFT JOIN class_sessions class_session ON class_session.id = a.class_session_id
        LEFT JOIN submission_assets fa ON fa.id = s.file_asset_id
        LEFT JOIN submission_assets aa ON aa.id = s.audio_asset_id
        LEFT JOIN LATERAL (
@@ -765,6 +790,11 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
       assignmentType: row.assignment_type,
       maxScore: Number(row.max_score),
       dueDate: row.due_date,
+      classId: row.live_class_id ? String(row.live_class_id) : null,
+      classTitle: row.class_title || null,
+      sessionId: row.class_session_id ? String(row.class_session_id) : null,
+      sessionTitle: row.session_title || null,
+      sessionStart: row.session_start || null,
       studentName: row.student_name || row.student_username,
       studentEmail: row.student_email || null,
       studentAvatar: row.student_avatar || null,
@@ -1022,7 +1052,7 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
 
 const getQuiz = async (quizId, db = { query }) => {
   const result = await db.query(
-    `SELECT q.id, q.title, q.description, q.status AS quiz_status, q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.live_class_id, q.class_session_id, q.course_id AS quiz_course_id, q.lesson_id,
+    `SELECT q.id, q.title, q.description, q.status AS quiz_status, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.live_class_id, q.class_session_id, q.course_id AS quiz_course_id, q.lesson_id,
             COALESCE(q.course_id, l.course_id) AS resolved_course_id,
             c.is_published AS course_is_published,
             COALESCE(c.is_management_managed, FALSE) AS course_is_management_managed,
@@ -1149,6 +1179,8 @@ router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
         sessionTitle: quiz.session_title || null,
         sessionStart: quiz.session_start || null,
         sessionEnd: quiz.session_end || null,
+        activityScope: quiz.activity_scope || "session",
+        dueDate: quiz.due_date || null,
         paperUrl: quiz.paper_file_id && quiz.paper_status === "ready" ? `/api/files/${quiz.paper_file_id}/download` : null,
         durationMinutes: quiz.duration_minutes,
         timeLimitSeconds: Number(quiz.duration_minutes) * 60,
@@ -1173,6 +1205,7 @@ router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), async 
     const quiz = await getQuiz(quizId);
     if (!quiz) return notFound(res, "Không tìm thấy đề thi");
     if (!(await ensureQuizAccess(quiz, req.user))) return forbidden(res, "Bạn chưa được cấp quyền làm đề thi này");
+    if (quiz.activity_scope === "homework" && quiz.due_date && new Date(quiz.due_date).getTime() < Date.now()) return conflict(res, "Quiz về nhà đã quá hạn nộp", "QUIZ_DEADLINE_PASSED");
     const questions = await getQuizQuestions(quizId);
     const answerError = validateQuizAnswers(questions, req.body.answers);
     if (answerError) return validationError(res, answerError);

@@ -124,6 +124,7 @@ export default function TeacherQuizPage() {
   const [searchParams] = useSearchParams();
   const requestedClassId = searchParams.get("classId");
   const requestedSessionId = searchParams.get("sessionId");
+  const requestedScope = searchParams.get("scope") === "homework" ? "homework" : "session";
   const shouldOpenBuilder = searchParams.get("new") === "1";
   const quickCreateHandledRef = useRef(false);
   const [quizzes, setQuizzes] = useState([]);
@@ -141,6 +142,8 @@ export default function TeacherQuizPage() {
   const [courseId, setCourseId] = useState("");
   const [liveClassId, setLiveClassId] = useState("");
   const [classSessionId, setClassSessionId] = useState("");
+  const [activityScope, setActivityScope] = useState(requestedScope);
+  const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState(30);
   const [passScore, setPassScore] = useState(60);
   const [shuffleQuestions, setShuffleQuestions] = useState(true);
@@ -200,6 +203,8 @@ export default function TeacherQuizPage() {
     setTargetClasses([]);
     setLiveClassId("");
     setClassSessionId("");
+    setActivityScope(requestedScope);
+    setDueDate("");
     fetchTeacherQuizTargets(courseId)
       .then((response) => {
         if (cancelled) return;
@@ -233,6 +238,8 @@ export default function TeacherQuizPage() {
     setCourseId("");
     setLiveClassId("");
     setClassSessionId("");
+    setActivityScope(requestedScope);
+    setDueDate("");
     setTargetClasses([]);
     setTimeLimit(30);
     setPassScore(60);
@@ -379,6 +386,10 @@ export default function TeacherQuizPage() {
       toast.error("Hãy chọn đúng lớp và buổi học chưa kết thúc cho quiz.");
       return;
     }
+    if (activityScope === "homework" && !dueDate) {
+      toast.error("Quiz về nhà cần có hạn nộp.");
+      return;
+    }
     if (quizMode === "paper" && !paperFile) {
       toast.error("Hãy tải file PDF đề trước khi xuất bản.");
       return;
@@ -408,6 +419,8 @@ export default function TeacherQuizPage() {
         courseId: Number(courseId),
         liveClassId: Number(liveClassId),
         classSessionId: Number(classSessionId),
+        activityScope,
+        dueDate: activityScope === "homework" ? dueDate : undefined,
         durationMinutes: Number(timeLimit),
         passingScore: Number(passScore),
         shuffleQuestions,
@@ -471,6 +484,11 @@ export default function TeacherQuizPage() {
                   <h2 className="line-clamp-2 text-base font-black text-slate-950 dark:text-white">{quiz.title}</h2>
                   <p className="truncate text-xs font-semibold text-violet-700 dark:text-violet-300">{quiz.courseTitle}</p>
                   <p className="rounded-xl bg-slate-50 px-2.5 py-2 text-[11px] font-bold text-slate-600 dark:bg-slate-950 dark:text-slate-300">{quiz.classTitle} · {formatQuizSession(quiz)}</p>
+                  <p className={`text-[11px] font-black ${quiz.activityScope === "homework" ? "text-emerald-700 dark:text-emerald-300" : "text-violet-700 dark:text-violet-300"}`}>
+                    {quiz.activityScope === "homework"
+                      ? `BÀI TẬP VỀ NHÀ · Hạn nộp ${quiz.dueDate ? new Date(quiz.dueDate).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "chưa đặt"}`
+                      : "QUIZ TRONG BUỔI HỌC"}
+                  </p>
                   {quiz.hasPaper && <span className="inline-flex rounded-full bg-blue-500/10 px-2 py-1 text-[10px] font-black text-blue-700 dark:text-blue-300">📄 Có đề PDF</span>}
                 </div>
                 <div className="space-y-4 border-t border-slate-100 pt-4 dark:border-slate-800">
@@ -511,7 +529,7 @@ export default function TeacherQuizPage() {
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:px-6">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white"><FiFileText className="h-5 w-5" /></span>
-                <div className="min-w-0"><h2 className="truncate text-base font-black text-slate-950 dark:text-white">Soạn đề quiz LMS</h2><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Chọn một cách tạo đề: tự soạn từng câu hoặc file PDF kèm danh sách đáp án.</p></div>
+                <div className="min-w-0"><h2 className="truncate text-base font-black text-slate-950 dark:text-white">{activityScope === "homework" ? "Soạn Quiz về nhà" : "Soạn Quiz buổi học"}</h2><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Chọn một cách tạo đề: tự soạn từng câu hoặc file PDF kèm danh sách đáp án.</p></div>
               </div>
               <button type="button" disabled={saving} onClick={closeBuilder} className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 dark:hover:bg-slate-800 dark:hover:text-white" aria-label="Đóng"><FiX className="h-5 w-5" /></button>
             </div>
@@ -520,11 +538,13 @@ export default function TeacherQuizPage() {
               <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
                 <section className="space-y-5">
                   <div className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:grid-cols-2">
-                    <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Tên đề <b className="text-rose-500">*</b></span><input value={quizTitle} onChange={(event) => setQuizTitle(event.target.value)} maxLength={255} placeholder="Ví dụ: Quiz buổi 3 — Hàm số ngược" className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
+                    <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Tên đề <b className="text-rose-500">*</b></span><input value={quizTitle} onChange={(event) => setQuizTitle(event.target.value)} maxLength={255} placeholder={activityScope === "homework" ? "Ví dụ: BTVN Quiz — Hàm số ngược" : "Ví dụ: Quiz buổi 3 — Hàm số ngược"} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
+                    <div className="md:col-span-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"><span className="block text-xs font-black text-slate-700 dark:text-slate-200">Dạng quiz <b className="text-rose-500">*</b></span><div className="mt-2 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => { setActivityScope("session"); setDueDate(""); }} className={`rounded-xl border p-3 text-left transition ${activityScope === "session" ? "border-violet-500 bg-violet-50 dark:bg-violet-950/30" : "border-slate-200 hover:border-violet-300 dark:border-slate-700"}`}><b className="block text-xs">Làm trong buổi học</b><span className="mt-1 block text-[11px] text-slate-500">Không có hạn nộp riêng; học viên làm trong không gian buổi học.</span></button><button type="button" onClick={() => setActivityScope("homework")} className={`rounded-xl border p-3 text-left transition ${activityScope === "homework" ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30" : "border-slate-200 hover:border-emerald-300 dark:border-slate-700"}`}><b className="block text-xs">Bài tập về nhà</b><span className="mt-1 block text-[11px] text-slate-500">Có deadline; chấm tự động sau khi học viên nộp.</span></button></div></div>
                     <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Khóa học nhận quiz <b className="text-rose-500">*</b></span><select value={courseId} onChange={(event) => { setCourseId(event.target.value); setPaperFile(null); }} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Chọn khóa học...</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.title || course.name}</option>)}</select><span className="mt-1.5 block text-[11px] text-slate-500">Quiz sẽ được gắn vào một lớp và một buổi học cụ thể của khóa này.</span></label>
                     <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Lớp học <b className="text-rose-500">*</b></span><select value={liveClassId} disabled={!courseId || targetsLoading || targetClasses.length === 0} onChange={(event) => { const nextClassId = event.target.value; setLiveClassId(nextClassId); const nextClass = targetClasses.find((item) => String(item.id) === nextClassId); setClassSessionId(nextClass?.sessions?.[0]?.id ? String(nextClass.sessions[0].id) : ""); }} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">{targetsLoading ? "Đang tải lớp..." : targetClasses.length ? "Chọn lớp..." : "Không có lớp còn buổi học"}</option>{targetClasses.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
                     <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Buổi học <b className="text-rose-500">*</b></span><select value={classSessionId} disabled={!selectedTargetClass || targetsLoading} onChange={(event) => setClassSessionId(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Chọn buổi học...</option>{selectedTargetClass?.sessions?.map((session) => <option key={session.id} value={session.id}>{formatSessionTarget(session)}</option>)}</select></label>
                     <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-200">Chỉ hiển thị các buổi đang diễn ra hoặc sắp tới. Buổi đã kết thúc/hủy không thể chọn và máy chủ cũng sẽ chặn tạo quiz.</div>
+                    {activityScope === "homework" && <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Hạn nộp Quiz về nhà <b className="text-rose-500">*</b></span><input type="datetime-local" value={dueDate} onChange={(event) => setDueDate(event.target.value)} className="w-full rounded-xl border border-emerald-300 bg-emerald-50/50 px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-emerald-500 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-white" /></label>}
                     <div className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Cách tạo đề <b className="text-rose-500">*</b></span><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => selectQuizMode("manual")} className={`rounded-2xl border p-3 text-left transition ${quizMode === "manual" ? "border-violet-500 bg-violet-50 ring-2 ring-violet-500/15 dark:bg-violet-950/30" : "border-slate-200 bg-white hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900"}`}><span className="block text-xs font-black text-slate-950 dark:text-white">Tự soạn từng câu</span><span className="mt-1 block text-[11px] leading-4 text-slate-600 dark:text-slate-400">Nhập nội dung, phương án A/B/C/D và đáp án ngay trong LMS.</span></button><button type="button" onClick={() => selectQuizMode("paper")} className={`rounded-2xl border p-3 text-left transition ${quizMode === "paper" ? "border-violet-500 bg-violet-50 ring-2 ring-violet-500/15 dark:bg-violet-950/30" : "border-slate-200 bg-white hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900"}`}><span className="block text-xs font-black text-slate-950 dark:text-white">Dùng file đề PDF</span><span className="mt-1 block text-[11px] leading-4 text-slate-600 dark:text-slate-400">Tải PDF đề, dán đáp án 1 A / 2 B…; học viên làm trên bảng đáp án.</span></button></div></div>
                     {quizMode === "paper" && <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">File đề PDF <b className="text-rose-500">*</b></span><div className="flex flex-col gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/70 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-violet-800 dark:bg-violet-950/20"><div className="min-w-0"><p className="truncate text-xs font-bold text-violet-950 dark:text-violet-100">{paperFile ? `📄 ${paperFile.name}` : "Tải đề PDF để học viên đọc ở cột bên trái."}</p><p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Sau khi tải, dán danh sách đáp án ở bảng bên phải để tạo số câu tương ứng.</p></div><input type="file" accept="application/pdf,.pdf" disabled={!courseId || uploadingPaper} onChange={handlePaperSelect} className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-2 file:text-xs file:font-black file:text-white hover:file:bg-violet-500 disabled:opacity-50 sm:w-auto" /></div></label>}
                     <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Thời gian (phút)</span><input type="number" min="1" max="240" value={timeLimit} onChange={(event) => setTimeLimit(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
