@@ -164,7 +164,13 @@ router.get("/admin", protectRoute, requireTeacher, async (req, res) => {
     let ownerClause = "";
     if (req.user.role !== "admin") {
       params.push(req.user.id);
-      ownerClause = ` AND c.author_id = $${params.length}`;
+      ownerClause = ` AND (
+        c.author_id = $${params.length}
+        OR EXISTS (
+          SELECT 1 FROM live_classes lc
+          WHERE lc.course_id = c.id AND lc.instructor_id = $${params.length} AND lc.status = 'active'
+        )
+      )`;
     }
 
     const result = await query(

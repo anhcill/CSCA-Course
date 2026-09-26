@@ -12,6 +12,7 @@ import {
   FiShield,
   FiActivity,
   FiFileText,
+  FiList,
   FiChevronRight,
 } from 'react-icons/fi';
 import { useAuthContext } from '../../context/AuthContext';
@@ -74,6 +75,11 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
           title: 'Chấm bài',
           icon: <FiCheckSquare className="w-4 h-4 shrink-0" />,
           path: '/lms/admin/grading',
+        },
+        {
+          title: 'Quiz học viên',
+          icon: <FiList className="w-4 h-4 shrink-0" />,
+          path: '/lms/teacher/quizzes',
         },
         {
           title: t('adminPost') || 'Bài viết',

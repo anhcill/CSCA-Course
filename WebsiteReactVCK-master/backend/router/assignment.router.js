@@ -267,8 +267,8 @@ router.get("/", protectRoute, async (req, res) => {
     const quizVisibilityClause = isAdmin
       ? "TRUE"
       : isTeacher
-        ? "c.author_id = $1"
-        : `c.is_published = true AND (
+        ? "(q.instructor_id = $1 OR c.author_id = $1)"
+        : `q.status = 'PUBLISHED' AND c.is_published = true AND (
              (COALESCE(c.is_management_managed, FALSE) = FALSE AND EXISTS (
                SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = c.id AND e.status = 'active'
              ))
@@ -357,7 +357,7 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
     const ownerFilter = req.user.role === "admin" ? "TRUE" : "(q.instructor_id = $1 OR c.author_id = $1)";
     const params = req.user.role === "admin" ? [] : [req.user.id];
     const result = await query(
-      `SELECT q.id, q.title, q.description, q.duration_minutes, q.passing_score,
+      `SELECT q.id, q.title, q.description, q.paper_file_id, q.duration_minutes, q.passing_score,
               q.status, q.shuffle_questions, q.created_at,
               COALESCE(c.title, c.name) AS course_title,
               COUNT(DISTINCT qq.id)::int AS question_count,
@@ -375,6 +375,7 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
     return res.json({ success: true, data: result.rows.map((row) => ({
       id: String(row.id), title: row.title, description: row.description || "",
       courseTitle: row.course_title || "Chưa gắn khóa học", questionCount: Number(row.question_count || 0),
+      hasPaper: Boolean(row.paper_file_id),
       timeLimitMinutes: Number(row.duration_minutes || 0), passingScore: Number(row.passing_score || 0),
       status: row.status, attemptsCount: Number(row.attempts_count || 0),
       avgScore: row.avg_score === null ? null : Number(row.avg_score), createdAt: row.created_at,
@@ -395,42 +396,51 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     const passingScore = Number(req.body?.passingScore ?? 60);
     const status = ["DRAFT", "PUBLISHED"].includes(req.body?.status) ? req.body.status : "DRAFT";
     const questions = Array.isArray(req.body?.questions) ? req.body.questions : [];
-    let courseId = parseOptionalId(req.body?.courseId);
+    const courseId = parseOptionalId(req.body?.courseId);
+    const paperFileId = parseOptionalId(req.body?.paperFileId);
     if (!title || title.length > 255 || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 240 || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100) return validationError(res, "Thông tin đề kiểm tra không hợp lệ");
     if (questions.length < 1 || questions.length > 200) return validationError(res, "Đề kiểm tra cần từ 1 đến 200 câu hỏi");
-    if (!courseId) {
-      const ownCourse = await client.query("SELECT id FROM courses WHERE author_id = $1 ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1", [req.user.id]);
-      courseId = ownCourse.rows[0]?.id || null;
-    }
-    if (!courseId && req.user.role !== "admin") return validationError(res, "Giáo viên cần có ít nhất một khóa học để tạo đề");
-    if (courseId) {
-      const course = await client.query("SELECT id, author_id FROM courses WHERE id = $1", [courseId]);
-      if (!course.rows[0]) return notFound(res, "Không tìm thấy khóa học");
-      if (req.user.role !== "admin" && String(course.rows[0].author_id) !== String(req.user.id)) return forbidden(res, "Bạn không có quyền tạo đề cho khóa học này");
+    if (!courseId) return validationError(res, "Quiz phải được gắn với một khóa học");
+    const course = await client.query(
+      `SELECT c.id, c.author_id,
+              EXISTS (SELECT 1 FROM live_classes lc WHERE lc.course_id = c.id AND lc.instructor_id = $2 AND lc.status = 'active') AS is_assigned_instructor
+       FROM courses c WHERE c.id = $1`,
+      [courseId, req.user.id],
+    );
+    if (!course.rows[0]) return notFound(res, "Không tìm thấy khóa học");
+    if (req.user.role !== "admin" && String(course.rows[0].author_id) !== String(req.user.id) && !course.rows[0].is_assigned_instructor) return forbidden(res, "Bạn không phụ trách khóa học hoặc lớp học này");
+    if (paperFileId) {
+      const paper = await client.query(
+        "SELECT id FROM lms_learning_files WHERE id = $1 AND course_id = $2 AND mime_type = 'application/pdf' AND status = 'ready'",
+        [paperFileId, courseId],
+      );
+      if (!paper.rows[0]) return validationError(res, "File đề PDF không hợp lệ hoặc chưa tải lên hoàn tất");
     }
     const normalizedQuestions = questions.map((question, index) => {
       const text = typeof question.questionText === "string" ? question.questionText.trim() : "";
       const options = Array.isArray(question.options)
-        ? question.options.map((value, optionIndex) => ({ key: String.fromCharCode(65 + optionIndex), text: String(value || "").trim() })).filter((option) => option.text)
+        ? question.options.slice(0, 6).map((value, optionIndex) => ({ key: String.fromCharCode(65 + optionIndex), text: String(value || "").trim() })).filter((option) => option.text)
         : [];
-      const correctIndex = Number.isInteger(question.correctAnswer) ? question.correctAnswer : 0;
-      if (!text || !options.length || !options[correctIndex]) throw new Error("INVALID_QUESTION");
+      const correctIndex = Number.isInteger(question.correctAnswer) ? question.correctAnswer : -1;
+      const explanation = typeof question.explanation === "string" ? question.explanation.trim() : "";
+      const points = Number(question.points);
+      if (!text || text.length > 6000 || options.length < 2 || options.some((option) => option.text.length > 2000) || !options[correctIndex] || explanation.length > 4000 || !Number.isFinite(points) || points <= 0 || points > 100) throw new Error("INVALID_QUESTION");
       return {
         text,
         type: question.type === "multiple" ? "multiple_choice" : "single_choice",
         options,
         correct: options[correctIndex].key,
-        explanation: typeof question.explanation === "string" ? question.explanation.trim() : "",
-        points: Number.isFinite(Number(question.points)) && Number(question.points) > 0 ? Number(question.points) : 1,
+        explanation,
+        points,
         order: index + 1,
       };
     });
     await client.query("BEGIN");
     const quizResult = await client.query(
-      `INSERT INTO quizzes (title, description, course_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, title, description, course_id, duration_minutes, passing_score, status, shuffle_questions, created_at`,
-      [title, description, courseId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id],
+      `INSERT INTO quizzes (title, description, course_id, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, title, description, course_id, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, created_at`,
+      [title, description, courseId, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id],
     );
     for (const question of normalizedQuestions) {
       await client.query(
@@ -444,7 +454,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     return res.status(201).json({ success: true, data: { ...quizResult.rows[0], questionCount: normalizedQuestions.length }, message: "Tạo đề kiểm tra thành công" });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
-    if (error.message === "INVALID_QUESTION") return validationError(res, "Mỗi câu hỏi phải có nội dung, đáp án và đáp án đúng");
+    if (error.message === "INVALID_QUESTION") return validationError(res, "Mỗi câu cần có nội dung, từ 2 đến 6 phương án, đáp án đúng và điểm hợp lệ");
     console.error("Error creating teacher quiz:", error);
     return internalError(res, "Lỗi khi tạo đề kiểm tra");
   } finally {
@@ -893,14 +903,16 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
 
 const getQuiz = async (quizId, db = { query }) => {
   const result = await db.query(
-    `SELECT q.id, q.title, q.status AS quiz_status, q.duration_minutes, q.passing_score, q.course_id AS quiz_course_id, q.lesson_id,
+    `SELECT q.id, q.title, q.description, q.status AS quiz_status, q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.course_id AS quiz_course_id, q.lesson_id,
             COALESCE(q.course_id, l.course_id) AS resolved_course_id,
             c.is_published AS course_is_published,
             COALESCE(c.is_management_managed, FALSE) AS course_is_management_managed,
             c.author_id AS course_author_id,
-            l.is_published AS lesson_is_published
+            l.is_published AS lesson_is_published,
+            paper.status AS paper_status
      FROM quizzes q LEFT JOIN lessons l ON l.id = q.lesson_id
      LEFT JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
+     LEFT JOIN lms_learning_files paper ON paper.id = q.paper_file_id
      WHERE q.id = $1`,
     [quizId],
   );
@@ -909,7 +921,7 @@ const getQuiz = async (quizId, db = { query }) => {
 
 const ensureQuizAccess = async (quiz, user, db = { query }) => {
   if (user.role === "admin") return true;
-  if (user.role === "creator") return String(quiz.course_author_id) === String(user.id);
+  if (user.role === "creator") return String(quiz.course_author_id) === String(user.id) || String(quiz.instructor_id) === String(user.id);
   if (user.role !== "user" || quiz.quiz_status !== "PUBLISHED" || !quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
   const enrollment = await db.query(
     `SELECT 1 FROM enrollments WHERE $3::boolean = FALSE AND user_id = $1 AND course_id = $2 AND status = 'active'
@@ -999,6 +1011,8 @@ router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
         id: quiz.id,
         quizId: quiz.id,
         title: quiz.title,
+        description: quiz.description || "",
+        paperUrl: quiz.paper_file_id && quiz.paper_status === "ready" ? `/api/files/${quiz.paper_file_id}/download` : null,
         durationMinutes: quiz.duration_minutes,
         timeLimitSeconds: Number(quiz.duration_minutes) * 60,
         passingScore: Number(quiz.passing_score),

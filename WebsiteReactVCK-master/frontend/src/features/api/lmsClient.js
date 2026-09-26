@@ -576,4 +576,23 @@ export const uploadClassFile = async (classId, file, { visibility = "CLASS_ONLY"
   return request(`/teacher/files/${encodeURIComponent(upload.fileId)}/confirm`, { method: "POST" });
 };
 
+// Quiz papers are course-scoped protected PDFs. Students open them through the
+// authenticated LMS route, never through a public storage URL.
+export const uploadCourseQuizPaper = async (courseId, file) => {
+  const mimeType = file.type || "application/pdf";
+  const uploadResponse = await request(`/teacher/courses/${encodeURIComponent(courseId)}/files/upload-url`, {
+    method: "POST",
+    body: JSON.stringify({ filename: file.name, mimeType, sizeBytes: file.size }),
+  });
+  const upload = uploadResponse?.data;
+  if (!upload?.uploadUrl || !upload?.fileId) throw new LmsApiError("Máy chủ không trả về upload target");
+  const putResponse = await fetch(upload.uploadUrl, {
+    method: "PUT",
+    headers: upload.headers || { "Content-Type": mimeType },
+    body: file,
+  });
+  if (!putResponse.ok) throw new LmsApiError("Upload đề PDF lên R2 thất bại", { status: putResponse.status });
+  return request(`/teacher/files/${encodeURIComponent(upload.fileId)}/confirm`, { method: "POST" });
+};
+
 export const deleteClassFile = async (fileId) => request(`/teacher/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });

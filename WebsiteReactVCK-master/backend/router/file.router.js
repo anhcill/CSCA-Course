@@ -64,6 +64,32 @@ const classAccess = async (classId, user) => {
   return access.rows.length ? { liveClass, canManage: false } : { error: "forbidden" };
 };
 
+// Course-scoped files are used for shared course material and quiz papers.
+// A teacher may manage them when they own the course or teach an active class of it.
+const courseAccess = async (courseId, user) => {
+  const result = await query(
+    `SELECT c.id, c.author_id
+     FROM courses c WHERE c.id = $1`,
+    [courseId],
+  );
+  const course = result.rows[0];
+  if (!course) return { error: "not_found" };
+  if (user.role === "admin" || String(course.author_id) === String(user.id)) return { course, canManage: true };
+  if (user.role === "creator") {
+    const teacher = await query(
+      `SELECT 1
+       FROM live_classes lc
+       LEFT JOIN class_teachers ct ON ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+       WHERE lc.course_id = $1 AND lc.status = 'active'
+         AND (lc.instructor_id = $2 OR ct.teacher_id IS NOT NULL)
+       LIMIT 1`,
+      [courseId, user.id],
+    );
+    if (teacher.rows.length > 0) return { course, canManage: true };
+  }
+  return { error: "forbidden" };
+};
+
 const fileAccess = async (fileId, user) => {
   const result = await query(
     `SELECT f.*, lc.instructor_id, lc.course_id AS class_course_id,
@@ -122,6 +148,38 @@ const serializeFile = (row) => ({
   courseTitle: row.course_title || null,
   visibility: row.visibility,
   downloadUrl: `/api/files/${row.id}/download`,
+});
+
+// POST /api/teacher/courses/:courseId/files/upload-url
+// PDF sources are intentionally course scoped so every authorised learner can
+// open the paper in the protected quiz player.
+router.post("/teacher/courses/:courseId/files/upload-url", protectRoute, requireTeacher, requirePermission("lms.file.manage"), async (req, res) => {
+  const courseId = parseId(req.params.courseId);
+  const { filename, mimeType, sizeBytes } = req.body || {};
+  if (!courseId || !safeFilename(filename) || mimeType !== "application/pdf") {
+    return errorResponse(res, 422, "Đề quiz phải là file PDF hợp lệ", "VALIDATION_ERROR");
+  }
+  if (!Number.isSafeInteger(Number(sizeBytes)) || Number(sizeBytes) <= 0 || Number(sizeBytes) > MAX_LEARNING_FILE_SIZE_BYTES) {
+    return errorResponse(res, 422, "Kích thước file PDF phải từ 1 byte đến 100MB", "VALIDATION_ERROR");
+  }
+  try {
+    const access = await courseAccess(courseId, req.user);
+    if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy khóa học", "NOT_FOUND");
+    if (access.error || !access.canManage) return errorResponse(res, 403, "Bạn không có quyền tải đề lên khóa học này", "FORBIDDEN");
+    const upload = await generateLearningFileUploadPresignedUrl({ userId: req.user.id, filename, mimeType, sizeBytes });
+    const result = await query(
+      `INSERT INTO lms_learning_files
+         (course_id, uploaded_by, original_name, storage_key, mime_type, size_bytes, visibility, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'COURSE', 'pending')
+       RETURNING id`,
+      [courseId, req.user.id, filename.trim(), upload.fileKey, mimeType, Number(sizeBytes)],
+    );
+    return res.status(201).json({ success: true, data: { fileId: String(result.rows[0].id), ...upload } });
+  } catch (error) {
+    if (error.code === "R2_NOT_CONFIGURED") return errorResponse(res, 503, "Kho R2 chưa được cấu hình", error.code);
+    console.error("Error creating quiz paper upload:", error);
+    return errorResponse(res, 500, "Không thể tạo upload đề quiz", "INTERNAL_ERROR");
+  }
 });
 
 // GET /api/teacher/classes/:classId/files
@@ -187,7 +245,9 @@ router.post("/teacher/files/:fileId/confirm", protectRoute, requireTeacher, requ
   try {
     const file = (await query("SELECT * FROM lms_learning_files WHERE id = $1", [fileId])).rows[0];
     if (!file) return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
-    const access = await classAccess(file.live_class_id, req.user);
+    const access = file.live_class_id
+      ? await classAccess(file.live_class_id, req.user)
+      : await courseAccess(file.course_id, req.user);
     if (access.error || !access.canManage || String(file.uploaded_by) !== String(req.user.id)) return errorResponse(res, 403, "Bạn không có quyền xác nhận tài liệu này", "FORBIDDEN");
     const { headUrl } = await generateLearningFileHeadSignedUrl({ r2Key: file.storage_key });
     const headResponse = await fetch(headUrl, { method: "HEAD" });
@@ -277,13 +337,18 @@ router.get("/student/files", protectRoute, async (req, res) => {
 });
 
 const canDeleteFile = async (fileId, user) => {
-  const result = await query("SELECT id, uploaded_by, live_class_id, storage_key, status FROM lms_learning_files WHERE id = $1", [fileId]);
+  const result = await query("SELECT id, uploaded_by, live_class_id, course_id, storage_key, status FROM lms_learning_files WHERE id = $1", [fileId]);
   const file = result.rows[0];
   if (!file) return { error: "not_found" };
   if (user.role === "admin" || String(file.uploaded_by) === String(user.id)) return { file };
   if (user.role === "creator") {
-    const owner = await query("SELECT instructor_id FROM live_classes WHERE id = $1", [file.live_class_id]);
-    if (String(owner.rows[0]?.instructor_id) === String(user.id)) return { file };
+    if (file.live_class_id) {
+      const owner = await query("SELECT instructor_id FROM live_classes WHERE id = $1", [file.live_class_id]);
+      if (String(owner.rows[0]?.instructor_id) === String(user.id)) return { file };
+    } else if (file.course_id) {
+      const access = await courseAccess(file.course_id, user);
+      if (!access.error && access.canManage) return { file };
+    }
   }
   return { error: "forbidden" };
 };

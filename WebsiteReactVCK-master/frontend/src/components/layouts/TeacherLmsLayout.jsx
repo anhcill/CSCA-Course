@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  BookOpen, CalendarDays, ChevronRight, ClipboardCheck,
+  BookOpen, CalendarDays, ChevronRight, ClipboardCheck, FileQuestion,
   Home, LogOut, Menu, Presentation, Settings, Users, X,
 } from 'lucide-react';
 import Logo from '../Logo';
@@ -20,6 +20,7 @@ const TEACHER_NAV = [
   { label: 'Lịch dạy', path: '/lms/teach/calendar', icon: CalendarDays },
   { label: 'Điểm danh', path: '/lms/teach/attendance', icon: Users },
   { label: 'Giáo trình', path: '/lms/teacher/curriculum', icon: BookOpen },
+  { label: 'Quiz học viên', path: '/lms/teacher/quizzes', icon: FileQuestion },
   { label: 'Chấm bài', path: '/lms/teacher/grading', icon: ClipboardCheck },
 ];
 
