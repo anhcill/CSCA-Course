@@ -58,7 +58,7 @@ function StudentNavItem({ item, onNavigate }) {
       className={({ isActive }) => `group relative flex items-center gap-3 rounded-2xl px-3 py-2 text-xs sm:text-sm font-semibold transition ${
         isActive 
           ? "bg-blue-50/80 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40" 
-          : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-900 dark:hover:text-white"
+          : "text-slate-600 dark:text-slate-400 hover:bg-blue-50/70 dark:hover:bg-slate-800/90 hover:text-blue-800 dark:hover:text-sky-200 focus-visible:bg-blue-50/70 dark:focus-visible:bg-slate-800/90"
       }`}
     >
       {({ isActive }) => (
@@ -67,7 +67,7 @@ function StudentNavItem({ item, onNavigate }) {
           <span className={`flex h-8 w-8 items-center justify-center rounded-xl transition ${
             isActive 
               ? "bg-blue-600 text-white shadow-sm shadow-blue-600/25" 
-              : "bg-blue-50/70 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 group-hover:scale-105"
+              : "bg-blue-50/70 dark:bg-slate-800/80 text-blue-600 dark:text-sky-400 group-hover:scale-105"
           }`}>
             <Icon className="h-4 w-4" />
           </span>
