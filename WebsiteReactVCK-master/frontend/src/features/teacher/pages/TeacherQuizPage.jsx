@@ -21,6 +21,7 @@ import {
   deleteTeacherQuiz,
   fetchAdminCourses,
   fetchClassDetails,
+  fetchTeacherQuizTargets,
   fetchTeacherQuizzes,
   uploadCourseQuizPaper,
 } from "../../api/lmsClient";
@@ -46,6 +47,16 @@ const createPaperQuestion = (index) => ({
 });
 
 const optionKeyAt = (index) => QUIZ_OPTION_KEYS[index] || String(index + 1);
+
+const formatSessionTarget = (session) => {
+  if (!session?.startTime) return session?.title || "Buổi học";
+  const date = new Date(session.startTime);
+  return `${date.toLocaleString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} — ${session.title || "Buổi học"}`;
+};
+
+const formatQuizSession = (quiz) => quiz?.sessionStart
+  ? new Date(quiz.sessionStart).toLocaleString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+  : "Chưa gắn buổi học";
 
 const normalizeQuestionForSubmit = (question) => {
   const options = question.options
@@ -116,6 +127,8 @@ export default function TeacherQuizPage() {
   const quickCreateHandledRef = useRef(false);
   const [quizzes, setQuizzes] = useState([]);
   const [courses, setCourses] = useState([]);
+  const [targetClasses, setTargetClasses] = useState([]);
+  const [targetsLoading, setTargetsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -123,7 +136,10 @@ export default function TeacherQuizPage() {
 
   const [quizTitle, setQuizTitle] = useState("");
   const [quizDesc, setQuizDesc] = useState("");
+  const [quizMode, setQuizMode] = useState("manual");
   const [courseId, setCourseId] = useState("");
+  const [liveClassId, setLiveClassId] = useState("");
+  const [classSessionId, setClassSessionId] = useState("");
   const [timeLimit, setTimeLimit] = useState(30);
   const [passScore, setPassScore] = useState(60);
   const [shuffleQuestions, setShuffleQuestions] = useState(true);
@@ -136,6 +152,13 @@ export default function TeacherQuizPage() {
     () => parsedAnswerKey.entries.filter(({ questionNumber }) => questionNumber <= questions.length).length,
     [parsedAnswerKey, questions.length],
   );
+  const paperAnswersAreApplied = useMemo(() => {
+    if (!parsedAnswerKey.entries.length) return false;
+    const largestQuestionNumber = Math.max(...parsedAnswerKey.entries.map((entry) => entry.questionNumber));
+    return questions.length >= largestQuestionNumber
+      && Array.from({ length: largestQuestionNumber }, (_, index) => parsedAnswerKey.answerByQuestion.has(index + 1)).every(Boolean)
+      && questions.slice(0, largestQuestionNumber).every((question) => question.questionText.trim());
+  }, [parsedAnswerKey, questions]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -164,10 +187,49 @@ export default function TeacherQuizPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!courseId) {
+      setTargetClasses([]);
+      setLiveClassId("");
+      setClassSessionId("");
+      return () => { cancelled = true; };
+    }
+    setTargetsLoading(true);
+    setTargetClasses([]);
+    setLiveClassId("");
+    setClassSessionId("");
+    fetchTeacherQuizTargets(courseId)
+      .then((response) => {
+        if (cancelled) return;
+        const classes = Array.isArray(response?.data) ? response.data : [];
+        setTargetClasses(classes);
+        const linkedClass = requestedClassId ? classes.find((item) => String(item.id) === String(requestedClassId)) : null;
+        if (linkedClass) {
+          setLiveClassId(String(linkedClass.id));
+          if (linkedClass.sessions?.[0]) setClassSessionId(String(linkedClass.sessions[0].id));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) toast.error(error?.message || "Không thể tải các buổi học còn hiệu lực.");
+      })
+      .finally(() => { if (!cancelled) setTargetsLoading(false); });
+    return () => { cancelled = true; };
+  }, [courseId, requestedClassId]);
+
+  const selectedTargetClass = useMemo(
+    () => targetClasses.find((item) => String(item.id) === String(liveClassId)) || null,
+    [liveClassId, targetClasses],
+  );
+
   const resetBuilder = () => {
     setQuizTitle("");
     setQuizDesc("");
+    setQuizMode("manual");
     setCourseId("");
+    setLiveClassId("");
+    setClassSessionId("");
+    setTargetClasses([]);
     setTimeLimit(30);
     setPassScore(60);
     setShuffleQuestions(true);
@@ -186,6 +248,14 @@ export default function TeacherQuizPage() {
     setQuestions((current) => current.map((question, questionIndex) => (
       questionIndex === index ? { ...question, ...patch } : question
     )));
+  };
+
+  const selectQuizMode = (nextMode) => {
+    if (nextMode === quizMode) return;
+    setQuizMode(nextMode);
+    setPaperFile(null);
+    setAnswerKeyPaste("");
+    setQuestions([createBlankQuestion()]);
   };
 
   const updateOption = (questionIndex, optionIndex, value) => {
@@ -232,9 +302,9 @@ export default function TeacherQuizPage() {
         && !current[0].questionText.trim()
         && current[0].options.every((option) => !option.trim());
       let workingQuestions = current;
-      if (paperFile && hasOnlyBlankStarter) {
+      if (quizMode === "paper" && hasOnlyBlankStarter) {
         workingQuestions = Array.from({ length: largestQuestionNumber }, (_, index) => createPaperQuestion(index));
-      } else if (paperFile && largestQuestionNumber > current.length) {
+      } else if (quizMode === "paper" && largestQuestionNumber > current.length) {
         workingQuestions = [...current, ...Array.from({ length: largestQuestionNumber - current.length }, (_, index) => createPaperQuestion(current.length + index))];
       }
       return workingQuestions.map((question, index) => {
@@ -248,13 +318,14 @@ export default function TeacherQuizPage() {
       return { ...question, options: nextOptions, correctAnswer: answerIndex };
       });
     });
-    toast.success(`Đã gán ${applied} đáp án từ danh sách dán.${paperFile ? " Bảng câu PDF đã được tạo." : ""}`);
+    toast.success(`Đã gán ${applied} đáp án từ danh sách dán.${quizMode === "paper" ? " Bảng câu PDF đã được tạo." : ""}`);
   };
 
   const handlePaperSelect = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    if (quizMode !== "paper") return;
     if (!courseId) {
       toast.error("Hãy chọn khóa học trước khi tải đề PDF.");
       return;
@@ -300,6 +371,22 @@ export default function TeacherQuizPage() {
       toast.error("Hãy chọn khóa học nhận quiz này.");
       return;
     }
+    if (!liveClassId || !classSessionId) {
+      toast.error("Hãy chọn đúng lớp và buổi học chưa kết thúc cho quiz.");
+      return;
+    }
+    if (quizMode === "paper" && !paperFile) {
+      toast.error("Hãy tải file PDF đề trước khi xuất bản.");
+      return;
+    }
+    if (quizMode === "paper" && !parsedAnswerKey.entries.length) {
+      toast.error("Hãy dán và gán danh sách đáp án cho file đề.");
+      return;
+    }
+    if (quizMode === "paper" && !paperAnswersAreApplied) {
+      toast.error("Danh sách đáp án phải đủ liên tiếp từ Câu 1, sau đó nhấn “Gán đáp án”.");
+      return;
+    }
     if (!quizTitle.trim()) {
       toast.error("Hãy nhập tiêu đề đề kiểm tra.");
       return;
@@ -315,6 +402,8 @@ export default function TeacherQuizPage() {
         title: quizTitle.trim(),
         description: quizDesc.trim(),
         courseId: Number(courseId),
+        liveClassId: Number(liveClassId),
+        classSessionId: Number(classSessionId),
         durationMinutes: Number(timeLimit),
         passingScore: Number(passScore),
         shuffleQuestions,
@@ -377,6 +466,7 @@ export default function TeacherQuizPage() {
                   </div>
                   <h2 className="line-clamp-2 text-base font-black text-slate-950 dark:text-white">{quiz.title}</h2>
                   <p className="truncate text-xs font-semibold text-violet-700 dark:text-violet-300">{quiz.courseTitle}</p>
+                  <p className="rounded-xl bg-slate-50 px-2.5 py-2 text-[11px] font-bold text-slate-600 dark:bg-slate-950 dark:text-slate-300">{quiz.classTitle} · {formatQuizSession(quiz)}</p>
                   {quiz.hasPaper && <span className="inline-flex rounded-full bg-blue-500/10 px-2 py-1 text-[10px] font-black text-blue-700 dark:text-blue-300">📄 Có đề PDF</span>}
                 </div>
                 <div className="space-y-4 border-t border-slate-100 pt-4 dark:border-slate-800">
@@ -417,7 +507,7 @@ export default function TeacherQuizPage() {
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:px-6">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white"><FiFileText className="h-5 w-5" /></span>
-                <div className="min-w-0"><h2 className="truncate text-base font-black text-slate-950 dark:text-white">Soạn đề quiz LMS</h2><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Nội dung đề bên trái, bảng đáp án bên phải. Không có bước chọn chủ đề.</p></div>
+                <div className="min-w-0"><h2 className="truncate text-base font-black text-slate-950 dark:text-white">Soạn đề quiz LMS</h2><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Chọn một cách tạo đề: tự soạn từng câu hoặc file PDF kèm danh sách đáp án.</p></div>
               </div>
               <button type="button" disabled={saving} onClick={closeBuilder} className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 dark:hover:bg-slate-800 dark:hover:text-white" aria-label="Đóng"><FiX className="h-5 w-5" /></button>
             </div>
@@ -427,16 +517,21 @@ export default function TeacherQuizPage() {
                 <section className="space-y-5">
                   <div className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:grid-cols-2">
                     <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Tên đề <b className="text-rose-500">*</b></span><input value={quizTitle} onChange={(event) => setQuizTitle(event.target.value)} maxLength={255} placeholder="Ví dụ: Quiz buổi 3 — Hàm số ngược" className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
-                    <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Khóa học nhận quiz <b className="text-rose-500">*</b></span><select value={courseId} onChange={(event) => { setCourseId(event.target.value); setPaperFile(null); }} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Chọn khóa học...</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.title || course.name}</option>)}</select><span className="mt-1.5 block text-[11px] text-slate-500">Học viên đang có quyền vào khóa học này sẽ thấy quiz sau khi xuất bản.</span></label>
-                    <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">File đề PDF <span className="font-medium text-slate-400">(tùy chọn)</span></span><div className="flex flex-col gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/70 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-violet-800 dark:bg-violet-950/20"><div className="min-w-0"><p className="truncate text-xs font-bold text-violet-950 dark:text-violet-100">{paperFile ? `📄 ${paperFile.name}` : "Tải đề PDF để học viên đọc đề ở cột bên trái."}</p><p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Khi có PDF, dán đáp án 1 A, 2 B… sẽ tự tạo bảng làm bài theo số câu trong đề.</p></div><input type="file" accept="application/pdf,.pdf" disabled={!courseId || uploadingPaper} onChange={handlePaperSelect} className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-2 file:text-xs file:font-black file:text-white hover:file:bg-violet-500 disabled:opacity-50 sm:w-auto" /></div></label>
+                    <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Khóa học nhận quiz <b className="text-rose-500">*</b></span><select value={courseId} onChange={(event) => { setCourseId(event.target.value); setPaperFile(null); }} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Chọn khóa học...</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.title || course.name}</option>)}</select><span className="mt-1.5 block text-[11px] text-slate-500">Quiz sẽ được gắn vào một lớp và một buổi học cụ thể của khóa này.</span></label>
+                    <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Lớp học <b className="text-rose-500">*</b></span><select value={liveClassId} disabled={!courseId || targetsLoading || targetClasses.length === 0} onChange={(event) => { const nextClassId = event.target.value; setLiveClassId(nextClassId); const nextClass = targetClasses.find((item) => String(item.id) === nextClassId); setClassSessionId(nextClass?.sessions?.[0]?.id ? String(nextClass.sessions[0].id) : ""); }} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">{targetsLoading ? "Đang tải lớp..." : targetClasses.length ? "Chọn lớp..." : "Không có lớp còn buổi học"}</option>{targetClasses.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+                    <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Buổi học <b className="text-rose-500">*</b></span><select value={classSessionId} disabled={!selectedTargetClass || targetsLoading} onChange={(event) => setClassSessionId(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Chọn buổi học...</option>{selectedTargetClass?.sessions?.map((session) => <option key={session.id} value={session.id}>{formatSessionTarget(session)}</option>)}</select></label>
+                    <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-200">Chỉ hiển thị các buổi đang diễn ra hoặc sắp tới. Buổi đã kết thúc/hủy không thể chọn và máy chủ cũng sẽ chặn tạo quiz.</div>
+                    <div className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Cách tạo đề <b className="text-rose-500">*</b></span><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => selectQuizMode("manual")} className={`rounded-2xl border p-3 text-left transition ${quizMode === "manual" ? "border-violet-500 bg-violet-50 ring-2 ring-violet-500/15 dark:bg-violet-950/30" : "border-slate-200 bg-white hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900"}`}><span className="block text-xs font-black text-slate-950 dark:text-white">Tự soạn từng câu</span><span className="mt-1 block text-[11px] leading-4 text-slate-600 dark:text-slate-400">Nhập nội dung, phương án A/B/C/D và đáp án ngay trong LMS.</span></button><button type="button" onClick={() => selectQuizMode("paper")} className={`rounded-2xl border p-3 text-left transition ${quizMode === "paper" ? "border-violet-500 bg-violet-50 ring-2 ring-violet-500/15 dark:bg-violet-950/30" : "border-slate-200 bg-white hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900"}`}><span className="block text-xs font-black text-slate-950 dark:text-white">Dùng file đề PDF</span><span className="mt-1 block text-[11px] leading-4 text-slate-600 dark:text-slate-400">Tải PDF đề, dán đáp án 1 A / 2 B…; học viên làm trên bảng đáp án.</span></button></div></div>
+                    {quizMode === "paper" && <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">File đề PDF <b className="text-rose-500">*</b></span><div className="flex flex-col gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/70 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-violet-800 dark:bg-violet-950/20"><div className="min-w-0"><p className="truncate text-xs font-bold text-violet-950 dark:text-violet-100">{paperFile ? `📄 ${paperFile.name}` : "Tải đề PDF để học viên đọc ở cột bên trái."}</p><p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Sau khi tải, dán danh sách đáp án ở bảng bên phải để tạo số câu tương ứng.</p></div><input type="file" accept="application/pdf,.pdf" disabled={!courseId || uploadingPaper} onChange={handlePaperSelect} className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-2 file:text-xs file:font-black file:text-white hover:file:bg-violet-500 disabled:opacity-50 sm:w-auto" /></div></label>}
                     <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Thời gian (phút)</span><input type="number" min="1" max="240" value={timeLimit} onChange={(event) => setTimeLimit(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
                     <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Điểm đạt (%)</span><input type="number" min="0" max="100" value={passScore} onChange={(event) => setPassScore(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
                     <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Hướng dẫn cho học viên <span className="font-medium text-slate-400">(không bắt buộc)</span></span><textarea value={quizDesc} onChange={(event) => setQuizDesc(event.target.value)} rows={2} maxLength={4000} placeholder="Ví dụ: Đọc kỹ từng câu, mỗi câu chỉ chọn một đáp án." className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
                     <label className="flex items-center gap-2.5 text-xs font-bold text-slate-700 dark:text-slate-300"><input type="checkbox" checked={shuffleQuestions} onChange={(event) => setShuffleQuestions(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500" /> Trộn thứ tự câu hỏi cho mỗi học viên</label>
                   </div>
 
+                  {quizMode === "manual" ? <>
                   <div className="flex items-center justify-between gap-3">
-                    <div><h3 className="text-sm font-black text-slate-950 dark:text-white">Nội dung đề ({questions.length} câu)</h3><p className="mt-0.5 text-xs text-slate-500">Nhập câu hỏi và các phương án. Bảng bên phải dùng để chọn/gán đáp án đúng nhanh.</p></div>
+                    <div><h3 className="text-sm font-black text-slate-950 dark:text-white">Nội dung đề ({questions.length} câu)</h3><p className="mt-0.5 text-xs text-slate-500">Nhập câu hỏi, phương án A/B/C/D và chọn đáp án đúng ngay tại từng câu.</p></div>
                     <button type="button" onClick={() => setQuestions((current) => [...current, createBlankQuestion()])} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-violet-600 px-3 py-2 text-xs font-black text-white transition hover:bg-violet-500"><FiPlus className="h-3.5 w-3.5" /> Thêm câu</button>
                   </div>
 
@@ -457,9 +552,11 @@ export default function TeacherQuizPage() {
                       </article>
                     ))}
                   </div>
+                  </> : <section className="rounded-2xl border border-dashed border-violet-300 bg-violet-50/60 p-6 text-center dark:border-violet-800 dark:bg-violet-950/20"><span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-violet-600 text-white"><FiFileText className="h-5 w-5" /></span><h3 className="mt-3 text-sm font-black text-violet-950 dark:text-violet-100">Chế độ file đề PDF</h3><p className="mx-auto mt-1 max-w-md text-xs leading-5 text-violet-800 dark:text-violet-200">Không cần nhập từng câu trong LMS. Tải PDF đề ở trên, sau đó dán đáp án ở bảng bên phải. Hệ thống sẽ tạo bảng làm bài theo số câu trong danh sách đáp án.</p><p className="mt-3 text-[11px] font-bold text-violet-700 dark:text-violet-300">{paperFile ? `Đã chọn: ${paperFile.name}` : "Chưa tải file đề PDF"}</p></section>}
                 </section>
 
                 <aside className="space-y-4 xl:sticky xl:top-0 xl:self-start">
+                  {quizMode === "paper" ? <>
                   <section className="rounded-2xl border border-violet-300 bg-violet-50 p-4 dark:border-violet-800 dark:bg-violet-950/25">
                     <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white"><FiClipboard className="h-4 w-4" /></span><div><h3 className="text-sm font-black text-violet-950 dark:text-violet-100">Dán danh sách đáp án</h3><p className="mt-0.5 text-xs leading-5 text-violet-800 dark:text-violet-200">Chấp nhận <b>1 A</b>, <b>2. b</b>, <b>Câu 3: C</b> hoặc <b>4-D</b>. Hệ thống tự nhận dạng chữ hoa/thường.</p></div></div>
                     <textarea value={answerKeyPaste} onChange={(event) => setAnswerKeyPaste(event.target.value)} rows={7} placeholder={"1 A\n2 B\n3 C\n4 D"} className="mt-3 w-full rounded-xl border border-violet-200 bg-white p-3 font-mono text-xs leading-5 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-violet-800 dark:bg-slate-950 dark:text-white" />
@@ -471,8 +568,9 @@ export default function TeacherQuizPage() {
                     <div className="mb-3 flex items-start justify-between gap-3"><div><h3 className="text-sm font-black text-slate-950 dark:text-white">Bảng đáp án</h3><p className="mt-0.5 text-xs text-slate-500">Nhấn vào ô tròn để đổi đáp án từng câu.</p></div><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-black text-emerald-700 dark:text-emerald-300">{questions.length} câu</span></div>
                     <AnswerKeySheet questions={questions} onChooseAnswer={(questionIndex, answerIndex) => updateQuestion(questionIndex, { correctAnswer: answerIndex })} onScrollToQuestion={scrollToQuestion} />
                   </section>
+                  </> : <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900/70 dark:bg-sky-950/25"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white"><FiCheck className="h-4 w-4" /></span><div><h3 className="text-sm font-black text-sky-950 dark:text-sky-100">Tự soạn từng câu</h3><p className="mt-0.5 text-xs leading-5 text-sky-800 dark:text-sky-200">Chọn đáp án đúng trực tiếp trong từng thẻ câu hỏi. Chế độ này không dùng file PDF và không có ô dán đáp án.</p></div></div></section>}
 
-                  <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs dark:border-slate-800 dark:bg-slate-950"><div className="flex items-center gap-2 font-black text-slate-800 dark:text-slate-200"><FiCheckCircle className="text-emerald-500" /> Cách tính điểm an toàn</div><ul className="mt-2 space-y-1.5 text-slate-600 dark:text-slate-400"><li>• Quiz chỉ hiển thị cho học viên thuộc khóa học đã chọn.</li><li>• Đáp án đúng không được gửi xuống trình duyệt trước khi nộp bài.</li><li>• Sau khi nộp, điểm được chấm ở máy chủ và lượt nộp được khóa.</li></ul></section>
+                  <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs dark:border-slate-800 dark:bg-slate-950"><div className="flex items-center gap-2 font-black text-slate-800 dark:text-slate-200"><FiCheckCircle className="text-emerald-500" /> Cách tính điểm an toàn</div><ul className="mt-2 space-y-1.5 text-slate-600 dark:text-slate-400"><li>• Quiz chỉ hiển thị cho học viên đúng khóa học, lớp và buổi đã chọn.</li><li>• Đáp án đúng không được gửi xuống trình duyệt trước khi nộp bài.</li><li>• Sau khi nộp, điểm được chấm ở máy chủ và lượt nộp được khóa.</li></ul></section>
                 </aside>
               </div>
             </div>

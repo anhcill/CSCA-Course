@@ -357,6 +357,11 @@ export const submitQuiz = async ({ quizId, answers }) => (
 
 export const fetchTeacherQuizzes = async () => request("/assignments/teacher/quizzes");
 
+export const fetchTeacherQuizTargets = async (courseId) => request(
+  `/assignments/teacher/quiz-targets?courseId=${encodeURIComponent(courseId)}`,
+  { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+);
+
 export const createTeacherQuiz = async (quiz) => request("/assignments/teacher/quizzes", {
   method: "POST",
   body: JSON.stringify(quiz),

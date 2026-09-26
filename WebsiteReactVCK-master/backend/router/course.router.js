@@ -564,6 +564,19 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     const assignmentClassScope = selectedClassId ? ` AND (a.live_class_id IS NULL OR a.live_class_id = $${assignmentParams.length + 1})` : "";
     if (selectedClassId) assignmentParams.push(selectedClassId);
 
+    let quizVisibility = "TRUE";
+    if (isLearner) {
+      quizVisibility = `q.status = 'PUBLISHED' AND (
+        q.live_class_id IS NULL OR (quiz_lc.status = 'active' AND EXISTS (
+          SELECT 1 FROM class_enrollments quiz_ce
+          WHERE quiz_ce.live_class_id = q.live_class_id AND quiz_ce.user_id = $2 AND quiz_ce.status = 'active'
+        ))
+      )`;
+    } else if (!isAdmin) {
+      quizVisibility = "(q.instructor_id = $2 OR course_for_quiz.author_id = $2)";
+    }
+    const quizClassScope = selectedClassId ? ` AND (q.live_class_id IS NULL OR q.live_class_id = $${assignmentParams.length})` : "";
+
     const fileParams = [courseId];
     let fileVisibility = "TRUE";
     if (isLearner) {
@@ -578,7 +591,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     const fileClassScope = selectedClassId ? ` AND (f.live_class_id IS NULL OR f.live_class_id = $${fileParams.length + 1})` : "";
     if (selectedClassId) fileParams.push(selectedClassId);
 
-    const [sectionsResult, progressResult, classesResult, sessionsResult, assignmentsResult, quizCountResult, filesResult] = await Promise.all([
+    const [sectionsResult, progressResult, classesResult, sessionsResult, assignmentsResult, quizRowsResult, quizCountResult, filesResult] = await Promise.all([
       query(
         `SELECT s.id, s.title, s.sort_order,
                 COUNT(l.id)::int AS lesson_count,
@@ -651,11 +664,31 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         assignmentParams,
       ),
       query(
+        `SELECT q.id, q.title, 'quiz' AS type, q.course_id, q.live_class_id, q.class_session_id,
+                q.description, (SELECT COALESCE(SUM(qq.points), 0) FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS max_score,
+                quiz_session.end_time AS due_date, q.created_at,
+                quiz_lc.title AS class_title, quiz_session.title AS session_title,
+                quiz_session.start_time AS session_start, quiz_session.end_time AS session_end,
+                qa.id AS submission_id, qa.status AS submission_status, qa.submitted_at,
+                qa.score, NULL::text AS feedback_text, qa.submitted_at AS graded_at,
+                CASE WHEN qa.status = 'submitted' THEN 'graded' ELSE 'todo' END AS status
+         FROM quizzes q
+         JOIN courses course_for_quiz ON course_for_quiz.id = q.course_id
+         LEFT JOIN live_classes quiz_lc ON quiz_lc.id = q.live_class_id
+         LEFT JOIN class_sessions quiz_session ON quiz_session.id = q.class_session_id
+         LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.user_id = $2
+         WHERE q.course_id = $1 AND ${quizVisibility}${quizClassScope}
+         ORDER BY CASE WHEN quiz_session.start_time >= NOW() THEN 0 WHEN quiz_session.start_time IS NULL THEN 1 ELSE 2 END,
+                  quiz_session.start_time ASC NULLS LAST, q.created_at DESC
+         LIMIT 8`,
+        assignmentParams,
+      ),
+      query(
         `SELECT COUNT(*)::int AS count
          FROM quizzes q
          LEFT JOIN lessons l ON l.id = q.lesson_id
          WHERE COALESCE(q.course_id, l.course_id) = $1
-           AND COALESCE(q.status, 'published') = 'published'`,
+           AND COALESCE(q.status, 'PUBLISHED') = 'PUBLISHED'`,
         [courseId],
       ),
       query(
@@ -673,6 +706,16 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     ]);
 
     const progress = progressResult.rows[0] || { total_lessons: 0, completed_lessons: 0 };
+    const taskRows = [...assignmentsResult.rows, ...quizRowsResult.rows]
+      .sort((left, right) => {
+        const priority = (row) => row.session_start && new Date(row.session_start).getTime() >= Date.now() ? 0 : row.session_start ? 2 : 1;
+        const priorityDelta = priority(left) - priority(right);
+        if (priorityDelta) return priorityDelta;
+        const leftTime = left.session_start ? new Date(left.session_start).getTime() : new Date(left.due_date || "9999-12-31").getTime();
+        const rightTime = right.session_start ? new Date(right.session_start).getTime() : new Date(right.due_date || "9999-12-31").getTime();
+        return leftTime - rightTime;
+      })
+      .slice(0, 8);
     const totalLessons = Number(progress.total_lessons) || 0;
     const completedLessons = Number(progress.completed_lessons) || 0;
     return res.json({
@@ -688,7 +731,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         selectedClass,
         classes: classesResult.rows,
         upcomingSessions: sessionsResult.rows,
-        assignments: assignmentsResult.rows,
+        assignments: taskRows,
         quizCount: Number(quizCountResult.rows[0]?.count) || 0,
         files: filesResult.rows.map((file) => ({
           id: String(file.id),

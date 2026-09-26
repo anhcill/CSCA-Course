@@ -1,4 +1,5 @@
-import { BookOpen, Calendar, CheckCircle2, Clock, Plus } from "lucide-react";
+/* eslint-disable react/prop-types */
+import { BookOpen, Calendar, Clock, Plus } from "lucide-react";
 
 const formatDateTime = (value) => {
   if (!value) return "Không giới hạn";
@@ -12,7 +13,6 @@ const formatDateTime = (value) => {
 
 export default function ClassWorkspaceAssignmentsTab({
   assignments = [],
-  classId,
   onOpenCreateAssignment,
   onOpenGradingModal
 }) {
@@ -47,7 +47,9 @@ export default function ClassWorkspaceAssignmentsTab({
         </div>
       ) : (
         <div className="space-y-3">
-          {assignments.map((asm) => (
+          {assignments.map((asm) => {
+            const isQuiz = asm.type === "quiz";
+            return (
             <div
               key={asm.id}
               className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs transition hover:shadow-sm"
@@ -63,7 +65,8 @@ export default function ClassWorkspaceAssignmentsTab({
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                   <span className="inline-flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5 text-amber-500" /> Hạn nộp: {formatDateTime(asm.due_date || asm.dueDate)}
+                    {isQuiz ? <Calendar className="h-3.5 w-3.5 text-violet-500" /> : <Clock className="h-3.5 w-3.5 text-amber-500" />}
+                    {isQuiz ? `Buổi: ${asm.sessionTitle || "Buổi học"} — ${formatDateTime(asm.sessionStart || asm.session_start)}` : `Hạn nộp: ${formatDateTime(asm.due_date || asm.dueDate)}`}
                   </span>
                   <span>Đã nộp: <strong className="text-slate-700 dark:text-slate-200">{asm.submittedCount ?? asm.submitted_count ?? 0}/{asm.totalCount ?? asm.total_count ?? 0}</strong></span>
                   {Number(asm.pendingGradingCount || asm.pending_grading_count || 0) > 0 && (
@@ -75,16 +78,21 @@ export default function ClassWorkspaceAssignmentsTab({
               </div>
 
               <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                <button
-                  type="button"
-                  onClick={() => onOpenGradingModal(asm)}
-                  className="rounded-xl bg-blue-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition"
-                >
-                  Chấm bài
-                </button>
+                {asm.type === "quiz" ? (
+                  <span className="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Chấm tự động</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onOpenGradingModal(asm)}
+                    className="rounded-xl bg-blue-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition"
+                  >
+                    Chấm bài
+                  </button>
+                )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

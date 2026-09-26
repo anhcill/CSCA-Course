@@ -156,6 +156,11 @@ const serializeAssignment = (row) => ({
   type: row.type || row.assignment_type || "homework",
   course_id: row.course_id,
   live_class_id: row.live_class_id,
+  class_session_id: row.class_session_id || null,
+  class_title: row.class_title || null,
+  session_title: row.session_title || null,
+  session_start: row.session_start || null,
+  session_end: row.session_end || null,
   course_title: row.course_title,
   description: row.description || "",
   max_score: row.max_score,
@@ -283,7 +288,12 @@ router.get("/", protectRoute, async (req, res) => {
                WHERE course_ce.user_id = $1 AND course_lc.course_id = c.id
                  AND course_ce.status = 'active' AND course_lc.status = 'active'
              ))
-           )`;
+           ) AND (q.live_class_id IS NULL OR (
+             quiz_lc.status = 'active' AND EXISTS (
+               SELECT 1 FROM class_enrollments quiz_ce
+               WHERE quiz_ce.user_id = $1 AND quiz_ce.live_class_id = q.live_class_id AND quiz_ce.status = 'active'
+             )
+           ))`;
     const assignmentCourseScope = requestedCourseId
       ? "AND COALESCE(a.course_id, lc.course_id) = $2"
       : "";
@@ -292,6 +302,9 @@ router.get("/", protectRoute, async (req, res) => {
       : "";
     const assignmentClassScope = requestedClassId
       ? `AND (a.live_class_id IS NULL OR a.live_class_id = $${requestedCourseId ? 3 : 2})`
+      : "";
+    const quizClassScope = requestedClassId
+      ? `AND (q.live_class_id IS NULL OR q.live_class_id = $${requestedCourseId ? 3 : 2})`
       : "";
     const params = requestedCourseId ? [req.user.id, requestedCourseId] : [req.user.id];
     if (requestedClassId) params.push(requestedClassId);
@@ -304,6 +317,8 @@ router.get("/", protectRoute, async (req, res) => {
                 s.submitted_at, s.content_text, s.file_asset_id, s.audio_asset_id,
                 fa.original_filename AS file_name, aa.original_filename AS audio_name,
                 sg.score, sg.feedback_text, sg.graded_at,
+                NULL::bigint AS class_session_id, NULL::varchar AS session_title,
+                NULL::timestamptz AS session_start, NULL::timestamptz AS session_end, lc.title AS class_title,
                 CASE WHEN sg.score IS NOT NULL THEN 'graded'
                      WHEN s.id IS NOT NULL THEN s.status
                      WHEN a.due_date IS NOT NULL AND a.due_date < NOW() THEN 'late'
@@ -321,7 +336,7 @@ router.get("/", protectRoute, async (req, res) => {
          ) sg ON true
          WHERE ${visibilityClause} ${assignmentCourseScope} ${assignmentClassScope}
        ), quiz_rows AS (
-         SELECT q.id, q.title, 'quiz' AS type, COALESCE(q.course_id, l.course_id) AS course_id, NULL::bigint AS live_class_id, NULL::text AS description,
+         SELECT q.id, q.title, 'quiz' AS type, COALESCE(q.course_id, l.course_id) AS course_id, q.live_class_id, q.description,
                 (SELECT COALESCE(SUM(qq.points), 0) FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS max_score,
                 NULL::timestamptz AS due_date, NULL::varchar AS attachment_url, q.created_at, q.updated_at,
                 COALESCE(c.title, c.name) AS course_title,
@@ -329,19 +344,24 @@ router.get("/", protectRoute, async (req, res) => {
                 NULL::text AS content_text, NULL::bigint AS file_asset_id, NULL::bigint AS audio_asset_id,
                 NULL::varchar AS file_name, NULL::varchar AS audio_name,
                 qa.score, NULL::text AS feedback_text, qa.submitted_at AS graded_at,
+                q.class_session_id, quiz_session.title AS session_title,
+                quiz_session.start_time AS session_start, quiz_session.end_time AS session_end, quiz_lc.title AS class_title,
                 CASE WHEN qa.status = 'submitted' THEN 'graded' ELSE 'todo' END AS status
          FROM quizzes q
          LEFT JOIN lessons l ON l.id = q.lesson_id
          JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
+         LEFT JOIN live_classes quiz_lc ON quiz_lc.id = q.live_class_id
+         LEFT JOIN class_sessions quiz_session ON quiz_session.id = q.class_session_id
          LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.user_id = $1
-         WHERE ${quizVisibilityClause} ${quizCourseScope}
+         WHERE ${quizVisibilityClause} ${quizCourseScope} ${quizClassScope}
        )
        SELECT * FROM (
          SELECT * FROM assignment_rows
          UNION ALL
          SELECT * FROM quiz_rows
        ) combined_rows
-       ORDER BY COALESCE(due_date, '9999-12-31'::timestamptz), created_at DESC`,
+       ORDER BY CASE WHEN session_start >= NOW() THEN 0 WHEN session_start IS NULL THEN 1 ELSE 2 END,
+                session_start ASC NULLS LAST, COALESCE(due_date, '9999-12-31'::timestamptz), created_at DESC`,
       params,
     );
     return res.json({ success: true, data: result.rows.map(serializeAssignment) });
@@ -357,24 +377,31 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
     const ownerFilter = req.user.role === "admin" ? "TRUE" : "(q.instructor_id = $1 OR c.author_id = $1)";
     const params = req.user.role === "admin" ? [] : [req.user.id];
     const result = await query(
-      `SELECT q.id, q.title, q.description, q.paper_file_id, q.duration_minutes, q.passing_score,
+      `SELECT q.id, q.title, q.description, q.paper_file_id, q.live_class_id, q.class_session_id, q.duration_minutes, q.passing_score,
               q.status, q.shuffle_questions, q.created_at,
               COALESCE(c.title, c.name) AS course_title,
+              lc.title AS class_title, cs.title AS session_title, cs.start_time AS session_start, cs.end_time AS session_end,
               COUNT(DISTINCT qq.id)::int AS question_count,
               COUNT(DISTINCT qa.id)::int AS attempts_count,
               ROUND(AVG(qa.score / NULLIF(qa.max_score, 0) * 100), 1) AS avg_score
        FROM quizzes q
        LEFT JOIN courses c ON c.id = q.course_id
+       LEFT JOIN live_classes lc ON lc.id = q.live_class_id
+       LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
        LEFT JOIN quiz_questions qq ON qq.quiz_id = q.id
        LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.status = 'submitted'
        WHERE ${ownerFilter}
-       GROUP BY q.id, c.id
-       ORDER BY q.created_at DESC, q.id DESC`,
+       GROUP BY q.id, c.id, lc.id, cs.id
+       ORDER BY CASE WHEN cs.start_time >= NOW() THEN 0 WHEN cs.start_time IS NULL THEN 1 ELSE 2 END,
+                cs.start_time ASC NULLS LAST, q.created_at DESC, q.id DESC`,
       params,
     );
     return res.json({ success: true, data: result.rows.map((row) => ({
       id: String(row.id), title: row.title, description: row.description || "",
       courseTitle: row.course_title || "Chưa gắn khóa học", questionCount: Number(row.question_count || 0),
+      classId: row.live_class_id ? String(row.live_class_id) : null,
+      classTitle: row.class_title || "Chưa gắn lớp", sessionId: row.class_session_id ? String(row.class_session_id) : null,
+      sessionTitle: row.session_title || "Chưa gắn buổi học", sessionStart: row.session_start || null, sessionEnd: row.session_end || null,
       hasPaper: Boolean(row.paper_file_id),
       timeLimitMinutes: Number(row.duration_minutes || 0), passingScore: Number(row.passing_score || 0),
       status: row.status, attemptsCount: Number(row.attempts_count || 0),
@@ -383,6 +410,47 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
   } catch (error) {
     console.error("Error listing teacher quizzes:", error);
     return internalError(res, "Lỗi khi lấy danh sách đề kiểm tra");
+  }
+});
+
+// GET /api/assignments/teacher/quiz-targets?courseId=… — return only the
+// selected teacher's future/live sessions. Creation repeats this validation
+// under a row lock, so a stale browser cannot attach a quiz to a past lesson.
+router.get("/teacher/quiz-targets", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.query.courseId);
+    if (!courseId) return validationError(res, "courseId không hợp lệ");
+    const isAdmin = req.user.role === "admin";
+    const accessClause = isAdmin ? "TRUE" : `(c.author_id = $2 OR lc.instructor_id = $2 OR EXISTS (
+      SELECT 1 FROM class_teachers ct
+      WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+    ))`;
+    const params = isAdmin ? [courseId] : [courseId, req.user.id];
+    const result = await query(
+      `SELECT lc.id AS class_id, lc.title AS class_title,
+              cs.id AS session_id, cs.title AS session_title, cs.start_time, cs.end_time, cs.status
+       FROM live_classes lc
+       JOIN courses c ON c.id = lc.course_id
+       JOIN class_sessions cs ON cs.live_class_id = lc.id
+       WHERE lc.course_id = $1 AND lc.status = 'active'
+         AND cs.status IN ('scheduled', 'live', 'rescheduled') AND cs.end_time > NOW()
+         AND ${accessClause}
+       ORDER BY cs.start_time ASC, cs.id ASC`,
+      params,
+    );
+    const classes = new Map();
+    for (const row of result.rows) {
+      const key = String(row.class_id);
+      if (!classes.has(key)) classes.set(key, { id: key, title: row.class_title, sessions: [] });
+      classes.get(key).sessions.push({
+        id: String(row.session_id), title: row.session_title,
+        startTime: row.start_time, endTime: row.end_time, status: row.status,
+      });
+    }
+    return res.json({ success: true, data: [...classes.values()] });
+  } catch (error) {
+    console.error("Error fetching quiz targets:", error);
+    return internalError(res, "Không thể tải lớp và buổi học cho quiz");
   }
 });
 
@@ -397,18 +465,39 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     const status = ["DRAFT", "PUBLISHED"].includes(req.body?.status) ? req.body.status : "DRAFT";
     const questions = Array.isArray(req.body?.questions) ? req.body.questions : [];
     const courseId = parseOptionalId(req.body?.courseId);
+    const liveClassId = parseOptionalId(req.body?.liveClassId);
+    const classSessionId = parseOptionalId(req.body?.classSessionId);
     const paperFileId = parseOptionalId(req.body?.paperFileId);
     if (!title || title.length > 255 || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 240 || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100) return validationError(res, "Thông tin đề kiểm tra không hợp lệ");
     if (questions.length < 1 || questions.length > 200) return validationError(res, "Đề kiểm tra cần từ 1 đến 200 câu hỏi");
     if (!courseId) return validationError(res, "Quiz phải được gắn với một khóa học");
+    if (!liveClassId || !classSessionId) return validationError(res, "Quiz phải được gắn với một lớp và một buổi học chưa kết thúc");
+    // Keep the session lock from validation through the insert. This prevents a
+    // schedule update from moving the selected session into the past mid-request.
+    await client.query("BEGIN");
     const course = await client.query(
-      `SELECT c.id, c.author_id,
-              EXISTS (SELECT 1 FROM live_classes lc WHERE lc.course_id = c.id AND lc.instructor_id = $2 AND lc.status = 'active') AS is_assigned_instructor
-       FROM courses c WHERE c.id = $1`,
-      [courseId, req.user.id],
+      "SELECT c.id, c.author_id FROM courses c WHERE c.id = $1",
+      [courseId],
     );
     if (!course.rows[0]) return notFound(res, "Không tìm thấy khóa học");
-    if (req.user.role !== "admin" && String(course.rows[0].author_id) !== String(req.user.id) && !course.rows[0].is_assigned_instructor) return forbidden(res, "Bạn không phụ trách khóa học hoặc lớp học này");
+    const target = await client.query(
+      `SELECT cs.id, cs.status, cs.start_time, cs.end_time, lc.id AS live_class_id, lc.instructor_id,
+              EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $4 AND ct.status = 'active') AS is_class_teacher
+       FROM class_sessions cs
+       JOIN live_classes lc ON lc.id = cs.live_class_id
+       WHERE cs.id = $1 AND lc.id = $2 AND lc.course_id = $3 AND lc.status = 'active'
+       FOR UPDATE OF cs`,
+      [classSessionId, liveClassId, courseId, req.user.id],
+    );
+    if (!target.rows[0]) return validationError(res, "Buổi học không thuộc lớp hoặc khóa học đã chọn");
+    const targetSession = target.rows[0];
+    if (req.user.role !== "admin" && String(course.rows[0].author_id) !== String(req.user.id)
+      && String(targetSession.instructor_id) !== String(req.user.id) && !targetSession.is_class_teacher) {
+      return forbidden(res, "Bạn không phụ trách lớp hoặc buổi học này");
+    }
+    if (!['scheduled', 'live', 'rescheduled'].includes(targetSession.status) || new Date(targetSession.end_time).getTime() <= Date.now()) {
+      return validationError(res, "Không thể tạo quiz cho buổi học đã kết thúc, đã hủy hoặc đã qua");
+    }
     if (paperFileId) {
       const paper = await client.query(
         "SELECT id FROM lms_learning_files WHERE id = $1 AND course_id = $2 AND mime_type = 'application/pdf' AND status = 'ready'",
@@ -435,12 +524,11 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
         order: index + 1,
       };
     });
-    await client.query("BEGIN");
     const quizResult = await client.query(
-      `INSERT INTO quizzes (title, description, course_id, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id, title, description, course_id, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, created_at`,
-      [title, description, courseId, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id],
+      `INSERT INTO quizzes (title, description, course_id, live_class_id, class_session_id, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id, title, description, course_id, live_class_id, class_session_id, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, created_at`,
+      [title, description, courseId, liveClassId, classSessionId, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id],
     );
     for (const question of normalizedQuestions) {
       await client.query(
@@ -449,7 +537,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
         [quizResult.rows[0].id, question.text, question.type, JSON.stringify(question.options), question.correct, question.explanation, question.points, question.order],
       );
     }
-    await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.created", entityType: "quiz", entityId: quizResult.rows[0].id, afterState: quizResult.rows[0], metadata: { ip: req.ip, questionCount: normalizedQuestions.length } });
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.created", entityType: "quiz", entityId: quizResult.rows[0].id, afterState: quizResult.rows[0], metadata: { ip: req.ip, questionCount: normalizedQuestions.length, liveClassId, classSessionId } });
     await client.query("COMMIT");
     return res.status(201).json({ success: true, data: { ...quizResult.rows[0], questionCount: normalizedQuestions.length }, message: "Tạo đề kiểm tra thành công" });
   } catch (error) {
@@ -903,16 +991,19 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
 
 const getQuiz = async (quizId, db = { query }) => {
   const result = await db.query(
-    `SELECT q.id, q.title, q.description, q.status AS quiz_status, q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.course_id AS quiz_course_id, q.lesson_id,
+    `SELECT q.id, q.title, q.description, q.status AS quiz_status, q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.live_class_id, q.class_session_id, q.course_id AS quiz_course_id, q.lesson_id,
             COALESCE(q.course_id, l.course_id) AS resolved_course_id,
             c.is_published AS course_is_published,
             COALESCE(c.is_management_managed, FALSE) AS course_is_management_managed,
             c.author_id AS course_author_id,
             l.is_published AS lesson_is_published,
-            paper.status AS paper_status
+            paper.status AS paper_status, lc.title AS class_title,
+            cs.title AS session_title, cs.start_time AS session_start, cs.end_time AS session_end
      FROM quizzes q LEFT JOIN lessons l ON l.id = q.lesson_id
      LEFT JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
      LEFT JOIN lms_learning_files paper ON paper.id = q.paper_file_id
+     LEFT JOIN live_classes lc ON lc.id = q.live_class_id
+     LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
      WHERE q.id = $1`,
     [quizId],
   );
@@ -938,7 +1029,16 @@ const ensureQuizAccess = async (quiz, user, db = { query }) => {
      LIMIT 1`,
     [user.id, quiz.resolved_course_id, Boolean(quiz.course_is_management_managed)],
   );
-  return enrollment.rows.length > 0;
+  if (enrollment.rows.length === 0) return false;
+  if (!quiz.live_class_id) return true;
+  const classEnrollment = await db.query(
+    `SELECT 1 FROM class_enrollments ce
+     JOIN live_classes lc ON lc.id = ce.live_class_id
+     WHERE ce.user_id = $1 AND ce.live_class_id = $2 AND ce.status = 'active' AND lc.status = 'active'
+     LIMIT 1`,
+    [user.id, quiz.live_class_id],
+  );
+  return classEnrollment.rows.length > 0;
 };
 
 const getQuizQuestions = async (quizId, db = { query }) => {
@@ -1012,6 +1112,12 @@ router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
         quizId: quiz.id,
         title: quiz.title,
         description: quiz.description || "",
+        classId: quiz.live_class_id || null,
+        classTitle: quiz.class_title || null,
+        sessionId: quiz.class_session_id || null,
+        sessionTitle: quiz.session_title || null,
+        sessionStart: quiz.session_start || null,
+        sessionEnd: quiz.session_end || null,
         paperUrl: quiz.paper_file_id && quiz.paper_status === "ready" ? `/api/files/${quiz.paper_file_id}/download` : null,
         durationMinutes: quiz.duration_minutes,
         timeLimitSeconds: Number(quiz.duration_minutes) * 60,

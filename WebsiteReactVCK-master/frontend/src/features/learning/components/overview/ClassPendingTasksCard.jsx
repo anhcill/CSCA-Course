@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { Link } from "react-router-dom";
 import { ArrowRight, BookOpen, CheckCircle2, FileQuestion } from "lucide-react";
 
@@ -19,7 +20,7 @@ export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-black text-slate-950 dark:text-white">Việc cần hoàn thành</h3>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Bài tập và quiz theo hạn gần nhất của lớp.</p>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Quiz theo buổi học gần nhất, bài tập theo hạn nộp của lớp.</p>
           </div>
           <Link to={`${basePath}/assignments`} className="text-xs font-bold text-blue-600 dark:text-sky-400 hover:underline">
             Xem tất cả
@@ -37,6 +38,9 @@ export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
             {pendingTasks.map((item) => {
               const isQuiz = item.type === "quiz";
               const isLate = item.status === "late";
+              const sessionText = item.session_start
+                ? new Date(item.session_start).toLocaleString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+                : "Chưa xác định buổi học";
               const targetUrl = isQuiz
                 ? `${basePath}/quizzes/${item.id}`
                 : `${basePath}/assignments/${item.id}/submit`;
@@ -62,8 +66,8 @@ export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
                         {item.title}
                       </p>
                       <div className="mt-1 flex items-center gap-2 text-xs">
-                        <span className={isLate ? "font-bold text-rose-600 dark:text-rose-400" : "text-slate-500 dark:text-slate-400"}>
-                          {isLate ? "Quá hạn: " : "Hạn nộp: "}{formatDateTime(item.due_date)}
+                        <span className={isQuiz ? "font-bold text-violet-700 dark:text-violet-300" : isLate ? "font-bold text-rose-600 dark:text-rose-400" : "text-slate-500 dark:text-slate-400"}>
+                          {isQuiz ? `Buổi học: ${sessionText}` : `${isLate ? "Quá hạn: " : "Hạn nộp: "}${formatDateTime(item.due_date)}`}
                         </span>
                         {item.max_score && (
                           <span className="text-slate-400 dark:text-slate-500">· {item.max_score} điểm</span>

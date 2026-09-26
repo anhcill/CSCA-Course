@@ -417,9 +417,10 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req,
     if (access.error === "forbidden") return forbidden(res, "Bạn không có quyền xem lớp học này");
     const liveClass = access.liveClass;
     const ownerFilter = req.user.role === "admin" ? "$3::bigint IS NOT NULL" : "a.instructor_id = $3";
-    const baseParams = [classId, liveClass.course_id, liveClass.instructor_id];
+    const quizOwnerFilter = req.user.role === "admin" ? "TRUE" : "(q.instructor_id = $3 OR EXISTS (SELECT 1 FROM courses c WHERE c.id = q.course_id AND c.author_id = $3))";
+    const baseParams = [classId, liveClass.course_id, req.user.id];
 
-    const [studentsResult, assignmentsResult, summaryResult] = await Promise.all([
+    const [studentsResult, assignmentsResult, quizRowsResult, summaryResult] = await Promise.all([
       query(
         `SELECT ce.user_id AS id, u.username AS name, u.email, u.avatar_url AS avatar,
                 ce.enrolled_at, ce.status,
@@ -484,6 +485,21 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req,
            AND ${ownerFilter}
          GROUP BY a.id
          ORDER BY a.due_date NULLS LAST, a.created_at DESC`,
+        baseParams,
+      ),
+      query(
+        `SELECT q.id, q.title, 'quiz' AS assignment_type, cs.start_time AS due_date,
+                cs.title AS session_title, cs.start_time AS session_start,
+                (SELECT COUNT(*)::int FROM class_enrollments ce WHERE ce.live_class_id = $1 AND ce.status = 'active') AS total_count,
+                COUNT(DISTINCT qa.id) FILTER (WHERE qa.status = 'submitted')::int AS submitted_count,
+                0::int AS pending_grading_count,
+                ROUND(AVG(qa.score), 1) AS avg_score
+         FROM quizzes q
+         JOIN class_sessions cs ON cs.id = q.class_session_id
+         LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id
+         WHERE q.live_class_id = $1 AND q.course_id = $2 AND ${quizOwnerFilter}
+         GROUP BY q.id, cs.id
+         ORDER BY CASE WHEN cs.start_time >= NOW() THEN 0 ELSE 1 END, cs.start_time ASC, q.created_at DESC`,
         baseParams,
       ),
       query(
@@ -570,16 +586,41 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req,
       nextSession: summary.next_session_start || null,
       schedule: null,
       students,
-      assignments: assignmentsResult.rows.map((row) => ({
-        id: row.id,
-        title: row.title,
-        type: row.assignment_type,
-        dueDate: row.due_date,
-        submittedCount: Number(row.submitted_count || 0),
-        totalCount: Number(row.total_count || 0),
-        pendingGradingCount: Number(row.pending_grading_count || 0),
-        avgScore: row.avg_score === null ? null : Number(row.avg_score),
-      })),
+      assignments: [
+        ...assignmentsResult.rows.map((row) => ({
+          id: row.id,
+          title: row.title,
+          type: row.assignment_type,
+          dueDate: row.due_date,
+          sessionTitle: null,
+          sessionStart: null,
+          submittedCount: Number(row.submitted_count || 0),
+          totalCount: Number(row.total_count || 0),
+          pendingGradingCount: Number(row.pending_grading_count || 0),
+          avgScore: row.avg_score === null ? null : Number(row.avg_score),
+        })),
+        ...quizRowsResult.rows.map((row) => ({
+          id: row.id,
+          title: row.title,
+          type: "quiz",
+          dueDate: row.due_date,
+          sessionTitle: row.session_title || "Buổi học",
+          sessionStart: row.session_start,
+          submittedCount: Number(row.submitted_count || 0),
+          totalCount: Number(row.total_count || 0),
+          pendingGradingCount: 0,
+          avgScore: row.avg_score === null ? null : Number(row.avg_score),
+        })),
+      ].sort((left, right) => {
+        const leftStart = left.sessionStart ? new Date(left.sessionStart).getTime() : null;
+        const rightStart = right.sessionStart ? new Date(right.sessionStart).getTime() : null;
+        const now = Date.now();
+        const priority = (start) => (start && start >= now ? 0 : start ? 2 : 1);
+        const priorityDiff = priority(leftStart) - priority(rightStart);
+        if (priorityDiff) return priorityDiff;
+        if (leftStart && rightStart) return leftStart - rightStart;
+        return new Date(left.dueDate || 0).getTime() - new Date(right.dueDate || 0).getTime();
+      }),
     };
 
     const scheduleResult = await query(

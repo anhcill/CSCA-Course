@@ -76,7 +76,14 @@ export default function AssignmentListPage() {
     const needle = search.trim().toLocaleLowerCase();
     const matchesSearch = !needle || [assignment.title, assignment.description, assignment.course_title].some((value) => String(value || "").toLocaleLowerCase().includes(needle));
     return matchesStatus && matchesSearch;
-  }).sort((left, right) => new Date(left.due_date || 0) - new Date(right.due_date || 0)), [assignments, search, statusFilter]);
+  }).sort((left, right) => {
+    const priority = (item) => item.session_start && new Date(item.session_start).getTime() >= Date.now() ? 0 : item.session_start ? 2 : 1;
+    const priorityDelta = priority(left) - priority(right);
+    if (priorityDelta) return priorityDelta;
+    const leftTime = new Date(left.session_start || left.due_date || "9999-12-31").getTime();
+    const rightTime = new Date(right.session_start || right.due_date || "9999-12-31").getTime();
+    return leftTime - rightTime;
+  }), [assignments, search, statusFilter]);
 
   const buildPath = (assignment) => {
     const isQuiz = itemType(assignment) === "quiz";
@@ -172,10 +179,7 @@ export default function AssignmentListPage() {
                         <p className="mt-1 line-clamp-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{assignment.description}</p>
                       )}
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                        <span>Hạn nộp: {assignment.due_date ? new Date(assignment.due_date).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Không giới hạn"}</span>
-                        <span className={status === "late" ? "font-semibold text-rose-600 dark:text-rose-400" : "font-semibold text-amber-600 dark:text-amber-400"}>
-                          {deadlineText(assignment.due_date)}
-                        </span>
+                        {type === "quiz" ? <><span className="font-semibold text-violet-700 dark:text-violet-300">Buổi học: {assignment.session_start ? new Date(assignment.session_start).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Chưa xác định"}</span>{assignment.class_title && <span>Lớp: {assignment.class_title}</span>}</> : <><span>Hạn nộp: {assignment.due_date ? new Date(assignment.due_date).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Không giới hạn"}</span><span className={status === "late" ? "font-semibold text-rose-600 dark:text-rose-400" : "font-semibold text-amber-600 dark:text-amber-400"}>{deadlineText(assignment.due_date)}</span></>}
                       </div>
                     </div>
                     <Link
