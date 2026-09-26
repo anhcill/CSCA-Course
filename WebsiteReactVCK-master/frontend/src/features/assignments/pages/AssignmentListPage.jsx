@@ -78,8 +78,6 @@ export default function AssignmentListPage() {
     return matchesStatus && matchesSearch;
   }).sort((left, right) => new Date(left.due_date || 0) - new Date(right.due_date || 0)), [assignments, search, statusFilter]);
 
-  const completionRate = assignments.length ? Math.round(((counts.submitted + counts.graded) / assignments.length) * 100) : 0;
-
   const buildPath = (assignment) => {
     const isQuiz = itemType(assignment) === "quiz";
     if (courseId && classId) return isQuiz ? `/lms/courses/${courseId}/classes/${classId}/quizzes/${assignment.id}` : `/lms/courses/${courseId}/classes/${classId}/assignments/${assignment.id}/submit`;
@@ -89,25 +87,6 @@ export default function AssignmentListPage() {
   return (
     <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 py-6 sm:px-6 lg:px-8 transition-colors duration-200">
       <div className="mx-auto max-w-6xl space-y-6">
-        <section className="rounded-3xl border border-blue-100 dark:border-slate-800 bg-gradient-to-r from-[#edf6ff] via-white to-[#f4f8ff] dark:from-slate-900 dark:via-slate-900/95 dark:to-blue-950/30 p-6 shadow-sm dark:shadow-none sm:p-8">
-          <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
-            <div>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 px-3 py-1 text-xs font-semibold text-blue-600 dark:text-sky-300 shadow-sm ring-1 ring-blue-100 dark:ring-slate-700">
-                <BookOpenCheck className="h-3.5 w-3.5" /> Bài tập & thi
-              </span>
-              <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-                Nộp bài, làm đề và theo dõi kết quả
-              </h1>
-              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                Toàn bộ bài tập và đề thi được sắp theo hạn nộp để bạn không bỏ lỡ việc quan trọng.
-              </p>
-            </div>
-            <div className="rounded-2xl bg-white dark:bg-slate-800/80 px-5 py-4 text-center shadow-sm ring-1 ring-blue-100 dark:ring-slate-700">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Tiến độ hoàn thành</p>
-              <p className="mt-1 text-2xl font-bold text-blue-600 dark:text-sky-400">{completionRate}%</p>
-            </div>
-          </div>
-        </section>
 
         <section className="flex flex-col gap-3 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm dark:shadow-none md:flex-row md:items-center md:justify-between">
           <div className="flex overflow-x-auto">
