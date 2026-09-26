@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { BookOpenCheck, CheckCircle2, ClipboardList, Clock3, FilePenLine, GraduationCap, Search, Timer } from "lucide-react";
+import { BookOpenCheck, ClipboardList, FilePenLine, GraduationCap, Search } from "lucide-react";
 import { fetchAssignments } from "../../api/lmsClient";
 import { EmptyState, ErrorState, LoadingState } from "../../../components/common/StateView";
 
@@ -107,23 +107,6 @@ export default function AssignmentListPage() {
               <p className="mt-1 text-2xl font-bold text-blue-600 dark:text-sky-400">{completionRate}%</p>
             </div>
           </div>
-        </section>
-
-        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            ["Cần làm", counts.todo, Clock3, "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400"],
-            ["Đã nộp", counts.submitted, Timer, "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-400"],
-            ["Đã chấm", counts.graded, CheckCircle2, "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400"],
-            ["Quá hạn", counts.late, FilePenLine, "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400"],
-          ].map(([label, value, Icon, iconClass]) => (
-            <div key={label} className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm dark:shadow-none">
-              <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${iconClass}`}>
-                <Icon className="h-4 w-4" />
-              </div>
-              <p className="mt-3 text-2xl font-bold text-slate-900 dark:text-white">{value}</p>
-              <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
-            </div>
-          ))}
         </section>
 
         <section className="flex flex-col gap-3 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm dark:shadow-none md:flex-row md:items-center md:justify-between">

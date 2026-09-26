@@ -52,8 +52,8 @@ export default function ClassroomPage() {
   const loadLessonNotes = useCallback(async (lessonId) => {
     if (!lessonId) return;
     try {
-      const data = await fetchLessonNotes(lessonId);
-      setNotes(data.notes || []);
+      const response = await fetchLessonNotes(lessonId);
+      setNotes(response?.success && Array.isArray(response.data) ? response.data : []);
     } catch {
       // Fallback: graceful degradation
       setNotes([]);
@@ -63,8 +63,8 @@ export default function ClassroomPage() {
   const loadLessonComments = useCallback(async (lessonId) => {
     if (!lessonId) return;
     try {
-      const data = await fetchLessonComments(lessonId);
-      setComments(data.comments || []);
+      const response = await fetchLessonComments(lessonId);
+      setComments(response?.success && Array.isArray(response.data) ? response.data : []);
     } catch {
       setComments([]);
     }
@@ -74,17 +74,24 @@ export default function ClassroomPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const [detail, progress] = await Promise.all([
-        fetchClassroomDetail(courseId, classId),
-        fetchCourseProgress(courseId).catch(() => ({ progress: [] })),
+      const [detailResponse, progressResponse] = await Promise.all([
+        fetchClassroomDetail(courseId),
+        fetchCourseProgress(courseId).catch(() => ({ success: false, data: { progressList: [] } })),
       ]);
+      if (!detailResponse?.success || !detailResponse.data) {
+        throw new Error(detailResponse?.message || "Không thể tải nội dung khóa học.");
+      }
+      const detail = detailResponse.data;
 
       setCourseData(detail);
 
       // Create a fast lookup map for progress: { [lesson_id]: { is_completed, watched_seconds } }
       const pMap = {};
-      if (Array.isArray(progress.progress)) {
-        progress.progress.forEach((p) => {
+      const progressList = progressResponse?.success && Array.isArray(progressResponse.data?.progressList)
+        ? progressResponse.data.progressList
+        : [];
+      if (Array.isArray(progressList)) {
+        progressList.forEach((p) => {
           pMap[p.lesson_id] = p;
         });
       }
@@ -101,7 +108,7 @@ export default function ClassroomPage() {
     } finally {
       setLoading(false);
     }
-  }, [courseId, classId]);
+  }, [courseId]);
 
   useEffect(() => {
     loadClassroomData();
@@ -121,11 +128,11 @@ export default function ClassroomPage() {
     loadLessonNotes(activeLesson.id);
     loadLessonComments(activeLesson.id);
 
-    fetchVideoPlaybackUrl(activeLesson.id)
+    fetchVideoPlaybackUrl({ lessonId: activeLesson.id })
       .then((res) => {
         if (videoRequestRef.current !== currentRequestId) return;
-        if (res.playbackUrl) {
-          setPlaybackUrl(res.playbackUrl);
+        if (res?.success && res.data?.playbackUrl) {
+          setPlaybackUrl(res.data.playbackUrl);
         } else {
           setVideoError(true);
           setVideoErrorMessage("Bài học này chưa có video hoặc video đang trong quá trình chuyển mã.");
@@ -151,13 +158,18 @@ export default function ClassroomPage() {
       if (videoRef.current && !videoRef.current.paused && !videoRef.current.ended) {
         const time = Math.floor(videoRef.current.currentTime);
         if (time > 0) {
-          sendProgressHeartbeat(activeLesson.id, time).catch(() => {});
+          sendProgressHeartbeat({
+            lessonId: activeLesson.id,
+            courseId: courseData?.course?.id || courseId,
+            lastPositionSeconds: time,
+            isCompleted: false,
+          }).catch(() => {});
         }
       }
     }, 15000); // sync every 15s
 
     return () => clearInterval(interval);
-  }, [activeLesson]);
+  }, [activeLesson, courseData?.course?.id, courseId]);
 
   // Video Event Handlers
   const handleTimeUpdate = () => {
@@ -180,7 +192,12 @@ export default function ClassroomPage() {
     if (!activeLesson) return;
     try {
       const dur = Math.floor(videoRef.current?.duration || activeLesson.duration_seconds || 600);
-      await sendProgressHeartbeat(activeLesson.id, dur, true);
+      await sendProgressHeartbeat({
+        lessonId: activeLesson.id,
+        courseId: courseData?.course?.id || courseId,
+        lastPositionSeconds: dur,
+        isCompleted: true,
+      });
       setProgressMap((prev) => ({
         ...prev,
         [activeLesson.id]: {
@@ -199,7 +216,12 @@ export default function ClassroomPage() {
     if (!activeLesson) return;
     try {
       const dur = Math.floor(activeLesson.duration_seconds || 600);
-      await sendProgressHeartbeat(activeLesson.id, dur, true);
+      await sendProgressHeartbeat({
+        lessonId: activeLesson.id,
+        courseId: courseData?.course?.id || courseId,
+        lastPositionSeconds: dur,
+        isCompleted: true,
+      });
       setProgressMap((prev) => ({
         ...prev,
         [activeLesson.id]: {
@@ -220,8 +242,13 @@ export default function ClassroomPage() {
     setSubmittingNote(true);
     try {
       const time = Math.floor(currentTime);
-      const res = await createLessonNote(activeLesson.id, time, noteText.trim());
-      setNotes((prev) => [res.note, ...prev]);
+      const res = await createLessonNote({
+        lessonId: activeLesson.id,
+        timestampSeconds: time,
+        content: noteText.trim(),
+      });
+      if (!res?.success || !res.data) throw new Error(res?.message || "Không thể lưu ghi chú.");
+      setNotes((prev) => [res.data, ...prev]);
       setNoteText("");
       toast.success("Đã lưu ghi chú tại " + formatTime(time));
     } catch (err) {
@@ -247,19 +274,20 @@ export default function ClassroomPage() {
     if (!content.trim() || !activeLesson) return;
     setSubmittingComment(true);
     try {
-      const res = await postLessonComment(activeLesson.id, content.trim(), parentId);
+      const res = await postLessonComment({ lessonId: activeLesson.id, content: content.trim(), parentId });
+      if (!res?.success || !res.data) throw new Error(res?.message || "Không thể gửi bình luận.");
       if (parentId) {
         setComments((prev) =>
           prev.map((c) =>
             c.id === parentId
-              ? { ...c, replies: [...(c.replies || []), res.comment] }
+              ? { ...c, replies: [...(c.replies || []), res.data] }
               : c
           )
         );
         setReplyText("");
         setReplyToId(null);
       } else {
-        setComments((prev) => [res.comment, ...prev]);
+        setComments((prev) => [res.data, ...prev]);
         setCommentText("");
       }
       toast.success("Đã gửi bình luận!");
@@ -281,9 +309,9 @@ export default function ClassroomPage() {
     if (!activeLesson) return;
     setLoadingVideo(true);
     setVideoError(false);
-    fetchVideoPlaybackUrl(activeLesson.id)
+    fetchVideoPlaybackUrl({ lessonId: activeLesson.id })
       .then((res) => {
-        if (res.playbackUrl) setPlaybackUrl(res.playbackUrl);
+        if (res?.success && res.data?.playbackUrl) setPlaybackUrl(res.data.playbackUrl);
       })
       .catch((err) => {
         setVideoError(true);
