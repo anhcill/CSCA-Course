@@ -145,10 +145,10 @@ export default function CourseDetailPage() {
             onRetry={loadCourseDetails}
             secondaryAction={
               <Link
-                to="/lms/catalog"
+                to="/courses"
                 className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition"
               >
-                ← Quay Về Catalog
+                ← Khám Phá Khóa Học
               </Link>
             }
           />
@@ -318,7 +318,7 @@ export default function CourseDetailPage() {
       {/* Breadcrumb Navigation Bar */}
       <div className="bg-slate-900/80 border-b border-slate-800/80 text-xs py-3 px-4 backdrop-blur">
         <div className="max-w-6xl mx-auto flex items-center gap-2 text-slate-400">
-          <Link to="/lms/catalog" className="hover:text-white transition">LMS Catalog</Link>
+          <Link to="/courses" className="hover:text-white transition">Khóa học</Link>
           <span>/</span>
           <span className="uppercase text-slate-300">{course.category}</span>
           <span>/</span>

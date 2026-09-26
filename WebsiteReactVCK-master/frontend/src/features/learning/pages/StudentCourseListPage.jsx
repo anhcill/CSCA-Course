@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, BookOpen, CheckCircle2, Search, ShieldCheck } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Compass, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import { fetchMyEnrolledCourses } from "../../api/lmsClient";
@@ -123,18 +123,26 @@ export default function StudentCourseListPage() {
 
         {courses.length === 0 ? (
           <div className="rounded-[22px] border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-14 text-center shadow-sm">
-            <ShieldCheck className="mx-auto h-9 w-9 text-slate-400 dark:text-slate-500" />
+            <ShieldCheck className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500" />
             <h2 className="mt-4 text-lg font-black text-slate-900 dark:text-white">Bạn chưa có khóa học nào</h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
               Khóa học sẽ tự xuất hiện sau khi bộ phận quản lý xác nhận quyền học và xếp lớp cho bạn.
             </p>
-            <button
-              type="button"
-              onClick={loadCourses}
-              className="mt-5 inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-200 transition hover:border-blue-200 dark:hover:border-slate-600 hover:text-blue-700 dark:hover:text-white"
-            >
-              Tải lại danh sách
-            </button>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                to="/courses"
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                <Compass className="h-4 w-4" /> Khám phá khóa học
+              </Link>
+              <button
+                type="button"
+                onClick={loadCourses}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-200 transition hover:border-blue-200 dark:hover:border-slate-600 hover:text-blue-700 dark:hover:text-white"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Tải lại danh sách
+              </button>
+            </div>
           </div>
         ) : visibleCourses.length === 0 ? (
           <div className="rounded-[22px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-14 text-center shadow-sm">
@@ -147,57 +155,84 @@ export default function StudentCourseListPage() {
             {visibleCourses.map((course) => {
               const progress = getProgress(course);
               const completed = progress === 100;
+              const hasStarted = progress > 0;
+              const totalLessons = Number(course.total_lessons || 0);
+              const completedLessons = Number(course.completed_lessons || 0);
+
               return (
-                <Link
+                <div
                   key={course.course_id}
-                  to={`/lms/courses/${course.course_id}/classes`}
-                  className="group overflow-hidden rounded-[22px] border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none transition hover:-translate-y-1 hover:border-blue-200 dark:hover:border-slate-700 hover:shadow-lg"
+                  className="group flex flex-col justify-between overflow-hidden rounded-[22px] border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none transition hover:-translate-y-1 hover:border-blue-200 dark:hover:border-slate-700 hover:shadow-lg"
                 >
-                  <div className="relative h-36 overflow-hidden bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400 p-5">
-                    <div className="absolute -right-6 -top-10 h-36 w-36 rounded-full bg-white/15 blur-2xl" />
-                    <div className="relative flex items-start justify-between gap-3">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20 text-white backdrop-blur">
-                        <BookOpen className="h-5 w-5" />
-                      </span>
-                      <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-blue-700">
-                        {course.category || "CSCA"}
-                      </span>
-                    </div>
-                    <p className="relative mt-5 line-clamp-2 text-lg font-black text-white">{course.title}</p>
-                  </div>
-                  <div className="space-y-4 p-5">
-                    <p className="line-clamp-2 min-h-10 text-sm leading-5 text-slate-500 dark:text-slate-400">
-                      {course.description || "Chương trình học được quản lý và cấp quyền riêng cho bạn."}
-                    </p>
-                    <div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-500 dark:text-slate-400">Tiến độ học tập</span>
-                        <span className={`font-black ${completed ? "text-emerald-600 dark:text-emerald-400" : "text-blue-700 dark:text-sky-400"}`}>
-                          {progress}%
+                  <div>
+                    <div className="relative h-36 overflow-hidden bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400 p-5">
+                      <div className="absolute -right-6 -top-10 h-36 w-36 rounded-full bg-white/15 blur-2xl" />
+                      <div className="relative flex items-start justify-between gap-3">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20 text-white backdrop-blur">
+                          <BookOpen className="h-5 w-5" />
+                        </span>
+                        <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-blue-700">
+                          {course.category || "CSCA"}
                         </span>
                       </div>
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                        <div
-                          className={`h-full rounded-full ${completed ? "bg-emerald-500" : "bg-blue-600"}`}
-                          style={{ width: `${progress}%` }}
-                        />
+                      <p className="relative mt-5 line-clamp-2 text-lg font-black text-white">{course.title}</p>
+                    </div>
+
+                    <div className="space-y-4 p-5">
+                      <p className="line-clamp-2 min-h-10 text-sm leading-5 text-slate-500 dark:text-slate-400">
+                        {course.description || "Chương trình học được quản lý và cấp quyền riêng cho bạn."}
+                      </p>
+
+                      <div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-slate-500 dark:text-slate-400">
+                            {totalLessons > 0 ? `${completedLessons}/${totalLessons} bài học` : "Tiến độ học tập"}
+                          </span>
+                          <span className={`font-black ${completed ? "text-emerald-600 dark:text-emerald-400" : "text-blue-700 dark:text-sky-400"}`}>
+                            {progress}%
+                          </span>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${completed ? "bg-emerald-500" : "bg-blue-600"}`}
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                            completed
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                              : hasStarted
+                              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-sky-300"
+                              : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                          }`}
+                        >
+                          {completed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <BookOpen className="h-3.5 w-3.5" />}
+                          {completed ? "Đã hoàn thành" : hasStarted ? "Đang học" : "Chưa bắt đầu"}
+                        </span>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-4">
-                      <span
-                        className={`inline-flex items-center gap-1.5 text-xs font-bold ${
-                          completed ? "text-emerald-600 dark:text-emerald-400" : "text-blue-700 dark:text-sky-400"
-                        }`}
-                      >
-                        {completed ? <CheckCircle2 className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
-                        {completed ? "Đã hoàn thành" : "Đã được cấp quyền"}
-                      </span>
-                      <span className="inline-flex items-center gap-1 text-xs font-black text-slate-600 dark:text-slate-300 group-hover:text-blue-700 dark:group-hover:text-sky-400">
-                        Chọn lớp <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
-                      </span>
-                    </div>
                   </div>
-                </Link>
+
+                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 px-5 py-3.5">
+                    <Link
+                      to="/lms/live-schedule"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-sky-400 transition"
+                    >
+                      <CalendarDays className="h-3.5 w-3.5" /> Xem lịch
+                    </Link>
+                    <Link
+                      to={`/lms/courses/${course.course_id}/classes`}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500"
+                    >
+                      {completed ? "Xem lại lớp" : hasStarted ? "Vào học" : "Mở lớp"}
+                      <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                    </Link>
+                  </div>
+                </div>
               );
             })}
           </section>

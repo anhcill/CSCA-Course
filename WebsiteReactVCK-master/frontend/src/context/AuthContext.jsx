@@ -183,6 +183,9 @@ export const AuthContextProvider = ({ children }) => {
 
             if (authResult === 'google-success' && authenticated) {
                 toast.success('Đăng nhập Google thành công!');
+                if (window.location.pathname === '/' || window.location.pathname === '') {
+                    window.location.replace('/lms/my-learning');
+                }
             } else if (authResult === 'google-success') {
                 toast.error('Không thể xác nhận phiên đăng nhập Google. Vui lòng thử lại.');
             } else if (authResult === 'google-error') {

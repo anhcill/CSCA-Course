@@ -50,7 +50,7 @@ export default function CourseClassListPage() {
     <main className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 py-6 sm:px-6 lg:px-8 transition-colors duration-200">
       <div className="mx-auto max-w-5xl">
         <Link
-          to="/lms/catalog"
+          to="/lms/my-learning"
           className="inline-flex items-center gap-2 text-sm font-bold text-slate-500 dark:text-slate-400 transition hover:text-blue-700 dark:hover:text-sky-400"
         >
           <ArrowLeft className="h-4 w-4" /> Khóa học của tôi

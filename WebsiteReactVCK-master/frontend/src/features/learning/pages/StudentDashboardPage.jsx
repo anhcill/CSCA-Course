@@ -197,7 +197,7 @@ export default function StudentDashboardPage() {
                 Theo dõi tiến độ, mở lớp đã được xếp và xử lý các nhiệm vụ học tập ngay tại một nơi.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <Link to={recentCourse ? coursePath(recentCourse) : "/lms/catalog"} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700">
+                <Link to={recentCourse ? coursePath(recentCourse) : "/lms/my-learning"} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700">
                   <PlayCircle className="h-4 w-4" /> {recentCourse ? "Tiếp tục học" : "Xem khóa học"}
                 </Link>
                 <Link to="/lms/live-schedule" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-800/80 px-5 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 transition hover:border-blue-200 dark:hover:border-slate-600 hover:text-blue-700 dark:hover:text-white">
@@ -238,7 +238,7 @@ export default function StudentDashboardPage() {
                 <h2 className="text-lg font-black text-slate-950 dark:text-white">Khóa học của tôi</h2>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Các khóa học bạn được hệ thống quản lý cấp quyền.</p>
               </div>
-              <Link to="/lms/catalog" className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-sky-400 hover:text-blue-800 dark:hover:text-sky-300">Xem tất cả <ArrowRight className="h-3.5 w-3.5" /></Link>
+              <Link to="/lms/my-learning" className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-sky-400 hover:text-blue-800 dark:hover:text-sky-300">Xem tất cả <ArrowRight className="h-3.5 w-3.5" /></Link>
             </div>
 
             {courses.length === 0 ? (

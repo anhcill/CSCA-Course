@@ -10,7 +10,7 @@ import {
   FileCheck2,
   FolderOpen,
   GraduationCap,
-  Home,
+  Compass,
   LogOut,
   Menu,
   Moon,
@@ -27,18 +27,17 @@ import { useTheme } from "../../context/ThemeContext";
 import { getLmsWorkspaceLink } from "../../utils/lmsNavigation";
 
 const STUDENT_NAV = [
-  { label: "Tổng quan", path: "/lms/dashboard", icon: BarChart3, end: true },
-  { label: "Khóa học của tôi", path: "/lms/catalog", icon: BookOpen },
-  { label: "Lớp trực tiếp", path: "/lms/live-schedule", icon: CalendarDays },
-  { label: "Bài tập & thi", path: "/lms/assignments", icon: FileCheck2 },
-  { label: "Tài nguyên", path: "/lms/files", icon: FolderOpen },
-  { label: "Phân tích điểm", path: "/lms/analytics", icon: BarChart3 },
+  { label: "Khóa học của tôi", path: "/lms/my-learning", icon: BookOpen, end: true },
+  { label: "Lịch học", path: "/lms/live-schedule", icon: CalendarDays },
+  { label: "Bài tập & Quiz", path: "/lms/assignments", icon: FileCheck2 },
+  { label: "Tài liệu", path: "/lms/files", icon: FolderOpen },
+  { label: "Kết quả học tập", path: "/lms/analytics", icon: BarChart3 },
   { label: "Thông báo", path: "/lms/notifications", icon: Bell },
 ];
 
 function Brand() {
   return (
-    <Link to="/lms/dashboard" className="flex items-center gap-3" aria-label="CSCA LMS - Tổng quan">
+    <Link to="/lms/my-learning" className="flex items-center gap-3" aria-label="CSCA LMS - Khóa học của tôi">
       <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
         <GraduationCap className="h-6 w-6" />
       </span>
@@ -90,9 +89,9 @@ function Sidebar({ onNavigate }) {
         {STUDENT_NAV.map((item) => <StudentNavItem key={item.path} item={item} onNavigate={onNavigate} />)}
       </nav>
       <div className="mt-auto border-t border-slate-100 dark:border-slate-800 pt-4">
-        <Link to="/" onClick={onNavigate} className="flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 transition hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800"><Home className="h-4 w-4" /></span>
-          Về trang chủ
+        <Link to="/courses" onClick={onNavigate} className="flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 transition hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800"><Compass className="h-4 w-4" /></span>
+          Khám phá khóa học
         </Link>
       </div>
     </div>

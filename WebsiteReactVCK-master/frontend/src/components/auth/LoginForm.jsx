@@ -1,5 +1,5 @@
-// LoginForm.jsx — Chinese study-abroad theme
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
@@ -65,6 +65,7 @@ const InputField = ({
 // ─── LoginForm ────────────────────────────────────────────────────────────────
 const LoginForm = ({ onSwitchMode, onClose }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { loading, login } = useLogin();
 
   const [formData, setFormData] = useState({ email: "", password: "" });
@@ -96,7 +97,16 @@ const LoginForm = ({ onSwitchMode, onClose }) => {
       if (user) {
         toast.success("Đăng nhập thành công! Chào mừng trở lại 🎉");
         setFormData({ email: "", password: "" });
-        onClose(); // close modal — no page reload
+        onClose(); // close modal
+
+        // Canonical landing per role according to LMS spec Section 2.2:
+        if (user.role === "admin") {
+          navigate("/admin");
+        } else if (user.role === "creator") {
+          navigate("/lms/teach");
+        } else {
+          navigate("/lms/my-learning");
+        }
       }
     } catch (error) {
       // useLogin already throws; error toast shown by hook itself

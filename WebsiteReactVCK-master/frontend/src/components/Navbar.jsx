@@ -47,7 +47,7 @@ const PUBLIC_LINKS = [
 
 // Chi creator (giao vien) va admin moi thay
 const TEACHER_LINKS = [
-  { label: 'Teacher Hub', description: 'Tổng quan lớp giảng dạy', icon: Presentation, path: '/lms/teacher-hub' },
+  { label: 'Teacher Hub', description: 'Tổng quan lớp giảng dạy', icon: Presentation, path: '/lms/teach' },
   { label: 'Quản lý giáo trình', description: 'Thêm chương học và video R2', icon: BookCheck, path: '/lms/teacher/curriculum' },
   { label: 'Chấm điểm bài nộp', description: 'Chấm bài viết & audio HSKK', icon: ClipboardCheck, path: '/lms/teacher/grading' },
 ];
@@ -241,7 +241,7 @@ const Navbar = () => {
                         <Link to="/profile" className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold hover:bg-red-50 hover:text-red-700 dark:hover:bg-white/10">
                           <Settings className="h-3.5 w-3.5" /> {t('profileLink')}
                         </Link>
-                        <Link to="/lms/catalog" className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black text-white hover:bg-slate-700 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">
+                        <Link to="/lms/my-learning" className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black text-white hover:bg-slate-700 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">
                           <Bookmark className="h-3.5 w-3.5" /> Vào LMS học viên
                         </Link>
 
@@ -250,7 +250,7 @@ const Navbar = () => {
                           <>
                             <div className="mx-3 my-1 border-t border-slate-100 dark:border-slate-800" />
                             <p className="px-4 pt-1.5 pb-0.5 text-[10px] font-black uppercase tracking-widest text-slate-400">Giảng Dạy</p>
-                            <Link to="/lms/teacher-hub" className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-white/10">
+                            <Link to="/lms/teach" className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-white/10">
                               <Presentation className="h-3.5 w-3.5" /> Teacher Hub
                             </Link>
                             <Link to="/lms/admin/grading" className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold hover:bg-red-50 hover:text-red-700 dark:hover:bg-white/10">
@@ -311,7 +311,7 @@ const Navbar = () => {
               {/* LMS là khu vực riêng, chỉ thêm một lối vào cho học viên đã đăng nhập */}
               {authUser && (
                 <Link
-                  to="/lms/catalog"
+                  to="/lms/my-learning"
                   className="ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-black text-white shadow-sm transition hover:bg-slate-700 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300"
                 >
                   <BookOpen className="h-3.5 w-3.5" /> LMS học viên
@@ -365,7 +365,7 @@ const Navbar = () => {
                 {authUser && (
                   <>
                     <p className="px-4 pb-1 pt-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Khu vực học viên</p>
-                    <Link to="/lms/catalog" className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">
+                    <Link to="/lms/my-learning" className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">
                       <span className="flex items-center gap-3"><GraduationCap className="h-4 w-4" /> Vào LMS học viên</span>
                       <span aria-hidden="true">→</span>
                     </Link>
