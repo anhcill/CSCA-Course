@@ -38,72 +38,72 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
 
   const menuSections = [
     {
-      group: 'Tổng Quan & Vận Hành',
+      group: 'Tổng quan',
       items: [
         {
-          title: 'Dashboard',
+          title: 'Bảng điều khiển',
           icon: <FiGrid className="w-4 h-4 shrink-0" />,
           path: '/admin/dashboard',
         },
         {
-          title: t('adminCourse') || 'Quản lý Khóa học',
+          title: t('adminCourse') || 'Khóa học',
           icon: <FiBook className="w-4 h-4 shrink-0" />,
           path: '/admin/courses',
         },
         {
-          title: 'Quản lý Lớp & Moly',
+          title: 'Lớp học',
           icon: <FiLink className="w-4 h-4 shrink-0" />,
           path: '/admin/classes',
         },
         {
-          title: 'Lịch Toàn Trường',
+          title: 'Lịch học',
           icon: <FiCalendar className="w-4 h-4 shrink-0" />,
           path: '/admin/calendar',
         },
       ],
     },
     {
-      group: 'Học Liệu & Đào Tạo LMS',
+      group: 'Đào tạo',
       items: [
         {
-          title: 'Soạn Giáo Trình R2',
+          title: 'Soạn giáo trình',
           icon: <FiLayers className="w-4 h-4 shrink-0" />,
           path: '/lms/admin/curriculum',
         },
         {
-          title: 'Portal Chấm Bài LMS',
+          title: 'Chấm bài',
           icon: <FiCheckSquare className="w-4 h-4 shrink-0" />,
           path: '/lms/admin/grading',
         },
         {
-          title: t('adminPost') || 'Bài viết & Tin tức',
+          title: t('adminPost') || 'Bài viết',
           icon: <FiEdit className="w-4 h-4 shrink-0" />,
           path: '/admin/posts',
         },
       ],
     },
     {
-      group: 'Bảo Mật & Hệ Thống',
+      group: 'Hệ thống',
       items: [
         {
-          title: 'Phân Quyền Ma Trận',
+          title: 'Phân quyền',
           icon: <FiShield className="w-4 h-4 shrink-0" />,
           path: '/admin/permissions',
         },
         {
-          title: 'Đồng Bộ Outbox Moly',
+          title: 'Đồng bộ dữ liệu',
           icon: <FiActivity className="w-4 h-4 shrink-0" />,
           path: '/admin/sync',
         },
         {
-          title: 'Nhật Ký Kiểm Toán',
+          title: 'Nhật ký hệ thống',
           icon: <FiFileText className="w-4 h-4 shrink-0" />,
           path: '/admin/audit-logs',
         },
         ...(authUser?.role === 'admin'
           ? [
               {
-                title: t('adminUser') || 'Quản lý Người dùng',
+                title: t('adminUser') || 'Người dùng',
                 icon: <FiUser className="w-4 h-4 shrink-0" />,
                 path: '/admin/users',
               },
@@ -133,14 +133,22 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                     key={item.path}
                     to={item.path}
                     onClick={handleLinkClick}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                    className={`group flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${
                       active
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      {item.icon}
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                          active
+                            ? 'bg-white/20 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-950/40 group-hover:text-blue-600 dark:group-hover:text-blue-400'
+                        }`}
+                      >
+                        {item.icon}
+                      </div>
                       <span className="truncate">{item.title}</span>
                     </div>
                     {active && <FiChevronRight className="w-3.5 h-3.5 text-blue-200" />}

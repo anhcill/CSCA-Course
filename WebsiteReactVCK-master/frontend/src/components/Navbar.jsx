@@ -47,16 +47,16 @@ const PUBLIC_LINKS = [
 
 // Chi creator (giao vien) va admin moi thay
 const TEACHER_LINKS = [
-  { label: 'Teacher Hub', description: 'Tổng quan lớp giảng dạy', icon: Presentation, path: '/lms/teach' },
-  { label: 'Quản lý giáo trình', description: 'Thêm chương học và video R2', icon: BookCheck, path: '/lms/teacher/curriculum' },
-  { label: 'Chấm điểm bài nộp', description: 'Chấm bài viết & audio HSKK', icon: ClipboardCheck, path: '/lms/teacher/grading' },
+  { label: 'Giảng dạy', description: 'Tổng quan các lớp phụ trách', icon: Presentation, path: '/lms/teach' },
+  { label: 'Giáo trình', description: 'Nội dung và bài giảng môn học', icon: BookCheck, path: '/lms/teacher/curriculum' },
+  { label: 'Chấm bài', description: 'Chấm bài tập và bài kiểm tra', icon: ClipboardCheck, path: '/lms/teacher/grading' },
 ];
 
 // Chi admin moi thay
 const ADMIN_LINKS = [
-  { label: 'Admin Dashboard', description: 'Thống kê toàn hệ thống', icon: LayoutDashboard, path: '/admin' },
-  { label: 'Quản lý người dùng', description: 'Users, roles, quyền truy cập', icon: Users, path: '/admin/users' },
-  { label: 'Quản lý khóa học', description: 'CRUD courses toàn bộ', icon: BookOpen, path: '/admin/courses' },
+  { label: 'Quản trị', description: 'Bảng điều khiển hệ thống', icon: LayoutDashboard, path: '/admin' },
+  { label: 'Người dùng', description: 'Tài khoản và quyền truy cập', icon: Users, path: '/admin/users' },
+  { label: 'Khóa học', description: 'Quản lý khóa học toàn trường', icon: BookOpen, path: '/admin/courses' },
 ];
 
 /* ── Helpers ──────────────────────────────────────────────────── */
@@ -153,13 +153,17 @@ const Navbar = () => {
         path ? (
           <Link key={label} to={path} onClick={() => setDesktopMenu(null)}
             className="flex w-full items-start gap-3 rounded-xl bg-transparent p-3 text-left transition hover:bg-red-50 hover:text-red-700 dark:hover:bg-white/10 dark:hover:text-amber-300">
-            <span className="mt-0.5 rounded-lg bg-slate-100 p-2 text-slate-500 dark:bg-slate-800 dark:text-slate-300"><Icon className="h-4 w-4" /></span>
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 ring-1 ring-blue-100 dark:ring-blue-900/40">
+              <Icon className="h-4 w-4" />
+            </span>
             <span><strong className="block text-sm">{label}</strong><small className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">{description}</small></span>
           </Link>
         ) : (
           <button key={label} type="button" onClick={() => { setDesktopMenu(null); toast(`${label} đang phát triển.`); }}
             className="flex w-full items-start gap-3 rounded-xl bg-transparent p-3 text-left transition hover:bg-red-50 hover:text-red-700 dark:hover:bg-white/10 dark:hover:text-amber-300">
-            <span className="mt-0.5 rounded-lg bg-slate-100 p-2 text-slate-500 dark:bg-slate-800 dark:text-slate-300"><Icon className="h-4 w-4" /></span>
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 ring-1 ring-blue-100 dark:ring-blue-900/40">
+              <Icon className="h-4 w-4" />
+            </span>
             <span><strong className="block text-sm">{label}</strong><small className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">{description}</small></span>
           </button>
         )
