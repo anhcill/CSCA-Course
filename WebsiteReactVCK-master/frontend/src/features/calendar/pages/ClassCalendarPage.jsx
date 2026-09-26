@@ -15,6 +15,7 @@ import CalendarListView from "../components/CalendarListView";
 import SessionDetailModal from "../components/SessionDetailModal";
 import CreateScheduleModal from "../components/CreateScheduleModal";
 import { subscribeToCalendarChanges } from "../calendarSync";
+import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 
 function getSessionUiState(session) {
   const now = Date.now();
@@ -126,14 +127,16 @@ export default function ClassCalendarPage() {
       return toast("Phòng học mở trước giờ học 15 phút. Bạn quay lại sau nhé!", { icon: "⏰" });
     }
 
+    const meetingWindow = reserveMeetingWindow();
     try {
       const result = await getLiveSessionAccess(session.id);
       if (!result?.success || !result?.data?.meetUrl) {
         throw new Error(result?.message || "Phòng học chưa sẵn sàng");
       }
-      window.open(result.data.meetUrl, "_blank", "noopener,noreferrer");
+      openReservedMeeting(meetingWindow, result.data.meetUrl);
       toast.success(`Đang mở phòng học ${result.data.provider || "trực tuyến"}...`);
     } catch (err) {
+      closeReservedMeeting(meetingWindow);
       toast.error(err.message || "Không thể truy cập phòng học.");
     }
   };

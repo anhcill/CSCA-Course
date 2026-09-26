@@ -237,6 +237,9 @@ const safeSession = (row) => {
     // A generated recurring session belongs to the fixed timetable. A NULL
     // schedule_id marks a teacher/admin supplemental lesson.
     session_type: row.schedule_id ? "recurring" : "supplemental",
+    // Do not expose a join URL in calendar/list APIs. The client must use the
+    // verified access endpoint immediately before opening the provider page.
+    has_meeting_link: Boolean(meetingUrl),
     provider: getMeetingProvider(meetingUrl),
   };
 };
@@ -1156,6 +1159,113 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
     if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error creating class session:", error);
     return internalError(res, "Lỗi khi tạo buổi học");
+  } finally {
+    client?.release();
+  }
+});
+
+// PATCH /api/live-classes/sessions/:sessionId/meeting-link
+// A teaching link is operational session metadata, not a change to the fixed
+// timetable. Teachers may set it for their own classes; only admins can still
+// change a recurring schedule's date/time/pattern in the generic PATCH below.
+router.patch("/sessions/:sessionId/meeting-link", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
+  let client;
+  try {
+    const sessionId = parsePositiveId(req.params.sessionId);
+    if (!sessionId) return validationError(res, "sessionId không hợp lệ");
+
+    const body = req.body || {};
+    if (!Object.prototype.hasOwnProperty.call(body, "meetUrl")) {
+      return validationError(res, "meetUrl là bắt buộc");
+    }
+    const meetingUrl = typeof body.meetUrl === "string" ? body.meetUrl.trim() : body.meetUrl;
+    const meetingUrlError = validateMeetingUrl(meetingUrl);
+    if (meetingUrlError) return validationError(res, meetingUrlError);
+    if (body.passcode !== undefined && body.passcode !== null
+      && (typeof body.passcode !== "string" || body.passcode.length > 50)) {
+      return validationError(res, "passcode không hợp lệ");
+    }
+
+    client = await getClient();
+    await client.query("BEGIN");
+    const currentResult = await client.query(
+      `SELECT cs.id, cs.live_class_id, cs.schedule_id, cs.title, cs.meet_url, cs.passcode,
+              cs.start_time, cs.end_time, cs.status, cs.change_reason, cs.version,
+              lc.instructor_id, lc.management_class_source_id, lc.course_id
+       FROM class_sessions cs
+       JOIN live_classes lc ON lc.id = cs.live_class_id
+       WHERE cs.id = $1
+       FOR UPDATE OF cs`,
+      [sessionId],
+    );
+    const current = currentResult.rows[0];
+    if (!current) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy buổi học");
+    }
+    if (current.status === "cancelled") {
+      await client.query("ROLLBACK");
+      return validationError(res, "Không thể cấu hình phòng cho buổi học đã hủy");
+    }
+    if (!(await canManageClass(current, req.user))) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Bạn không có quyền cấu hình phòng học này");
+    }
+    const courseBindingError = requireCourseBoundClass(res, current);
+    if (courseBindingError) {
+      await client.query("ROLLBACK");
+      return courseBindingError;
+    }
+
+    const nextPasscode = body.passcode === undefined
+      ? current.passcode
+      : typeof body.passcode === "string" ? body.passcode.trim() || null : null;
+    const result = await client.query(
+      `UPDATE class_sessions
+       SET meet_url = $1, passcode = $2, changed_by = $3, changed_at = NOW(), version = version + 1
+       WHERE id = $4
+       RETURNING id, live_class_id, schedule_id, title, start_time, end_time, status,
+                 original_start_at, original_end_at, change_reason, changed_at,
+                 meet_url, version, created_at, updated_at`,
+      [meetingUrl || null, nextPasscode, req.user.id, sessionId],
+    );
+    const session = result.rows[0];
+    await client.query(
+      `INSERT INTO class_session_change_logs (
+         session_id, schedule_id, scope, before_state, after_state, reason, actor_id
+       )
+       VALUES ($1, $2, 'single', $3::jsonb, $4::jsonb, $5, $6)`,
+      [
+        session.id,
+        current.schedule_id,
+        JSON.stringify({
+          hasMeetingLink: Boolean(current.meet_url),
+          provider: getMeetingProvider(current.meet_url),
+        }),
+        JSON.stringify({
+          hasMeetingLink: Boolean(session.meet_url),
+          provider: getMeetingProvider(session.meet_url),
+        }),
+        "Cập nhật link phòng học trực tuyến",
+        req.user.id,
+      ],
+    );
+    await enqueueManagementCalendarDelivery(client, {
+      managementClassId: current.management_class_source_id,
+      eventType: "lms.session.upserted",
+      lmsSession: session,
+      correlationId: `session:${session.id}:v${session.version || 1}`,
+    });
+    await client.query("COMMIT");
+
+    if (current.meet_url !== session.meet_url || current.passcode !== nextPasscode) {
+      await notifyClassStudents(session, "link-changed");
+    }
+    return res.json({ success: true, data: safeSession(session), message: "Đã cập nhật link phòng học" });
+  } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
+    console.error("Error updating session meeting link:", error);
+    return internalError(res, "Lỗi khi cập nhật link phòng học");
   } finally {
     client?.release();
   }

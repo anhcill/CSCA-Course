@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { CalendarDays, CheckCircle2, Clock3, LockKeyhole, Radio, RotateCcw, Users, Video } from "lucide-react";
 import { fetchMyLiveSchedule, getLiveSessionAccess } from "../../api/lmsClient";
 import { EmptyState, ErrorState, LoadingState } from "../../../components/common/StateView";
+import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../utils/meetingLaunch";
 
 const formatDate = (value, options) => new Date(value).toLocaleDateString("vi-VN", options);
 const formatTime = (value) => new Date(value).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
@@ -74,12 +75,14 @@ export default function LiveClassSchedulePage() {
     if (now > end) return toast("Buổi học này đã kết thúc.");
     if (start - now > 15 * 60 * 1000) return toast("Phòng học mở trước giờ học 15 phút. Hẹn gặp lại bạn sau nhé!", { icon: "⏰" });
     setJoiningId(session.id);
+    const meetingWindow = reserveMeetingWindow();
     try {
       const result = await getLiveSessionAccess(session.id);
       if (!result?.success || !result?.data?.meetUrl) throw new Error("Phòng học chưa sẵn sàng");
-      window.open(result.data.meetUrl, "_blank", "noopener,noreferrer");
+      openReservedMeeting(meetingWindow, result.data.meetUrl);
       toast.success(`Đang mở phòng ${result.data.provider || "trực tuyến"}.`);
     } catch (error) {
+      closeReservedMeeting(meetingWindow);
       toast.error(error.message || "Không thể truy cập phòng học. Vui lòng thử lại sau.");
     } finally { setJoiningId(""); }
   };

@@ -37,6 +37,8 @@ import TeacherGradingModal from "../components/TeacherGradingModal";
 import CreateScheduleModal from "../../calendar/components/CreateScheduleModal";
 import SessionDetailModal from "../../calendar/components/SessionDetailModal";
 import TeacherNextSessionHero from "../components/classWorkspace/TeacherNextSessionHero";
+import MeetingLinkModal from "../components/classWorkspace/MeetingLinkModal";
+import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 
 const TABS = [
   { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
@@ -68,6 +70,7 @@ export default function TeacherClassDetailPage() {
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false);
   const [gradingModalSubmission, setGradingModalSubmission] = useState(null);
   const [selectedSession, setSelectedSession] = useState(null);
+  const [meetingLinkSession, setMeetingLinkSession] = useState(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -144,12 +147,14 @@ export default function TeacherClassDetailPage() {
   };
 
   const handleJoinSession = async (session) => {
+    const meetingWindow = reserveMeetingWindow();
     try {
       const result = await getLiveSessionAccess(session.id);
       if (!result?.success || !result?.data?.meetUrl) throw new Error(result?.message || "Phòng học chưa sẵn sàng");
-      window.open(result.data.meetUrl, "_blank", "noopener,noreferrer");
+      openReservedMeeting(meetingWindow, result.data.meetUrl);
       toast.success(`Đang mở phòng dạy ${result.data.provider || "trực tuyến"}...`);
     } catch (requestError) {
+      closeReservedMeeting(meetingWindow);
       toast.error(requestError.message || "Không thể mở phòng dạy.");
     }
   };
@@ -237,6 +242,8 @@ export default function TeacherClassDetailPage() {
             classId={classId}
             onOpenCreateSession={() => setIsCreateSessionOpen(true)}
             onRefreshSchedules={loadData}
+            onJoinSession={handleJoinSession}
+            onConfigureMeeting={setMeetingLinkSession}
             canManageFixedSchedule={canManageFixedSchedule}
           />
         )}
@@ -311,6 +318,17 @@ export default function TeacherClassDetailPage() {
           onJoin={handleJoinSession}
           isTeacher={true}
           basePath=""
+        />
+      )}
+
+      {meetingLinkSession && (
+        <MeetingLinkModal
+          session={meetingLinkSession}
+          onClose={() => setMeetingLinkSession(null)}
+          onSaved={async () => {
+            setMeetingLinkSession(null);
+            await loadData();
+          }}
         />
       )}
     </div>

@@ -10,6 +10,7 @@ import {
 } from "../../api/lmsClient";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
 import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
+import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 
 /* ── SVG Icons ───────────────────────────────────────────────── */
 const IconVideo = () => (
@@ -138,15 +139,18 @@ export default function TeacherSchedulePage() {
 
   // Host starts or opens meeting
   const handleHostMeeting = async (session) => {
+    const meetingWindow = reserveMeetingWindow();
     try {
       const r = await getLiveSessionAccess(session.id);
       if (r.success && r.data?.meetUrl) {
         toast.success(`Đang mở phòng giảng dạy ${r.data.provider || "Google Meet"}... 👨‍🏫`);
-        window.open(r.data.meetUrl, "_blank", "noopener,noreferrer");
+        openReservedMeeting(meetingWindow, r.data.meetUrl);
       } else {
+        closeReservedMeeting(meetingWindow);
         toast.error("Chưa cấu hình link phòng học cho buổi học này!");
       }
     } catch {
+      closeReservedMeeting(meetingWindow);
       toast.error("Lỗi khi kết nối phòng học trực tuyến!");
     }
   };

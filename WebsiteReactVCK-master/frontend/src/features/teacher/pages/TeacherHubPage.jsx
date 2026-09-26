@@ -8,8 +8,6 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Clock,
-  Filter,
-  RefreshCw,
   Users,
   Video,
 } from "lucide-react";
@@ -18,6 +16,7 @@ import { fetchTeacherDashboardStats, getLiveSessionAccess } from "../../api/lmsC
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState, PermissionDeniedState } from "../../../components/common/StateView";
 import TeacherRiskStudentsSection from "../components/TeacherRiskStudentsSection";
+import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 
 const EMPTY_DATA = {
   stats: {
@@ -42,18 +41,6 @@ const formatDateTime = (value, fallback = "Chưa có lịch") => {
     : date.toLocaleString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 
-const formatRelative = (value) => {
-  if (!value) return "Chưa có hoạt động";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Chưa có hoạt động";
-  const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
-  if (minutes < 1) return "Vừa cập nhật";
-  if (minutes < 60) return `${minutes} phút trước`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} giờ trước`;
-  return `${Math.floor(hours / 24)} ngày trước`;
-};
-
 export default function TeacherHubPage() {
   const { authUser } = useAuthContext();
   const isTeacher = authUser?.role === "creator" || authUser?.role === "admin";
@@ -63,7 +50,6 @@ export default function TeacherHubPage() {
   const [error, setError] = useState(null);
   const [classFilter, setClassFilter] = useState("all");
   const [riskFilter, setRiskFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [pendingPage, setPendingPage] = useState(1);
 
   const loadDashboard = useCallback(async () => {
@@ -72,7 +58,7 @@ export default function TeacherHubPage() {
     try {
       const response = await fetchTeacherDashboardStats({
         classId: classFilter === "all" ? undefined : classFilter,
-        status: statusFilter,
+        status: "all",
         page: pendingPage,
         limit: 8,
       });
@@ -85,7 +71,7 @@ export default function TeacherHubPage() {
     } finally {
       setLoading(false);
     }
-  }, [classFilter, pendingPage, statusFilter]);
+  }, [classFilter, pendingPage]);
 
   useEffect(() => {
     if (isTeacher) loadDashboard();
@@ -97,17 +83,17 @@ export default function TeacherHubPage() {
   );
 
   const openLiveRoom = async (session) => {
+    const meetingWindow = reserveMeetingWindow();
     try {
       const result = await getLiveSessionAccess(session.id);
       if (!result?.success || !result?.data?.meetUrl) throw new Error("Chưa có link phòng trực tuyến");
-      window.open(result.data.meetUrl, "_blank", "noopener,noreferrer");
+      openReservedMeeting(meetingWindow, result.data.meetUrl);
       toast.success("Đang mở phòng học");
     } catch (openError) {
+      closeReservedMeeting(meetingWindow);
       toast.error(openError.message || "Không thể mở phòng học");
     }
   };
-
-  const totalPages = data.pagination?.totalPages || 1;
 
   if (!isTeacher) {
     return <PermissionDeniedState title="Không có quyền truy cập" message="Khu vực này chỉ dành cho Giảng viên và Quản trị viên." />;

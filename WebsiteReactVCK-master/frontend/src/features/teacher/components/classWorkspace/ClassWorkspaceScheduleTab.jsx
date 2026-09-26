@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
 import { Link } from "react-router-dom";
-import { CalendarDays, CheckCircle2, Clock, Plus, Video } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock, Link2, Plus, Video } from "lucide-react";
 import ClassScheduleManager from "./ClassScheduleManager";
 
 const formatDateTime = (value) => {
@@ -20,6 +20,8 @@ export default function ClassWorkspaceScheduleTab({
   classId,
   onOpenCreateSession,
   onRefreshSchedules,
+  onJoinSession,
+  onConfigureMeeting,
   canManageFixedSchedule = false,
 }) {
   return (
@@ -73,6 +75,7 @@ export default function ClassWorkspaceScheduleTab({
         <div className="space-y-3">
           {sessions.map((s) => {
             const isLive = s.status === "LIVE" || s.status === "live";
+            const hasMeetingLink = Boolean(s.has_meeting_link);
             return (
               <div
                 key={s.id}
@@ -109,7 +112,9 @@ export default function ClassWorkspaceScheduleTab({
                         <Clock className="h-3.5 w-3.5" />
                         {formatDateTime(s.start_time || s.startTime)}
                       </span>
-                      {s.meet_url || s.meetUrl ? <span>Đã có link phòng</span> : <span>Chưa gán link</span>}
+                      {hasMeetingLink
+                        ? <span>Phòng {s.provider || "trực tuyến"} đã sẵn sàng</span>
+                        : <span>Chưa gán link Zoom/Google Meet</span>}
                     </div>
                   </div>
                 </div>
@@ -121,16 +126,21 @@ export default function ClassWorkspaceScheduleTab({
                   >
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Điểm danh
                   </Link>
-                  {(s.meet_url || s.meetUrl) && (
-                    <a
-                      href={s.meet_url || s.meetUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition"
-                    >
-                      Vào phòng dạy
-                    </a>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => onConfigureMeeting?.(s)}
+                    className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70 transition"
+                  >
+                    <Link2 className="h-3.5 w-3.5" /> {hasMeetingLink ? "Đổi link" : "Gán Zoom/Meet"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onJoinSession?.(s)}
+                    disabled={!hasMeetingLink}
+                    className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-45 transition"
+                  >
+                    <Video className="h-3.5 w-3.5" /> Vào phòng dạy
+                  </button>
                 </div>
               </div>
             );

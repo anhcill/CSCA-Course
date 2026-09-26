@@ -203,6 +203,18 @@ export const updateLiveSession = async ({ sessionId, title, startTime, endTime, 
   }, { sessionId, type: "session-updated" })
 );
 
+// The teaching link is deliberately separate from timetable edits: class
+// teachers can set Zoom/Google Meet for a fixed occurrence without gaining
+// permission to alter the admin-owned recurring schedule.
+export const updateLiveSessionMeeting = async ({ sessionId, meetUrl, passcode }) => {
+  const body = { meetUrl };
+  if (passcode !== undefined) body.passcode = passcode;
+  return requestCalendarMutation(`/live-classes/sessions/${encodeURIComponent(sessionId)}/meeting-link`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  }, { sessionId, type: "session-meeting-link-updated" });
+};
+
 export const fetchLiveClassRoster = async (classId) => (
   request(`/live-classes/${encodeURIComponent(classId)}/enrollments`)
 );

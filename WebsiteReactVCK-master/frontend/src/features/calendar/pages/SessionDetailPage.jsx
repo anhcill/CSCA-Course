@@ -6,7 +6,6 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock,
-  FileQuestion,
   FileText,
   Lock,
   Play,
@@ -18,6 +17,7 @@ import { isTeacherRole } from "../../../constants/roles";
 import { fetchLiveClassSessions, getLiveSessionAccess } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { ErrorState } from "../../../components/common/StateView";
+import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 
 const formatDateTime = (value) => {
   if (!value) return "Chưa xác định";
@@ -68,14 +68,16 @@ export default function SessionDetailPage() {
 
   const handleJoin = async () => {
     if (!session) return;
+    const meetingWindow = reserveMeetingWindow();
     try {
       const result = await getLiveSessionAccess(session.id);
       if (!result?.success || !result?.data?.meetUrl) {
         throw new Error(result?.message || "Phòng học chưa sẵn sàng");
       }
-      window.open(result.data.meetUrl, "_blank", "noopener,noreferrer");
+      openReservedMeeting(meetingWindow, result.data.meetUrl);
       toast.success(`Đang mở phòng học ${result.data.provider || "trực tuyến"}...`);
     } catch (err) {
+      closeReservedMeeting(meetingWindow);
       toast.error(err.message || "Không thể truy cập phòng học.");
     }
   };
