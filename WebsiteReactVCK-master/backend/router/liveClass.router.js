@@ -49,11 +49,141 @@ const parseDateTime = (value) => {
   return Number.isNaN(timestamp) ? null : new Date(timestamp);
 };
 
-const parseTime = (value) => (
-  typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value)
-    ? value
-    : null
-);
+const parseTime = (value) => {
+  if (typeof value !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value)) {
+    return null;
+  }
+  // PostgreSQL returns TIME as HH:mm:ss while the UI submits HH:mm. Store and
+  // compare one canonical representation so an unchanged schedule is not
+  // accidentally regenerated.
+  return value.length === 5 ? `${value}:00` : value;
+};
+
+const DEFAULT_CALENDAR_TIMEZONE = "Asia/Ho_Chi_Minh";
+const DEFAULT_SCHEDULE_HORIZON_DAYS = 180;
+
+const parseDateOnly = (value) => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value ? null : value;
+};
+
+const dateOnlyInTimezoneAfterDays = (timezone, days) => {
+  const dateParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(
+    dateParts.filter((part) => ["year", "month", "day"].includes(part.type))
+      .map((part) => [part.type, part.value]),
+  );
+  const date = new Date(Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day)));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+const isValidTimezone = (value) => {
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const normalizeScheduleDay = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = Number(value);
+  // The legacy client used 0 for Sunday. Keep it compatible while storing
+  // the database convention: ISO day-of-week, Monday = 1 through Sunday = 7.
+  if (parsed === 0) return 7;
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 7 ? parsed : null;
+};
+
+const parseScheduleSeriesInput = (body = {}) => {
+  const dayOfWeek = normalizeScheduleDay(body.dayOfWeek);
+  const startTime = parseTime(body.startTime);
+  const endTime = parseTime(body.endTime);
+  const timezone = typeof body.timezone === "string" && body.timezone.trim()
+    ? body.timezone.trim()
+    : DEFAULT_CALENDAR_TIMEZONE;
+  const timezoneIsValid = isValidTimezone(timezone);
+  const dateDefaultTimezone = timezoneIsValid ? timezone : DEFAULT_CALENDAR_TIMEZONE;
+  const startDateWasProvided = body.startDate !== undefined && body.startDate !== null && body.startDate !== "";
+  const endDateWasProvided = body.endDate !== undefined && body.endDate !== null && body.endDate !== "";
+  const parsedStartDate = parseDateOnly(body.startDate);
+  const parsedEndDate = parseDateOnly(body.endDate);
+  const startDate = parsedStartDate || dateOnlyInTimezoneAfterDays(dateDefaultTimezone, 0);
+  const endDate = parsedEndDate || dateOnlyInTimezoneAfterDays(dateDefaultTimezone, DEFAULT_SCHEDULE_HORIZON_DAYS);
+  const title = body.title === undefined || body.title === null || body.title === ""
+    ? null
+    : typeof body.title === "string" && body.title.trim().length <= 255
+      ? body.title.trim()
+      : undefined;
+
+  const errors = [];
+  if (!dayOfWeek) errors.push("dayOfWeek không hợp lệ");
+  if (!startTime || !endTime || endTime <= startTime) errors.push("Khung giờ lịch định kỳ không hợp lệ");
+  if ((startDateWasProvided && !parsedStartDate)
+    || (endDateWasProvided && !parsedEndDate)
+    || endDate < startDate) errors.push("Khoảng ngày lịch định kỳ không hợp lệ");
+  if (!timezoneIsValid) errors.push("timezone không hợp lệ");
+  if (title === undefined) errors.push("title không hợp lệ");
+
+  return { errors, dayOfWeek, startTime, endTime, startDate, endDate, timezone, title };
+};
+
+const materializeScheduleSessions = async (client, schedule, liveClass) => {
+  const result = await client.query(
+    `WITH occurrences AS (
+       SELECT occurrence::date AS session_date
+       FROM generate_series(
+         GREATEST($3::date, (CURRENT_TIMESTAMP AT TIME ZONE $8)::date),
+         $4::date,
+         INTERVAL '1 day'
+       ) AS occurrence
+       WHERE EXTRACT(ISODOW FROM occurrence)::int = $5
+     )
+     INSERT INTO class_sessions (
+       live_class_id, schedule_id, title, start_time, end_time, status,
+       original_start_at, original_end_at
+     )
+     SELECT
+       $1,
+       $2,
+       COALESCE(NULLIF($9, ''), $10 || ' — Buổi học'),
+       ((o.session_date + $6::time) AT TIME ZONE $8),
+       ((o.session_date + $7::time) AT TIME ZONE $8),
+       'scheduled',
+       ((o.session_date + $6::time) AT TIME ZONE $8),
+       ((o.session_date + $7::time) AT TIME ZONE $8)
+     FROM occurrences o
+     WHERE NOT EXISTS (
+       SELECT 1
+       FROM class_sessions existing
+       WHERE existing.live_class_id = $1
+         AND existing.status <> 'cancelled'
+         AND existing.start_time = ((o.session_date + $6::time) AT TIME ZONE $8)
+     )
+     RETURNING id, live_class_id, schedule_id, title, start_time, end_time,
+               status, original_start_at, original_end_at, created_at, updated_at`,
+    [
+      liveClass.id,
+      schedule.id,
+      schedule.start_date,
+      schedule.end_date,
+      schedule.day_of_week,
+      schedule.start_time,
+      schedule.end_time,
+      schedule.timezone,
+      schedule.title,
+      liveClass.title,
+    ],
+  );
+  return result.rows;
+};
 
 const safeClass = (row) => {
   const { meet_url: _meetUrl, passcode: _passcode, ...data } = row;
@@ -201,7 +331,7 @@ const validateSessionInput = (body, { partial = false } = {}) => {
   if (body.passcode !== undefined && body.passcode !== null && (typeof body.passcode !== "string" || body.passcode.length > 50)) {
     errors.push("passcode không hợp lệ");
   }
-  if (body.status !== undefined && !["scheduled", "live", "ended", "cancelled"].includes(body.status)) {
+  if (body.status !== undefined && !["scheduled", "live", "ended", "cancelled", "rescheduled"].includes(body.status)) {
     errors.push("status không hợp lệ");
   }
 
@@ -327,14 +457,27 @@ router.get("/my-schedule", protectRoute, async (req, res) => {
     const classId = req.query.classId === undefined ? null : parsePositiveId(req.query.classId);
     if (req.query.classId !== undefined && !classId) return validationError(res, "classId không hợp lệ");
     if (classId && !courseId) return validationError(res, "classId cần đi kèm courseId");
+    const from = req.query.from === undefined ? null : parseDateTime(req.query.from);
+    const to = req.query.to === undefined ? null : parseDateTime(req.query.to);
+    if ((req.query.from !== undefined && !from) || (req.query.to !== undefined && !to)) {
+      return validationError(res, "from/to phải là thời gian ISO hợp lệ");
+    }
+    if (from && to && (to <= from || to.getTime() - from.getTime() > 366 * 24 * 60 * 60 * 1000)) {
+      return validationError(res, "Khoảng lịch phải lớn hơn 0 và không quá 366 ngày");
+    }
     const visibility = sessionVisibility(req.user);
     const params = [...visibility.params];
     const courseScope = courseId ? `AND lc.course_id = $${params.length + 1}` : "";
     if (courseId) params.push(courseId);
     const classScope = classId ? `AND lc.id = $${params.length + 1}` : "";
     if (classId) params.push(classId);
+    const fromScope = from ? `AND cs.start_time >= $${params.length + 1}` : "";
+    if (from) params.push(from);
+    const toScope = to ? `AND cs.start_time < $${params.length + 1}` : "";
+    if (to) params.push(to);
     const result = await query(
-      `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
+      `SELECT cs.id, cs.live_class_id, cs.schedule_id, cs.title, cs.start_time, cs.end_time, cs.status,
+              cs.original_start_at, cs.original_end_at, cs.change_reason, cs.changed_at,
               lc.title AS class_title, lc.course_id, lc.instructor_id, lc.max_students,
               COALESCE(c.title, c.name) AS course_title,
               COUNT(ce2.id) FILTER (WHERE ce2.status = 'active')::int AS enrolled_count,
@@ -351,6 +494,8 @@ router.get("/my-schedule", protectRoute, async (req, res) => {
          AND ${visibility.clause}
          ${courseScope}
          ${classScope}
+         ${fromScope}
+         ${toScope}
        GROUP BY cs.id, lc.id, c.title, c.name
        ORDER BY cs.start_time ASC`,
       params,
@@ -586,8 +731,9 @@ router.get("/:classId/schedules", protectRoute, async (req, res) => {
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
     if (!(await canViewClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xem lịch lớp này");
     const result = await query(
-      `SELECT id, live_class_id, day_of_week, start_time, end_time, created_at
-       FROM class_schedules WHERE live_class_id = $1
+      `SELECT id, live_class_id, title, day_of_week, start_time, end_time,
+              timezone, start_date, end_date, status, version, created_at, updated_at
+       FROM class_schedules WHERE live_class_id = $1 AND status = 'active'
        ORDER BY day_of_week ASC, start_time ASC, id ASC`,
       [classId],
     );
@@ -599,59 +745,213 @@ router.get("/:classId/schedules", protectRoute, async (req, res) => {
 });
 
 router.post("/:classId/schedules", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
+  let client;
   try {
     const classId = parsePositiveId(req.params.classId);
-    const dayOfWeek = Number(req.body?.dayOfWeek);
-    const startTime = parseTime(req.body?.startTime);
-    const endTime = parseTime(req.body?.endTime);
-    if (!classId || !Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7 || !startTime || !endTime || endTime <= startTime) {
-      return validationError(res, "Lịch định kỳ không hợp lệ");
-    }
+    const scheduleInput = parseScheduleSeriesInput(req.body);
+    if (!classId) return validationError(res, "classId không hợp lệ");
+    if (scheduleInput.errors.length > 0) return validationError(res, scheduleInput.errors.join("; "));
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
     if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền sửa lịch lớp này");
-    const result = await query(
-      `INSERT INTO class_schedules (live_class_id, day_of_week, start_time, end_time)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, live_class_id, day_of_week, start_time, end_time, created_at`,
-      [classId, dayOfWeek, startTime, endTime],
+
+    client = await getClient();
+    await client.query("BEGIN");
+    const result = await client.query(
+      `INSERT INTO class_schedules (
+         live_class_id, title, day_of_week, start_time, end_time,
+         timezone, start_date, end_date, created_by, updated_by
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+       RETURNING id, live_class_id, title, day_of_week, start_time, end_time,
+                 timezone, start_date, end_date, status, version, created_at, updated_at`,
+      [
+        classId,
+        scheduleInput.title || `${liveClass.title} — Lịch học định kỳ`,
+        scheduleInput.dayOfWeek,
+        scheduleInput.startTime,
+        scheduleInput.endTime,
+        scheduleInput.timezone,
+        scheduleInput.startDate,
+        scheduleInput.endDate,
+        req.user.id,
+      ],
     );
-    return res.status(201).json({ success: true, data: result.rows[0] });
+    const schedule = result.rows[0];
+    const materializedSessions = await materializeScheduleSessions(client, schedule, liveClass);
+    await client.query("COMMIT");
+    return res.status(201).json({
+      success: true,
+      data: {
+        ...schedule,
+        materializedSessions: materializedSessions.map(safeSession),
+      },
+      message: `Đã tạo lịch cố định và ${materializedSessions.length} buổi học`,
+    });
   } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error creating class schedule:", error);
     return internalError(res, "Lỗi khi tạo lịch định kỳ");
+  } finally {
+    client?.release();
   }
 });
 
 router.patch("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
+  let client;
   try {
     const classId = parsePositiveId(req.params.classId);
     const scheduleId = parsePositiveId(req.params.scheduleId);
-    const dayOfWeek = Number(req.body?.dayOfWeek);
-    const startTime = parseTime(req.body?.startTime);
-    const endTime = parseTime(req.body?.endTime);
-    if (!classId || !scheduleId || !Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7 || !startTime || !endTime || endTime <= startTime) {
-      return validationError(res, "Lịch định kỳ không hợp lệ");
-    }
+    if (!classId || !scheduleId) return validationError(res, "classId hoặc scheduleId không hợp lệ");
+
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
     if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền sửa lịch lớp này");
-    const result = await query(
-      `UPDATE class_schedules
-       SET day_of_week = $1, start_time = $2, end_time = $3
-       WHERE id = $4 AND live_class_id = $5
-       RETURNING id, live_class_id, day_of_week, start_time, end_time, created_at`,
-      [dayOfWeek, startTime, endTime, scheduleId, classId],
+
+    const body = req.body || {};
+    const expectedVersion = body.version === undefined ? null : Number(body.version);
+    if (expectedVersion !== null && (!Number.isInteger(expectedVersion) || expectedVersion < 1)) {
+      return validationError(res, "version không hợp lệ");
+    }
+    if (body.changeReason !== undefined && body.changeReason !== null
+      && (typeof body.changeReason !== "string" || body.changeReason.trim().length > 2000)) {
+      return validationError(res, "changeReason không hợp lệ");
+    }
+
+    client = await getClient();
+    await client.query("BEGIN");
+    const currentResult = await client.query(
+      `SELECT id, live_class_id, title, day_of_week, start_time, end_time,
+              timezone, start_date, end_date, status, version
+       FROM class_schedules
+       WHERE id = $1 AND live_class_id = $2 AND status = 'active'
+       FOR UPDATE`,
+      [scheduleId, classId],
     );
-    if (!result.rows[0]) return notFound(res, "Không tìm thấy lịch định kỳ");
-    return res.json({ success: true, data: result.rows[0] });
+    const current = currentResult.rows[0];
+    if (!current) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy lịch định kỳ");
+    }
+    if (expectedVersion !== null && expectedVersion !== current.version) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        success: false,
+        message: "Lịch đã được người khác cập nhật. Vui lòng tải lại trước khi lưu.",
+        errorCode: "SCHEDULE_VERSION_CONFLICT",
+      });
+    }
+
+    const scheduleInput = parseScheduleSeriesInput({
+      dayOfWeek: body.dayOfWeek === undefined ? current.day_of_week : body.dayOfWeek,
+      startTime: body.startTime === undefined ? current.start_time : body.startTime,
+      endTime: body.endTime === undefined ? current.end_time : body.endTime,
+      timezone: body.timezone === undefined ? current.timezone : body.timezone,
+      startDate: body.startDate === undefined ? current.start_date : body.startDate,
+      endDate: body.endDate === undefined ? current.end_date : body.endDate,
+      title: body.title === undefined ? current.title : body.title,
+    });
+    if (scheduleInput.errors.length > 0) {
+      await client.query("ROLLBACK");
+      return validationError(res, scheduleInput.errors.join("; "));
+    }
+
+    const nextTitle = scheduleInput.title || `${liveClass.title} — Lịch học định kỳ`;
+    const patternChanged = Number(current.day_of_week) !== scheduleInput.dayOfWeek
+      || current.start_time !== scheduleInput.startTime
+      || current.end_time !== scheduleInput.endTime
+      || current.timezone !== scheduleInput.timezone
+      || String(current.start_date).slice(0, 10) !== scheduleInput.startDate
+      || String(current.end_date).slice(0, 10) !== scheduleInput.endDate;
+    const titleChanged = current.title !== nextTitle;
+    const updateResult = await client.query(
+      `UPDATE class_schedules
+       SET title = $1, day_of_week = $2, start_time = $3, end_time = $4,
+           timezone = $5, start_date = $6, end_date = $7, updated_by = $8,
+           version = version + 1
+       WHERE id = $9
+       RETURNING id, live_class_id, title, day_of_week, start_time, end_time,
+                 timezone, start_date, end_date, status, version, created_at, updated_at`,
+      [
+        nextTitle, scheduleInput.dayOfWeek, scheduleInput.startTime, scheduleInput.endTime,
+        scheduleInput.timezone, scheduleInput.startDate, scheduleInput.endDate, req.user.id, scheduleId,
+      ],
+    );
+    const schedule = updateResult.rows[0];
+    const changeReason = body.changeReason?.trim() || "Điều chỉnh lịch học định kỳ";
+    let cancelledSessions = [];
+    let materializedSessions = [];
+    if (patternChanged) {
+      const cancelledResult = await client.query(
+        `UPDATE class_sessions cs
+         SET status = 'cancelled', change_reason = $1, changed_by = $2,
+             changed_at = NOW(), version = version + 1
+         WHERE cs.schedule_id = $3
+           AND cs.start_time >= NOW()
+           AND cs.status = 'scheduled'
+           AND NOT EXISTS (
+             SELECT 1 FROM class_attendance ca WHERE ca.session_id = cs.id
+           )
+         RETURNING cs.id, cs.start_time, cs.end_time`,
+        [changeReason, req.user.id, scheduleId],
+      );
+      cancelledSessions = cancelledResult.rows;
+      materializedSessions = await materializeScheduleSessions(client, schedule, liveClass);
+    } else if (titleChanged) {
+      await client.query(
+        `UPDATE class_sessions
+         SET title = $1, version = version + 1
+         WHERE schedule_id = $2 AND start_time >= NOW() AND status = 'scheduled'`,
+        [nextTitle, scheduleId],
+      );
+    }
+
+    if (patternChanged || titleChanged) {
+      await client.query(
+        `INSERT INTO class_session_change_logs (
+           schedule_id, scope, before_state, after_state, reason, actor_id
+         )
+         VALUES ($1, 'all_future', $2::jsonb, $3::jsonb, $4, $5)`,
+        [
+          scheduleId,
+          JSON.stringify({
+            title: current.title, dayOfWeek: current.day_of_week, startTime: current.start_time,
+            endTime: current.end_time, timezone: current.timezone,
+            startDate: current.start_date, endDate: current.end_date,
+          }),
+          JSON.stringify({
+            title: schedule.title, dayOfWeek: schedule.day_of_week, startTime: schedule.start_time,
+            endTime: schedule.end_time, timezone: schedule.timezone,
+            startDate: schedule.start_date, endDate: schedule.end_date,
+          }),
+          changeReason,
+          req.user.id,
+        ],
+      );
+    }
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      data: {
+        ...schedule,
+        cancelledSessionCount: cancelledSessions.length,
+        materializedSessionCount: materializedSessions.length,
+      },
+      message: patternChanged
+        ? `Đã cập nhật lịch và tạo ${materializedSessions.length} buổi học thay thế`
+        : "Đã cập nhật lịch định kỳ",
+    });
   } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error updating class schedule:", error);
     return internalError(res, "Lỗi khi cập nhật lịch định kỳ");
+  } finally {
+    client?.release();
   }
 });
 
 router.delete("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
+  let client;
   try {
     const classId = parsePositiveId(req.params.classId);
     const scheduleId = parsePositiveId(req.params.scheduleId);
@@ -659,12 +959,47 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, r
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
     if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xóa lịch lớp này");
-    const result = await query("DELETE FROM class_schedules WHERE id = $1 AND live_class_id = $2 RETURNING id", [scheduleId, classId]);
-    if (!result.rows[0]) return notFound(res, "Không tìm thấy lịch định kỳ");
-    return res.json({ success: true, data: { id: scheduleId } });
+    const reason = req.body?.changeReason === undefined ? "Ngừng lịch học định kỳ" : req.body.changeReason;
+    if (typeof reason !== "string" || !reason.trim() || reason.trim().length > 2000) {
+      return validationError(res, "changeReason không hợp lệ");
+    }
+
+    client = await getClient();
+    await client.query("BEGIN");
+    const archiveResult = await client.query(
+      `UPDATE class_schedules
+       SET status = 'archived', updated_by = $1, version = version + 1
+       WHERE id = $2 AND live_class_id = $3 AND status = 'active'
+       RETURNING id`,
+      [req.user.id, scheduleId, classId],
+    );
+    if (!archiveResult.rows[0]) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy lịch định kỳ");
+    }
+    const cancelledResult = await client.query(
+      `UPDATE class_sessions cs
+       SET status = 'cancelled', change_reason = $1, changed_by = $2,
+           changed_at = NOW(), version = version + 1
+       WHERE cs.schedule_id = $3 AND cs.start_time >= NOW() AND cs.status = 'scheduled'
+       RETURNING cs.id`,
+      [reason.trim(), req.user.id, scheduleId],
+    );
+    await client.query(
+      `INSERT INTO class_session_change_logs (
+         schedule_id, scope, before_state, after_state, reason, actor_id
+       )
+       VALUES ($1, 'all_future', $2::jsonb, $3::jsonb, $4, $5)`,
+      [scheduleId, JSON.stringify({ status: "active" }), JSON.stringify({ status: "archived" }), reason.trim(), req.user.id],
+    );
+    await client.query("COMMIT");
+    return res.json({ success: true, data: { id: scheduleId, cancelledSessionCount: cancelledResult.rows.length } });
   } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error deleting class schedule:", error);
     return internalError(res, "Lỗi khi xóa lịch định kỳ");
+  } finally {
+    client?.release();
   }
 });
 
@@ -677,7 +1012,8 @@ router.get("/:classId/sessions", protectRoute, async (req, res) => {
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
     if (!(await canViewClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xem session của lớp này");
     const result = await query(
-      `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
+      `SELECT cs.id, cs.live_class_id, cs.schedule_id, cs.title, cs.start_time, cs.end_time, cs.status,
+              cs.original_start_at, cs.original_end_at, cs.change_reason, cs.changed_at,
               cs.meet_url, cs.created_at, cs.updated_at
        FROM class_sessions cs
        WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
@@ -702,9 +1038,14 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
     const { errors, startTime, endTime } = validateSessionInput(req.body || {});
     if (errors.length > 0) return validationError(res, errors.join("; "));
     const result = await query(
-      `INSERT INTO class_sessions (live_class_id, title, meet_url, passcode, start_time, end_time, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, live_class_id, title, start_time, end_time, status, meet_url, created_at, updated_at`,
+      `INSERT INTO class_sessions (
+         live_class_id, title, meet_url, passcode, start_time, end_time, status,
+         original_start_at, original_end_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $6)
+       RETURNING id, live_class_id, schedule_id, title, start_time, end_time, status,
+                 original_start_at, original_end_at, change_reason, changed_at,
+                 meet_url, created_at, updated_at`,
       [classId, req.body.title.trim(), req.body.meetUrl || null, req.body.passcode || null, startTime, endTime, req.body.status || "scheduled"],
     );
     const session = result.rows[0];
@@ -723,8 +1064,9 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
     const sessionId = parsePositiveId(req.params.sessionId);
     if (!sessionId) return validationError(res, "sessionId không hợp lệ");
     const currentResult = await query(
-      `SELECT cs.id, cs.live_class_id, cs.title, cs.meet_url, cs.passcode,
-              cs.start_time, cs.end_time, cs.status, cs.created_at, cs.updated_at,
+      `SELECT cs.id, cs.live_class_id, cs.schedule_id, cs.title, cs.meet_url, cs.passcode,
+              cs.start_time, cs.end_time, cs.status, cs.original_start_at, cs.original_end_at,
+              cs.change_reason, cs.changed_by, cs.changed_at, cs.version, cs.created_at, cs.updated_at,
               lc.instructor_id
        FROM class_sessions cs
        JOIN live_classes lc ON lc.id = cs.live_class_id
@@ -744,18 +1086,55 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
       passcode: body.passcode === undefined ? current.passcode : body.passcode,
       status: body.status === undefined ? current.status : body.status,
     };
+    const changeReason = body.changeReason === undefined ? current.change_reason : body.changeReason;
+    if (changeReason !== null && changeReason !== undefined
+      && (typeof changeReason !== "string" || changeReason.trim().length > 2000)) {
+      return validationError(res, "changeReason không hợp lệ");
+    }
     const { errors, startTime, endTime } = validateSessionInput(merged);
     if (errors.length > 0) return validationError(res, errors.join("; "));
 
+    const scheduleChanged = startTime.getTime() !== new Date(current.start_time).getTime()
+      || endTime.getTime() !== new Date(current.end_time).getTime();
+    const nextStatus = body.status === undefined && scheduleChanged && current.status === "scheduled"
+      ? "rescheduled"
+      : merged.status;
+
     const result = await query(
       `UPDATE class_sessions
-       SET title = $1, meet_url = $2, passcode = $3, start_time = $4, end_time = $5, status = $6
-       WHERE id = $7
-       RETURNING id, live_class_id, title, start_time, end_time, status, meet_url, created_at, updated_at`,
-      [merged.title.trim(), merged.meetUrl || null, merged.passcode || null, startTime, endTime, merged.status, sessionId],
+       SET title = $1, meet_url = $2, passcode = $3, start_time = $4, end_time = $5,
+           status = $6, change_reason = $7, changed_by = $8,
+           changed_at = CASE WHEN $9 THEN NOW() ELSE changed_at END,
+           version = version + 1
+       WHERE id = $10
+       RETURNING id, live_class_id, schedule_id, title, start_time, end_time, status,
+                 original_start_at, original_end_at, change_reason, changed_at,
+                 meet_url, created_at, updated_at`,
+      [
+        merged.title.trim(), merged.meetUrl || null, merged.passcode || null,
+        startTime, endTime, nextStatus, changeReason?.trim() || null, req.user.id,
+        scheduleChanged, sessionId,
+      ],
     );
     const session = result.rows[0];
+    if (scheduleChanged) {
+      await query(
+        `INSERT INTO class_session_change_logs (
+           session_id, schedule_id, scope, before_state, after_state, reason, actor_id
+         )
+         VALUES ($1, $2, 'single', $3::jsonb, $4::jsonb, $5, $6)`,
+        [
+          session.id,
+          current.schedule_id,
+          JSON.stringify({ startTime: current.start_time, endTime: current.end_time, status: current.status }),
+          JSON.stringify({ startTime: session.start_time, endTime: session.end_time, status: session.status }),
+          changeReason?.trim() || null,
+          req.user.id,
+        ],
+      );
+    }
     if (current.meet_url !== session.meet_url) await notifyClassStudents(session, "link-changed");
+    if (scheduleChanged) await notifyClassStudents(session, "rescheduled");
     return res.json({ success: true, data: safeSession(session), message: "Cập nhật buổi học thành công" });
   } catch (error) {
     console.error("Error updating class session:", error);

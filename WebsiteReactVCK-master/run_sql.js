@@ -33,6 +33,8 @@ const migrationFiles = [
   "database/migrations/016_lms_platform_operations.sql",
   "database/migrations/017_quiz_authoring.sql",
   "database/migrations/018_management_sync_core.sql",
+  "database/migrations/019_management_attendance_delivery.sql",
+  "database/migrations/020_class_calendar_core.sql",
 ];
 
 const filesToRun = process.env.RUN_SEEDS === "true"

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import useLogin from "../../hooks/useLogin";
+import { getLmsLandingPath } from "../../utils/lmsNavigation";
 
 // ─── tiny reusable input wrapper ─────────────────────────────────────────────
 const InputField = ({
@@ -99,14 +100,7 @@ const LoginForm = ({ onSwitchMode, onClose }) => {
         setFormData({ email: "", password: "" });
         onClose(); // close modal
 
-        // Canonical landing per role according to LMS spec Section 2.2:
-        if (user.role === "admin") {
-          navigate("/admin");
-        } else if (user.role === "creator") {
-          navigate("/lms/teach");
-        } else {
-          navigate("/lms/my-learning");
-        }
+        navigate(getLmsLandingPath(user));
       }
     } catch (error) {
       // useLogin already throws; error toast shown by hook itself

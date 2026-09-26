@@ -1,6 +1,7 @@
+/* eslint-disable react/prop-types */
 import { useState } from "react";
 import toast from "react-hot-toast";
-import { Calendar, Clock, Plus, Video, X } from "lucide-react";
+import { Calendar, X } from "lucide-react";
 import { createLiveClassSchedule, createLiveSession } from "../../api/lmsClient";
 
 const DAYS_OF_WEEK = [
@@ -10,7 +11,7 @@ const DAYS_OF_WEEK = [
   { value: 4, label: "Thứ Năm" },
   { value: 5, label: "Thứ Sáu" },
   { value: 6, label: "Thứ Bảy" },
-  { value: 0, label: "Chủ Nhật" },
+  { value: 7, label: "Chủ Nhật" },
 ];
 
 export default function CreateScheduleModal({ classId, onClose, onSuccess }) {

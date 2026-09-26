@@ -49,6 +49,14 @@ const formatSessionNotification = (session, mode) => {
     };
   }
 
+  if (mode === "rescheduled") {
+    return {
+      title: "Lịch buổi học đã thay đổi",
+      message: `Buổi học “${session.title}” đã được chuyển sang ${start}.${session.change_reason ? ` Lý do: ${session.change_reason}` : ""}`,
+      dedupeKey: `live-session:${session.id}:schedule:${new Date(session.updated_at).getTime()}`,
+    };
+  }
+
   return {
     title: "Buổi học Live sắp bắt đầu",
     message: `Buổi học “${session.title}” sẽ bắt đầu lúc ${start}.`,

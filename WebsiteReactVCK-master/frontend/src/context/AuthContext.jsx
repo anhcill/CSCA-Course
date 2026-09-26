@@ -3,6 +3,7 @@ import axios from 'axios';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import toast from "react-hot-toast";
 import { useTranslation } from 'react-i18next';
+import { getLmsLandingPath } from '../utils/lmsNavigation';
 
 export const normalizeUserDto = (user) => {
     if (!user) return null;
@@ -139,9 +140,10 @@ export const AuthContextProvider = ({ children }) => {
             // userObject fields: id, avatar_url, is_vip, vip_expires_at,
             //                    email_verified, created_at, updated_at, …
             if (res.status === 200 && data.success) {
-                setAuthUser(data.message);
+                const user = normalizeUserDto(data.message);
+                setAuthUser(user);
                 setIsAuthenticated(true);
-                return true;
+                return user;
             }
 
             setIsAuthenticated(false);
@@ -176,15 +178,15 @@ export const AuthContextProvider = ({ children }) => {
             const authResult = params.get('auth');
             const reason = params.get('reason');
 
-            const authenticated = await fetchCurrentUser(abortController);
+            const authenticatedUser = await fetchCurrentUser(abortController);
 
             if (!authResult || oauthResultHandled.current || !isMounted.current) return;
             oauthResultHandled.current = true;
 
-            if (authResult === 'google-success' && authenticated) {
+            if (authResult === 'google-success' && authenticatedUser) {
                 toast.success('Đăng nhập Google thành công!');
                 if (window.location.pathname === '/' || window.location.pathname === '') {
-                    window.location.replace('/lms/my-learning');
+                    window.location.replace(getLmsLandingPath(authenticatedUser));
                 }
             } else if (authResult === 'google-success') {
                 toast.error('Không thể xác nhận phiên đăng nhập Google. Vui lòng thử lại.');

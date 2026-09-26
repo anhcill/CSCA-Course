@@ -13,6 +13,12 @@ const STUDENT_DESTINATION = /^\/(?:lms\/(?:dashboard|catalog|analytics|live-sche
 const TEACHER_DESTINATION = /^\/lms\/(?:teacher-hub|teacher(?:\/|$)|admin\/(?:curriculum|grading)$)/;
 const ADMIN_DESTINATION = /^\/admin(?:\/|$)/;
 
+export function getLmsLandingPath(authUser) {
+  if (authUser?.role === USER_ROLES.ADMIN) return "/lms/admin/overview";
+  if (isTeacherRole(authUser?.role)) return "/lms/teach";
+  return "/lms/my-learning";
+}
+
 export function resolveLmsDestination(value, authUser) {
   const rawValue = String(value || "").trim();
   if (!rawValue || rawValue === "#") return null;

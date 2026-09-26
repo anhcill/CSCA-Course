@@ -60,7 +60,7 @@ import AssignmentListPage from "./features/assignments/pages/AssignmentListPage.
 import AssignmentSubmitPage from "./features/assignments/pages/AssignmentSubmitPage.jsx";
 import QuizPlayerPage from "./features/assignments/pages/QuizPlayerPage.jsx";
 import TeacherGradingPage from "./features/assignments/pages/TeacherGradingPage.jsx";
-import TeacherHubPage from "./features/admin/pages/TeacherHubPage.jsx";
+import TeacherHubPage from "./features/teacher/pages/TeacherHubPage.jsx";
 import TeacherSchedulePage from "./features/teacher/pages/TeacherSchedulePage.jsx";
 import TeacherAttendancePage from "./features/teacher/pages/TeacherAttendancePage.jsx";
 import TeacherClassDetailPage from "./features/teacher/pages/TeacherClassDetailPage.jsx";
@@ -97,29 +97,13 @@ function AppRoutes() {
       <Route path="/about" element={<About />} />
       <Route path="/policy-and-legal" element={<PoliceAndLegal />} />
       <Route path="/post/:id" element={<PostDetail />} />
-      <Route path="/detail-course/:id" element={
-        <ProtectedRoute>
-          <DetailCourse />
-        </ProtectedRoute>
-      } />
-      <Route path="/profile" element={
-        <ProtectedRoute>
-          <Profile />
-        </ProtectedRoute>
-      } />
+      <Route path="/detail-course/:id" element={<ProtectedRoute><DetailCourse /></ProtectedRoute>} />
+      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/unauthorized" element={<Unauthorized />} />
       <Route path="/forbidden" element={<Forbidden />} />
-
-      {/* Legacy authenticated website routes */}
-      <Route path="/select-course" element={
-        <ProtectedRoute><SelectCourse /></ProtectedRoute>
-      } />
-      <Route path="/select-level" element={
-        <ProtectedRoute><SelectLevel /></ProtectedRoute>
-      } />
-      <Route path="/shedule" element={
-        <ProtectedRoute><Schedule /></ProtectedRoute>
-      } />
+      <Route path="/select-course" element={<ProtectedRoute><SelectCourse /></ProtectedRoute>} />
+      <Route path="/select-level" element={<ProtectedRoute><SelectLevel /></ProtectedRoute>} />
+      <Route path="/shedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
 
       {/* === Student LMS === */}
       <Route path="/lms" element={<Navigate to="/lms/my-learning" replace />} />
@@ -162,6 +146,8 @@ function AppRoutes() {
       <Route path="/lms/teach" element={<TeacherHubPage />} />
       <Route path="/lms/teach/classes" element={<TeacherSchedulePage />} />
       <Route path="/lms/teach/classes/:classId" element={<TeacherClassDetailPage />} />
+      <Route path="/lms/teach/classes/:classId/attendance" element={<TeacherAttendancePage />} />
+      <Route path="/lms/teach/attendance" element={<TeacherAttendancePage />} />
       <Route path="/lms/teach/calendar" element={<ClassCalendarPage />} />
       <Route path="/lms/teacher-hub" element={<Navigate to="/lms/teach" replace />} />
       <Route path="/lms/teacher/schedule" element={<Navigate to="/lms/teach/calendar" replace />} />

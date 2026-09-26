@@ -168,10 +168,12 @@ export const updateLiveClass = async ({ classId, title, description, maxStudents
   })
 );
 
-export const fetchMyLiveSchedule = async ({ courseId, classId } = {}) => {
+export const fetchMyLiveSchedule = async ({ courseId, classId, from, to } = {}) => {
   const params = new URLSearchParams();
   if (courseId) params.set("courseId", courseId);
   if (classId) params.set("classId", classId);
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
   return request(`/live-classes/my-schedule${params.size ? `?${params.toString()}` : ""}`);
 };
 
@@ -186,10 +188,10 @@ export const fetchLiveClassSessions = async (classId) => (
   request(`/live-classes/${encodeURIComponent(classId)}/sessions`)
 );
 
-export const updateLiveSession = async ({ sessionId, title, startTime, endTime, meetUrl, passcode, status }) => (
+export const updateLiveSession = async ({ sessionId, title, startTime, endTime, meetUrl, passcode, status, changeReason }) => (
   request(`/live-classes/sessions/${encodeURIComponent(sessionId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status }),
+    body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status, changeReason }),
   })
 );
 
@@ -218,23 +220,31 @@ export const fetchLiveClassSchedules = async (classId) => (
   request(`/live-classes/${encodeURIComponent(classId)}/schedules`)
 );
 
-export const createLiveClassSchedule = async ({ classId, dayOfWeek, startTime, endTime }) => (
+export const createLiveClassSchedule = async ({
+  classId, dayOfWeek, startTime, endTime, title, timezone, startDate, endDate,
+}) => (
   request(`/live-classes/${encodeURIComponent(classId)}/schedules`, {
     method: "POST",
-    body: JSON.stringify({ dayOfWeek, startTime, endTime }),
+    body: JSON.stringify({ dayOfWeek, startTime, endTime, title, timezone, startDate, endDate }),
   })
 );
 
-export const updateLiveClassSchedule = async ({ classId, scheduleId, dayOfWeek, startTime, endTime }) => (
+export const updateLiveClassSchedule = async ({
+  classId, scheduleId, dayOfWeek, startTime, endTime, title, timezone,
+  startDate, endDate, version, changeReason,
+}) => (
   request(`/live-classes/${encodeURIComponent(classId)}/schedules/${encodeURIComponent(scheduleId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ dayOfWeek, startTime, endTime }),
+    body: JSON.stringify({
+      dayOfWeek, startTime, endTime, title, timezone, startDate, endDate, version, changeReason,
+    }),
   })
 );
 
-export const deleteLiveClassSchedule = async ({ classId, scheduleId }) => (
+export const deleteLiveClassSchedule = async ({ classId, scheduleId, changeReason }) => (
   request(`/live-classes/${encodeURIComponent(classId)}/schedules/${encodeURIComponent(scheduleId)}`, {
     method: "DELETE",
+    ...(changeReason === undefined ? {} : { body: JSON.stringify({ changeReason }) }),
   })
 );
 
