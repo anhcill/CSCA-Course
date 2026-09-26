@@ -152,11 +152,19 @@ export const createSection = async ({ courseId, title, sortOrder }) => (
   })
 );
 
-export const createLesson = async ({ sectionId, courseId, title, videoAssetId, durationSeconds, isPreview, sortOrder }) => (
+export const createLesson = async ({ sectionId, courseId, title, videoAssetId, durationSeconds, isPreview, sortOrder, learningUrl }) => (
   request(`/courses/admin/sections/${encodeURIComponent(sectionId)}/lessons`, {
     method: "POST",
-    body: JSON.stringify({ courseId, title, videoAssetId, durationSeconds, isPreview, sortOrder }),
+    body: JSON.stringify({ courseId, title, videoAssetId, durationSeconds, isPreview, sortOrder, learningUrl }),
   })
+);
+
+export const updateLessonLearningLink = async ({ lessonId, learningUrl }) => request(
+  `/courses/admin/lessons/${encodeURIComponent(lessonId)}/learning-link`,
+  {
+    method: "PATCH",
+    body: JSON.stringify({ learningUrl }),
+  },
 );
 
 // Live Classes & Google Meet/Zoom Helpers

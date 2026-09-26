@@ -1,11 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   fetchClassroomDetail,
   fetchCourseProgress,
   sendProgressHeartbeat,
-  fetchVideoPlaybackUrl,
   fetchLessonNotes,
   createLessonNote,
   deleteLessonNote,
@@ -13,26 +12,18 @@ import {
   postLessonComment,
 } from "../../api/lmsClient";
 import { LoadingState, ErrorState } from "../../../components/common/StateView";
-import Loading from "../../../components/Loading.jsx";
 
 export default function ClassroomPage() {
   const { courseId, classId } = useParams();
-  const videoRef = useRef(null);
-  const videoRequestRef = useRef(0);
 
   const [courseData, setCourseData] = useState(null);
   const [activeLesson, setActiveLesson] = useState(null);
-  const [playbackUrl, setPlaybackUrl] = useState("");
   const [progressMap, setProgressMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [loadingVideo, setLoadingVideo] = useState(false);
-  const [videoError, setVideoError] = useState(false);
-  const [videoErrorMessage, setVideoErrorMessage] = useState("");
 
   // Tabs state
   const [activeTab, setActiveTab] = useState("content");
-  const [currentTime, setCurrentTime] = useState(0);
 
   // Notes state
   const [notes, setNotes] = useState([]);
@@ -114,103 +105,13 @@ export default function ClassroomPage() {
     loadClassroomData();
   }, [loadClassroomData]);
 
-  // Load video playback URL whenever activeLesson changes
+  // Lesson-specific collaboration data is loaded whenever the learner changes lesson.
   useEffect(() => {
     if (!activeLesson) return;
 
-    const currentRequestId = ++videoRequestRef.current;
-    setLoadingVideo(true);
-    setVideoError(false);
-    setVideoErrorMessage("");
-    setPlaybackUrl("");
-
-    // Load contextual notes and discussions for this lesson
     loadLessonNotes(activeLesson.id);
     loadLessonComments(activeLesson.id);
-
-    fetchVideoPlaybackUrl({ lessonId: activeLesson.id })
-      .then((res) => {
-        if (videoRequestRef.current !== currentRequestId) return;
-        if (res?.success && res.data?.playbackUrl) {
-          setPlaybackUrl(res.data.playbackUrl);
-        } else {
-          setVideoError(true);
-          setVideoErrorMessage("Bài học này chưa có video hoặc video đang trong quá trình chuyển mã.");
-        }
-      })
-      .catch((err) => {
-        if (videoRequestRef.current !== currentRequestId) return;
-        setVideoError(true);
-        setVideoErrorMessage(err.message || "Không thể cấp quyền phát video bảo mật.");
-      })
-      .finally(() => {
-        if (videoRequestRef.current === currentRequestId) {
-          setLoadingVideo(false);
-        }
-      });
   }, [activeLesson, loadLessonNotes, loadLessonComments]);
-
-  // Periodic heartbeat sync for video watch time
-  useEffect(() => {
-    if (!activeLesson) return;
-
-    const interval = setInterval(() => {
-      if (videoRef.current && !videoRef.current.paused && !videoRef.current.ended) {
-        const time = Math.floor(videoRef.current.currentTime);
-        if (time > 0) {
-          sendProgressHeartbeat({
-            lessonId: activeLesson.id,
-            courseId: courseData?.course?.id || courseId,
-            lastPositionSeconds: time,
-            isCompleted: false,
-          }).catch(() => {});
-        }
-      }
-    }, 15000); // sync every 15s
-
-    return () => clearInterval(interval);
-  }, [activeLesson, courseData?.course?.id, courseId]);
-
-  // Video Event Handlers
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
-  };
-
-  const handleLoadedMetadata = () => {
-    if (videoRef.current && activeLesson) {
-      const savedProgress = progressMap[activeLesson.id];
-      if (savedProgress?.watched_seconds && !savedProgress.is_completed) {
-        // Auto-resume from previous checkpoint
-        videoRef.current.currentTime = savedProgress.watched_seconds;
-      }
-    }
-  };
-
-  const handleVideoEnded = async () => {
-    if (!activeLesson) return;
-    try {
-      const dur = Math.floor(videoRef.current?.duration || activeLesson.duration_seconds || 600);
-      await sendProgressHeartbeat({
-        lessonId: activeLesson.id,
-        courseId: courseData?.course?.id || courseId,
-        lastPositionSeconds: dur,
-        isCompleted: true,
-      });
-      setProgressMap((prev) => ({
-        ...prev,
-        [activeLesson.id]: {
-          ...(prev[activeLesson.id] || {}),
-          is_completed: true,
-          watched_seconds: dur,
-        },
-      }));
-      toast.success("🎉 Bạn đã hoàn thành bài học này!");
-    } catch {
-      // ignore
-    }
-  };
 
   const handleManualComplete = async () => {
     if (!activeLesson) return;
@@ -241,16 +142,15 @@ export default function ClassroomPage() {
     if (!noteText.trim() || !activeLesson) return;
     setSubmittingNote(true);
     try {
-      const time = Math.floor(currentTime);
       const res = await createLessonNote({
         lessonId: activeLesson.id,
-        timestampSeconds: time,
+        timestampSeconds: 0,
         content: noteText.trim(),
       });
       if (!res?.success || !res.data) throw new Error(res?.message || "Không thể lưu ghi chú.");
       setNotes((prev) => [res.data, ...prev]);
       setNoteText("");
-      toast.success("Đã lưu ghi chú tại " + formatTime(time));
+      toast.success("Đã lưu ghi chú.");
     } catch (err) {
       toast.error(err.message || "Không thể lưu ghi chú.");
     } finally {
@@ -296,39 +196,6 @@ export default function ClassroomPage() {
     } finally {
       setSubmittingComment(false);
     }
-  };
-
-  const handleSeek = (seconds) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = seconds;
-      videoRef.current.play();
-    }
-  };
-
-  const handleReloadVideo = () => {
-    if (!activeLesson) return;
-    setLoadingVideo(true);
-    setVideoError(false);
-    fetchVideoPlaybackUrl({ lessonId: activeLesson.id })
-      .then((res) => {
-        if (res?.success && res.data?.playbackUrl) setPlaybackUrl(res.data.playbackUrl);
-      })
-      .catch((err) => {
-        setVideoError(true);
-        setVideoErrorMessage(err.message);
-      })
-      .finally(() => setLoadingVideo(false));
-  };
-
-  const formatTime = (seconds) => {
-    if (isNaN(seconds) || seconds === null) return "00:00";
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    if (h > 0) {
-      return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-    }
-    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
   if (loading) {
@@ -391,10 +258,70 @@ export default function ClassroomPage() {
     setShowMobileSidebar(false);
   };
 
+  const renderLessonButtons = (items) => (
+    <div className="space-y-1.5">
+      {items.map((lesson) => {
+        const isCurrent = String(activeLesson?.id) === String(lesson.id);
+        const isDone = progressMap[lesson.id]?.is_completed;
+        const accessible = isLessonAccessible(lesson);
+
+        return (
+          <button
+            key={lesson.id}
+            onClick={() => handleSelectLesson(lesson)}
+            className={`w-full p-3 rounded-xl text-left flex items-center justify-between transition text-sm ${
+              isCurrent
+                ? "bg-blue-600 text-white font-bold shadow-md shadow-blue-600/25"
+                : accessible
+                  ? "bg-slate-50 dark:bg-slate-800/60 hover:bg-blue-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-800"
+                  : "bg-slate-50 dark:bg-slate-800/30 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/50 cursor-pointer border border-slate-100 dark:border-slate-800"
+            }`}
+          >
+            <div className="flex items-center gap-3 truncate">
+              <span className="text-xs flex-shrink-0">
+                {isDone ? (
+                  <span className="text-emerald-500 font-bold">✓</span>
+                ) : !accessible ? (
+                  <span className="text-slate-400 dark:text-slate-500" title="Bài học bị khóa">🔒</span>
+                ) : isCurrent ? (
+                  <span>▶</span>
+                ) : (
+                  <span className="text-slate-400 dark:text-slate-500">○</span>
+                )}
+              </span>
+              <span className="truncate">{lesson.title}</span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0 pl-2">
+              {lesson.learning_url && (
+                <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-white/15 text-current border border-current/20">
+                  Link
+                </span>
+              )}
+              {lesson.is_preview && (
+                <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40">
+                  Thử
+                </span>
+              )}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   // Reusable Curriculum List Component
-  const CurriculumList = () => (
-    <div className="space-y-6">
-      {sections.map((section, idx) => {
+  const CurriculumList = () => {
+    const sectionIds = new Set(sections.map((section) => String(section.id)));
+    const unsectionedLessons = lessons.filter((lesson) => !sectionIds.has(String(lesson.section_id)));
+
+    if (lessons.length === 0) {
+      return <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-8">Khóa học chưa có bài học nào.</p>;
+    }
+
+    return (
+      <div className="space-y-6">
+        {sections.map((section, idx) => {
         const sectionLessons = lessons.filter((l) => String(l.section_id) === String(section.id));
         const completedInSection = sectionLessons.filter((l) => progressMap[l.id]?.is_completed).length;
         const totalInSection = sectionLessons.length;
@@ -410,58 +337,24 @@ export default function ClassroomPage() {
               </span>
             </div>
 
-            <div className="space-y-1.5">
-              {sectionLessons.map((lesson) => {
-                const isCurrent = String(activeLesson?.id) === String(lesson.id);
-                const isDone = progressMap[lesson.id]?.is_completed;
-                const accessible = isLessonAccessible(lesson);
-
-                return (
-                  <button
-                    key={lesson.id}
-                    onClick={() => handleSelectLesson(lesson)}
-                    className={`w-full p-3 rounded-xl text-left flex items-center justify-between transition text-sm ${
-                      isCurrent
-                        ? "bg-blue-600 text-white font-bold shadow-md shadow-blue-600/25"
-                        : accessible
-                        ? "bg-slate-50 dark:bg-slate-800/60 hover:bg-blue-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-800"
-                        : "bg-slate-50 dark:bg-slate-800/30 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/50 cursor-pointer border border-slate-100 dark:border-slate-800"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 truncate">
-                      <span className="text-xs flex-shrink-0">
-                        {isDone ? (
-                          <span className="text-emerald-500 font-bold">✓</span>
-                        ) : !accessible ? (
-                          <span className="text-slate-400 dark:text-slate-500" title="Bài học bị khóa">🔒</span>
-                        ) : isCurrent ? (
-                          <span>▶</span>
-                        ) : (
-                          <span className="text-slate-400 dark:text-slate-500">○</span>
-                        )}
-                      </span>
-                      <span className="truncate">{lesson.title}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0 pl-2">
-                      {lesson.is_preview && (
-                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40">
-                          Thử
-                        </span>
-                      )}
-                      <span className="text-[10px] font-mono opacity-60">
-                        {Math.floor(lesson.duration_seconds / 60)}p
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            {sectionLessons.length > 0 ? renderLessonButtons(sectionLessons) : (
+              <p className="px-3 py-2 text-xs text-slate-400 dark:text-slate-500">Chương này chưa có bài học.</p>
+            )}
           </div>
         );
       })}
-    </div>
-  );
+        {unsectionedLessons.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Bài học chưa phân chương</h4>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">{unsectionedLessons.length} bài</span>
+            </div>
+            {renderLessonButtons(unsectionedLessons)}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col lg:flex-row min-h-[calc(100vh-72px)] bg-[#f6f9fd] dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans transition-colors duration-200">
@@ -506,64 +399,30 @@ export default function ClassroomPage() {
           </div>
         </div>
 
-        {/* Video Player Container */}
-        <div className="bg-black flex items-center justify-center p-0 md:p-4 relative min-h-[300px] md:min-h-[480px]">
-          {/* Loading Video Overlay */}
-          {loadingVideo && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20">
-              <Loading loading={true} text="Đang nạp luồng video Cloudflare R2..." fullScreen={false} />
+        {/* Lesson link: course content now opens from the link supplied by the teacher/admin. */}
+        <div className="p-5 md:p-8 bg-gradient-to-br from-blue-50 via-white to-sky-50 dark:from-slate-900 dark:via-slate-900 dark:to-blue-950/30 border-b border-slate-200 dark:border-slate-800 min-h-[260px] flex items-center justify-center">
+          <div className="w-full max-w-3xl rounded-3xl border border-blue-100 dark:border-blue-900/60 bg-white/90 dark:bg-slate-950/70 shadow-xl shadow-blue-950/5 p-6 md:p-8 text-center space-y-4">
+            <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center bg-blue-600 text-white text-2xl shadow-lg shadow-blue-600/30">↗</div>
+            <div className="space-y-2">
+              <span className="inline-flex text-[10px] uppercase tracking-wider font-bold rounded-full px-2.5 py-1 bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-sky-300 border border-blue-100 dark:border-blue-900/60">Link học của bài</span>
+              <h2 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white">{activeLesson?.title || "Chọn bài học để bắt đầu"}</h2>
+              <p className="text-sm text-slate-600 dark:text-slate-300 max-w-xl mx-auto">
+                {activeLesson?.learning_url
+                  ? "Nhấn nút bên dưới để mở nội dung học do giảng viên cung cấp trong một tab mới."
+                  : "Giảng viên chưa công bố link học cho bài này. Vui lòng quay lại sau hoặc liên hệ giảng viên."}
+              </p>
             </div>
-          )}
-
-          {/* R2 Playback Error Fallback State */}
-          {videoError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 space-y-4 z-20 p-6 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center text-2xl">
-                ⚠️
-              </div>
-              <div className="space-y-1 max-w-md">
-                <h3 className="text-base font-bold text-white">Không Thể Phát Video Bài Học</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  {videoErrorMessage || "Đường truyền video bảo mật Cloudflare R2 có thể đã hết hạn mã ký hoặc kết nối mạng bị gián đoạn."}
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={handleReloadVideo}
-                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition shadow-lg shadow-rose-600/30 flex items-center gap-2"
-                >
-                  <span>🔄 Tải Lại Bài Học</span>
-                </button>
-                <a
-                  href="https://zalo.me/0987654321"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
-                >
-                  Báo Lỗi Kỹ Thuật
-                </a>
-              </div>
-            </div>
-          )}
-
-          {/* HTML5 Secure Video Element */}
-          {playbackUrl && !videoError && (
-            <video
-              ref={videoRef}
-              src={playbackUrl}
-              controls
-              autoPlay
-              onLoadedMetadata={handleLoadedMetadata}
-              onEnded={handleVideoEnded}
-              onTimeUpdate={handleTimeUpdate}
-              onError={() => {
-                setPlaybackUrl("");
-                setVideoErrorMessage("Không thể tải luồng video bảo mật. Vui lòng thử tải lại.");
-                setVideoError(true);
-              }}
-              className="w-full max-w-5xl max-h-[70vh] rounded-none md:rounded-2xl shadow-2xl border border-slate-900 object-cover"
-            />
-          )}
+            {activeLesson?.learning_url && (
+              <a
+                href={activeLesson.learning_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition shadow-lg shadow-blue-600/25"
+              >
+                Mở link học <span aria-hidden="true">↗</span>
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Lesson Information & Navigation Bar */}
@@ -571,7 +430,7 @@ export default function ClassroomPage() {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-300 border border-blue-100 dark:border-blue-900/40">
-                R2 Secure Stream
+                Link học
               </span>
               {progressMap[activeLesson?.id]?.is_completed && (
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40">
@@ -581,7 +440,7 @@ export default function ClassroomPage() {
             </div>
             <h2 className="text-lg md:text-xl font-bold text-slate-900 dark:text-white">{activeLesson?.title}</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-              Thời lượng bài giảng: {Math.floor((activeLesson?.duration_seconds || 600) / 60)} phút
+              Học xong nội dung ở link, hãy đánh dấu hoàn thành để cập nhật tiến độ.
             </p>
           </div>
 
@@ -621,7 +480,7 @@ export default function ClassroomPage() {
           </div>
         </div>
 
-        {/* Tab System below video */}
+        {/* Lesson details, notes and discussion */}
         <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex-1 flex flex-col min-h-[420px]">
           {/* Tab Navigation */}
           <div className="flex border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto px-6 gap-6">
@@ -696,7 +555,7 @@ export default function ClassroomPage() {
                     <strong className="text-blue-700 dark:text-sky-400">&ldquo;{activeLesson?.title}&rdquo;</strong>
                     {activeLesson?.description
                       ? ` — ${activeLesson.description}`
-                      : " chưa có mô tả chi tiết. Hãy theo dõi video và hoàn thành bài học theo lộ trình."}
+                      : " chưa có mô tả chi tiết. Hãy mở link học và hoàn thành bài theo lộ trình."}
                   </p>
                 </div>
 
@@ -706,7 +565,9 @@ export default function ClassroomPage() {
                     <span>Thông tin bài học:</span>
                   </h4>
                   <p className="text-xs text-slate-600 dark:text-slate-300">
-                    {activeLesson?.has_video ? "Video đã được cấp quyền theo enrollment của bạn." : "Video chưa được gắn cho bài học này."}
+                    {activeLesson?.learning_url
+                      ? "Link học đã được cấp cho tài khoản đã đăng ký khóa học."
+                      : "Giảng viên chưa gắn link học cho bài này."}
                   </p>
                 </div>
               </div>
@@ -718,10 +579,7 @@ export default function ClassroomPage() {
                 {/* Note creation input form */}
                 <form onSubmit={handleAddNote} className="space-y-3 bg-slate-50 dark:bg-slate-800/50 p-4 border border-slate-200 dark:border-slate-800 rounded-2xl">
                   <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <span>Thêm ghi chú học tập</span>
-                    <span>
-                      Vị trí video: <strong className="text-blue-700 dark:text-sky-300 font-mono bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded">{formatTime(currentTime)}</strong>
-                    </span>
+                    <span>Thêm ghi chú học tập cho bài này</span>
                   </div>
                   <div className="flex gap-2">
                     <input
@@ -751,13 +609,9 @@ export default function ClassroomPage() {
                         className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-start justify-between gap-4"
                       >
                         <div className="space-y-1.5">
-                          <button
-                            onClick={() => handleSeek(note.timestamp_s || 0)}
-                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-300 text-xs font-bold font-mono hover:bg-blue-100 dark:hover:bg-blue-900/60 transition border border-blue-100 dark:border-blue-900/40"
-                            title="Nhấp để phát video tại thời điểm này"
-                          >
-                            ⏱️ {formatTime(note.timestamp_s || 0)}
-                          </button>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-300 text-xs font-bold border border-blue-100 dark:border-blue-900/40">
+                            📝 Ghi chú bài học
+                          </span>
                           <p className="text-sm text-slate-700 dark:text-slate-200">{note.content}</p>
                         </div>
                         <button

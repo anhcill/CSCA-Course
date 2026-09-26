@@ -45,6 +45,25 @@ const normalizeSlug = (value) => value
   .replace(/^-+|-+$/g, "")
   .slice(0, 300);
 
+const parseLearningUrl = (value) => {
+  if (value === undefined || value === null || value === "") return { value: null };
+  if (typeof value !== "string") return { error: "Link học không hợp lệ" };
+
+  const candidate = value.trim();
+  if (!candidate) return { value: null };
+  if (candidate.length > 2_000) return { error: "Link học không được dài quá 2.000 ký tự" };
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+      return { error: "Link học phải là URL HTTPS hợp lệ" };
+    }
+    return { value: parsed.toString() };
+  } catch {
+    return { error: "Link học phải là URL HTTPS hợp lệ" };
+  }
+};
+
 const COURSE_FIELDS = `
   c.id, c.name, COALESCE(c.title, c.name) AS title, c.slug, c.description,
   c.category, c.level, COALESCE(c.price, 0) AS price,
@@ -189,7 +208,7 @@ router.get("/admin/:courseId", protectRoute, requireTeacher, async (req, res) =>
       query(
         `SELECT l.id, l.course_id, l.section_id, COALESCE(l.title, l.name) AS title, l.description,
                 COALESCE(l.duration_seconds, l.video_duration_seconds, 0) AS duration_seconds,
-                l.is_preview, l.is_published, l.sort_order, (va.id IS NOT NULL) AS has_video
+                l.is_preview, l.is_published, l.sort_order, l.learning_url, (va.id IS NOT NULL) AS has_video
          FROM lessons l
          LEFT JOIN video_assets va ON va.id = l.video_asset_id AND va.status = 'ready'
          WHERE l.course_id = $1 ORDER BY l.sort_order ASC, l.id ASC`,
@@ -715,7 +734,7 @@ router.get("/:slug/classroom", protectRoute, async (req, res) => {
       query(
         `SELECT l.id, l.course_id, l.section_id, COALESCE(l.title, l.name) AS title, l.description,
                 COALESCE(l.duration_seconds, l.video_duration_seconds, 0) AS duration_seconds,
-                l.is_preview, l.sort_order, (va.id IS NOT NULL) AS has_video
+                l.is_preview, l.sort_order, l.learning_url, (va.id IS NOT NULL) AS has_video
          FROM lessons l
          LEFT JOIN video_assets va ON va.id = l.video_asset_id AND va.status = 'ready'
          WHERE l.course_id = $1 AND l.is_published = true
@@ -891,7 +910,7 @@ router.post("/admin/:courseId/sections", protectRoute, requireTeacher, async (re
 router.post("/admin/sections/:sectionId/lessons", protectRoute, requireTeacher, async (req, res) => {
   try {
     const sectionId = parsePositiveId(req.params.sectionId);
-    const { courseId, title, videoAssetId, durationSeconds, isPreview, sortOrder } = req.body;
+    const { courseId, title, videoAssetId, durationSeconds, isPreview, sortOrder, learningUrl } = req.body;
     const parsedCourseId = parsePositiveId(courseId);
     if (!sectionId || !parsedCourseId || typeof title !== "string" || !title.trim()) {
       return validationError(res, "Thiếu tiêu đề hoặc courseId");
@@ -923,12 +942,15 @@ router.post("/admin/sections/:sectionId/lessons", protectRoute, requireTeacher, 
     if (!Number.isInteger(parsedDuration) || parsedDuration < 0 || parsedDuration > 86400) return validationError(res, "durationSeconds không hợp lệ");
     if (!Number.isInteger(parsedSortOrder) || parsedSortOrder < 0) return validationError(res, "sortOrder không hợp lệ");
     if (isPreview !== undefined && typeof isPreview !== "boolean") return validationError(res, "isPreview không hợp lệ");
+    const parsedLearningUrl = parseLearningUrl(learningUrl);
+    if (parsedLearningUrl.error) return validationError(res, parsedLearningUrl.error);
+    if (!parsedLearningUrl.value) return validationError(res, "Link học là bắt buộc khi tạo bài học");
 
     const result = await query(
-      `INSERT INTO lessons (section_id, course_id, name, title, video_asset_id, duration_seconds, is_preview, sort_order, is_published)
-       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, true)
+      `INSERT INTO lessons (section_id, course_id, name, title, video_asset_id, duration_seconds, is_preview, sort_order, learning_url, is_published)
+       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, true)
        RETURNING *`,
-      [sectionId, parsedCourseId, title.trim(), parsedVideoAssetId, parsedDuration, Boolean(isPreview), parsedSortOrder],
+      [sectionId, parsedCourseId, title.trim(), parsedVideoAssetId, parsedDuration, Boolean(isPreview), parsedSortOrder, parsedLearningUrl.value],
     );
 
     return res.status(201).json({
@@ -939,6 +961,40 @@ router.post("/admin/sections/:sectionId/lessons", protectRoute, requireTeacher, 
   } catch (error) {
     console.error("Error creating lesson:", error);
     return res.status(500).json({ success: false, message: "Lỗi khi tạo bài học", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+// Teacher/Admin: replace or clear the learning link for an existing lesson.
+router.patch("/admin/lessons/:lessonId/learning-link", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const lessonId = parsePositiveId(req.params.lessonId);
+    if (!lessonId) return validationError(res, "lessonId không hợp lệ");
+
+    const lessonResult = await query("SELECT id, course_id FROM lessons WHERE id = $1", [lessonId]);
+    if (lessonResult.rows.length === 0) return notFound(res, "Không tìm thấy bài học");
+
+    const ownership = await checkCourseOwner(lessonResult.rows[0].course_id, req.user);
+    if (ownership.status === 403) return forbidden(res, "Bạn không có quyền sửa khóa học này");
+    if (ownership.status === 404) return notFound(res, "Không tìm thấy khóa học");
+
+    if (!Object.prototype.hasOwnProperty.call(req.body, "learningUrl")) {
+      return validationError(res, "Thiếu learningUrl");
+    }
+    const parsedLearningUrl = parseLearningUrl(req.body.learningUrl);
+    if (parsedLearningUrl.error) return validationError(res, parsedLearningUrl.error);
+
+    const result = await query(
+      "UPDATE lessons SET learning_url = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+      [parsedLearningUrl.value, lessonId],
+    );
+    return res.json({
+      success: true,
+      data: result.rows[0],
+      message: parsedLearningUrl.value ? "Đã cập nhật link học" : "Đã gỡ link học",
+    });
+  } catch (error) {
+    console.error("Error updating lesson learning link:", error);
+    return internalError(res, "Không thể cập nhật link học");
   }
 });
 

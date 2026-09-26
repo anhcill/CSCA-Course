@@ -37,6 +37,7 @@ const migrationFiles = [
   "database/migrations/020_class_calendar_core.sql",
   "database/migrations/022_notification_delivery.sql",
   "database/migrations/023_management_calendar_delivery.sql",
+  "database/migrations/024_lesson_learning_links.sql",
 ];
 
 const filesToRun = process.env.RUN_SEEDS === "true"

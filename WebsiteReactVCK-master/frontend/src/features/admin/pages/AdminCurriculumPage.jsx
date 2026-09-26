@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
-import VideoUploader from "../components/VideoUploader";
 import {
   fetchAdminCourses,
   fetchAdminCourseDetail,
   createCourse,
   createSection,
   createLesson,
+  updateLessonLearningLink,
   updateCourseStatus,
 } from "../../api/lmsClient";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
@@ -23,13 +23,12 @@ export default function AdminCurriculumPage() {
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [showSectionModal, setShowSectionModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
+  const [showLearningLinkModal, setShowLearningLinkModal] = useState(false);
   const [selectedSectionId, setSelectedSectionId] = useState(null);
+  const [selectedLesson, setSelectedLesson] = useState(null);
 
   // Active accordion section
   const [activeSectionId, setActiveSectionId] = useState(null);
-
-  // Uploaded video assets from VideoUploader
-  const [uploadedVideos, setUploadedVideos] = useState([]);
 
   // Course Form State
   const [courseForm, setCourseForm] = useState({
@@ -51,12 +50,13 @@ export default function AdminCurriculumPage() {
   // Lesson Form State
   const [lessonForm, setLessonForm] = useState({
     title: "",
-    videoAssetId: "",
-    r2Key: "",
+    learningUrl: "",
     durationSeconds: 600,
     isPreview: false,
   });
   const [submittingLesson, setSubmittingLesson] = useState(false);
+  const [learningUrl, setLearningUrl] = useState("");
+  const [savingLearningLink, setSavingLearningLink] = useState(false);
 
   // Course status toggles (Draft / Published)
   const [courseStatuses, setCourseStatuses] = useState({});
@@ -214,8 +214,7 @@ export default function AdminCurriculumPage() {
     setSelectedSectionId(sectionId);
     setLessonForm({
       title: "",
-      videoAssetId: "",
-      r2Key: "",
+      learningUrl: "",
       durationSeconds: 600,
       isPreview: false,
     });
@@ -231,7 +230,7 @@ export default function AdminCurriculumPage() {
         sectionId: selectedSectionId,
         courseId: selectedCourse.id,
         title: lessonForm.title.trim(),
-        videoAssetId: lessonForm.videoAssetId,
+        learningUrl: lessonForm.learningUrl.trim(),
         durationSeconds: Number(lessonForm.durationSeconds) || 600,
         isPreview: Boolean(lessonForm.isPreview),
         sortOrder: (courseDetail?.lessons?.filter((l) => String(l.section_id) === String(selectedSectionId)).length || 0) + 1,
@@ -247,12 +246,11 @@ export default function AdminCurriculumPage() {
         setShowLessonModal(false);
         setLessonForm({
           title: "",
-          videoAssetId: "",
-          r2Key: "",
+          learningUrl: "",
           durationSeconds: 600,
           isPreview: false,
         });
-        toast.success("Đã thêm bài giảng vào chương thành công! 🎥");
+        toast.success("Đã thêm bài học vào chương thành công!");
       } else {
         toast.error(res.message || "Lỗi tạo bài giảng!");
       }
@@ -261,6 +259,41 @@ export default function AdminCurriculumPage() {
       toast.error("Lỗi khi thêm bài giảng!");
     } finally {
       setSubmittingLesson(false);
+    }
+  };
+
+  const handleOpenLearningLinkModal = (lesson) => {
+    setSelectedLesson(lesson);
+    setLearningUrl(lesson.learning_url || "");
+    setShowLearningLinkModal(true);
+  };
+
+  const handleSaveLearningLink = async (event) => {
+    event.preventDefault();
+    if (!selectedLesson) return;
+    setSavingLearningLink(true);
+    try {
+      const res = await updateLessonLearningLink({
+        lessonId: selectedLesson.id,
+        learningUrl: learningUrl.trim(),
+      });
+      if (!res?.success || !res.data) throw new Error(res?.message || "Không thể cập nhật link học");
+      setCourseDetail((prev) => ({
+        ...prev,
+        lessons: (prev?.lessons || []).map((lesson) => (
+          String(lesson.id) === String(selectedLesson.id)
+            ? { ...lesson, ...res.data }
+            : lesson
+        )),
+      }));
+      setShowLearningLinkModal(false);
+      setSelectedLesson(null);
+      toast.success(res.message || "Đã cập nhật link học");
+    } catch (err) {
+      console.error("Error updating learning link:", err);
+      toast.error(err.message || "Không thể cập nhật link học.");
+    } finally {
+      setSavingLearningLink(false);
     }
   };
 
@@ -293,14 +326,6 @@ export default function AdminCurriculumPage() {
             <span>Tạo Khóa Học Mới</span>
           </button>
         </div>
-
-        {/* Video Uploader Section */}
-        <VideoUploader
-          onVideoUploaded={(asset) => {
-            setUploadedVideos((prev) => [asset, ...prev]);
-            toast.success(`Đã lưu video "${asset.title || asset.filename}" vào kho Cloudflare R2!`);
-          }}
-        />
 
         {/* Courses Table / Management Grid */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-6 shadow-sm">
@@ -418,7 +443,7 @@ export default function AdminCurriculumPage() {
 
             {loadingDetail ? (
               <LoadingState message="Đang tải các chương bài giảng của khóa học..." count={2} />
-            ) : !courseDetail || courseDetail.sections?.length === 0 ? (
+            ) : !courseDetail || (!(courseDetail.sections?.length) && !(courseDetail.lessons?.length)) ? (
               <div className="p-8 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200 dark:border-slate-800/80 text-center space-y-3">
                 <div className="text-3xl">📚</div>
                 <h4 className="text-base font-bold text-slate-900 dark:text-white">Chưa Có Chương Bài Giảng</h4>
@@ -434,10 +459,22 @@ export default function AdminCurriculumPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {courseDetail.sections.map((sec, idx) => {
-                  const secLessons = (courseDetail.lessons || []).filter(
-                    (l) => String(l.section_id) === String(sec.id)
+                {(() => {
+                  const knownSectionIds = new Set((courseDetail.sections || []).map((section) => String(section.id)));
+                  const unsectionedLessons = (courseDetail.lessons || []).filter(
+                    (lesson) => !knownSectionIds.has(String(lesson.section_id))
                   );
+                  const curriculumSections = [
+                    ...(courseDetail.sections || []),
+                    ...(unsectionedLessons.length > 0
+                      ? [{ id: "unsectioned", title: "Bài học chưa phân chương", isUnsectioned: true }]
+                      : []),
+                  ];
+
+                  return curriculumSections.map((sec, idx) => {
+                  const secLessons = sec.isUnsectioned
+                    ? unsectionedLessons
+                    : (courseDetail.lessons || []).filter((lesson) => String(lesson.section_id) === String(sec.id));
                   const isOpen = activeSectionId === sec.id;
 
                   return (
@@ -452,7 +489,7 @@ export default function AdminCurriculumPage() {
                           onClick={() => setActiveSectionId(isOpen ? null : sec.id)}
                         >
                           <span className="text-xs font-mono font-bold text-rose-500 dark:text-rose-400">
-                            Chương {idx + 1}:
+                            {sec.isUnsectioned ? "Kiểm tra:" : `Chương ${idx + 1}:`}
                           </span>
                           <span className="font-semibold text-sm text-slate-900 dark:text-white">{sec.title}</span>
                           <span className="text-xs text-slate-500 font-mono">
@@ -461,12 +498,14 @@ export default function AdminCurriculumPage() {
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => handleOpenLessonModal(sec.id)}
-                            className="bg-rose-500/10 hover:bg-rose-600 text-rose-600 dark:text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
-                          >
-                            <span>+ Thêm Bài Giảng</span>
-                          </button>
+                          {!sec.isUnsectioned && (
+                            <button
+                              onClick={() => handleOpenLessonModal(sec.id)}
+                              className="bg-rose-500/10 hover:bg-rose-600 text-rose-600 dark:text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+                            >
+                              <span>+ Thêm Bài Học</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => setActiveSectionId(isOpen ? null : sec.id)}
                             className="text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs p-1"
@@ -481,7 +520,7 @@ export default function AdminCurriculumPage() {
                         <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800/60 divide-y divide-slate-200 dark:divide-slate-800/40 bg-slate-50/50 dark:bg-slate-900/30">
                           {secLessons.length === 0 ? (
                             <p className="text-xs text-slate-500 py-3 text-center">
-                              Chương này chưa có bài giảng nào. Nhấp &ldquo;+ Thêm Bài Giảng&rdquo; để thêm bài.
+                              Chương này chưa có bài học nào. Nhấp &ldquo;+ Thêm Bài Học&rdquo; để thêm bài.
                             </p>
                           ) : (
                             secLessons.map((les, lIdx) => (
@@ -499,11 +538,21 @@ export default function AdminCurriculumPage() {
                                   )}
                                 </div>
 
-                                <div className="flex items-center gap-4 text-slate-500 dark:text-slate-400 font-mono">
-                                  <span>{Math.floor((les.duration_seconds || 600) / 60)} phút</span>
-                                  <span className="text-slate-400 dark:text-slate-500 text-[10px] hidden sm:inline">
-                                    {les.r2_key ? `R2: ${les.r2_key}` : "Chưa gắn video R2"}
+                                <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                                  <span className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${
+                                    les.learning_url
+                                      ? "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800"
+                                      : "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800"
+                                  }`}>
+                                    {les.learning_url ? "✓ Đã có link học" : "Chưa có link học"}
                                   </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenLearningLinkModal(les)}
+                                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-600 hover:text-white text-rose-600 dark:text-rose-300 border border-rose-500/30 transition"
+                                  >
+                                    {les.learning_url ? "Đổi link" : "Gắn link"}
+                                  </button>
                                 </div>
                               </div>
                             ))
@@ -512,7 +561,8 @@ export default function AdminCurriculumPage() {
                       )}
                     </div>
                   );
-                })}
+                  });
+                })()}
               </div>
             )}
           </div>
@@ -682,7 +732,7 @@ export default function AdminCurriculumPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Thêm Bài Giảng Mới</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Thêm Bài Học Mới</h3>
               <button
                 onClick={() => setShowLessonModal(false)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg"
@@ -693,7 +743,7 @@ export default function AdminCurriculumPage() {
 
             <form onSubmit={handleCreateLesson} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Tên Bài Giảng</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Tên Bài Học</label>
                 <input
                   type="text"
                   required
@@ -704,54 +754,29 @@ export default function AdminCurriculumPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Thời Lượng (Giây)</label>
-                  <input
-                    type="number"
-                    min="60"
-                    step="30"
-                    value={lessonForm.durationSeconds}
-                    onChange={(e) => setLessonForm({ ...lessonForm, durationSeconds: Number(e.target.value) })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
-                  />
-                  <span className="text-[10px] text-slate-500 font-mono mt-1 block">
-                    ≈ {Math.floor((lessonForm.durationSeconds || 600) / 60)} phút
-                  </span>
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Link học</label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://drive.google.com/... hoặc link nội dung học"
+                  value={lessonForm.learningUrl}
+                  onChange={(e) => setLessonForm({ ...lessonForm, learningUrl: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
+                />
+                <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">Học viên đã được đăng ký khóa học sẽ thấy nút mở link này trong bài học.</p>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Video Cloudflare R2</label>
-                  {uploadedVideos.length > 0 ? (
-                    <select
-                      value={lessonForm.videoAssetId}
-                      onChange={(e) => {
-                        const selected = uploadedVideos.find((v) => String(v.id) === e.target.value);
-                        setLessonForm({
-                          ...lessonForm,
-                          videoAssetId: e.target.value,
-                          r2Key: selected?.r2_key || "",
-                        });
-                      }}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
-                    >
-                      <option value="">-- Chọn Video R2 --</option>
-                      {uploadedVideos.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.title || v.filename || v.r2_key}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      placeholder="Nhập R2 Key hoặc Asset ID..."
-                      value={lessonForm.r2Key}
-                      onChange={(e) => setLessonForm({ ...lessonForm, r2Key: e.target.value })}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
-                    />
-                  )}
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Thời lượng ước tính (giây)</label>
+                <input
+                  type="number"
+                  min="60"
+                  step="30"
+                  value={lessonForm.durationSeconds}
+                  onChange={(e) => setLessonForm({ ...lessonForm, durationSeconds: Number(e.target.value) })}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
+                />
               </div>
 
               <div className="flex items-center gap-2 pt-1">
@@ -780,7 +805,58 @@ export default function AdminCurriculumPage() {
                   disabled={submittingLesson || !lessonForm.title.trim()}
                   className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shadow-lg shadow-rose-600/30"
                 >
-                  {submittingLesson ? "Đang lưu..." : "Lưu Bài Giảng"}
+                  {submittingLesson ? "Đang lưu..." : "Lưu Bài Học"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Set learning link for an existing lesson */}
+      {showLearningLinkModal && selectedLesson && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex justify-between items-start gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Cập nhật link học</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">{selectedLesson.title}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLearningLinkModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg"
+                aria-label="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleSaveLearningLink} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">URL HTTPS</label>
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={learningUrl}
+                  onChange={(event) => setLearningUrl(event.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
+                />
+                <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">Để trống rồi lưu nếu muốn gỡ link hiện tại.</p>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLearningLinkModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingLearningLink}
+                  className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-xs transition"
+                >
+                  {savingLearningLink ? "Đang lưu..." : "Lưu link học"}
                 </button>
               </div>
             </form>

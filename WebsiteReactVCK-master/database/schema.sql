@@ -416,6 +416,7 @@ CREATE TABLE IF NOT EXISTS lessons (
   video_duration_seconds  INT            CHECK (video_duration_seconds >= 0),
   video_thumbnail_url     TEXT,
   video_url_legacy        TEXT,
+  learning_url            VARCHAR(2000),
   created_at              TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
   updated_at              TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
