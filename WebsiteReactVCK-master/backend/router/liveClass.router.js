@@ -10,6 +10,7 @@ import {
   notifyUpcomingSessions,
   validateMeetingUrl,
 } from "../services/liveClass.service.js";
+import { enqueueManagementCalendarDelivery } from "../services/managementCalendarDelivery.service.js";
 
 const router = express.Router();
 
@@ -185,6 +186,45 @@ const materializeScheduleSessions = async (client, schedule, liveClass) => {
   return result.rows;
 };
 
+// InternalManagement owns identity, finance and the class roster. The LMS owns
+// the teaching calendar, so it emits a durable projection event in the same
+// transaction as every recurring-calendar mutation. An unmapped LMS-only
+// class intentionally has no external event to send.
+const enqueueManagementCalendarEvents = async (client, {
+  liveClass,
+  schedule,
+  scheduleEventType,
+  createdOrUpdatedSessions = [],
+  cancelledSessions = [],
+}) => {
+  if (!liveClass.management_class_source_id) return [];
+  const correlationId = `calendar:${liveClass.id}:${schedule.id}:v${schedule.version || 1}`;
+  const events = [];
+  events.push(await enqueueManagementCalendarDelivery(client, {
+    managementClassId: liveClass.management_class_source_id,
+    eventType: scheduleEventType,
+    lmsSchedule: schedule,
+    correlationId,
+  }));
+  for (const session of createdOrUpdatedSessions) {
+    events.push(await enqueueManagementCalendarDelivery(client, {
+      managementClassId: liveClass.management_class_source_id,
+      eventType: "lms.session.upserted",
+      lmsSession: session,
+      correlationId,
+    }));
+  }
+  for (const session of cancelledSessions) {
+    events.push(await enqueueManagementCalendarDelivery(client, {
+      managementClassId: liveClass.management_class_source_id,
+      eventType: "lms.session.cancelled",
+      lmsSession: session,
+      correlationId,
+    }));
+  }
+  return events.filter(Boolean);
+};
+
 const safeClass = (row) => {
   const { meet_url: _meetUrl, passcode: _passcode, ...data } = row;
   return data;
@@ -202,6 +242,7 @@ const getClassById = async (classId) => {
   const result = await query(
     `SELECT lc.id, lc.title, lc.course_id, lc.instructor_id, lc.description,
             lc.max_students, lc.status, lc.created_at, lc.updated_at,
+            lc.management_class_source_id,
             COALESCE(c.title, c.name) AS course_title,
             COALESCE(c.is_published, true) AS course_is_published
      FROM live_classes lc
@@ -779,6 +820,12 @@ router.post("/:classId/schedules", protectRoute, requireTeacher, requirePermissi
     );
     const schedule = result.rows[0];
     const materializedSessions = await materializeScheduleSessions(client, schedule, liveClass);
+    await enqueueManagementCalendarEvents(client, {
+      liveClass,
+      schedule,
+      scheduleEventType: "lms.schedule.upserted",
+      createdOrUpdatedSessions: materializedSessions,
+    });
     await client.query("COMMIT");
     return res.status(201).json({
       success: true,
@@ -881,6 +928,7 @@ router.patch("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, re
     const changeReason = body.changeReason?.trim() || "Điều chỉnh lịch học định kỳ";
     let cancelledSessions = [];
     let materializedSessions = [];
+    let updatedTitleSessions = [];
     if (patternChanged) {
       const cancelledResult = await client.query(
         `UPDATE class_sessions cs
@@ -892,18 +940,22 @@ router.patch("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, re
            AND NOT EXISTS (
              SELECT 1 FROM class_attendance ca WHERE ca.session_id = cs.id
            )
-         RETURNING cs.id, cs.start_time, cs.end_time`,
+         RETURNING cs.id, cs.live_class_id, cs.schedule_id, cs.title, cs.start_time, cs.end_time,
+                   cs.status, cs.meet_url, cs.change_reason, cs.version`,
         [changeReason, req.user.id, scheduleId],
       );
       cancelledSessions = cancelledResult.rows;
       materializedSessions = await materializeScheduleSessions(client, schedule, liveClass);
     } else if (titleChanged) {
-      await client.query(
+      const titleUpdateResult = await client.query(
         `UPDATE class_sessions
          SET title = $1, version = version + 1
-         WHERE schedule_id = $2 AND start_time >= NOW() AND status = 'scheduled'`,
+         WHERE schedule_id = $2 AND start_time >= NOW() AND status = 'scheduled'
+         RETURNING id, live_class_id, schedule_id, title, start_time, end_time, status,
+                   meet_url, change_reason, version`,
         [nextTitle, scheduleId],
       );
+      updatedTitleSessions = titleUpdateResult.rows;
     }
 
     if (patternChanged || titleChanged) {
@@ -929,6 +981,13 @@ router.patch("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, re
         ],
       );
     }
+    await enqueueManagementCalendarEvents(client, {
+      liveClass,
+      schedule,
+      scheduleEventType: "lms.schedule.upserted",
+      createdOrUpdatedSessions: [...materializedSessions, ...updatedTitleSessions],
+      cancelledSessions,
+    });
     await client.query("COMMIT");
     return res.json({
       success: true,
@@ -970,7 +1029,8 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, r
       `UPDATE class_schedules
        SET status = 'archived', updated_by = $1, version = version + 1
        WHERE id = $2 AND live_class_id = $3 AND status = 'active'
-       RETURNING id`,
+       RETURNING id, live_class_id, title, day_of_week, start_time, end_time,
+                 timezone, start_date, end_date, status, version`,
       [req.user.id, scheduleId, classId],
     );
     if (!archiveResult.rows[0]) {
@@ -982,7 +1042,8 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, r
        SET status = 'cancelled', change_reason = $1, changed_by = $2,
            changed_at = NOW(), version = version + 1
        WHERE cs.schedule_id = $3 AND cs.start_time >= NOW() AND cs.status = 'scheduled'
-       RETURNING cs.id`,
+       RETURNING cs.id, cs.live_class_id, cs.schedule_id, cs.title, cs.start_time, cs.end_time,
+                 cs.status, cs.meet_url, cs.change_reason, cs.version`,
       [reason.trim(), req.user.id, scheduleId],
     );
     await client.query(
@@ -992,6 +1053,12 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireTeacher, r
        VALUES ($1, 'all_future', $2::jsonb, $3::jsonb, $4, $5)`,
       [scheduleId, JSON.stringify({ status: "active" }), JSON.stringify({ status: "archived" }), reason.trim(), req.user.id],
     );
+    await enqueueManagementCalendarEvents(client, {
+      liveClass,
+      schedule: archiveResult.rows[0],
+      scheduleEventType: "lms.schedule.archived",
+      cancelledSessions: cancelledResult.rows,
+    });
     await client.query("COMMIT");
     return res.json({ success: true, data: { id: scheduleId, cancelledSessionCount: cancelledResult.rows.length } });
   } catch (error) {
@@ -1028,6 +1095,7 @@ router.get("/:classId/sessions", protectRoute, async (req, res) => {
 });
 
 router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
+  let client;
   try {
     const classId = parsePositiveId(req.params.classId);
     if (!classId) return validationError(res, "classId không hợp lệ");
@@ -1037,7 +1105,9 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
 
     const { errors, startTime, endTime } = validateSessionInput(req.body || {});
     if (errors.length > 0) return validationError(res, errors.join("; "));
-    const result = await query(
+    client = await getClient();
+    await client.query("BEGIN");
+    const result = await client.query(
       `INSERT INTO class_sessions (
          live_class_id, title, meet_url, passcode, start_time, end_time, status,
          original_start_at, original_end_at
@@ -1045,37 +1115,56 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
        VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $6)
        RETURNING id, live_class_id, schedule_id, title, start_time, end_time, status,
                  original_start_at, original_end_at, change_reason, changed_at,
-                 meet_url, created_at, updated_at`,
+                 meet_url, version, created_at, updated_at`,
       [classId, req.body.title.trim(), req.body.meetUrl || null, req.body.passcode || null, startTime, endTime, req.body.status || "scheduled"],
     );
     const session = result.rows[0];
+    await enqueueManagementCalendarDelivery(client, {
+      managementClassId: liveClass.management_class_source_id,
+      eventType: "lms.session.upserted",
+      lmsSession: session,
+      correlationId: `session:${session.id}:v${session.version || 1}`,
+    });
+    await client.query("COMMIT");
     if (new Date(session.start_time).getTime() <= Date.now() + 24 * 60 * 60 * 1000) {
       await notifyClassStudents(session, "upcoming");
     }
     return res.status(201).json({ success: true, data: safeSession(session), message: "Tạo buổi học thành công" });
   } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error creating class session:", error);
     return internalError(res, "Lỗi khi tạo buổi học");
+  } finally {
+    client?.release();
   }
 });
 
 router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
+  let client;
   try {
     const sessionId = parsePositiveId(req.params.sessionId);
     if (!sessionId) return validationError(res, "sessionId không hợp lệ");
-    const currentResult = await query(
+    client = await getClient();
+    await client.query("BEGIN");
+    const currentResult = await client.query(
       `SELECT cs.id, cs.live_class_id, cs.schedule_id, cs.title, cs.meet_url, cs.passcode,
               cs.start_time, cs.end_time, cs.status, cs.original_start_at, cs.original_end_at,
               cs.change_reason, cs.changed_by, cs.changed_at, cs.version, cs.created_at, cs.updated_at,
-              lc.instructor_id
+              lc.instructor_id, lc.management_class_source_id
        FROM class_sessions cs
        JOIN live_classes lc ON lc.id = cs.live_class_id
        WHERE cs.id = $1`,
       [sessionId],
     );
     const current = currentResult.rows[0];
-    if (!current) return notFound(res, "Không tìm thấy buổi học");
-    if (!(await canManageClass(current, req.user))) return forbidden(res, "Bạn không có quyền sửa buổi học này");
+    if (!current) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy buổi học");
+    }
+    if (!(await canManageClass(current, req.user))) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Bạn không có quyền sửa buổi học này");
+    }
 
     const body = req.body || {};
     const merged = {
@@ -1089,10 +1178,14 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
     const changeReason = body.changeReason === undefined ? current.change_reason : body.changeReason;
     if (changeReason !== null && changeReason !== undefined
       && (typeof changeReason !== "string" || changeReason.trim().length > 2000)) {
+      await client.query("ROLLBACK");
       return validationError(res, "changeReason không hợp lệ");
     }
     const { errors, startTime, endTime } = validateSessionInput(merged);
-    if (errors.length > 0) return validationError(res, errors.join("; "));
+    if (errors.length > 0) {
+      await client.query("ROLLBACK");
+      return validationError(res, errors.join("; "));
+    }
 
     const scheduleChanged = startTime.getTime() !== new Date(current.start_time).getTime()
       || endTime.getTime() !== new Date(current.end_time).getTime();
@@ -1100,7 +1193,7 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
       ? "rescheduled"
       : merged.status;
 
-    const result = await query(
+    const result = await client.query(
       `UPDATE class_sessions
        SET title = $1, meet_url = $2, passcode = $3, start_time = $4, end_time = $5,
            status = $6, change_reason = $7, changed_by = $8,
@@ -1109,7 +1202,7 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
        WHERE id = $10
        RETURNING id, live_class_id, schedule_id, title, start_time, end_time, status,
                  original_start_at, original_end_at, change_reason, changed_at,
-                 meet_url, created_at, updated_at`,
+                 meet_url, version, created_at, updated_at`,
       [
         merged.title.trim(), merged.meetUrl || null, merged.passcode || null,
         startTime, endTime, nextStatus, changeReason?.trim() || null, req.user.id,
@@ -1118,7 +1211,7 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
     );
     const session = result.rows[0];
     if (scheduleChanged) {
-      await query(
+      await client.query(
         `INSERT INTO class_session_change_logs (
            session_id, schedule_id, scope, before_state, after_state, reason, actor_id
          )
@@ -1133,12 +1226,22 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
         ],
       );
     }
+    await enqueueManagementCalendarDelivery(client, {
+      managementClassId: current.management_class_source_id,
+      eventType: nextStatus === "cancelled" ? "lms.session.cancelled" : "lms.session.upserted",
+      lmsSession: session,
+      correlationId: `session:${session.id}:v${session.version || 1}`,
+    });
+    await client.query("COMMIT");
     if (current.meet_url !== session.meet_url) await notifyClassStudents(session, "link-changed");
     if (scheduleChanged) await notifyClassStudents(session, "rescheduled");
     return res.json({ success: true, data: safeSession(session), message: "Cập nhật buổi học thành công" });
   } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error updating class session:", error);
     return internalError(res, "Lỗi khi cập nhật buổi học");
+  } finally {
+    client?.release();
   }
 });
 
@@ -1210,6 +1313,8 @@ router.get("/sessions/:sessionId/access", protectRoute, async (req, res) => {
     console.error("Error getting session access:", error);
     return internalError(res, "Lỗi khi lấy link vào lớp học trực tuyến");
   }
+});
+
 // GET /api/live-classes/sessions/:sessionId/history — Get session change history
 router.get("/sessions/:sessionId/history", protectRoute, async (req, res) => {
   try {

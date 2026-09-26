@@ -5,6 +5,7 @@ import path from "path";
 import { pool } from "./db/connect.js";
 import { processAvailableManagementSyncJobs } from "./services/managementSync.service.js";
 import { processAvailableManagementAttendanceDeliveries } from "./services/managementAttendanceDelivery.service.js";
+import { processAvailableManagementCalendarDeliveries } from "./services/managementCalendarDelivery.service.js";
 
 dotenv.config({ path: path.resolve("backend", ".env") });
 
@@ -33,11 +34,12 @@ const main = async () => {
   console.log(`[LMS sync worker] Started as ${workerId}`);
   try {
     do {
-      const [incomingResults, attendanceResults] = await Promise.all([
+      const [incomingResults, attendanceResults, calendarResults] = await Promise.all([
         processAvailableManagementSyncJobs({ workerId, limit: batchSize }),
         processAvailableManagementAttendanceDeliveries({ workerId, limit: batchSize }),
+        processAvailableManagementCalendarDeliveries({ workerId, limit: batchSize }),
       ]);
-      const results = [...incomingResults, ...attendanceResults];
+      const results = [...incomingResults, ...attendanceResults, ...calendarResults];
       if (results.length > 0) {
         const summary = results.reduce((accumulator, result) => {
           accumulator[result.status] = (accumulator[result.status] || 0) + 1;
