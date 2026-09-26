@@ -70,20 +70,18 @@ export default function StudentAnalyticsPage() {
   return (
     <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 pb-12 pt-6 sm:px-8 lg:px-10 transition-colors duration-200">
       <div className="mx-auto max-w-[1200px] space-y-6">
-        <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 dark:border-violet-900/60 bg-violet-50 dark:bg-violet-950/60 px-3 py-1.5 text-xs font-bold text-violet-700 dark:text-violet-300">
-              <BarChart3 className="h-3.5 w-3.5" /> Phân tích học tập
-            </span>
-            <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 dark:text-white">Kết quả tổng quan</h1>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Tổng hợp tiến độ và điểm các bài đã được chấm ở mọi khóa học/lớp của bạn.</p>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-950 dark:text-white">
+              Kết quả tổng quan
+            </h1>
           </div>
           <button
             type="button"
             onClick={loadAnalytics}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-200 transition hover:border-blue-200 dark:hover:border-slate-600 hover:text-blue-700 dark:hover:text-white"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-bold text-slate-600 dark:text-slate-200 transition hover:border-blue-200 dark:hover:border-slate-600 hover:text-blue-700 dark:hover:text-white"
           >
-            <RefreshCw className="h-4 w-4" /> Cập nhật
+            <RefreshCw className="h-3.5 w-3.5" /> Cập nhật
           </button>
         </header>
 

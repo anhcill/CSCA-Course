@@ -78,7 +78,7 @@ export default function ClassNextSessionHero({
 
         <div className="flex shrink-0 flex-wrap gap-2">
           <Link
-            to={nextSession ? `${basePath}/sessions/${nextSession.id}` : `${basePath}/calendar`}
+            to={nextSession ? `${basePath}/sessions/${nextSession.id}` : "/lms/calendar"}
             className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-300 px-3.5 py-2 text-xs font-black text-slate-900 shadow-sm transition hover:bg-amber-200 active:scale-95"
           >
             <CalendarDays className="h-4 w-4" />

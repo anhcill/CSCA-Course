@@ -28,7 +28,7 @@ import { getLmsWorkspaceLink } from "../../utils/lmsNavigation";
 
 const STUDENT_NAV = [
   { label: "Khóa học của tôi", path: "/lms/my-learning", icon: BookOpen, end: true },
-  { label: "Lịch tổng thể", path: "/lms/live-schedule", icon: CalendarDays },
+  { label: "Lịch học", path: "/lms/calendar", icon: CalendarDays },
   { label: "Bài tập & hạn nộp", path: "/lms/assignments", icon: FileCheck2 },
   { label: "Tài liệu các lớp", path: "/lms/files", icon: FolderOpen },
   { label: "Điểm tổng quan", path: "/lms/analytics", icon: BarChart3 },

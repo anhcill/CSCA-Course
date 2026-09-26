@@ -69,26 +69,19 @@ export default function StudentCourseListPage() {
   return (
     <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 pb-12 pt-6 sm:px-8 lg:px-10 transition-colors duration-200">
       <div className="mx-auto max-w-[1480px] space-y-6">
-        <section className="relative overflow-hidden rounded-[24px] border border-blue-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-7 shadow-[0_12px_40px_rgba(41,72,110,0.06)] dark:shadow-none sm:px-8">
-          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-blue-100 dark:bg-blue-600/10 blur-3xl" />
-          <div className="relative flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
-            <div className="max-w-2xl">
-              <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/60 px-3 py-1.5 text-xs font-bold text-blue-700 dark:text-sky-300">
-                <ShieldCheck className="h-3.5 w-3.5" /> Quyền học tập của bạn
-              </span>
-              <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 dark:text-white">Khóa học của tôi</h1>
-              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                Chỉ những khóa học được hệ thống quản lý cấp quyền mới hiển thị ở đây. Chọn khóa học để vào đúng lớp của bạn.
-              </p>
-            </div>
-            <div className="relative w-full max-w-sm">
-              <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+        <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-4 shadow-sm dark:shadow-none sm:px-6">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-950 dark:text-white">
+              Khóa học của tôi
+            </h1>
+            <div className="relative w-full max-w-xs sm:max-w-sm">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 aria-label="Tìm khóa học"
                 placeholder="Tìm tên khóa học..."
-                className="h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 pl-11 pr-4 text-sm text-slate-700 dark:text-slate-200 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-300 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-blue-500/10"
+                className="h-10 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 pl-10 pr-4 text-xs sm:text-sm text-slate-700 dark:text-slate-200 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-400 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-blue-500/10"
               />
             </div>
           </div>

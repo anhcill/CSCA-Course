@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useParams } from "react-router-dom";
-import { ArrowLeft, BookOpen, CalendarDays, ClipboardList, FileText, LayoutDashboard, Trophy } from "lucide-react";
+import { ArrowLeft, BookOpen, ClipboardList, FileText, LayoutDashboard, Trophy } from "lucide-react";
 import { fetchCourseWorkspace } from "../../api/lmsClient";
 import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
 import { ErrorState } from "../../../components/common/StateView";
@@ -10,7 +10,6 @@ import ClassNextSessionHero from "./overview/ClassNextSessionHero";
 const workspaceItems = [
   { to: "", label: "Tổng quan", icon: LayoutDashboard, end: true },
   { to: "learn", label: "Bài học", icon: BookOpen },
-  { to: "calendar", label: "Lịch học", icon: CalendarDays },
   { to: "assignments", label: "Bài tập & Quiz", icon: ClipboardList },
   { to: "materials", label: "Tài liệu", icon: FileText },
   { to: "results", label: "Kết quả", icon: Trophy },
