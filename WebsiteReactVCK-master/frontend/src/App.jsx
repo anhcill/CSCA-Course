@@ -54,7 +54,8 @@ import CourseWorkspaceOverviewPage from "./features/learning/pages/CourseWorkspa
 import CourseResultsPage from "./features/learning/pages/CourseResultsPage.jsx";
 import StudentAnalyticsPage from "./features/learning/pages/StudentAnalyticsPage.jsx";
 import AdminCurriculumPage from "./features/admin/pages/AdminCurriculumPage.jsx";
-import LiveClassSchedulePage from "./features/liveClass/pages/LiveClassSchedulePage.jsx";
+import ClassCalendarPage from "./features/calendar/pages/ClassCalendarPage.jsx";
+import SessionDetailPage from "./features/calendar/pages/SessionDetailPage.jsx";
 import AssignmentListPage from "./features/assignments/pages/AssignmentListPage.jsx";
 import AssignmentSubmitPage from "./features/assignments/pages/AssignmentSubmitPage.jsx";
 import QuizPlayerPage from "./features/assignments/pages/QuizPlayerPage.jsx";
@@ -126,8 +127,8 @@ function AppRoutes() {
       <Route path="/lms/catalog" element={<Navigate to="/lms/my-learning" replace />} />
       <Route path="/lms/dashboard" element={<Navigate to="/lms/my-learning" replace />} />
       <Route path="/lms/analytics" element={<StudentAnalyticsPage />} />
-      <Route path="/lms/live-schedule" element={<LiveClassSchedulePage />} />
-      <Route path="/lms/calendar" element={<LiveClassSchedulePage />} />
+      <Route path="/lms/live-schedule" element={<ClassCalendarPage />} />
+      <Route path="/lms/calendar" element={<ClassCalendarPage />} />
       <Route path="/lms/live-classes" element={<Navigate to="/lms/live-schedule" replace />} />
       <Route path="/lms/assignments" element={<AssignmentListPage />} />
       <Route path="/lms/files" element={<StudentFilesPage />} />
@@ -139,8 +140,9 @@ function AppRoutes() {
         <Route index element={<CourseWorkspaceOverviewPage />} />
         <Route path="overview" element={<CourseWorkspaceOverviewPage />} />
         <Route path="learn" element={<ClassroomPage />} />
-        <Route path="calendar" element={<LiveClassSchedulePage />} />
-        <Route path="schedule" element={<LiveClassSchedulePage />} />
+        <Route path="calendar" element={<ClassCalendarPage />} />
+        <Route path="schedule" element={<Navigate to="calendar" replace />} />
+        <Route path="sessions/:sessionId" element={<SessionDetailPage />} />
         <Route path="assignments" element={<AssignmentListPage />} />
         <Route path="assignments/:id/submit" element={<AssignmentSubmitPage />} />
         <Route path="quizzes/:quizId" element={<QuizPlayerPage />} />
@@ -160,7 +162,7 @@ function AppRoutes() {
       <Route path="/lms/teach" element={<TeacherHubPage />} />
       <Route path="/lms/teach/classes" element={<TeacherSchedulePage />} />
       <Route path="/lms/teach/classes/:classId" element={<TeacherClassDetailPage />} />
-      <Route path="/lms/teach/calendar" element={<TeacherSchedulePage />} />
+      <Route path="/lms/teach/calendar" element={<ClassCalendarPage />} />
       <Route path="/lms/teacher-hub" element={<Navigate to="/lms/teach" replace />} />
       <Route path="/lms/teacher/schedule" element={<Navigate to="/lms/teach/calendar" replace />} />
       <Route path="/lms/teacher/classes" element={<Navigate to="/lms/teach/classes" replace />} />
