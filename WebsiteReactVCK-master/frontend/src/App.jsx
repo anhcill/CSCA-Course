@@ -30,6 +30,7 @@ import AdminClassesPage from "./pages/admin/AdminClassesPage.jsx";
 import AdminPermissionsPage from "./pages/admin/AdminPermissionsPage.jsx";
 import AdminSyncPage from "./pages/admin/AdminSyncPage.jsx";
 import AdminAuditLogPage from "./pages/admin/AdminAuditLogPage.jsx";
+import AdminCalendarPage from "./features/admin/pages/AdminCalendarPage.jsx";
 
 // Shared chrome and route policy
 import Navbar from "./components/Navbar.jsx";
@@ -68,13 +69,9 @@ import StudentFilesPage from "./features/learning/pages/StudentFilesPage.jsx";
 import TeacherQuizPage from "./features/teacher/pages/TeacherQuizPage.jsx";
 import NotificationCenterPage from "./features/notifications/pages/NotificationCenterPage.jsx";
 
-const isTeacherLmsPath = (pathname) => (
-  pathname === "/lms/teach" ||
-  pathname.startsWith("/lms/teach/") ||
-  pathname === "/lms/teacher-hub" ||
-  pathname.startsWith("/lms/teacher/") ||
-  pathname === "/lms/admin/curriculum" ||
-  pathname === "/lms/admin/grading"
+const isTeacherLmsPath = (p) => (
+  p === "/lms/teach" || p.startsWith("/lms/teach/") || p === "/lms/teacher-hub" ||
+  p.startsWith("/lms/teacher/") || p === "/lms/admin/curriculum" || p === "/lms/admin/grading"
 );
 
 const isSharedTeacherPath = (pathname, authUser) => (
@@ -159,24 +156,20 @@ function AppRoutes() {
       <Route path="/lms/teacher/quizzes" element={<TeacherQuizPage />} />
       <Route path="/lms/admin/curriculum" element={<AdminCurriculumPage />} />
       <Route path="/lms/admin/grading" element={<TeacherGradingPage />} />
-      <Route path="/lms/admin/overview" element={<Navigate to="/admin" replace />} />
       <Route path="/lms/admin/courses" element={<Navigate to="/admin/courses" replace />} />
       <Route path="/lms/admin/classes" element={<Navigate to="/admin/classes" replace />} />
-      <Route path="/lms/admin/calendar" element={<Navigate to="/admin" replace />} />
+      <Route path="/lms/admin/calendar" element={<Navigate to="/admin/calendar" replace />} />
       <Route path="/lms/admin/operations" element={<Navigate to="/admin/sync" replace />} />
 
       {/* === Admin console === */}
-      <Route path="/admin" element={
-        <LmsRouteGuard allowedRoles={[USER_ROLES.ADMIN]}>
-          <AdminLayout />
-        </LmsRouteGuard>
-      }>
+      <Route path="/admin" element={<LmsRouteGuard allowedRoles={[USER_ROLES.ADMIN]}><AdminLayout /></LmsRouteGuard>}>
         <Route index element={<Dashboard />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="courses" element={<AdminCourses />} />
         <Route path="courses/:courseId/lessons" element={<AdminLessons />} />
         <Route path="lessons/:lessonId/exercises" element={<AdminExercises />} />
         <Route path="classes" element={<AdminClassesPage />} />
+        <Route path="calendar" element={<AdminCalendarPage />} />
         <Route path="permissions" element={<AdminPermissionsPage />} />
         <Route path="sync" element={<AdminSyncPage />} />
         <Route path="audit-logs" element={<AdminAuditLogPage />} />

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
@@ -5,12 +6,14 @@ import {
   Clock,
   ExternalLink,
   FileText,
+  History,
   Lock,
   Play,
   Users,
   Video,
   X
 } from "lucide-react";
+import SessionChangeHistoryModal from "./SessionChangeHistoryModal";
 
 const formatDateTime = (value) => {
   if (!value) return "Chưa xác định";
@@ -37,6 +40,7 @@ export default function SessionDetailModal({
   const isJoinable = isLive || session.uiState === "open";
   const isCompleted = session.uiState === "completed";
   const isRescheduled = session.status === "rescheduled";
+  const [showHistory, setShowHistory] = useState(false);
 
   return (
     <div
@@ -107,9 +111,18 @@ export default function SessionDetailModal({
           </div>
 
           {/* Cảnh báo đổi lịch nếu có */}
-          {isRescheduled && (
-            <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 p-3.5 text-xs text-amber-900 dark:text-amber-200">
-              <p className="font-bold">Lưu ý thay đổi lịch học:</p>
+          {(isRescheduled || Boolean(session.change_reason)) && (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-bold">Lưu ý thay đổi lịch học:</p>
+                <button
+                  type="button"
+                  onClick={() => setShowHistory(true)}
+                  className="inline-flex items-center gap-1 font-bold text-amber-800 dark:text-amber-300 hover:underline"
+                >
+                  <History className="h-3.5 w-3.5" /> Xem lịch sử
+                </button>
+              </div>
               <p className="mt-0.5">{session.change_reason || "Giảng viên đã điều chỉnh thời gian của buổi học này."}</p>
             </div>
           )}
@@ -182,6 +195,13 @@ export default function SessionDetailModal({
           </button>
         </div>
       </div>
+
+      <SessionChangeHistoryModal
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        sessionId={session.id}
+        sessionTitle={session.title}
+      />
     </div>
   );
 }

@@ -1210,6 +1210,41 @@ router.get("/sessions/:sessionId/access", protectRoute, async (req, res) => {
     console.error("Error getting session access:", error);
     return internalError(res, "Lỗi khi lấy link vào lớp học trực tuyến");
   }
+// GET /api/live-classes/sessions/:sessionId/history — Get session change history
+router.get("/sessions/:sessionId/history", protectRoute, async (req, res) => {
+  try {
+    const sessionId = parsePositiveId(req.params.sessionId);
+    if (!sessionId) return validationError(res, "sessionId không hợp lệ");
+    const sessionRes = await query(
+      `SELECT cs.id, cs.live_class_id, cs.title, cs.status, cs.start_time, cs.end_time
+       FROM class_sessions cs WHERE cs.id = $1`,
+      [sessionId],
+    );
+    if (sessionRes.rows.length === 0) return notFound(res, "Không tìm thấy buổi học");
+    const session = sessionRes.rows[0];
+
+    const logsRes = await query(
+      `SELECT cl.id, cl.session_id, cl.schedule_id, cl.scope,
+              cl.before_state, cl.after_state, cl.reason, cl.created_at,
+              u.id AS actor_id, u.full_name AS actor_name, u.role AS actor_role
+       FROM class_session_change_logs cl
+       LEFT JOIN users u ON u.id = cl.actor_id
+       WHERE cl.session_id = $1 OR (cl.schedule_id IS NOT NULL AND cl.schedule_id = (SELECT schedule_id FROM class_sessions WHERE id = $1))
+       ORDER BY cl.created_at DESC`,
+      [sessionId],
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        session,
+        history: logsRes.rows,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting session history:", error);
+    return internalError(res, "Lỗi khi lấy lịch sử thay đổi của buổi học");
+  }
 });
 
 export default router;

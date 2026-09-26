@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   FiGrid,
   FiBook,
+  FiCalendar,
   FiUser,
   FiEdit,
   FiLayers,
@@ -53,6 +54,11 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
           title: 'Quản lý Lớp & Moly',
           icon: <FiLink className="w-4 h-4 shrink-0" />,
           path: '/admin/classes',
+        },
+        {
+          title: 'Lịch Toàn Trường',
+          icon: <FiCalendar className="w-4 h-4 shrink-0" />,
+          path: '/admin/calendar',
         },
       ],
     },

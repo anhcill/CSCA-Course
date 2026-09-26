@@ -405,14 +405,20 @@ export const toggleUserLockStatus = async (userId, isLocked) => (
 );
 
 // Day 8: Notifications, Gamification & Certificates API helpers
-export const fetchNotifications = async ({ page, limit, unreadOnly } = {}) => {
+export const fetchNotifications = async ({ page, limit, unreadOnly, category, type } = {}) => {
   const params = new URLSearchParams();
   if (page) params.set("page", page);
   if (limit) params.set("limit", limit);
   if (unreadOnly) params.set("unreadOnly", "true");
+  if (category && category !== "all") params.set("category", category);
+  if (type) params.set("type", type);
   const query = params.toString();
   return request(`/notifications${query ? `?${query}` : ""}`);
 };
+
+export const fetchUnreadNotificationsCount = async () => (
+  request("/notifications/unread-count")
+);
 
 export const markNotificationAsRead = async (notificationId) => (
   request(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: "PATCH" })
@@ -420,6 +426,26 @@ export const markNotificationAsRead = async (notificationId) => (
 
 export const markAllNotificationsAsRead = async () => (
   request("/notifications/read-all", { method: "POST" })
+);
+
+export const fetchSessionChangeHistory = async (sessionId) => (
+  request(`/live-classes/sessions/${encodeURIComponent(sessionId)}/history`)
+);
+
+export const fetchAdminCalendar = async ({ from, to, courseId, classId, teacherId, status } = {}) => {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  if (courseId) params.set("courseId", courseId);
+  if (classId) params.set("classId", classId);
+  if (teacherId) params.set("teacherId", teacherId);
+  if (status) params.set("status", status);
+  const query = params.toString();
+  return request(`/admin/calendar${query ? `?${query}` : ""}`);
+};
+
+export const fetchAdminSessionHistory = async (sessionId) => (
+  request(`/admin/calendar/sessions/${encodeURIComponent(sessionId)}/history`)
 );
 
 export const fetchLeaderboard = async ({ scope = "class", period = "week", classId } = {}) => {

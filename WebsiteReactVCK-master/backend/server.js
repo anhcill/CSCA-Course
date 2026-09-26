@@ -21,6 +21,7 @@ import managementIntegrationRouter from "./router/managementIntegration.router.j
 import platformAdminRouter from "./router/platformAdmin.router.js";
 import orchestrationRouter from "./router/orchestration.router.js";
 import fileRouter from "./router/file.router.js";
+import adminCalendarRouter from "./router/adminCalendar.router.js";
 import { isAllowedOrigin, securityHeaders } from "./middleware/security.js";
 
 dotenv.config({ path: "./backend/.env" });
@@ -94,12 +95,14 @@ app.use("/api/videos", videoRouter);
 app.use("/api/live-classes", liveClassRouter);
 app.use("/api/assignments", assignmentRouter);
 app.use("/api/notifications", notificationRouter);
+app.use("/api/v1/lms/notifications", notificationRouter);
 app.use("/api/attendance", attendanceRouter);
 app.use("/api/certificates", certificateRouter);
 app.use("/api/teacher", teacherRouter);
+app.use("/api/admin/calendar", adminCalendarRouter);
+app.use("/api/v1/admin/calendar", adminCalendarRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api", fileRouter);
-app.use("/api", attendanceRouter);
 
 app.use("/api", (req, res) => {
   return res.status(404).json({
