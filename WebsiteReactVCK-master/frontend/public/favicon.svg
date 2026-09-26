@@ -1,14 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
   <defs>
-    <linearGradient id="cscaGrad" x1="4.5" y1="8" x2="24" y2="26" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#38BDF8"/>
-      <stop offset="1" stop-color="#2563EB"/>
+    <!-- Màu mặt trên nón cử nhân: Xanh dương tri thức rực rỡ -->
+    <linearGradient id="cscaCapTop" x1="2.5" y1="5.5" x2="29.5" y2="21.5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0099FF"/>
+      <stop offset="1" stop-color="#0066FF"/>
+    </linearGradient>
+    <!-- Khối thân dưới nón (diện tối bên trái tạo độ sâu 3D) -->
+    <linearGradient id="cscaCapBodyLeft" x1="6.5" y1="16" x2="16" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0050C8"/>
+      <stop offset="1" stop-color="#003D9E"/>
+    </linearGradient>
+    <!-- Khối thân dưới nón (diện sáng bên phải) -->
+    <linearGradient id="cscaCapBodyRight" x1="16" y1="16" x2="25.5" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0077F2"/>
+      <stop offset="1" stop-color="#005ECC"/>
     </linearGradient>
   </defs>
-  <!-- Nền Squircle tương phản cao trên cả tab sáng lẫn tab tối của Chrome -->
-  <rect width="32" height="32" rx="8" fill="#091428"/>
-  <!-- Chữ C nét khối dứt khoát chuẩn 16px & 32px -->
-  <path d="M21.5 11C19.8 9.2 17.4 8 14.5 8C8.7 8 4.5 12.2 4.5 17C4.5 21.8 8.7 26 14.5 26C17.4 26 19.8 24.8 21.5 23" fill="none" stroke="url(#cscaGrad)" stroke-width="4.2" stroke-linecap="round"/>
-  <!-- Điểm nhấn ngôi sao tri thức CSCA -->
-  <circle cx="21.5" cy="11" r="2" fill="#38BDF8"/>
+
+  <!-- Thân dưới nón cử nhân (Không có viền/nền vuông xung quanh) -->
+  <path d="M6.5 16V21.5L16 27V21.5L6.5 16Z" fill="url(#cscaCapBodyLeft)"/>
+  <path d="M16 21.5V27L25.5 21.5V16L16 21.5Z" fill="url(#cscaCapBodyRight)"/>
+
+  <!-- Mặt nón cử nhân 3D góc nhìn trực quan -->
+  <polygon points="16,5.5 29.5,13.5 16,21.5 2.5,13.5" fill="url(#cscaCapTop)"/>
+
+  <!-- Nút tâm chóp nón cử nhân màu trắng -->
+  <circle cx="16" cy="13.5" r="1.5" fill="#FFFFFF"/>
+
+  <!-- Dây tua rua buông rủ thanh thoát màu trắng tinh khôi -->
+  <path d="M16 13.5L26.5 15.5V22.5" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="26.5" cy="22.5" r="1.1" fill="#FFFFFF"/>
+  <path d="M25.2 27.5C25.2 25 25.8 23.5 26.5 22.5C27.2 23.5 27.8 25 27.8 27.5H25.2Z" fill="#FFFFFF"/>
 </svg>
