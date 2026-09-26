@@ -15,6 +15,10 @@ import {
 } from "../services/video.service.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import { awardXp, XP_VALUES } from "../services/gamification.service.js";
+import {
+  notifyAssignmentDeadlineChanged,
+  notifyAssignmentPublished,
+} from "../services/assignmentDeadlineNotification.service.js";
 
 const router = express.Router();
 
@@ -703,6 +707,7 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
       afterState: result.rows[0],
       metadata: { ip: req.ip },
     });
+    await notifyAssignmentPublished({ assignmentId: result.rows[0].id, actorId: req.user.id });
     return res.status(201).json({ success: true, data: result.rows[0], message: "Tạo bài tập mới thành công" });
   } catch (error) {
     console.error("Error creating assignment:", error);
@@ -757,6 +762,9 @@ router.patch("/:id", protectRoute, requireTeacher, requirePermission("lms.assign
       afterState: updated,
       metadata: { ip: req.ip },
     });
+    if (String(assignment.due_date || "") !== String(updated.due_date || "")) {
+      await notifyAssignmentDeadlineChanged({ assignmentId, actorId: req.user.id });
+    }
     return res.json({ success: true, data: updated, message: "Cập nhật bài tập thành công" });
   } catch (error) {
     console.error("Error updating assignment:", error);

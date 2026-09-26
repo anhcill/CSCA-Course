@@ -190,7 +190,10 @@ export const fetchMyLiveSchedule = async ({ courseId, classId, from, to } = {}) 
   if (classId) params.set("classId", classId);
   if (from) params.set("from", from);
   if (to) params.set("to", to);
-  return request(`/live-classes/my-schedule${params.size ? `?${params.toString()}` : ""}`);
+  return request(`/live-classes/my-schedule${params.size ? `?${params.toString()}` : ""}`, {
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
 };
 
 export const createLiveSession = async ({ liveClassId, title, startTime, endTime, meetUrl, passcode, status }) => (

@@ -64,8 +64,20 @@ export const broadcastToClass = async ({
 
   try {
     const studentsRes = await query(
-      `SELECT student_id AS user_id FROM class_enrollments
-       WHERE live_class_id = $1 AND status = 'active'`,
+      `SELECT ce.user_id
+       FROM class_enrollments ce
+       JOIN live_classes lc ON lc.id = ce.live_class_id
+       LEFT JOIN courses c ON c.id = lc.course_id
+       WHERE ce.live_class_id = $1 AND ce.status = 'active'
+         AND (
+           COALESCE(c.is_management_managed, FALSE) = FALSE
+           OR EXISTS (
+             SELECT 1 FROM lms_access_grants g
+             WHERE g.user_id = ce.user_id AND g.course_id = lc.course_id
+               AND g.access_status = 'active' AND g.valid_from <= NOW()
+               AND (g.valid_until IS NULL OR g.valid_until > NOW())
+           )
+         )`,
       [liveClassId]
     );
 

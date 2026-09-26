@@ -91,15 +91,20 @@ export default function TeacherSchedulePage() {
   const [rosterStudents, setRosterStudents] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(false);
 
-  const loadSchedule = useCallback(async () => {
-    setLoading(true);
-    setErrorMessage("");
+  const loadSchedule = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setErrorMessage("");
+    }
     try {
       const [scheduleRes, classesRes] = await Promise.all([
         fetchMyLiveSchedule(),
         fetchLiveClasses(),
       ]);
-      setSessions(scheduleRes.success ? (scheduleRes.data || []) : []);
+      if (!scheduleRes?.success || !classesRes?.success) {
+        throw new Error(scheduleRes?.message || classesRes?.message || "Không thể tải lịch dạy");
+      }
+      setSessions(scheduleRes.data || []);
       const classes = classesRes.success ? (classesRes.data || []) : [];
       const courseClasses = classes.filter((liveClass) => liveClass.course_id);
       setLiveClasses(courseClasses);
@@ -113,14 +118,23 @@ export default function TeacherSchedulePage() {
       });
     } catch (err) {
       console.error("Error loading teacher schedule:", err);
-      setErrorMessage("Không thể tải danh sách lớp học và lịch dạy của giáo viên.");
+      if (!silent) setErrorMessage("Không thể tải danh sách lớp học và lịch dạy của giáo viên.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     loadSchedule();
+  }, [loadSchedule]);
+
+  // Refresh silently so timetable edits made by an administrator in another
+  // browser are visible to the teacher without a manual reload.
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") loadSchedule({ silent: true });
+    }, 60 * 1000);
+    return () => window.clearInterval(intervalId);
   }, [loadSchedule]);
 
   useEffect(() => {

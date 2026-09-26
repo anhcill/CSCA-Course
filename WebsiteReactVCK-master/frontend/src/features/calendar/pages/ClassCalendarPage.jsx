@@ -48,11 +48,14 @@ export default function ClassCalendarPage() {
     didPositionInitialCalendar.current = false;
   }, [classId, courseId]);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setErrorMessage("");
+  const loadData = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setErrorMessage("");
+    }
     try {
       const scheduleRes = await fetchMyLiveSchedule({ courseId, classId });
+      if (!scheduleRes?.success) throw new Error(scheduleRes?.message || "Không thể tải lịch học");
       const nextSessions = scheduleRes?.success && Array.isArray(scheduleRes.data) ? scheduleRes.data : [];
       setSessions(nextSessions);
 
@@ -66,14 +69,23 @@ export default function ClassCalendarPage() {
       }
     } catch (err) {
       console.error("Unable to load calendar", err);
-      setErrorMessage("Không thể tải lịch học. Vui lòng thử lại sau.");
+      if (!silent) setErrorMessage("Không thể tải lịch học. Vui lòng thử lại sau.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [courseId, classId]);
 
   useEffect(() => {
     loadData();
+  }, [loadData]);
+
+  // Server data is authoritative: this keeps schedules created or changed by
+  // another admin/teacher visible without requiring the learner to reload.
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") loadData({ silent: true });
+    }, 60 * 1000);
+    return () => window.clearInterval(intervalId);
   }, [loadData]);
 
   useEffect(() => {

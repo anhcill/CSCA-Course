@@ -560,6 +560,7 @@ router.get("/my-schedule", protectRoute, async (req, res) => {
     });
     if (upcoming.length > 0) await notifyUpcomingSessions(upcoming);
 
+    res.set("Cache-Control", "no-store, private, max-age=0");
     return res.json({
       success: true,
       data: result.rows.map((session) => ({
