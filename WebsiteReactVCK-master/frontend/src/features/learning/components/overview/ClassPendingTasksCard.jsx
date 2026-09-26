@@ -22,7 +22,7 @@ export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
             <h3 className="text-lg font-black text-slate-950 dark:text-white">Việc cần hoàn thành</h3>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Quiz theo buổi học gần nhất, bài tập theo hạn nộp của lớp.</p>
           </div>
-          <Link to={`${basePath}/assignments`} className="text-xs font-bold text-blue-600 dark:text-sky-400 hover:underline">
+          <Link to="/lms/assignments" className="text-xs font-bold text-blue-600 dark:text-sky-400 hover:underline">
             Xem tất cả
           </Link>
         </div>
@@ -41,9 +41,10 @@ export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
               const sessionText = item.session_start
                 ? new Date(item.session_start).toLocaleString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
                 : "Chưa xác định buổi học";
-              const targetUrl = isQuiz
-                ? `${basePath}/quizzes/${item.id}`
-                : `${basePath}/assignments/${item.id}/submit`;
+              const sessionId = item.class_session_id || item.classSessionId || item.session_id || item.sessionId;
+              const targetUrl = sessionId
+                ? `${basePath}/sessions/${sessionId}?tab=tasks`
+                : (isQuiz ? `${basePath}/quizzes/${item.id}` : `${basePath}/assignments/${item.id}/submit`);
 
               return (
                 <Link
@@ -76,7 +77,7 @@ export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
                     </div>
                   </div>
                   <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 text-xs font-bold text-blue-600 dark:text-sky-400 group-hover:bg-blue-600 group-hover:text-white transition">
-                    Làm bài <ArrowRight className="h-3 w-3" />
+                    {sessionId ? "Mở buổi" : "Làm bài"} <ArrowRight className="h-3 w-3" />
                   </span>
                 </Link>
               );
@@ -87,7 +88,7 @@ export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
 
       <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
         <span>Cần xem lại kết quả bài nộp?</span>
-        <Link to={`${basePath}/results`} className="font-semibold text-blue-600 dark:text-sky-400 hover:underline">
+        <Link to="/lms/assignments" className="font-semibold text-blue-600 dark:text-sky-400 hover:underline">
           Xem bảng điểm cá nhân
         </Link>
       </div>

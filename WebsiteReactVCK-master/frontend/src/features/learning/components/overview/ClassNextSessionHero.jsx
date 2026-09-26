@@ -85,10 +85,10 @@ export default function ClassNextSessionHero({
             {nextSession ? "Xem chi tiết buổi học" : "Xem lịch toàn khóa"}
           </Link>
           <Link
-            to={`${basePath}/learn`}
+            to={nextSession ? `${basePath}/sessions/${nextSession.id}?tab=content` : "/lms/calendar"}
             className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/35 bg-white/15 px-3.5 py-2 text-xs font-bold text-white backdrop-blur transition hover:bg-white/25 active:scale-95"
           >
-            <Play className="h-4 w-4" /> Vào phòng học bài giảng
+            <Play className="h-4 w-4" /> Mở không gian buổi học
           </Link>
         </div>
       </div>
@@ -98,10 +98,10 @@ export default function ClassNextSessionHero({
           <p className="mr-1 text-[10px] font-black uppercase tracking-wider text-cyan-100">Sắp tới:</p>
           <div className="flex flex-wrap gap-2">
             {otherSessions.map((item) => (
-              <div key={item.id} className="flex max-w-[280px] items-center gap-2 rounded-lg bg-white/15 px-2.5 py-1.5 text-[11px] backdrop-blur">
+              <Link key={item.id} to={`${basePath}/sessions/${item.id}`} className="flex max-w-[280px] items-center gap-2 rounded-lg bg-white/15 px-2.5 py-1.5 text-[11px] backdrop-blur transition hover:bg-white/25">
                 <span className="truncate font-semibold text-white">{item.title}</span>
                 <span className="shrink-0 text-cyan-100">{formatDateTime(item.start_time)}</span>
-              </div>
+              </Link>
             ))}
           </div>
         </div>

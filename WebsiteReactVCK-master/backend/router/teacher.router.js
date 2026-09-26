@@ -472,18 +472,20 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req,
         baseParams,
       ),
       query(
-        `SELECT a.id, a.title, a.assignment_type, a.due_date,
+        `SELECT a.id, a.title, a.assignment_type, a.due_date, a.class_session_id,
+                cs.title AS session_title, cs.start_time AS session_start,
                 COUNT(DISTINCT ce.user_id)::int AS total_count,
                 COUNT(DISTINCT s.id) FILTER (WHERE s.status IN ('submitted', 'late', 'graded'))::int AS submitted_count,
                 COUNT(DISTINCT s.id) FILTER (WHERE s.status IN ('submitted', 'late'))::int AS pending_grading_count,
                 ROUND(AVG(latest_grade.score), 1) AS avg_score
          FROM assignments a
+         LEFT JOIN class_sessions cs ON cs.id = a.class_session_id
          LEFT JOIN class_enrollments ce ON ce.live_class_id = $1 AND ce.status = 'active'
          LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.user_id = ce.user_id
          LEFT JOIN LATERAL (SELECT sg.score FROM submission_grades sg WHERE sg.submission_id = s.id ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1) latest_grade ON true
          WHERE (a.live_class_id = $1 OR (a.live_class_id IS NULL AND $2::bigint IS NOT NULL AND a.course_id = $2::bigint))
            AND ${ownerFilter}
-         GROUP BY a.id
+         GROUP BY a.id, cs.id
          ORDER BY a.due_date NULLS LAST, a.created_at DESC`,
         baseParams,
       ),
@@ -592,8 +594,9 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req,
           title: row.title,
           type: row.assignment_type,
           dueDate: row.due_date,
-          sessionTitle: null,
-          sessionStart: null,
+          sessionId: row.class_session_id || null,
+          sessionTitle: row.session_title || null,
+          sessionStart: row.session_start || null,
           submittedCount: Number(row.submitted_count || 0),
           totalCount: Number(row.total_count || 0),
           pendingGradingCount: Number(row.pending_grading_count || 0),

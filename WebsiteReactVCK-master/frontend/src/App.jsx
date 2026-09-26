@@ -65,6 +65,7 @@ import TeacherHubPage from "./features/teacher/pages/TeacherHubPage.jsx";
 import TeacherSchedulePage from "./features/teacher/pages/TeacherSchedulePage.jsx";
 import TeacherAttendancePage from "./features/teacher/pages/TeacherAttendancePage.jsx";
 import TeacherClassDetailPage from "./features/teacher/pages/TeacherClassDetailPage.jsx";
+import TeacherSessionWorkspacePage from "./features/teacher/pages/TeacherSessionWorkspacePage.jsx";
 import StudentFilesPage from "./features/learning/pages/StudentFilesPage.jsx";
 import TeacherQuizPage from "./features/teacher/pages/TeacherQuizPage.jsx";
 import NotificationCenterPage from "./features/notifications/pages/NotificationCenterPage.jsx";
@@ -143,6 +144,7 @@ function AppRoutes() {
       <Route path="/lms/teach" element={<TeacherHubPage />} />
       <Route path="/lms/teach/classes" element={<TeacherSchedulePage />} />
       <Route path="/lms/teach/classes/:classId" element={<TeacherClassDetailPage />} />
+      <Route path="/lms/teach/classes/:classId/sessions/:sessionId" element={<TeacherSessionWorkspacePage />} />
       <Route path="/lms/teach/classes/:classId/attendance" element={<TeacherAttendancePage />} />
       <Route path="/lms/teach/attendance" element={<TeacherAttendancePage />} />
       <Route path="/lms/teach/calendar" element={<ClassCalendarPage />} />

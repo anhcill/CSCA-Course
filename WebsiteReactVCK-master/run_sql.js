@@ -40,6 +40,7 @@ const migrationFiles = [
   "database/migrations/024_lesson_learning_links.sql",
   "database/migrations/025_quiz_paper_sources.sql",
   "database/migrations/026_quiz_class_session_targets.sql",
+  "database/migrations/027_session_workspace_resources.sql",
 ];
 
 const filesToRun = process.env.RUN_SEEDS === "true"

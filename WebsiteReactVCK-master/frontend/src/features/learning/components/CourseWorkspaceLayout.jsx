@@ -1,22 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, NavLink, Outlet, useParams } from "react-router-dom";
-import { ArrowLeft, BookOpen, ClipboardList, FileText, LayoutDashboard, Trophy } from "lucide-react";
+import { Link, Outlet, useLocation, useParams } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { fetchCourseWorkspace } from "../../api/lmsClient";
 import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
 import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import ClassNextSessionHero from "./overview/ClassNextSessionHero";
 
-const workspaceItems = [
-  { to: "", label: "Tổng quan", icon: LayoutDashboard, end: true },
-  { to: "learn", label: "Bài học", icon: BookOpen },
-  { to: "assignments", label: "Bài tập & Quiz", icon: ClipboardList },
-  { to: "materials", label: "Tài liệu", icon: FileText },
-  { to: "results", label: "Kết quả", icon: Trophy },
-];
-
 export default function CourseWorkspaceLayout() {
   const { courseId, classId } = useParams();
+  const location = useLocation();
   const [workspace, setWorkspace] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -86,6 +79,7 @@ export default function CourseWorkspaceLayout() {
 
   const { course = {}, selectedClass = {} } = workspace;
   const basePath = `/lms/courses/${courseId}/classes/${classId}`;
+  const isSessionWorkspace = location.pathname.includes(`${basePath}/sessions/`);
 
   return (
     <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 py-6 sm:px-6 lg:px-8 transition-colors duration-200">
@@ -100,35 +94,16 @@ export default function CourseWorkspaceLayout() {
           </span>
         </div>
 
-        <ClassNextSessionHero
-          nextSession={nextSession}
-          isTodaySession={isTodaySession}
-          otherSessions={upcomingSessions.slice(1, 3)}
-          instructorName={selectedClass.instructor_name}
-          classTitle={selectedClass.title}
-          basePath={basePath}
-        />
-
-        <nav className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1.5 shadow-sm dark:shadow-none" aria-label="Điều hướng khóa học">
-          {workspaceItems.map((item) => {
-            const Icon = item.icon;
-            const destination = item.to ? `${basePath}/${item.to}` : basePath;
-            return (
-              <NavLink
-                key={item.label}
-                to={destination}
-                end={item.end}
-                className={({ isActive }) => `inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition ${
-                  isActive
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                <Icon className="h-4 w-4" /> {item.label}
-              </NavLink>
-            );
-          })}
-        </nav>
+        {!isSessionWorkspace && (
+          <ClassNextSessionHero
+            nextSession={nextSession}
+            isTodaySession={isTodaySession}
+            otherSessions={upcomingSessions.slice(1, 3)}
+            instructorName={selectedClass.instructor_name}
+            classTitle={selectedClass.title}
+            basePath={basePath}
+          />
+        )}
         <Outlet context={workspace} />
       </div>
     </div>

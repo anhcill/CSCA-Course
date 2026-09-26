@@ -123,6 +123,7 @@ function AnswerKeySheet({ questions, onChooseAnswer, onScrollToQuestion }) {
 export default function TeacherQuizPage() {
   const [searchParams] = useSearchParams();
   const requestedClassId = searchParams.get("classId");
+  const requestedSessionId = searchParams.get("sessionId");
   const shouldOpenBuilder = searchParams.get("new") === "1";
   const quickCreateHandledRef = useRef(false);
   const [quizzes, setQuizzes] = useState([]);
@@ -207,7 +208,10 @@ export default function TeacherQuizPage() {
         const linkedClass = requestedClassId ? classes.find((item) => String(item.id) === String(requestedClassId)) : null;
         if (linkedClass) {
           setLiveClassId(String(linkedClass.id));
-          if (linkedClass.sessions?.[0]) setClassSessionId(String(linkedClass.sessions[0].id));
+          const linkedSession = requestedSessionId
+            ? linkedClass.sessions?.find((session) => String(session.id) === String(requestedSessionId))
+            : linkedClass.sessions?.[0];
+          if (linkedSession) setClassSessionId(String(linkedSession.id));
         }
       })
       .catch((error) => {
@@ -215,7 +219,7 @@ export default function TeacherQuizPage() {
       })
       .finally(() => { if (!cancelled) setTargetsLoading(false); });
     return () => { cancelled = true; };
-  }, [courseId, requestedClassId]);
+  }, [courseId, requestedClassId, requestedSessionId]);
 
   const selectedTargetClass = useMemo(
     () => targetClasses.find((item) => String(item.id) === String(liveClassId)) || null,

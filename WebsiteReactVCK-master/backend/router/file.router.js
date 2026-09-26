@@ -146,6 +146,8 @@ const serializeFile = (row) => ({
   uploadedAt: row.created_at,
   uploadedBy: row.uploaded_by_name || row.uploader_email || "Giáo viên",
   courseTitle: row.course_title || null,
+  classSessionId: row.class_session_id ? String(row.class_session_id) : null,
+  sessionTitle: row.session_title || null,
   visibility: row.visibility,
   downloadUrl: `/api/files/${row.id}/download`,
 });
@@ -185,20 +187,28 @@ router.post("/teacher/courses/:courseId/files/upload-url", protectRoute, require
 // GET /api/teacher/classes/:classId/files
 router.get("/teacher/classes/:classId/files", protectRoute, requireTeacher, async (req, res) => {
   const classId = parseId(req.params.classId);
+  const sessionId = req.query.sessionId === undefined ? null : parseId(req.query.sessionId);
   if (!classId) return errorResponse(res, 422, "classId không hợp lệ", "VALIDATION_ERROR");
+  if (req.query.sessionId !== undefined && !sessionId) return errorResponse(res, 422, "sessionId không hợp lệ", "VALIDATION_ERROR");
   try {
     const access = await classAccess(classId, req.user);
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy lớp học", "NOT_FOUND");
     if (access.error) return errorResponse(res, 403, "Bạn không có quyền xem tài liệu lớp này", "FORBIDDEN");
+    if (sessionId) {
+      const session = await query("SELECT 1 FROM class_sessions WHERE id = $1 AND live_class_id = $2", [sessionId, classId]);
+      if (session.rows.length === 0) return errorResponse(res, 404, "Không tìm thấy buổi học của lớp này", "NOT_FOUND");
+    }
     const files = await query(
       `SELECT f.*, u.username AS uploaded_by_name, u.email AS uploader_email,
-              COALESCE(c.title, c.name) AS course_title
+              COALESCE(c.title, c.name) AS course_title, cs.title AS session_title
        FROM lms_learning_files f
        JOIN users u ON u.id = f.uploaded_by
        LEFT JOIN courses c ON c.id = f.course_id
+       LEFT JOIN class_sessions cs ON cs.id = f.class_session_id
        WHERE f.live_class_id = $1 AND f.status = 'ready'
+         AND ($2::bigint IS NULL OR f.class_session_id = $2)
        ORDER BY f.created_at DESC, f.id DESC`,
-      [classId],
+      [classId, sessionId],
     );
     return res.json({ success: true, data: files.rows.map(serializeFile) });
   } catch (error) {
@@ -211,9 +221,11 @@ router.get("/teacher/classes/:classId/files", protectRoute, requireTeacher, asyn
 router.post("/teacher/classes/:classId/files/upload-url", protectRoute, requireTeacher, requirePermission("lms.file.manage"), async (req, res) => {
   const classId = parseId(req.params.classId);
   const { filename, mimeType, sizeBytes, visibility = "CLASS_ONLY" } = req.body || {};
+  const classSessionId = parseId(req.body?.classSessionId);
   if (!classId || !safeFilename(filename) || !ALLOWED_LEARNING_FILE_MIME_TYPES.has(mimeType)) {
     return errorResponse(res, 422, "Thông tin tài liệu không hợp lệ", "VALIDATION_ERROR");
   }
+  if (req.body?.classSessionId !== undefined && !classSessionId) return errorResponse(res, 422, "classSessionId không hợp lệ", "VALIDATION_ERROR");
   if (!Number.isSafeInteger(Number(sizeBytes)) || Number(sizeBytes) <= 0 || Number(sizeBytes) > MAX_LEARNING_FILE_SIZE_BYTES) {
     return errorResponse(res, 422, "Kích thước tài liệu phải từ 1 byte đến 100MB", "VALIDATION_ERROR");
   }
@@ -222,13 +234,17 @@ router.post("/teacher/classes/:classId/files/upload-url", protectRoute, requireT
     const access = await classAccess(classId, req.user);
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy lớp học", "NOT_FOUND");
     if (access.error || !access.canManage) return errorResponse(res, 403, "Bạn không có quyền tải tài liệu lên lớp này", "FORBIDDEN");
+    if (classSessionId) {
+      const session = await query("SELECT 1 FROM class_sessions WHERE id = $1 AND live_class_id = $2 AND status <> 'cancelled'", [classSessionId, classId]);
+      if (session.rows.length === 0) return errorResponse(res, 422, "Buổi học không thuộc lớp đã chọn hoặc đã bị hủy", "VALIDATION_ERROR");
+    }
     const upload = await generateLearningFileUploadPresignedUrl({ userId: req.user.id, filename, mimeType, sizeBytes });
     const result = await query(
       `INSERT INTO lms_learning_files
-         (live_class_id, course_id, uploaded_by, original_name, storage_key, mime_type, size_bytes, visibility, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+         (live_class_id, course_id, class_session_id, uploaded_by, original_name, storage_key, mime_type, size_bytes, visibility, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
        RETURNING id, original_name, storage_key, mime_type, size_bytes, visibility, status`,
-      [classId, access.liveClass.course_id, req.user.id, filename.trim(), upload.fileKey, mimeType, Number(sizeBytes), visibility],
+      [classId, access.liveClass.course_id, classSessionId, req.user.id, filename.trim(), upload.fileKey, mimeType, Number(sizeBytes), visibility],
     );
     return res.status(201).json({ success: true, data: { fileId: String(result.rows[0].id), ...upload } });
   } catch (error) {
@@ -280,6 +296,13 @@ router.get("/student/files", protectRoute, async (req, res) => {
     if (classId && !courseId) {
       return errorResponse(res, 422, "classId cần đi kèm courseId", "VALIDATION_ERROR");
     }
+    const sessionId = req.query.sessionId === undefined ? null : parseId(req.query.sessionId);
+    if (req.query.sessionId !== undefined && !sessionId) {
+      return errorResponse(res, 422, "sessionId không hợp lệ", "VALIDATION_ERROR");
+    }
+    if (sessionId && !classId) {
+      return errorResponse(res, 422, "sessionId cần đi kèm classId", "VALIDATION_ERROR");
+    }
     if (classId) {
       const classAccessResult = await query(
         `SELECT 1 FROM live_classes lc
@@ -297,17 +320,23 @@ router.get("/student/files", protectRoute, async (req, res) => {
       if (classAccessResult.rows.length === 0) {
         return errorResponse(res, 403, "Bạn không có quyền xem tài liệu của lớp này", "FORBIDDEN");
       }
+      if (sessionId) {
+        const sessionAccess = await query("SELECT 1 FROM class_sessions WHERE id = $1 AND live_class_id = $2", [sessionId, classId]);
+        if (sessionAccess.rows.length === 0) return errorResponse(res, 404, "Không tìm thấy buổi học của lớp này", "NOT_FOUND");
+      }
     }
     const result = await query(
       `SELECT DISTINCT f.*, COALESCE(c.title, c.name) AS course_title,
-              u.username AS uploaded_by_name, u.email AS uploader_email
+              u.username AS uploaded_by_name, u.email AS uploader_email, cs.title AS session_title
        FROM lms_learning_files f
        LEFT JOIN courses c ON c.id = f.course_id
        LEFT JOIN live_classes lc ON lc.id = f.live_class_id
+       LEFT JOIN class_sessions cs ON cs.id = f.class_session_id
        LEFT JOIN users u ON u.id = f.uploaded_by
          WHERE f.status = 'ready'
          AND ($2::bigint IS NULL OR COALESCE(f.course_id, lc.course_id) = $2)
          AND ($3::bigint IS NULL OR f.live_class_id IS NULL OR f.live_class_id = $3)
+         AND ($4::bigint IS NULL OR f.class_session_id = $4)
          AND (
            (f.live_class_id IS NOT NULL AND EXISTS (
              SELECT 1 FROM class_enrollments ce
@@ -327,7 +356,7 @@ router.get("/student/files", protectRoute, async (req, res) => {
            ))
        )
        ORDER BY f.created_at DESC, f.id DESC`,
-      [req.user.id, courseId, classId],
+      [req.user.id, courseId, classId, sessionId],
     );
     return res.json({ success: true, data: result.rows.map(serializeFile) });
   } catch (error) {

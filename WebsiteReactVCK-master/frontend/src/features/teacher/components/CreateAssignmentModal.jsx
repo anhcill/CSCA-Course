@@ -13,7 +13,7 @@ import { createAssignment, uploadClassFile } from "../../api/lmsClient";
 
 const MAX_ASSIGNMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
-export default function CreateAssignmentModal({ isOpen, onClose, classId, onCreated }) {
+export default function CreateAssignmentModal({ isOpen, onClose, classId, sessionId, sessionTitle, onCreated }) {
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -31,7 +31,9 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
 
   const openQuizBuilder = () => {
     onClose();
-    navigate(`/lms/teacher/quizzes?classId=${encodeURIComponent(classId)}&new=1`);
+    const params = new URLSearchParams({ classId: String(classId), new: "1" });
+    if (sessionId) params.set("sessionId", String(sessionId));
+    navigate(`/lms/teacher/quizzes?${params.toString()}`);
   };
 
   const uploadAttachment = async (file) => {
@@ -44,7 +46,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
     setUploadingFile(true);
     setAttachmentUrl("");
     try {
-      const response = await uploadClassFile(classId, file);
+      const response = await uploadClassFile(classId, file, { sessionId });
       const uploadedUrl = response?.data?.downloadUrl;
       if (!response?.success || !uploadedUrl) {
         throw new Error(response?.message || "Không thể xác nhận tệp đính kèm");
@@ -90,6 +92,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
     try {
       const response = await createAssignment({
         liveClassId: classId,
+        classSessionId: sessionId,
         title: title.trim(),
         description: description.trim(),
         dueDate,
@@ -130,7 +133,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
                 Giao Bài Tập Mới Cho Lớp
               </h3>
               <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">
-                Thiết lập tiêu đề, hạn nộp và hướng dẫn bài tập.
+                {sessionTitle ? `Giao cho ${sessionTitle}.` : "Thiết lập tiêu đề, hạn nộp và hướng dẫn bài tập."}
               </p>
             </div>
           </div>
@@ -156,8 +159,8 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, onCrea
         <form id="create-assignment-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 text-xs">
           <div className="flex items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-900/70 dark:bg-violet-950/25">
             <div>
-              <p className="font-black text-violet-950 dark:text-violet-100">Đây là form bài tập tự luận</p>
-              <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Quiz có màn soạn đề riêng: PDF bên trái, bảng đáp án A/B/C/D bên phải.</p>
+              <p className="font-black text-violet-950 dark:text-violet-100">{sessionTitle ? `Buổi học: ${sessionTitle}` : "Đây là form bài tập tự luận"}</p>
+              <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Bài tập, Quiz và tệp đính kèm tạo ở đây đều chỉ thuộc buổi học này.</p>
             </div>
             <button type="button" onClick={openQuizBuilder} className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-black text-white transition hover:bg-violet-500">Mở Quiz</button>
           </div>

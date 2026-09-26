@@ -11,8 +11,6 @@ import {
 export default function ClassWorkspaceOverviewTab({
   stats = {},
   atRiskStudents = [],
-  onTabChange,
-  onOpenCreateAssignment,
   onOpenCreateSession
 }) {
   return (
@@ -41,17 +39,6 @@ export default function ClassWorkspaceOverviewTab({
           <div className="space-y-2">
             <button
               type="button"
-              onClick={onOpenCreateAssignment}
-              className="flex w-full items-center justify-between rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs font-bold text-slate-800 dark:text-slate-200 hover:border-blue-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition"
-            >
-              <span className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-blue-600 dark:text-sky-400" /> Giao bài tập / quiz mới
-              </span>
-              <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
-            </button>
-
-            <button
-              type="button"
               onClick={onOpenCreateSession}
               className="flex w-full items-center justify-between rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs font-bold text-slate-800 dark:text-slate-200 hover:border-blue-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition"
             >
@@ -63,11 +50,11 @@ export default function ClassWorkspaceOverviewTab({
 
             <button
               type="button"
-              onClick={() => onTabChange("files")}
+              onClick={onOpenCreateSession}
               className="flex w-full items-center justify-between rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs font-bold text-slate-800 dark:text-slate-200 hover:border-blue-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition"
             >
               <span className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Quản lý tài liệu lớp
+                <Users className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Thêm buổi học để chuẩn bị nội dung
               </span>
               <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
             </button>

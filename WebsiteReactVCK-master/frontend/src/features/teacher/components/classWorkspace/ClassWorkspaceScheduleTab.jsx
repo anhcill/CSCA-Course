@@ -20,7 +20,6 @@ export default function ClassWorkspaceScheduleTab({
   classId,
   onOpenCreateSession,
   onRefreshSchedules,
-  onJoinSession,
   onConfigureMeeting,
   canManageFixedSchedule = false,
 }) {
@@ -121,6 +120,12 @@ export default function ClassWorkspaceScheduleTab({
 
                 <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                   <Link
+                    to={`/lms/teach/classes/${classId}/sessions/${s.id}`}
+                    className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+                  >
+                    <Video className="h-3.5 w-3.5" /> Mở buổi học
+                  </Link>
+                  <Link
                     to={`/lms/teach/classes/${classId}/attendance?sessionId=${s.id}`}
                     className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
                   >
@@ -132,14 +137,6 @@ export default function ClassWorkspaceScheduleTab({
                     className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70 transition"
                   >
                     <Link2 className="h-3.5 w-3.5" /> {hasMeetingLink ? "Đổi link" : "Gán Zoom/Meet"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onJoinSession?.(s)}
-                    disabled={!hasMeetingLink}
-                    className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-45 transition"
-                  >
-                    <Video className="h-3.5 w-3.5" /> Vào phòng dạy
                   </button>
                 </div>
               </div>

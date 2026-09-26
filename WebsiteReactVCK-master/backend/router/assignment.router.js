@@ -93,7 +93,7 @@ const assignmentAssetPath = (assetId) => assetId ? `/api/assignments/submission-
 
 const getAssignment = async (assignmentId, db = { query }) => {
   const result = await db.query(
-    `SELECT a.id, a.title, a.assignment_type, a.course_id, a.live_class_id, a.instructor_id,
+    `SELECT a.id, a.title, a.assignment_type, a.course_id, a.live_class_id, a.class_session_id, a.instructor_id,
             a.description, a.max_score, a.due_date, a.attachment_url,
             a.created_at, a.updated_at,
             COALESCE(c.title, c.name) AS course_title,
@@ -101,13 +101,15 @@ const getAssignment = async (assignmentId, db = { query }) => {
             COALESCE(c.is_management_managed, class_course.is_management_managed, FALSE) AS course_is_management_managed,
             COALESCE(a.course_id, lc.course_id) AS resolved_course_id,
             c.author_id AS course_author_id,
-            lc.status AS live_class_status,
+            lc.status AS live_class_status, cs.title AS session_title,
+            cs.start_time AS session_start, cs.end_time AS session_end,
             lc.instructor_id AS live_class_instructor_id,
             instructor.username AS instructor_name,
             instructor.avatar_url AS instructor_avatar
      FROM assignments a
      LEFT JOIN courses c ON c.id = a.course_id
      LEFT JOIN live_classes lc ON lc.id = a.live_class_id
+     LEFT JOIN class_sessions cs ON cs.id = a.class_session_id
      LEFT JOIN courses class_course ON class_course.id = lc.course_id
      LEFT JOIN users instructor ON instructor.id = a.instructor_id
      WHERE a.id = $1`,
@@ -200,6 +202,13 @@ router.get("/", protectRoute, async (req, res) => {
     if (requestedClassId && !requestedCourseId) {
       return validationError(res, "classId cần đi kèm courseId");
     }
+    const requestedSessionId = parseOptionalId(req.query.sessionId);
+    if (req.query.sessionId !== undefined && !requestedSessionId) {
+      return validationError(res, "sessionId không hợp lệ");
+    }
+    if (requestedSessionId && !requestedClassId) {
+      return validationError(res, "sessionId cần đi kèm classId");
+    }
     const isAdmin = req.user.role === "admin";
     const isTeacher = req.user.role === "creator";
     if (requestedClassId) {
@@ -234,6 +243,13 @@ router.get("/", protectRoute, async (req, res) => {
         classAccessParams,
       );
       if (classAccess.rows.length === 0) return forbidden(res, "Bạn không có quyền xem bài tập của lớp này");
+      if (requestedSessionId) {
+        const sessionAccess = await query(
+          "SELECT 1 FROM class_sessions WHERE id = $1 AND live_class_id = $2 AND status <> 'cancelled'",
+          [requestedSessionId, requestedClassId],
+        );
+        if (sessionAccess.rows.length === 0) return notFound(res, "Không tìm thấy buổi học của lớp này");
+      }
     }
     const visibilityClause = isAdmin
       ? "TRUE"
@@ -300,14 +316,19 @@ router.get("/", protectRoute, async (req, res) => {
     const quizCourseScope = requestedCourseId
       ? "AND COALESCE(q.course_id, l.course_id) = $2"
       : "";
-    const assignmentClassScope = requestedClassId
-      ? `AND (a.live_class_id IS NULL OR a.live_class_id = $${requestedCourseId ? 3 : 2})`
-      : "";
-    const quizClassScope = requestedClassId
-      ? `AND (q.live_class_id IS NULL OR q.live_class_id = $${requestedCourseId ? 3 : 2})`
-      : "";
     const params = requestedCourseId ? [req.user.id, requestedCourseId] : [req.user.id];
     if (requestedClassId) params.push(requestedClassId);
+    if (requestedSessionId) params.push(requestedSessionId);
+    const classParamIndex = requestedClassId ? (requestedCourseId ? 3 : 2) : null;
+    const sessionParamIndex = requestedSessionId ? params.length : null;
+    const assignmentClassScope = classParamIndex
+      ? `AND (a.live_class_id IS NULL OR a.live_class_id = $${classParamIndex})`
+      : "";
+    const quizClassScope = classParamIndex
+      ? `AND (q.live_class_id IS NULL OR q.live_class_id = $${classParamIndex})`
+      : "";
+    const assignmentSessionScope = sessionParamIndex ? `AND a.class_session_id = $${sessionParamIndex}` : "";
+    const quizSessionScope = sessionParamIndex ? `AND q.class_session_id = $${sessionParamIndex}` : "";
     const result = await query(
       `WITH assignment_rows AS (
          SELECT a.id, a.title, a.assignment_type AS type, a.course_id, a.live_class_id, a.description,
@@ -317,8 +338,8 @@ router.get("/", protectRoute, async (req, res) => {
                 s.submitted_at, s.content_text, s.file_asset_id, s.audio_asset_id,
                 fa.original_filename AS file_name, aa.original_filename AS audio_name,
                 sg.score, sg.feedback_text, sg.graded_at,
-                NULL::bigint AS class_session_id, NULL::varchar AS session_title,
-                NULL::timestamptz AS session_start, NULL::timestamptz AS session_end, lc.title AS class_title,
+                a.class_session_id, assignment_session.title AS session_title,
+                assignment_session.start_time AS session_start, assignment_session.end_time AS session_end, lc.title AS class_title,
                 CASE WHEN sg.score IS NOT NULL THEN 'graded'
                      WHEN s.id IS NOT NULL THEN s.status
                      WHEN a.due_date IS NOT NULL AND a.due_date < NOW() THEN 'late'
@@ -326,6 +347,7 @@ router.get("/", protectRoute, async (req, res) => {
          FROM assignments a
          LEFT JOIN courses c ON c.id = a.course_id
          LEFT JOIN live_classes lc ON lc.id = a.live_class_id
+         LEFT JOIN class_sessions assignment_session ON assignment_session.id = a.class_session_id
          LEFT JOIN courses class_course ON class_course.id = lc.course_id
          LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.user_id = $1
          LEFT JOIN submission_assets fa ON fa.id = s.file_asset_id
@@ -334,7 +356,7 @@ router.get("/", protectRoute, async (req, res) => {
            SELECT score, feedback_text, graded_at FROM submission_grades
            WHERE submission_id = s.id ORDER BY graded_at DESC, id DESC LIMIT 1
          ) sg ON true
-         WHERE ${visibilityClause} ${assignmentCourseScope} ${assignmentClassScope}
+         WHERE ${visibilityClause} ${assignmentCourseScope} ${assignmentClassScope} ${assignmentSessionScope}
        ), quiz_rows AS (
          SELECT q.id, q.title, 'quiz' AS type, COALESCE(q.course_id, l.course_id) AS course_id, q.live_class_id, q.description,
                 (SELECT COALESCE(SUM(qq.points), 0) FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS max_score,
@@ -353,7 +375,7 @@ router.get("/", protectRoute, async (req, res) => {
          LEFT JOIN live_classes quiz_lc ON quiz_lc.id = q.live_class_id
          LEFT JOIN class_sessions quiz_session ON quiz_session.id = q.class_session_id
          LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.user_id = $1
-         WHERE ${quizVisibilityClause} ${quizCourseScope} ${quizClassScope}
+         WHERE ${quizVisibilityClause} ${quizCourseScope} ${quizClassScope} ${quizSessionScope}
        )
        SELECT * FROM (
          SELECT * FROM assignment_rows
@@ -770,9 +792,11 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
     const assignmentType = req.body.assignmentType || req.body.type || "homework";
     const courseId = parseOptionalId(req.body.courseId);
     const liveClassId = parseOptionalId(req.body.liveClassId);
+    const classSessionId = parseOptionalId(req.body.classSessionId);
     if (!title || typeof title !== "string" || title.trim().length > 255) return validationError(res, "Tiêu đề bài tập không hợp lệ");
     if (!["homework", "hskk", "quiz"].includes(assignmentType)) return validationError(res, "Loại bài tập không hợp lệ");
     if (!courseId && !liveClassId) return validationError(res, "Bài tập phải thuộc ít nhất một khóa học hoặc lớp trực tuyến");
+    if (classSessionId && !liveClassId) return validationError(res, "Bài tập theo buổi học phải thuộc một lớp cụ thể");
     const parsedMaxScore = maxScore === undefined ? 10 : Number(maxScore);
     if (!Number.isFinite(parsedMaxScore) || parsedMaxScore <= 0 || parsedMaxScore > 999.99) return validationError(res, "maxScore không hợp lệ");
     if (description !== undefined && (typeof description !== "string" || description.length > 50000)) return validationError(res, "description không hợp lệ");
@@ -798,11 +822,18 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
       }
       if (courseId && classResult.rows[0].course_id !== null && String(classResult.rows[0].course_id) !== String(courseId)) return validationError(res, "Khóa học và lớp trực tuyến không cùng một phạm vi");
     }
+    if (classSessionId) {
+      const sessionResult = await query(
+        "SELECT id FROM class_sessions WHERE id = $1 AND live_class_id = $2 AND status <> 'cancelled'",
+        [classSessionId, liveClassId],
+      );
+      if (sessionResult.rows.length === 0) return validationError(res, "Buổi học không thuộc lớp đã chọn hoặc đã bị hủy");
+    }
     const result = await query(
-      `INSERT INTO assignments (title, assignment_type, course_id, live_class_id, instructor_id, description, max_score, due_date, attachment_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id, title, assignment_type, course_id, live_class_id, instructor_id, description, max_score, due_date, attachment_url, created_at, updated_at`,
-      [title.trim(), assignmentType, courseId, liveClassId, req.user.id, description?.trim() || "", parsedMaxScore, dueDate || null, attachmentUrl || null],
+      `INSERT INTO assignments (title, assignment_type, course_id, live_class_id, class_session_id, instructor_id, description, max_score, due_date, attachment_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, title, assignment_type, course_id, live_class_id, class_session_id, instructor_id, description, max_score, due_date, attachment_url, created_at, updated_at`,
+      [title.trim(), assignmentType, courseId, liveClassId, classSessionId, req.user.id, description?.trim() || "", parsedMaxScore, dueDate || null, attachmentUrl || null],
     );
     await recordAuditEvent({
       actorId: req.user.id,
@@ -810,7 +841,7 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
       entityType: "assignment",
       entityId: result.rows[0].id,
       afterState: result.rows[0],
-      metadata: { ip: req.ip },
+      metadata: { ip: req.ip, classSessionId },
     });
     await notifyAssignmentPublished({ assignmentId: result.rows[0].id, actorId: req.user.id });
     return res.status(201).json({ success: true, data: result.rows[0], message: "Tạo bài tập mới thành công" });
@@ -849,7 +880,7 @@ router.patch("/:id", protectRoute, requireTeacher, requirePermission("lms.assign
       `UPDATE assignments
        SET title = $1, description = $2, max_score = $3, due_date = $4, attachment_url = $5
        WHERE id = $6
-       RETURNING id, title, assignment_type, course_id, live_class_id, instructor_id, description, max_score, due_date, attachment_url, created_at, updated_at`,
+       RETURNING id, title, assignment_type, course_id, live_class_id, class_session_id, instructor_id, description, max_score, due_date, attachment_url, created_at, updated_at`,
       [nextTitle.trim(), nextDescription, nextMaxScore, nextDueDate || null, nextAttachmentUrl || null, assignmentId],
     );
     const updated = result.rows[0];

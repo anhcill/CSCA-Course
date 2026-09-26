@@ -639,9 +639,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         scopedClassParams,
       ),
       query(
-        `SELECT a.id, a.title, a.assignment_type AS type, a.course_id, a.live_class_id,
+        `SELECT a.id, a.title, a.assignment_type AS type, a.course_id, a.live_class_id, a.class_session_id,
                 a.description, a.max_score, a.due_date, a.created_at,
-                lc.title AS class_title,
+                lc.title AS class_title, assignment_session.title AS session_title,
+                assignment_session.start_time AS session_start, assignment_session.end_time AS session_end,
                 s.id AS submission_id, s.status AS submission_status, s.submitted_at,
                 grade.score, grade.feedback_text, grade.graded_at,
                 CASE WHEN grade.score IS NOT NULL THEN 'graded'
@@ -650,6 +651,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
                      ELSE 'todo' END AS status
          FROM assignments a
          LEFT JOIN live_classes lc ON lc.id = a.live_class_id
+         LEFT JOIN class_sessions assignment_session ON assignment_session.id = a.class_session_id
          LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.user_id = $2
          LEFT JOIN LATERAL (
            SELECT score, feedback_text, graded_at

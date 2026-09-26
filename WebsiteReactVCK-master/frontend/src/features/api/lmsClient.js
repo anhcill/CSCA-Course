@@ -296,16 +296,17 @@ export const fetchAttendanceRoster = async (sessionId) => (
 );
 
 // Assignment & Quiz Helpers
-export const fetchAssignments = async ({ courseId, classId } = {}) => {
+export const fetchAssignments = async ({ courseId, classId, sessionId } = {}) => {
   const params = new URLSearchParams();
   if (courseId) params.set("courseId", courseId);
   if (classId) params.set("classId", classId);
+  if (sessionId) params.set("sessionId", sessionId);
   return request(`/assignments${params.size ? `?${params.toString()}` : ""}`);
 };
 
-export const createAssignment = async ({ title, description, liveClassId, assignmentType, maxScore, dueDate, attachmentUrl }) => request("/assignments", {
+export const createAssignment = async ({ title, description, liveClassId, classSessionId, assignmentType, maxScore, dueDate, attachmentUrl }) => request("/assignments", {
   method: "POST",
-  body: JSON.stringify({ title, description, liveClassId, assignmentType, maxScore, dueDate, attachmentUrl }),
+  body: JSON.stringify({ title, description, liveClassId, classSessionId, assignmentType, maxScore, dueDate, attachmentUrl }),
 });
 
 export const fetchAssignmentDetail = async (assignmentId) => (
@@ -554,21 +555,24 @@ export const fetchAdminAuditLogs = async ({ page = 1, limit = 20, action = "ALL"
 };
 
 // Teacher & Student Files
-export const fetchClassFiles = async (classId) => {
-  return request(`/teacher/classes/${encodeURIComponent(classId)}/files`);
+export const fetchClassFiles = async (classId, { sessionId } = {}) => {
+  const params = new URLSearchParams();
+  if (sessionId) params.set("sessionId", sessionId);
+  return request(`/teacher/classes/${encodeURIComponent(classId)}/files${params.size ? `?${params.toString()}` : ""}`);
 };
 
-export const fetchStudentFiles = async ({ courseId, classId } = {}) => {
+export const fetchStudentFiles = async ({ courseId, classId, sessionId } = {}) => {
   const params = new URLSearchParams();
   if (courseId) params.set("courseId", courseId);
   if (classId) params.set("classId", classId);
+  if (sessionId) params.set("sessionId", sessionId);
   return request(`/student/files${params.size ? `?${params.toString()}` : ""}`);
 };
 
-export const uploadClassFile = async (classId, file, { visibility = "CLASS_ONLY" } = {}) => {
+export const uploadClassFile = async (classId, file, { visibility = "CLASS_ONLY", sessionId } = {}) => {
   const uploadResponse = await request(`/teacher/classes/${encodeURIComponent(classId)}/files/upload-url`, {
     method: "POST",
-    body: JSON.stringify({ filename: file.name, mimeType: file.type, sizeBytes: file.size, visibility }),
+    body: JSON.stringify({ filename: file.name, mimeType: file.type, sizeBytes: file.size, visibility, classSessionId: sessionId }),
   });
   const upload = uploadResponse?.data;
   if (!upload?.uploadUrl || !upload?.fileId) throw new LmsApiError("Máy chủ không trả về upload target");
