@@ -5,7 +5,10 @@
       <stop offset="1" stop-color="#2563EB"/>
     </linearGradient>
   </defs>
+  <!-- Nền Squircle tương phản cao trên cả tab sáng lẫn tab tối của Chrome -->
   <rect width="32" height="32" rx="8" fill="#091428"/>
+  <!-- Chữ C nét khối dứt khoát chuẩn 16px & 32px -->
   <path d="M21.5 11C19.8 9.2 17.4 8 14.5 8C8.7 8 4.5 12.2 4.5 17C4.5 21.8 8.7 26 14.5 26C17.4 26 19.8 24.8 21.5 23" fill="none" stroke="url(#cscaGrad)" stroke-width="4.2" stroke-linecap="round"/>
+  <!-- Điểm nhấn ngôi sao tri thức CSCA -->
   <circle cx="21.5" cy="11" r="2" fill="#38BDF8"/>
 </svg>
