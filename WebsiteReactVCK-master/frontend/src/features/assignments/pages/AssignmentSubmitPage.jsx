@@ -383,6 +383,16 @@ export default function AssignmentSubmitPage() {
                   </div>
                 </div>
 
+                {(assignment.rubric || []).length > 0 && (
+                  <section className="rounded-2xl border border-sky-200 bg-sky-50/70 p-5 dark:border-sky-900/70 dark:bg-sky-950/20">
+                    <div className="mb-3"><p className="text-xs font-black uppercase tracking-wide text-sky-900 dark:text-sky-100">Kết quả theo tiêu chí</p><p className="mt-0.5 text-[11px] text-sky-700 dark:text-sky-300">Điểm và nhận xét riêng cho từng phần bài làm.</p></div>
+                    <div className="space-y-2">{assignment.rubric.map((criterion) => {
+                      const rubricScore = (assignment.rubric_scores || []).find((item) => item.criterionId === criterion.id);
+                      return <div key={criterion.id} className="rounded-xl border border-sky-200 bg-white p-3 dark:border-sky-900 dark:bg-slate-950"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-slate-900 dark:text-white">{criterion.title}</p>{criterion.description && <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{criterion.description}</p>}</div><b className="shrink-0 font-mono text-sm text-sky-700 dark:text-sky-200">{rubricScore?.score ?? 0}/{criterion.maxPoints}</b></div>{rubricScore?.feedback && <p className="mt-2 border-t border-sky-100 pt-2 text-xs leading-5 text-slate-600 dark:border-sky-950 dark:text-slate-300">{rubricScore.feedback}</p>}</div>;
+                    })}</div>
+                  </section>
+                )}
+
                 {/* Teacher Feedback Comment Box */}
                 <div className="bg-white dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3">
                   <div className="flex items-center gap-3">

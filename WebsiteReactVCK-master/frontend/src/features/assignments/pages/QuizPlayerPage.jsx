@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { fetchQuiz, submitQuiz } from "../../api/lmsClient";
+import { fetchQuiz, saveQuizAnswers, submitQuiz } from "../../api/lmsClient";
 import { ErrorState, LoadingState } from "../../../components/common/StateView";
 
 function TimerRing({ seconds, total }) {
@@ -127,7 +127,7 @@ export default function QuizPlayerPage() {
       const isSubmitted = Boolean(data.result);
       const serverAnswers = data.attempt?.answers || {};
       let savedAnswers = {};
-      if (!isSubmitted && Object.keys(serverAnswers).length === 0) {
+      if (!isSubmitted && !data.attempt && Object.keys(serverAnswers).length === 0) {
         try { savedAnswers = JSON.parse(localStorage.getItem(`csca_quiz_${quizId}`) || "{}"); } catch { savedAnswers = {}; }
       }
       setQuizData(data);
@@ -136,7 +136,8 @@ export default function QuizPlayerPage() {
       const limit = Number(data.timeLimitSeconds) || 15 * 60;
       setTotalTime(limit);
       const startedAt = data.attempt?.startedAt ? new Date(data.attempt.startedAt).getTime() : Date.now();
-      setTimeLeft(Math.max(0, limit - Math.floor((Date.now() - startedAt) / 1000)));
+      const expiresAt = data.attempt?.expiresAt ? new Date(data.attempt.expiresAt).getTime() : startedAt + limit * 1000;
+      setTimeLeft(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
     } catch (error) {
       console.error("Could not load quiz:", error);
       setLoadError(error?.message || "Không thể tải đề thi");
@@ -151,11 +152,19 @@ export default function QuizPlayerPage() {
     if (result || Object.keys(answers).length === 0) return undefined;
     setSaveStatus("saving");
     const timeout = setTimeout(() => {
-      try { localStorage.setItem(`csca_quiz_${quizId || "quiz"}`, JSON.stringify(answers)); } catch { /* Storage is only a convenience, never the source of truth. */ }
-      setSaveStatus("saved");
-    }, 300);
+      try { localStorage.setItem(`csca_quiz_${quizId || "quiz"}`, JSON.stringify(answers)); } catch { /* Offline convenience only. */ }
+      saveQuizAnswers({ quizId, answers })
+        .then(() => setSaveStatus("saved"))
+        .catch(async (error) => {
+          setSaveStatus("error");
+          if (error?.errorCode === "QUIZ_ATTEMPT_EXPIRED") {
+            toast("Đã hết thời gian, hệ thống đang tải kết quả đã lưu.", { icon: "⏱️" });
+            await loadQuiz();
+          }
+        });
+    }, 650);
     return () => clearTimeout(timeout);
-  }, [answers, quizId, result]);
+  }, [answers, quizId, result, loadQuiz]);
 
   const handleSelect = useCallback((question, optionKey) => {
     if (result || reviewMode) return;
@@ -229,7 +238,7 @@ export default function QuizPlayerPage() {
           <h2 className={`text-lg font-black ${result.passed ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300"}`}>{result.passed ? "Bạn đã đạt yêu cầu" : "Bạn chưa đạt điểm yêu cầu"}</h2>
           <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-600 dark:text-slate-300">{result.message || "Kết quả đã được chấm và khóa trên hệ thống."}</p>
           <div className="mt-6 grid grid-cols-3 gap-3 text-center"><div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><b className="font-mono text-xl text-violet-600 dark:text-violet-300">{percentage}%</b><span className="mt-1 block text-[10px] font-bold uppercase text-slate-500">Chính xác</span></div><div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><b className="font-mono text-xl text-blue-600 dark:text-blue-300">{answeredCount}/{questions.length}</b><span className="mt-1 block text-[10px] font-bold uppercase text-slate-500">Đã làm</span></div><div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><b className="font-mono text-xl text-emerald-600 dark:text-emerald-300">{score}/{maxScore}</b><span className="mt-1 block text-[10px] font-bold uppercase text-slate-500">Điểm</span></div></div>
-          <div className="mt-7 flex flex-col gap-3 border-t border-slate-200 pt-6 sm:flex-row dark:border-slate-800"><button type="button" onClick={() => setReviewMode(true)} className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-xs font-black text-white transition hover:bg-blue-700">Xem đáp án & giải thích</button><Link to={assignmentListPath} className="flex-1 rounded-xl bg-slate-100 px-4 py-3 text-xs font-black text-slate-700 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">Về Bài tập & Quiz</Link></div>
+          <div className="mt-7 flex flex-col gap-3 border-t border-slate-200 pt-6 sm:flex-row dark:border-slate-800">{result.reviewAvailable ? <button type="button" onClick={() => setReviewMode(true)} className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-xs font-black text-white transition hover:bg-blue-700">Xem đáp án & giải thích</button> : <div className="flex-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-xs font-bold text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">Đáp án sẽ hiển thị theo chính sách của giảng viên.</div>}<Link to={assignmentListPath} className="flex-1 rounded-xl bg-slate-100 px-4 py-3 text-xs font-black text-slate-700 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">Về Bài tập & Quiz</Link></div>
         </div>
       </div>
     );
@@ -239,7 +248,7 @@ export default function QuizPlayerPage() {
 
   return (
     <div className="min-h-screen bg-[#f4f7fc] pb-24 text-slate-950 dark:bg-[#081120] dark:text-slate-50 lg:pb-6">
-      <header className="sticky top-0 z-30 border-b border-blue-100 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-[#101b2d]/95 dark:shadow-none"><ProgressBar answered={answeredCount} total={questions.length} /><div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4 px-4 py-3 lg:px-6"><div className="min-w-0"><div className="flex items-center gap-2 text-xs"><Link to={assignmentListPath} className="font-bold text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">← Bài tập & Quiz</Link><span className="text-slate-300">/</span><span className="font-black uppercase tracking-wider text-blue-700 dark:text-blue-300">{reviewMode ? "Xem lại đáp án" : "Quiz"}</span></div><h1 className="mt-1 truncate text-sm font-black sm:text-base">{quizData.title}</h1>{quizData.description && <p className="mt-0.5 hidden truncate text-xs text-slate-500 sm:block dark:text-slate-400">{quizData.description}</p>}</div><div className="flex shrink-0 items-center gap-3">{!reviewMode && !result && <div className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500 sm:block dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">{saveStatus === "saving" ? "Đang lưu..." : "✓ Tự động lưu trên máy này"}</div>}<div className="hidden text-right sm:block"><b className="text-sm">{answeredCount}/{questions.length}</b><span className="block text-[10px] font-bold uppercase text-slate-500">Đã trả lời</span></div>{!reviewMode && !result && <TimerRing seconds={timeLeft} total={totalTime} />}{reviewMode && <button type="button" onClick={() => setReviewMode(false)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Kết quả</button>}</div></div></header>
+      <header className="sticky top-0 z-30 border-b border-blue-100 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-[#101b2d]/95 dark:shadow-none"><ProgressBar answered={answeredCount} total={questions.length} /><div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4 px-4 py-3 lg:px-6"><div className="min-w-0"><div className="flex items-center gap-2 text-xs"><Link to={assignmentListPath} className="font-bold text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">← Bài tập & Quiz</Link><span className="text-slate-300">/</span><span className="font-black uppercase tracking-wider text-blue-700 dark:text-blue-300">{reviewMode ? "Xem lại đáp án" : "Quiz"}</span></div><h1 className="mt-1 truncate text-sm font-black sm:text-base">{quizData.title}</h1>{quizData.description && <p className="mt-0.5 hidden truncate text-xs text-slate-500 sm:block dark:text-slate-400">{quizData.description}</p>}</div><div className="flex shrink-0 items-center gap-3">{!reviewMode && !result && <div className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500 sm:block dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">{saveStatus === "saving" ? "Đang lưu trên máy chủ..." : saveStatus === "error" ? "⚠ Chờ kết nối để lưu" : "✓ Đã lưu an toàn"}</div>}<div className="hidden text-right sm:block"><b className="text-sm">{answeredCount}/{questions.length}</b><span className="block text-[10px] font-bold uppercase text-slate-500">Đã trả lời</span></div>{!reviewMode && !result && <TimerRing seconds={timeLeft} total={totalTime} />}{reviewMode && <button type="button" onClick={() => setReviewMode(false)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Kết quả</button>}</div></div></header>
       {reviewMode && <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-xs font-semibold text-sky-800 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-200">Bạn đang xem lại bài đã nộp. Đáp án đúng và giải thích được hiển thị cho từng câu.</div>}
       {quizData.paperUrl && <div className="border-b border-slate-200 bg-white px-4 py-2 text-center dark:border-slate-800 dark:bg-slate-900 lg:hidden"><a href={quizData.paperUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-blue-700 underline underline-offset-4 dark:text-blue-300">Mở đề PDF trong tab mới</a></div>}
       <main className="mx-auto grid max-w-[1500px] gap-4 p-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(390px,0.85fr)] lg:p-5">

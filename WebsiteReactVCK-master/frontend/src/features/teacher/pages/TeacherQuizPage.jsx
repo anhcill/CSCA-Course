@@ -146,6 +146,8 @@ export default function TeacherQuizPage() {
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState(30);
   const [passScore, setPassScore] = useState(60);
+  const [attemptLimit, setAttemptLimit] = useState(1);
+  const [reviewPolicy, setReviewPolicy] = useState("after_submit");
   const [shuffleQuestions, setShuffleQuestions] = useState(true);
   const [questions, setQuestions] = useState([createBlankQuestion()]);
   const [answerKeyPaste, setAnswerKeyPaste] = useState("");
@@ -243,6 +245,8 @@ export default function TeacherQuizPage() {
     setTargetClasses([]);
     setTimeLimit(30);
     setPassScore(60);
+    setAttemptLimit(1);
+    setReviewPolicy("after_submit");
     setShuffleQuestions(true);
     setQuestions([createBlankQuestion()]);
     setAnswerKeyPaste("");
@@ -423,6 +427,8 @@ export default function TeacherQuizPage() {
         dueDate: activityScope === "homework" ? dueDate : undefined,
         durationMinutes: Number(timeLimit),
         passingScore: Number(passScore),
+        attemptLimit: Number(attemptLimit),
+        reviewPolicy,
         shuffleQuestions,
         paperFileId: paperFile?.id || undefined,
         status,
@@ -489,6 +495,7 @@ export default function TeacherQuizPage() {
                       ? `BÀI TẬP VỀ NHÀ · Hạn nộp ${quiz.dueDate ? new Date(quiz.dueDate).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "chưa đặt"}`
                       : "QUIZ TRONG BUỔI HỌC"}
                   </p>
+                  <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">{quiz.attemptLimit} lượt làm · {quiz.reviewPolicy === "after_submit" ? "Xem đáp án sau khi nộp" : quiz.reviewPolicy === "after_close" ? "Xem đáp án khi quiz đóng" : "Không công bố đáp án"}</p>
                   {quiz.hasPaper && <span className="inline-flex rounded-full bg-blue-500/10 px-2 py-1 text-[10px] font-black text-blue-700 dark:text-blue-300">📄 Có đề PDF</span>}
                 </div>
                 <div className="space-y-4 border-t border-slate-100 pt-4 dark:border-slate-800">
@@ -549,6 +556,8 @@ export default function TeacherQuizPage() {
                     {quizMode === "paper" && <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">File đề PDF <b className="text-rose-500">*</b></span><div className="flex flex-col gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/70 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-violet-800 dark:bg-violet-950/20"><div className="min-w-0"><p className="truncate text-xs font-bold text-violet-950 dark:text-violet-100">{paperFile ? `📄 ${paperFile.name}` : "Tải đề PDF để học viên đọc ở cột bên trái."}</p><p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Sau khi tải, dán danh sách đáp án ở bảng bên phải để tạo số câu tương ứng.</p></div><input type="file" accept="application/pdf,.pdf" disabled={!courseId || uploadingPaper} onChange={handlePaperSelect} className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-2 file:text-xs file:font-black file:text-white hover:file:bg-violet-500 disabled:opacity-50 sm:w-auto" /></div></label>}
                     <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Thời gian (phút)</span><input type="number" min="1" max="240" value={timeLimit} onChange={(event) => setTimeLimit(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
                     <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Điểm đạt (%)</span><input type="number" min="0" max="100" value={passScore} onChange={(event) => setPassScore(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
+                    <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Số lượt làm</span><select value={attemptLimit} onChange={(event) => setAttemptLimit(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{[1, 2, 3, 4, 5].map((count) => <option key={count} value={count}>{count} lượt</option>)}</select></label>
+                    <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Công bố đáp án</span><select value={reviewPolicy} onChange={(event) => setReviewPolicy(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="after_submit">Ngay sau khi nộp</option><option value="after_close">Khi quiz đóng</option><option value="never">Không công bố</option></select></label>
                     <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Hướng dẫn cho học viên <span className="font-medium text-slate-400">(không bắt buộc)</span></span><textarea value={quizDesc} onChange={(event) => setQuizDesc(event.target.value)} rows={2} maxLength={4000} placeholder="Ví dụ: Đọc kỹ từng câu, mỗi câu chỉ chọn một đáp án." className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
                     <label className="flex items-center gap-2.5 text-xs font-bold text-slate-700 dark:text-slate-300"><input type="checkbox" checked={shuffleQuestions} onChange={(event) => setShuffleQuestions(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500" /> Trộn thứ tự câu hỏi cho mỗi học viên</label>
                   </div>

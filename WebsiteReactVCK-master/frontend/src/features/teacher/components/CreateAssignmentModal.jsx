@@ -19,6 +19,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [maxScore, setMaxScore] = useState(10);
+  const [rubric, setRubric] = useState([]);
   const [allowResubmit, setAllowResubmit] = useState(true);
   const [type, setType] = useState("homework"); // homework | essay | speaking | quiz
   const [submitting, setSubmitting] = useState(false);
@@ -97,6 +98,11 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
         description: description.trim(),
         dueDate,
         maxScore: Number(maxScore),
+        rubric: rubric.map((criterion) => ({
+          title: criterion.title.trim(),
+          description: criterion.description.trim(),
+          maxPoints: Number(criterion.maxPoints),
+        })),
         assignmentType: type === "speaking" ? "hskk" : type === "essay" ? "homework" : type,
         attachmentUrl: attachmentUrl || undefined,
       });
@@ -214,6 +220,24 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
               />
             </div>
           </div>
+
+          <section className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 dark:border-sky-900/70 dark:bg-sky-950/20">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-black text-sky-950 dark:text-sky-100">Rubric chấm bài <span className="font-medium text-sky-700 dark:text-sky-300">(không bắt buộc)</span></p>
+                <p className="mt-0.5 text-[10px] leading-4 text-sky-700 dark:text-sky-300">Thêm tiêu chí để khi chấm, hệ thống cộng điểm từng phần và lưu lịch sử nhận xét.</p>
+              </div>
+              <button type="button" onClick={() => setRubric((current) => [...current, { id: `${Date.now()}-${current.length}`, title: "", description: "", maxPoints: "" }])} className="shrink-0 rounded-lg bg-sky-600 px-2.5 py-1.5 text-[10px] font-black text-white transition hover:bg-sky-500">+ Tiêu chí</button>
+            </div>
+            {rubric.length > 0 && <div className="mt-3 space-y-2">
+              {rubric.map((criterion, index) => <div key={criterion.id} className="grid grid-cols-[minmax(0,1fr)_72px_auto] gap-2 rounded-lg border border-sky-200 bg-white p-2 dark:border-sky-900 dark:bg-slate-950">
+                <div><input value={criterion.title} onChange={(event) => setRubric((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item))} placeholder={`Tiêu chí ${index + 1}`} maxLength={255} className="w-full bg-transparent text-[11px] font-bold outline-none placeholder:text-slate-400 dark:text-white" /><input value={criterion.description} onChange={(event) => setRubric((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item))} placeholder="Nhận xét gợi ý (tuỳ chọn)" maxLength={2000} className="mt-1 w-full bg-transparent text-[10px] outline-none placeholder:text-slate-400 dark:text-slate-300" /></div>
+                <input type="number" min="0.25" max="999.99" step="0.25" value={criterion.maxPoints} onChange={(event) => setRubric((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, maxPoints: event.target.value } : item))} placeholder="Điểm" className="w-full rounded-md border border-sky-200 bg-sky-50 px-1.5 text-center text-[11px] font-black outline-none focus:border-sky-500 dark:border-sky-900 dark:bg-slate-900 dark:text-white" />
+                <button type="button" onClick={() => setRubric((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="rounded-md px-1.5 text-xs font-black text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30" aria-label={`Xóa tiêu chí ${index + 1}`}>×</button>
+              </div>)}
+              <p className={`text-[10px] font-bold ${Math.abs(rubric.reduce((total, item) => total + (Number(item.maxPoints) || 0), 0) - Number(maxScore || 0)) < 0.005 ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>Tổng rubric: {rubric.reduce((total, item) => total + (Number(item.maxPoints) || 0), 0)}/{maxScore} điểm {Math.abs(rubric.reduce((total, item) => total + (Number(item.maxPoints) || 0), 0) - Number(maxScore || 0)) < 0.005 ? "✓" : "— cần bằng thang điểm"}</p>
+            </div>}
+          </section>
 
           {/* Due Date */}
           <div>

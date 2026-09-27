@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "node:crypto";
 import { getClient, query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireRole from "../middleware/requireRole.js";
@@ -19,6 +20,15 @@ import {
   notifyAssignmentDeadlineChanged,
   notifyAssignmentPublished,
 } from "../services/assignmentDeadlineNotification.service.js";
+import { broadcastToClass } from "../services/notification.service.js";
+import {
+  QUIZ_REVIEW_POLICIES,
+  getAttemptExpiry,
+  getQuizAvailability,
+  normalizeRubric,
+  normalizeRubricScores,
+  reviewIsAvailable,
+} from "../services/assessmentPolicy.service.js";
 
 const router = express.Router();
 
@@ -54,7 +64,7 @@ const isSafeAssignmentAttachmentUrl = (value) => {
 
 const isPlainObject = (value) => value && typeof value === "object" && !Array.isArray(value);
 
-const parseOptions = (value) => {
+const parseJsonArray = (value) => {
   if (Array.isArray(value)) return value;
   if (typeof value !== "string") return [];
   try {
@@ -63,6 +73,10 @@ const parseOptions = (value) => {
   } catch {
     return [];
   }
+};
+
+const parseOptions = (value) => {
+  return parseJsonArray(value);
 };
 
 const parseStoredAnswer = (value) => {
@@ -105,6 +119,7 @@ const getAssignment = async (assignmentId, db = { query }) => {
             cs.start_time AS session_start, cs.end_time AS session_end,
             lc.instructor_id AS live_class_instructor_id,
             instructor.username AS instructor_name,
+            rubric.criteria_json AS rubric_criteria,
             instructor.avatar_url AS instructor_avatar
      FROM assignments a
      LEFT JOIN courses c ON c.id = a.course_id
@@ -112,6 +127,7 @@ const getAssignment = async (assignmentId, db = { query }) => {
      LEFT JOIN class_sessions cs ON cs.id = a.class_session_id
      LEFT JOIN courses class_course ON class_course.id = lc.course_id
      LEFT JOIN users instructor ON instructor.id = a.instructor_id
+     LEFT JOIN assignment_rubrics rubric ON rubric.assignment_id = a.id
      WHERE a.id = $1`,
     [assignmentId],
   );
@@ -183,9 +199,11 @@ const serializeAssignment = (row) => ({
   audio_name: row.audio_name || null,
   score: row.score ?? null,
   feedback_text: row.feedback_text || null,
+  rubric_scores: parseJsonArray(row.rubric_scores),
   graded_at: row.graded_at || null,
   instructor_name: row.grader_name || row.instructor_name || null,
   instructor_avatar: row.grader_avatar || row.instructor_avatar || null,
+  rubric: parseJsonArray(row.rubric_criteria),
   status: row.status,
 });
 
@@ -403,6 +421,7 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
     const params = req.user.role === "admin" ? [] : [req.user.id];
     const result = await query(
       `SELECT q.id, q.title, q.description, q.paper_file_id, q.live_class_id, q.class_session_id, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score,
+              q.attempt_limit, q.available_from, q.available_until, q.review_policy,
               q.status, q.shuffle_questions, q.created_at,
               COALESCE(c.title, c.name) AS course_title,
               lc.title AS class_title, cs.title AS session_title, cs.start_time AS session_start, cs.end_time AS session_end,
@@ -428,6 +447,8 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
       classTitle: row.class_title || "Chưa gắn lớp", sessionId: row.class_session_id ? String(row.class_session_id) : null,
       sessionTitle: row.session_title || "Chưa gắn buổi học", sessionStart: row.session_start || null, sessionEnd: row.session_end || null,
       activityScope: row.activity_scope || "session", dueDate: row.due_date || null,
+      availableFrom: row.available_from || null, availableUntil: row.available_until || null,
+      attemptLimit: Number(row.attempt_limit || 1), reviewPolicy: row.review_policy || "after_submit",
       hasPaper: Boolean(row.paper_file_id),
       timeLimitMinutes: Number(row.duration_minutes || 0), passingScore: Number(row.passing_score || 0),
       status: row.status, attemptsCount: Number(row.attempts_count || 0),
@@ -496,12 +517,18 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     const paperFileId = parseOptionalId(req.body?.paperFileId);
     const activityScope = req.body?.activityScope === undefined ? "session" : req.body.activityScope;
     const dueDate = req.body?.dueDate || null;
-    if (!title || title.length > 255 || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 240 || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100) return validationError(res, "Thông tin đề kiểm tra không hợp lệ");
+    const attemptLimit = Number(req.body?.attemptLimit ?? 1);
+    const reviewPolicy = req.body?.reviewPolicy || "after_submit";
+    const rawAvailableFrom = req.body?.availableFrom || null;
+    const rawAvailableUntil = req.body?.availableUntil || null;
+    if (!title || title.length > 255 || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 240 || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100 || !Number.isInteger(attemptLimit) || attemptLimit < 1 || attemptLimit > 5 || !QUIZ_REVIEW_POLICIES.has(reviewPolicy)) return validationError(res, "Thông tin đề kiểm tra không hợp lệ");
     if (questions.length < 1 || questions.length > 200) return validationError(res, "Đề kiểm tra cần từ 1 đến 200 câu hỏi");
     if (!courseId) return validationError(res, "Quiz phải được gắn với một khóa học");
     if (!liveClassId || !classSessionId) return validationError(res, "Quiz phải được gắn với một lớp và một buổi học chưa kết thúc");
     if (!["session", "homework"].includes(activityScope)) return validationError(res, "Loại hoạt động quiz không hợp lệ");
     if (dueDate && Number.isNaN(Date.parse(dueDate))) return validationError(res, "Hạn nộp Quiz không hợp lệ");
+    if (rawAvailableFrom && Number.isNaN(Date.parse(rawAvailableFrom))) return validationError(res, "Thời gian mở quiz không hợp lệ");
+    if (rawAvailableUntil && Number.isNaN(Date.parse(rawAvailableUntil))) return validationError(res, "Thời gian đóng quiz không hợp lệ");
     if (activityScope === "homework" && (!dueDate || new Date(dueDate).getTime() <= Date.now())) return validationError(res, "Quiz về nhà cần có hạn nộp ở tương lai");
     // Keep the session lock from validation through the insert. This prevents a
     // schedule update from moving the selected session into the past mid-request.
@@ -510,7 +537,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
       "SELECT c.id, c.author_id FROM courses c WHERE c.id = $1",
       [courseId],
     );
-    if (!course.rows[0]) return notFound(res, "Không tìm thấy khóa học");
+    if (!course.rows[0]) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy khóa học"); }
     const target = await client.query(
       `SELECT cs.id, cs.status, cs.start_time, cs.end_time, lc.id AS live_class_id, lc.instructor_id,
               EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $4 AND ct.status = 'active') AS is_class_teacher
@@ -520,21 +547,27 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
        FOR UPDATE OF cs`,
       [classSessionId, liveClassId, courseId, req.user.id],
     );
-    if (!target.rows[0]) return validationError(res, "Buổi học không thuộc lớp hoặc khóa học đã chọn");
+    if (!target.rows[0]) { await client.query("ROLLBACK"); return validationError(res, "Buổi học không thuộc lớp hoặc khóa học đã chọn"); }
     const targetSession = target.rows[0];
     if (req.user.role !== "admin" && String(course.rows[0].author_id) !== String(req.user.id)
       && String(targetSession.instructor_id) !== String(req.user.id) && !targetSession.is_class_teacher) {
+      await client.query("ROLLBACK");
       return forbidden(res, "Bạn không phụ trách lớp hoặc buổi học này");
     }
     if (!['scheduled', 'live', 'rescheduled'].includes(targetSession.status) || new Date(targetSession.end_time).getTime() <= Date.now()) {
+      await client.query("ROLLBACK");
       return validationError(res, "Không thể tạo quiz cho buổi học đã kết thúc, đã hủy hoặc đã qua");
     }
+    const availableFrom = rawAvailableFrom ? new Date(rawAvailableFrom) : (activityScope === "session" ? new Date(targetSession.start_time) : new Date());
+    const availableUntil = rawAvailableUntil ? new Date(rawAvailableUntil) : (activityScope === "homework" ? new Date(dueDate) : new Date(targetSession.end_time));
+    if (availableUntil.getTime() <= availableFrom.getTime()) { await client.query("ROLLBACK"); return validationError(res, "Thời gian đóng quiz phải sau thời gian mở"); }
+    if (activityScope === "homework" && availableUntil.getTime() > new Date(dueDate).getTime()) { await client.query("ROLLBACK"); return validationError(res, "Quiz về nhà không thể đóng sau hạn nộp"); }
     if (paperFileId) {
       const paper = await client.query(
         "SELECT id FROM lms_learning_files WHERE id = $1 AND course_id = $2 AND mime_type = 'application/pdf' AND status = 'ready'",
         [paperFileId, courseId],
       );
-      if (!paper.rows[0]) return validationError(res, "File đề PDF không hợp lệ hoặc chưa tải lên hoàn tất");
+      if (!paper.rows[0]) { await client.query("ROLLBACK"); return validationError(res, "File đề PDF không hợp lệ hoặc chưa tải lên hoàn tất"); }
     }
     const normalizedQuestions = questions.map((question, index) => {
       const text = typeof question.questionText === "string" ? question.questionText.trim() : "";
@@ -556,10 +589,10 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
       };
     });
     const quizResult = await client.query(
-      `INSERT INTO quizzes (title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       RETURNING id, title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, created_at`,
-      [title, description, courseId, liveClassId, classSessionId, activityScope, activityScope === "homework" ? dueDate : null, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id],
+      `INSERT INTO quizzes (title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id, attempt_limit, available_from, available_until, review_policy)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+       RETURNING id, title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, attempt_limit, available_from, available_until, review_policy, created_at`,
+      [title, description, courseId, liveClassId, classSessionId, activityScope, activityScope === "homework" ? dueDate : null, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id, attemptLimit, availableFrom.toISOString(), availableUntil.toISOString(), reviewPolicy],
     );
     for (const question of normalizedQuestions) {
       await client.query(
@@ -568,8 +601,22 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
         [quizResult.rows[0].id, question.text, question.type, JSON.stringify(question.options), question.correct, question.explanation, question.points, question.order],
       );
     }
-    await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.created", entityType: "quiz", entityId: quizResult.rows[0].id, afterState: quizResult.rows[0], metadata: { ip: req.ip, questionCount: normalizedQuestions.length, liveClassId, classSessionId, activityScope } });
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.created", entityType: "quiz", entityId: quizResult.rows[0].id, afterState: quizResult.rows[0], metadata: { ip: req.ip, questionCount: normalizedQuestions.length, liveClassId, classSessionId, activityScope, attemptLimit, reviewPolicy } });
     await client.query("COMMIT");
+    if (status === "PUBLISHED") {
+      await broadcastToClass({
+        liveClassId,
+        title: `Quiz mới: ${title}`,
+        message: activityScope === "homework"
+          ? `Bạn có quiz về nhà mới. Hạn nộp: ${new Date(dueDate).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}.`
+          : `Quiz cho buổi học “${targetSession.start_time ? new Date(targetSession.start_time).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }) : "sắp tới"}” đã sẵn sàng theo lịch.`,
+        eventType: "quiz.published",
+        linkUrl: `/lms/quiz/${quizResult.rows[0].id}`,
+        data: { quizId: quizResult.rows[0].id, courseId, liveClassId, classSessionId, activityScope },
+        actorId: req.user.id,
+        dedupePrefix: `quiz:${quizResult.rows[0].id}:published`,
+      });
+    }
     return res.status(201).json({ success: true, data: { ...quizResult.rows[0], questionCount: normalizedQuestions.length }, message: "Tạo đề kiểm tra thành công" });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
@@ -585,6 +632,15 @@ router.delete("/teacher/quizzes/:quizId", protectRoute, requireTeacher, requireP
   const quizId = parsePositiveId(req.params.quizId);
   if (!quizId) return validationError(res, "quizId không hợp lệ");
   try {
+    const quiz = await query(
+      `SELECT q.id, q.title,
+              EXISTS (SELECT 1 FROM quiz_attempts qa WHERE qa.quiz_id = q.id) AS has_attempts
+       FROM quizzes q
+       WHERE q.id = $1 AND ($2 = 'admin' OR q.instructor_id = $3 OR EXISTS (SELECT 1 FROM courses c WHERE c.id = q.course_id AND c.author_id = $3))`,
+      [quizId, req.user.role, req.user.id],
+    );
+    if (!quiz.rows[0]) return notFound(res, "Không tìm thấy đề hoặc bạn không có quyền xóa");
+    if (quiz.rows[0].has_attempts) return conflict(res, "Quiz đã có học viên mở/làm bài nên không thể xóa. Hãy giữ lịch sử điểm hoặc chuyển sang lưu trữ.", "QUIZ_HAS_ATTEMPTS");
     const result = await query(
       `DELETE FROM quizzes q
        WHERE q.id = $1 AND ($2 = 'admin' OR q.instructor_id = $3 OR EXISTS (SELECT 1 FROM courses c WHERE c.id = q.course_id AND c.author_id = $3))
@@ -614,12 +670,12 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
       `SELECT s.id AS submission_id, s.status AS submission_status, s.submitted_at,
               s.content_text, s.file_asset_id, s.audio_asset_id,
               fa.original_filename AS file_name, aa.original_filename AS audio_name,
-              sg.score, sg.feedback_text, sg.graded_at, sg.grader_name, sg.grader_avatar
+              sg.score, sg.feedback_text, sg.rubric_scores, sg.graded_at, sg.grader_name, sg.grader_avatar
        FROM assignment_submissions s
        LEFT JOIN submission_assets fa ON fa.id = s.file_asset_id
        LEFT JOIN submission_assets aa ON aa.id = s.audio_asset_id
        LEFT JOIN LATERAL (
-         SELECT sg.score, sg.feedback_text, sg.graded_at,
+         SELECT sg.score, sg.feedback_text, sg.rubric_scores, sg.graded_at,
                 grader.username AS grader_name, grader.avatar_url AS grader_avatar
          FROM submission_grades sg LEFT JOIN users grader ON grader.id = sg.grader_id
          WHERE sg.submission_id = s.id ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1
@@ -766,7 +822,7 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
               fa.original_filename AS file_name, aa.original_filename AS audio_name,
               CASE WHEN s.file_asset_id IS NOT NULL THEN '/api/assignments/submission-assets/' || s.file_asset_id || '/access' END AS file_url,
               CASE WHEN s.audio_asset_id IS NOT NULL THEN '/api/assignments/submission-assets/' || s.audio_asset_id || '/access' END AS audio_url,
-              sg.score, sg.feedback_text, sg.graded_at
+              sg.score, sg.feedback_text, sg.graded_at, sg.rubric_scores, rubric.criteria_json AS rubric_criteria
        FROM assignment_submissions s
        JOIN assignments a ON a.id = s.assignment_id
        JOIN users u ON u.id = s.user_id
@@ -774,8 +830,9 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
        LEFT JOIN class_sessions class_session ON class_session.id = a.class_session_id
        LEFT JOIN submission_assets fa ON fa.id = s.file_asset_id
        LEFT JOIN submission_assets aa ON aa.id = s.audio_asset_id
+       LEFT JOIN assignment_rubrics rubric ON rubric.assignment_id = a.id
        LEFT JOIN LATERAL (
-         SELECT score, feedback_text, graded_at FROM submission_grades
+         SELECT score, feedback_text, graded_at, rubric_scores FROM submission_grades
          WHERE submission_id = s.id ORDER BY graded_at DESC, id DESC LIMIT 1
        ) sg ON true
        ${whereClause}
@@ -807,6 +864,8 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
       audioUrl: row.audio_url || null,
       score: row.score === null ? null : Number(row.score),
       feedbackText: row.feedback_text || "",
+      rubric: parseJsonArray(row.rubric_criteria),
+      rubricScores: parseJsonArray(row.rubric_scores),
       gradedAt: row.graded_at || null,
     })) });
   } catch (error) {
@@ -833,6 +892,13 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
     if (dueDate !== undefined && dueDate !== null && dueDate !== "" && Number.isNaN(Date.parse(dueDate))) return validationError(res, "dueDate không hợp lệ");
     if (attachmentUrl !== undefined && attachmentUrl !== null && attachmentUrl !== "" && !isSafeAssignmentAttachmentUrl(attachmentUrl)) {
       return validationError(res, "attachmentUrl phải là link HTTPS hoặc tài liệu bảo mật của LMS");
+    }
+    let rubric;
+    try {
+      rubric = normalizeRubric(req.body.rubric, parsedMaxScore);
+    } catch (error) {
+      if (error.message === "RUBRIC_TOTAL_MISMATCH") return validationError(res, "Tổng điểm rubric phải bằng thang điểm tối đa");
+      return validationError(res, "Rubric cần có tiêu chí và điểm hợp lệ");
     }
     if (courseId) {
       const courseResult = await query("SELECT author_id FROM courses WHERE id = $1", [courseId]);
@@ -865,13 +931,21 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
        RETURNING id, title, assignment_type, course_id, live_class_id, class_session_id, instructor_id, description, max_score, due_date, attachment_url, created_at, updated_at`,
       [title.trim(), assignmentType, courseId, liveClassId, classSessionId, req.user.id, description?.trim() || "", parsedMaxScore, dueDate || null, attachmentUrl || null],
     );
+    if (rubric.length) {
+      await query(
+        `INSERT INTO assignment_rubrics (assignment_id, criteria_json, created_by)
+         VALUES ($1, $2::jsonb, $3)`,
+        [result.rows[0].id, JSON.stringify(rubric), req.user.id],
+      );
+      result.rows[0].rubric = rubric;
+    }
     await recordAuditEvent({
       actorId: req.user.id,
       action: "assignment.created",
       entityType: "assignment",
       entityId: result.rows[0].id,
       afterState: result.rows[0],
-      metadata: { ip: req.ip, classSessionId },
+      metadata: { ip: req.ip, classSessionId, rubricCriteria: rubric.length },
     });
     await notifyAssignmentPublished({ assignmentId: result.rows[0].id, actorId: req.user.id });
     return res.status(201).json({ success: true, data: result.rows[0], message: "Tạo bài tập mới thành công" });
@@ -995,25 +1069,37 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
   const client = await getClient();
   try {
     const submissionId = parsePositiveId(req.params.submissionId);
-    const numericScore = Number(req.body.score);
+    let numericScore = Number(req.body.score);
     if (!submissionId) return validationError(res, "submissionId không hợp lệ");
-    if (req.body.score === undefined || req.body.score === null || !Number.isFinite(numericScore)) return validationError(res, "Điểm số không hợp lệ");
     if (req.body.feedbackText !== undefined && (typeof req.body.feedbackText !== "string" || req.body.feedbackText.length > 10000)) return validationError(res, "Nội dung phản hồi không hợp lệ");
     await client.query("BEGIN");
     const submissionResult = await client.query(
-      `SELECT s.id, s.user_id, s.assignment_id, a.title AS assignment_title, a.instructor_id, a.max_score
+      `SELECT s.id, s.user_id, s.assignment_id, a.title AS assignment_title, a.instructor_id, a.max_score,
+              rubric.criteria_json AS rubric_criteria
        FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id
+       LEFT JOIN assignment_rubrics rubric ON rubric.assignment_id = a.id
        WHERE s.id = $1 FOR UPDATE`,
       [submissionId],
     );
     const submission = submissionResult.rows[0];
     if (!submission) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy bài nộp"); }
     if (!canManageAssignment(submission, req.user)) { await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền chấm bài nộp này"); }
-    if (numericScore < 0 || numericScore > Number(submission.max_score)) { await client.query("ROLLBACK"); return validationError(res, `Điểm phải nằm trong khoảng 0 đến ${submission.max_score}`); }
+    const rubric = parseJsonArray(submission.rubric_criteria);
+    let rubricScores = [];
+    try {
+      if (rubric.length) {
+        rubricScores = normalizeRubricScores(req.body.rubricScores, rubric);
+        numericScore = rubricScores.reduce((total, item) => total + item.score, 0);
+      }
+    } catch (error) {
+      await client.query("ROLLBACK");
+      return validationError(res, "Điểm từng tiêu chí rubric chưa hợp lệ");
+    }
+    if (!Number.isFinite(numericScore) || numericScore < 0 || numericScore > Number(submission.max_score)) { await client.query("ROLLBACK"); return validationError(res, `Điểm phải nằm trong khoảng 0 đến ${submission.max_score}`); }
     const grade = await client.query(
-      `INSERT INTO submission_grades (submission_id, grader_id, score, feedback_text)
-       VALUES ($1, $2, $3, $4) RETURNING id, submission_id, grader_id, score, feedback_text, graded_at`,
-      [submissionId, req.user.id, numericScore, req.body.feedbackText?.trim() || ""],
+      `INSERT INTO submission_grades (submission_id, grader_id, score, feedback_text, rubric_scores)
+       VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id, submission_id, grader_id, score, feedback_text, rubric_scores, graded_at`,
+      [submissionId, req.user.id, numericScore, req.body.feedbackText?.trim() || "", JSON.stringify(rubricScores)],
     );
     await client.query("UPDATE assignment_submissions SET status = 'graded' WHERE id = $1", [submissionId]);
     await recordAuditEvent({
@@ -1022,8 +1108,8 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
       action: "submission.graded",
       entityType: "assignment_submission",
       entityId: submissionId,
-      afterState: { score: numericScore, feedbackText: req.body.feedbackText?.trim() || "", status: "graded" },
-      metadata: { assignmentId: submission.assignment_id, ip: req.ip },
+      afterState: { score: numericScore, feedbackText: req.body.feedbackText?.trim() || "", rubricScores, status: "graded" },
+      metadata: { assignmentId: submission.assignment_id, ip: req.ip, rubricCriteria: rubric.length },
     });
     await client.query(
       `INSERT INTO notifications (user_id, title, message, type, link_url, dedupe_key)
@@ -1053,6 +1139,7 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
 const getQuiz = async (quizId, db = { query }) => {
   const result = await db.query(
     `SELECT q.id, q.title, q.description, q.status AS quiz_status, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.live_class_id, q.class_session_id, q.course_id AS quiz_course_id, q.lesson_id,
+            q.attempt_limit, q.available_from, q.available_until, q.review_policy, q.shuffle_questions,
             COALESCE(q.course_id, l.course_id) AS resolved_course_id,
             c.is_published AS course_is_published,
             COALESCE(c.is_management_managed, FALSE) AS course_is_management_managed,
@@ -1148,8 +1235,155 @@ const validateQuizAnswers = (questions, answers) => {
   return null;
 };
 
-// GET /api/assignments/quizzes/:quizId — questions never include correct_answer before submit.
+const attemptQuestions = (attempt, fallbackQuestions) => {
+  const snapshot = parseJsonArray(attempt?.question_snapshot);
+  return snapshot.length ? snapshot : fallbackQuestions;
+};
+
+const makeQuestionSnapshot = (questions, shuffleQuestions) => {
+  const snapshot = questions.map((question) => ({ ...question, options_json: parseOptions(question.options_json) }));
+  if (!shuffleQuestions) return snapshot;
+  // The order is persisted with the attempt, so a refresh never changes a
+  // learner's paper while still giving each learner an independently mixed set.
+  for (let index = snapshot.length - 1; index > 0; index -= 1) {
+    const next = crypto.randomInt(index + 1);
+    [snapshot[index], snapshot[next]] = [snapshot[next], snapshot[index]];
+  }
+  return snapshot;
+};
+
+const serializeAttempt = (attempt) => attempt ? {
+  id: attempt.id,
+  number: Number(attempt.attempt_number || 1),
+  status: attempt.status,
+  answers: attempt.answers_json || {},
+  startedAt: attempt.started_at,
+  expiresAt: attempt.expires_at || null,
+  submittedAt: attempt.submitted_at || null,
+  autoSubmitted: Boolean(attempt.auto_submitted),
+} : null;
+
+const submitAttempt = async ({ client, attempt, questions, autoSubmitted = false }) => {
+  const computed = buildQuizResult(questions, attempt.answers_json || {});
+  const result = await client.query(
+    `UPDATE quiz_attempts SET score = $1, max_score = $2, status = 'submitted',
+            submitted_at = NOW(), auto_submitted = $3, updated_at = NOW()
+     WHERE id = $4
+     RETURNING id, quiz_id, user_id, answers_json, status, started_at, expires_at, submitted_at,
+               attempt_number, auto_submitted, question_snapshot`,
+    [computed.score, computed.maxScore, autoSubmitted, attempt.id],
+  );
+  return { attempt: result.rows[0], computed };
+};
+
+const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
+  // Locking the quiz serializes first-open requests, preventing two tabs from
+  // consuming two attempts or creating parallel active attempts.
+  await client.query("SELECT id FROM quizzes WHERE id = $1 FOR UPDATE", [quiz.id]);
+  const activeResult = await client.query(
+    `SELECT id, quiz_id, user_id, answers_json, status, started_at, expires_at, submitted_at,
+            attempt_number, auto_submitted, question_snapshot
+     FROM quiz_attempts
+     WHERE quiz_id = $1 AND user_id = $2 AND status = 'in_progress'
+     ORDER BY attempt_number DESC LIMIT 1 FOR UPDATE`,
+    [quiz.id, userId],
+  );
+  const now = new Date();
+  let attempt = activeResult.rows[0] || null;
+  if (attempt) {
+    const expiresAt = attempt.expires_at || getAttemptExpiry({
+      startedAt: attempt.started_at,
+      durationMinutes: quiz.duration_minutes,
+      closesAt: getQuizAvailability(quiz, now).closesAt,
+    });
+    if (expiresAt && new Date(expiresAt).getTime() <= now.getTime()) {
+      if (!attempt.expires_at) {
+        const expiryUpdate = await client.query("UPDATE quiz_attempts SET expires_at = $1 WHERE id = $2 RETURNING expires_at", [expiresAt.toISOString(), attempt.id]);
+        attempt.expires_at = expiryUpdate.rows[0].expires_at;
+      }
+      return { ...(await submitAttempt({ client, attempt, questions: attemptQuestions(attempt, questions), autoSubmitted: true })), created: false, timedOut: true };
+    }
+    return { attempt, computed: null, created: false, timedOut: false };
+  }
+
+  const submitted = await client.query(
+    `SELECT id, quiz_id, user_id, answers_json, status, started_at, expires_at, submitted_at,
+            attempt_number, auto_submitted, question_snapshot
+     FROM quiz_attempts WHERE quiz_id = $1 AND user_id = $2
+     ORDER BY attempt_number DESC`,
+    [quiz.id, userId],
+  );
+  if (submitted.rows.length >= Number(quiz.attempt_limit || 1)) {
+    const latest = submitted.rows[0] || null;
+    return { attempt: latest, computed: latest ? buildQuizResult(attemptQuestions(latest, questions), latest.answers_json || {}) : null, created: false, timedOut: false };
+  }
+
+  const availability = getQuizAvailability(quiz, now);
+  if (!availability.isOpen) {
+    const error = new Error(availability.reason === "not_open" ? "QUIZ_NOT_OPEN" : "QUIZ_CLOSED");
+    error.availability = availability;
+    throw error;
+  }
+  const attemptNumber = submitted.rows.length + 1;
+  const expiresAt = getAttemptExpiry({ startedAt: now, durationMinutes: quiz.duration_minutes, closesAt: availability.closesAt });
+  const snapshot = makeQuestionSnapshot(questions, quiz.shuffle_questions);
+  const created = await client.query(
+    `INSERT INTO quiz_attempts (quiz_id, user_id, attempt_number, expires_at, question_snapshot)
+     VALUES ($1, $2, $3, $4, $5::jsonb)
+     RETURNING id, quiz_id, user_id, answers_json, status, started_at, expires_at, submitted_at,
+               attempt_number, auto_submitted, question_snapshot`,
+    [quiz.id, userId, attemptNumber, expiresAt?.toISOString() || null, JSON.stringify(snapshot)],
+  );
+  return { attempt: created.rows[0], computed: null, created: true, timedOut: false };
+};
+
+const quizResponse = ({ quiz, questions, attempt, computed, now = new Date() }) => {
+  const isSubmitted = attempt?.status === "submitted";
+  const reviewAvailable = isSubmitted && reviewIsAvailable(quiz, now);
+  const result = isSubmitted && computed
+    ? { score: computed.score, maxScore: computed.maxScore, percentage: computed.percentage, passed: computed.percentage >= Number(quiz.passing_score), review: reviewAvailable ? computed.review : [], reviewAvailable }
+    : null;
+  return {
+    id: quiz.id,
+    quizId: quiz.id,
+    title: quiz.title,
+    description: quiz.description || "",
+    classId: quiz.live_class_id || null,
+    classTitle: quiz.class_title || null,
+    sessionId: quiz.class_session_id || null,
+    sessionTitle: quiz.session_title || null,
+    sessionStart: quiz.session_start || null,
+    sessionEnd: quiz.session_end || null,
+    activityScope: quiz.activity_scope || "session",
+    dueDate: quiz.due_date || null,
+    availableFrom: quiz.available_from || null,
+    availableUntil: quiz.available_until || null,
+    reviewPolicy: quiz.review_policy || "after_submit",
+    paperUrl: quiz.paper_file_id && quiz.paper_status === "ready" ? `/api/files/${quiz.paper_file_id}/download` : null,
+    durationMinutes: quiz.duration_minutes,
+    timeLimitSeconds: Number(quiz.duration_minutes) * 60,
+    passingScore: Number(quiz.passing_score),
+    attemptLimit: Number(quiz.attempt_limit || 1),
+    attemptsUsed: attempt ? Number(attempt.attempt_number || 1) : 0,
+    attemptsRemaining: Math.max(0, Number(quiz.attempt_limit || 1) - (attempt ? Number(attempt.attempt_number || 1) : 0)),
+    questions: questions.map(publicQuestion),
+    attempt: serializeAttempt(attempt),
+    result,
+  };
+};
+
+const quizWindowError = (res, error) => {
+  const notOpen = error.message === "QUIZ_NOT_OPEN";
+  const at = notOpen ? error.availability?.opensAt : error.availability?.closesAt;
+  return conflict(res, notOpen
+    ? `Quiz chưa mở${at ? `, bắt đầu lúc ${new Date(at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}` : ""}.`
+    : "Quiz đã đóng. Hệ thống không thể mở thêm lượt làm bài.", notOpen ? "QUIZ_NOT_OPEN" : "QUIZ_CLOSED");
+};
+
+// GET /api/assignments/quizzes/:quizId — creates one server-timed attempt only
+// after the learner is eligible and the configured window is open.
 router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
+  const client = req.user.role === "user" ? await getClient() : null;
   try {
     const quizId = parsePositiveId(req.params.quizId);
     if (!quizId) return validationError(res, "quizId không hợp lệ");
@@ -1158,45 +1392,72 @@ router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
     if (!(await ensureQuizAccess(quiz, req.user))) return forbidden(res, "Bạn chưa được cấp quyền làm đề thi này");
     const questions = await getQuizQuestions(quizId);
     if (questions.length === 0) return notFound(res, "Đề thi chưa có câu hỏi");
-    let attempt = null;
-    let result = null;
-    if (req.user.role === "user") {
-      await query(`INSERT INTO quiz_attempts (quiz_id, user_id) VALUES ($1, $2) ON CONFLICT (user_id, quiz_id) DO NOTHING`, [quizId, req.user.id]);
-      const attemptResult = await query("SELECT id, answers_json, status, started_at, submitted_at FROM quiz_attempts WHERE quiz_id = $1 AND user_id = $2", [quizId, req.user.id]);
-      attempt = attemptResult.rows[0] || null;
-      if (attempt?.status === "submitted") result = buildQuizResult(questions, attempt.answers_json || {});
-    }
-    return res.json({
-      success: true,
-      data: {
-        id: quiz.id,
-        quizId: quiz.id,
-        title: quiz.title,
-        description: quiz.description || "",
-        classId: quiz.live_class_id || null,
-        classTitle: quiz.class_title || null,
-        sessionId: quiz.class_session_id || null,
-        sessionTitle: quiz.session_title || null,
-        sessionStart: quiz.session_start || null,
-        sessionEnd: quiz.session_end || null,
-        activityScope: quiz.activity_scope || "session",
-        dueDate: quiz.due_date || null,
-        paperUrl: quiz.paper_file_id && quiz.paper_status === "ready" ? `/api/files/${quiz.paper_file_id}/download` : null,
-        durationMinutes: quiz.duration_minutes,
-        timeLimitSeconds: Number(quiz.duration_minutes) * 60,
-        passingScore: Number(quiz.passing_score),
-        questions: questions.map(publicQuestion),
-        attempt: attempt ? { id: attempt.id, status: attempt.status, answers: attempt.answers_json || {}, startedAt: attempt.started_at, submittedAt: attempt.submitted_at } : null,
-        result: result ? { ...result, passed: result.percentage >= Number(quiz.passing_score) } : null,
-      },
-    });
+    if (req.user.role !== "user") return res.json({ success: true, data: quizResponse({ quiz, questions, attempt: null, computed: null }) });
+    await client.query("BEGIN");
+    const state = await getStudentAttempt({ client, quiz, userId: req.user.id, questions });
+    await client.query("COMMIT");
+    const responseQuestions = attemptQuestions(state.attempt, questions);
+    return res.json({ success: true, data: quizResponse({ quiz, questions: responseQuestions, attempt: state.attempt, computed: state.computed }) });
   } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
+    if (error.message === "QUIZ_NOT_OPEN" || error.message === "QUIZ_CLOSED") return quizWindowError(res, error);
     console.error("Error fetching quiz:", error);
     return internalError(res, "Lỗi khi lấy đề trắc nghiệm");
+  } finally {
+    client?.release();
   }
 });
 
-// POST /api/assignments/quizzes/:quizId/submit — one server-graded, idempotent attempt.
+// PUT /api/assignments/quizzes/:quizId/answers — server-side draft save.
+// Browser storage remains merely a resilience cache, never the authoritative answer sheet.
+router.put("/quizzes/:quizId/answers", protectRoute, requireRole("user"), async (req, res) => {
+  const client = await getClient();
+  try {
+    const quizId = parsePositiveId(req.params.quizId);
+    if (!quizId || !isPlainObject(req.body.answers)) return validationError(res, "answers không hợp lệ");
+    const quiz = await getQuiz(quizId);
+    if (!quiz) return notFound(res, "Không tìm thấy đề thi");
+    if (!(await ensureQuizAccess(quiz, req.user))) return forbidden(res, "Bạn chưa được cấp quyền làm đề thi này");
+    const questions = await getQuizQuestions(quizId);
+    const answerError = validateQuizAnswers(questions, req.body.answers);
+    if (answerError) return validationError(res, answerError);
+    await client.query("BEGIN");
+    await client.query("SELECT id FROM quizzes WHERE id = $1 FOR UPDATE", [quiz.id]);
+    const active = await client.query(
+      `SELECT id, quiz_id, user_id, answers_json, status, started_at, expires_at, submitted_at, attempt_number, auto_submitted, question_snapshot
+       FROM quiz_attempts WHERE quiz_id = $1 AND user_id = $2 AND status = 'in_progress'
+       ORDER BY attempt_number DESC LIMIT 1 FOR UPDATE`,
+      [quiz.id, req.user.id],
+    );
+    const attempt = active.rows[0];
+    if (!attempt) { await client.query("ROLLBACK"); return conflict(res, "Không có lượt làm bài đang mở để lưu nháp", "QUIZ_NO_ACTIVE_ATTEMPT"); }
+    const expiry = attempt.expires_at || getAttemptExpiry({ startedAt: attempt.started_at, durationMinutes: quiz.duration_minutes, closesAt: getQuizAvailability(quiz).closesAt });
+    if (expiry && new Date(expiry).getTime() <= Date.now()) {
+      if (!attempt.expires_at) {
+        const expiryUpdate = await client.query("UPDATE quiz_attempts SET expires_at = $1 WHERE id = $2 RETURNING expires_at", [expiry.toISOString(), attempt.id]);
+        attempt.expires_at = expiryUpdate.rows[0].expires_at;
+      }
+      await submitAttempt({ client, attempt, questions: attemptQuestions(attempt, questions), autoSubmitted: true });
+      await client.query("COMMIT");
+      return conflict(res, "Đã hết thời gian. Hệ thống đã nộp phần đáp án đã lưu.", "QUIZ_ATTEMPT_EXPIRED");
+    }
+    const saved = await client.query(
+      `UPDATE quiz_attempts SET answers_json = $1::jsonb, expires_at = COALESCE(expires_at, $2), updated_at = NOW()
+       WHERE id = $3 RETURNING id, expires_at, updated_at`,
+      [JSON.stringify(req.body.answers), expiry?.toISOString() || null, attempt.id],
+    );
+    await client.query("COMMIT");
+    return res.json({ success: true, data: { attemptId: saved.rows[0].id, expiresAt: saved.rows[0].expires_at, savedAt: saved.rows[0].updated_at } });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Error saving quiz answers:", error);
+    return internalError(res, "Không thể lưu nháp bài làm");
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/assignments/quizzes/:quizId/submit — one server-graded, timed and idempotent attempt.
 router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), async (req, res) => {
   const client = await getClient();
   try {
@@ -1205,39 +1466,43 @@ router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), async 
     const quiz = await getQuiz(quizId);
     if (!quiz) return notFound(res, "Không tìm thấy đề thi");
     if (!(await ensureQuizAccess(quiz, req.user))) return forbidden(res, "Bạn chưa được cấp quyền làm đề thi này");
-    if (quiz.activity_scope === "homework" && quiz.due_date && new Date(quiz.due_date).getTime() < Date.now()) return conflict(res, "Quiz về nhà đã quá hạn nộp", "QUIZ_DEADLINE_PASSED");
     const questions = await getQuizQuestions(quizId);
     const answerError = validateQuizAnswers(questions, req.body.answers);
     if (answerError) return validationError(res, answerError);
     await client.query("BEGIN");
-    await client.query(`INSERT INTO quiz_attempts (quiz_id, user_id) VALUES ($1, $2) ON CONFLICT (user_id, quiz_id) DO NOTHING`, [quizId, req.user.id]);
-    const attemptResult = await client.query("SELECT id, answers_json, status FROM quiz_attempts WHERE quiz_id = $1 AND user_id = $2 FOR UPDATE", [quizId, req.user.id]);
-    const attempt = attemptResult.rows[0];
-    if (!attempt) { await client.query("ROLLBACK"); return internalError(res, "Không thể khởi tạo lượt làm bài"); }
-    if (attempt.status === "submitted") {
-      const previous = buildQuizResult(questions, attempt.answers_json || {});
-      await client.query("COMMIT");
-      return res.json({ success: true, data: { ...previous, passed: previous.percentage >= Number(quiz.passing_score), attemptId: attempt.id, alreadySubmitted: true, message: "Lượt làm bài đã được ghi nhận trước đó." } });
+    const state = await getStudentAttempt({ client, quiz, userId: req.user.id, questions });
+    let attempt = state.attempt;
+    let computed = state.computed;
+    const alreadySubmitted = attempt.status === "submitted";
+    if (!alreadySubmitted) {
+      const expiry = attempt.expires_at || getAttemptExpiry({ startedAt: attempt.started_at, durationMinutes: quiz.duration_minutes, closesAt: getQuizAvailability(quiz).closesAt });
+      if (expiry && new Date(expiry).getTime() <= Date.now()) {
+        if (!attempt.expires_at) {
+          const expiryUpdate = await client.query("UPDATE quiz_attempts SET expires_at = $1 WHERE id = $2 RETURNING expires_at", [expiry.toISOString(), attempt.id]);
+          attempt.expires_at = expiryUpdate.rows[0].expires_at;
+        }
+        ({ attempt, computed } = await submitAttempt({ client, attempt, questions: attemptQuestions(attempt, questions), autoSubmitted: true }));
+      } else {
+        const save = await client.query("UPDATE quiz_attempts SET answers_json = $1::jsonb, expires_at = COALESCE(expires_at, $2) WHERE id = $3 RETURNING *", [JSON.stringify(req.body.answers), expiry?.toISOString() || null, attempt.id]);
+        attempt = save.rows[0];
+        ({ attempt, computed } = await submitAttempt({ client, attempt, questions: attemptQuestions(attempt, questions) }));
+      }
     }
-    const computed = buildQuizResult(questions, req.body.answers);
     const passed = computed.percentage >= Number(quiz.passing_score);
-    await client.query(
-      `UPDATE quiz_attempts SET answers_json = $1::jsonb, score = $2, max_score = $3,
-       status = 'submitted', submitted_at = NOW(), updated_at = NOW() WHERE id = $4`,
-      [JSON.stringify(req.body.answers), computed.score, computed.maxScore, attempt.id],
-    );
-    const gamification = await awardXp({
+    const gamification = alreadySubmitted || state.timedOut ? null : await awardXp({
       db: client,
       userId: req.user.id,
-      eventKey: `quiz:${quizId}:submitted`,
+      eventKey: `quiz:${quizId}:attempt:${attempt.attempt_number}:submitted`,
       eventType: "quiz_submitted",
       xp: passed ? XP_VALUES.quizPassed : XP_VALUES.quizSubmitted,
-      metadata: { quizId, attemptId: attempt.id, passed, percentage: computed.percentage },
+      metadata: { quizId, attemptId: attempt.id, attemptNumber: attempt.attempt_number, passed, percentage: computed.percentage },
     });
     await client.query("COMMIT");
-    return res.json({ success: true, data: { ...computed, passed, attemptId: attempt.id, alreadySubmitted: false, gamification, message: passed ? "Chúc mừng, bạn đã đạt yêu cầu!" : "Bạn chưa đạt điểm yêu cầu, hãy xem lại lời giải." } });
+    const reviewAvailable = reviewIsAvailable(quiz);
+    return res.json({ success: true, data: { score: computed.score, maxScore: computed.maxScore, percentage: computed.percentage, passed, review: reviewAvailable ? computed.review : [], reviewAvailable, attemptId: attempt.id, attemptNumber: attempt.attempt_number, alreadySubmitted, autoSubmitted: Boolean(attempt.auto_submitted), gamification, message: attempt.auto_submitted ? "Đã hết thời gian. Hệ thống đã nộp phần đáp án đã lưu." : (passed ? "Chúc mừng, bạn đã đạt yêu cầu!" : "Bạn chưa đạt điểm yêu cầu.") } });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error.message === "QUIZ_NOT_OPEN" || error.message === "QUIZ_CLOSED") return quizWindowError(res, error);
     console.error("Error submitting quiz:", error);
     return internalError(res, "Lỗi khi nộp bài trắc nghiệm");
   } finally {

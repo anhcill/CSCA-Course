@@ -356,15 +356,22 @@ export const fetchSubmissions = async (assignmentId = "all", { classId, sessionI
   return request(`/assignments/${encodeURIComponent(assignmentId)}/submissions${suffix}`);
 };
 
-export const gradeSubmission = async ({ submissionId, score, feedbackText }) => (
+export const gradeSubmission = async ({ submissionId, score, feedbackText, rubricScores }) => (
   request(`/assignments/submissions/${encodeURIComponent(submissionId)}/grade`, {
     method: "POST",
-    body: JSON.stringify({ score, feedbackText }),
+    body: JSON.stringify({ score, feedbackText, rubricScores }),
   })
 );
 
 export const fetchQuiz = async (quizId) => (
   request(`/assignments/quizzes/${encodeURIComponent(quizId)}`)
+);
+
+export const saveQuizAnswers = async ({ quizId, answers }) => (
+  request(`/assignments/quizzes/${encodeURIComponent(quizId)}/answers`, {
+    method: "PUT",
+    body: JSON.stringify({ answers }),
+  })
 );
 
 export const submitQuiz = async ({ quizId, answers }) => (

@@ -72,6 +72,7 @@ export default function TeacherGradingPage() {
   // Grading form state
   const [score, setScore] = useState(8.5);
   const [feedback, setFeedback] = useState("");
+  const [rubricScores, setRubricScores] = useState([]);
   const [grading, setGrading] = useState(false);
 
   // Filters & Sorting
@@ -95,6 +96,10 @@ export default function TeacherGradingPage() {
       setSubmissions(rows);
       setSelectedSub(rows[0] || null);
       setScore(rows[0]?.score || 0);
+      setRubricScores(rows[0]?.rubric?.map((criterion) => {
+        const saved = (rows[0]?.rubricScores || []).find((item) => item.criterionId === criterion.id);
+        return { criterionId: criterion.id, score: saved?.score ?? 0, feedback: saved?.feedback || "" };
+      }) || []);
     } catch (err) {
       console.error("Error loading submissions:", err);
       setSubmissions([]);
@@ -118,6 +123,10 @@ export default function TeacherGradingPage() {
     setSelectedSub(sub);
     setScore(sub.score !== null && sub.score !== undefined ? sub.score : 8.5);
     setFeedback(sub.feedbackText || "");
+    setRubricScores((sub.rubric || []).map((criterion) => {
+      const saved = (sub.rubricScores || []).find((item) => item.criterionId === criterion.id);
+      return { criterionId: criterion.id, score: saved?.score ?? 0, feedback: saved?.feedback || "" };
+    }));
   }, []);
 
   // Filtered and sorted submissions
@@ -161,7 +170,9 @@ export default function TeacherGradingPage() {
     async (advanceToNext = true) => {
       if (!selectedSub) return;
 
-      const numScore = Number(score);
+      const numScore = (selectedSub.rubric || []).length
+        ? rubricScores.reduce((total, item) => total + (Number(item.score) || 0), 0)
+        : Number(score);
       const maxScore = selectedSub.maxScore || 10;
 
       if (isNaN(numScore) || numScore < 0 || numScore > maxScore) {
@@ -175,6 +186,7 @@ export default function TeacherGradingPage() {
           submissionId: selectedSub.id,
           score: numScore,
           feedbackText: feedback,
+          rubricScores: selectedSub.rubric?.length ? rubricScores : undefined,
         });
 
         if (res?.success !== false) {
@@ -184,7 +196,7 @@ export default function TeacherGradingPage() {
           setSubmissions((prev) =>
             prev.map((s) =>
               s.id === selectedSub.id
-                ? { ...s, status: "graded", score: numScore, feedbackText: feedback }
+                ? { ...s, status: "graded", score: numScore, feedbackText: feedback, rubricScores }
                 : s
             )
           );
@@ -193,6 +205,7 @@ export default function TeacherGradingPage() {
             status: "graded",
             score: numScore,
             feedbackText: feedback,
+            rubricScores,
           }));
 
           // Automatically advance to the next pending submission if requested
@@ -214,7 +227,7 @@ export default function TeacherGradingPage() {
         setGrading(false);
       }
     },
-    [selectedSub, score, feedback, filteredSubs, handleSelectSub]
+    [selectedSub, score, feedback, rubricScores, filteredSubs, handleSelectSub]
   );
 
   // Keyboard shortcut: Ctrl+Enter (or Cmd+Enter) to submit and advance
@@ -580,7 +593,15 @@ export default function TeacherGradingPage() {
               <span className="text-[10px] font-mono text-slate-500">Phím tắt: Ctrl+Enter</span>
             </div>
 
-            {/* Score Input (Keyboard Friendly + Slider) */}
+            {(selectedSub?.rubric || []).length > 0 ? (
+              <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-4 dark:border-sky-900/70 dark:bg-sky-950/20">
+                <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-black uppercase text-sky-950 dark:text-sky-100">Chấm theo rubric</p><p className="mt-0.5 text-[10px] text-sky-700 dark:text-sky-300">Điểm tổng được máy chủ tính từ từng tiêu chí.</p></div><b className="font-mono text-lg text-sky-700 dark:text-sky-200">{rubricScores.reduce((total, item) => total + (Number(item.score) || 0), 0)}/{selectedSub.maxScore}</b></div>
+                <div className="space-y-2.5">{selectedSub.rubric.map((criterion) => {
+                  const item = rubricScores.find((entry) => entry.criterionId === criterion.id) || { criterionId: criterion.id, score: 0, feedback: "" };
+                  return <div key={criterion.id} className="rounded-xl border border-sky-200 bg-white p-3 dark:border-sky-900 dark:bg-slate-950"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[11px] font-black text-slate-900 dark:text-white">{criterion.title}</p>{criterion.description && <p className="mt-0.5 text-[10px] leading-4 text-slate-500 dark:text-slate-400">{criterion.description}</p>}</div><div className="flex shrink-0 items-center gap-1"><input type="number" min="0" max={criterion.maxPoints} step="0.25" value={item.score} onChange={(event) => setRubricScores((current) => current.map((entry) => entry.criterionId === criterion.id ? { ...entry, score: event.target.value } : entry))} className="w-14 rounded-lg border border-sky-300 bg-sky-50 px-1.5 py-1 text-center text-xs font-black text-sky-900 outline-none focus:border-sky-500 dark:border-sky-800 dark:bg-slate-900 dark:text-sky-100" /><span className="text-[10px] font-mono text-slate-500">/{criterion.maxPoints}</span></div></div><input value={item.feedback} onChange={(event) => setRubricScores((current) => current.map((entry) => entry.criterionId === criterion.id ? { ...entry, feedback: event.target.value } : entry))} maxLength={4000} placeholder="Nhận xét cho tiêu chí này (không bắt buộc)" className="mt-2 w-full border-t border-sky-100 bg-transparent pt-2 text-[10px] outline-none placeholder:text-slate-400 dark:border-sky-950 dark:text-slate-200" /></div>;
+                })}</div>
+              </div>
+            ) : (
             <div className="space-y-3 bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
               <div className="flex items-center justify-between">
                 <label htmlFor="score-input" className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">
@@ -618,7 +639,7 @@ export default function TeacherGradingPage() {
                 <span>7.5</span>
                 <span>10.0</span>
               </div>
-            </div>
+            </div>)}
 
             {/* Quick Feedback Chips */}
             <div className="space-y-2">
