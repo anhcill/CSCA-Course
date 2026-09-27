@@ -283,6 +283,20 @@ export const getLiveSessionAccess = async (sessionId) => (
   request(`/live-classes/sessions/${encodeURIComponent(sessionId)}/access`)
 );
 
+export const fetchClassAnnouncements = async ({ classId, sessionId } = {}) => {
+  const params = new URLSearchParams();
+  if (classId) params.set("classId", classId);
+  if (sessionId) params.set("sessionId", sessionId);
+  return request(`/announcements?${params.toString()}`);
+};
+
+export const createClassAnnouncement = async ({ classId, sessionId, title, message, linkUrl, attachmentUrl, scheduledAt }) => request("/announcements", {
+  method: "POST",
+  body: JSON.stringify({ classId, sessionId, title, message, linkUrl, attachmentUrl, scheduledAt }),
+});
+
+export const cancelClassAnnouncement = async (announcementId) => request(`/announcements/${encodeURIComponent(announcementId)}/cancel`, { method: "PATCH" });
+
 // Attendance Helpers
 export const markAttendance = async ({ sessionId, attendanceList }) => (
   request("/attendance/check", {

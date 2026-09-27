@@ -7,6 +7,7 @@ import { processAvailableManagementSyncJobs } from "./services/managementSync.se
 import { processAvailableManagementAttendanceDeliveries } from "./services/managementAttendanceDelivery.service.js";
 import { processAvailableManagementCalendarDeliveries } from "./services/managementCalendarDelivery.service.js";
 import { processAssignmentDeadlineReminders } from "./services/assignmentDeadlineNotification.service.js";
+import { processScheduledClassAnnouncements } from "./services/classAnnouncement.service.js";
 
 dotenv.config({ path: path.resolve("backend", ".env") });
 
@@ -39,16 +40,18 @@ const main = async () => {
     do {
       const shouldProcessDeadlines = Date.now() >= nextDeadlineReminderAt;
       if (shouldProcessDeadlines) nextDeadlineReminderAt = Date.now() + deadlineReminderPollMs;
-      const [incomingResults, attendanceResults, calendarResults] = await Promise.all([
+      const [incomingResults, attendanceResults, calendarResults, announcementResults] = await Promise.all([
         processAvailableManagementSyncJobs({ workerId, limit: batchSize }),
         processAvailableManagementAttendanceDeliveries({ workerId, limit: batchSize }),
         processAvailableManagementCalendarDeliveries({ workerId, limit: batchSize }),
+        processScheduledClassAnnouncements({ limit: batchSize }),
       ]);
       const deadlineResult = shouldProcessDeadlines ? await processAssignmentDeadlineReminders() : null;
       const results = [
         ...incomingResults,
         ...attendanceResults,
         ...calendarResults,
+        ...announcementResults.filter((result) => result.delivered).map(() => ({ status: "announcements", count: 1 })),
         ...(deadlineResult?.notifications ? [{ status: "assignment_reminders", count: deadlineResult.notifications }] : []),
       ];
       if (results.length > 0) {

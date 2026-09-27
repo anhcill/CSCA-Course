@@ -22,6 +22,8 @@ import platformAdminRouter from "./router/platformAdmin.router.js";
 import orchestrationRouter from "./router/orchestration.router.js";
 import fileRouter from "./router/file.router.js";
 import adminCalendarRouter from "./router/adminCalendar.router.js";
+import announcementRouter from "./router/announcement.router.js";
+import healthRouter from "./router/health.router.js";
 import { isAllowedOrigin, securityHeaders } from "./middleware/security.js";
 
 dotenv.config({ path: "./backend/.env" });
@@ -83,6 +85,8 @@ app.use(express.json({
 }));
 app.use(cookieParser());
 
+app.use("/api/health", healthRouter);
+
 app.use("/api/integrations/v1", managementIntegrationRouter);
 app.use("/api/v1/admin", platformAdminRouter);
 app.use("/api/v1/application-orchestration", orchestrationRouter);
@@ -96,6 +100,7 @@ app.use("/api/live-classes", liveClassRouter);
 app.use("/api/assignments", assignmentRouter);
 app.use("/api/notifications", notificationRouter);
 app.use("/api/v1/lms/notifications", notificationRouter);
+app.use("/api/announcements", announcementRouter);
 app.use("/api/attendance", attendanceRouter);
 app.use("/api/certificates", certificateRouter);
 app.use("/api/teacher", teacherRouter);

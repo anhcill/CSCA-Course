@@ -11,6 +11,7 @@ import {
   validateMeetingUrl,
 } from "../services/liveClass.service.js";
 import { enqueueManagementCalendarDelivery } from "../services/managementCalendarDelivery.service.js";
+import { buildClassCalendarIcs } from "../services/calendarIcs.service.js";
 
 const router = express.Router();
 
@@ -1095,6 +1096,40 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireRole("admi
 
 // Specific session CRUD. Sessions created here have no schedule_id and are
 // explicit supplemental lessons for an already course-bound class.
+// GET /api/live-classes/:classId/calendar.ics — authenticated full-class export.
+// A feed deliberately contains LMS workspace URLs, never Meet/Zoom secrets.
+router.get("/:classId/calendar.ics", protectRoute, async (req, res) => {
+  try {
+    const classId = parsePositiveId(req.params.classId);
+    if (!classId) return validationError(res, "classId không hợp lệ");
+    const liveClass = await getClassById(classId);
+    if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
+    if (!(await canViewClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xuất lịch của lớp này");
+    const sessions = await query(
+      `SELECT id, title, start_time, end_time, status, change_reason
+       FROM class_sessions
+       WHERE live_class_id = $1 AND status <> 'cancelled'
+       ORDER BY start_time ASC`,
+      [classId],
+    );
+    const frontendBase = (process.env.FRONTEND_URL || "").split(",")[0].trim();
+    const workspaceBase = liveClass.course_id
+      ? `${frontendBase}/lms/courses/${liveClass.course_id}/classes/${classId}`
+      : `${frontendBase}/lms/live-schedule`;
+    const ics = buildClassCalendarIcs({ classTitle: liveClass.title, sessions: sessions.rows, calendarUrlBase: workspaceBase });
+    const filename = `csca-lop-${classId}.ics`;
+    res.set({
+      "Content-Type": "text/calendar; charset=utf-8",
+      "Content-Disposition": `attachment; filename=\"${filename}\"`,
+      "Cache-Control": "private, no-store",
+    });
+    return res.send(ics);
+  } catch (error) {
+    console.error("Error exporting class calendar:", error.message);
+    return internalError(res, "Không thể xuất lịch học");
+  }
+});
+
 router.get("/:classId/sessions", protectRoute, async (req, res) => {
   try {
     const classId = parsePositiveId(req.params.classId);

@@ -3,17 +3,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  ArrowLeft, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
+  ArrowLeft, Bell, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
   FileText, GraduationCap, Play, Trophy, UploadCloud, Users, Video,
 } from "lucide-react";
 import {
-  deleteClassFile, fetchClassDetails, fetchClassFiles, fetchLiveClassSessions,
+  createClassAnnouncement, deleteClassFile, fetchClassAnnouncements, fetchClassDetails, fetchClassFiles, fetchLiveClassSessions,
   getLiveSessionAccess, uploadClassFile,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import CreateAssignmentModal from "../components/CreateAssignmentModal";
 import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
+import { classCalendarIcsUrl, googleCalendarEventUrl } from "../../calendar/calendarLinks";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
@@ -21,6 +22,7 @@ const tabs = [
   { id: "content", label: "Nội dung", icon: BookOpen },
   { id: "tasks", label: "Bài tập & Quiz", icon: ClipboardList },
   { id: "files", label: "Tài liệu", icon: FileText },
+  { id: "announcements", label: "Thông báo", icon: Bell },
   { id: "results", label: "Bảng điểm", icon: Trophy },
 ];
 
@@ -36,6 +38,7 @@ export default function TeacherSessionWorkspacePage() {
   const [classData, setClassData] = useState(null);
   const [session, setSession] = useState(null);
   const [files, setFiles] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -45,10 +48,11 @@ export default function TeacherSessionWorkspacePage() {
     setLoading(true);
     setError("");
     try {
-      const [detailResponse, sessionsResponse, filesResponse] = await Promise.all([
+      const [detailResponse, sessionsResponse, filesResponse, announcementsResponse] = await Promise.all([
         fetchClassDetails(classId),
         fetchLiveClassSessions(classId),
         fetchClassFiles(classId, { sessionId }),
+        fetchClassAnnouncements({ classId, sessionId }),
       ]);
       const foundSession = sessionsResponse?.success && Array.isArray(sessionsResponse.data)
         ? sessionsResponse.data.find((item) => String(item.id) === String(sessionId))
@@ -57,6 +61,7 @@ export default function TeacherSessionWorkspacePage() {
       setClassData(detailResponse.data);
       setSession(foundSession);
       setFiles(Array.isArray(filesResponse?.data) ? filesResponse.data : []);
+      setAnnouncements(Array.isArray(announcementsResponse?.data) ? announcementsResponse.data : []);
     } catch (requestError) {
       setClassData(null);
       setSession(null);
@@ -109,6 +114,17 @@ export default function TeacherSessionWorkspacePage() {
     }
   };
 
+  const handleCreateAnnouncement = async (values) => {
+    try {
+      await createClassAnnouncement({ classId, sessionId, ...values });
+      toast.success(values.scheduledAt ? "Đã lên lịch gửi thông báo." : "Đã gửi thông báo cho học viên.");
+      await loadData();
+    } catch (requestError) {
+      toast.error(requestError.message || "Không thể gửi thông báo.");
+      throw requestError;
+    }
+  };
+
   const tasks = useMemo(() => (classData?.assignments || []).filter((task) => String(task.sessionId || task.class_session_id || "") === String(sessionId)), [classData?.assignments, sessionId]);
   const students = classData?.students || [];
 
@@ -124,13 +140,14 @@ export default function TeacherSessionWorkspacePage() {
     <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-5">
         <Link to={`/lms/teach/classes/${classId}`} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400"><ArrowLeft className="h-4 w-4" /> Quay lại lớp và lịch dạy</Link>
-        <section className="overflow-hidden rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 p-6 text-white shadow-lg dark:border-blue-900/60 dark:shadow-none sm:p-8"><div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center"><div><span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-black"><Video className="h-3.5 w-3.5" /> Không gian buổi dạy</span><h1 className="mt-3 text-2xl font-black sm:text-3xl">{session.title}</h1><p className="mt-3 inline-flex items-center gap-1.5 text-sm text-blue-100"><Clock className="h-4 w-4" /> {formatDateTime(session.start_time)}</p><p className="mt-1 text-xs text-blue-100">Lớp: {classInfo.title || `Lớp #${classId}`}</p></div><div className="flex flex-wrap gap-2.5">{canJoin && <button type="button" onClick={handleJoin} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><Play className="h-4 w-4" /> Vào phòng dạy</button>}<button type="button" onClick={() => navigate(`/lms/teach/classes/${classId}/attendance?sessionId=${sessionId}`)} className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20"><CheckCircle2 className="h-4 w-4" /> Điểm danh</button></div></div></section>
+        <section className="overflow-hidden rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 p-6 text-white shadow-lg dark:border-blue-900/60 dark:shadow-none sm:p-8"><div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center"><div><span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-black"><Video className="h-3.5 w-3.5" /> Không gian buổi dạy</span><h1 className="mt-3 text-2xl font-black sm:text-3xl">{session.title}</h1><p className="mt-3 inline-flex items-center gap-1.5 text-sm text-blue-100"><Clock className="h-4 w-4" /> {formatDateTime(session.start_time)}</p><p className="mt-1 text-xs text-blue-100">Lớp: {classInfo.title || `Lớp #${classId}`}</p></div><div className="flex flex-wrap gap-2.5">{canJoin && <button type="button" onClick={handleJoin} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><Play className="h-4 w-4" /> Vào phòng dạy</button>}<a href={googleCalendarEventUrl({ title: session.title, startTime: session.start_time, endTime: session.end_time, details: "Buổi dạy CSCA Academy" })} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20"><CalendarDays className="h-4 w-4" /> Google Calendar</a><a href={classCalendarIcsUrl(classId)} className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20"><FileText className="h-4 w-4" /> Tải .ics</a><button type="button" onClick={() => navigate(`/lms/teach/classes/${classId}/attendance?sessionId=${sessionId}`)} className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20"><CheckCircle2 className="h-4 w-4" /> Điểm danh</button></div></div></section>
         <nav className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none" aria-label="Chức năng của buổi dạy">{tabs.map((tab) => { const Icon = tab.icon; return <button key={tab.id} type="button" onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })} className={tabClass(activeTab === tab.id)}><Icon className="h-4 w-4" /> {tab.label}</button>; })}</nav>
-        {activeTab === "overview" && <div className="grid gap-4 sm:grid-cols-4"><Stat label="Học viên" value={students.length} /><Stat label="Bài tập & Quiz" value={tasks.length} /><Stat label="Tài liệu" value={files.length} /><Stat label="Cần chấm" value={tasks.reduce((sum, task) => sum + Number(task.pendingGradingCount || 0), 0)} /></div>}
+        {activeTab === "overview" && <div className="grid gap-4 sm:grid-cols-5"><Stat label="Học viên" value={students.length} /><Stat label="Bài tập & Quiz" value={tasks.length} /><Stat label="Tài liệu" value={files.length} /><Stat label="Thông báo" value={announcements.length} /><Stat label="Cần chấm" value={tasks.reduce((sum, task) => sum + Number(task.pendingGradingCount || 0), 0)} /></div>}
         {activeTab === "students" && <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800"><div><h2 className="font-black">Học viên của buổi học</h2><p className="mt-1 text-xs text-slate-500">Điểm danh và theo dõi chuyên cần theo đúng buổi này.</p></div><button type="button" onClick={() => navigate(`/lms/teach/classes/${classId}/attendance?sessionId=${sessionId}`)} className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white">Mở điểm danh</button></div><div className="divide-y divide-slate-100 dark:divide-slate-800">{students.map((student) => <div key={student.id} className="flex items-center justify-between p-4 text-sm"><span className="font-bold">{student.name || student.email}</span><span className="text-xs text-slate-500">{student.email}</span></div>)}</div></section>}
         {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black">Nội dung buổi dạy</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Chuẩn bị nội dung, slide và hoạt động học tập cho buổi này tại đây."}</p><Link to={`/lms/courses/${classInfo.course_id || classInfo.courseId}/classes/${classId}/learn`} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white"><BookOpen className="h-4 w-4" /> Xem giáo trình khóa học</Link></section>}
         {activeTab === "tasks" && <TeacherSessionTasks tasks={tasks} classId={classId} sessionId={sessionId} onCreateHomework={() => setIsCreateHomeworkOpen(true)} onCreateSessionQuiz={() => navigate(`/lms/teacher/quizzes?classId=${classId}&sessionId=${sessionId}&scope=session&new=1`)} onOpenGrading={(assignmentId) => navigate(`/lms/teacher/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${assignmentId}`)} />}
         {activeTab === "files" && <TeacherSessionFiles files={files} isUploading={isUploading} onUpload={handleUpload} onDelete={handleDeleteFile} />}
+        {activeTab === "announcements" && <TeacherSessionAnnouncements announcements={announcements} onCreate={handleCreateAnnouncement} />}
         {activeTab === "results" && <TeacherSessionResults tasks={tasks} />}
       </div>
       {isCreateHomeworkOpen && <CreateAssignmentModal isOpen classId={classId} sessionId={sessionId} sessionTitle={session.title} homeworkOnly onClose={() => setIsCreateHomeworkOpen(false)} onCreated={loadData} />}
@@ -158,3 +175,10 @@ function TaskGroup({ title, tasks, empty, onOpenGrading }) { return <section cla
 function TeacherSessionFiles({ files, isUploading, onUpload, onDelete }) { return <section className="space-y-4"><div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div><h2 className="font-black">Tài liệu của buổi</h2><p className="mt-1 text-xs text-slate-500">Tài liệu tải lên chỉ hiện trong buổi học này.</p></div><label className={`cursor-pointer rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white ${isUploading ? "pointer-events-none opacity-50" : ""}`}><UploadCloud className="mr-1 inline h-4 w-4" />{isUploading ? "Đang tải..." : "Tải tài liệu"}<input type="file" className="hidden" disabled={isUploading} onChange={onUpload} /></label></div>{files.length ? <div className="grid gap-3 sm:grid-cols-2">{files.map((file) => <article key={file.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="min-w-0"><h3 className="truncate text-sm font-black">{file.name}</h3><a href={file.downloadUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-bold text-blue-600">Mở / tải xuống</a></div><button type="button" onClick={() => onDelete(file.id)} className="text-xs font-bold text-rose-600">Xóa</button></article>)}</div> : <EmptyState icon={FileText} title="Chưa có tài liệu" description="Tải slide hoặc đề bài để học viên xem trong buổi này." />}</section>; }
 
 function TeacherSessionResults({ tasks }) { return tasks.length ? <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500 dark:bg-slate-800 dark:text-slate-400"><tr><th className="p-4">Nhiệm vụ</th><th className="p-4 text-center">Đã nộp</th><th className="p-4 text-center">Điểm TB</th></tr></thead><tbody>{tasks.map((task) => <tr key={`${task.type}-${task.id}`} className="border-t border-slate-100 dark:border-slate-800"><td className="p-4 font-bold">{task.title}</td><td className="p-4 text-center">{task.submittedCount || 0}/{task.totalCount || 0}</td><td className="p-4 text-center font-black text-blue-600">{task.avgScore ?? "—"}</td></tr>)}</tbody></table></section> : <EmptyState icon={GraduationCap} title="Chưa có kết quả" description="Kết quả của các nhiệm vụ trong buổi học sẽ tổng hợp tại đây." />; }
+
+function TeacherSessionAnnouncements({ announcements, onCreate }) {
+  const [form, setForm] = useState({ title: "", message: "", linkUrl: "", attachmentUrl: "", scheduledAt: "" });
+  const [saving, setSaving] = useState(false);
+  const submit = async (event) => { event.preventDefault(); if (!form.title.trim() || !form.message.trim()) return toast.error("Nhập tiêu đề và nội dung thông báo."); setSaving(true); try { await onCreate({ ...form, title: form.title.trim(), message: form.message.trim(), scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : undefined }); setForm({ title: "", message: "", linkUrl: "", attachmentUrl: "", scheduledAt: "" }); } finally { setSaving(false); } };
+  return <section className="space-y-5"><form onSubmit={submit} className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/60 dark:bg-blue-950/20"><div className="flex items-center gap-2"><Bell className="h-5 w-5 text-blue-600" /><div><h2 className="font-black">Gửi thông báo cho buổi học</h2><p className="mt-1 text-xs text-slate-500">Gửi ngay hoặc hẹn giờ; có thể đính kèm liên kết/tài liệu đã tải lên.</p></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Tiêu đề thông báo" /><input type="datetime-local" value={form.scheduledAt} onChange={(event) => setForm({ ...form, scheduledAt: event.target.value })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" /></div><textarea value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })} className="mt-3 min-h-28 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Nội dung học viên sẽ nhận" /><div className="mt-3 grid gap-3 sm:grid-cols-2"><input value={form.linkUrl} onChange={(event) => setForm({ ...form, linkUrl: event.target.value })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Liên kết cần mở (không bắt buộc)" /><input value={form.attachmentUrl} onChange={(event) => setForm({ ...form, attachmentUrl: event.target.value })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Liên kết tài liệu đính kèm (không bắt buộc)" /></div><button disabled={saving} className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">{saving ? "Đang lưu..." : form.scheduledAt ? "Lên lịch gửi" : "Gửi ngay"}</button></form><div className="space-y-3">{announcements.length ? announcements.map((item) => <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex justify-between gap-3"><h3 className="text-sm font-black">{item.title}</h3><span className="text-[10px] font-black text-slate-500">{item.status === "scheduled" ? `Hẹn ${new Date(item.scheduledAt).toLocaleString("vi-VN")}` : item.status === "sent" ? "Đã gửi" : item.status}</span></div><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">{item.message}</p></article>) : <EmptyState icon={Bell} title="Chưa có thông báo" description="Thông báo gửi cho buổi này sẽ được lưu tại đây." />}</div></section>;
+}

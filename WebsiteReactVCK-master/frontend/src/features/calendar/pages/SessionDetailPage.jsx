@@ -2,23 +2,25 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  ArrowLeft, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
+  ArrowLeft, Bell, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
   FileText, Lock, Play, Trophy, Users, Video,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { isTeacherRole } from "../../../constants/roles";
 import {
-  fetchAssignments, fetchLiveClassSessions, fetchStudentFiles, getLiveSessionAccess,
+  fetchAssignments, fetchClassAnnouncements, fetchLiveClassSessions, fetchStudentFiles, getLiveSessionAccess,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
+import { classCalendarIcsUrl, googleCalendarEventUrl } from "../calendarLinks";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
   { id: "content", label: "Nội dung", icon: BookOpen },
   { id: "tasks", label: "Bài tập & Quiz", icon: ClipboardList },
   { id: "materials", label: "Tài liệu", icon: FileText },
+  { id: "announcements", label: "Thông báo", icon: Bell },
   { id: "results", label: "Kết quả", icon: Trophy },
 ];
 
@@ -40,6 +42,7 @@ export default function SessionDetailPage() {
   const [session, setSession] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [files, setFiles] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [resourcesLoading, setResourcesLoading] = useState(true);
   const [error, setError] = useState("");
@@ -65,16 +68,19 @@ export default function SessionDetailPage() {
   const loadResources = useCallback(async () => {
     setResourcesLoading(true);
     try {
-      const [taskResponse, fileResponse] = await Promise.all([
+      const [taskResponse, fileResponse, announcementResponse] = await Promise.all([
         fetchAssignments({ courseId, classId, sessionId }),
         fetchStudentFiles({ courseId, classId, sessionId }),
+        fetchClassAnnouncements({ classId, sessionId }),
       ]);
       setTasks(taskResponse?.success && Array.isArray(taskResponse.data) ? taskResponse.data : []);
       setFiles(fileResponse?.success && Array.isArray(fileResponse.data) ? fileResponse.data : []);
+      setAnnouncements(announcementResponse?.success && Array.isArray(announcementResponse.data) ? announcementResponse.data : []);
     } catch (requestError) {
       toast.error(requestError.message || "Không thể tải học liệu của buổi học.");
       setTasks([]);
       setFiles([]);
+      setAnnouncements([]);
     } finally {
       setResourcesLoading(false);
     }
@@ -125,6 +131,8 @@ export default function SessionDetailPage() {
           </div>
           <div className="flex flex-wrap gap-2.5">
             {isJoinable ? <button type="button" onClick={handleJoin} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><Play className="h-4 w-4" /> Vào lớp học</button> : <span className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2.5 text-xs font-bold">{isEnded ? <CheckCircle2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />}{isEnded ? "Buổi học đã kết thúc" : "Phòng mở trước 15 phút"}</span>}
+            <a href={googleCalendarEventUrl({ title: session.title, startTime: session.start_time, endTime: session.end_time, details: "Buổi học CSCA Academy" })} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20"><CalendarDays className="h-4 w-4" /> Thêm Google Calendar</a>
+            <a href={classCalendarIcsUrl(classId)} className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20"><FileText className="h-4 w-4" /> Tải lịch .ics</a>
             {isTeacher && <Link to={`/lms/teach/classes/${classId}/attendance?sessionId=${session.id}`} className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20"><Users className="h-4 w-4" /> Điểm danh</Link>}
           </div>
         </div>
@@ -138,10 +146,11 @@ export default function SessionDetailPage() {
       </nav>
 
       {resourcesLoading ? <Loading loading text="Đang đồng bộ học liệu của buổi..." fullScreen={false} className="min-h-40 py-10" /> : <>
-        {activeTab === "overview" && <div className="grid gap-4 sm:grid-cols-3"><InfoCard label="Bài tập & Quiz" value={tasks.length} /><InfoCard label="Tài liệu" value={files.length} /><InfoCard label="Đã hoàn thành" value={`${completeTasks.length}/${tasks.length}`} /></div>}
+        {activeTab === "overview" && <div className="grid gap-4 sm:grid-cols-4"><InfoCard label="Bài tập & Quiz" value={tasks.length} /><InfoCard label="Tài liệu" value={files.length} /><InfoCard label="Thông báo" value={announcements.length} /><InfoCard label="Đã hoàn thành" value={`${completeTasks.length}/${tasks.length}`} /></div>}
         {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black text-slate-900 dark:text-white">Nội dung buổi học</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Giáo viên sẽ cập nhật nội dung, slide và bài tập trong đúng không gian buổi học này."}</p><Link to={`${basePath}/learn`} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700"><BookOpen className="h-4 w-4" /> Mở bài học của khóa</Link></section>}
         {activeTab === "tasks" && <SessionTaskList tasks={tasks} basePath={basePath} />}
         {activeTab === "materials" && <SessionFileList files={files} />}
+        {activeTab === "announcements" && <SessionAnnouncementList announcements={announcements} />}
         {activeTab === "results" && <SessionResults tasks={completeTasks} basePath={basePath} />}
       </>}
     </div>
@@ -160,6 +169,11 @@ function SessionTaskList({ tasks, basePath }) {
 function SessionFileList({ files }) {
   if (!files.length) return <EmptyState icon={FileText} title="Chưa có tài liệu" description="Slide, đề mẫu và tài liệu của buổi này sẽ được hiển thị tại đây." />;
   return <section className="grid gap-3 sm:grid-cols-2">{files.map((file) => <a key={file.id} href={file.downloadUrl || file.download_url} target="_blank" rel="noreferrer" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"><FileText className="h-5 w-5 text-blue-600 dark:text-sky-400" /><h2 className="mt-3 truncate text-sm font-black text-slate-900 dark:text-white">{file.name}</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString("vi-VN") : "Tài liệu buổi học"}</p></a>)}</section>;
+}
+
+function SessionAnnouncementList({ announcements }) {
+  if (!announcements.length) return <EmptyState icon={Bell} title="Chưa có thông báo" description="Thông báo của giáo viên về đúng buổi học này sẽ xuất hiện ở đây." />;
+  return <section className="space-y-3">{announcements.map((announcement) => <article key={announcement.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex flex-wrap items-start justify-between gap-2"><h2 className="text-sm font-black text-slate-900 dark:text-white">{announcement.title}</h2><span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700 dark:bg-blue-950/60 dark:text-sky-300">{announcement.sentAt ? new Date(announcement.sentAt).toLocaleString("vi-VN") : "Đã gửi"}</span></div><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{announcement.message}</p><div className="mt-4 flex flex-wrap gap-3">{announcement.linkUrl && <a href={announcement.linkUrl} className="text-xs font-black text-blue-600 dark:text-sky-400">Mở liên kết</a>}{announcement.attachmentUrl && <a href={announcement.attachmentUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-blue-600 dark:text-sky-400">Tải tài liệu đính kèm</a>}</div></article>)}</section>;
 }
 
 function SessionResults({ tasks, basePath }) {
