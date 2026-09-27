@@ -30,12 +30,6 @@ const IconFile = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
   </svg>
 );
-const IconArrowRight = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-  </svg>
-);
-
 /* Quick feedback chips */
 const QUICK_FEEDBACK = [
   { label: "🌟 Xuất sắc", text: "Bài làm rất xuất sắc! Em nắm vững ngữ pháp, từ vựng phong phú và diễn đạt tự nhiên.", cls: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
@@ -263,454 +257,263 @@ export default function TeacherGradingPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16">
-      {/* Top Breadcrumb & Header */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-        <div className="container mx-auto max-w-7xl px-4 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <span className="text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider font-mono">
-                Teacher Workspace
-              </span>
-              <span>/</span>
-              <span>Chấm Điểm & Phản Hồi Bài Tập</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-              Chấm bài & phản hồi học viên
-            </h1>
+    <div className="min-h-screen bg-slate-100 pb-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">KHU VỰC GIÁO VIÊN</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white">Chấm bài</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Chọn bài nộp, xem bài làm, nhập điểm rồi lưu. Bài tiếp theo sẽ tự mở.
+            </p>
             {requestedSessionId && (
-              <p className="text-xs text-sky-600 dark:text-sky-300 font-medium">
-                Đang mở hàng chờ bài tập về nhà của buổi học đã chọn.
-              </p>
+              <p className="mt-2 text-xs font-medium text-sky-700 dark:text-sky-300">Đang lọc bài tập của buổi học đã chọn.</p>
             )}
-            <p className="pt-1 text-xs text-slate-500 dark:text-slate-400">1. Chọn bài nộp · 2. Xem nội dung hoặc ảnh bài làm · 3. Lưu điểm và chuyển bài tiếp theo.</p>
           </div>
-
-          {/* Key Metrics Chips */}
-          <div className="flex items-center gap-2">
-            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3.5 py-1.5 rounded-xl text-center shadow-sm">
-              <span className="text-[10px] text-slate-500 uppercase font-bold block">Chờ Chấm</span>
-              <span className="text-amber-500 dark:text-amber-400 font-mono font-black text-base">{stats.pending}</span>
+          <div className="flex gap-2 self-start lg:self-auto">
+            <div className="min-w-24 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-center dark:border-amber-900/60 dark:bg-amber-950/30">
+              <p className="text-[11px] font-medium text-amber-800 dark:text-amber-200">Cần chấm</p>
+              <p className="text-xl font-bold tabular-nums text-amber-700 dark:text-amber-300">{stats.pending}</p>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3.5 py-1.5 rounded-xl text-center shadow-sm">
-              <span className="text-[10px] text-slate-500 uppercase font-bold block">Đã Chấm</span>
-              <span className="text-emerald-600 dark:text-emerald-400 font-mono font-black text-base">{stats.graded}</span>
+            <div className="min-w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-center dark:border-slate-700 dark:bg-slate-800/60">
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Đã chấm</p>
+              <p className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100">{stats.graded}</p>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3.5 py-1.5 rounded-xl text-center shadow-sm">
-              <span className="text-[10px] text-slate-500 uppercase font-bold block">Điểm TB</span>
-              <span className="text-sky-600 dark:text-sky-400 font-mono font-black text-base">{stats.avgScore}</span>
+            <div className="hidden min-w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-center sm:block dark:border-slate-700 dark:bg-slate-800/60">
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Điểm TB</p>
+              <p className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100">{stats.avgScore}</p>
             </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Main 3-Column Split Workspace */}
-      <div className="container mx-auto px-4 py-6 max-w-7xl">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* ══════════════════════════════════════════════════════════
-              COLUMN 1: SUBMISSIONS QUEUE (LEFT - 3.5 COLUMNS)
-              ══════════════════════════════════════════════════════════ */}
-          <section aria-label="Hàng đợi bài nộp" className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                Hàng Đợi Bài Nộp ({filteredSubs.length})
-              </h3>
+      <main className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6">
+        <div className="grid items-start gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
+          <aside aria-label="Danh sách bài nộp" className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between gap-3 px-1 pb-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Bài nộp</h2>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{filteredSubs.length} bài theo bộ lọc</p>
+              </div>
               <button
                 type="button"
-                onClick={() => setSortByDeadline((p) => (p === "asc" ? "desc" : "asc"))}
-                className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-mono flex items-center gap-1"
-                title="Sắp xếp theo hạn nộp"
+                onClick={() => setSortByDeadline((current) => (current === "asc" ? "desc" : "asc"))}
+                className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                title="Đổi thứ tự theo ngày nộp"
               >
-                <span>Hạn nộp</span>
-                <span>{sortByDeadline === "asc" ? "↑ Gần" : "↓ Xa"}</span>
+                {sortByDeadline === "asc" ? "Gần nhất" : "Xa nhất"}
               </button>
             </div>
 
-            {/* Filter Tabs */}
-            <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px]">
+            <div className="grid grid-cols-3 rounded-xl bg-slate-100 p-1 text-[11px] font-semibold dark:bg-slate-950">
               {[
-                { id: "pending", label: `Chờ (${stats.pending})` },
-                { id: "graded", label: `Đã chấm (${stats.graded})` },
-                { id: "all", label: `Tất cả (${stats.total})` },
-              ].map((f) => (
+                { id: "pending", label: `Cần chấm ${stats.pending}` },
+                { id: "graded", label: `Đã chấm ${stats.graded}` },
+                { id: "all", label: `Tất cả ${stats.total}` },
+              ].map((filter) => (
                 <button
-                  key={f.id}
+                  key={filter.id}
                   type="button"
-                  onClick={() => setFilterStatus(f.id)}
-                  className={`py-1.5 rounded-lg font-bold transition text-center ${
-                    filterStatus === f.id
-                      ? "bg-emerald-600 text-white shadow-sm"
-                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  onClick={() => setFilterStatus(filter.id)}
+                  className={`rounded-lg px-1 py-2 transition ${
+                    filterStatus === filter.id
+                      ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                      : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
                   }`}
                 >
-                  {f.label}
+                  {filter.label}
                 </button>
               ))}
             </div>
 
-            {/* Search & Class Dropdown */}
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm theo tên học viên, bài tập..."
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-              />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Tìm học viên hoặc bài tập"
+              className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+            />
 
-              <div className="flex gap-2">
-                <select
-                  value={filterClass}
-                  onChange={(e) => setFilterClass(e.target.value)}
-                  className="w-1/2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-700 dark:text-slate-300 focus:outline-none"
-                >
+            <details className="mt-2 rounded-xl border border-slate-200 px-3 py-2 text-xs dark:border-slate-700">
+              <summary className="cursor-pointer font-medium text-slate-600 dark:text-slate-300">Lọc theo lớp hoặc loại bài</summary>
+              <div className="mt-2 grid gap-2">
+                <select value={filterClass} onChange={(event) => setFilterClass(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-white">
                   <option value="all">Tất cả lớp</option>
-                  {[...new Map(submissions
-                    .filter((sub) => sub.classId)
-                    .map((sub) => [sub.classId, sub.classTitle || `Lớp #${sub.classId}`]))]
-                    .map(([classId, classTitle]) => (
-                      <option key={classId} value={classId}>{classTitle}</option>
-                    ))}
+                  {[...new Map(submissions.filter((sub) => sub.classId).map((sub) => [sub.classId, sub.classTitle || `Lớp #${sub.classId}`]))].map(([classId, classTitle]) => (
+                    <option key={classId} value={classId}>{classTitle}</option>
+                  ))}
                 </select>
-
-                <select
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value)}
-                  className="w-1/2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-700 dark:text-slate-300 focus:outline-none"
-                >
+                <select value={filterType} onChange={(event) => setFilterType(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-white">
                   <option value="all">Mọi loại bài</option>
-                  <option value="homework">Bài luận</option>
+                  <option value="homework">Bài tự luận</option>
                   <option value="hskk">Khẩu ngữ HSKK</option>
                   <option value="quiz">Trắc nghiệm</option>
                 </select>
               </div>
-            </div>
+            </details>
 
-            {/* List of Submissions */}
-            {loading ? (
-              <Loading loading={true} text="Đang tải danh sách bài nộp..." fullScreen={false} className="py-12" />
-            ) : filteredSubs.length === 0 ? (
-              <div className="py-12 text-center text-slate-500 text-xs bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800/80">
-                Không tìm thấy bài nộp nào trong bộ lọc.
-              </div>
-            ) : (
-              <div className="space-y-2.5 max-h-[calc(100vh-360px)] overflow-y-auto pr-1">
-                {filteredSubs.map((sub) => {
-                  const tb = getTypeBadge(sub.assignmentType);
-                  const isSelected = selectedSub?.id === sub.id;
-
+            <div className="mt-3 max-h-[calc(100vh-315px)] space-y-1.5 overflow-y-auto pr-1">
+              {loading ? (
+                <Loading loading={true} text="Đang tải bài nộp..." fullScreen={false} className="py-10" />
+              ) : filteredSubs.length === 0 ? (
+                <div className="rounded-xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+                  Không có bài nộp phù hợp.
+                </div>
+              ) : (
+                filteredSubs.map((sub) => {
+                  const selected = selectedSub?.id === sub.id;
                   return (
                     <button
                       key={sub.id}
                       type="button"
                       onClick={() => handleSelectSub(sub)}
-                      className={`w-full text-left p-3.5 rounded-2xl border transition-all ${
-                        isSelected
-                          ? "bg-emerald-600/10 border-emerald-500 ring-1 ring-emerald-500 shadow-lg shadow-emerald-500/10"
-                          : "bg-slate-50/80 dark:bg-slate-950/80 border-slate-200 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700"
+                      className={`w-full rounded-xl border p-3 text-left transition ${
+                        selected
+                          ? "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500/20 dark:bg-emerald-950/20"
+                          : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:border-slate-700 dark:hover:bg-slate-800/70"
                       }`}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0 overflow-hidden flex items-center justify-center border border-slate-300 dark:border-white/10 text-slate-600 dark:text-slate-300">
-                          {sub.studentAvatar ? (
-                            <img src={sub.studentAvatar} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <IconUser />
-                          )}
+                      <div className="flex items-start gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                          {sub.studentAvatar ? <img src={sub.studentAvatar} alt="" className="h-full w-full object-cover" /> : <IconUser />}
                         </div>
-
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{sub.studentName}</span>
-                            <span
-                              className={`shrink-0 text-[10px] font-black font-mono px-2 py-0.5 rounded-full border ${
-                                sub.status === "graded"
-                                  ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-                                  : "bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30"
-                              }`}
-                            >
-                              {sub.status === "graded" ? `${sub.score}đ` : "Chờ chấm"}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm font-semibold text-slate-900 dark:text-white">{sub.studentName}</span>
+                            <span className={`shrink-0 text-xs font-semibold ${sub.status === "graded" ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>
+                              {sub.status === "graded" ? `${sub.score}/${sub.maxScore || 10}` : "Mới"}
                             </span>
                           </div>
-
-                          <p className="text-[11px] text-slate-700 dark:text-slate-300 truncate font-medium">{sub.assignmentTitle}</p>
-
-                          <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
-                            <span className={`px-1.5 py-0.5 rounded border font-semibold ${tb.cls}`}>
-                              {tb.label}
-                            </span>
-                            <span className="font-mono flex items-center gap-1">
-                              <IconClock />
-                              {new Date(sub.submittedAt).toLocaleDateString("vi-VN")}
-                            </span>
+                          <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{sub.assignmentTitle}</p>
+                          <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500">
+                            <span>{getTypeBadge(sub.assignmentType).label}</span>
+                            <span className="flex items-center gap-1"><IconClock />{new Date(sub.submittedAt).toLocaleDateString("vi-VN")}</span>
                           </div>
                         </div>
                       </div>
                     </button>
                   );
-                })}
-              </div>
-            )}
-          </section>
+                })
+              )}
+            </div>
+          </aside>
 
-          {/* ══════════════════════════════════════════════════════════
-              COLUMN 2: SUBMISSION VIEWER (CENTER - 5 COLUMNS)
-              ══════════════════════════════════════════════════════════ */}
-          <section aria-label="Nội dung bài làm" className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl min-h-[500px]">
+          <section aria-label="Bài làm và biểu mẫu chấm" className="min-w-0">
             {!selectedSub ? (
-              <div className="h-full flex items-center justify-center py-24 text-center text-slate-500 text-xs">
-                Chọn một bài nộp ở cột bên trái để bắt đầu xem và chấm điểm.
+              <div className="flex min-h-[430px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-xl dark:bg-slate-800">✓</div>
+                <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">Chưa có bài để chấm</h2>
+                <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500 dark:text-slate-400">Khi học viên nộp bài, bài làm sẽ xuất hiện trong danh sách bên trái để bạn xem và chấm tại đây.</p>
               </div>
             ) : (
               <>
-                {/* Submission Header */}
-                <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-mono">
-                        {selectedSub.classTitle || "CSCA-LMS"}
-                      </span>
-                      {selectedSub.status === "late" && (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/30">
-                          Nộp Quá Hạn
-                        </span>
-                      )}
+                <div className="mb-5 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:px-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span>{selectedSub.classTitle || "CSCA-LMS"}</span>
+                        {selectedSub.sessionTitle && <><span>•</span><span>{selectedSub.sessionTitle}</span></>}
+                        {selectedSub.status === "late" && <span className="rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">Nộp muộn</span>}
+                      </div>
+                      <h2 className="mt-1 truncate text-lg font-bold text-slate-950 dark:text-white">{selectedSub.assignmentTitle}</h2>
+                      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300"><span className="font-medium">{selectedSub.studentName}</span>{selectedSub.studentEmail && <span className="text-slate-400"> · {selectedSub.studentEmail}</span>}</p>
                     </div>
-                    <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-snug">
-                      {selectedSub.assignmentTitle}
-                    </h2>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">
-                      Học viên: <strong className="text-slate-900 dark:text-white">{selectedSub.studentName}</strong> •{" "}
-                      <span className="font-mono text-slate-500">{selectedSub.studentEmail}</span>
-                    </p>
-                    {selectedSub.sessionTitle && (
-                      <p className="text-[11px] text-sky-600 dark:text-sky-300">
-                        Buổi học: {selectedSub.sessionTitle}
-                      </p>
-                    )}
+                    {selectedSub.status === "graded" && <span className="shrink-0 rounded-xl bg-emerald-50 px-3 py-2 text-center text-sm font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Đã chấm<br /><span className="text-lg">{selectedSub.score}/{selectedSub.maxScore || 10}</span></span>}
                   </div>
-
-                  {selectedSub.status === "graded" && (
-                    <div className="bg-emerald-500/20 border border-emerald-500/30 rounded-2xl px-4 py-2 text-center shrink-0">
-                      <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{selectedSub.score}</span>
-                      <span className="text-[9px] text-emerald-600 dark:text-emerald-500/80 uppercase font-bold block">Đã chấm</span>
-                    </div>
-                  )}
                 </div>
 
-                {/* Text Content with Chinese Character Counter */}
-                {selectedSub.contentText && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span className="font-bold uppercase tracking-wider text-[10px]">Nội Dung Bài Luận:</span>
-                      <span className="font-mono bg-slate-100 dark:bg-slate-950 px-2.5 py-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px]">
-                        Số chữ Hán: <strong className="text-rose-500 dark:text-rose-400">{countChineseChars(selectedSub.contentText)}</strong> ký tự
-                      </span>
+                <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
+                  <article className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Bài làm của học viên</h3>
                     </div>
-                    <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-sans whitespace-pre-wrap selection:bg-rose-500/30">
-                      {selectedSub.contentText}
-                    </div>
-                  </div>
-                )}
-
-                {/* File Attachment Preview */}
-                {selectedSub.fileUrl && (
-                  <div className="space-y-2">
-                    <span className="font-bold uppercase tracking-wider text-[10px] text-slate-500 dark:text-slate-400">
-                      Tệp Đính Kèm Của Học Viên:
-                    </span>
-                    {isImageSubmission(selectedSub.fileName) && (
-                      <a href={selectedSub.fileUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-sky-200 bg-slate-50 dark:border-sky-900 dark:bg-slate-950">
-                        <img src={selectedSub.fileUrl} alt={`Bài làm ảnh của ${selectedSub.studentName}`} className="max-h-[38rem] w-full object-contain" />
-                        <span className="block border-t border-sky-100 px-3 py-2 text-center text-[11px] font-semibold text-sky-700 dark:border-sky-950 dark:text-sky-300">Bấm vào ảnh để mở kích thước đầy đủ</span>
-                      </a>
-                    )}
-                    <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-sky-500 dark:text-sky-400">
-                          {isImageSubmission(selectedSub.fileName) ? '🖼️' : <IconFile />}
-                        </span>
+                    <div className="space-y-5 p-5">
+                      {selectedSub.contentText && (
                         <div>
-                          <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[200px]">
-                            {selectedSub.fileName || "Tai_lieu_bai_tap.pdf"}
-                          </p>
-                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Định dạng tệp đã được quét virus</p>
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Nội dung tự luận</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">{countChineseChars(selectedSub.contentText)} chữ Hán</p>
+                          </div>
+                          <div className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-7 text-slate-800 dark:bg-slate-950 dark:text-slate-200">{selectedSub.contentText}</div>
                         </div>
-                      </div>
-                      <a
-                        href={selectedSub.fileUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-sky-600 dark:text-sky-400 rounded-xl text-xs font-semibold transition border border-slate-300 dark:border-slate-700"
-                      >
-                        Mở Xem Tệp
-                      </a>
-                    </div>
-                  </div>
-                )}
+                      )}
 
-                {/* Audio Player for HSKK with Speed Controls */}
-                {selectedSub.audioUrl && (
-                  <div className="space-y-2 bg-slate-50 dark:bg-slate-950/70 p-4 rounded-2xl border border-violet-500/20">
-                    <div className="flex items-center justify-between text-xs text-violet-600 dark:text-violet-400 font-bold">
-                      <span className="flex items-center gap-1.5">
-                        <IconMic /> Bản Ghi Âm Khẩu Ngữ HSKK
-                      </span>
-                      {/* Playback speed controller */}
-                      <div className="flex items-center gap-1 text-[10px] font-mono">
-                        <span className="text-slate-500 mr-1">Tốc độ:</span>
-                        {[0.75, 1, 1.25, 1.5].map((rate) => (
-                          <button
-                            key={rate}
-                            type="button"
-                            onClick={() => {
-                              setPlaybackRate(rate);
-                              const audioEl = document.getElementById("hskk-audio-player");
-                              if (audioEl) audioEl.playbackRate = rate;
-                            }}
-                            className={`px-2 py-0.5 rounded ${
-                              playbackRate === rate
-                                ? "bg-violet-600 text-white font-bold"
-                                : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                            }`}
-                          >
-                            {rate}x
-                          </button>
-                        ))}
-                      </div>
+                      {selectedSub.fileUrl && (
+                        <div>
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Tệp đính kèm</p>
+                            <a href={selectedSub.fileUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-300">Mở toàn màn hình</a>
+                          </div>
+                          {isImageSubmission(selectedSub.fileName) ? (
+                            <a href={selectedSub.fileUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
+                              <img src={selectedSub.fileUrl} alt={`Bài làm ảnh của ${selectedSub.studentName}`} className="max-h-[44rem] w-full object-contain" />
+                            </a>
+                          ) : (
+                            <a href={selectedSub.fileUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                              <IconFile /> <span className="truncate">{selectedSub.fileName || "Mở tệp bài làm"}</span>
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {selectedSub.audioUrl && (
+                        <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-950">
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <span className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200"><IconMic /> Bài nói HSKK</span>
+                            <div className="flex gap-1 text-xs">
+                              {[0.75, 1, 1.25, 1.5].map((rate) => <button key={rate} type="button" onClick={() => { setPlaybackRate(rate); const audio = document.getElementById("hskk-audio-player"); if (audio) audio.playbackRate = rate; }} className={`rounded-md px-2 py-1 ${playbackRate === rate ? "bg-slate-800 text-white dark:bg-white dark:text-slate-900" : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800"}`}>{rate}×</button>)}
+                            </div>
+                          </div>
+                          <audio id="hskk-audio-player" src={selectedSub.audioUrl} controls className="w-full" />
+                        </div>
+                      )}
+
+                      {!selectedSub.contentText && !selectedSub.fileUrl && !selectedSub.audioUrl && <p className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">Học viên đã hoàn thành bài này. Không có nội dung bổ sung để xem.</p>}
+                    </div>
+                  </article>
+
+                  <aside aria-label="Nhập điểm và nhận xét" className="self-start rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-5 dark:border-slate-800 dark:bg-slate-900">
+                    <div className="border-b border-slate-100 pb-3 dark:border-slate-800">
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Ghi điểm & nhận xét</h3>
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Lưu nhanh: Ctrl + Enter</p>
                     </div>
 
-                    <audio
-                      id="hskk-audio-player"
-                      src={selectedSub.audioUrl}
-                      controls
-                      className="w-full h-10 rounded-xl"
-                    />
-                  </div>
-                )}
+                    {(selectedSub.rubric || []).length > 0 ? (
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center justify-between"><p className="text-sm font-medium text-slate-700 dark:text-slate-200">Chấm theo tiêu chí</p><p className="text-lg font-bold tabular-nums text-slate-900 dark:text-white">{rubricScores.reduce((total, item) => total + (Number(item.score) || 0), 0)}/{selectedSub.maxScore}</p></div>
+                        {selectedSub.rubric.map((criterion) => {
+                          const item = rubricScores.find((entry) => entry.criterionId === criterion.id) || { criterionId: criterion.id, score: 0, feedback: "" };
+                          return <div key={criterion.id} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950"><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-medium text-slate-800 dark:text-slate-100">{criterion.title}</p>{criterion.description && <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">{criterion.description}</p>}</div><label className="flex shrink-0 items-center gap-1 text-xs text-slate-500"><input type="number" min="0" max={criterion.maxPoints} step="0.25" value={item.score} onChange={(event) => setRubricScores((current) => current.map((entry) => entry.criterionId === criterion.id ? { ...entry, score: event.target.value } : entry))} className="w-14 rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-center font-semibold text-slate-900 outline-none focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />/{criterion.maxPoints}</label></div><input value={item.feedback} onChange={(event) => setRubricScores((current) => current.map((entry) => entry.criterionId === criterion.id ? { ...entry, feedback: event.target.value } : entry))} maxLength={4000} placeholder="Nhận xét tiêu chí này (nếu có)" className="mt-2 w-full border-b border-slate-200 bg-transparent pb-1 text-xs outline-none placeholder:text-slate-400 focus:border-emerald-500 dark:border-slate-700 dark:text-slate-200" /></div>;
+                        })}
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+                        <label htmlFor="score-input" className="text-xs font-medium text-slate-500 dark:text-slate-400">Tổng điểm</label>
+                        <div className="mt-1 flex items-end gap-2"><input id="score-input" type="number" min="0" max={selectedSub.maxScore || 10} step="0.25" value={score} onChange={(event) => setScore(event.target.value)} className="w-24 border-b-2 border-slate-300 bg-transparent pb-1 text-3xl font-bold tabular-nums text-slate-950 outline-none focus:border-emerald-500 dark:border-slate-600 dark:text-white" /><span className="pb-2 text-sm text-slate-500">/ {selectedSub.maxScore || 10}</span></div>
+                        <div className="mt-3 grid grid-cols-6 gap-1">{[0, 5, 7, 8, 9, 10].filter((value) => value <= (selectedSub.maxScore || 10)).map((value) => <button key={value} type="button" onClick={() => setScore(value)} className={`rounded-md py-1.5 text-xs font-medium ${Number(score) === value ? "bg-emerald-600 text-white" : "bg-white text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"}`}>{value}</button>)}</div>
+                      </div>
+                    )}
+
+                    <div className="mt-5">
+                      <div className="flex items-center justify-between gap-2"><label htmlFor="feedback-input" className="text-sm font-medium text-slate-800 dark:text-slate-100">Nhận xét cho học viên</label><span className="text-[11px] text-slate-400">Tùy chọn</span></div>
+                      <textarea id="feedback-input" rows={7} value={feedback} onChange={(event) => setFeedback(event.target.value)} placeholder="Viết nhận xét ngắn, rõ ràng và hướng dẫn học viên cần cải thiện gì..." className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <details className="mt-2 text-xs">
+                        <summary className="cursor-pointer font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100">Chèn mẫu nhận xét nhanh</summary>
+                        <div className="mt-2 flex flex-wrap gap-1.5">{QUICK_FEEDBACK.map((template) => <button key={template.label} type="button" onClick={() => setFeedback((current) => current.trim() ? `${current.trim()}\n${template.text}` : template.text)} className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 dark:border-slate-700 dark:text-slate-300 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-200">{template.label}</button>)}</div>
+                      </details>
+                    </div>
+
+                    <div className="mt-5 space-y-2">
+                      <button type="button" onClick={() => handleGradeSubmit(true)} disabled={grading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"><IconCheck />{grading ? "Đang lưu..." : "Lưu điểm & chuyển bài tiếp"}</button>
+                      <button type="button" onClick={() => handleGradeSubmit(false)} disabled={grading} className="w-full rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white">Lưu điểm, chưa chuyển bài</button>
+                    </div>
+                  </aside>
+                </div>
               </>
             )}
           </section>
-
-          {/* ══════════════════════════════════════════════════════════
-              COLUMN 3: GRADING & FEEDBACK PANEL (RIGHT - 3 COLUMNS)
-              ══════════════════════════════════════════════════════════ */}
-          <aside aria-label="Điểm và nhận xét" className="lg:col-span-3 lg:sticky lg:top-24 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 space-y-5 shadow-xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <span>⭐</span>
-                <span>Chấm Điểm & Lời Phê</span>
-              </h3>
-              <span className="text-[10px] font-mono text-slate-500">Phím tắt: Ctrl+Enter</span>
-            </div>
-
-            {(selectedSub?.rubric || []).length > 0 ? (
-              <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-4 dark:border-sky-900/70 dark:bg-sky-950/20">
-                <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-black uppercase text-sky-950 dark:text-sky-100">Chấm theo rubric</p><p className="mt-0.5 text-[10px] text-sky-700 dark:text-sky-300">Điểm tổng được máy chủ tính từ từng tiêu chí.</p></div><b className="font-mono text-lg text-sky-700 dark:text-sky-200">{rubricScores.reduce((total, item) => total + (Number(item.score) || 0), 0)}/{selectedSub.maxScore}</b></div>
-                <div className="space-y-2.5">{selectedSub.rubric.map((criterion) => {
-                  const item = rubricScores.find((entry) => entry.criterionId === criterion.id) || { criterionId: criterion.id, score: 0, feedback: "" };
-                  return <div key={criterion.id} className="rounded-xl border border-sky-200 bg-white p-3 dark:border-sky-900 dark:bg-slate-950"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[11px] font-black text-slate-900 dark:text-white">{criterion.title}</p>{criterion.description && <p className="mt-0.5 text-[10px] leading-4 text-slate-500 dark:text-slate-400">{criterion.description}</p>}</div><div className="flex shrink-0 items-center gap-1"><input type="number" min="0" max={criterion.maxPoints} step="0.25" value={item.score} onChange={(event) => setRubricScores((current) => current.map((entry) => entry.criterionId === criterion.id ? { ...entry, score: event.target.value } : entry))} className="w-14 rounded-lg border border-sky-300 bg-sky-50 px-1.5 py-1 text-center text-xs font-black text-sky-900 outline-none focus:border-sky-500 dark:border-sky-800 dark:bg-slate-900 dark:text-sky-100" /><span className="text-[10px] font-mono text-slate-500">/{criterion.maxPoints}</span></div></div><input value={item.feedback} onChange={(event) => setRubricScores((current) => current.map((entry) => entry.criterionId === criterion.id ? { ...entry, feedback: event.target.value } : entry))} maxLength={4000} placeholder="Nhận xét cho tiêu chí này (không bắt buộc)" className="mt-2 w-full border-t border-sky-100 bg-transparent pt-2 text-[10px] outline-none placeholder:text-slate-400 dark:border-sky-950 dark:text-slate-200" /></div>;
-                })}</div>
-              </div>
-            ) : (
-            <div className="space-y-3 bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
-              <div className="flex items-center justify-between">
-                <label htmlFor="score-input" className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">
-                  Điểm số:
-                </label>
-                <div className="flex items-center gap-1">
-                  <input
-                    id="score-input"
-                    type="number"
-                    min="0"
-                    max={selectedSub?.maxScore || 10}
-                    step="0.25"
-                    value={score}
-                    onChange={(e) => setScore(e.target.value)}
-                    className="w-20 bg-white dark:bg-slate-900 border border-amber-500/50 rounded-xl px-2.5 py-1 text-center font-mono font-black text-amber-500 dark:text-amber-400 text-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                  <span className="text-xs text-slate-500 font-mono">/ {selectedSub?.maxScore || 10}</span>
-                </div>
-              </div>
-
-              {/* Slider Controller */}
-              <input
-                type="range"
-                min="0"
-                max={selectedSub?.maxScore || 10}
-                step="0.5"
-                value={score}
-                onChange={(e) => setScore(e.target.value)}
-                className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full appearance-none cursor-pointer accent-amber-500"
-              />
-              <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-600 font-mono">
-                <span>0</span>
-                <span>2.5</span>
-                <span>5.0</span>
-                <span>7.5</span>
-                <span>10.0</span>
-              </div>
-            </div>)}
-
-            {/* Quick Feedback Chips */}
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 block">
-                Mẫu Nhận Xét Nhanh (Click 1-chạm):
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {QUICK_FEEDBACK.map((qf) => (
-                  <button
-                    key={qf.label}
-                    type="button"
-                    onClick={() => setFeedback((current) => current.trim() ? `${current.trim()}\n${qf.text}` : qf.text)}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition hover:scale-105 ${qf.cls}`}
-                  >
-                    {qf.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Detailed Feedback Textarea */}
-            <div className="space-y-1.5">
-              <label htmlFor="feedback-input" className="text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 block">
-                Lời Nhận Xét Chi Tiết:
-              </label>
-              <textarea
-                id="feedback-input"
-                rows={5}
-                value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
-                placeholder="Nhập góp ý sửa lỗi ngữ pháp, thanh điệu, biểu dương học viên..."
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-2xl p-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-emerald-500 resize-none font-sans leading-relaxed"
-              />
-            </div>
-
-            {/* Action Buttons */}
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                onClick={() => handleGradeSubmit(true)}
-                disabled={grading || !selectedSub}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black py-3 rounded-xl transition shadow-lg shadow-emerald-600/30 text-xs flex items-center justify-center gap-2"
-              >
-                <IconCheck />
-                <span>{grading ? "Đang Lưu..." : "Lưu Điểm & Chuyển Tiếp (Ctrl+Enter)"}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleGradeSubmit(false)}
-                disabled={grading || !selectedSub}
-                className="w-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-bold py-2 rounded-xl text-xs transition border border-slate-300 dark:border-white/10 flex items-center justify-center gap-1.5"
-              >
-                <span>Chỉ Lưu Điểm (Không Chuyển Bài)</span>
-                <IconArrowRight />
-              </button>
-            </div>
-          </aside>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
