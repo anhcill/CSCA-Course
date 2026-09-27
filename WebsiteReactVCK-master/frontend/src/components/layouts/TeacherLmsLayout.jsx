@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   BarChart3, BookOpen, CalendarDays, ChevronRight, ClipboardCheck, FileQuestion,
-  Home, LogOut, Menu, Presentation, Settings, Users, X,
+  Home, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Presentation, Settings, Users, X,
 } from 'lucide-react';
 import Logo from '../Logo';
 import NotificationBell from '../../features/notifications/components/NotificationBell';
@@ -25,13 +25,16 @@ const TEACHER_NAV = [
   { label: 'Chấm bài', path: '/lms/teacher/grading', icon: ClipboardCheck },
 ];
 
-function TeacherNavItem({ item, active, onNavigate }) {
+function TeacherNavItem({ item, active, collapsed, onNavigate }) {
   const Icon = item.icon;
   return (
     <Link
       to={item.path}
       onClick={onNavigate}
-      className={`group relative flex items-center gap-3 rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold transition select-none ${
+      title={collapsed ? item.label : undefined}
+      className={`group relative flex items-center rounded-xl py-2 text-xs sm:text-sm font-semibold transition select-none ${
+        collapsed ? 'justify-center px-2' : 'gap-3 px-3'
+      } ${
         active
           ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 shadow-xs'
           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
@@ -47,42 +50,43 @@ function TeacherNavItem({ item, active, onNavigate }) {
       >
         <Icon className="h-4 w-4 shrink-0" />
       </div>
-      <span className="flex-1 truncate">{item.label}</span>
-      <ChevronRight className={`h-3.5 w-3.5 transition ${active ? 'text-emerald-600 opacity-100' : 'opacity-0 -translate-x-1 group-hover:opacity-70 group-hover:translate-x-0'}`} />
+      <span className={collapsed ? 'sr-only' : 'flex-1 truncate'}>{item.label}</span>
+      {!collapsed && <ChevronRight className={`h-3.5 w-3.5 transition ${active ? 'text-emerald-600 opacity-100' : 'opacity-0 -translate-x-1 group-hover:opacity-70 group-hover:translate-x-0'}`} />}
     </Link>
   );
 }
 
-function TeacherSidebarContent({ onNavigate }) {
+function TeacherSidebarContent({ collapsed = false, onNavigate }) {
   const location = useLocation();
 
   return (
-    <div className="flex h-full flex-col justify-between p-4">
+    <div className={`flex h-full flex-col justify-between ${collapsed ? 'p-2.5' : 'p-4'}`}>
       <div>
-        <div className="mb-4 flex items-center justify-between px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+        <div title={collapsed ? 'Giảng viên' : undefined} className={`mb-4 flex rounded-xl border border-slate-200 bg-slate-100 py-2 dark:border-slate-800 dark:bg-slate-900 ${collapsed ? 'justify-center px-2' : 'items-center justify-between px-3'}`}>
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[11px] font-bold tracking-wide text-slate-700 dark:text-slate-300">Giảng viên</span>
+            <span className={collapsed ? 'sr-only' : 'text-[11px] font-bold tracking-wide text-slate-700 dark:text-slate-300'}>Giảng viên</span>
           </div>
-          <span className="text-[9px] font-mono font-bold uppercase text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">TEACHER</span>
+          {!collapsed && <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase text-emerald-600 dark:text-emerald-400">TEACHER</span>}
         </div>
 
-        <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Giảng dạy</p>
+        <p className={collapsed ? 'sr-only' : 'px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500'}>Giảng dạy</p>
         <nav className="space-y-1" aria-label="Điều hướng LMS giảng viên">
           {TEACHER_NAV.map((item) => (
             <TeacherNavItem
               key={item.path}
               item={item}
               active={location.pathname === item.path || (location.pathname.startsWith(item.path) && item.path !== '/lms/teach')}
+              collapsed={collapsed}
               onNavigate={onNavigate}
             />
           ))}
         </nav>
       </div>
 
-      <div className="space-y-1.5 border-t border-slate-200 dark:border-slate-800 pt-3">
-        <Link to="/" onClick={onNavigate} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition">
-          <Home className="h-4 w-4" /> Trang chủ
+      <div className="space-y-1.5 border-t border-slate-200 pt-3 dark:border-slate-800">
+        <Link to="/" onClick={onNavigate} title={collapsed ? 'Trang chủ' : undefined} className={`flex items-center rounded-xl py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white ${collapsed ? 'justify-center px-2' : 'gap-2 px-3'}`}>
+          <Home className="h-4 w-4" /> <span className={collapsed ? 'sr-only' : ''}>Trang chủ</span>
         </Link>
       </div>
     </div>
@@ -96,11 +100,13 @@ export default function TeacherLmsLayout({ children }) {
   const { i18n } = useTranslation();
   const { logout } = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem('teacher-lms-sidebar-collapsed') === 'true');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
   useEffect(() => { setProfileMenuOpen(false); }, [location.pathname]);
+  useEffect(() => { window.localStorage.setItem('teacher-lms-sidebar-collapsed', String(sidebarCollapsed)); }, [sidebarCollapsed]);
   useEffect(() => {
     const closeOnOutsideClick = (event) => {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) setProfileMenuOpen(false);
@@ -128,6 +134,9 @@ export default function TeacherLmsLayout({ children }) {
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => setMobileOpen((o) => !o)} className="rounded-xl p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden">
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+            <button type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} className="hidden rounded-xl p-2 text-slate-700 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 lg:inline-flex" title={sidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'} aria-label={sidebarCollapsed ? 'Mở rộng menu giảng viên' : 'Thu gọn menu giảng viên'}>
+              {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
             </button>
             <Logo isTransparent />
             <div className="hidden h-8 w-px bg-slate-200 dark:bg-slate-800 sm:block" />
@@ -178,8 +187,8 @@ export default function TeacherLmsLayout({ children }) {
         </div>
       </header>
 
-      <aside className="fixed inset-y-16 left-0 z-40 hidden w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-white lg:flex lg:flex-col">
-        <TeacherSidebarContent onNavigate={closeMobile} />
+      <aside className={`fixed inset-y-16 left-0 z-40 hidden border-r border-slate-200 bg-white text-slate-800 transition-[width] duration-200 dark:border-slate-800 dark:bg-slate-950 dark:text-white lg:flex lg:flex-col ${sidebarCollapsed ? 'w-20' : 'w-64'}`}>
+        <TeacherSidebarContent collapsed={sidebarCollapsed} onNavigate={closeMobile} />
       </aside>
 
       {mobileOpen && (
@@ -191,7 +200,7 @@ export default function TeacherLmsLayout({ children }) {
         </>
       )}
 
-      <main className="min-h-[calc(100vh-4rem)] pt-16 lg:pl-64">
+      <main className={`min-h-[calc(100vh-4rem)] pt-16 transition-[padding] duration-200 ${sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
         <div className="px-4 sm:px-6 lg:px-8 pt-4 pb-2"><Breadcrumbs /></div>
         {children}
       </main>

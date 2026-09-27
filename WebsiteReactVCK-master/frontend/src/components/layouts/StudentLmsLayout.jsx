@@ -15,6 +15,8 @@ import {
   Menu,
   Moon,
   Search,
+  PanelLeftClose,
+  PanelLeftOpen,
   Sun,
   UserRound,
   X,
@@ -35,27 +37,30 @@ const STUDENT_NAV = [
   { label: "Thông báo", path: "/lms/notifications", icon: Bell },
 ];
 
-function Brand() {
+function Brand({ collapsed = false }) {
   return (
-    <Link to="/lms/my-learning" className="flex items-center gap-3" aria-label="CSCA LMS - Khóa học của tôi">
+    <Link to="/lms/my-learning" title={collapsed ? "CSCA LMS" : undefined} className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`} aria-label="CSCA LMS - Khóa học của tôi">
       <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
         <GraduationCap className="h-5 w-5" />
       </span>
-      <span className="leading-none">
+      <span className={collapsed ? 'sr-only' : 'leading-none'}>
         <span className="block text-lg font-black tracking-tight text-slate-950 dark:text-white">CSCA LMS</span>
       </span>
     </Link>
   );
 }
 
-function StudentNavItem({ item, onNavigate }) {
+function StudentNavItem({ item, collapsed, onNavigate }) {
   const Icon = item.icon;
   return (
     <NavLink
       to={item.path}
       end={item.end}
       onClick={onNavigate}
-      className={({ isActive }) => `group relative flex items-center gap-3 rounded-2xl px-3 py-2 text-xs sm:text-sm font-semibold transition ${
+      title={collapsed ? item.label : undefined}
+      className={({ isActive }) => `group relative flex items-center rounded-2xl py-2 text-xs sm:text-sm font-semibold transition ${
+        collapsed ? "justify-center px-2" : "gap-3 px-3"
+      } ${
         isActive 
           ? "bg-blue-50/80 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40" 
           : "text-slate-600 dark:text-slate-400 hover:bg-blue-50/70 dark:hover:bg-slate-800/90 hover:text-blue-800 dark:hover:text-sky-200 focus-visible:bg-blue-50/70 dark:focus-visible:bg-slate-800/90"
@@ -71,27 +76,27 @@ function StudentNavItem({ item, onNavigate }) {
           }`}>
             <Icon className="h-4 w-4" />
           </span>
-          <span className="flex-1 truncate">{item.label}</span>
-          <ChevronRight className={`h-3.5 w-3.5 transition ${isActive ? "text-blue-500 opacity-100" : "opacity-0 -translate-x-1 group-hover:opacity-70 group-hover:translate-x-0"}`} />
+          <span className={collapsed ? "sr-only" : "flex-1 truncate"}>{item.label}</span>
+          {!collapsed && <ChevronRight className={`h-3.5 w-3.5 transition ${isActive ? "text-blue-500 opacity-100" : "opacity-0 -translate-x-1 group-hover:opacity-70 group-hover:translate-x-0"}`} />}
         </>
       )}
     </NavLink>
   );
 }
 
-function Sidebar({ onNavigate }) {
+function Sidebar({ collapsed = false, onNavigate }) {
   return (
-    <div className="flex h-full flex-col px-4 py-6">
-      <div className="px-2"><Brand /></div>
+    <div className={`flex h-full flex-col py-6 ${collapsed ? 'px-2.5' : 'px-4'}`}>
+      <div className={collapsed ? '' : 'px-2'}><Brand collapsed={collapsed} /></div>
       <div className="my-6 h-px bg-slate-100 dark:bg-slate-800" />
-      <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Tổng quan học tập</p>
+      <p className={collapsed ? 'sr-only' : 'px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500'}>Tổng quan học tập</p>
       <nav className="space-y-1" aria-label="Điều hướng LMS học viên">
-        {STUDENT_NAV.map((item) => <StudentNavItem key={item.path} item={item} onNavigate={onNavigate} />)}
+        {STUDENT_NAV.map((item) => <StudentNavItem key={item.path} item={item} collapsed={collapsed} onNavigate={onNavigate} />)}
       </nav>
       <div className="mt-auto border-t border-slate-100 dark:border-slate-800 pt-3">
-        <Link to="/courses" onClick={onNavigate} className="flex items-center gap-2.5 rounded-2xl px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 transition hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white">
+        <Link to="/courses" onClick={onNavigate} title={collapsed ? 'Khám phá thêm' : undefined} className={`flex items-center rounded-2xl py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white ${collapsed ? 'justify-center px-2' : 'gap-2.5 px-3'}`}>
           <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800"><Compass className="h-3.5 w-3.5" /></span>
-          Khám phá thêm
+          <span className={collapsed ? 'sr-only' : ''}>Khám phá thêm</span>
         </Link>
       </div>
     </div>
@@ -104,12 +109,14 @@ export default function StudentLmsLayout({ children }) {
   const { isDarkMode, toggleTheme } = useTheme();
   const { logout } = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem('student-lms-sidebar-collapsed') === 'true');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
   const workspaceLink = getLmsWorkspaceLink(authUser);
 
   useEffect(() => setMobileOpen(false), [location.pathname]);
   useEffect(() => setProfileMenuOpen(false), [location.pathname]);
+  useEffect(() => { window.localStorage.setItem('student-lms-sidebar-collapsed', String(sidebarCollapsed)); }, [sidebarCollapsed]);
   useEffect(() => {
     const closeOnOutsideClick = (event) => {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) setProfileMenuOpen(false);
@@ -120,11 +127,14 @@ export default function StudentLmsLayout({ children }) {
 
   return (
     <div className="student-lms min-h-screen bg-[#f6f9fd] dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      <header className="fixed inset-x-0 top-0 z-50 h-[72px] border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 shadow-[0_4px_20px_rgba(41,72,110,0.04)] dark:shadow-none backdrop-blur-xl lg:left-64">
+      <header className={`fixed inset-x-0 top-0 z-50 h-[72px] border-b border-slate-200/80 bg-white/95 shadow-[0_4px_20px_rgba(41,72,110,0.04)] backdrop-blur-xl transition-[left] duration-200 dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none ${sidebarCollapsed ? 'lg:left-20' : 'lg:left-64'}`}>
         <div className="flex h-full items-center justify-between gap-4 px-4 sm:px-7 lg:px-10">
           <div className="flex min-w-0 items-center gap-3">
             <button type="button" onClick={() => setMobileOpen((open) => !open)} className="rounded-xl p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden" aria-label={mobileOpen ? "Đóng menu học viên" : "Mở menu học viên"}>
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+            <button type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} className="hidden rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-blue-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-sky-400 lg:inline-flex" title={sidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'} aria-label={sidebarCollapsed ? 'Mở rộng menu học viên' : 'Thu gọn menu học viên'}>
+              {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
             </button>
             <div className="relative hidden max-w-xl flex-1 items-center md:flex">
               <Search className="absolute left-4 h-4 w-4 text-slate-400 dark:text-slate-500" />
@@ -173,8 +183,8 @@ export default function StudentLmsLayout({ children }) {
         </div>
       </header>
 
-      <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 border-r border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 lg:flex lg:flex-col">
-        <Sidebar />
+      <aside className={`fixed inset-y-0 left-0 z-50 hidden border-r border-slate-200/80 bg-white transition-[width] duration-200 dark:border-slate-800 dark:bg-slate-900 lg:flex lg:flex-col ${sidebarCollapsed ? 'w-20' : 'w-64'}`}>
+        <Sidebar collapsed={sidebarCollapsed} />
       </aside>
 
       {mobileOpen && (
@@ -186,7 +196,7 @@ export default function StudentLmsLayout({ children }) {
         </>
       )}
 
-      <main className="min-h-screen pt-[72px] lg:pl-64">{children}</main>
+      <main className={`min-h-screen pt-[72px] transition-[padding] duration-200 ${sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>{children}</main>
     </div>
   );
 }
