@@ -17,11 +17,13 @@ import {
   Sparkles,
   Target,
   TrendingUp,
+  Trophy,
   Users,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Loading from '../../components/Loading';
 import Meta from '../../components/Meta.jsx';
+import { fetchLeaderboard } from '../../features/api/lmsClient';
 
 const FeedBack = React.lazy(() => import('../../components/FeedBack'));
 
@@ -45,6 +47,70 @@ const handleImageError = (event) => {
   image.dataset.fallbackApplied = 'true';
   image.src = HOME_IMAGES.greatWall;
 };
+
+const podiumTone = [
+  'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
+  'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
+  'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300',
+];
+
+function HomeLeaderboard() {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    fetchLeaderboard({ scope: 'public', period: 'month', limit: 5 })
+      .then((response) => {
+        if (active) setEntries(response?.data?.leaderboard || []);
+      })
+      .catch(() => {
+        if (active) setEntries([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  return (
+    <section id="bang-xep-hang" aria-labelledby="leaderboard-title" className="scroll-mt-28 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-4 py-16 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+        <div>
+          <span className="inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-amber-200">
+            <Trophy className="h-3.5 w-3.5" /> Thành tích tháng này
+          </span>
+          <h2 id="leaderboard-title" className="mt-4 text-3xl font-black tracking-tight sm:text-4xl">Bảng xếp hạng học viên</h2>
+          <p className="mt-4 max-w-md text-sm leading-6 text-slate-300">Điểm được tính từ hoạt động học tập, hoàn thành bài và quiz. Cùng giữ nhịp học đều để lên hạng nhé.</p>
+        </div>
+
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.07] p-3 shadow-2xl backdrop-blur-sm sm:p-4">
+          {loading ? (
+            <div className="flex min-h-72 items-center justify-center text-sm text-slate-300">Đang tải bảng xếp hạng…</div>
+          ) : entries.length === 0 ? (
+            <div className="flex min-h-72 items-center justify-center text-center text-sm leading-6 text-slate-300">Chưa có dữ liệu xếp hạng trong tháng này.</div>
+          ) : (
+            <ol className="space-y-2" aria-label="Top học viên tháng này">
+              {entries.map((entry, index) => (
+                <li key={`${entry.username}-${entry.rank}`} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/35 p-3 transition hover:bg-white/10 sm:px-4">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-sm font-black ${podiumTone[index] || 'border-white/10 bg-white/10 text-slate-200'}`}>{entry.rank}</span>
+                  <img
+                    src={entry.avatar || '/avatar/default-avatar.jpg'}
+                    alt=""
+                    className="h-10 w-10 rounded-full border border-white/20 object-cover"
+                    onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold">{entry.username}</span>
+                  <span className="shrink-0 text-right text-sm font-black text-amber-300">{Number(entry.total_xp || 0).toLocaleString('vi-VN')} XP</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 // ─── Hero slides ────────────────────────────────────────────────────────────────
 const heroSlides = [
@@ -633,6 +699,7 @@ const Home = () => {
     <div className="min-h-screen bg-white text-gray-950 dark:bg-gray-950 dark:text-white">
       <Meta title={t('homeMetaTitle')} description={t('homeMetaDescription')} keywords={t('homeMetaKeywords')} />
       <HeroBanner />
+      <HomeLeaderboard />
       <StatsSection />
       <TrustSection />
       <PartnerStrip />

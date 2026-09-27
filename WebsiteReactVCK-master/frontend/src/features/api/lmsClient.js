@@ -456,6 +456,10 @@ export const fetchClassDetails = async (classId) => (
   request(`/teacher/classes/${encodeURIComponent(classId)}/detail`)
 );
 
+export const fetchClassStudentProgress = async (classId) => (
+  request(`/teacher/classes/${encodeURIComponent(classId)}/student-progress`)
+);
+
 // Admin Console API helpers
 export const fetchAdminDashboardKpi = async () => request("/admin/kpi-summary");
 
@@ -510,11 +514,13 @@ export const fetchAdminSessionHistory = async (sessionId) => (
   request(`/admin/calendar/sessions/${encodeURIComponent(sessionId)}/history`)
 );
 
-export const fetchLeaderboard = async ({ scope = "class", period = "week", classId } = {}) => {
+export const fetchLeaderboard = async ({ scope = "class", period = "week", classId, page, limit } = {}) => {
   const params = new URLSearchParams();
   if (scope) params.set("scope", scope);
   if (period) params.set("period", period);
   if (classId) params.set("classId", classId);
+  if (page) params.set("page", page);
+  if (limit) params.set("limit", limit);
   const query = params.toString();
   return request(`/leaderboard${query ? `?${query}` : ""}`);
 };

@@ -35,6 +35,10 @@ function timeRemaining(dueDate) {
   return { text: `Còn ${h} giờ ${m} phút`, urgent: true };
 }
 
+function isImageFile(fileName) {
+  return /\.(?:jpe?g|png|webp|gif)$/i.test(String(fileName || ""));
+}
+
 export default function AssignmentSubmitPage() {
   const { id, courseId, classId } = useParams();
   const assignmentListPath = courseId && classId
@@ -126,6 +130,7 @@ export default function AssignmentSubmitPage() {
 
   const remaining = useMemo(() => (assignment ? timeRemaining(assignment.due_date) : null), [assignment]);
   const chineseCount = useMemo(() => countChineseChars(contentText), [contentText]);
+  const hasImageSubmission = isImageFile(fileName);
 
   // Upload through a server-issued R2 URL; the submission API receives only the asset ID.
   const handleFileUpload = async (file, assetKind = "file") => {
@@ -460,9 +465,14 @@ export default function AssignmentSubmitPage() {
                   <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                     Tệp đính kèm:
                   </span>
+                  {hasImageSubmission && (
+                    <a href={fileUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/80">
+                      <img src={fileUrl} alt="Ảnh bài làm đã nộp" className="max-h-[32rem] w-full object-contain" />
+                    </a>
+                  )}
                   <div className="bg-slate-50 dark:bg-slate-950/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl">📄</span>
+                      <span className="text-2xl">{hasImageSubmission ? '🖼️' : '📄'}</span>
                       <div>
                         <p className="text-sm font-bold text-slate-900 dark:text-white">{fileName || "tai-lieu-bai-lam.pdf"}</p>
                         <p className="text-xs text-slate-400 dark:text-slate-500 font-mono">Định dạng nộp trực tuyến</p>
@@ -597,14 +607,15 @@ export default function AssignmentSubmitPage() {
                     <IconUpload />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-900 dark:text-white">Kéo và thả tệp bài làm vào đây</p>
-                    <p className="text-xs text-slate-500 mt-1">Hỗ trợ định dạng PDF, DOCX, ZIP hoặc ảnh (Tối đa 25MB)</p>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">Kéo và thả ảnh bài làm hoặc tệp vào đây</p>
+                    <p className="text-xs text-slate-500 mt-1">Ưu tiên ảnh JPG, PNG, WEBP để giáo viên xem trực tiếp; cũng hỗ trợ PDF, DOCX, ZIP (tối đa 25MB)</p>
                   </div>
                   <div>
                     <label className="cursor-pointer inline-flex px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-800 dark:text-white transition">
                       <span>Chọn tệp từ máy tính</span>
                       <input
                         type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/zip"
                         className="hidden"
                         onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
                       />
@@ -643,9 +654,11 @@ export default function AssignmentSubmitPage() {
 
                 {/* Attached File Ready */}
                 {fileUrl && !isUploadingFile && (
-                  <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                    {hasImageSubmission && <img src={fileUrl} alt="Xem trước ảnh bài làm" className="max-h-72 w-full rounded-xl border border-slate-200 object-contain dark:border-slate-800" />}
+                    <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl">📄</span>
+                      <span className="text-2xl">{hasImageSubmission ? '🖼️' : '📄'}</span>
                       <div>
                         <p className="text-sm font-bold text-slate-900 dark:text-white">{fileName || "Tệp bài làm đính kèm"}</p>
                         <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono">✓ Đã sẵn sàng nộp</p>
@@ -655,11 +668,13 @@ export default function AssignmentSubmitPage() {
                       onClick={() => {
                         setFileUrl("");
                         setFileName("");
+                        setFileAssetId("");
                       }}
                       className="text-xs text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 transition"
                     >
                       Xóa tệp
                     </button>
+                    </div>
                   </div>
                 )}
               </div>

@@ -3,12 +3,14 @@ import { ShieldAlert, BookOpen, Home, LogOut } from 'lucide-react';
 import Meta from '../../components/Meta';
 import { useAuthContext } from '../../context/AuthContext';
 import useLogout from '../../hooks/useLogout';
+import { hasStudentLmsAccess } from '../../utils/lmsAccess';
 
 export default function Forbidden() {
   const { authUser } = useAuthContext();
   const { logout } = useLogout();
 
   const currentRole = authUser?.role || 'Khách';
+  const isUnprovisionedLearner = authUser?.role === 'user' && !hasStudentLmsAccess(authUser);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
@@ -34,24 +36,28 @@ export default function Forbidden() {
         <p className="text-sm text-slate-400 leading-relaxed mb-4">
           Tài khoản hiện tại của bạn có vai trò là{' '}
           <span className="font-bold text-amber-400 uppercase">
-            {currentRole === 'student' ? 'Học Viên' : currentRole}
+            {currentRole === 'student' || currentRole === 'user' ? 'Học Viên' : currentRole}
           </span>
-          . Khu vực này yêu cầu quyền{' '}
-          <span className="font-bold text-emerald-400">Giảng Viên (Creator)</span> hoặc{' '}
-          <span className="font-bold text-rose-400">Quản Trị Viên (Admin)</span>.
+          . {isUnprovisionedLearner
+            ? 'Quyền LMS chưa được bộ phận Management cấp hoặc đã hết hiệu lực.'
+            : <>Khu vực này yêu cầu quyền <span className="font-bold text-emerald-400">Giảng Viên (Creator)</span> hoặc <span className="font-bold text-rose-400">Quản Trị Viên (Admin)</span>.</>}
         </p>
 
         <p className="text-xs text-slate-500 mb-8">
-          Nếu bạn là giảng viên phụ trách lớp học nhưng gặp lỗi này, vui lòng liên hệ ban quản trị để được nâng cấp quyền.
+          {isUnprovisionedLearner
+            ? 'Bạn vẫn có thể xem website và khóa học record công khai. Vui lòng liên hệ Management để được cấp quyền học LMS.'
+            : 'Nếu bạn là giảng viên phụ trách lớp học nhưng gặp lỗi này, vui lòng liên hệ ban quản trị để được nâng cấp quyền.'}
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Link
-              to="/lms/dashboard"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 px-6 py-3 text-sm font-black text-white shadow-lg shadow-rose-600/30 transition active:scale-[0.98]"
-          >
-            <BookOpen className="h-4 w-4" /> Về LMS Học Viên
-          </Link>
+          {hasStudentLmsAccess(authUser) && (
+            <Link
+                to="/lms/my-learning"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 px-6 py-3 text-sm font-black text-white shadow-lg shadow-rose-600/30 transition active:scale-[0.98]"
+            >
+              <BookOpen className="h-4 w-4" /> Về LMS Học Viên
+            </Link>
+          )}
 
           <Link
             to="/"

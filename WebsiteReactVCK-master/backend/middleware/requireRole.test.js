@@ -58,3 +58,16 @@ test("requireRole allows every explicitly configured role", () => {
     assert.equal(nextCalled, true);
   }
 });
+
+test("requireRole treats learner-only routes as Management-gated LMS routes", () => {
+  const response = createResponse();
+  let nextCalled = false;
+
+  requireRole("user")({ user: { id: 10, role: "user", is_management_managed: false, lms_account_status: "unmanaged" } }, response, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.body.errorCode, "LMS_ACCESS_NOT_GRANTED");
+  assert.equal(nextCalled, false);
+});

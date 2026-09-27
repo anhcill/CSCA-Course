@@ -20,7 +20,8 @@ const protectRoute = async (req, res, next) => {
     const verified = jwt.verify(token, process.env.JWT_SECRET);
     const { rows } = await query(
       `SELECT id, username, email, role, avatar_url, gender,
-              is_vip, vip_expires_at, email_verified, is_locked, created_at
+              is_vip, vip_expires_at, email_verified, is_locked, created_at,
+              is_management_managed, lms_account_status
        FROM users WHERE id = $1`,
       [verified.userId]
     );

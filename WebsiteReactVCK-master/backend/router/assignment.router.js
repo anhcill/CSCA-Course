@@ -5,6 +5,7 @@ import protectRoute from "../middleware/protectRoute.js";
 import requireRole from "../middleware/requireRole.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
+import requireActiveStudentLmsAccess, { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
 import {
   ALLOWED_SUBMISSION_AUDIO_MIME_TYPES,
   ALLOWED_SUBMISSION_FILE_MIME_TYPES,
@@ -211,6 +212,9 @@ const serializeAssignment = (row) => ({
 // GET /api/assignments — students get only active enrolled work; teachers get their own queue.
 router.get("/", protectRoute, async (req, res) => {
   try {
+    if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
+      return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
+    }
     const requestedCourseId = parseOptionalId(req.query.courseId);
     if (req.query.courseId !== undefined && !requestedCourseId) {
       return validationError(res, "courseId không hợp lệ");
@@ -661,6 +665,9 @@ router.delete("/teacher/quizzes/:quizId", protectRoute, requireTeacher, requireP
 router.get("/:assignmentId", protectRoute, async (req, res, next) => {
   if (["all", "quizzes", "submissions", "submission-assets"].includes(req.params.assignmentId)) return next();
   try {
+    if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
+      return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
+    }
     const assignmentId = parsePositiveId(req.params.assignmentId);
     if (!assignmentId) return validationError(res, "assignmentId không hợp lệ");
     const assignment = await getAssignment(assignmentId);
@@ -696,7 +703,7 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
 });
 
 // POST /api/assignments/submission-assets/upload-url — server-owned upload target.
-router.post("/submission-assets/upload-url", protectRoute, requireRole("user"), async (req, res) => {
+router.post("/submission-assets/upload-url", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
   try {
     const { filename, mimeType, sizeBytes, assetKind } = req.body;
     const parsedSize = Number(sizeBytes);
@@ -721,7 +728,7 @@ router.post("/submission-assets/upload-url", protectRoute, requireRole("user"), 
 });
 
 // POST /api/assignments/submission-assets/:assetId/confirm — owner only.
-router.post("/submission-assets/:assetId/confirm", protectRoute, requireRole("user"), async (req, res) => {
+router.post("/submission-assets/:assetId/confirm", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
   try {
     const assetId = parsePositiveId(req.params.assetId);
     if (!assetId) return validationError(res, "assetId không hợp lệ");
@@ -759,6 +766,9 @@ router.post("/submission-assets/:assetId/confirm", protectRoute, requireRole("us
 // GET /api/assignments/submission-assets/:assetId/access — owner, admin, or assigned teacher only.
 router.get("/submission-assets/:assetId/access", protectRoute, async (req, res) => {
   try {
+    if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
+      return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
+    }
     const assetId = parsePositiveId(req.params.assetId);
     if (!assetId) return validationError(res, "assetId không hợp lệ");
     const result = await query(
@@ -1009,7 +1019,7 @@ router.patch("/:id", protectRoute, requireTeacher, requirePermission("lms.assign
 });
 
 // POST /api/assignments/:id/submit — one immutable student submission per assignment.
-router.post("/:id/submit", protectRoute, requireRole("user"), async (req, res) => {
+router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
   const client = await getClient();
   try {
     const assignmentId = parsePositiveId(req.params.id);
@@ -1398,6 +1408,9 @@ const quizWindowError = (res, error) => {
 // GET /api/assignments/quizzes/:quizId — creates one server-timed attempt only
 // after the learner is eligible and the configured window is open.
 router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
+  if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
+    return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
+  }
   const client = req.user.role === "user" ? await getClient() : null;
   try {
     const quizId = parsePositiveId(req.params.quizId);
@@ -1425,7 +1438,7 @@ router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
 
 // PUT /api/assignments/quizzes/:quizId/answers — server-side draft save.
 // Browser storage remains merely a resilience cache, never the authoritative answer sheet.
-router.put("/quizzes/:quizId/answers", protectRoute, requireRole("user"), async (req, res) => {
+router.put("/quizzes/:quizId/answers", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
   const client = await getClient();
   try {
     const quizId = parsePositiveId(req.params.quizId);
@@ -1473,7 +1486,7 @@ router.put("/quizzes/:quizId/answers", protectRoute, requireRole("user"), async 
 });
 
 // POST /api/assignments/quizzes/:quizId/submit — one server-graded, timed and idempotent attempt.
-router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), async (req, res) => {
+router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
   const client = await getClient();
   try {
     const quizId = parsePositiveId(req.params.quizId);

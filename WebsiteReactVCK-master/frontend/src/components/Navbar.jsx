@@ -4,10 +4,10 @@ import { FiMenu, FiMoon, FiSun } from 'react-icons/fi';
 import { IoClose } from 'react-icons/io5';
 import {
   BookOpen,
+  BarChart3,
   ClipboardCheck,
   GraduationCap,
   Home as HomeIcon,
-  Flame,
   Presentation,
   UsersRound,
   BookCheck,
@@ -31,6 +31,7 @@ import useLogout from '../hooks/useLogout';
 import SearchNavbar from './SearchNavbar';
 import { getAvatarUrl, handleAvatarError } from '../utils/avatar';
 import NotificationBell from '../features/notifications/components/NotificationBell';
+import { hasStudentLmsAccess } from '../utils/lmsAccess';
 
 /* ══════════════════════════════════════════════════════════════
    ROLE-BASED NAVIGATION CONFIG
@@ -41,13 +42,13 @@ import NotificationBell from '../features/notifications/components/NotificationB
 const PUBLIC_LINKS = [
   { label: 'Trang chủ', path: '/', icon: HomeIcon },
   { label: 'Khóa học', path: '/courses', icon: GraduationCap },
-  { label: 'Bảng xếp hạng', path: '/rank', icon: Flame },
   { label: 'Cộng đồng', path: '/post', icon: UsersRound },
 ];
 
 // Chi creator (giao vien) va admin moi thay
 const TEACHER_LINKS = [
   { label: 'Giảng dạy', description: 'Tổng quan các lớp phụ trách', icon: Presentation, path: '/lms/teach' },
+  { label: 'Điểm & chuyên cần', description: 'Theo dõi học viên theo từng buổi', icon: BarChart3, path: '/lms/teach/student-progress' },
   { label: 'Giáo trình', description: 'Nội dung và bài giảng môn học', icon: BookCheck, path: '/lms/teacher/curriculum' },
   { label: 'Chấm bài', description: 'Chấm bài tập và bài kiểm tra', icon: ClipboardCheck, path: '/lms/teacher/grading' },
 ];
@@ -172,6 +173,7 @@ const Navbar = () => {
   );
 
   const roleBadge = getRoleBadge(authUser);
+  const studentLmsAccess = hasStudentLmsAccess(authUser);
   const navbarMustStayVisible = isNavbarVisible || isMenuOpen || desktopMenu || showLangMenu || showProfileMenu || isAuthModalOpen;
 
   return (
@@ -241,13 +243,15 @@ const Navbar = () => {
                           )}
                         </div>
 
-                        {/* Student links */}
+                        {/* Public profile is available to every authenticated role. */}
                         <Link to="/profile" className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold hover:bg-red-50 hover:text-red-700 dark:hover:bg-white/10">
                           <Settings className="h-3.5 w-3.5" /> {t('profileLink')}
                         </Link>
-                        <Link to="/lms/my-learning" className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black text-white hover:bg-slate-700 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">
-                          <Bookmark className="h-3.5 w-3.5" /> Vào LMS học viên
-                        </Link>
+                        {studentLmsAccess && (
+                          <Link to="/lms/my-learning" className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black text-white hover:bg-slate-700 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">
+                            <Bookmark className="h-3.5 w-3.5" /> Vào LMS học viên
+                          </Link>
+                        )}
 
                         {/* Teacher links - chi creator va admin */}
                         {isTeacher(authUser) && (
@@ -313,7 +317,7 @@ const Navbar = () => {
               ))}
 
               {/* LMS là khu vực riêng, chỉ thêm một lối vào cho học viên đã đăng nhập */}
-              {authUser && (
+              {studentLmsAccess && (
                 <Link
                   to="/lms/my-learning"
                   className="ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-black text-white shadow-sm transition hover:bg-slate-700 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300"
@@ -366,7 +370,7 @@ const Navbar = () => {
                 ))}
 
                 {/* Separate LMS entry point for online students */}
-                {authUser && (
+                {studentLmsAccess && (
                   <>
                     <p className="px-4 pb-1 pt-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Khu vực học viên</p>
                     <Link to="/lms/my-learning" className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 dark:bg-amber-400 dark:text-slate-950 dark:hover:bg-amber-300">

@@ -1,9 +1,9 @@
 /* eslint-disable react/prop-types */
 import { useAuthContext } from '../context/AuthContext';
-import { LoadingState } from './common/StateView';
 import Loading from './Loading';
 import Unauthorized from '../pages/client/Unauthorized';
 import Forbidden from '../pages/client/Forbidden';
+import { hasStudentLmsAccess } from '../utils/lmsAccess';
 
 const ROLE_ALIASES = {
   student: ['student', 'user'],
@@ -46,12 +46,9 @@ export default function LmsRouteGuard({
     }
   }
 
-  // Management-created student accounts are admitted to the private LMS only
-  // after an active entitlement is synchronized. Teachers and admins retain
-  // their role-based access and unmanaged accounts keep free-course access.
-  if (authUser?.role === 'user'
-    && authUser.isManagementManaged
-    && authUser.lmsAccountStatus !== 'active') {
+  // A learner LMS account is an entitlement issued by Management, not a
+  // consequence of signing up or buying a public recorded course.
+  if (authUser?.role === 'user' && !hasStudentLmsAccess(authUser)) {
     return <Forbidden />;
   }
 

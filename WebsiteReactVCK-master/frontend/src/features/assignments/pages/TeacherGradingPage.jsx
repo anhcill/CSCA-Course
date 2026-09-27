@@ -50,6 +50,10 @@ function countChineseChars(text) {
   return (text?.match(/[\u4e00-\u9fff]/g) || []).length;
 }
 
+function isImageSubmission(fileName) {
+  return /\.(?:jpe?g|png|webp|gif)$/i.test(String(fileName || ""));
+}
+
 function getTypeBadge(type) {
   if ((type || "").includes("hskk") || (type || "").includes("speak")) {
     return { label: "HSKK Khẩu Ngữ", cls: "bg-violet-500/20 text-violet-400 border-violet-500/30" };
@@ -272,13 +276,14 @@ export default function TeacherGradingPage() {
               <span>Chấm Điểm & Phản Hồi Bài Tập</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-              Cổng Chấm Bài Tổng (Grading Workspace)
+              Chấm bài & phản hồi học viên
             </h1>
             {requestedSessionId && (
               <p className="text-xs text-sky-600 dark:text-sky-300 font-medium">
                 Đang mở hàng chờ bài tập về nhà của buổi học đã chọn.
               </p>
             )}
+            <p className="pt-1 text-xs text-slate-500 dark:text-slate-400">1. Chọn bài nộp · 2. Xem nội dung hoặc ảnh bài làm · 3. Lưu điểm và chuyển bài tiếp theo.</p>
           </div>
 
           {/* Key Metrics Chips */}
@@ -305,7 +310,7 @@ export default function TeacherGradingPage() {
           {/* ══════════════════════════════════════════════════════════
               COLUMN 1: SUBMISSIONS QUEUE (LEFT - 3.5 COLUMNS)
               ══════════════════════════════════════════════════════════ */}
-          <div className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
+          <section aria-label="Hàng đợi bài nộp" className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
             <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
               <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
                 Hàng Đợi Bài Nộp ({filteredSubs.length})
@@ -446,12 +451,12 @@ export default function TeacherGradingPage() {
                 })}
               </div>
             )}
-          </div>
+          </section>
 
           {/* ══════════════════════════════════════════════════════════
               COLUMN 2: SUBMISSION VIEWER (CENTER - 5 COLUMNS)
               ══════════════════════════════════════════════════════════ */}
-          <div className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl min-h-[500px]">
+          <section aria-label="Nội dung bài làm" className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl min-h-[500px]">
             {!selectedSub ? (
               <div className="h-full flex items-center justify-center py-24 text-center text-slate-500 text-xs">
                 Chọn một bài nộp ở cột bên trái để bắt đầu xem và chấm điểm.
@@ -514,10 +519,16 @@ export default function TeacherGradingPage() {
                     <span className="font-bold uppercase tracking-wider text-[10px] text-slate-500 dark:text-slate-400">
                       Tệp Đính Kèm Của Học Viên:
                     </span>
+                    {isImageSubmission(selectedSub.fileName) && (
+                      <a href={selectedSub.fileUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-sky-200 bg-slate-50 dark:border-sky-900 dark:bg-slate-950">
+                        <img src={selectedSub.fileUrl} alt={`Bài làm ảnh của ${selectedSub.studentName}`} className="max-h-[38rem] w-full object-contain" />
+                        <span className="block border-t border-sky-100 px-3 py-2 text-center text-[11px] font-semibold text-sky-700 dark:border-sky-950 dark:text-sky-300">Bấm vào ảnh để mở kích thước đầy đủ</span>
+                      </a>
+                    )}
                     <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <span className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-sky-500 dark:text-sky-400">
-                          <IconFile />
+                          {isImageSubmission(selectedSub.fileName) ? '🖼️' : <IconFile />}
                         </span>
                         <div>
                           <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[200px]">
@@ -579,12 +590,12 @@ export default function TeacherGradingPage() {
                 )}
               </>
             )}
-          </div>
+          </section>
 
           {/* ══════════════════════════════════════════════════════════
               COLUMN 3: GRADING & FEEDBACK PANEL (RIGHT - 3 COLUMNS)
               ══════════════════════════════════════════════════════════ */}
-          <div className="lg:col-span-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 space-y-5 shadow-xl">
+          <aside aria-label="Điểm và nhận xét" className="lg:col-span-3 lg:sticky lg:top-24 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 space-y-5 shadow-xl">
             <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
               <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <span>⭐</span>
@@ -651,7 +662,7 @@ export default function TeacherGradingPage() {
                   <button
                     key={qf.label}
                     type="button"
-                    onClick={() => setFeedback(qf.text)}
+                    onClick={() => setFeedback((current) => current.trim() ? `${current.trim()}\n${qf.text}` : qf.text)}
                     className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition hover:scale-105 ${qf.cls}`}
                   >
                     {qf.label}
@@ -697,7 +708,7 @@ export default function TeacherGradingPage() {
                 <IconArrowRight />
               </button>
             </div>
-          </div>
+          </aside>
         </div>
       </div>
     </div>

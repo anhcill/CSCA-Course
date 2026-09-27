@@ -20,6 +20,8 @@ export const ALLOWED_SUBMISSION_FILE_MIME_TYPES = new Set([
   "text/plain",
   "image/jpeg",
   "image/png",
+  "image/webp",
+  "image/gif",
   "application/zip",
 ]);
 

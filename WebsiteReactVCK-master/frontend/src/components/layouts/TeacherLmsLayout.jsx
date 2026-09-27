@@ -1,8 +1,8 @@
 /* eslint-disable react/prop-types */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  BookOpen, CalendarDays, ChevronRight, ClipboardCheck, FileQuestion,
+  BarChart3, BookOpen, CalendarDays, ChevronRight, ClipboardCheck, FileQuestion,
   Home, LogOut, Menu, Presentation, Settings, Users, X,
 } from 'lucide-react';
 import Logo from '../Logo';
@@ -19,6 +19,7 @@ const TEACHER_NAV = [
   { label: 'Tổng quan', path: '/lms/teach', icon: Presentation },
   { label: 'Lịch dạy', path: '/lms/teach/calendar', icon: CalendarDays },
   { label: 'Điểm danh', path: '/lms/teach/attendance', icon: Users },
+  { label: 'Điểm & chuyên cần', path: '/lms/teach/student-progress', icon: BarChart3 },
   { label: 'Giáo trình', path: '/lms/teacher/curriculum', icon: BookOpen },
   { label: 'Quiz học viên', path: '/lms/teacher/quizzes', icon: FileQuestion },
   { label: 'Chấm bài', path: '/lms/teacher/grading', icon: ClipboardCheck },
@@ -80,9 +81,6 @@ function TeacherSidebarContent({ onNavigate }) {
       </div>
 
       <div className="space-y-1.5 border-t border-slate-200 dark:border-slate-800 pt-3">
-        <Link to="/lms/my-learning" onClick={onNavigate} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition">
-          <Users className="h-4 w-4" /> Giao diện học viên
-        </Link>
         <Link to="/" onClick={onNavigate} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition">
           <Home className="h-4 w-4" /> Trang chủ
         </Link>
@@ -98,8 +96,18 @@ export default function TeacherLmsLayout({ children }) {
   const { i18n } = useTranslation();
   const { logout } = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef(null);
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+  useEffect(() => { setProfileMenuOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    const closeOnOutsideClick = (event) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) setProfileMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, []);
   const closeMobile = () => setMobileOpen(false);
 
   const isAuthorizedTeacher = authUser?.role === 'creator' || authUser?.role === 'admin';
@@ -132,9 +140,6 @@ export default function TeacherLmsLayout({ children }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link to="/lms/my-learning" className="hidden items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:border-emerald-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition sm:flex">
-              <Users className="h-3.5 w-3.5" /> Chế độ học viên
-            </Link>
             <NotificationBell />
             <button type="button" onClick={toggleTheme} className="rounded-xl p-2 text-amber-500 dark:text-amber-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition" title={isDarkMode ? 'Sáng' : 'Tối'}>
               {isDarkMode ? '☀' : '☾'}
@@ -144,23 +149,29 @@ export default function TeacherLmsLayout({ children }) {
             </button>
 
             {authUser && (
-              <div className="group relative">
-                <button type="button" className="flex items-center gap-2 rounded-full p-0.5 transition hover:opacity-85">
+              <div className="relative" ref={profileMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setProfileMenuOpen((open) => !open)}
+                  aria-expanded={profileMenuOpen}
+                  aria-haspopup="menu"
+                  className="flex items-center gap-2 rounded-full p-0.5 transition hover:opacity-85"
+                >
                   <img src={getAvatarUrl(authUser)} onError={handleAvatarError} alt={authUser.username} className="h-9 w-9 rounded-full border-2 border-emerald-500/50 object-cover" />
                 </button>
-                <div className="pointer-events-none absolute right-0 top-full mt-2 w-56 translate-y-1 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 opacity-0 shadow-2xl transition group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
+                {profileMenuOpen && <div role="menu" className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 shadow-2xl">
                   <div className="border-b border-slate-100 dark:border-slate-800 px-3 py-2">
                     <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{authUser.fullName || authUser.username}</p>
                     <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">@{authUser.username}</p>
                     <span className="mt-1 inline-block rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-bold">Giảng viên</span>
                   </div>
-                  <Link to="/profile" className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                  <Link to="/profile" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
                     <Settings className="h-3.5 w-3.5" /> Hồ sơ cá nhân
                   </Link>
-                  <button type="button" onClick={logout} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition">
+                  <button type="button" onClick={() => { setProfileMenuOpen(false); logout(); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition">
                     <LogOut className="h-3.5 w-3.5" /> Đăng xuất
                   </button>
-                </div>
+                </div>}
               </div>
             )}
           </div>

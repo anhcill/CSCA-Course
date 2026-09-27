@@ -52,18 +52,18 @@ const useLogin = () => {
 
     function handleInputErrors({ email, password }) {
         if (!email || !password) {
-            toast.error('Please fill in all fields');
-            return { success: false, error: 'Please fill in all fields' };
+            toast.error('Vui lòng nhập đầy đủ thông tin');
+            return { success: false, error: 'Vui lòng nhập đầy đủ thông tin' };
         }
 
-        if (!email.includes('@')) {
-            toast.error('Please enter a valid email');
-            return { success: false, error: 'Please enter a valid email' };
+        if (email.trim().length < 3) {
+            toast.error('Email hoặc tên đăng nhập không hợp lệ');
+            return { success: false, error: 'Email hoặc tên đăng nhập không hợp lệ' };
         }
 
         if (password.length < 6) {
-            toast.error('Password must be at least 6 characters');
-            return { success: false, error: 'Password must be at least 6 characters' };
+            toast.error('Mật khẩu phải có ít nhất 6 ký tự');
+            return { success: false, error: 'Mật khẩu phải có ít nhất 6 ký tự' };
         }
 
         return { success: true, error: null };

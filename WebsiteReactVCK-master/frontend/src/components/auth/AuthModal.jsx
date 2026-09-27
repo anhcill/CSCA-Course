@@ -308,6 +308,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = "login" }) => {
                           <LoginForm
                             onSwitchMode={handleSwitchMode}
                             onClose={onClose}
+                            initialIdentifier={registrationData?.username || registrationData?.email || ""}
                           />
                         )}
                         {mode === "forgotPassword" && (

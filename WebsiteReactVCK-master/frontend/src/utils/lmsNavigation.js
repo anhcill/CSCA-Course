@@ -1,4 +1,5 @@
 import { isTeacherRole, USER_ROLES } from "../constants/roles.js";
+import { hasStudentLmsAccess } from "./lmsAccess.js";
 
 // The API stores the destination with each notification.  Keep the small
 // compatibility list here so old events do not lead a learner to a dead route.
@@ -14,9 +15,9 @@ const TEACHER_DESTINATION = /^\/lms\/(?:teacher-hub|teacher(?:\/|$)|admin\/(?:cu
 const ADMIN_DESTINATION = /^\/admin(?:\/|$)/;
 
 export function getLmsLandingPath(authUser) {
-  if (authUser?.role === USER_ROLES.ADMIN) return "/lms/admin/overview";
+  if (authUser?.role === USER_ROLES.ADMIN) return "/admin";
   if (isTeacherRole(authUser?.role)) return "/lms/teach";
-  return "/lms/my-learning";
+  return hasStudentLmsAccess(authUser) ? "/lms/my-learning" : "/";
 }
 
 export function resolveLmsDestination(value, authUser) {
@@ -29,7 +30,7 @@ export function resolveLmsDestination(value, authUser) {
   const [pathname, suffix = ""] = rawValue.split(/([?#].*)/, 2);
   const destination = `${LEGACY_DESTINATIONS[pathname] || pathname}${suffix}`;
   const pathForPermission = destination.split(/[?#]/, 1)[0];
-  if (STUDENT_DESTINATION.test(pathForPermission)) return { kind: "internal", value: destination };
+  if (STUDENT_DESTINATION.test(pathForPermission) && hasStudentLmsAccess(authUser)) return { kind: "internal", value: destination };
   if (TEACHER_DESTINATION.test(pathForPermission) && isTeacherRole(authUser?.role)) return { kind: "internal", value: destination };
   if (ADMIN_DESTINATION.test(pathForPermission) && authUser?.role === USER_ROLES.ADMIN) return { kind: "internal", value: destination };
 

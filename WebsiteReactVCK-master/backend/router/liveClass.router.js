@@ -2,6 +2,7 @@ import express from "express";
 import { getClient, query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireRole from "../middleware/requireRole.js";
+import requireActiveStudentLmsAccess from "../middleware/requireActiveStudentLmsAccess.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
 import {
@@ -576,7 +577,7 @@ router.get("/my-schedule", protectRoute, async (req, res) => {
 });
 
 // POST /api/live-classes/:classId/join — a student may join only a published course class.
-router.post("/:classId/join", protectRoute, requireRole("user"), async (req, res) => {
+router.post("/:classId/join", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
   const classId = parsePositiveId(req.params.classId);
   if (!classId) return validationError(res, "classId không hợp lệ");
 

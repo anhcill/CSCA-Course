@@ -407,6 +407,117 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, async (req, res) =>
   }
 });
 
+// GET /api/teacher/classes/:classId/student-progress — one compact gradebook
+// for a class. Quiz attempts are already auto-graded; written-work scores are
+// read from the latest teacher grade. The UI groups both by lesson session.
+router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const classId = parsePositiveId(req.params.classId);
+    if (!classId) return validationError(res, "classId không hợp lệ");
+    const access = await ensureManagedClass(classId, req.user);
+    if (access.error === "not_found") return notFound(res, "Không tìm thấy lớp học");
+    if (access.error === "forbidden") return forbidden(res, "Bạn không có quyền xem lớp học này");
+
+    const [sessionsResult, studentsResult, attendanceResult, activitiesResult, scoreResult] = await Promise.all([
+      query(
+        `SELECT id, title, start_time, end_time, status
+         FROM class_sessions
+         WHERE live_class_id = $1 AND status <> 'cancelled'
+         ORDER BY start_time DESC, id DESC`,
+        [classId],
+      ),
+      query(
+        `SELECT u.id, u.username, u.email, u.avatar_url
+         FROM class_enrollments ce
+         JOIN users u ON u.id = ce.user_id
+         WHERE ce.live_class_id = $1 AND ce.status = 'active'
+         ORDER BY LOWER(COALESCE(u.username, u.email)), u.id`,
+        [classId],
+      ),
+      query(
+        `SELECT ca.session_id, ca.user_id, ca.status, ca.checked_at
+         FROM class_attendance ca
+         JOIN class_sessions cs ON cs.id = ca.session_id
+         WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'`,
+        [classId],
+      ),
+      query(
+        `SELECT a.class_session_id AS session_id, CONCAT('assignment-', a.id) AS activity_id,
+                a.title, 'assignment' AS activity_type, a.max_score
+         FROM assignments a
+         WHERE a.live_class_id = $1 AND a.class_session_id IS NOT NULL
+         UNION ALL
+         SELECT q.class_session_id AS session_id, CONCAT('quiz-', q.id) AS activity_id,
+                q.title, 'quiz' AS activity_type, NULL::numeric AS max_score
+         FROM quizzes q
+         WHERE q.live_class_id = $1 AND q.class_session_id IS NOT NULL
+         ORDER BY session_id DESC, activity_type, title`,
+        [classId],
+      ),
+      query(
+        `SELECT a.class_session_id AS session_id, s.user_id,
+                CONCAT('assignment-', a.id) AS activity_id, 'assignment' AS activity_type,
+                s.status, latest_grade.score, a.max_score, s.submitted_at
+         FROM assignment_submissions s
+         JOIN assignments a ON a.id = s.assignment_id
+         LEFT JOIN LATERAL (
+           SELECT sg.score FROM submission_grades sg
+           WHERE sg.submission_id = s.id
+           ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1
+         ) latest_grade ON true
+         WHERE a.live_class_id = $1 AND a.class_session_id IS NOT NULL
+         UNION ALL
+         SELECT latest.class_session_id AS session_id, latest.user_id,
+                CONCAT('quiz-', latest.quiz_id) AS activity_id, 'quiz' AS activity_type,
+                latest.status, latest.score, latest.max_score, latest.submitted_at
+         FROM (
+           SELECT DISTINCT ON (qa.user_id, q.id)
+                  q.class_session_id, q.id AS quiz_id, qa.user_id, qa.status,
+                  qa.score, qa.max_score, qa.submitted_at, qa.attempt_number, qa.id
+           FROM quiz_attempts qa
+           JOIN quizzes q ON q.id = qa.quiz_id
+           WHERE q.live_class_id = $1 AND q.class_session_id IS NOT NULL AND qa.status = 'submitted'
+           ORDER BY qa.user_id, q.id, qa.attempt_number DESC, qa.submitted_at DESC, qa.id DESC
+         ) latest`,
+        [classId],
+      ),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        classInfo: {
+          id: access.liveClass.id,
+          title: access.liveClass.title,
+          courseId: access.liveClass.course_id,
+          courseTitle: access.liveClass.course_title || null,
+        },
+        sessions: sessionsResult.rows.map((row) => ({
+          id: String(row.id), title: row.title, startTime: row.start_time, endTime: row.end_time, status: row.status,
+        })),
+        students: studentsResult.rows.map((row) => ({
+          id: String(row.id), name: row.username || row.email, email: row.email, avatar: row.avatar_url || null,
+        })),
+        attendance: attendanceResult.rows.map((row) => ({
+          sessionId: String(row.session_id), userId: String(row.user_id), status: row.status, checkedAt: row.checked_at,
+        })),
+        activities: activitiesResult.rows.map((row) => ({
+          sessionId: String(row.session_id), id: row.activity_id, title: row.title,
+          type: row.activity_type, maxScore: row.max_score === null ? null : Number(row.max_score),
+        })),
+        scores: scoreResult.rows.map((row) => ({
+          sessionId: String(row.session_id), userId: String(row.user_id), activityId: row.activity_id,
+          type: row.activity_type, status: row.status, score: row.score === null ? null : Number(row.score),
+          maxScore: row.max_score === null ? null : Number(row.max_score), submittedAt: row.submitted_at,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching teacher student progress:", error);
+    return internalError(res, "Không thể tải sổ theo dõi học viên");
+  }
+});
+
 // GET /api/teacher/classes/:classId/detail — roster/progress/attendance/assignment status.
 router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req, res) => {
   try {

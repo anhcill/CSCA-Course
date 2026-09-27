@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Mail, User, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import useLogin from "../../hooks/useLogin";
 import { getLmsLandingPath } from "../../utils/lmsNavigation";
@@ -64,14 +64,20 @@ const InputField = ({
 );
 
 // ─── LoginForm ────────────────────────────────────────────────────────────────
-const LoginForm = ({ onSwitchMode, onClose }) => {
+const LoginForm = ({ onSwitchMode, onClose, initialIdentifier = "" }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { loading, login } = useLogin();
 
-  const [formData, setFormData] = useState({ email: "", password: "" });
+  const [formData, setFormData] = useState({ email: initialIdentifier || "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialIdentifier) {
+      setFormData((prev) => ({ ...prev, email: initialIdentifier }));
+    }
+  }, [initialIdentifier]);
 
   // ── handlers ──────────────────────────────────────────────────────────────
   const handleChange = (e) => {
@@ -84,8 +90,8 @@ const LoginForm = ({ onSwitchMode, onClose }) => {
 
     // lightweight client-side guard (hook also validates, but this gives
     // instant feedback without a round-trip)
-    if (!formData.email.includes("@")) {
-      toast.error("Vui lòng nhập email hợp lệ.");
+    if (!formData.email || formData.email.trim().length < 3) {
+      toast.error("Vui lòng nhập email hoặc tên đăng nhập.");
       return;
     }
     if (formData.password.length < 6) {
@@ -157,12 +163,12 @@ const LoginForm = ({ onSwitchMode, onClose }) => {
         {/* email */}
         <InputField
           id="email"
-          label={t("email") || "Email"}
-          type="email"
-          icon={Mail}
+          label={t("emailOrUsername") || "Email hoặc Tên đăng nhập"}
+          type="text"
+          icon={User}
           value={formData.email}
           onChange={handleChange}
-          placeholder="example@gmail.com"
+          placeholder="Nhập email hoặc tên người dùng"
           required
         />
 

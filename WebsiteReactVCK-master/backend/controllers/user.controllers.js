@@ -349,18 +349,19 @@ export const completeSignup = async (req, res) => {
 // ============================================================
 export const login = async (req, res) => {
   try {
-    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const rawIdentifier = req.body?.identifier || req.body?.email || req.body?.username;
+    const identifier = typeof rawIdentifier === "string" ? rawIdentifier.trim() : "";
     const password = typeof req.body?.password === "string" ? req.body.password : "";
 
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: "Vui lòng nhập email và mật khẩu" });
+    if (!identifier || !password) {
+      return res.status(400).json({ success: false, message: "Vui lòng nhập email hoặc tên đăng nhập và mật khẩu" });
     }
 
-    const { rows } = await query('SELECT * FROM users WHERE email = $1', [email]);
+    const { rows } = await query('SELECT * FROM users WHERE LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1) LIMIT 1', [identifier]);
     const user = rows[0];
 
     if (!user) {
-      return res.status(400).json({ success: false, message: "Email hoặc mật khẩu không đúng" });
+      return res.status(400).json({ success: false, message: "Tài khoản hoặc mật khẩu không đúng" });
     }
 
     if (user.is_locked) {
@@ -373,7 +374,7 @@ export const login = async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      return res.status(400).json({ success: false, message: "Email hoặc mật khẩu không đúng" });
+      return res.status(400).json({ success: false, message: "Tài khoản hoặc mật khẩu không đúng" });
     }
 
     // Cập nhật last_login_at

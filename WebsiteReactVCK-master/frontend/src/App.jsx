@@ -3,7 +3,6 @@ import { Toaster } from "react-hot-toast";
 
 // Public website pages
 import Home from "./pages/client/Home.jsx";
-import Rank from "./pages/client/Rank.jsx";
 import NotFound from "./pages/client/NotFound.jsx";
 import Courses from "./pages/client/Courses.jsx";
 import DetailCourse from "./pages/client/DetailCourse.jsx";
@@ -42,12 +41,11 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { ThemeProvider } from "./context/ThemeContext";
 import { LoadingProvider } from "./context/LoadingContext.jsx";
 import { useAuthContext } from "./context/AuthContext.jsx";
-import { LMS_ROLES, TEACHER_ROLES, USER_ROLES, isTeacherRole } from "./constants/roles";
+import { TEACHER_ROLES, USER_ROLES, isTeacherRole } from "./constants/roles";
 import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
 
 // LMS feature pages
 import ClassroomPage from "./features/learning/pages/ClassroomPage.jsx";
-import StudentDashboardPage from "./features/learning/pages/StudentDashboardPage.jsx";
 import StudentCourseListPage from "./features/learning/pages/StudentCourseListPage.jsx";
 import CourseClassListPage from "./features/learning/pages/CourseClassListPage.jsx";
 import CourseWorkspaceLayout from "./features/learning/components/CourseWorkspaceLayout.jsx";
@@ -66,6 +64,7 @@ import TeacherSchedulePage from "./features/teacher/pages/TeacherSchedulePage.js
 import TeacherAttendancePage from "./features/teacher/pages/TeacherAttendancePage.jsx";
 import TeacherClassDetailPage from "./features/teacher/pages/TeacherClassDetailPage.jsx";
 import TeacherSessionWorkspacePage from "./features/teacher/pages/TeacherSessionWorkspacePage.jsx";
+import TeacherStudentProgressPage from "./features/teacher/pages/TeacherStudentProgressPage.jsx";
 import StudentFilesPage from "./features/learning/pages/StudentFilesPage.jsx";
 import TeacherQuizPage from "./features/teacher/pages/TeacherQuizPage.jsx";
 import NotificationCenterPage from "./features/notifications/pages/NotificationCenterPage.jsx";
@@ -89,7 +88,7 @@ function AppRoutes() {
     <Routes>
       {/* === Public website === */}
       <Route path="/" element={<Home />} />
-      <Route path="/rank" element={<Rank />} />
+      <Route path="/rank" element={<Navigate to={{ pathname: "/", hash: "#bang-xep-hang" }} replace />} />
       <Route path="/courses" element={<Courses />} />
       <Route path="/post" element={<Post />} />
       <Route path="/about" element={<About />} />
@@ -147,6 +146,7 @@ function AppRoutes() {
       <Route path="/lms/teach/classes/:classId/sessions/:sessionId" element={<TeacherSessionWorkspacePage />} />
       <Route path="/lms/teach/classes/:classId/attendance" element={<TeacherAttendancePage />} />
       <Route path="/lms/teach/attendance" element={<TeacherAttendancePage />} />
+      <Route path="/lms/teach/student-progress" element={<TeacherStudentProgressPage />} />
       <Route path="/lms/teach/calendar" element={<ClassCalendarPage />} />
       <Route path="/lms/teacher-hub" element={<Navigate to="/lms/teach" replace />} />
       <Route path="/lms/teacher/schedule" element={<Navigate to="/lms/teach/calendar" replace />} />
@@ -194,7 +194,13 @@ function AppContent() {
 
   if (isLmsPage) {
     const Layout = isTeacherPage ? TeacherLmsLayout : StudentLmsLayout;
-    const allowedRoles = isTeacherPage ? TEACHER_ROLES : LMS_ROLES;
+    const allowedRoles = isTeacherPage ? TEACHER_ROLES : [USER_ROLES.STUDENT];
+
+    // Teacher/admin accounts live exclusively in the teaching workspace. They
+    // do not inherit the student dashboard or its navigation by role alone.
+    if (!isTeacherPage && isTeacherRole(authUser?.role)) {
+      return <Navigate to="/lms/teach" replace />;
+    }
 
     return (
       <div className="min-h-screen">

@@ -1,0 +1,219 @@
+/* eslint-disable react/prop-types */
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Search, Users } from "lucide-react";
+import { fetchClassStudentProgress, fetchTeacherDashboardStats } from "../../api/lmsClient";
+import Loading from "../../../components/Loading.jsx";
+import { EmptyState, ErrorState } from "../../../components/common/StateView";
+
+const EMPTY_GRADEBOOK = {
+  classInfo: null,
+  sessions: [],
+  students: [],
+  attendance: [],
+  activities: [],
+  scores: [],
+};
+
+const formatSession = (session) => {
+  if (!session?.startTime) return session?.title || "Buổi học";
+  const date = new Date(session.startTime);
+  return `${session.title || "Buổi học"} · ${date.toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`;
+};
+
+const formatCheckedAt = (value) => value
+  ? new Date(value).toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+  : null;
+
+const attendanceLabel = {
+  present: { text: "Có mặt", cls: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" },
+  absent: { text: "Vắng", cls: "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300" },
+  excused: { text: "Có phép", cls: "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300" },
+};
+
+function StatCard({ icon: Icon, label, value, tone }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></span>
+      <p className="mt-3 text-xl font-black text-slate-950 dark:text-white">{value}</p>
+      <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+export default function TeacherStudentProgressPage() {
+  const [classes, setClasses] = useState([]);
+  const [classId, setClassId] = useState("");
+  const [selectedSessionId, setSelectedSessionId] = useState("all");
+  const [gradebook, setGradebook] = useState(EMPTY_GRADEBOOK);
+  const [search, setSearch] = useState("");
+  const [loadingClasses, setLoadingClasses] = useState(true);
+  const [loadingGradebook, setLoadingGradebook] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadClasses = useCallback(async () => {
+    setLoadingClasses(true);
+    setError("");
+    try {
+      const result = await fetchTeacherDashboardStats({ limit: 1 });
+      const nextClasses = result?.data?.classes || [];
+      setClasses(nextClasses);
+      setClassId((current) => current || String(nextClasses[0]?.id || ""));
+    } catch (loadError) {
+      setError(loadError.message || "Không thể tải danh sách lớp phụ trách.");
+    } finally {
+      setLoadingClasses(false);
+    }
+  }, []);
+
+  const loadGradebook = useCallback(async () => {
+    if (!classId) {
+      setGradebook(EMPTY_GRADEBOOK);
+      return;
+    }
+    setLoadingGradebook(true);
+    setError("");
+    try {
+      const result = await fetchClassStudentProgress(classId);
+      setGradebook({ ...EMPTY_GRADEBOOK, ...(result?.data || {}) });
+    } catch (loadError) {
+      setGradebook(EMPTY_GRADEBOOK);
+      setError(loadError.message || "Không thể tải sổ theo dõi lớp.");
+    } finally {
+      setLoadingGradebook(false);
+    }
+  }, [classId]);
+
+  useEffect(() => { loadClasses(); }, [loadClasses]);
+  useEffect(() => { loadGradebook(); }, [loadGradebook]);
+
+  const attendanceByKey = useMemo(() => new Map(
+    gradebook.attendance.map((record) => [`${record.userId}:${record.sessionId}`, record]),
+  ), [gradebook.attendance]);
+  const scoreByKey = useMemo(() => new Map(
+    gradebook.scores.map((record) => [`${record.userId}:${record.activityId}`, record]),
+  ), [gradebook.scores]);
+
+  const scopedSessions = useMemo(
+    () => selectedSessionId === "all" ? gradebook.sessions : gradebook.sessions.filter((session) => session.id === selectedSessionId),
+    [gradebook.sessions, selectedSessionId],
+  );
+  const scopedActivities = useMemo(
+    () => selectedSessionId === "all" ? gradebook.activities : gradebook.activities.filter((activity) => activity.sessionId === selectedSessionId),
+    [gradebook.activities, selectedSessionId],
+  );
+  const visibleStudents = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase();
+    if (!needle) return gradebook.students;
+    return gradebook.students.filter((student) => [student.name, student.email].some((value) => String(value || "").toLocaleLowerCase().includes(needle)));
+  }, [gradebook.students, search]);
+
+  const completedSessions = gradebook.sessions.filter((session) => new Date(session.endTime).getTime() <= Date.now()).length;
+  const selectedClass = classes.find((item) => String(item.id) === classId);
+
+  const getAttendanceSummary = (studentId) => {
+    const records = scopedSessions.map((session) => attendanceByKey.get(`${studentId}:${session.id}`)).filter(Boolean);
+    if (selectedSessionId !== "all") return records[0] || null;
+    const present = records.filter((record) => record.status === "present").length;
+    const recorded = records.length;
+    return { present, recorded, rate: recorded ? Math.round((present / recorded) * 100) : null };
+  };
+
+  const getScoreSummary = (studentId) => {
+    const rows = scopedActivities.map((activity) => ({ activity, record: scoreByKey.get(`${studentId}:${activity.id}`) }));
+    const graded = rows.filter(({ record }) => Boolean(record)
+      && record.score !== null
+      && record.score !== undefined
+      && (record.status === "graded" || record.type === "quiz"));
+    const ratios = graded.map(({ activity, record }) => {
+      const maxScore = record.maxScore ?? activity.maxScore;
+      return maxScore > 0 ? (record.score / maxScore) * 100 : null;
+    }).filter((value) => value !== null);
+    return { rows, gradedCount: graded.length, average: ratios.length ? Math.round(ratios.reduce((sum, value) => sum + value, 0) / ratios.length) : null };
+  };
+
+  if (loadingClasses) return <Loading loading text="Đang tải sổ theo dõi học viên..." fullScreen={false} className="min-h-[60vh] py-16" />;
+  if (error && !classId) return <div className="mx-auto max-w-xl py-12"><ErrorState title="Chưa thể mở sổ theo dõi" message={error} onRetry={loadClasses} /></div>;
+  if (!classes.length) return <div className="mx-auto max-w-3xl px-4 py-10"><EmptyState icon={Users} title="Chưa có lớp phụ trách" description="Khi được phân công lớp, điểm, quiz và chuyên cần của học viên sẽ xuất hiện ở đây." /></div>;
+
+  return (
+    <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <header className="rounded-3xl border border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50 p-6 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/20 sm:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600 dark:text-sky-400">Sổ theo dõi giảng dạy</p>
+          <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h1 className="text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">Học viên, điểm & chuyên cần</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">Theo dõi bài tự luận, quiz tự chấm và điểm danh theo từng buổi học của một lớp.</p>
+            </div>
+            <label className="block text-xs font-bold text-slate-600 dark:text-slate-300">
+              Chọn lớp
+              <select value={classId} onChange={(event) => { setClassId(event.target.value); setSelectedSessionId("all"); }} className="mt-1.5 block min-w-[16rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                {classes.map((item) => <option key={item.id} value={item.id}>{item.title}{item.courseTitle ? ` · ${item.courseTitle}` : ""}</option>)}
+              </select>
+            </label>
+          </div>
+        </header>
+
+        {error ? <ErrorState title="Không thể tải dữ liệu lớp" message={error} onRetry={loadGradebook} /> : loadingGradebook ? (
+          <Loading loading text="Đang tổng hợp chuyên cần và điểm theo buổi..." fullScreen={false} className="py-16" />
+        ) : (
+          <>
+            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard icon={BookOpen} label="Khóa học" value={gradebook.classInfo?.courseTitle || selectedClass?.courseTitle || "Chưa gắn"} tone="bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-sky-400" />
+              <StatCard icon={Users} label="Sĩ số đang học" value={gradebook.students.length} tone="bg-violet-50 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400" />
+              <StatCard icon={CalendarDays} label="Buổi đã diễn ra" value={`${completedSessions}/${gradebook.sessions.length}`} tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400" />
+              <StatCard icon={ClipboardCheck} label="Hoạt động có điểm" value={gradebook.activities.length} tone="bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400" />
+            </section>
+
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 className="text-lg font-black text-slate-950 dark:text-white">Chi tiết theo buổi</h2>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Quiz hiện kết quả ngay cho học viên và cũng được ghi lại ở đây để giáo viên theo dõi.</p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <label className="sr-only" htmlFor="session-filter">Lọc theo buổi học</label>
+                  <select id="session-filter" value={selectedSessionId} onChange={(event) => setSelectedSessionId(event.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                    <option value="all">Tất cả buổi học</option>
+                    {gradebook.sessions.map((session) => <option key={session.id} value={session.id}>{formatSession(session)}</option>)}
+                  </select>
+                  <label className="relative block">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm học viên" className="rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" />
+                  </label>
+                </div>
+              </div>
+
+              {visibleStudents.length === 0 ? <div className="mt-5"><EmptyState icon={Users} title="Không tìm thấy học viên" description="Thử đổi từ khóa tìm kiếm hoặc chọn lớp khác." /></div> : (
+                <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <table className="w-full min-w-[850px] text-left text-xs">
+                    <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+                      <tr><th className="px-4 py-3">Học viên</th><th className="px-4 py-3">Điểm danh vào lớp</th><th className="px-4 py-3">Điểm tổng quan</th><th className="px-4 py-3">Chi tiết bài / quiz</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {visibleStudents.map((student) => {
+                        const attendance = getAttendanceSummary(student.id);
+                        const score = getScoreSummary(student.id);
+                        const sessionAttendance = selectedSessionId !== "all" ? attendance : null;
+                        return (
+                          <tr key={student.id} className="align-top hover:bg-slate-50/70 dark:hover:bg-slate-800/30">
+                            <td className="px-4 py-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 font-black text-blue-700 dark:bg-blue-950 dark:text-sky-300">{student.avatar ? <img src={student.avatar} alt="" className="h-full w-full object-cover" /> : student.name.slice(0, 1).toUpperCase()}</span><div><p className="font-black text-slate-900 dark:text-white">{student.name}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{student.email}</p></div></div></td>
+                            <td className="px-4 py-4">{selectedSessionId === "all" ? <><p className="font-black text-slate-900 dark:text-white">{attendance?.rate ?? "—"}{attendance?.rate !== null ? "%" : ""}</p><p className="mt-1 text-[11px] text-slate-500">Có mặt {attendance?.present || 0}/{attendance?.recorded || 0} buổi đã điểm danh</p></> : sessionAttendance ? <><span className={`inline-flex rounded-full px-2 py-1 font-bold ${attendanceLabel[sessionAttendance.status]?.cls || "bg-slate-100 text-slate-600"}`}>{attendanceLabel[sessionAttendance.status]?.text || sessionAttendance.status}</span><p className="mt-1 text-[11px] text-slate-500">Điểm danh lúc {formatCheckedAt(sessionAttendance.checkedAt)}</p></> : <span className="text-slate-400">Chưa điểm danh</span>}</td>
+                            <td className="px-4 py-4"><p className="flex items-center gap-1.5 font-black text-slate-900 dark:text-white"><BarChart3 className="h-4 w-4 text-blue-600 dark:text-sky-400" /> {score.average === null ? "Chưa có điểm" : `${score.average}%`}</p><p className="mt-1 text-[11px] text-slate-500">Đã có điểm {score.gradedCount}/{score.rows.length} hoạt động</p></td>
+                            <td className="px-4 py-4"><div className="max-w-sm space-y-1.5">{score.rows.length === 0 ? <span className="text-slate-400">Không có bài hoặc quiz trong phạm vi này</span> : score.rows.map(({ activity, record }) => { const maxScore = record?.maxScore ?? activity.maxScore; const hasScore = record?.score !== null && record?.score !== undefined; return <div key={activity.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-100/70 px-2.5 py-2 dark:bg-slate-950/70"><span className="min-w-0 truncate font-semibold text-slate-700 dark:text-slate-200">{activity.type === "quiz" ? "Quiz" : "Bài tập"}: {activity.title}</span><span className={`shrink-0 font-black ${hasScore ? "text-emerald-600 dark:text-emerald-400" : record ? "text-amber-600 dark:text-amber-400" : "text-slate-400"}`}>{hasScore ? `${record.score}${maxScore ? `/${maxScore}` : ""}` : record ? "Chờ chấm" : "Chưa nộp"}</span></div>; })}</div></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Thời điểm điểm danh là dữ liệu đã được giáo viên chốt cho buổi học.</span><Link to={`/lms/teach/classes/${classId}`} className="font-bold text-blue-600 hover:text-blue-800 dark:text-sky-400">Mở không gian lớp →</Link></div>
+            </section>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
