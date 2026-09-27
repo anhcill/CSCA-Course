@@ -132,19 +132,17 @@ const LoginForm = ({ onSwitchMode, onClose }) => {
         {/* CSCA logo text */}
         <div className="inline-flex items-center gap-1 mb-3">
           <span className="text-2xl font-black text-red-600 dark:text-red-500 tracking-tight">
-            CSCA
+            Moly
           </span>
           <span className="text-xs font-semibold text-orange-500 dark:text-orange-400 self-end mb-0.5 tracking-wider">
-            COURSE
+            Course
           </span>
         </div>
 
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           {t("login") || "Đăng nhập"}
         </h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Chào mừng bạn trở lại nền tảng học HSK/HSKK
-        </p>
+
       </motion.div>
 
       {/* ── form ── */}
@@ -298,7 +296,7 @@ const LoginForm = ({ onSwitchMode, onClose }) => {
 
       {/* ── tiny branding note ── */}
       <p className="mt-5 text-center text-[10px] text-gray-400 dark:text-gray-600">
-        Nền tảng luyện thi HSK · HSKK · CSCA &nbsp;|&nbsp; 汉语水平考试
+        Moly Course &nbsp;|&nbsp; 汉语水平考试
       </p>
     </div>
   );

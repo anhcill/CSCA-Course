@@ -96,14 +96,14 @@ const FeedBack = () => {
       <div className="mx-auto grid max-w-7xl items-center gap-12 md:grid-cols-[0.9fr_1.1fr]">
         <div className="relative max-w-xl">
           <div className="absolute -left-20 -top-20 h-56 w-56 rounded-full bg-red-300/15 blur-3xl" />
-          <p className="relative text-sm font-black uppercase tracking-[0.24em] text-red-600 dark:text-amber-400">Cộng đồng học viên CSCA</p>
+          <p className="relative text-sm font-black uppercase tracking-[0.24em] text-red-600 dark:text-amber-400">Cộng đồng học viên Moly Course</p>
           <h2 id="feedback-title" className="relative mt-4 text-4xl font-black leading-[1.1] tracking-tight text-gray-950 dark:text-white sm:text-5xl lg:text-6xl">
             Được tin tưởng
             <span className="block bg-gradient-to-r from-red-700 via-red-500 to-amber-500 bg-clip-text text-transparent">và đánh giá cao</span>
             <span className="mt-3 block text-2xl font-bold text-gray-600 dark:text-gray-300 sm:text-3xl">bởi cộng đồng học viên</span>
           </h2>
           <p className="relative mt-7 text-base leading-8 text-gray-600 dark:text-gray-300 sm:text-lg">
-            Những chia sẻ mẫu dưới đây mô tả trải nghiệm học tập mà CSCA Academy hướng tới. Phản hồi, điểm thi và thành tích thật sẽ được cập nhật khi có xác nhận từ học viên.
+            Những chia sẻ mẫu dưới đây mô tả trải nghiệm học tập mà Moly Course hướng tới. Phản hồi, điểm thi và thành tích thật sẽ được cập nhật khi có xác nhận từ học viên.
           </p>
           <div className="relative mt-8 inline-flex items-center gap-3 rounded-2xl border border-red-100 bg-white px-5 py-4 shadow-sm dark:border-white/10 dark:bg-gray-900">
             <div className="flex -space-x-2" aria-hidden="true">

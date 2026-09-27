@@ -118,7 +118,7 @@ const RegisterForm = ({ onSwitchMode }) => {
               开始你的
             </div>
             <div className="text-5xl font-bold tracking-widest drop-shadow-lg leading-tight mt-1">
-              留学之旅
+              学习之旅
             </div>
           </motion.div>
 
@@ -126,11 +126,10 @@ const RegisterForm = ({ onSwitchMode }) => {
           <div className="w-16 h-0.5 bg-white/60 rounded-full mb-5" />
 
           <p className="text-xl font-semibold tracking-wide mb-2">
-            Join CSCA Community
+            Join Moly Course
           </p>
           <p className="text-sm text-white/75 max-w-xs leading-relaxed">
-            Cùng hàng ngàn học sinh Việt Nam chinh phục học bổng du học Trung
-            Quốc.
+            Nền tảng học tập và luyện thi trực tuyến hàng đầu.
           </p>
 
           {/* Decorative lantern icons (CSS only) */}
@@ -161,7 +160,7 @@ const RegisterForm = ({ onSwitchMode }) => {
               Đăng ký tài khoản
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Tạo tài khoản CSCA để bắt đầu hành trình du học Trung Quốc.
+              Tạo tài khoản Moly Course để bắt đầu học ngay.
             </p>
           </div>
 

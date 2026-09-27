@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { useAuthContext } from "../../context/AuthContext";
 
 const VerifyEmailForm = ({ onSwitchMode, registrationData }) => {
-  const { completeSignup, loading } = useAuthContext();
+  const { completeSignup, initiateSignup, loading } = useAuthContext();
   const [isLoading, setIsLoading] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
 
@@ -74,7 +74,7 @@ const VerifyEmailForm = ({ onSwitchMode, registrationData }) => {
         verificationCode
       );
       if (success) {
-        toast.success("Xác thực email thành công! Chào mừng bạn đến CSCA.");
+        toast.success("Xác thực email thành công! Chào mừng bạn đến với Moly Course 🎉");
         sessionStorage.removeItem("verificationStartTime");
         setTimeout(() => {
           onSwitchMode && onSwitchMode("login");
@@ -97,6 +97,22 @@ const VerifyEmailForm = ({ onSwitchMode, registrationData }) => {
   const handleOtpChange = (e) => {
     const val = e.target.value.replace(/\D/g, "").slice(0, 6);
     setVerificationCode(val);
+  };
+
+  const handleResendSignupOtp = async () => {
+    if (!registrationData) {
+      toast.error("Không tìm thấy thông tin đăng ký. Vui lòng thử lại.");
+      onSwitchMode && onSwitchMode("register");
+      return;
+    }
+    try {
+      await initiateSignup(registrationData);
+      sessionStorage.setItem("verificationStartTime", Date.now().toString());
+      setTimeLeft(300);
+      toast.success("Đã gửi lại mã xác thực mới đến email của bạn!");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Không thể gửi lại mã xác thực.");
+    }
   };
 
   return (
@@ -275,16 +291,28 @@ const VerifyEmailForm = ({ onSwitchMode, registrationData }) => {
           </form>
 
           {/* Footer */}
-          <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
-            Chưa nhận được mã?{" "}
-            <button
-              type="button"
-              onClick={() => onSwitchMode && onSwitchMode("register")}
-              className="font-semibold text-red-500 hover:text-red-600 transition-colors"
-            >
-              Quay lại đăng ký
-            </button>
-          </p>
+          <div className="mt-6 text-center text-xs text-gray-500 dark:text-gray-400 space-y-2">
+            <p>
+              Chưa nhận được mã?{" "}
+              <button
+                type="button"
+                onClick={handleResendSignupOtp}
+                className="font-bold text-red-600 dark:text-amber-400 hover:underline"
+              >
+                Gửi lại mã xác thực
+              </button>
+            </p>
+            <p>
+              hoặc{" "}
+              <button
+                type="button"
+                onClick={() => onSwitchMode && onSwitchMode("register")}
+                className="font-semibold text-gray-700 dark:text-gray-300 hover:underline"
+              >
+                Quay lại đăng ký
+              </button>
+            </p>
+          </div>
         </motion.div>
       </div>
     </div>

@@ -537,8 +537,19 @@ export default function ClassroomPage() {
                 activeTab === "resources" ? "text-blue-700 dark:text-sky-400" : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              <span>📎 Tài Liệu Bài Giảng</span>
+              <span>📎 Danh Mục Tài Liệu</span>
               {activeTab === "resources" && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-600 dark:bg-sky-400 rounded-full" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("exercises")}
+              className={`group relative py-3.5 text-xs font-semibold tracking-wide transition-colors duration-200 flex items-center gap-2 whitespace-nowrap ${
+                activeTab === "exercises" ? "text-blue-700 dark:text-sky-400" : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              <span>📝 Danh Mục Bài Tập</span>
+              {activeTab === "exercises" && (
                 <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-600 dark:bg-sky-400 rounded-full" />
               )}
             </button>
@@ -750,11 +761,107 @@ export default function ClassroomPage() {
 
             {/* RESOURCES TAB */}
             {activeTab === "resources" && (
-              <div className="space-y-4 max-w-3xl">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Tài liệu học tập đi kèm bài giảng</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">
-                  Bài học này chưa có tài liệu đính kèm.
-                </p>
+              <div className="space-y-6 max-w-3xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Danh Mục Tài Liệu Đi Kèm Bài Học</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Tải tài liệu, slide giáo trình và bài tập tự luyện.</p>
+                  </div>
+                  {classId && (
+                    <Link
+                      to={`/lms/courses/${courseId}/classes/${classId}/materials`}
+                      className="px-3.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-300 text-xs font-bold hover:bg-blue-100 transition border border-blue-200 dark:border-blue-900/40"
+                    >
+                      Kho tài liệu lớp →
+                    </Link>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {[
+                    { title: "Slide bài giảng & Lý thuyết bài học", type: "PDF", size: "8.4 MB", desc: "Tóm tắt cấu trúc ngữ pháp và điểm ngữ âm quan trọng." },
+                    { title: "Sổ tay từ vựng & Cụm từ thông dụng", type: "PDF", size: "3.2 MB", desc: "Hán tự, Pinyin và ví dụ ngữ cảnh thực tế." },
+                    { title: "File Audio nghe phát âm chuẩn", type: "MP3", size: "16.8 MB", desc: "Giọng đọc chuẩn bản xứ cho bài hội thoại." },
+                    { title: "Phiếu bài tập tự luyện kèm đáp án", type: "PDF", size: "4.5 MB", desc: "Các dạng bài tập tương ứng với cấu trúc bài thi." }
+                  ].map((mat, i) => (
+                    <div key={i} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex flex-col justify-between space-y-3">
+                      <div className="flex items-start gap-3">
+                        <span className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-sky-300 font-black text-xs flex items-center justify-center shrink-0">
+                          {mat.type}
+                        </span>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">{mat.title}</h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{mat.desc}</p>
+                          <span className="text-[10px] text-slate-400 font-mono mt-1 block">{mat.size}</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <button
+                          onClick={() => toast.success(`Đang tải: ${mat.title}`)}
+                          className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-sm"
+                        >
+                          Tải về
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* EXERCISES TAB */}
+            {activeTab === "exercises" && (
+              <div className="space-y-6 max-w-3xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Danh Mục Bài Tập & Kiểm Tra</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Làm bài tập để củng cố kiến thức và nộp bài cho giảng viên.</p>
+                  </div>
+                  {classId && (
+                    <Link
+                      to={`/lms/courses/${courseId}/classes/${classId}/assignments`}
+                      className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition shadow-sm"
+                    >
+                      Danh sách bài tập lớp →
+                    </Link>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="p-5 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-sky-300">
+                          Bài tập củng cố
+                        </span>
+                        <h4 className="text-base font-bold text-slate-900 dark:text-white mt-1">
+                          Phiếu bài tập thực hành theo video: {activeLesson?.title || "Bài học"}
+                        </h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                          Hoàn thành các câu hỏi trắc nghiệm và tự luận để giảng viên chấm điểm và tích lũy XP.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-2">
+                      {classId ? (
+                        <Link
+                          to={`/lms/courses/${courseId}/classes/${classId}/assignments`}
+                          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-sm"
+                        >
+                          Làm bài tập ngay →
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => toast.success("Đang mở bài tập củng cố...")}
+                          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-sm"
+                        >
+                          Bắt đầu làm bài
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

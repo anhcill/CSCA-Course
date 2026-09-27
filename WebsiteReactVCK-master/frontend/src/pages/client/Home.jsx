@@ -66,7 +66,7 @@ const heroSlides = [
   },
   {
     title: 'Biến mục tiêu du học thành kế hoạch khả thi',
-    subtitle: 'Từ chọn trường, chuẩn bị năng lực tiếng Trung đến hoàn thiện hồ sơ, CSCA Academy đồng hành cùng bạn.',
+    subtitle: 'Từ chọn trường, chuẩn bị năng lực tiếng Trung đến hoàn thiện hồ sơ, Moly Course đồng hành cùng bạn.',
     badge: 'Top 100 Châu Á',
     icon: Award,
     bgImage: HOME_IMAGES.peking,

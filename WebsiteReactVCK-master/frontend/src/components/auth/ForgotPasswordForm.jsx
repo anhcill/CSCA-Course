@@ -1,96 +1,140 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import useForgotPassword from '../../hooks/useForgotPassword'; // Đảm bảo đường dẫn này đúng
+import { motion } from 'framer-motion';
+import { KeyRound, Mail, ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
+import useForgotPassword from '../../hooks/useForgotPassword';
 
 const ForgotPasswordForm = ({ onSwitchMode, onResetPassword }) => {
   const { t } = useTranslation();
   const [email, setEmail] = useState('');
-  const [message, setMessage] = useState(null); // Thay đổi state message để tránh lỗi
+  const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { forgotPassword } = useForgotPassword(); // Giả định bạn có hook này
+  const { forgotPassword } = useForgotPassword();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setErrorMessage('Vui lòng nhập địa chỉ email hợp lệ.');
+      return;
+    }
+
     setIsLoading(true);
-    setMessage(null);
+    setErrorMessage('');
 
     try {
-      await forgotPassword(email);
-      
-      setEmail('');
+      await forgotPassword(cleanEmail);
+      toast.success('Mã xác thực đã được gửi đến email của bạn!');
       sessionStorage.setItem('verificationStartTime', Date.now().toString());
-      onResetPassword(email);
+      if (onResetPassword) {
+        onResetPassword(cleanEmail);
+      }
     } catch (error) {
-      // Trả về object message để tránh lỗi
-      setMessage({
-        type: 'error',
-        content: error.response?.data?.message || t('resetError')
-      });
+      const msg = error.response?.data?.message || error.message || 'Không thể gửi mã xác thực. Vui lòng kiểm tra lại email.';
+      setErrorMessage(msg);
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      <h2 className="text-3xl font-bold text-center mb-8 text-gray-900 dark:text-white">
-        {t('forgotPassword')}
-      </h2>
-
-      {message && (
-        <div className={`mb-4 p-4 rounded-md ${
-            message.type === 'success'
-              ? 'bg-green-50 text-green-700 border border-green-200'
-              : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
-          {message.content}
+    <div className="w-full max-w-sm mx-auto space-y-6">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="text-center space-y-2"
+      >
+        <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-red-500 to-amber-500 text-white shadow-md shadow-red-500/30 mb-2">
+          <KeyRound className="h-6 w-6" />
         </div>
+        <h2 className="text-2xl font-black text-gray-900 dark:text-white">
+          Quên Mật Khẩu
+        </h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xs mx-auto leading-relaxed">
+          Nhập địa chỉ email đăng ký tài khoản Moly Course. Chúng tôi sẽ gửi mã OTP gồm 6 chữ số để đặt lại mật khẩu.
+        </p>
+      </motion.div>
+
+      {/* Error alert */}
+      {errorMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/60 text-xs text-red-600 dark:text-red-300 flex items-start gap-2.5"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+          <span className="leading-snug">{errorMessage}</span>
+        </motion.div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-            {t('email')}
+      {/* Form */}
+      <motion.form
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.05 }}
+        onSubmit={handleSubmit}
+        className="space-y-4"
+      >
+        <div className="space-y-1.5">
+          <label htmlFor="reset-email" className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+            Địa chỉ email
           </label>
-          <input
-            type="email"
-            id="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-gray-900 focus:outline-none focus:ring-blue-500 focus:ring-2 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white"
-            placeholder={t("enterEmail")}
-            required
-          />
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+              <Mail className="h-4 w-4" />
+            </div>
+            <input
+              type="email"
+              id="reset-email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (errorMessage) setErrorMessage('');
+              }}
+              placeholder="nhap-email@example.com"
+              required
+              autoFocus
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all shadow-sm"
+            />
+          </div>
         </div>
 
-        <button
+        <motion.button
+          whileTap={{ scale: 0.98 }}
+          whileHover={{ scale: 1.01 }}
           type="submit"
-          disabled={isLoading}
-          className={`w-full py-2 rounded-md text-white ${
-            isLoading ? "bg-gray-400 cursor-not-allowed" : "bg-blue-500 hover:bg-blue-600"
-          }`}
+          disabled={isLoading || !email.trim()}
+          className="w-full py-2.5 px-4 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-700 hover:to-amber-600 shadow-md shadow-red-500/25 disabled:opacity-60 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
         >
-          {isLoading ? t("sending") : t("sendResetLink")}
-        </button>
-      </form>
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Đang gửi mã...</span>
+            </>
+          ) : (
+            <span>Gửi Mã Xác Thực</span>
+          )}
+        </motion.button>
+      </motion.form>
 
-      <p className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
-        {t('rememberedPassword')}{' '}
+      {/* Back to login */}
+      <div className="text-center pt-2 border-t border-gray-100 dark:border-gray-800">
         <button
+          type="button"
           onClick={() => onSwitchMode('login')}
-          className="relative text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-purple-600 
-             overflow-hidden transition-all duration-300 ease-in-out 
-             shadow-md shadow-blue-500/50 hover:shadow-lg hover:shadow-purple-500/70 
-             hover:scale-105 hover:text-base
-             before:absolute before:top-0 before:left-[-100%] before:w-full before:h-full 
-             before:bg-white/20 before:skew-x-[-30deg] before:transition-all before:duration-500 
-             hover:before:left-[100%]"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-amber-400 transition-colors"
         >
-          {t('login')}
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Quay lại đăng nhập</span>
         </button>
-      </p>
+      </div>
     </div>
   );
 };
 
-export default ForgotPasswordForm; 
+export default ForgotPasswordForm;

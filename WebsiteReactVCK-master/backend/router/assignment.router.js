@@ -21,6 +21,7 @@ import {
   notifyAssignmentPublished,
 } from "../services/assignmentDeadlineNotification.service.js";
 import { broadcastToClass } from "../services/notification.service.js";
+import { sendNotificationEmail } from "../services/brevoEmail.service.js";
 import {
   QUIZ_REVIEW_POLICIES,
   getAttemptExpiry,
@@ -1075,8 +1076,10 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
     await client.query("BEGIN");
     const submissionResult = await client.query(
       `SELECT s.id, s.user_id, s.assignment_id, a.title AS assignment_title, a.instructor_id, a.max_score,
-              rubric.criteria_json AS rubric_criteria
+              rubric.criteria_json AS rubric_criteria,
+              u.email AS student_email, u.username AS student_username
        FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id
+       JOIN users u ON u.id = s.user_id
        LEFT JOIN assignment_rubrics rubric ON rubric.assignment_id = a.id
        WHERE s.id = $1 FOR UPDATE`,
       [submissionId],
@@ -1126,6 +1129,18 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
       metadata: { assignmentId: submission.assignment_id, submissionId },
     });
     await client.query("COMMIT");
+
+    if (submission.student_email) {
+      const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+      sendNotificationEmail({
+        email: submission.student_email,
+        username: submission.student_username,
+        title: `Bài tập đã được chấm: ${submission.assignment_title}`,
+        message: `Bài tập “${submission.assignment_title}” của bạn đã có điểm: ${numericScore}/${submission.max_score}.${req.body.feedbackText ? ` Nhận xét: "${req.body.feedbackText}"` : ""}`,
+        actionUrl: `${frontendUrl}/lms/assignment/${submission.assignment_id}/submit`,
+        actionText: "Xem Điểm & Nhận Xét",
+      }).catch((err) => console.error("[GRADE EMAIL WARNING]", err.message));
+    }
     return res.json({ success: true, data: { ...grade.rows[0], gamification }, message: "Chấm điểm bài nộp thành công" });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});

@@ -9,6 +9,12 @@ import {
   getGoogleOAuthCookieName,
 } from "../utils/googleOAuth.js";
 import { getUserDtoById, toUserDto } from "../utils/userDto.js";
+import {
+  sendSignupOtpEmail,
+  sendWelcomeEmail,
+  sendPasswordResetOtpEmail,
+  sendPasswordChangedNotificationEmail,
+} from "../services/brevoEmail.service.js";
 
 const PRESET_AVATAR_PATTERN = /^\/avatar\/avt_(?:[1-9]|[1-9]\d|1[01]\d|12[0-6])\.webp$/;
 const VALID_GENDERS = new Set(["male", "female", "other"]);
@@ -251,8 +257,13 @@ export const signup = async (req, res) => {
 
     // Email delivery is still an infrastructure task. Never log a usable code
     // unless an operator explicitly enables local-only debugging.
-    if (process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_CODES === "true") {
-      console.warn(`[AUTH_DEBUG] Signup OTP generated for ${email}: ${otpCode}`);
+    try {
+      await sendSignupOtpEmail({ email, username, otpCode });
+    } catch (emailErr) {
+      console.error("[SIGNUP EMAIL WARNING]", emailErr.message);
+    }
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[AUTH_DEV_OTP] Signup OTP for ${email}: ${otpCode}`);
     }
 
     return res.status(200).json({
@@ -313,6 +324,11 @@ export const completeSignup = async (req, res) => {
 
     // Xóa pending data
     global.pendingRegistrations.delete(email);
+
+    sendWelcomeEmail({
+      email: pendingData.email,
+      username: pendingData.username,
+    }).catch((err) => console.error("[WELCOME EMAIL WARNING]", err.message));
 
     return res.status(201).json({
       success: true,
@@ -743,8 +759,13 @@ export const requestPasswordReset = async (req, res) => {
          VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`,
         [email, resetCode]
       );
-      if (process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_CODES === "true") {
-        console.warn(`[AUTH_DEBUG] Password reset code generated for ${email}: ${resetCode}`);
+      try {
+        await sendPasswordResetOtpEmail({ email, resetCode });
+      } catch (emailErr) {
+        console.error("[PASSWORD RESET EMAIL WARNING]", emailErr.message);
+      }
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`[AUTH_DEV_OTP] Password reset code for ${email}: ${resetCode}`);
       }
     }
 
@@ -812,6 +833,10 @@ export const resetPassword = async (req, res) => {
     } finally {
       client.release();
     }
+
+    sendPasswordChangedNotificationEmail({ email }).catch((err) =>
+      console.error("[PASSWORD CHANGED EMAIL WARNING]", err.message)
+    );
 
     return res.status(200).json({
       success: true,

@@ -10,18 +10,16 @@ import {
   Search, 
   Clock, 
   Users, 
-  CheckCircle2, 
   ArrowRight,
-  Flame,
   Sparkles
 } from "lucide-react";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
 
 const CATEGORIES = [
   { id: "ALL", label: "Tất Cả", icon: BookOpen },
-  { id: "HSK", label: "HSK (1 - 6)", icon: Trophy },
-  { id: "HSKK", label: "HSKK Khẩu Ngữ", icon: Mic },
-  { id: "CSCA", label: "CSCA Đầu Vào", icon: GraduationCap },
+  { id: "HSK", label: "Tiếng Trung (HSK)", icon: Trophy },
+  { id: "HSKK", label: "Luyện Nói (HSKK)", icon: Mic },
+  { id: "CSCA", label: "Thi Đầu Vào (CSCA)", icon: GraduationCap },
 ];
 
 const SORT_OPTIONS = [
@@ -229,12 +227,13 @@ export default function CourseCatalogPage() {
     loadCatalog();
   };
 
-  // Split courses into sections
-  const { featuredCourses, proCourses, freeCourses } = useMemo(() => {
-    const featured = courses.filter((c) => c.is_featured);
-    const pro = courses.filter((c) => !c.is_free && Number(c.price) > 0 && !c.is_featured);
-    const free = courses.filter((c) => c.is_free || Number(c.price) === 0);
-    return { featuredCourses: featured, proCourses: pro, freeCourses: free };
+  // Split courses into category sections
+  const coursesByCategory = useMemo(() => {
+    const hsk = courses.filter((c) => c.category === "HSK");
+    const hskk = courses.filter((c) => c.category === "HSKK");
+    const csca = courses.filter((c) => c.category === "CSCA");
+    const other = courses.filter((c) => !["HSK", "HSKK", "CSCA"].includes(c.category));
+    return { hsk, hskk, csca, other };
   }, [courses]);
 
   const allVisible = courses.slice(0, visibleCount);
@@ -252,10 +251,10 @@ export default function CourseCatalogPage() {
               </span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-              Danh Mục Khóa Học Video HSK & CSCA
+              Danh Mục Khóa Học
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-0.5 max-w-2xl">
-              Giáo trình video bài bản HSK 1-6, HSKK khẩu ngữ và các môn thi CSCA săn học bổng du học Trung Quốc.
+              Khám phá các khóa học Tiếng Trung (HSK), Luyện nói (HSKK) và Thi đầu vào (CSCA).
             </p>
           </div>
 
@@ -355,73 +354,88 @@ export default function CourseCatalogPage() {
           />
         ) : (
           <div className="space-y-12">
-            {/* Featured Section */}
-            {featuredCourses.length > 0 && selectedCategory === "ALL" && (
-              <section className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Flame className="w-5 h-5 text-amber-400" />
-                  <h2 className="text-lg sm:text-xl font-bold text-white">Khóa Học Nổi Bật</h2>
-                  <span className="px-2 py-0.5 bg-amber-500/15 text-amber-300 text-xs font-bold rounded-full border border-amber-500/25">
-                    {featuredCourses.length}
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {featuredCourses.slice(0, 2).map((c) => (
-                    <CourseCard key={c.id} course={c} featured />
-                  ))}
-                </div>
-              </section>
-            )}
+            {selectedCategory === "ALL" ? (
+              <>
+                {/* Tiếng Trung (HSK) */}
+                {coursesByCategory.hsk.length > 0 && (
+                  <section className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-red-400" />
+                      <h2 className="text-lg sm:text-xl font-bold text-white">Tiếng Trung (HSK 1–6)</h2>
+                      <span className="px-2 py-0.5 bg-red-500/15 text-red-300 text-xs font-bold rounded-full border border-red-500/25">
+                        {coursesByCategory.hsk.length}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {coursesByCategory.hsk.map((c) => <CourseCard key={c.id} course={c} />)}
+                    </div>
+                  </section>
+                )}
 
-            {/* Pro Courses Section */}
-            {proCourses.length > 0 && (
-              <section className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-violet-400" />
-                  <h2 className="text-lg sm:text-xl font-bold text-white">Khóa Học Chuyên Sâu</h2>
-                  <span className="px-2 py-0.5 bg-violet-500/15 text-violet-300 text-xs font-bold rounded-full border border-violet-500/25">
-                    {proCourses.length}
-                  </span>
-                </div>
+                {/* Luyện Nói (HSKK) */}
+                {coursesByCategory.hskk.length > 0 && (
+                  <section className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Mic className="w-5 h-5 text-amber-400" />
+                      <h2 className="text-lg sm:text-xl font-bold text-white">Luyện Nói (HSKK)</h2>
+                      <span className="px-2 py-0.5 bg-amber-500/15 text-amber-300 text-xs font-bold rounded-full border border-amber-500/25">
+                        {coursesByCategory.hskk.length}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {coursesByCategory.hskk.map((c) => <CourseCard key={c.id} course={c} />)}
+                    </div>
+                  </section>
+                )}
+
+                {/* Thi Đầu Vào (CSCA) */}
+                {coursesByCategory.csca.length > 0 && (
+                  <section className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="w-5 h-5 text-indigo-400" />
+                      <h2 className="text-lg sm:text-xl font-bold text-white">Thi Đầu Vào (CSCA)</h2>
+                      <span className="px-2 py-0.5 bg-indigo-500/15 text-indigo-300 text-xs font-bold rounded-full border border-indigo-500/25">
+                        {coursesByCategory.csca.length}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {coursesByCategory.csca.map((c) => <CourseCard key={c.id} course={c} />)}
+                    </div>
+                  </section>
+                )}
+
+                {/* Khác */}
+                {coursesByCategory.other.length > 0 && (
+                  <section className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="w-5 h-5 text-sky-400" />
+                      <h2 className="text-lg sm:text-xl font-bold text-white">Khóa Học Khác</h2>
+                      <span className="px-2 py-0.5 bg-sky-500/15 text-sky-300 text-xs font-bold rounded-full border border-sky-500/25">
+                        {coursesByCategory.other.length}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {coursesByCategory.other.map((c) => <CourseCard key={c.id} course={c} />)}
+                    </div>
+                  </section>
+                )}
+              </>
+            ) : (
+              <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {proCourses.map((c) => <CourseCard key={c.id} course={c} />)}
+                  {allVisible.map((c) => <CourseCard key={c.id} course={c} />)}
                 </div>
-              </section>
-            )}
-
-            {/* Free Courses Section */}
-            {freeCourses.length > 0 && (
-              <section className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                  <h2 className="text-lg sm:text-xl font-bold text-white">Khóa Học Miễn Phí</h2>
-                  <span className="px-2 py-0.5 bg-emerald-500/15 text-emerald-300 text-xs font-bold rounded-full border border-emerald-500/25">
-                    {freeCourses.length}
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {freeCourses.map((c) => <CourseCard key={c.id} course={c} />)}
-                </div>
-              </section>
-            )}
-
-            {/* Filtered Courses List (When non-ALL category is active) */}
-            {selectedCategory !== "ALL" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {allVisible.map((c) => <CourseCard key={c.id} course={c} />)}
-              </div>
-            )}
-
-            {/* Load More Button */}
-            {selectedCategory !== "ALL" && visibleCount < courses.length && (
-              <div className="text-center pt-4">
-                <button
-                  onClick={() => setVisibleCount((v) => v + 12)}
-                  className="px-6 py-2.5 bg-slate-900 border border-white/10 rounded-xl text-xs font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition shadow-sm"
-                >
-                  Xem Thêm ({courses.length - visibleCount} khóa học)
-                </button>
-              </div>
+                {visibleCount < courses.length && (
+                  <div className="text-center pt-4">
+                    <button
+                      onClick={() => setVisibleCount((v) => v + 12)}
+                      className="px-6 py-2.5 bg-slate-900 border border-white/10 rounded-xl text-xs font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition shadow-sm"
+                    >
+                      Xem Thêm ({courses.length - visibleCount} khóa học)
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

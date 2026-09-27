@@ -18,13 +18,13 @@ const PANEL_CONTENT = {
   login: {
     hanzi: "欢迎回来",
     pinyin: "Huānyíng huí lái",
-    sub: "Tiếp tục hành trình chinh phục học bổng Trung Quốc của bạn.",
+    sub: "Chào mừng bạn trở lại với Moly Course.",
     hint: "Kéo sang phải để đăng ký →",
   },
   register: {
     hanzi: "加入我们",
     pinyin: "Jiārù wǒmen",
-    sub: "Bắt đầu con đường du học Trung Quốc cùng hàng nghìn học sinh.",
+    sub: "Tham gia các khóa học chất lượng cao cùng Moly Course.",
     hint: "← Kéo sang trái để đăng nhập",
   },
   forgotPassword: {
@@ -80,7 +80,7 @@ const IllustrationPanel = ({ mode, registrationData, onDragEnd, dragX }) => {
       <div className="absolute top-6 left-6 flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-3 py-1.5">
         <GraduationCap className="w-4 h-4 text-orange-200" />
         <span className="text-xs font-semibold tracking-wider text-orange-100">
-          CSCA Learning
+          Moly Course
         </span>
       </div>
 

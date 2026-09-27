@@ -1,6 +1,7 @@
 import express from "express";
 import { query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
+import { sendCourseEnrollmentEmail } from "../services/brevoEmail.service.js";
 
 const router = express.Router();
 
@@ -69,7 +70,7 @@ router.post("/", protectRoute, async (req, res) => {
     if (!/^\d+$/.test(String(courseId || "")) || Number(courseId) < 1) return validationError(res, "courseId không hợp lệ");
 
     const courseResult = await query(
-      "SELECT id, is_published, COALESCE(is_free, true) AS is_free, external_course_id, COALESCE(is_management_managed, false) AS is_management_managed FROM courses WHERE id = $1",
+      "SELECT id, name, slug, is_published, COALESCE(is_free, true) AS is_free, external_course_id, COALESCE(is_management_managed, false) AS is_management_managed FROM courses WHERE id = $1",
       [courseId],
     );
     if (courseResult.rows.length === 0) {
@@ -93,6 +94,18 @@ router.post("/", protectRoute, async (req, res) => {
        RETURNING *`,
       [userId, courseId],
     );
+
+    if (req.user?.email) {
+      const course = courseResult.rows[0];
+      const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+      sendCourseEnrollmentEmail({
+        email: req.user.email,
+        username: req.user.username,
+        courseName: course.name,
+        courseUrl: `${frontendUrl}/learning/${course.slug || courseId}`,
+      }).catch((err) => console.error("[ENROLLMENT EMAIL WARNING]", err.message));
+    }
+
     return res.status(201).json({
       success: true,
       data: enrollmentRes.rows[0],

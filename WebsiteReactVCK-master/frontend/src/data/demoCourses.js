@@ -14,7 +14,7 @@ const createCourseCover = (title, chinese, colors) => {
       <rect width="1200" height="675" rx="36" fill="url(#grid)" />
       <circle cx="1030" cy="110" r="250" fill="white" fill-opacity=".08" />
       <circle cx="110" cy="650" r="270" fill="white" fill-opacity=".06" />
-      <text x="80" y="110" fill="white" fill-opacity=".78" font-family="Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="8">CSCA ACADEMY</text>
+      <text x="80" y="110" fill="white" fill-opacity=".78" font-family="Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="8">MOLY COURSE</text>
       <text x="80" y="340" fill="white" font-family="Arial, sans-serif" font-size="78" font-weight="800">${title}</text>
       <text x="82" y="430" fill="white" fill-opacity=".8" font-family="Arial, sans-serif" font-size="54">${chinese}</text>
       <rect x="80" y="515" width="230" height="58" rx="29" fill="white" fill-opacity=".16" stroke="white" stroke-opacity=".35" />
@@ -33,7 +33,7 @@ const demoCourses = [
     level: 'Sơ cấp',
     lessonsCount: 36,
     duration: '12 tuần',
-    authorName: 'CSCA Academy',
+    authorName: 'Moly Course',
     imageCourse: createCourseCover('HSK 1–2', '汉语入门', ['#ef4444', '#f59e0b']),
     createdAt: '2026-01-10T00:00:00.000Z',
     updatedAt: '2026-06-20T00:00:00.000Z',
@@ -46,7 +46,7 @@ const demoCourses = [
     level: 'Trung cấp',
     lessonsCount: 42,
     duration: '14 tuần',
-    authorName: 'CSCA Academy',
+    authorName: 'Moly Course',
     imageCourse: createCourseCover('HSK 3', '中级汉语', ['#0f766e', '#22c55e']),
     createdAt: '2026-01-12T00:00:00.000Z',
     updatedAt: '2026-06-22T00:00:00.000Z',
@@ -59,7 +59,7 @@ const demoCourses = [
     level: 'Trung cấp',
     lessonsCount: 48,
     duration: '16 tuần',
-    authorName: 'CSCA Academy',
+    authorName: 'Moly Course',
     imageCourse: createCourseCover('HSK 4', '考试强化', ['#2563eb', '#06b6d4']),
     createdAt: '2026-01-15T00:00:00.000Z',
     updatedAt: '2026-06-25T00:00:00.000Z',
@@ -72,7 +72,7 @@ const demoCourses = [
     level: 'Cao cấp',
     lessonsCount: 56,
     duration: '20 tuần',
-    authorName: 'CSCA Academy',
+    authorName: 'Moly Course',
     imageCourse: createCourseCover('HSK 5–6', '高级汉语', ['#7c3aed', '#db2777']),
     createdAt: '2026-01-18T00:00:00.000Z',
     updatedAt: '2026-06-27T00:00:00.000Z',
@@ -85,7 +85,7 @@ const demoCourses = [
     level: 'Mọi trình độ',
     lessonsCount: 30,
     duration: '10 tuần',
-    authorName: 'CSCA Academy',
+    authorName: 'Moly Course',
     imageCourse: createCourseCover('HSKK', '口语考试', ['#ea580c', '#eab308']),
     createdAt: '2026-01-20T00:00:00.000Z',
     updatedAt: '2026-06-28T00:00:00.000Z',
@@ -98,7 +98,7 @@ const demoCourses = [
     level: 'Dự bị đại học',
     lessonsCount: 40,
     duration: '16 tuần',
-    authorName: 'CSCA Academy',
+    authorName: 'Moly Course',
     imageCourse: createCourseCover('CSCA', '留学预科', ['#be123c', '#dc2626']),
     createdAt: '2026-01-22T00:00:00.000Z',
     updatedAt: '2026-06-30T00:00:00.000Z',
