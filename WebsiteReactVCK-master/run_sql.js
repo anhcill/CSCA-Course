@@ -28,7 +28,10 @@ const migrationFiles = [
   "database/migrations/030_class_announcements.sql",
 ];
 
-const checksum = (sql) => crypto.createHash("sha256").update(sql).digest("hex");
+// Git may check out SQL with CRLF on Windows while Railway reads LF. A
+// migration checksum must represent the SQL itself, not the workstation's
+// line-ending convention.
+const checksum = (sql) => crypto.createHash("sha256").update(sql.replace(/\r\n/g, "\n")).digest("hex");
 const getSql = (relativePath) => {
   if (!fs.existsSync(relativePath)) throw new Error(`Migration file not found: ${relativePath}`);
   return fs.readFileSync(relativePath, "utf8");
