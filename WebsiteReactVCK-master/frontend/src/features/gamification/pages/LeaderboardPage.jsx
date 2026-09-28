@@ -471,7 +471,7 @@ export default function LeaderboardPage() {
             {scope === "class" ? (
               <span>Đang hiển thị bảng xếp hạng trong phạm vi <strong>Lớp học HSK 3 - Khóa K24</strong> của đại ca.</span>
             ) : (
-              <span>Đang hiển thị bảng xếp hạng đua top chung trên <strong>Toàn bộ học viên CSCA Academy</strong>.</span>
+              <span>Đang hiển thị bảng xếp hạng đua top chung trên <strong>Toàn bộ học viên MOLY COURSE 2026</strong>.</span>
             )}
           </p>
         </div>

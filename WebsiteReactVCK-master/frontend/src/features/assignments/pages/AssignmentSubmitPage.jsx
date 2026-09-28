@@ -771,7 +771,7 @@ export default function AssignmentSubmitPage() {
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">Xác Nhận Nộp Bài Tập</h3>
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-light">
-                Bài làm của bạn sẽ được nộp chính thức lên hệ thống LMS CSCA Academy và không thể tự ý sửa đổi sau khi nộp.
+                Bài làm của bạn sẽ được nộp chính thức lên hệ thống LMS MOLY COURSE 2026 và không thể tự ý sửa đổi sau khi nộp.
               </p>
             </div>
 

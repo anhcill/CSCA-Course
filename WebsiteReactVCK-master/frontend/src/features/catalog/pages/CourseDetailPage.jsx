@@ -358,14 +358,14 @@ export default function CourseDetailPage() {
                 <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-rose-500 bg-slate-800 flex-shrink-0">
                   <img
                     src={course.instructor_avatar_url || "/logo192.png"}
-                    alt={course.instructor_name || "Giảng viên CSCA Academy"}
+                    alt={course.instructor_name || "Giảng viên MOLY COURSE 2026"}
                     className="w-full h-full object-cover"
                   />
                 </div>
                 <div>
                   <div className="text-xs text-slate-400">Giảng viên hướng dẫn</div>
                   <div className="font-bold text-white flex items-center gap-1.5">
-                    <span>{course.instructor_name || "Đội ngũ CSCA Academy"}</span>
+                    <span>{course.instructor_name || "Đội ngũ MOLY COURSE 2026"}</span>
                     <span className="text-rose-400 text-xs" title="Giảng viên đã xác minh">✓</span>
                   </div>
                 </div>
@@ -526,12 +526,12 @@ export default function CourseDetailPage() {
               <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-rose-500 flex-shrink-0 bg-slate-800">
                 <img
                   src={course.instructor_avatar_url || "/logo192.png"}
-                  alt={course.instructor_name || "Giảng viên CSCA Academy"}
+                  alt={course.instructor_name || "Giảng viên MOLY COURSE 2026"}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="space-y-2.5">
-                <h4 className="text-lg font-bold text-white">{course.instructor_name || "Đội ngũ CSCA Academy"}</h4>
+                <h4 className="text-lg font-bold text-white">{course.instructor_name || "Đội ngũ MOLY COURSE 2026"}</h4>
                 <p className="text-xs text-rose-400 font-semibold uppercase tracking-wider">
                   Giảng viên phụ trách khóa học
                 </p>

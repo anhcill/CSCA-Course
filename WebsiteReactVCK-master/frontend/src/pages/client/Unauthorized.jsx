@@ -7,7 +7,7 @@ export default function Unauthorized() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
       <Meta
         title="Yêu Cầu Đăng Nhập (401) - CSCA LMS"
-        description="Bạn cần đăng nhập để truy cập không gian học tập trực tuyến CSCA Academy."
+        description="Bạn cần đăng nhập để truy cập không gian học tập trực tuyến MOLY COURSE 2026."
       />
 
       <div className="w-full max-w-lg rounded-3xl border border-rose-500/25 bg-slate-900/80 p-8 sm:p-12 text-center shadow-2xl backdrop-blur-md">

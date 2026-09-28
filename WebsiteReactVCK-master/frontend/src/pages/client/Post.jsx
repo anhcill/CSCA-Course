@@ -1,253 +1,109 @@
-import React, { useState, useEffect, useMemo } from 'react';
+/* eslint-disable react/prop-types */
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FaSearch, FaCalendarAlt, FaUser, FaFire } from 'react-icons/fa';
-import { useTranslation } from 'react-i18next';
-import useCRUDPost from '../../hooks/useCRUDPost';
-import { useAuthContext } from '../../context/AuthContext';
-import useGetUsers from '../../hooks/useGetUsers';
-import { marked } from "marked";
+import { ArrowRight, CalendarDays, Clock3, Search, Sparkles } from 'lucide-react';
 import Meta from '../../components/Meta.jsx';
-import { useTheme } from "../../context/ThemeContext";
-import Loading from "../../components/Loading";
+import MOLY_ARTICLES from '../../data/molyArticles.js';
 
-const Post = () => {
-  const { t } = useTranslation();
-  const { posts, loading } = useCRUDPost();
-  const { authUser } = useAuthContext();
-  const { users } = useGetUsers();
-  const { isDarkMode } = useTheme();
+const CATEGORIES = ['TẤT CẢ', ...new Set(MOLY_ARTICLES.map((article) => article.category))];
 
-  // Memoize mockPosts to prevent unnecessary recalculations
-  const mockPosts = useMemo(() => {
-    if (posts && posts.length > 0) {
-      return posts.filter((post) => post.permission === true);
-    } else {
-      return [];
-    }
-  }, [posts]);
+const formatDate = (date) => new Intl.DateTimeFormat('vi-VN', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+}).format(new Date(date));
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredPosts, setFilteredPosts] = useState([]);
-
-  useEffect(() => {
-    if (searchTerm) {
-      const filtered = mockPosts.filter(post =>
-        post.title.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredPosts(filtered);
-    } else {
-      setFilteredPosts([]);
-    }
-  }, [searchTerm, mockPosts]);
-
-  // Get latest 7 posts for main content
-  const latestPosts = mockPosts.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 7);
-  // Get 3 featured posts for sidebar
-  const featuredPosts = mockPosts.slice(0, 3);
-
-  const postsToDisplay = searchTerm ? filteredPosts : latestPosts;
-
-  const PostCard = ({ post, isFeatured, isCompact }) => (
-    <div
-      className={`relative ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 ${
-        isFeatured ? 'flex gap-4' : ''
-      }  border-animated`} // Thêm class 'border-animated'
-    >
-      {/* Nội dung card bên trong (giữ nguyên như cũ) */}
-      <div className={`relative ${isFeatured ? 'w-1/3' : isCompact ? 'h-48' : 'h-56'}`}>
-        <img
-          src={post.imageUrl}
-          alt={post.title}
-          className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 hover:scale-105 rounded-xl"
-          onError={(e) => {
-            e.target.src = 'https://via.placeholder.com/400x240?text=Post+Image';
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+function ArticleCard({ article, featured = false }) {
+  return (
+    <article className={`group overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl dark:border-white/10 dark:bg-slate-900 ${featured ? 'lg:grid lg:grid-cols-[0.95fr_1.05fr]' : ''}`}>
+      <div className={`relative overflow-hidden bg-gradient-to-br ${article.tone} ${featured ? 'min-h-64 lg:min-h-full' : 'h-48'}`}>
+        <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full border border-white/25" />
+        <div className="absolute bottom-6 left-6 right-6">
+          <span className="rounded-full border border-white/30 bg-white/15 px-3 py-1 text-[10px] font-black tracking-[0.18em] text-white backdrop-blur">
+            {article.category}
+          </span>
+          <p className="mt-5 max-w-xs text-4xl font-black leading-none tracking-tight text-white/95">MOLY<br />COURSE</p>
+          <p className="mt-3 text-sm font-semibold text-white/75">2026 · Học đúng mục tiêu</p>
+        </div>
       </div>
-      <div className={`${isFeatured ? 'flex-1 p-4' : 'p-4'}`}>
-        <h2 className={`font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} mb-3 line-clamp-2 ${
-          isFeatured || isCompact ? 'text-lg' : 'text-xl'
-        }`}>
-          {post.title}
+      <div className="flex flex-col p-6 sm:p-7">
+        <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
+          <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" />{formatDate(article.publishedAt)}</span>
+          <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" />{article.readTime}</span>
+        </div>
+        <h2 className="mt-4 text-xl font-black leading-tight text-slate-950 transition group-hover:text-red-600 dark:text-white dark:group-hover:text-amber-300">
+          {article.title}
         </h2>
-        {!isFeatured && (
-          <>
-            <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-600'} mb-4 line-clamp-2 text-sm leading-relaxed`}
-              dangerouslySetInnerHTML={{ __html: marked(post.content) }}></p>
-            <div className={`flex items-center justify-between text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} mb-4`}>
-              <div className="flex items-center space-x-2">
-                <FaUser className={`${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`} />
-                <span>{post.author ? users?.find((user) => user._id === post.author)?.username : 'N/A'}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <FaCalendarAlt className={`${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`} />
-                <span>{new Date(post.updatedAt).toLocaleDateString('vi-VN')}</span>
-              </div>
-            </div>
-          </>
-        )}
-        <Link
-          to={`/post/${post._id}`}
-          className={`inline-block w-full text-center px-4 py-2 ${
-            isDarkMode
-              ? 'bg-gradient-to-r from-blue-700 to-blue-800 hover:from-blue-600 hover:to-blue-700'
-              : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'
-          } text-white rounded-lg hover:text-white transition-all duration-300 transform hover:scale-[1.02] ${
-            isFeatured || isCompact ? 'text-sm' : ''
-          }`}
-        >
-          {t('postButton')}
+        <p className="mt-3 flex-1 text-sm leading-6 text-slate-600 dark:text-slate-300">{article.excerpt}</p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {article.tags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">#{tag}</span>)}
+        </div>
+        <Link to={`/post/${article.id}`} className="mt-6 inline-flex items-center gap-2 text-sm font-black text-red-600 transition group-hover:gap-3 dark:text-amber-300">
+          Đọc bài viết <ArrowRight className="h-4 w-4" />
         </Link>
       </div>
-    </div>
+    </article>
   );
+}
+
+export default function Post() {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [category, setCategory] = useState('TẤT CẢ');
+
+  const articles = useMemo(() => {
+    const needle = searchTerm.trim().toLocaleLowerCase('vi');
+    return MOLY_ARTICLES.filter((article) => {
+      const matchesCategory = category === 'TẤT CẢ' || article.category === category;
+      const searchable = [article.title, article.excerpt, article.category, ...article.tags].join(' ').toLocaleLowerCase('vi');
+      return matchesCategory && (!needle || searchable.includes(needle));
+    });
+  }, [category, searchTerm]);
 
   return (
-    <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-gray-100'} py-12 relative overflow-hidden`}>
-      {/* Background graphic elements with multiple colors */}
-      <div className="absolute inset-0 z-0 p-8">
-        {/* Top left rounded corner - gradient border */}
-        <div className="absolute top-12 mt-10 left-12 w-1/4 h-32 border-l-2 border-t-2 rounded-tl-[80px] opacity-70 rounded-xl"
-             style={{
-               borderImage: isDarkMode
-                 ? 'linear-gradient(135deg, #f87171, #8b5cf6, #3b82f6) 1'
-                 : 'linear-gradient(135deg, #ef4444, #8b5cf6, #3b82f6) 1'
-             }}></div>
+    <div className="min-h-screen bg-[#fffaf6] py-12 dark:bg-slate-950 sm:py-16">
+      <Meta
+        title="Bài viết | MOLY COURSE 2026"
+        description="Bài viết mới từ MOLY COURSE 2026 về học tiếng Trung, HSK, HSKK, CSCA và chuẩn bị du học Trung Quốc."
+        keywords="MOLY COURSE 2026, học tiếng Trung, HSK, HSKK, CSCA, du học Trung Quốc"
+      />
 
-        {/* Top right rounded corner - changing colors */}
-        <div className="absolute top-16 mt-10 right-16 w-1/3 h-40 border-r-2 border-t-2 rounded-tr-[80px] opacity-70 rounded-xl"
-             style={{
-               borderImage: isDarkMode
-                 ? 'linear-gradient(45deg, #10b981, #6366f1, #ec4899) 1'
-                 : 'linear-gradient(45deg, #10b981, #6366f1, #f43f5e) 1'
-             }}></div>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <header className="relative overflow-hidden rounded-[2rem] bg-slate-950 px-6 py-12 text-white shadow-2xl sm:px-10 lg:px-14 lg:py-16">
+          <div className="absolute -right-24 -top-32 h-80 w-80 rounded-full bg-red-600/40 blur-3xl" />
+          <div className="absolute -bottom-32 left-1/3 h-72 w-72 rounded-full bg-amber-400/20 blur-3xl" />
+          <div className="relative max-w-3xl">
+            <span className="inline-flex items-center gap-2 rounded-full border border-amber-200/30 bg-white/10 px-3 py-1.5 text-xs font-black uppercase tracking-[0.2em] text-amber-200"><Sparkles className="h-3.5 w-3.5" /> MOLY COURSE 2026</span>
+            <h1 className="mt-6 text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">Góc học tập<br /><span className="text-amber-300">đúng mục tiêu</span></h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">Những hướng dẫn ngắn gọn, thực tế và được viết mới để bạn học tiếng Trung, chuẩn bị kỳ thi và xây dựng kế hoạch du học rõ ràng hơn.</p>
+          </div>
+        </header>
 
-        {/* Middle left element - sunset colors */}
-        <div className="absolute top-1/4 left-14 w-1/6 h-48 border-l-2 border-b-2 rounded-bl-[60px] opacity-60 rounded-xl"
-             style={{
-               borderImage: isDarkMode
-                 ? 'linear-gradient(to bottom, #fb923c, #e11d48, #7c3aed) 1'
-                 : 'linear-gradient(to bottom, #fb923c, #ef4444, #8b5cf6) 1'
-             }}></div>
-
-        {/* Middle element - rainbow effect */}
-        <div className="absolute top-1/3 left-1/4 w-1/2 h-32 border-2 rounded-[50px] opacity-50 rounded-xl"
-             style={{
-               borderImage: isDarkMode
-                 ? 'linear-gradient(to right, #f97316, #facc15, #22c55e, #0ea5e9, #a855f7) 1'
-                 : 'linear-gradient(to right, #fb923c, #fde047, #4ade80, #38bdf8, #c084fc) 1'
-             }}></div>
-
-        {/* Bottom right element - cool tones */}
-        <div className="absolute bottom-12 right-12 w-1/5 h-64 border-r-2 border-b-2 rounded-br-[70px] opacity-70 rounded-xl"
-             style={{
-               borderImage: isDarkMode
-                 ? 'linear-gradient(225deg, #6366f1, #2563eb, #0ea5e9, #06b6d4) 1'
-                 : 'linear-gradient(225deg, #818cf8, #3b82f6, #38bdf8, #22d3ee) 1'
-             }}></div>
-
-        {/* Bottom left element - warm tones */}
-        <div className="absolute bottom-16 left-16 w-20 h-80 border-l-2 opacity-60 rounded-xl rounded-b-[80px]"
-             style={{
-               borderImage: isDarkMode
-                 ? 'linear-gradient(to bottom, #f97316, #f59e0b, #eab308, #84cc16) 1'
-                 : 'linear-gradient(to bottom, #fb923c, #fbbf24, #facc15, #a3e635) 1'
-             }}></div>
-
-        {/* The colored dots in the center */}
-        <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 flex space-x-4">
-          <div className="w-4 h-4 rounded-full bg-pink-500 animate-pulse"></div>
-          <div className="w-4 h-4 rounded-full bg-purple-500 animate-pulse" style={{animationDelay: "0.2s"}}></div>
-          <div className="w-4 h-4 rounded-full bg-blue-500 animate-pulse" style={{animationDelay: "0.4s"}}></div>
-          <div className="w-4 h-4 rounded-full bg-green-500 animate-pulse" style={{animationDelay: "0.6s"}}></div>
-          <div className="w-4 h-4 rounded-full bg-yellow-500 animate-pulse" style={{animationDelay: "0.8s"}}></div>
+        <div className="mt-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-2" aria-label="Lọc chuyên mục">
+            {CATEGORIES.map((item) => (
+              <button key={item} type="button" onClick={() => setCategory(item)} className={`rounded-full px-4 py-2 text-xs font-black transition ${category === item ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:text-red-600 dark:bg-slate-900 dark:text-slate-300 dark:ring-white/10 dark:hover:text-amber-300'}`}>
+                {item}
+              </button>
+            ))}
+          </div>
+          <label className="relative block w-full lg:max-w-sm">
+            <span className="sr-only">Tìm bài viết</span>
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Tìm trong bài viết..." className="w-full rounded-2xl border-0 bg-white py-3 pl-11 pr-4 text-sm text-slate-900 shadow-sm ring-1 ring-slate-200 outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-red-500 dark:bg-slate-900 dark:text-white dark:ring-white/10 dark:focus:ring-amber-400" />
+          </label>
         </div>
 
-        {/* Additional decorative elements */}
-        <div className="absolute top-1/3 right-20 w-16 h-16 border-2 rounded-full opacity-60 "
-             style={{
-               borderImage: isDarkMode
-                 ? 'linear-gradient(to right, #ec4899, #a855f7) 1'
-                 : 'linear-gradient(to right, #f43f5e, #c084fc) 1'
-             }}></div>
-
-        <div className="absolute bottom-1/4 left-1/3 w-24 h-24 border-2 rounded-full opacity-50 "
-             style={{
-               borderImage: isDarkMode
-                 ? 'linear-gradient(to right, #14b8a6, #0ea5e9) 1'
-                 : 'linear-gradient(to right, #2dd4bf, #38bdf8) 1'
-             }}></div>
-      </div>
-
-      <Meta
-        title={t('blogMetaTitle')}
-        description={t('blogMetaDescription')}
-        keywords={t('blogMetaKeywords')}
-      />
-      {/* Main Content */}
-      <div className="container mx-auto px-4 mt-20 relative z-10">
-        {loading ? (
-          <Loading loading={true} text="Đang tải danh sách bài viết..." fullScreen={false} className="min-h-[50vh] py-16" />
+        {articles.length > 0 ? (
+          <div className="mt-10 grid gap-6 md:grid-cols-2">
+            {articles.map((article, index) => <ArticleCard key={article.id} article={article} featured={index === 0 && !searchTerm && category === 'TẤT CẢ'} />)}
+          </div>
         ) : (
-          <div className="flex flex-col lg:flex-row gap-8">
-            {/* Left Column - Latest Posts */}
-            <div className="lg:w-2/3">
-              <h2 className={`text-3xl ${isDarkMode ? "text-gray-100" : "text-black"} font-bold mb-8 flex items-center`}>
-                <FaFire className={`${isDarkMode ? "text-orange-400" : "text-orange-500"} mr-3 animate-pulse`} />
-                {t('postTitle')}
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {postsToDisplay.map((post) => (
-                  <PostCard key={post._id} post={post} isCompact={true} />
-                ))}
-              </div>
-            </div>
-
-            {/* Right Column - Search and Featured Posts */}
-            <div className="lg:w-1/3">
-              {/* Search Section */}
-              <div className={`${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-slate-50'} rounded-xl shadow-md p-6 mb-8 backdrop-blur-sm ${isDarkMode ? 'bg-opacity-70' : 'bg-opacity-90'}`}>
-                <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} mb-4`}>
-                  {t('postSearch')}
-                </h2>
-                <div className="flex flex-col gap-4">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder={t('postInputSearch')}
-                      className={`w-full px-4 py-3 rounded-lg ${
-                        isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white'
-                      } border focus:ring-2 ${
-                        isDarkMode ? 'focus:ring-blue-400' : 'focus:ring-blue-500'
-                      } focus:border-transparent transition-all duration-300`}
-                    />
-                    <FaSearch className={`absolute right-3 top-1/2 transform -translate-y-1/2 ${
-                      isDarkMode ? 'text-gray-400 hover:text-blue-400' : 'text-gray-400 hover:text-blue-500'
-                    } transition-colors duration-300`} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Featured Posts */}
-              <div className={`${isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'} rounded-xl shadow-md p-6 backdrop-blur-sm ${isDarkMode ? 'bg-opacity-70' : 'bg-opacity-90'}`}>
-                <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} mb-6`}>
-                  {t('postFeatured')}
-                </h2>
-                <div className="space-y-6">
-                  {featuredPosts.map((post) => (
-                    <PostCard key={post._id} post={post} isFeatured={true} />
-                  ))}
-                </div>
-              </div>
-            </div>
+          <div className="mt-10 rounded-3xl bg-white px-6 py-16 text-center shadow-sm dark:bg-slate-900">
+            <h2 className="text-xl font-black text-slate-950 dark:text-white">Chưa tìm thấy bài viết phù hợp</h2>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Thử từ khóa khác hoặc chọn lại chuyên mục.</p>
           </div>
         )}
       </div>
     </div>
   );
-};
-
-export default Post;
+}

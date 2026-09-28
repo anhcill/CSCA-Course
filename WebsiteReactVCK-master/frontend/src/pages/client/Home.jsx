@@ -273,7 +273,7 @@ const HeroBanner = () => {
                   Bắt đầu học <ArrowRight className="h-4 w-4" />
                 </Link>
                 <a
-                  href="https://zalo.me/0812352005"
+                  href="https://zalo.me/0815913408"
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-2 rounded-xl border border-white/40 bg-white/10 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white/20 sm:px-8 sm:py-4 sm:text-base"

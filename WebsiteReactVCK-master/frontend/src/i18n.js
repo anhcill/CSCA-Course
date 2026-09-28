@@ -22,17 +22,17 @@ const resources = {
       "logout": "Logout",
       // Footer translations
       "about_us": "About Us",
-      "about_description": "CSCA Academy provides structured Chinese, HSK, HSKK and CSCA preparation, together with scholarship guidance and support for studying in China.",
+      "about_description": "MOLY COURSE 2026 supports Chinese learners preparing for HSK, HSKK, CSCA and study plans in China.",
       "categories": "Categories",
       "contact_info": "Contact Info",
       "follow_us": "Follow Us",
       "address": "Address",
       "phone": "Phone",
       "email": "Email",
-      "copyright": `© ${new Date().getFullYear()} CSCA Academy. All rights reserved.`,
+      "copyright": `© ${new Date().getFullYear()} MOLY COURSE 2026. All rights reserved.`,
       "address_detail": "Official academy address will be updated soon",
-      "phone_number": "0812352005",
-      "email_address": "khlyp05@gmail.com",
+      "phone_number": "0815913408",
+      "email_address": "Zalo 0815913408",
 
       // Profile page translations (NEW - BỔ SUNG CHO PROFILE)
       "personal_info": "Personal Information",
@@ -147,17 +147,17 @@ const resources = {
       "logout": "Đăng xuất",
       // Footer translations
       "about_us": "Về chúng tôi",
-      "about_description": "CSCA Academy đào tạo tiếng Trung, luyện thi HSK, HSKK và CSCA theo lộ trình bài bản, đồng thời tư vấn học bổng và hỗ trợ hành trình du học Trung Quốc.",
+      "about_description": "MOLY COURSE 2026 đồng hành cùng người học tiếng Trung, luyện thi HSK, HSKK, CSCA và chuẩn bị kế hoạch học tập tại Trung Quốc.",
       "categories": "Danh mục",
       "contact_info": " Thông tin liên hệ",
       "follow_us": "Theo dõi chúng tôi",
       "address": "Địa chỉ",
       "phone": "Điện thoại",
       "email": "Email",
-      "copyright": `© ${new Date().getFullYear()} CSCA Academy. Đã đăng ký bản quyền.`,
+      "copyright": `© ${new Date().getFullYear()} MOLY COURSE 2026. Đã đăng ký bản quyền.`,
       "address_detail": "Địa chỉ chính thức của trung tâm sẽ được cập nhật sau",
-      "phone_number": "0812352005",
-      "email_address": "khlyp05@gmail.com",
+      "phone_number": "0815913408",
+      "email_address": "Zalo 0815913408",
 
       // Profile page translations (NEW - BỔ SUNG CHO PROFILE) - Bản dịch tiếng Việt
       "personal_info": "Thông tin cá nhân",

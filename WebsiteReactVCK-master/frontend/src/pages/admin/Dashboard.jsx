@@ -143,7 +143,7 @@ export default function Dashboard() {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 mb-2">
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <span>Executive Admin Console — CSCA Academy</span>
+            <span>Executive Admin Console — MOLY COURSE 2026</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
             Tổng Quan Hệ Thống Quản Trị
