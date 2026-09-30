@@ -34,6 +34,12 @@ const forbidden = (res, message) => res.status(403).json({
   errorCode: "FORBIDDEN",
 });
 
+// Teachers and administrators use the same endpoints for their workspaces.
+// A public-site `user` must additionally hold an active Management LMS account.
+const requireManagedLearner = (req, res, next) => (
+  req.user?.role === "user" ? requireActiveStudentLmsAccess(req, res, next) : next()
+);
+
 const internalError = (res, message) => res.status(500).json({
   success: false,
   message,
@@ -270,15 +276,11 @@ const canViewClass = async (liveClass, user) => {
   const result = await query(
     `SELECT 1
      FROM class_enrollments ce
-     LEFT JOIN courses c ON c.id = $3
      WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
-       AND (
-         COALESCE(c.is_management_managed, FALSE) = FALSE
-         OR EXISTS (
-           SELECT 1 FROM lms_access_grants g
-           WHERE g.user_id = $2 AND g.course_id = c.id AND g.access_status = 'active'
-             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-         )
+       AND EXISTS (
+         SELECT 1 FROM lms_access_grants g
+         WHERE g.user_id = $2 AND g.course_id = $3 AND g.access_status = 'active'
+           AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
        )`,
     [liveClass.id, user.id, liveClass.course_id],
   );
@@ -318,13 +320,10 @@ const classListVisibility = (user) => {
       SELECT 1 FROM class_enrollments ce
       LEFT JOIN courses course_access ON course_access.id = lc.course_id
       WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
-        AND (
-          COALESCE(course_access.is_management_managed, FALSE) = FALSE
-          OR EXISTS (
-            SELECT 1 FROM lms_access_grants g
-            WHERE g.user_id = $1 AND g.course_id = course_access.id AND g.access_status = 'active'
-              AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-          )
+        AND EXISTS (
+          SELECT 1 FROM lms_access_grants g
+          WHERE g.user_id = $1 AND g.course_id = course_access.id AND g.access_status = 'active'
+            AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
         )
     )`,
     params: [user.id],
@@ -347,13 +346,10 @@ const sessionVisibility = (user) => {
       SELECT 1 FROM class_enrollments ce
       LEFT JOIN courses course_access ON course_access.id = lc.course_id
       WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
-        AND (
-          COALESCE(course_access.is_management_managed, FALSE) = FALSE
-          OR EXISTS (
-            SELECT 1 FROM lms_access_grants g
-            WHERE g.user_id = $1 AND g.course_id = course_access.id AND g.access_status = 'active'
-              AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-          )
+        AND EXISTS (
+          SELECT 1 FROM lms_access_grants g
+          WHERE g.user_id = $1 AND g.course_id = course_access.id AND g.access_status = 'active'
+            AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
         )
     )`,
     params: [user.id],
@@ -393,7 +389,7 @@ const validateSessionInput = (body, { partial = false } = {}) => {
 };
 
 // GET /api/live-classes — only classes visible to the current role.
-router.get("/", protectRoute, async (req, res) => {
+router.get("/", protectRoute, requireManagedLearner, async (req, res) => {
   try {
     const visibility = classListVisibility(req.user);
     const result = await query(
@@ -504,7 +500,7 @@ router.patch("/:classId", protectRoute, requireTeacher, requirePermission("lms.c
 });
 
 // GET /api/live-classes/my-schedule — no meeting URL or passcode is returned here.
-router.get("/my-schedule", protectRoute, async (req, res) => {
+router.get("/my-schedule", protectRoute, requireManagedLearner, async (req, res) => {
   try {
     const courseId = req.query.courseId === undefined ? null : parsePositiveId(req.query.courseId);
     if (req.query.courseId !== undefined && !courseId) return validationError(res, "courseId không hợp lệ");
@@ -784,7 +780,7 @@ router.delete("/:classId/enrollments/:userId", protectRoute, requireTeacher, req
 });
 
 // Weekly recurring schedule CRUD. Times are stored as TIME; session timestamps are UTC TIMESTAMPTZ.
-router.get("/:classId/schedules", protectRoute, async (req, res) => {
+router.get("/:classId/schedules", protectRoute, requireManagedLearner, async (req, res) => {
   try {
     const classId = parsePositiveId(req.params.classId);
     if (!classId) return validationError(res, "classId không hợp lệ");
@@ -1099,7 +1095,7 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireRole("admi
 // explicit supplemental lessons for an already course-bound class.
 // GET /api/live-classes/:classId/calendar.ics — authenticated full-class export.
 // A feed deliberately contains LMS workspace URLs, never Meet/Zoom secrets.
-router.get("/:classId/calendar.ics", protectRoute, async (req, res) => {
+router.get("/:classId/calendar.ics", protectRoute, requireManagedLearner, async (req, res) => {
   try {
     const classId = parsePositiveId(req.params.classId);
     if (!classId) return validationError(res, "classId không hợp lệ");
@@ -1131,7 +1127,7 @@ router.get("/:classId/calendar.ics", protectRoute, async (req, res) => {
   }
 });
 
-router.get("/:classId/sessions", protectRoute, async (req, res) => {
+router.get("/:classId/sessions", protectRoute, requireManagedLearner, async (req, res) => {
   try {
     const classId = parsePositiveId(req.params.classId);
     if (!classId) return validationError(res, "classId không hợp lệ");
@@ -1424,7 +1420,7 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
 });
 
 // GET /api/live-classes/sessions/:sessionId/access — verified access only.
-router.get("/sessions/:sessionId/access", protectRoute, async (req, res) => {
+router.get("/sessions/:sessionId/access", protectRoute, requireManagedLearner, async (req, res) => {
   try {
     const sessionId = parsePositiveId(req.params.sessionId);
     if (!sessionId) return validationError(res, "sessionId không hợp lệ");
@@ -1461,7 +1457,7 @@ router.get("/sessions/:sessionId/access", protectRoute, async (req, res) => {
     const isOwner = req.user.role === "admin"
       || (req.user.role === "creator" && (String(session.instructor_id) === String(req.user.id) || session.is_class_teacher));
     const canAccess = isOwner || (req.user.role === "user" && session.is_enrolled && session.course_is_published
-      && (!session.course_is_management_managed || session.has_management_entitlement));
+      && session.has_management_entitlement);
     if (!canAccess) return forbidden(res, "Bạn không có quyền vào buổi học này");
     if (!session.meet_url) return notFound(res, "Buổi học chưa có link tham gia");
 
@@ -1494,7 +1490,7 @@ router.get("/sessions/:sessionId/access", protectRoute, async (req, res) => {
 });
 
 // GET /api/live-classes/sessions/:sessionId/history — Get session change history
-router.get("/sessions/:sessionId/history", protectRoute, async (req, res) => {
+router.get("/sessions/:sessionId/history", protectRoute, requireManagedLearner, async (req, res) => {
   try {
     const sessionId = parsePositiveId(req.params.sessionId);
     if (!sessionId) return validationError(res, "sessionId không hợp lệ");

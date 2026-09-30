@@ -10,13 +10,18 @@ import {
   fetchCourseRatings,
 } from "../../api/lmsClient";
 import { LoadingState, ErrorState } from "../../../components/common/StateView";
+import { useAuthContext } from "../../../context/AuthContext";
+import { hasStudentLmsAccess } from "../../../utils/lmsAccess";
 
 export default function CourseDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const { authUser } = useAuthContext();
+  const canUseLms = hasStudentLmsAccess(authUser);
 
   const [courseData, setCourseData] = useState(null);
   const [isEnrolled, setIsEnrolled] = useState(false);
+  const [hasCourseLmsAccess, setHasCourseLmsAccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [enrolling, setEnrolling] = useState(false);
@@ -29,6 +34,8 @@ export default function CourseDetailPage() {
   const loadCourseDetails = useCallback(async () => {
     setLoading(true);
     setErrorMessage("");
+    setIsEnrolled(false);
+    setHasCourseLmsAccess(false);
     try {
       const res = await fetchCourseDetail(slug);
       if (res.success && res.data) {
@@ -44,6 +51,7 @@ export default function CourseDetailPage() {
             if (enrollRes.success && enrollRes.data?.isEnrolled) {
               setIsEnrolled(true);
             }
+            setHasCourseLmsAccess(Boolean(enrollRes.data?.hasLmsAccess));
           } catch {
             // Guest or not enrolled
           }
@@ -94,8 +102,8 @@ export default function CourseDetailPage() {
       const res = await enrollInCourse(courseData.course.id);
       if (res.success) {
         setIsEnrolled(true);
-        toast.success("Đăng ký khóa học thành công! Chúc bạn học tốt 🎉");
-        navigate(`/lms/courses/${courseData.course.id}/workspace`);
+        setHasCourseLmsAccess(false);
+        toast.success("Đã ghi nhận khóa học. LMS sẽ mở khi Management cấp quyền học.");
       }
     } catch (err) {
       console.error("Error enrolling:", err);
@@ -255,7 +263,7 @@ export default function CourseDetailPage() {
 
       {/* Action Buttons */}
       <div className="space-y-3">
-        {isEnrolled ? (
+        {isEnrolled && canUseLms && hasCourseLmsAccess ? (
           <button
             onClick={() => navigate(`/lms/courses/${course.id}/workspace`)}
             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-2xl transition duration-200 shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 text-base"
@@ -263,6 +271,11 @@ export default function CourseDetailPage() {
             <span>Vào Học Ngay</span>
             <span>➔</span>
           </button>
+        ) : isEnrolled ? (
+          <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-center">
+            <p className="text-sm font-bold text-emerald-300">Bạn đã có khóa ghi hình</p>
+            <p className="mt-1 text-xs leading-5 text-slate-400">LMS sẽ hiển thị khi Management cấp quyền học cho tài khoản của bạn.</p>
+          </div>
         ) : (
           <>
             <button

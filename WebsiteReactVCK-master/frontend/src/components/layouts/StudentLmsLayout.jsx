@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
 import { useEffect, useRef, useState } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Bell,
@@ -105,12 +105,14 @@ function Sidebar({ collapsed = false, onNavigate }) {
 
 export default function StudentLmsLayout({ children }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { authUser } = useAuthContext();
   const { isDarkMode, toggleTheme } = useTheme();
   const { logout } = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem('student-lms-sidebar-collapsed') === 'true');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const profileMenuRef = useRef(null);
   const workspaceLink = getLmsWorkspaceLink(authUser);
 
@@ -125,6 +127,12 @@ export default function StudentLmsLayout({ children }) {
     return () => document.removeEventListener("mousedown", closeOnOutsideClick);
   }, []);
 
+  const handleSearch = (event) => {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    navigate(`/lms/my-learning${query ? `?search=${encodeURIComponent(query)}` : ""}`);
+  };
+
   return (
     <div className="student-lms min-h-screen bg-[#f6f9fd] dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       <header className={`fixed inset-x-0 top-0 z-50 h-[72px] border-b border-slate-200/80 bg-white/95 shadow-[0_4px_20px_rgba(41,72,110,0.04)] backdrop-blur-xl transition-[left] duration-200 dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none ${sidebarCollapsed ? 'lg:left-20' : 'lg:left-64'}`}>
@@ -136,10 +144,10 @@ export default function StudentLmsLayout({ children }) {
             <button type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} className="hidden rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-blue-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-sky-400 lg:inline-flex" title={sidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'} aria-label={sidebarCollapsed ? 'Mở rộng menu học viên' : 'Thu gọn menu học viên'}>
               {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
             </button>
-            <div className="relative hidden max-w-xl flex-1 items-center md:flex">
+            <form onSubmit={handleSearch} className="relative hidden max-w-xl flex-1 items-center md:flex">
               <Search className="absolute left-4 h-4 w-4 text-slate-400 dark:text-slate-500" />
-              <input aria-label="Tìm kiếm trong LMS" className="h-11 w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 pl-11 pr-4 text-sm text-slate-700 dark:text-slate-200 outline-none transition placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-300 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-blue-500/10" placeholder="Tìm khóa học, bài học, tài liệu..." />
-            </div>
+              <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} aria-label="Tìm kiếm trong LMS" className="h-11 w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 pl-11 pr-4 text-sm text-slate-700 dark:text-slate-200 outline-none transition placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-300 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-blue-500/10" placeholder="Tìm khóa học của tôi..." />
+            </form>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">

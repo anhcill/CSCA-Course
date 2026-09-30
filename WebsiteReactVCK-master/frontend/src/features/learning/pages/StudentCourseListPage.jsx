@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Compass, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
@@ -20,6 +20,7 @@ const matchesSearch = (course, keyword) => {
 };
 
 export default function StudentCourseListPage() {
+  const location = useLocation();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -44,6 +45,11 @@ export default function StudentCourseListPage() {
   useEffect(() => {
     loadCourses();
   }, [loadCourses]);
+
+  useEffect(() => {
+    const requestedSearch = new URLSearchParams(location.search).get("search") || "";
+    setSearch(requestedSearch);
+  }, [location.search]);
 
   const visibleCourses = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase();

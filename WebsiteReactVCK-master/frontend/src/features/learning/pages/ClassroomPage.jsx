@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  fetchClassroomDetail,
+  fetchCourseWorkspace,
   fetchCourseProgress,
   sendProgressHeartbeat,
   fetchLessonNotes,
@@ -66,7 +66,7 @@ export default function ClassroomPage() {
     setErrorMessage("");
     try {
       const [detailResponse, progressResponse] = await Promise.all([
-        fetchClassroomDetail(courseId),
+        fetchCourseWorkspace(courseId, { classId }),
         fetchCourseProgress(courseId).catch(() => ({ success: false, data: { progressList: [] } })),
       ]);
       if (!detailResponse?.success || !detailResponse.data) {
@@ -99,7 +99,7 @@ export default function ClassroomPage() {
     } finally {
       setLoading(false);
     }
-  }, [courseId]);
+  }, [classId, courseId]);
 
   useEffect(() => {
     loadClassroomData();

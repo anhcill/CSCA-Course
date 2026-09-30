@@ -2,6 +2,7 @@ import express from "express";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
+import requireActiveStudentLmsAccess from "../middleware/requireActiveStudentLmsAccess.js";
 import { query } from "../db/connect.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import {
@@ -19,6 +20,10 @@ const errorResponse = (res, status, message, errorCode) => res.status(status).js
   success: false, message, errorCode,
 });
 
+const requireManagedLearner = (req, res, next) => (
+  req.user?.role === "user" ? requireActiveStudentLmsAccess(req, res, next) : next()
+);
+
 const parseId = (value) => {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
@@ -29,8 +34,7 @@ const safeFilename = (value) => typeof value === "string" && value.trim() && val
 const classAccess = async (classId, user) => {
   const result = await query(
     `SELECT lc.id, lc.course_id, lc.instructor_id, lc.title,
-            COALESCE(c.title, c.name) AS course_title,
-            COALESCE(c.is_management_managed, FALSE) AS is_management_managed
+            COALESCE(c.title, c.name) AS course_title
      FROM live_classes lc LEFT JOIN courses c ON c.id = lc.course_id
      WHERE lc.id = $1 AND lc.status <> 'cancelled'`,
     [classId],
@@ -51,15 +55,12 @@ const classAccess = async (classId, user) => {
     `SELECT 1
      FROM class_enrollments ce
      WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
-       AND (
-         $3::boolean = FALSE
-         OR EXISTS (
-           SELECT 1 FROM lms_access_grants g
-           WHERE g.course_id = $4 AND g.user_id = $2 AND g.access_status = 'active'
-             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-         )
+       AND EXISTS (
+         SELECT 1 FROM lms_access_grants g
+         WHERE g.course_id = $3 AND g.user_id = $2 AND g.access_status = 'active'
+           AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
        )`,
-    [classId, user.id, Boolean(liveClass.is_management_managed), liveClass.course_id],
+    [classId, user.id, liveClass.course_id],
   );
   return access.rows.length ? { liveClass, canManage: false } : { error: "forbidden" };
 };
@@ -93,7 +94,7 @@ const courseAccess = async (courseId, user) => {
 const fileAccess = async (fileId, user) => {
   const result = await query(
     `SELECT f.*, lc.instructor_id, lc.course_id AS class_course_id,
-            COALESCE(course_scope.is_management_managed, FALSE) AS is_management_managed
+            course_scope.id AS scoped_course_id
      FROM lms_learning_files f
      LEFT JOIN live_classes lc ON lc.id = f.live_class_id
      LEFT JOIN courses course_scope ON course_scope.id = COALESCE(f.course_id, lc.course_id)
@@ -116,16 +117,11 @@ const fileAccess = async (fileId, user) => {
     `SELECT 1
      FROM class_enrollments ce
      WHERE $1::bigint IS NOT NULL AND ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
-       AND ($4::boolean = FALSE OR EXISTS (
+       AND EXISTS (
          SELECT 1 FROM lms_access_grants g
          WHERE g.course_id = $3 AND g.user_id = $2 AND g.access_status = 'active'
            AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-       ))
-     UNION ALL
-     SELECT 1
-     FROM enrollments e
-     WHERE $1::bigint IS NULL AND $4::boolean = FALSE AND $3::bigint IS NOT NULL
-       AND e.course_id = $3 AND e.user_id = $2 AND e.status = 'active'
+       )
      UNION ALL
      SELECT 1
      FROM lms_access_grants g
@@ -133,7 +129,7 @@ const fileAccess = async (fileId, user) => {
        AND g.access_status = 'active' AND g.valid_from <= NOW()
        AND (g.valid_until IS NULL OR g.valid_until > NOW())
      LIMIT 1`,
-    [file.live_class_id, user.id, file.course_id || file.class_course_id, Boolean(file.is_management_managed)],
+    [file.live_class_id, user.id, file.course_id || file.class_course_id],
   );
   return access.rows.length ? { file } : { error: "forbidden" };
 };
@@ -282,7 +278,7 @@ router.post("/teacher/files/:fileId/confirm", protectRoute, requireTeacher, requ
 });
 
 // GET /api/student/files
-router.get("/student/files", protectRoute, async (req, res) => {
+router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async (req, res) => {
   if (req.user.role !== "user") return errorResponse(res, 403, "Chỉ học viên mới dùng endpoint này", "FORBIDDEN");
   try {
     const courseId = req.query.courseId === undefined ? null : parseId(req.query.courseId);
@@ -310,11 +306,11 @@ router.get("/student/files", protectRoute, async (req, res) => {
          LEFT JOIN courses c ON c.id = lc.course_id
          WHERE lc.id = $1 AND lc.course_id = $2 AND lc.status = 'active'
            AND ce.user_id = $3 AND ce.status = 'active'
-           AND (COALESCE(c.is_management_managed, FALSE) = FALSE OR EXISTS (
+           AND EXISTS (
              SELECT 1 FROM lms_access_grants g
              WHERE g.user_id = $3 AND g.course_id = lc.course_id AND g.access_status = 'active'
                AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-           ))`,
+           )`,
         [classId, courseId, req.user.id],
       );
       if (classAccessResult.rows.length === 0) {
@@ -342,17 +338,15 @@ router.get("/student/files", protectRoute, async (req, res) => {
              SELECT 1 FROM class_enrollments ce
              LEFT JOIN courses class_course ON class_course.id = lc.course_id
              WHERE ce.live_class_id = f.live_class_id AND ce.user_id = $1 AND ce.status = 'active'
-               AND (COALESCE(class_course.is_management_managed, FALSE) = FALSE OR EXISTS (
+               AND EXISTS (
                  SELECT 1 FROM lms_access_grants g
                  WHERE g.user_id = $1 AND g.course_id = class_course.id AND g.access_status = 'active'
                    AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-               ))
+               )
            ))
-           OR (f.course_id IS NOT NULL AND (
-             (COALESCE(c.is_management_managed, FALSE) = FALSE
-              AND EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id = f.course_id AND e.user_id = $1 AND e.status = 'active'))
-             OR EXISTS (SELECT 1 FROM lms_access_grants g WHERE g.course_id = f.course_id AND g.user_id = $1 AND g.access_status = 'active'
-                       AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW()))
+           OR (f.course_id IS NOT NULL AND EXISTS (
+             SELECT 1 FROM lms_access_grants g WHERE g.course_id = f.course_id AND g.user_id = $1 AND g.access_status = 'active'
+               AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
            ))
        )
        ORDER BY f.created_at DESC, f.id DESC`,
@@ -398,7 +392,7 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
   }
 });
 
-router.get("/files/:fileId/download", protectRoute, async (req, res) => {
+router.get("/files/:fileId/download", protectRoute, requireManagedLearner, async (req, res) => {
   const fileId = parseId(req.params.fileId);
   if (!fileId) return errorResponse(res, 422, "fileId không hợp lệ", "VALIDATION_ERROR");
   try {

@@ -3,6 +3,7 @@ import { query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requireRole from "../middleware/requireRole.js";
+import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
 
 const router = express.Router();
 
@@ -82,32 +83,19 @@ const checkCourseOwner = async (courseId, user) => {
 
 const checkEnrollment = async (courseId, userId) => {
   const result = await query(
-    `SELECT 1
-     FROM courses c
-     WHERE c.id = $2
-       AND (
-         EXISTS (
-           SELECT 1 FROM lms_access_grants g
-           WHERE g.user_id = $1 AND g.course_id = c.id
-             AND g.access_status = 'active' AND g.valid_from <= NOW()
-             AND (g.valid_until IS NULL OR g.valid_until > NOW())
-         )
-         OR (
-           COALESCE(c.is_management_managed, FALSE) = FALSE
-           AND (
-             EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = c.id AND e.status = 'active')
-             OR EXISTS (
-               SELECT 1 FROM class_enrollments ce
-               JOIN live_classes lc ON lc.id = ce.live_class_id
-               WHERE ce.user_id = $1 AND lc.course_id = c.id
-                 AND ce.status = 'active' AND lc.status = 'active'
-             )
-           )
-         )
-       )`,
+    `SELECT 1 FROM lms_access_grants g
+     WHERE g.user_id = $1 AND g.course_id = $2
+       AND g.access_status = 'active' AND g.valid_from <= NOW()
+       AND (g.valid_until IS NULL OR g.valid_until > NOW())`,
       [userId, courseId],
   );
   return result.rows.length > 0;
+};
+
+const requireManagedLearnerAccess = (res, user) => {
+  if (user.role !== "user" || hasActiveStudentLmsAccess(user)) return true;
+  forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
+  return false;
 };
 
 // GET /api/courses - Public Catalog with filters
@@ -236,11 +224,28 @@ router.get("/admin/:courseId", protectRoute, requireTeacher, async (req, res) =>
   }
 });
 
-// GET /api/courses/lessons/:lessonId/comments - Published lessons only, bounded payload.
-router.get("/lessons/:lessonId/comments", async (req, res) => {
+// GET /api/courses/lessons/:lessonId/comments - private LMS discussion.
+router.get("/lessons/:lessonId/comments", protectRoute, async (req, res) => {
   try {
     const { lessonId } = req.params;
     if (!parsePositiveId(lessonId)) return validationError(res, "lessonId không hợp lệ");
+
+    const lessonRes = await query(
+      `SELECT l.course_id, l.is_published, co.is_published AS course_is_published, co.author_id
+       FROM lessons l JOIN courses co ON co.id = l.course_id WHERE l.id = $1`,
+      [lessonId],
+    );
+    if (lessonRes.rows.length === 0) return notFound(res, "Không tìm thấy bài học");
+    const lesson = lessonRes.rows[0];
+    if (req.user.role === "user") {
+      if (!requireManagedLearnerAccess(res, req.user)) return;
+      if (!lesson.is_published || !lesson.course_is_published) return notFound(res, "Không tìm thấy bài học");
+      if (!(await checkEnrollment(lesson.course_id, req.user.id))) {
+        return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
+      }
+    } else if (req.user.role === "creator" && String(lesson.author_id) !== String(req.user.id)) {
+      return forbidden(res, "Bạn không có quyền xem thảo luận của bài học này");
+    }
 
     const result = await query(
       `SELECT c.id, c.user_id, c.course_id, c.lesson_id, c.parent_id, c.content, c.is_edited, c.created_at, c.updated_at,
@@ -322,8 +327,9 @@ router.post("/lessons/:lessonId/comments", protectRoute, async (req, res) => {
       return notFound(res, "Không tìm thấy bài học");
     }
 
+    if (!requireManagedLearnerAccess(res, req.user)) return;
     if (req.user.role === "user" && !(await checkEnrollment(courseId, userId))) {
-      return forbidden(res, "Bạn chưa đăng ký khóa học này");
+      return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
     }
     if (req.user.role === "creator" && String(lesson.author_id) !== String(req.user.id)) {
       return forbidden(res, "Bạn không có quyền bình luận trong bài học này");
@@ -494,6 +500,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         [req.user.id, selectedClassId, courseId],
       )).rows.length > 0
       : false;
+    if (isLearner && !requireManagedLearnerAccess(res, req.user)) return;
     if (isLearner && (!course.is_published || !(await checkEnrollment(courseId, req.user.id)))) {
       return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
     }
@@ -591,7 +598,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     const fileClassScope = selectedClassId ? ` AND (f.live_class_id IS NULL OR f.live_class_id = $${fileParams.length + 1})` : "";
     if (selectedClassId) fileParams.push(selectedClassId);
 
-    const [sectionsResult, progressResult, classesResult, sessionsResult, assignmentsResult, quizRowsResult, quizCountResult, filesResult] = await Promise.all([
+    const [sectionsResult, lessonsResult, progressResult, classesResult, sessionsResult, assignmentsResult, quizRowsResult, quizCountResult, filesResult] = await Promise.all([
       query(
         `SELECT s.id, s.title, s.sort_order,
                 COUNT(l.id)::int AS lesson_count,
@@ -601,6 +608,16 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
          WHERE s.course_id = $1
          GROUP BY s.id
          ORDER BY s.sort_order ASC, s.id ASC`,
+        [courseId],
+      ),
+      query(
+        `SELECT l.id, l.course_id, l.section_id, COALESCE(l.title, l.name) AS title, l.description,
+                COALESCE(l.duration_seconds, l.video_duration_seconds, 0) AS duration_seconds,
+                l.is_preview, l.sort_order, l.learning_url, (va.id IS NOT NULL) AS has_video
+         FROM lessons l
+         LEFT JOIN video_assets va ON va.id = l.video_asset_id AND va.status = 'ready'
+         WHERE l.course_id = $1 AND l.is_published = true
+         ORDER BY l.sort_order ASC, l.id ASC`,
         [courseId],
       ),
       query(
@@ -732,6 +749,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
           percent: totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0,
         },
         sections: sectionsResult.rows,
+        lessons: lessonsResult.rows,
         selectedClass,
         classes: classesResult.rows,
         upcomingSessions: sessionsResult.rows,
@@ -747,6 +765,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
           visibility: file.visibility,
           downloadUrl: `/api/files/${file.id}/download`,
         })),
+        access: { canLearn: true },
       },
     });
   } catch (error) {
@@ -771,9 +790,10 @@ router.get("/:slug/classroom", protectRoute, async (req, res) => {
     const course = courseRes.rows[0];
     let isEnrolled = false;
     if (req.user.role === "user") {
+      if (!requireManagedLearnerAccess(res, req.user)) return;
       if (!course.is_published) return notFound(res, "Không tìm thấy khóa học");
       isEnrolled = await checkEnrollment(course.id, req.user.id);
-      if (!isEnrolled) return forbidden(res, "Bạn cần đăng ký khóa học trước khi vào phòng học");
+      if (!isEnrolled) return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
     } else if (req.user.role === "creator" && String(course.author_id) !== String(req.user.id)) {
       return forbidden(res, "Bạn chỉ được xem phòng học của khóa học do mình phụ trách");
     }

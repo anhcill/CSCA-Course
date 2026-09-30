@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, BookOpen, Clock, PlayCircle } from "lucide-react";
+/* eslint-disable react/prop-types */
+import { BookOpen, PlayCircle } from "lucide-react";
 
 export default function ClassWorkspaceCurriculumTab({
-  courseId,
   classId,
   sections = []
 }) {
@@ -13,12 +13,12 @@ export default function ClassWorkspaceCurriculumTab({
           <h3 className="text-base font-black text-slate-900 dark:text-white">Giáo trình bài giảng</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">Các chương và bài học được giảng dạy trong khóa học này.</p>
         </div>
-        {courseId && (
+        {classId && (
           <Link
-            to={`/lms/courses/${courseId}/classes/${classId}/learn`}
+            to={`/lms/teach/classes/${classId}/curriculum`}
             className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition"
           >
-            <PlayCircle className="h-4 w-4" /> Xem với tư cách học viên
+            <PlayCircle className="h-4 w-4" /> Xem giáo trình lớp
           </Link>
         )}
       </div>

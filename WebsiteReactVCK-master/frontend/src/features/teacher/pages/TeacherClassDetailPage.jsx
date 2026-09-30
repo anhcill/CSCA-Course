@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, CalendarDays } from "lucide-react";
+import { ArrowLeft, BookOpen, CalendarDays } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import {
   fetchClassDetails,
@@ -77,9 +77,14 @@ export default function TeacherClassDetailPage() {
   return (
     <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <Link to="/lms/teach" className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400">
-          <ArrowLeft className="h-4 w-4" /> Quay lại trang Giảng dạy
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link to="/lms/teach" className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400">
+            <ArrowLeft className="h-4 w-4" /> Quay lại trang Giảng dạy
+          </Link>
+          <Link to={`/lms/teach/classes/${classId}/curriculum`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
+            <BookOpen className="h-3.5 w-3.5" /> Giáo trình lớp
+          </Link>
+        </div>
 
         <TeacherNextSessionHero
           classTitle={classInfo.title}

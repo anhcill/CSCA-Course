@@ -1,6 +1,8 @@
 import express from "express";
 import { query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
+import requireRole from "../middleware/requireRole.js";
+import requireActiveStudentLmsAccess from "../middleware/requireActiveStudentLmsAccess.js";
 import { sendCourseEnrollmentEmail } from "../services/brevoEmail.service.js";
 
 const router = express.Router();
@@ -25,35 +27,44 @@ router.get("/check/:courseId", protectRoute, async (req, res) => {
     if (!/^\d+$/.test(String(courseId)) || Number(courseId) < 1) return validationError(res, "courseId không hợp lệ");
 
     const result = await query(
-      `SELECT 1
-       FROM courses c
-       WHERE c.id = $2
-         AND (
-           EXISTS (
-             SELECT 1 FROM lms_access_grants g
-             WHERE g.user_id = $1 AND g.course_id = c.id AND g.access_status = 'active'
-               AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-           )
-           OR (
-             COALESCE(c.is_management_managed, FALSE) = FALSE
+      `SELECT
+         EXISTS (
+           SELECT 1
+           FROM courses c
+           WHERE c.id = $2
              AND (
-               EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = c.id AND e.status = 'active')
-               OR EXISTS (
-                 SELECT 1 FROM class_enrollments ce
-                 JOIN live_classes lc ON lc.id = ce.live_class_id
-                 WHERE ce.user_id = $1 AND lc.course_id = c.id
-                   AND ce.status = 'active' AND lc.status = 'active'
+               EXISTS (
+                 SELECT 1 FROM lms_access_grants g
+                 WHERE g.user_id = $1 AND g.course_id = c.id AND g.access_status = 'active'
+                   AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+               )
+               OR (
+                 COALESCE(c.is_management_managed, FALSE) = FALSE
+                 AND (
+                   EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = $1 AND e.course_id = c.id AND e.status = 'active')
+                   OR EXISTS (
+                     SELECT 1 FROM class_enrollments ce
+                     JOIN live_classes lc ON lc.id = ce.live_class_id
+                     WHERE ce.user_id = $1 AND lc.course_id = c.id
+                       AND ce.status = 'active' AND lc.status = 'active'
+                   )
+                 )
                )
              )
-           )
-         )`,
+         ) AS is_enrolled,
+         EXISTS (
+           SELECT 1 FROM lms_access_grants g
+           WHERE g.user_id = $1 AND g.course_id = $2 AND g.access_status = 'active'
+             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+         ) AS has_lms_access`,
       [userId, courseId],
     );
-    const isEnrolled = result.rows.length > 0;
+    const isEnrolled = Boolean(result.rows[0]?.is_enrolled);
+    const hasLmsAccess = Boolean(result.rows[0]?.has_lms_access);
 
     return res.json({
       success: true,
-      data: { isEnrolled }
+      data: { isEnrolled, hasLmsAccess }
     });
   } catch (error) {
     console.error("Error checking enrollment status:", error);
@@ -119,28 +130,16 @@ router.post("/", protectRoute, async (req, res) => {
 });
 
 // GET /api/enrollments/my - Get user's enrolled courses
-router.get("/my", protectRoute, async (req, res) => {
+router.get("/my", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await query(
-      `WITH access_rows AS (
-         SELECT e.course_id, e.enrolled_at AS access_granted_at
-         FROM enrollments e JOIN courses c ON c.id = e.course_id
-         WHERE e.user_id = $1 AND e.status = 'active' AND COALESCE(c.is_management_managed, FALSE) = FALSE
-         UNION ALL
-         SELECT course_id, valid_from AS access_granted_at FROM lms_access_grants
+      `WITH accessible_courses AS (
+         SELECT course_id, MIN(valid_from) AS access_granted_at
+         FROM lms_access_grants
          WHERE user_id = $1 AND access_status = 'active'
            AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
-         UNION ALL
-         SELECT lc.course_id, ce.enrolled_at AS access_granted_at
-         FROM class_enrollments ce
-         JOIN live_classes lc ON lc.id = ce.live_class_id
-         JOIN courses c ON c.id = lc.course_id
-         WHERE ce.user_id = $1 AND ce.status = 'active' AND lc.status = 'active'
-           AND lc.course_id IS NOT NULL AND COALESCE(c.is_management_managed, FALSE) = FALSE
-       ), accessible_courses AS (
-         SELECT course_id, MIN(access_granted_at) AS access_granted_at
-         FROM access_rows GROUP BY course_id
+         GROUP BY course_id
        )
        SELECT c.id AS enrollment_id, ac.access_granted_at AS enrolled_at, c.*
        FROM accessible_courses ac
@@ -161,28 +160,16 @@ router.get("/my", protectRoute, async (req, res) => {
 });
 
 // GET /api/enrollments/my-courses - Get detailed user enrolled courses with progress
-router.get("/my-courses", protectRoute, async (req, res) => {
+router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await query(
-        `WITH access_rows AS (
-           SELECT e.course_id, e.enrolled_at AS access_granted_at
-           FROM enrollments e JOIN courses c ON c.id = e.course_id
-           WHERE e.user_id = $1 AND e.status = 'active' AND COALESCE(c.is_management_managed, FALSE) = FALSE
-           UNION ALL
-           SELECT course_id, valid_from AS access_granted_at FROM lms_access_grants
+        `WITH accessible_courses AS (
+           SELECT course_id, MIN(valid_from) AS access_granted_at
+           FROM lms_access_grants
            WHERE user_id = $1 AND access_status = 'active'
              AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
-           UNION ALL
-           SELECT lc.course_id, ce.enrolled_at AS access_granted_at
-           FROM class_enrollments ce
-           JOIN live_classes lc ON lc.id = ce.live_class_id
-           JOIN courses c ON c.id = lc.course_id
-           WHERE ce.user_id = $1 AND ce.status = 'active' AND lc.status = 'active'
-             AND lc.course_id IS NOT NULL AND COALESCE(c.is_management_managed, FALSE) = FALSE
-         ), accessible_courses AS (
-           SELECT course_id, MIN(access_granted_at) AS access_granted_at
-           FROM access_rows GROUP BY course_id
+           GROUP BY course_id
          )
          SELECT
           c.id AS enrollment_id,

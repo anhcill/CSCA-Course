@@ -43,8 +43,15 @@ const parsePage = (value, fallback, max) => {
 
 const classScope = (user, classId = null, alias = "lc") => {
   const params = [user.id];
-  const clauses = [`${alias}.status <> 'cancelled'`];
-  if (user.role !== "admin") clauses.push(`${alias}.instructor_id = $1`);
+  const clauses = [`${alias}.status = 'active'`];
+  if (user.role !== "admin") {
+    clauses.push(`(${alias}.instructor_id = $1 OR EXISTS (
+      SELECT 1 FROM class_teachers ct
+      WHERE ct.live_class_id = ${alias}.id
+        AND ct.teacher_id = $1
+        AND ct.status = 'active'
+    ))`);
+  }
   else clauses.push("$1::bigint IS NOT NULL");
   if (classId) {
     params.push(classId);
@@ -67,7 +74,14 @@ const ensureManagedClass = async (classId, user) => {
   );
   const liveClass = result.rows[0];
   if (!liveClass) return { error: "not_found" };
-  if (user.role !== "admin" && String(liveClass.instructor_id) !== String(user.id)) return { error: "forbidden" };
+  if (user.role !== "admin" && String(liveClass.instructor_id) !== String(user.id)) {
+    const teachingAssignment = await query(
+      `SELECT 1 FROM class_teachers
+       WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'`,
+      [classId, user.id],
+    );
+    if (teachingAssignment.rows.length === 0) return { error: "forbidden" };
+  }
   return { liveClass };
 };
 
@@ -527,8 +541,13 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req,
     if (access.error === "not_found") return notFound(res, "Không tìm thấy lớp học");
     if (access.error === "forbidden") return forbidden(res, "Bạn không có quyền xem lớp học này");
     const liveClass = access.liveClass;
-    const ownerFilter = req.user.role === "admin" ? "$3::bigint IS NOT NULL" : "a.instructor_id = $3";
-    const quizOwnerFilter = req.user.role === "admin" ? "TRUE" : "(q.instructor_id = $3 OR EXISTS (SELECT 1 FROM courses c WHERE c.id = q.course_id AND c.author_id = $3))";
+    // Access to this endpoint is already restricted to an assigned teacher of
+    // the class. All teachers of the class need the same class work overview,
+    // regardless of which teacher created an activity.
+    // Keep the third bind parameter referenced because all detail queries use
+    // the same parameter tuple: [classId, courseId, currentUserId].
+    const ownerFilter = "$3::bigint IS NOT NULL";
+    const quizOwnerFilter = "$3::bigint IS NOT NULL";
     const baseParams = [classId, liveClass.course_id, req.user.id];
 
     const [studentsResult, assignmentsResult, quizRowsResult, summaryResult] = await Promise.all([
