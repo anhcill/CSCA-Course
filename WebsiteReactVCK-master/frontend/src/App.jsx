@@ -20,11 +20,7 @@ import Forbidden from "./pages/client/Forbidden.jsx";
 // Admin pages
 import AdminLayout from "./pages/admin/AdminLayout.jsx";
 import Dashboard from "./pages/admin/Dashboard.jsx";
-import AdminCourses from "./pages/admin/AdminCourses.jsx";
-import AdminLessons from "./pages/admin/AdminLessons.jsx";
-import AdminExercises from "./pages/admin/AdminExercises.jsx";
 import AdminUser from "./pages/admin/AdminUser.jsx";
-import AdminPost from "./pages/admin/AdminPost.jsx";
 import AdminClassesPage from "./pages/admin/AdminClassesPage.jsx";
 import AdminPermissionsPage from "./pages/admin/AdminPermissionsPage.jsx";
 import AdminSyncPage from "./pages/admin/AdminSyncPage.jsx";
@@ -71,7 +67,7 @@ import NotificationCenterPage from "./features/notifications/pages/NotificationC
 
 const isTeacherLmsPath = (p) => (
   p === "/lms/teach" || p.startsWith("/lms/teach/") || p === "/lms/teacher-hub" ||
-  p.startsWith("/lms/teacher/") || p === "/lms/admin/curriculum" || p === "/lms/admin/grading"
+  p.startsWith("/lms/teacher/") || p.startsWith("/lms/admin/")
 );
 
 const isSharedTeacherPath = (pathname, authUser) => (
@@ -156,8 +152,8 @@ function AppRoutes() {
       <Route path="/lms/teacher/curriculum" element={<AdminCurriculumPage />} />
       <Route path="/lms/teacher/grading" element={<TeacherGradingPage />} />
       <Route path="/lms/teacher/quizzes" element={<TeacherQuizPage />} />
-      <Route path="/lms/admin/curriculum" element={<AdminCurriculumPage />} />
-      <Route path="/lms/admin/grading" element={<TeacherGradingPage />} />
+      <Route path="/lms/admin/curriculum" element={<Navigate to="/admin/curriculum" replace />} />
+      <Route path="/lms/admin/grading" element={<Navigate to="/admin/grading" replace />} />
       <Route path="/lms/admin/courses" element={<Navigate to="/admin/courses" replace />} />
       <Route path="/lms/admin/classes" element={<Navigate to="/admin/classes" replace />} />
       <Route path="/lms/admin/calendar" element={<Navigate to="/admin/calendar" replace />} />
@@ -167,16 +163,20 @@ function AppRoutes() {
       <Route path="/admin" element={<LmsRouteGuard allowedRoles={[USER_ROLES.ADMIN]}><AdminLayout /></LmsRouteGuard>}>
         <Route index element={<Dashboard />} />
         <Route path="dashboard" element={<Dashboard />} />
-        <Route path="courses" element={<AdminCourses />} />
-        <Route path="courses/:courseId/lessons" element={<AdminLessons />} />
-        <Route path="lessons/:lessonId/exercises" element={<AdminExercises />} />
+        <Route path="courses" element={<Navigate to="/admin/curriculum" replace />} />
+        <Route path="courses/:courseId/lessons" element={<Navigate to="/admin/curriculum" replace />} />
+        <Route path="lessons/:lessonId/exercises" element={<Navigate to="/admin/curriculum" replace />} />
+        <Route path="curriculum" element={<AdminCurriculumPage />} />
+        <Route path="grading" element={<TeacherGradingPage />} />
+        <Route path="quizzes" element={<TeacherQuizPage />} />
         <Route path="classes" element={<AdminClassesPage />} />
+        <Route path="classes/:classId" element={<TeacherClassDetailPage />} />
         <Route path="calendar" element={<AdminCalendarPage />} />
         <Route path="permissions" element={<AdminPermissionsPage />} />
         <Route path="sync" element={<AdminSyncPage />} />
         <Route path="audit-logs" element={<AdminAuditLogPage />} />
         <Route path="users" element={<AdminUser />} />
-        <Route path="posts" element={<AdminPost />} />
+        <Route path="posts" element={<Navigate to="/admin/dashboard" replace />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

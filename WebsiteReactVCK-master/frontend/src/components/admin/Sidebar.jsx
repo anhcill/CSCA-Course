@@ -5,8 +5,6 @@ import {
   FiBook,
   FiCalendar,
   FiUser,
-  FiEdit,
-  FiLayers,
   FiCheckSquare,
   FiLink,
   FiShield,
@@ -18,7 +16,7 @@ import {
 import { useAuthContext } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 
-const Sidebar = ({ isOpen, toggleSidebar }) => {
+const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
   const { authUser } = useAuthContext();
   const { t } = useTranslation();
   const location = useLocation();
@@ -26,7 +24,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
   const handleLinkClick = () => {
     // Only collapse sidebar when clicking on mobile / tablet (< 1024px)
     if (window.innerWidth < 1024) {
-      toggleSidebar();
+      closeMobileSidebar();
     }
   };
 
@@ -47,9 +45,9 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
           path: '/admin/dashboard',
         },
         {
-          title: t('adminCourse') || 'Khóa học',
+          title: t('adminCourse') || 'Khóa học & giáo trình',
           icon: <FiBook className="w-4 h-4 shrink-0" />,
-          path: '/admin/courses',
+          path: '/admin/curriculum',
         },
         {
           title: 'Lớp học',
@@ -67,24 +65,14 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       group: 'Đào tạo',
       items: [
         {
-          title: 'Soạn giáo trình',
-          icon: <FiLayers className="w-4 h-4 shrink-0" />,
-          path: '/lms/admin/curriculum',
-        },
-        {
           title: 'Chấm bài',
           icon: <FiCheckSquare className="w-4 h-4 shrink-0" />,
-          path: '/lms/admin/grading',
+          path: '/admin/grading',
         },
         {
           title: 'Quiz học viên',
           icon: <FiList className="w-4 h-4 shrink-0" />,
-          path: '/lms/teacher/quizzes',
-        },
-        {
-          title: t('adminPost') || 'Bài viết',
-          icon: <FiEdit className="w-4 h-4 shrink-0" />,
-          path: '/admin/posts',
+          path: '/admin/quizzes',
         },
       ],
     },
@@ -121,14 +109,16 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
 
   return (
     <aside
-      className={`fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 shadow-xl lg:shadow-none transition-transform duration-300 ease-in-out z-40 overflow-y-auto flex flex-col justify-between ${
-        isOpen ? 'translate-x-0' : '-translate-x-full'
+      className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-4rem)] w-64 flex-col justify-between overflow-y-auto border-r border-gray-200 bg-white shadow-xl transition-[transform,width] duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 lg:translate-x-0 lg:shadow-none ${
+        mobileOpen ? 'translate-x-0' : '-translate-x-full'
+      } ${
+        collapsed ? 'lg:w-20' : 'lg:w-64'
       }`}
     >
-      <div className="p-3.5 space-y-5">
+      <div className={`space-y-5 p-3.5 ${collapsed ? 'lg:px-2.5' : ''}`}>
         {menuSections.map((sec, idx) => (
           <div key={idx} className="space-y-1">
-            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500 font-mono">
+            <div className={`px-3 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500 font-mono ${collapsed ? 'lg:sr-only' : ''}`}>
               {sec.group}
             </div>
             <div className="space-y-0.5 mt-1">
@@ -139,7 +129,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                     key={item.path}
                     to={item.path}
                     onClick={handleLinkClick}
-                    className={`group flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                    title={collapsed ? item.title : undefined}
+                    className={`group flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${collapsed ? 'lg:justify-center lg:px-2' : ''} ${
                       active
                         ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-white'
@@ -155,9 +146,9 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                       >
                         {item.icon}
                       </div>
-                      <span className="truncate">{item.title}</span>
+                      <span className={`truncate ${collapsed ? 'lg:sr-only' : ''}`}>{item.title}</span>
                     </div>
-                    {active && <FiChevronRight className="w-3.5 h-3.5 text-blue-200" />}
+                    {active && <FiChevronRight className={`w-3.5 h-3.5 text-blue-200 ${collapsed ? 'lg:hidden' : ''}`} />}
                   </Link>
                 );
               })}
@@ -167,12 +158,12 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       </div>
 
       {/* Footer System Badge */}
-      <div className="p-3.5 border-t border-gray-100 dark:border-slate-800 text-[11px] text-gray-400 dark:text-slate-500 flex items-center justify-between font-mono">
+      <div className={`flex items-center justify-between border-t border-gray-100 p-3.5 text-[11px] font-mono text-gray-400 dark:border-slate-800 dark:text-slate-500 ${collapsed ? 'lg:justify-center lg:px-2.5' : ''}`}>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          CSCA Admin v2.4
+          <span className={collapsed ? 'lg:sr-only' : ''}>CSCA Admin</span>
         </span>
-        <span className="text-[10px] text-gray-400 dark:text-slate-600 uppercase">PROD</span>
+        <span className={`text-[10px] text-gray-400 dark:text-slate-600 uppercase ${collapsed ? 'lg:hidden' : ''}`}>PROD</span>
       </div>
     </aside>
   );

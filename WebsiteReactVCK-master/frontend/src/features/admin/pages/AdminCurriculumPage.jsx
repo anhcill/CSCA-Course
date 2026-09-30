@@ -1,17 +1,31 @@
 import { useState, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
 import {
-  fetchAdminCourses,
-  fetchAdminCourseDetail,
   createCourse,
-  createSection,
+  createAdminCourse,
+  createAdminLesson,
+  createAdminSection,
   createLesson,
-  updateLessonLearningLink,
+  createSection,
+  deleteAdminCourse,
+  deleteAdminLesson,
+  deleteAdminSection,
+  fetchAdminConsoleCourses,
+  fetchAdminConsoleCurriculum,
+  fetchAdminCourseDetail,
+  fetchAdminCourses,
+  updateAdminCourse,
+  updateAdminLesson,
+  updateAdminSection,
   updateCourseStatus,
+  updateLessonLearningLink,
 } from "../../api/lmsClient";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
+import { useAuthContext } from "../../../context/AuthContext";
 
 export default function AdminCurriculumPage() {
+  const { authUser } = useAuthContext();
+  const isAdmin = authUser?.role === "admin";
   const [courses, setCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [courseDetail, setCourseDetail] = useState(null);
@@ -21,8 +35,11 @@ export default function AdminCurriculumPage() {
 
   // Modals state
   const [showCourseModal, setShowCourseModal] = useState(false);
+  const [editingCourse, setEditingCourse] = useState(null);
   const [showSectionModal, setShowSectionModal] = useState(false);
+  const [editingSection, setEditingSection] = useState(null);
   const [showLessonModal, setShowLessonModal] = useState(false);
+  const [editingLesson, setEditingLesson] = useState(null);
   const [showLearningLinkModal, setShowLearningLinkModal] = useState(false);
   const [selectedSectionId, setSelectedSectionId] = useState(null);
   const [selectedLesson, setSelectedLesson] = useState(null);
@@ -61,11 +78,25 @@ export default function AdminCurriculumPage() {
   // Course status toggles (Draft / Published)
   const [courseStatuses, setCourseStatuses] = useState({});
 
+  const resetCourseForm = () => {
+    setEditingCourse(null);
+    setCourseForm({
+      title: "",
+      slug: "",
+      category: "CSCA",
+      level: "beginner",
+      description: "",
+      price: 0,
+      thumbnailUrl: "",
+      status: "published",
+    });
+  };
+
   const loadCourses = useCallback(async () => {
     setLoadingCourses(true);
     setErrorMsg("");
     try {
-      const res = await fetchAdminCourses();
+      const res = await (isAdmin ? fetchAdminConsoleCourses() : fetchAdminCourses());
       if (res.success && res.data) {
         setCourses(res.data);
         const initialStatus = {};
@@ -87,13 +118,15 @@ export default function AdminCurriculumPage() {
     } finally {
       setLoadingCourses(false);
     }
-  }, [selectedCourse]);
+  }, [isAdmin, selectedCourse]);
 
   const loadCourseDetailData = useCallback(async (course) => {
     if (!course?.id && !course?.slug) return;
     setLoadingDetail(true);
     try {
-      const res = await fetchAdminCourseDetail(course.id);
+      const res = await (isAdmin
+        ? fetchAdminConsoleCurriculum(course.id)
+        : fetchAdminCourseDetail(course.id));
       if (res.success && res.data) {
         setCourseDetail(res.data);
         if (res.data.sections && res.data.sections.length > 0) {
@@ -107,7 +140,7 @@ export default function AdminCurriculumPage() {
     } finally {
       setLoadingDetail(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     loadCourses();
@@ -125,7 +158,12 @@ export default function AdminCurriculumPage() {
     const current = courseStatuses[courseId] || "draft";
     const next = current === "published" ? "draft" : "published";
     try {
-      const res = await updateCourseStatus({ courseId, isPublished: next === "published" });
+      const res = isAdmin
+        ? await updateAdminCourse({
+          courseId,
+          courseData: { isPublished: next === "published" },
+        })
+        : await updateCourseStatus({ courseId, isPublished: next === "published" });
       if (!res.success || !res.data) throw new Error(res.message || "Cập nhật trạng thái thất bại");
       toast.success(
         next === "published"
@@ -145,120 +183,227 @@ export default function AdminCurriculumPage() {
     }
   };
 
-  const handleCreateCourse = async (e) => {
+  const handleOpenCourseModal = (course = null) => {
+    if (course) {
+      setEditingCourse(course);
+      setCourseForm({
+        title: course.title || course.name || "",
+        slug: course.slug || "",
+        category: course.category || "CSCA",
+        level: course.level || "beginner",
+        description: course.description || "",
+        price: Number(course.price) || 0,
+        thumbnailUrl: course.thumbnail_url || course.thumbnailUrl || "",
+        status: course.is_published === false ? "draft" : "published",
+      });
+    } else {
+      resetCourseForm();
+    }
+    setShowCourseModal(true);
+  };
+
+  const handleSaveCourse = async (e) => {
     e.preventDefault();
     setSubmittingCourse(true);
     try {
-      const res = await createCourse(courseForm);
+      const payload = { ...courseForm, isFree: Number(courseForm.price) === 0 };
+      const res = editingCourse
+        ? await updateAdminCourse({ courseId: editingCourse.id, courseData: payload })
+        : isAdmin ? await createAdminCourse(payload) : await createCourse(payload);
       if (res.success && res.data) {
-        toast.success("Tạo khóa học mới thành công! 🎉");
-        setCourses((prev) => [res.data, ...prev]);
+        toast.success(editingCourse ? "Đã cập nhật khóa học." : "Tạo khóa học mới thành công! 🎉");
+        setCourses((prev) => editingCourse
+          ? prev.map((course) => course.id === editingCourse.id ? { ...course, ...res.data } : course)
+          : [res.data, ...prev]);
         setSelectedCourse(res.data);
         setShowCourseModal(false);
-        setCourseForm({
-          title: "",
-          slug: "",
-          category: "CSCA",
-          level: "beginner",
-          description: "",
-          price: 0,
-          thumbnailUrl: "",
-          status: "published",
-        });
+        resetCourseForm();
       } else {
-        toast.error(res.message || "Tạo khóa học thất bại!");
+        toast.error(res.message || "Không thể lưu khóa học.");
       }
     } catch (err) {
       console.error("Error creating course:", err);
-      toast.error(err.message || "Lỗi tạo khóa học!");
+      toast.error(err.message || "Không thể lưu khóa học.");
     } finally {
       setSubmittingCourse(false);
     }
   };
 
-  const handleCreateSection = async (e) => {
+  const handleDeleteCourse = async (course, event) => {
+    event.stopPropagation();
+    if (!window.confirm(`Xóa khóa học “${course.title || course.name}”? Khóa học đã có học viên hoặc tiến độ sẽ không thể xóa.`)) return;
+    try {
+      const res = await deleteAdminCourse(course.id);
+      if (!res.success) throw new Error(res.message || "Không thể xóa khóa học");
+      setCourses((current) => current.filter((item) => item.id !== course.id));
+      if (selectedCourse?.id === course.id) {
+        setSelectedCourse(null);
+        setCourseDetail(null);
+      }
+      toast.success("Đã xóa khóa học.");
+    } catch (error) {
+      toast.error(error.message || "Không thể xóa khóa học.");
+    }
+  };
+
+  const handleOpenSectionModal = (section = null) => {
+    setEditingSection(section);
+    setSectionTitle(section?.title || "");
+    setShowSectionModal(true);
+  };
+
+  const closeSectionModal = () => {
+    setShowSectionModal(false);
+    setEditingSection(null);
+    setSectionTitle("");
+  };
+
+  const handleSaveSection = async (e) => {
     e.preventDefault();
     if (!selectedCourse || !sectionTitle.trim()) return;
     setSubmittingSection(true);
     try {
-      const nextSortOrder = (courseDetail?.sections?.length || 0) + 1;
-      const res = await createSection({
-        courseId: selectedCourse.id,
-        title: sectionTitle.trim(),
-        sortOrder: nextSortOrder,
-      });
+      const res = editingSection
+        ? await updateAdminSection({
+          sectionId: editingSection.id,
+          sectionData: { title: sectionTitle.trim() },
+        })
+        : isAdmin
+          ? await createAdminSection({
+            courseId: selectedCourse.id,
+            title: sectionTitle.trim(),
+            sortOrder: (courseDetail?.sections?.length || 0) + 1,
+          })
+          : await createSection({
+            courseId: selectedCourse.id,
+            title: sectionTitle.trim(),
+            sortOrder: (courseDetail?.sections?.length || 0) + 1,
+          });
 
       if (res.success) {
         if (!res.data) throw new Error("Máy chủ không trả về chương học vừa tạo");
         const newSec = res.data;
         setCourseDetail((prev) => ({
           ...prev,
-          sections: [...(prev?.sections || []), newSec],
+          sections: editingSection
+            ? (prev?.sections || []).map((section) => (
+              String(section.id) === String(editingSection.id) ? { ...section, ...newSec } : section
+            ))
+            : [...(prev?.sections || []), newSec],
         }));
         setActiveSectionId(newSec.id);
-        setShowSectionModal(false);
-        setSectionTitle("");
-        toast.success("Đã thêm chương học mới thành công! 📖");
+        closeSectionModal();
+        toast.success(editingSection ? "Đã cập nhật chương học." : "Đã thêm chương học mới thành công! 📖");
       } else {
-        toast.error(res.message || "Lỗi tạo chương!");
+        toast.error(res.message || "Không thể lưu chương học.");
       }
     } catch (err) {
-      console.error("Error creating section:", err);
-      toast.error("Lỗi khi thêm chương học!");
+      console.error("Error saving section:", err);
+      toast.error(err.message || "Không thể lưu chương học.");
     } finally {
       setSubmittingSection(false);
     }
   };
 
-  const handleOpenLessonModal = (sectionId) => {
+  const handleOpenLessonModal = (sectionId, lesson = null) => {
     setSelectedSectionId(sectionId);
+    setEditingLesson(lesson);
     setLessonForm({
-      title: "",
-      learningUrl: "",
-      durationSeconds: 600,
-      isPreview: false,
+      title: lesson?.title || "",
+      learningUrl: lesson?.learning_url || "",
+      durationSeconds: Number(lesson?.duration_seconds) || 600,
+      isPreview: Boolean(lesson?.is_preview),
     });
     setShowLessonModal(true);
   };
 
-  const handleCreateLesson = async (e) => {
+  const closeLessonModal = () => {
+    setShowLessonModal(false);
+    setEditingLesson(null);
+    setSelectedSectionId(null);
+    setLessonForm({ title: "", learningUrl: "", durationSeconds: 600, isPreview: false });
+  };
+
+  const handleSaveLesson = async (e) => {
     e.preventDefault();
     if (!selectedCourse || !selectedSectionId || !lessonForm.title.trim()) return;
     setSubmittingLesson(true);
     try {
-      const res = await createLesson({
-        sectionId: selectedSectionId,
-        courseId: selectedCourse.id,
+      const lessonData = {
         title: lessonForm.title.trim(),
         learningUrl: lessonForm.learningUrl.trim(),
         durationSeconds: Number(lessonForm.durationSeconds) || 600,
         isPreview: Boolean(lessonForm.isPreview),
-        sortOrder: (courseDetail?.lessons?.filter((l) => String(l.section_id) === String(selectedSectionId)).length || 0) + 1,
-      });
+      };
+      const res = editingLesson
+        ? await updateAdminLesson({ lessonId: editingLesson.id, lessonData })
+        : isAdmin
+          ? await createAdminLesson({
+            sectionId: selectedSectionId,
+            ...lessonData,
+            sortOrder: (courseDetail?.lessons?.filter((l) => String(l.section_id) === String(selectedSectionId)).length || 0) + 1,
+          })
+          : await createLesson({
+            sectionId: selectedSectionId,
+            courseId: selectedCourse.id,
+            ...lessonData,
+            sortOrder: (courseDetail?.lessons?.filter((l) => String(l.section_id) === String(selectedSectionId)).length || 0) + 1,
+          });
 
       if (res.success) {
         if (!res.data) throw new Error("Máy chủ không trả về bài học vừa tạo");
         const newLes = res.data;
         setCourseDetail((prev) => ({
           ...prev,
-          lessons: [...(prev?.lessons || []), newLes],
+          lessons: editingLesson
+            ? (prev?.lessons || []).map((lesson) => (
+              String(lesson.id) === String(editingLesson.id) ? { ...lesson, ...newLes } : lesson
+            ))
+            : [...(prev?.lessons || []), newLes],
         }));
-        setShowLessonModal(false);
-        setLessonForm({
-          title: "",
-          learningUrl: "",
-          durationSeconds: 600,
-          isPreview: false,
-        });
-        toast.success("Đã thêm bài học vào chương thành công!");
+        closeLessonModal();
+        toast.success(editingLesson ? "Đã cập nhật bài học." : "Đã thêm bài học vào chương thành công!");
       } else {
-        toast.error(res.message || "Lỗi tạo bài giảng!");
+        toast.error(res.message || "Không thể lưu bài học.");
       }
     } catch (err) {
-      console.error("Error creating lesson:", err);
-      toast.error("Lỗi khi thêm bài giảng!");
+      console.error("Error saving lesson:", err);
+      toast.error(err.message || "Không thể lưu bài học.");
     } finally {
       setSubmittingLesson(false);
+    }
+  };
+
+  const handleDeleteSection = async (section, event) => {
+    event.stopPropagation();
+    if (!window.confirm(`Xóa chương “${section.title}”? Chương phải không còn bài học mới có thể xóa.`)) return;
+    try {
+      const res = await deleteAdminSection(section.id);
+      if (!res.success) throw new Error(res.message || "Không thể xóa chương học");
+      setCourseDetail((prev) => ({
+        ...prev,
+        sections: (prev?.sections || []).filter((item) => String(item.id) !== String(section.id)),
+      }));
+      if (String(activeSectionId) === String(section.id)) setActiveSectionId(null);
+      toast.success("Đã xóa chương học.");
+    } catch (error) {
+      toast.error(error.message || "Không thể xóa chương học.");
+    }
+  };
+
+  const handleDeleteLesson = async (lesson, event) => {
+    event.stopPropagation();
+    if (!window.confirm(`Xóa bài “${lesson.title}”? Bài đã có tiến độ học sẽ không thể xóa.`)) return;
+    try {
+      const res = await deleteAdminLesson(lesson.id);
+      if (!res.success) throw new Error(res.message || "Không thể xóa bài học");
+      setCourseDetail((prev) => ({
+        ...prev,
+        lessons: (prev?.lessons || []).filter((item) => String(item.id) !== String(lesson.id)),
+      }));
+      toast.success("Đã xóa bài học.");
+    } catch (error) {
+      toast.error(error.message || "Không thể xóa bài học.");
     }
   };
 
@@ -273,10 +418,15 @@ export default function AdminCurriculumPage() {
     if (!selectedLesson) return;
     setSavingLearningLink(true);
     try {
-      const res = await updateLessonLearningLink({
-        lessonId: selectedLesson.id,
-        learningUrl: learningUrl.trim(),
-      });
+      const res = isAdmin
+        ? await updateAdminLesson({
+          lessonId: selectedLesson.id,
+          lessonData: { learningUrl: learningUrl.trim() },
+        })
+        : await updateLessonLearningLink({
+          lessonId: selectedLesson.id,
+          learningUrl: learningUrl.trim(),
+        });
       if (!res?.success || !res.data) throw new Error(res?.message || "Không thể cập nhật link học");
       setCourseDetail((prev) => ({
         ...prev,
@@ -319,7 +469,7 @@ export default function AdminCurriculumPage() {
 
           <button
             id="admin-create-course-btn"
-            onClick={() => setShowCourseModal(true)}
+            onClick={() => handleOpenCourseModal()}
             className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-5 py-2.5 rounded-2xl transition shadow-lg shadow-rose-600/30 flex items-center gap-2 text-sm"
           >
             <span>+</span>
@@ -352,7 +502,7 @@ export default function AdminCurriculumPage() {
               title="Chưa Có Khóa Học Nào"
               message="Hệ thống chưa có khóa học nào. Hãy nhấp nút bên dưới để tạo khóa học đầu tiên."
               actionLabel="+ Tạo Khóa Học Ngay"
-              onAction={() => setShowCourseModal(true)}
+              onAction={() => handleOpenCourseModal()}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -403,13 +553,16 @@ export default function AdminCurriculumPage() {
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800/60 flex justify-between items-center text-xs">
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3 text-xs dark:border-slate-800/60">
                       <span className="text-rose-600 dark:text-rose-400 font-bold">
                         {c.is_free || Number(c.price) === 0 ? "Miễn Phí" : `${Number(c.price).toLocaleString("vi-VN")} đ`}
                       </span>
-                      <span className={`text-[11px] font-semibold transition ${isSelected ? "text-rose-600 dark:text-rose-400" : "text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300"}`}>
-                        {isSelected ? "● Đang quản lý" : "Chọn quản lý →"}
-                      </span>
+                      {isAdmin && (
+                        <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                          <button type="button" onClick={() => handleOpenCourseModal(c)} className="rounded-lg px-2 py-1 font-semibold text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white">Sửa</button>
+                          <button type="button" onClick={(event) => handleDeleteCourse(c, event)} className="rounded-lg px-2 py-1 font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40">Xóa</button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -433,7 +586,7 @@ export default function AdminCurriculumPage() {
               </div>
 
               <button
-                onClick={() => setShowSectionModal(true)}
+                onClick={() => handleOpenSectionModal()}
                 className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition border border-slate-300 dark:border-slate-700 flex items-center gap-2"
               >
                 <span>+</span>
@@ -451,7 +604,7 @@ export default function AdminCurriculumPage() {
                   Khóa học này hiện chưa có chương mục nào. Nhấp vào nút bên dưới để thiết kế chương đề mục đầu tiên.
                 </p>
                 <button
-                  onClick={() => setShowSectionModal(true)}
+                  onClick={() => handleOpenSectionModal()}
                   className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition"
                 >
                   + Thêm Chương Đầu Tiên
@@ -499,12 +652,32 @@ export default function AdminCurriculumPage() {
 
                         <div className="flex items-center gap-3">
                           {!sec.isUnsectioned && (
-                            <button
-                              onClick={() => handleOpenLessonModal(sec.id)}
-                              className="bg-rose-500/10 hover:bg-rose-600 text-rose-600 dark:text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
-                            >
-                              <span>+ Thêm Bài Học</span>
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleOpenLessonModal(sec.id)}
+                                className="bg-rose-500/10 hover:bg-rose-600 text-rose-600 dark:text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+                              >
+                                <span>+ Thêm Bài Học</span>
+                              </button>
+                              {isAdmin && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenSectionModal(sec)}
+                                    className="rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                                  >
+                                    Sửa chương
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => handleDeleteSection(sec, event)}
+                                    className="rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                                  >
+                                    Xóa chương
+                                  </button>
+                                </>
+                              )}
+                            </>
                           )}
                           <button
                             onClick={() => setActiveSectionId(isOpen ? null : sec.id)}
@@ -553,6 +726,24 @@ export default function AdminCurriculumPage() {
                                   >
                                     {les.learning_url ? "Đổi link" : "Gắn link"}
                                   </button>
+                                  {isAdmin && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenLessonModal(sec.id, les)}
+                                        className="rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                                      >
+                                        Sửa
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => handleDeleteLesson(les, event)}
+                                        className="rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                                      >
+                                        Xóa
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             ))
@@ -574,16 +765,16 @@ export default function AdminCurriculumPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 max-w-lg w-full space-y-5 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-3">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Tạo Khóa Học Mới</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">{editingCourse ? "Chỉnh Sửa Khóa Học" : "Tạo Khóa Học Mới"}</h3>
               <button
-                onClick={() => setShowCourseModal(false)}
+                onClick={() => { setShowCourseModal(false); resetCourseForm(); }}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateCourse} className="space-y-4">
+            <form onSubmit={handleSaveCourse} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Tên Khóa Học</label>
                 <input
@@ -648,6 +839,17 @@ export default function AdminCurriculumPage() {
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Ảnh đại diện khóa học (URL HTTPS, không bắt buộc)</label>
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={courseForm.thumbnailUrl}
+                  onChange={(e) => setCourseForm({ ...courseForm, thumbnailUrl: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Mô Tả Tổng Quan</label>
                 <textarea
                   rows={3}
@@ -661,7 +863,7 @@ export default function AdminCurriculumPage() {
               <div className="flex justify-end gap-3 pt-3">
                 <button
                   type="button"
-                  onClick={() => setShowCourseModal(false)}
+                  onClick={() => { setShowCourseModal(false); resetCourseForm(); }}
                   className="px-4 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition"
                 >
                   Hủy Bỏ
@@ -671,7 +873,7 @@ export default function AdminCurriculumPage() {
                   disabled={submittingCourse}
                   className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition shadow-lg shadow-rose-600/30"
                 >
-                  {submittingCourse ? "Đang Lưu..." : "Lưu Khóa Học"}
+                  {submittingCourse ? "Đang Lưu..." : editingCourse ? "Cập Nhật Khóa Học" : "Tạo Khóa Học"}
                 </button>
               </div>
             </form>
@@ -679,21 +881,21 @@ export default function AdminCurriculumPage() {
         </div>
       )}
 
-      {/* Modal: Create Section */}
+      {/* Modal: Create or edit section */}
       {showSectionModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Thêm Chương Mới</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">{editingSection ? "Chỉnh sửa chương học" : "Thêm Chương Mới"}</h3>
               <button
-                onClick={() => setShowSectionModal(false)}
+                onClick={closeSectionModal}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateSection} className="space-y-4">
+            <form onSubmit={handleSaveSection} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Tên Chương Bài Giảng</label>
                 <input
@@ -709,7 +911,7 @@ export default function AdminCurriculumPage() {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowSectionModal(false)}
+                  onClick={closeSectionModal}
                   className="px-4 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition"
                 >
                   Hủy
@@ -719,7 +921,7 @@ export default function AdminCurriculumPage() {
                   disabled={submittingSection || !sectionTitle.trim()}
                   className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-xs transition"
                 >
-                  {submittingSection ? "Đang lưu..." : "Tạo Chương"}
+                  {submittingSection ? "Đang lưu..." : editingSection ? "Cập nhật chương" : "Tạo Chương"}
                 </button>
               </div>
             </form>
@@ -727,21 +929,21 @@ export default function AdminCurriculumPage() {
         </div>
       )}
 
-      {/* Modal: Create Lesson */}
+      {/* Modal: Create or edit lesson */}
       {showLessonModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Thêm Bài Học Mới</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">{editingLesson ? "Chỉnh sửa bài học" : "Thêm Bài Học Mới"}</h3>
               <button
-                onClick={() => setShowLessonModal(false)}
+                onClick={closeLessonModal}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateLesson} className="space-y-4">
+            <form onSubmit={handleSaveLesson} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Tên Bài Học</label>
                 <input
@@ -795,7 +997,7 @@ export default function AdminCurriculumPage() {
               <div className="flex justify-end gap-3 pt-3">
                 <button
                   type="button"
-                  onClick={() => setShowLessonModal(false)}
+                  onClick={closeLessonModal}
                   className="px-4 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition"
                 >
                   Hủy
@@ -805,7 +1007,7 @@ export default function AdminCurriculumPage() {
                   disabled={submittingLesson || !lessonForm.title.trim()}
                   className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shadow-lg shadow-rose-600/30"
                 >
-                  {submittingLesson ? "Đang lưu..." : "Lưu Bài Học"}
+                  {submittingLesson ? "Đang lưu..." : editingLesson ? "Cập nhật bài học" : "Lưu Bài Học"}
                 </button>
               </div>
             </form>

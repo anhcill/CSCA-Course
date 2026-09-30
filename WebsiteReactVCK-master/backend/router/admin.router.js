@@ -61,6 +61,25 @@ const normalizeSlug = (value) => value
   .replace(/^-+|-+$/g, "")
   .slice(0, 300);
 
+const parseLearningUrl = (value) => {
+  if (value === undefined || value === null || value === "") return { value: null };
+  if (typeof value !== "string") return { error: "INVALID_LEARNING_URL" };
+
+  const candidate = value.trim();
+  if (!candidate) return { value: null };
+  if (candidate.length > 2_000) return { error: "INVALID_LEARNING_URL" };
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+      return { error: "INVALID_LEARNING_URL" };
+    }
+    return { value: parsed.toString() };
+  } catch {
+    return { error: "INVALID_LEARNING_URL" };
+  }
+};
+
 const safeUser = (row) => ({
   id: row.id,
   username: row.username,
@@ -142,7 +161,7 @@ const handleDbError = (res, error, fallback) => {
 // GET /api/admin/kpi-summary — all values are calculated from current LMS data.
 router.get("/kpi-summary", ...adminOnly, async (req, res) => {
   try {
-    const [users, courses, enrollments, pending, attendance, completion, revenue, monthly, activities] = await Promise.all([
+    const [users, courses, enrollments, pending, attendance, completion, revenue, monthly, activities, entitlements, syncJobs] = await Promise.all([
       query(`SELECT COUNT(*)::int AS total,
                     COUNT(*) FILTER (WHERE role = 'user' AND NOT is_locked)::int AS active_learners,
                     COUNT(*) FILTER (WHERE role = 'creator')::int AS creators,
@@ -171,10 +190,18 @@ router.get("/kpi-summary", ...adminOnly, async (req, res) => {
                     u.username AS actor, u.avatar_url AS avatar
              FROM audit_events ae LEFT JOIN users u ON u.id = ae.actor_id
              ORDER BY ae.created_at DESC LIMIT 8`),
+      query(`SELECT
+               COUNT(*) FILTER (WHERE access_status = 'active' AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW()))::int AS active,
+               COUNT(*) FILTER (WHERE access_status = 'suspended')::int AS suspended,
+               COUNT(*) FILTER (WHERE access_status IN ('revoked', 'expired') OR (valid_until IS NOT NULL AND valid_until <= NOW()))::int AS inactive
+             FROM lms_access_grants`),
+      query(`SELECT COUNT(*) FILTER (WHERE status = 'DEAD_LETTER')::int AS dead_letter FROM lms_sync_jobs`),
     ]);
 
     const userStats = users.rows[0] || {};
     const courseStats = courses.rows[0] || {};
+    const entitlementStats = entitlements.rows[0] || {};
+    const syncJobStats = syncJobs.rows[0] || {};
     const monthlyEnrollmentStats = monthly.rows.map((row) => ({
       month: row.month,
       enrollments: Number(row.enrollments || 0),
@@ -215,6 +242,14 @@ router.get("/kpi-summary", ...adminOnly, async (req, res) => {
           total: Number(courseStats.total || 0),
           published: Number(courseStats.published || 0),
           drafts: Number(courseStats.drafts || 0),
+        },
+        entitlements: {
+          active: Number(entitlementStats.active || 0),
+          suspended: Number(entitlementStats.suspended || 0),
+          inactive: Number(entitlementStats.inactive || 0),
+        },
+        syncJobs: {
+          deadLetter: Number(syncJobStats.dead_letter || 0),
         },
         activeEnrollments: Number(enrollments.rows[0]?.count || 0),
         pendingSubmissions: Number(pending.rows[0]?.count || 0),
@@ -495,7 +530,7 @@ router.get("/courses/:id/curriculum", ...adminOnly, async (req, res) => {
     if (!course) return sendError(res, 404, "Không tìm thấy khóa học", "NOT_FOUND");
     const [sections, lessons] = await Promise.all([
       query("SELECT id, course_id, title, sort_order, created_at, updated_at FROM sections WHERE course_id = $1 ORDER BY sort_order, id", [courseId]),
-      query(`SELECT l.id, l.course_id, l.section_id, COALESCE(l.title, l.name) AS title, l.description,
+       query(`SELECT l.id, l.course_id, l.section_id, COALESCE(l.title, l.name) AS title, l.description, l.learning_url,
                     COALESCE(l.duration_seconds, l.video_duration_seconds, 0) AS duration_seconds,
                     l.is_preview, l.is_published, l.sort_order, l.video_asset_id,
                     (va.id IS NOT NULL AND va.status = 'ready') AS has_video
@@ -639,7 +674,7 @@ router.delete("/sections/:id", ...adminOnly, async (req, res) => {
   } finally { client.release(); }
 });
 
-const lessonFields = `l.id, l.course_id, l.section_id, COALESCE(l.title, l.name) AS title, l.description,
+const lessonFields = `l.id, l.course_id, l.section_id, COALESCE(l.title, l.name) AS title, l.description, l.learning_url,
   COALESCE(l.duration_seconds, l.video_duration_seconds, 0) AS duration_seconds,
   l.is_preview, l.is_published, l.sort_order, l.video_asset_id`;
 
@@ -657,6 +692,12 @@ const validateLessonPayload = (body, { partial = false } = {}) => {
   if (!partial || body.isPreview !== undefined) { if (body.isPreview !== undefined && typeof body.isPreview !== "boolean") throw new Error("INVALID_BOOLEAN"); output.is_preview = body.isPreview ?? false; }
   if (body.isPublished !== undefined) { if (typeof body.isPublished !== "boolean") throw new Error("INVALID_BOOLEAN"); output.is_published = body.isPublished; }
   if (body.videoAssetId !== undefined) { const assetId = body.videoAssetId === null || body.videoAssetId === "" ? null : parseId(body.videoAssetId); if (body.videoAssetId && !assetId) throw new Error("INVALID_VIDEO"); output.video_asset_id = assetId; }
+  if (!partial || body.learningUrl !== undefined) {
+    const parsed = parseLearningUrl(body.learningUrl);
+    if (parsed.error) throw new Error(parsed.error);
+    if (!partial && !parsed.value) throw new Error("REQUIRED_LEARNING_URL");
+    output.learning_url = parsed.value;
+  }
   return output;
 };
 
@@ -672,14 +713,14 @@ router.post("/sections/:id/lessons", ...adminOnly, async (req, res) => {
       if (!asset.rows[0]) return sendError(res, 422, "Video chưa sẵn sàng", "VIDEO_NOT_READY");
     }
     const result = await query(
-      `INSERT INTO lessons (section_id, course_id, name, title, description, video_asset_id, duration_seconds, is_preview, sort_order, is_published)
-       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [sectionId, section.course_id, input.title, input.description, input.video_asset_id ?? null, input.duration_seconds, input.is_preview, input.sort_order, input.is_published ?? false],
+      `INSERT INTO lessons (section_id, course_id, name, title, description, video_asset_id, duration_seconds, is_preview, sort_order, learning_url, is_published)
+       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [sectionId, section.course_id, input.title, input.description, input.video_asset_id ?? null, input.duration_seconds, input.is_preview, input.sort_order, input.learning_url, input.is_published ?? false],
     );
     await recordAuditEvent({ actorId: req.user.id, action: "lesson.created", entityType: "lesson", entityId: result.rows[0].id, afterState: result.rows[0], metadata: { courseId: section.course_id, sectionId, ip: req.ip } });
     return res.status(201).json({ success: true, data: result.rows[0], message: "Tạo bài học thành công" });
   } catch (error) {
-    if (["REQUIRED", "INVALID_TEXT", "INVALID_DURATION", "INVALID_SORT", "INVALID_BOOLEAN", "INVALID_VIDEO"].includes(error.message)) return sendError(res, 422, "Thông tin bài học không hợp lệ", "VALIDATION_ERROR");
+    if (["REQUIRED", "REQUIRED_LEARNING_URL", "INVALID_TEXT", "INVALID_DURATION", "INVALID_SORT", "INVALID_BOOLEAN", "INVALID_VIDEO", "INVALID_LEARNING_URL"].includes(error.message)) return sendError(res, 422, "Thông tin bài học không hợp lệ", "VALIDATION_ERROR");
     return handleDbError(res, error, "Không thể tạo bài học");
   }
 });
@@ -695,7 +736,7 @@ router.patch("/lessons/:id", ...adminOnly, async (req, res) => {
       const asset = await query("SELECT id FROM video_assets WHERE id = $1 AND status = 'ready'", [input.video_asset_id]);
       if (!asset.rows[0]) return sendError(res, 422, "Video chưa sẵn sàng", "VIDEO_NOT_READY");
     }
-    const mapping = { title: "title", description: "description", duration_seconds: "duration_seconds", sort_order: "sort_order", is_preview: "is_preview", is_published: "is_published", video_asset_id: "video_asset_id" };
+    const mapping = { title: "title", description: "description", learning_url: "learning_url", duration_seconds: "duration_seconds", sort_order: "sort_order", is_preview: "is_preview", is_published: "is_published", video_asset_id: "video_asset_id" };
     const fields = [];
     const values = [];
     Object.entries(input).forEach(([key, value]) => { values.push(value); fields.push(`${mapping[key]} = $${values.length}`); });
@@ -706,7 +747,7 @@ router.patch("/lessons/:id", ...adminOnly, async (req, res) => {
     await recordAuditEvent({ actorId: req.user.id, action: "lesson.updated", entityType: "lesson", entityId: lessonId, beforeState: before, afterState: result.rows[0], metadata: { courseId: before.course_id, ip: req.ip } });
     return res.json({ success: true, data: result.rows[0], message: "Cập nhật bài học thành công" });
   } catch (error) {
-    if (["REQUIRED", "INVALID_TEXT", "INVALID_DURATION", "INVALID_SORT", "INVALID_BOOLEAN", "INVALID_VIDEO"].includes(error.message)) return sendError(res, 422, "Thông tin bài học không hợp lệ", "VALIDATION_ERROR");
+    if (["REQUIRED", "INVALID_TEXT", "INVALID_DURATION", "INVALID_SORT", "INVALID_BOOLEAN", "INVALID_VIDEO", "INVALID_LEARNING_URL"].includes(error.message)) return sendError(res, 422, "Thông tin bài học không hợp lệ", "VALIDATION_ERROR");
     return handleDbError(res, error, "Không thể cập nhật bài học");
   }
 });

@@ -143,7 +143,7 @@ export default function AdminUser() {
       if (editingUser) {
         const payload = { ...formData };
         if (!payload.password) delete payload.password;
-        await updateUser(editingUser._id, payload);
+        await updateUser(editingUser.id, payload);
         toast.success(`Cập nhật tài khoản ${formData.username} thành công! 🎉`);
       } else {
         await createUser(formData);
@@ -153,7 +153,7 @@ export default function AdminUser() {
       if (refetchUsers) refetchUsers();
     } catch (err) {
       console.error("Save user error:", err);
-      toast.error(err?.response?.data?.message || "Có lỗi xảy ra khi lưu người dùng!");
+      toast.error(err?.message || "Có lỗi xảy ra khi lưu người dùng!");
     } finally {
       setSubmitting(false);
     }
@@ -162,7 +162,7 @@ export default function AdminUser() {
   // Delete User with custom confirm dialog
   const handleDeleteUser = useCallback(
     (user) => {
-      if (user._id === authUser?._id) {
+      if (user.id === authUser?.id) {
         toast.error("Bạn không thể tự xóa tài khoản quản trị của chính mình!");
         return;
       }
@@ -175,11 +175,11 @@ export default function AdminUser() {
         confirmVariant: "danger",
         onConfirm: async () => {
           try {
-            await deleteUser(user._id);
+            await deleteUser(user.id);
             toast.success(`Đã xóa tài khoản "${user.username}" thành công!`);
             if (refetchUsers) refetchUsers();
           } catch (err) {
-            toast.error(err?.response?.data?.message || "Không thể xóa tài khoản này!");
+            toast.error(err?.message || "Không thể xóa tài khoản này!");
           } finally {
             setConfirmDialog((p) => ({ ...p, isOpen: false }));
           }
@@ -192,7 +192,7 @@ export default function AdminUser() {
   // Toggle Lock/Unlock User with confirm dialog
   const handleToggleLock = useCallback(
     (user) => {
-      if (user._id === authUser?._id) {
+      if (user.id === authUser?.id) {
         toast.error("Bạn không thể tự khóa tài khoản quản trị của chính mình!");
         return;
       }
@@ -209,7 +209,7 @@ export default function AdminUser() {
         confirmVariant: willLock ? "danger" : "primary",
         onConfirm: async () => {
           try {
-            await toggleUserLockStatus(user._id, willLock);
+            await toggleUserLockStatus(user.id, willLock);
             toast.success(
               willLock
                 ? `Đã khóa tài khoản "${user.username}" thành công!`
@@ -217,14 +217,8 @@ export default function AdminUser() {
             );
             if (refetchUsers) refetchUsers();
           } catch (err) {
-            console.warn("Local toggle lock fallback:", err);
-            // Fallback UI update
-            user.isLocked = willLock;
-            toast.success(
-              willLock
-                ? `Đã khóa tài khoản "${user.username}" (Cập nhật giao diện)!`
-                : `Đã mở khóa tài khoản "${user.username}"!`
-            );
+            console.error("Toggle user lock error:", err);
+            toast.error(err?.message || "Không thể cập nhật trạng thái khóa tài khoản trên máy chủ.");
           } finally {
             setConfirmDialog((p) => ({ ...p, isOpen: false }));
           }
@@ -350,7 +344,7 @@ export default function AdminUser() {
                 </tr>
               ) : (
                 paginatedUsers.map((u) => {
-                  const isCurrent = u._id === authUser?._id;
+                  const isCurrent = u.id === authUser?.id;
                   const roleBadge =
                     u.role === "admin"
                       ? "bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800"
@@ -359,7 +353,7 @@ export default function AdminUser() {
                       : "bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800";
 
                   return (
-                    <tr key={u._id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition">
+                    <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition">
                       <td className="py-3.5 px-6">
                         <div className="flex items-center gap-3">
                           <img

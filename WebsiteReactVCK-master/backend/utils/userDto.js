@@ -32,25 +32,29 @@ export const toStudentProfileDto = (row) => {
   return STUDENT_PROFILE_FIELDS.some((field) => profile[field] !== null) ? profile : null;
 };
 
-export const toUserDto = (row) => ({
-  id: row.id,
-  username: row.username,
-  email: row.email,
-  role: row.role,
-  gender: row.gender,
-  avatarUrl: row.avatar_url ?? null,
-  isVip: Boolean(row.is_vip),
-  vipExpiresAt: row.vip_expires_at ?? null,
-  emailVerified: Boolean(row.email_verified),
-  authProvider: row.oauth_provider ?? "local",
-  hasPassword: Boolean(row.password_hash),
-  isLocked: Boolean(row.is_locked),
-  isManagementManaged: Boolean(row.is_management_managed),
-  lmsAccountStatus: row.lms_account_status ?? "unmanaged",
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-  studentProfile: toStudentProfileDto(row),
-});
+export const toUserDto = (row) => {
+  const studentProfile = toStudentProfileDto(row);
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    role: row.role,
+    gender: row.gender,
+    avatarUrl: row.avatar_url ?? null,
+    fullName: studentProfile?.fullName ?? row.full_name ?? row.username,
+    isVip: Boolean(row.is_vip),
+    vipExpiresAt: row.vip_expires_at ?? null,
+    emailVerified: Boolean(row.email_verified),
+    authProvider: row.oauth_provider ?? "local",
+    hasPassword: Boolean(row.password_hash),
+    isLocked: Boolean(row.is_locked),
+    isManagementManaged: Boolean(row.is_management_managed),
+    lmsAccountStatus: row.lms_account_status ?? "unmanaged",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    studentProfile,
+  };
+};
 
 export const getUserDtoById = async (userId, db = { query }) => {
   const { rows } = await db.query(

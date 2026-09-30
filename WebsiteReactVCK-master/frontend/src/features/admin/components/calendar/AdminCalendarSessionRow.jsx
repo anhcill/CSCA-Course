@@ -97,7 +97,7 @@ export default function AdminCalendarSessionRow({
           )}
 
           <Link
-            to={`/lms/teach/classes/${session.live_class_id}`}
+            to={`/admin/classes/${session.live_class_id}`}
             className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
             title="Mở lớp để quản lý lịch cố định và các buổi học"
           >

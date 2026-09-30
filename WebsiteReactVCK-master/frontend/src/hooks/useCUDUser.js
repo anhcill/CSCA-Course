@@ -31,7 +31,12 @@ const useCUDUser = () => {
 
     const updateUser = (id, data) => request(async () => {
         checkAdminAuth();
-        const response = await axios.put(`/api/auth/admin/users/${id}`, data);
+    const { password, ...editableFields } = data;
+    const payload = {
+      ...editableFields,
+      ...(password ? { newPassword: password } : {}),
+    };
+    const response = await axios.put(`/api/auth/admin/users/${id}`, payload);
         return response.data.message;
     });
 

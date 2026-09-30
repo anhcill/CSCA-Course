@@ -571,10 +571,12 @@ export const updateStudentProfile = async (req, res) => {
 export const getAllUsers = async (req, res) => {
   try {
     const { rows } = await query(
-      `SELECT id, username, email, role, avatar_url, gender, is_vip,
-              vip_expires_at, email_verified, is_locked, oauth_provider, password_hash,
-              created_at, updated_at
-       FROM users ORDER BY created_at DESC`
+      `SELECT u.id, u.username, u.email, u.role, u.avatar_url, u.gender, u.is_vip,
+              u.vip_expires_at, u.email_verified, u.is_locked, u.oauth_provider, u.password_hash,
+              u.created_at, u.updated_at, sp.full_name AS student_full_name
+       FROM users u
+       LEFT JOIN student_profiles sp ON sp.user_id = u.id
+       ORDER BY u.created_at DESC`
     );
     return res.status(200).json({ success: true, data: rows.map(toUserDto) });
   } catch (error) {
@@ -587,11 +589,18 @@ export const getAllUsers = async (req, res) => {
 // CREATE USER (Admin)
 // ============================================================
 export const createUser = async (req, res) => {
+  const client = await getClient();
   try {
-    const { username, email, password, role, gender } = req.body;
+    const { username, email, password, role, gender, fullName } = req.body;
+    const normalizedUsername = typeof username === "string" ? username.trim() : "";
+    const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+    const normalizedFullName = normalizeOptionalText(fullName, 120);
 
-    if (!username || !email || !password) {
+    if (!normalizedUsername || !normalizedEmail || typeof password !== "string" || password.length < 6) {
       return res.status(422).json({ success: false, message: "Thiếu thông tin bắt buộc", errorCode: "VALIDATION_ERROR" });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(422).json({ success: false, message: "Email không hợp lệ", errorCode: "VALIDATION_ERROR" });
     }
     if (role !== undefined && !VALID_ROLES.has(role)) {
       return res.status(422).json({ success: false, message: "Vai trò không hợp lệ", errorCode: "VALIDATION_ERROR" });
@@ -605,23 +614,39 @@ export const createUser = async (req, res) => {
     const avatarNum = Math.floor(Math.random() * 126) + 1;
     const avatarUrl = `/avatar/avt_${avatarNum}.webp`;
 
-    const { rows } = await query(
+    await client.query("BEGIN");
+    const { rows } = await client.query(
       `INSERT INTO users (username, email, password_hash, role, gender, avatar_url, email_verified)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE)
-       RETURNING id, username, email, role, avatar_url, gender, is_vip,
+       RETURNING id, username, email, role, avatar_url, gender, is_vip, is_locked,
                  vip_expires_at, email_verified, oauth_provider, password_hash,
                  created_at, updated_at`,
-      [username, email, hashedPassword, role || 'user', gender || 'other', avatarUrl]
+      [normalizedUsername, normalizedEmail, hashedPassword, role || 'user', gender || 'other', avatarUrl]
     );
+    if (normalizedFullName !== null) {
+      await client.query(
+        `INSERT INTO student_profiles (user_id, full_name)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name`,
+        [rows[0].id, normalizedFullName],
+      );
+    }
+    await client.query("COMMIT");
 
-    return res.status(201).json({ success: true, message: toUserDto(rows[0]) });
+    return res.status(201).json({ success: true, message: await getUserDtoById(rows[0].id) });
 
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Create user error:", error);
+    if (error.message === "INVALID_STUDENT_PROFILE") {
+      return res.status(422).json({ success: false, message: "Họ và tên không hợp lệ", errorCode: "VALIDATION_ERROR" });
+    }
     if (error.code === '23505') {
       return res.status(400).json({ success: false, message: "Email hoặc tên đăng nhập đã tồn tại" });
     }
     return res.status(500).json({ success: false, message: "Lỗi server" });
+  } finally {
+    client.release();
   }
 };
 
@@ -636,7 +661,16 @@ export const updateUser = async (req, res) => {
     const values = [];
     let paramIndex = 1;
 
-    const allowedFields = ['username', 'gender', 'avatar_url', 'role'];
+    const allowedFields = ['username', 'email', 'gender', 'avatar_url', 'role'];
+    const normalizedFullName = updates.fullName === undefined
+      ? undefined
+      : normalizeOptionalText(updates.fullName, 120);
+    const normalizedEmail = updates.email === undefined
+      ? undefined
+      : typeof updates.email === 'string' ? updates.email.trim().toLowerCase() : '';
+    if (updates.email !== undefined && (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))) {
+      return res.status(422).json({ success: false, message: "Email không hợp lệ", errorCode: "VALIDATION_ERROR" });
+    }
     if (updates.avatar_url !== undefined && !isValidAvatarUrl(updates.avatar_url)) {
       return res.status(422).json({ success: false, message: "Ảnh đại diện không hợp lệ", errorCode: "VALIDATION_ERROR" });
     }
@@ -661,13 +695,17 @@ export const updateUser = async (req, res) => {
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
         setClauses.push(`${field} = $${paramIndex}`);
-        values.push(updates[field]);
+        values.push(field === 'email' ? normalizedEmail : updates[field]);
         paramIndex++;
       }
     }
 
     // Xử lý đổi mật khẩu
-    if (updates.newPassword) {
+    const requestedPassword = updates.newPassword || updates.password;
+    if (requestedPassword) {
+      if (typeof requestedPassword !== 'string' || requestedPassword.length < 6) {
+        return res.status(422).json({ success: false, message: "Mật khẩu phải có ít nhất 6 ký tự", errorCode: "VALIDATION_ERROR" });
+      }
       if (updates.currentPassword) {
         const { rows: userRows } = await query('SELECT password_hash FROM users WHERE id = $1', [id]);
         if (userRows.length === 0) {
@@ -679,35 +717,52 @@ export const updateUser = async (req, res) => {
         }
       }
       const salt = await bcrypt.genSalt(10);
-      const hashed = await bcrypt.hash(updates.newPassword, salt);
+      const hashed = await bcrypt.hash(requestedPassword, salt);
       setClauses.push(`password_hash = $${paramIndex}`);
       values.push(hashed);
       paramIndex++;
     }
 
-    if (setClauses.length === 0) {
+    if (setClauses.length === 0 && normalizedFullName === undefined) {
       return res.status(422).json({ success: false, message: "Không có gì để cập nhật", errorCode: "VALIDATION_ERROR" });
     }
 
-    values.push(id);
-    const { rows } = await query(
-      `UPDATE users SET ${setClauses.join(', ')} WHERE id = $${paramIndex}
-       RETURNING id, username, email, role, avatar_url, gender, is_vip,
-                 vip_expires_at, email_verified, oauth_provider, password_hash,
-                 created_at, updated_at`,
-      values
-    );
+    if (setClauses.length > 0) {
+      values.push(id);
+      const { rows } = await query(
+        `UPDATE users SET ${setClauses.join(', ')} WHERE id = $${paramIndex}
+         RETURNING id`,
+        values
+      );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: "User không tồn tại", errorCode: "NOT_FOUND" });
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, message: "User không tồn tại", errorCode: "NOT_FOUND" });
+      }
+    } else {
+      const { rows } = await query("SELECT id FROM users WHERE id = $1", [id]);
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, message: "User không tồn tại", errorCode: "NOT_FOUND" });
+      }
     }
 
-    return res.status(200).json({ success: true, message: toUserDto(rows[0]) });
+    if (normalizedFullName !== undefined) {
+      await query(
+        `INSERT INTO student_profiles (user_id, full_name)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name`,
+        [id, normalizedFullName],
+      );
+    }
+
+    return res.status(200).json({ success: true, message: await getUserDtoById(id) });
 
   } catch (error) {
     console.error("Update user error:", error);
+    if (error.message === "INVALID_STUDENT_PROFILE") {
+      return res.status(422).json({ success: false, message: "Họ và tên không hợp lệ", errorCode: "VALIDATION_ERROR" });
+    }
     if (error.code === '23505') {
-      return res.status(400).json({ success: false, message: "Tên đăng nhập đã tồn tại" });
+      return res.status(400).json({ success: false, message: "Tên đăng nhập hoặc email đã tồn tại" });
     }
     return res.status(500).json({ success: false, message: "Lỗi server" });
   }

@@ -167,6 +167,74 @@ export const updateLessonLearningLink = async ({ lessonId, learningUrl }) => req
   },
 );
 
+// Admin console course lifecycle helpers. These use the admin-only endpoints
+// so every mutation is audited by the server.
+export const createAdminCourse = async (courseData) => request("/admin/courses", {
+  method: "POST",
+  body: JSON.stringify(courseData),
+});
+
+export const updateAdminCourse = async ({ courseId, courseData }) => request(
+  `/admin/courses/${encodeURIComponent(courseId)}`,
+  {
+    method: "PATCH",
+    body: JSON.stringify(courseData),
+  },
+);
+
+export const deleteAdminCourse = async (courseId) => request(
+  `/admin/courses/${encodeURIComponent(courseId)}`,
+  { method: "DELETE" },
+);
+
+export const fetchAdminConsoleCourses = async () => request("/admin/courses?limit=100");
+
+export const fetchAdminConsoleCurriculum = async (courseId) => request(
+  `/admin/courses/${encodeURIComponent(courseId)}/curriculum`,
+);
+
+export const createAdminSection = async ({ courseId, title, sortOrder }) => request(
+  `/admin/courses/${encodeURIComponent(courseId)}/sections`,
+  {
+    method: "POST",
+    body: JSON.stringify({ title, sortOrder }),
+  },
+);
+
+export const updateAdminSection = async ({ sectionId, sectionData }) => request(
+  `/admin/sections/${encodeURIComponent(sectionId)}`,
+  {
+    method: "PATCH",
+    body: JSON.stringify(sectionData),
+  },
+);
+
+export const deleteAdminSection = async (sectionId) => request(
+  `/admin/sections/${encodeURIComponent(sectionId)}`,
+  { method: "DELETE" },
+);
+
+export const createAdminLesson = async ({ sectionId, title, learningUrl, durationSeconds, isPreview, sortOrder }) => request(
+  `/admin/sections/${encodeURIComponent(sectionId)}/lessons`,
+  {
+    method: "POST",
+    body: JSON.stringify({ title, learningUrl, durationSeconds, isPreview, sortOrder, isPublished: true }),
+  },
+);
+
+export const updateAdminLesson = async ({ lessonId, lessonData }) => request(
+  `/admin/lessons/${encodeURIComponent(lessonId)}`,
+  {
+    method: "PATCH",
+    body: JSON.stringify(lessonData),
+  },
+);
+
+export const deleteAdminLesson = async (lessonId) => request(
+  `/admin/lessons/${encodeURIComponent(lessonId)}`,
+  { method: "DELETE" },
+);
+
 // Live Classes & Google Meet/Zoom Helpers
 export const fetchLiveClasses = async () => request("/live-classes");
 
