@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
-import { fetchAttendanceRoster, fetchMyLiveSchedule, markAttendance } from "../../api/lmsClient";
+import { ArrowLeft, CheckCircle2, ClipboardEdit, ShieldCheck } from "lucide-react";
+import { createAttendanceAmendment, fetchAttendanceAmendments, fetchAttendanceRoster, fetchMyLiveSchedule, markAttendance, reviewAttendanceAmendment } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import AttendanceSessionHeader from "../components/AttendanceSessionHeader";
@@ -39,6 +39,11 @@ export default function TeacherAttendancePage() {
   const [students, setStudents] = useState([]);
   const [attendancePolicy, setAttendancePolicy] = useState(null);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [amendments, setAmendments] = useState([]);
+  const [canReviewAmendments, setCanReviewAmendments] = useState(false);
+  const [showAmendmentForm, setShowAmendmentForm] = useState(false);
+  const [amendmentForm, setAmendmentForm] = useState({ userId: "", requestedStatus: "present", requestedNote: "", reason: "" });
+  const [savingAmendment, setSavingAmendment] = useState(false);
 
   // Attendance state: { [userId]: { status: 'present'|'absent'|'excused', note: string } }
   const [attendanceRecords, setAttendanceRecords] = useState({});
@@ -50,15 +55,14 @@ export default function TeacherAttendancePage() {
     setErrorMsg("");
     try {
       const res = await fetchMyLiveSchedule();
-      const todaySessions = res?.success && Array.isArray(res.data)
-        ? res.data.filter(isAttendanceToday)
-        : [];
-      setSessions(todaySessions);
+      const allSessions = res?.success && Array.isArray(res.data) ? res.data : [];
+      const todaySessions = allSessions.filter(isAttendanceToday);
+      setSessions(allSessions);
       setSelectedSessionId((currentSessionId) => {
-        if (todaySessions.some((session) => String(session.id) === String(currentSessionId))) {
+        if (allSessions.some((session) => String(session.id) === String(currentSessionId))) {
           return currentSessionId;
         }
-        return todaySessions[0] ? String(todaySessions[0].id) : "";
+        return todaySessions[0] ? String(todaySessions[0].id) : (allSessions[0] ? String(allSessions[0].id) : "");
       });
     } catch (err) {
       console.error("Error loading sessions for attendance:", err);
@@ -122,6 +126,24 @@ export default function TeacherAttendancePage() {
   useEffect(() => {
     loadRoster();
   }, [loadRoster]);
+
+  const loadAmendments = useCallback(async () => {
+    if (!sessionsLoaded || !selectedSessionId) {
+      setAmendments([]);
+      setCanReviewAmendments(false);
+      return;
+    }
+    try {
+      const response = await fetchAttendanceAmendments(selectedSessionId);
+      setAmendments(Array.isArray(response?.data) ? response.data : []);
+      setCanReviewAmendments(Boolean(response?.meta?.canReview));
+    } catch {
+      setAmendments([]);
+      setCanReviewAmendments(false);
+    }
+  }, [selectedSessionId, sessionsLoaded]);
+
+  useEffect(() => { loadAmendments(); }, [loadAmendments]);
 
   const handleSessionChange = (e) => {
     const newId = e.target.value;
@@ -213,6 +235,41 @@ export default function TeacherAttendancePage() {
     }
   };
 
+  const handleCreateAmendment = async (event) => {
+    event.preventDefault();
+    if (!selectedSessionId || !amendmentForm.userId) return;
+    try {
+      setSavingAmendment(true);
+      await createAttendanceAmendment({
+        sessionId: selectedSessionId,
+        userId: amendmentForm.userId,
+        requestedStatus: amendmentForm.requestedStatus,
+        requestedNote: amendmentForm.requestedNote,
+        reason: amendmentForm.reason,
+      });
+      toast.success("Đã gửi phiếu chỉnh sửa để quản trị viên duyệt.");
+      setShowAmendmentForm(false);
+      setAmendmentForm({ userId: "", requestedStatus: "present", requestedNote: "", reason: "" });
+      await loadAmendments();
+    } catch (error) {
+      toast.error(error?.message || "Không thể tạo phiếu chỉnh sửa.");
+    } finally {
+      setSavingAmendment(false);
+    }
+  };
+
+  const handleReviewAmendment = async (amendmentId, decision) => {
+    const label = decision === "approved" ? "duyệt và áp dụng" : "từ chối";
+    if (!window.confirm(`Bạn chắc muốn ${label} phiếu chỉnh sửa này?`)) return;
+    try {
+      await reviewAttendanceAmendment({ amendmentId, decision, reviewNote: "" });
+      toast.success(decision === "approved" ? "Đã áp dụng chỉnh sửa có kiểm soát." : "Đã từ chối phiếu chỉnh sửa.");
+      await Promise.all([loadRoster(), loadAmendments()]);
+    } catch (error) {
+      toast.error(error?.message || "Không thể xử lý phiếu chỉnh sửa.");
+    }
+  };
+
   // Statistics calculation
   const stats = useMemo(() => {
     const total = students.length;
@@ -249,6 +306,8 @@ export default function TeacherAttendancePage() {
           policy={attendancePolicy}
           loading={loadingSessions}
         />
+
+          {sessions.length > 0 && !sessions.some(isAttendanceToday) && <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">Không có buổi học hôm nay. Bạn vẫn có thể xem bản điểm danh cũ và gửi phiếu chỉnh sửa để duyệt.</p>}
 
         {/* Table & Bulk Actions */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
@@ -310,6 +369,14 @@ export default function TeacherAttendancePage() {
             </button>
           </div>
         </div>
+
+        {selectedSessionId && attendancePolicy?.isLocked && (
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="flex gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300"><ShieldCheck className="h-4 w-4" /></span><div><h2 className="font-black text-slate-950 dark:text-white">Phiếu chỉnh sửa điểm danh</h2><p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Bản điểm danh ban đầu luôn được giữ lại. Mọi thay đổi phải có lý do, người duyệt và thời điểm duyệt.</p></div></div><button type="button" onClick={() => setShowAmendmentForm((current) => !current)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700 hover:bg-violet-100 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300"><ClipboardEdit className="h-3.5 w-3.5" /> Tạo phiếu chỉnh sửa</button></div>
+            {showAmendmentForm && <form onSubmit={handleCreateAmendment} className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50 md:grid-cols-2"><label className="text-xs font-bold text-slate-700 dark:text-slate-200">Học viên<select required value={amendmentForm.userId} onChange={(event) => { const student = students.find((item) => String(item.id) === event.target.value); setAmendmentForm((current) => ({ ...current, userId: event.target.value, requestedStatus: student?.attendance_status || "present", requestedNote: student?.attendance_note || "" })); }} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Chọn học viên...</option>{students.map((student) => <option key={student.id} value={student.id}>{student.name || student.email} · hiện tại: {student.attendance_status || "—"}</option>)}</select></label><label className="text-xs font-bold text-slate-700 dark:text-slate-200">Trạng thái mới<select value={amendmentForm.requestedStatus} onChange={(event) => setAmendmentForm((current) => ({ ...current, requestedStatus: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="present">Có mặt</option><option value="absent">Vắng</option><option value="excused">Có phép</option></select></label><label className="text-xs font-bold text-slate-700 dark:text-slate-200">Ghi chú mới<input value={amendmentForm.requestedNote} onChange={(event) => setAmendmentForm((current) => ({ ...current, requestedNote: event.target.value }))} maxLength={255} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label><label className="text-xs font-bold text-slate-700 dark:text-slate-200">Lý do <span className="text-rose-500">*</span><input required minLength={10} value={amendmentForm.reason} onChange={(event) => setAmendmentForm((current) => ({ ...current, reason: event.target.value }))} maxLength={2000} placeholder="Nêu căn cứ điều chỉnh..." className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label><div className="md:col-span-2 flex justify-end gap-2"><button type="button" onClick={() => setShowAmendmentForm(false)} className="rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</button><button type="submit" disabled={savingAmendment} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-black text-white hover:bg-violet-500 disabled:opacity-50">{savingAmendment ? "Đang gửi..." : "Gửi duyệt"}</button></div></form>}
+            <div className="mt-4 space-y-2">{amendments.length === 0 ? <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-500 dark:bg-slate-950">Chưa có phiếu chỉnh sửa nào cho buổi học này.</p> : amendments.map((item) => <article key={item.id} className="rounded-2xl border border-slate-100 p-3 text-xs dark:border-slate-800"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-black text-slate-900 dark:text-white">{item.studentName}</p><p className="mt-1 text-slate-500">{item.originalStatus} → <b className="text-violet-700 dark:text-violet-300">{item.requestedStatus}</b>{item.reason ? ` · ${item.reason}` : ""}</p><p className="mt-1 text-[11px] text-slate-400">Gửi {item.requestedAt ? new Date(item.requestedAt).toLocaleString("vi-VN") : ""}{item.reviewedAt ? ` · xử lý ${new Date(item.reviewedAt).toLocaleString("vi-VN")}` : ""}</p></div><div className="flex items-center gap-2"><span className={`rounded-full px-2 py-1 text-[10px] font-black ${item.status === "approved" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" : item.status === "rejected" ? "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300" : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"}`}>{item.status === "pending" ? "CHỜ DUYỆT" : item.status === "approved" ? "ĐÃ DUYỆT" : "TỪ CHỐI"}</span>{canReviewAmendments && item.status === "pending" && <><button type="button" onClick={() => handleReviewAmendment(item.id, "approved")} className="rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-black text-white">Duyệt</button><button type="button" onClick={() => handleReviewAmendment(item.id, "rejected")} className="rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-black text-white">Từ chối</button></>}</div></div></article>)}</div>
+          </section>
+        )}
       </div>
     </div>
   );

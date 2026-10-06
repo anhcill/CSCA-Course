@@ -18,9 +18,11 @@ import { EmptyState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import {
   createTeacherQuiz,
+  createQuestionBankItem,
   deleteTeacherQuiz,
   fetchAdminCourses,
   fetchClassDetails,
+  fetchQuestionBank,
   fetchTeacherQuizTargets,
   fetchTeacherQuizzes,
   uploadCourseQuizPaper,
@@ -152,6 +154,8 @@ export default function TeacherQuizPage() {
   const [questions, setQuestions] = useState([createBlankQuestion()]);
   const [answerKeyPaste, setAnswerKeyPaste] = useState("");
   const [paperFile, setPaperFile] = useState(null);
+  const [questionBank, setQuestionBank] = useState([]);
+  const [questionBankLoading, setQuestionBankLoading] = useState(false);
 
   const parsedAnswerKey = useMemo(() => parseQuizAnswerKey(answerKeyPaste), [answerKeyPaste]);
   const matchedAnswerCount = useMemo(
@@ -226,7 +230,21 @@ export default function TeacherQuizPage() {
       })
       .finally(() => { if (!cancelled) setTargetsLoading(false); });
     return () => { cancelled = true; };
-  }, [courseId, requestedClassId, requestedSessionId]);
+  }, [courseId, requestedClassId, requestedScope, requestedSessionId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!courseId) {
+      setQuestionBank([]);
+      return () => { cancelled = true; };
+    }
+    setQuestionBankLoading(true);
+    fetchQuestionBank({ courseId })
+      .then((response) => { if (!cancelled) setQuestionBank(Array.isArray(response?.data) ? response.data : []); })
+      .catch((error) => { if (!cancelled) toast.error(error?.message || "Không thể tải ngân hàng câu hỏi."); })
+      .finally(() => { if (!cancelled) setQuestionBankLoading(false); });
+    return () => { cancelled = true; };
+  }, [courseId]);
 
   const selectedTargetClass = useMemo(
     () => targetClasses.find((item) => String(item.id) === String(liveClassId)) || null,
@@ -283,6 +301,37 @@ export default function TeacherQuizPage() {
         )),
       };
     }));
+  };
+
+  const addQuestionFromBank = (item) => {
+    setQuestions((current) => [...current, {
+      id: `bank-${item.id}-${Date.now()}`,
+      questionText: item.questionText,
+      options: item.options,
+      correctAnswer: item.correctAnswer,
+      explanation: item.explanation || "",
+      points: item.points || 1,
+    }]);
+    toast.success("Đã thêm câu hỏi từ ngân hàng vào đề.");
+  };
+
+  const saveQuestionToBank = async (questionIndex) => {
+    if (!courseId) {
+      toast.error("Hãy chọn khóa học trước khi lưu vào ngân hàng.");
+      return;
+    }
+    const question = normalizeQuestionForSubmit(questions[questionIndex]);
+    if (!question.questionText || question.options.length < 2 || question.correctAnswer < 0) {
+      toast.error("Hoàn thiện nội dung, phương án và đáp án đúng của câu hỏi trước khi lưu.");
+      return;
+    }
+    try {
+      const response = await createQuestionBankItem({ courseId: Number(courseId), ...question });
+      setQuestionBank((current) => [response.data, ...current]);
+      toast.success("Đã lưu câu hỏi vào ngân hàng của khóa học.");
+    } catch (error) {
+      toast.error(error?.message || "Không thể lưu câu hỏi vào ngân hàng.");
+    }
   };
 
   const addOption = (questionIndex) => {
@@ -571,7 +620,7 @@ export default function TeacherQuizPage() {
                   <div className="space-y-4">
                     {questions.map((question, questionIndex) => (
                       <article id={`quiz-editor-question-${questionIndex}`} key={question.id} className="scroll-mt-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                        <div className="mb-3 flex items-center justify-between gap-3"><span className="rounded-lg bg-violet-600 px-2.5 py-1 text-xs font-black text-white">Câu {questionIndex + 1}</span><div className="flex items-center gap-2"><label className="flex items-center gap-1.5 text-xs font-bold text-slate-500">Điểm <input type="number" min="0.25" max="100" step="0.25" value={question.points} onChange={(event) => updateQuestion(questionIndex, { points: event.target.value })} className="w-16 rounded-lg border border-slate-300 bg-slate-50 px-2 py-1 text-center outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950" /></label><button type="button" disabled={questions.length === 1} onClick={() => setQuestions((current) => current.filter((_, index) => index !== questionIndex))} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-rose-950/30" title="Xóa câu"><FiTrash2 className="h-4 w-4" /></button></div></div>
+                        <div className="mb-3 flex items-center justify-between gap-3"><span className="rounded-lg bg-violet-600 px-2.5 py-1 text-xs font-black text-white">Câu {questionIndex + 1}</span><div className="flex items-center gap-2"><label className="flex items-center gap-1.5 text-xs font-bold text-slate-500">Điểm <input type="number" min="0.25" max="100" step="0.25" value={question.points} onChange={(event) => updateQuestion(questionIndex, { points: event.target.value })} className="w-16 rounded-lg border border-slate-300 bg-slate-50 px-2 py-1 text-center outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950" /></label><button type="button" disabled={!courseId} onClick={() => saveQuestionToBank(questionIndex)} className="rounded-lg px-2 py-1.5 text-[11px] font-bold text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-violet-300 dark:hover:bg-violet-950/30">Lưu ngân hàng</button><button type="button" disabled={questions.length === 1} onClick={() => setQuestions((current) => current.filter((_, index) => index !== questionIndex))} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-rose-950/30" title="Xóa câu"><FiTrash2 className="h-4 w-4" /></button></div></div>
                         <textarea value={question.questionText} onChange={(event) => updateQuestion(questionIndex, { questionText: event.target.value })} rows={2} maxLength={6000} placeholder={`Nhập nội dung Câu ${questionIndex + 1}...`} className="w-full resize-y rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {question.options.map((option, optionIndex) => {
@@ -601,7 +650,7 @@ export default function TeacherQuizPage() {
                     <div className="mb-3 flex items-start justify-between gap-3"><div><h3 className="text-sm font-black text-slate-950 dark:text-white">Bảng đáp án</h3><p className="mt-0.5 text-xs text-slate-500">Nhấn vào ô tròn để đổi đáp án từng câu.</p></div><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-black text-emerald-700 dark:text-emerald-300">{questions.length} câu</span></div>
                     <AnswerKeySheet questions={questions} onChooseAnswer={(questionIndex, answerIndex) => updateQuestion(questionIndex, { correctAnswer: answerIndex })} onScrollToQuestion={scrollToQuestion} />
                   </section>
-                  </> : <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900/70 dark:bg-sky-950/25"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white"><FiCheck className="h-4 w-4" /></span><div><h3 className="text-sm font-black text-sky-950 dark:text-sky-100">Tự soạn từng câu</h3><p className="mt-0.5 text-xs leading-5 text-sky-800 dark:text-sky-200">Chọn đáp án đúng trực tiếp trong từng thẻ câu hỏi. Chế độ này không dùng file PDF và không có ô dán đáp án.</p></div></div></section>}
+                  </> : <><section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900/70 dark:bg-sky-950/25"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white"><FiCheck className="h-4 w-4" /></span><div><h3 className="text-sm font-black text-sky-950 dark:text-sky-100">Tự soạn từng câu</h3><p className="mt-0.5 text-xs leading-5 text-sky-800 dark:text-sky-200">Chọn đáp án đúng trực tiếp trong từng thẻ câu hỏi. Chế độ này không dùng file PDF và không có ô dán đáp án.</p></div></div></section><section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center justify-between gap-2"><div><h3 className="text-sm font-black text-slate-950 dark:text-white">Ngân hàng câu hỏi</h3><p className="mt-0.5 text-[11px] text-slate-500">Lưu hoặc chèn lại câu đã soạn trong cùng khóa học.</p></div><span className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">{questionBank.length}</span></div>{!courseId ? <p className="mt-3 text-xs text-slate-500">Chọn khóa học để mở ngân hàng câu hỏi.</p> : questionBankLoading ? <p className="mt-3 text-xs text-slate-500">Đang tải câu hỏi...</p> : questionBank.length === 0 ? <p className="mt-3 text-xs text-slate-500">Chưa có câu hỏi đã lưu. Hoàn thiện một câu rồi nhấn “Lưu ngân hàng”.</p> : <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">{questionBank.map((item) => <div key={item.id} className="rounded-xl border border-slate-100 p-2.5 dark:border-slate-800"><p className="line-clamp-2 text-xs font-bold text-slate-800 dark:text-slate-100">{item.questionText}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-[10px] text-slate-500">{item.points} điểm · {item.options.length} đáp án</span><button type="button" onClick={() => addQuestionFromBank(item)} className="rounded-lg bg-violet-600 px-2 py-1 text-[10px] font-black text-white hover:bg-violet-500">Dùng câu này</button></div></div>)}</div>}</section></>}
 
                   <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs dark:border-slate-800 dark:bg-slate-950"><div className="flex items-center gap-2 font-black text-slate-800 dark:text-slate-200"><FiCheckCircle className="text-emerald-500" /> Cách tính điểm an toàn</div><ul className="mt-2 space-y-1.5 text-slate-600 dark:text-slate-400"><li>• Quiz chỉ hiển thị cho học viên đúng khóa học, lớp và buổi đã chọn.</li><li>• Đáp án đúng không được gửi xuống trình duyệt trước khi nộp bài.</li><li>• Sau khi nộp, điểm được chấm ở máy chủ và lượt nộp được khóa.</li></ul></section>
                 </aside>

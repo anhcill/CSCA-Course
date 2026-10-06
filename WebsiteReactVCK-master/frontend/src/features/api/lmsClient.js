@@ -377,6 +377,30 @@ export const fetchAttendanceRoster = async (sessionId) => (
   request(`/attendance/session/${encodeURIComponent(sessionId)}`)
 );
 
+export const fetchAttendanceAmendments = async (sessionId) => (
+  request(`/attendance/session/${encodeURIComponent(sessionId)}/amendments`)
+);
+
+export const createAttendanceAmendment = async ({ sessionId, userId, requestedStatus, requestedNote, reason }) => (
+  request("/attendance/amendments", {
+    method: "POST",
+    body: JSON.stringify({ sessionId, userId, requestedStatus, requestedNote, reason }),
+  })
+);
+
+export const reviewAttendanceAmendment = async ({ amendmentId, decision, reviewNote }) => (
+  request(`/attendance/amendments/${encodeURIComponent(amendmentId)}/review`, {
+    method: "POST",
+    body: JSON.stringify({ decision, reviewNote }),
+  })
+);
+
+export const gradebookExportUrl = ({ classId, courseId, format = "xlsx" }) => {
+  const params = new URLSearchParams({ classId: String(classId), format });
+  if (courseId) params.set("courseId", String(courseId));
+  return `${API_BASE}/reports/gradebook/export?${params.toString()}`;
+};
+
 // Assignment & Quiz Helpers
 export const fetchAssignments = async ({ courseId, classId, sessionId } = {}) => {
   const params = new URLSearchParams();
@@ -464,6 +488,32 @@ export const createTeacherQuiz = async (quiz) => request("/assignments/teacher/q
 export const deleteTeacherQuiz = async (quizId) => request(
   `/assignments/teacher/quizzes/${encodeURIComponent(quizId)}`,
   { method: "DELETE" },
+);
+
+export const fetchQuestionBank = async ({ courseId, search } = {}) => {
+  const params = new URLSearchParams({ courseId: String(courseId || "") });
+  if (search) params.set("search", search);
+  return request(`/assignments/teacher/question-bank?${params.toString()}`);
+};
+
+export const createQuestionBankItem = async ({ courseId, questionText, options, correctAnswer, explanation, points, tags }) => request(
+  "/assignments/teacher/question-bank",
+  { method: "POST", body: JSON.stringify({ courseId, questionText, options, correctAnswer, explanation, points, tags }) },
+);
+
+export const deleteQuestionBankItem = async (itemId) => request(
+  `/assignments/teacher/question-bank/${encodeURIComponent(itemId)}`,
+  { method: "DELETE" },
+);
+
+export const fetchAssessmentAccommodations = async ({ assessmentType, assessmentId }) => {
+  const params = new URLSearchParams({ assessmentType, assessmentId: String(assessmentId) });
+  return request(`/assignments/teacher/accommodations?${params.toString()}`);
+};
+
+export const saveAssessmentAccommodation = async (payload) => request(
+  "/assignments/teacher/accommodations",
+  { method: "PUT", body: JSON.stringify(payload) },
 );
 
 // My Learning - enrolled courses

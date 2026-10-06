@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 
@@ -18,14 +19,6 @@ import Unauthorized from "./pages/client/Unauthorized.jsx";
 import Forbidden from "./pages/client/Forbidden.jsx";
 
 // Admin pages
-import AdminLayout from "./pages/admin/AdminLayout.jsx";
-import Dashboard from "./pages/admin/Dashboard.jsx";
-import AdminUser from "./pages/admin/AdminUser.jsx";
-import AdminClassesPage from "./pages/admin/AdminClassesPage.jsx";
-import AdminPermissionsPage from "./pages/admin/AdminPermissionsPage.jsx";
-import AdminSyncPage from "./pages/admin/AdminSyncPage.jsx";
-import AdminAuditLogPage from "./pages/admin/AdminAuditLogPage.jsx";
-import AdminCalendarPage from "./features/admin/pages/AdminCalendarPage.jsx";
 
 // Shared chrome and route policy
 import Navbar from "./components/Navbar.jsx";
@@ -41,30 +34,38 @@ import { TEACHER_ROLES, USER_ROLES, isTeacherRole } from "./constants/roles";
 import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
 
 // LMS feature pages
-import ClassroomPage from "./features/learning/pages/ClassroomPage.jsx";
-import StudentCourseListPage from "./features/learning/pages/StudentCourseListPage.jsx";
-import CourseClassListPage from "./features/learning/pages/CourseClassListPage.jsx";
-import CourseWorkspaceLayout from "./features/learning/components/CourseWorkspaceLayout.jsx";
-import CourseWorkspaceOverviewPage from "./features/learning/pages/CourseWorkspaceOverviewPage.jsx";
-import CourseResultsPage from "./features/learning/pages/CourseResultsPage.jsx";
-import StudentAnalyticsPage from "./features/learning/pages/StudentAnalyticsPage.jsx";
-import AdminCurriculumPage from "./features/admin/pages/AdminCurriculumPage.jsx";
-import ClassCalendarPage from "./features/calendar/pages/ClassCalendarPage.jsx";
-import SessionDetailPage from "./features/calendar/pages/SessionDetailPage.jsx";
-import AssignmentListPage from "./features/assignments/pages/AssignmentListPage.jsx";
-import AssignmentSubmitPage from "./features/assignments/pages/AssignmentSubmitPage.jsx";
-import QuizPlayerPage from "./features/assignments/pages/QuizPlayerPage.jsx";
-import TeacherGradingPage from "./features/assignments/pages/TeacherGradingPage.jsx";
-import TeacherHubPage from "./features/teacher/pages/TeacherHubPage.jsx";
-import TeacherSchedulePage from "./features/teacher/pages/TeacherSchedulePage.jsx";
-import TeacherAttendancePage from "./features/teacher/pages/TeacherAttendancePage.jsx";
-import TeacherClassDetailPage from "./features/teacher/pages/TeacherClassDetailPage.jsx";
-import TeacherClassCurriculumPage from "./features/teacher/pages/TeacherClassCurriculumPage.jsx";
-import TeacherSessionWorkspacePage from "./features/teacher/pages/TeacherSessionWorkspacePage.jsx";
-import TeacherStudentProgressPage from "./features/teacher/pages/TeacherStudentProgressPage.jsx";
-import StudentFilesPage from "./features/learning/pages/StudentFilesPage.jsx";
-import TeacherQuizPage from "./features/teacher/pages/TeacherQuizPage.jsx";
-import NotificationCenterPage from "./features/notifications/pages/NotificationCenterPage.jsx";
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.jsx"));
+const Dashboard = lazy(() => import("./pages/admin/Dashboard.jsx"));
+const AdminUser = lazy(() => import("./pages/admin/AdminUser.jsx"));
+const AdminClassesPage = lazy(() => import("./pages/admin/AdminClassesPage.jsx"));
+const AdminPermissionsPage = lazy(() => import("./pages/admin/AdminPermissionsPage.jsx"));
+const AdminSyncPage = lazy(() => import("./pages/admin/AdminSyncPage.jsx"));
+const AdminAuditLogPage = lazy(() => import("./pages/admin/AdminAuditLogPage.jsx"));
+const AdminCalendarPage = lazy(() => import("./features/admin/pages/AdminCalendarPage.jsx"));
+const ClassroomPage = lazy(() => import("./features/learning/pages/ClassroomPage.jsx"));
+const StudentCourseListPage = lazy(() => import("./features/learning/pages/StudentCourseListPage.jsx"));
+const CourseClassListPage = lazy(() => import("./features/learning/pages/CourseClassListPage.jsx"));
+const CourseWorkspaceLayout = lazy(() => import("./features/learning/components/CourseWorkspaceLayout.jsx"));
+const CourseWorkspaceOverviewPage = lazy(() => import("./features/learning/pages/CourseWorkspaceOverviewPage.jsx"));
+const CourseResultsPage = lazy(() => import("./features/learning/pages/CourseResultsPage.jsx"));
+const StudentAnalyticsPage = lazy(() => import("./features/learning/pages/StudentAnalyticsPage.jsx"));
+const AdminCurriculumPage = lazy(() => import("./features/admin/pages/AdminCurriculumPage.jsx"));
+const ClassCalendarPage = lazy(() => import("./features/calendar/pages/ClassCalendarPage.jsx"));
+const SessionDetailPage = lazy(() => import("./features/calendar/pages/SessionDetailPage.jsx"));
+const AssignmentListPage = lazy(() => import("./features/assignments/pages/AssignmentListPage.jsx"));
+const AssignmentSubmitPage = lazy(() => import("./features/assignments/pages/AssignmentSubmitPage.jsx"));
+const QuizPlayerPage = lazy(() => import("./features/assignments/pages/QuizPlayerPage.jsx"));
+const TeacherGradingPage = lazy(() => import("./features/assignments/pages/TeacherGradingPage.jsx"));
+const TeacherHubPage = lazy(() => import("./features/teacher/pages/TeacherHubPage.jsx"));
+const TeacherSchedulePage = lazy(() => import("./features/teacher/pages/TeacherSchedulePage.jsx"));
+const TeacherAttendancePage = lazy(() => import("./features/teacher/pages/TeacherAttendancePage.jsx"));
+const TeacherClassDetailPage = lazy(() => import("./features/teacher/pages/TeacherClassDetailPage.jsx"));
+const TeacherClassCurriculumPage = lazy(() => import("./features/teacher/pages/TeacherClassCurriculumPage.jsx"));
+const TeacherSessionWorkspacePage = lazy(() => import("./features/teacher/pages/TeacherSessionWorkspacePage.jsx"));
+const TeacherStudentProgressPage = lazy(() => import("./features/teacher/pages/TeacherStudentProgressPage.jsx"));
+const StudentFilesPage = lazy(() => import("./features/learning/pages/StudentFilesPage.jsx"));
+const TeacherQuizPage = lazy(() => import("./features/teacher/pages/TeacherQuizPage.jsx"));
+const NotificationCenterPage = lazy(() => import("./features/notifications/pages/NotificationCenterPage.jsx"));
 
 const isTeacherLmsPath = (p) => (
   p === "/lms/teach" || p.startsWith("/lms/teach/") || p === "/lms/teacher-hub" ||
@@ -82,6 +83,7 @@ function CourseClassRedirect() {
 
 function AppRoutes() {
   return (
+    <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center px-4 text-sm font-semibold text-slate-500 dark:text-slate-400">Đang tải không gian học tập...</div>}>
     <Routes>
       {/* === Public website === */}
       <Route path="/" element={<Home />} />
@@ -183,6 +185,7 @@ function AppRoutes() {
 
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </Suspense>
   );
 }
 

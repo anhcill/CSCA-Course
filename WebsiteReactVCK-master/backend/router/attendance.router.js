@@ -8,6 +8,7 @@ import {
   attemptManagementAttendanceDeliveryById,
   enqueueManagementAttendanceDelivery,
 } from "../services/managementAttendanceDelivery.service.js";
+import { recordAuditEvent } from "../services/audit.service.js";
 
 const router = express.Router();
 
@@ -43,10 +44,10 @@ const conflict = (res, message, errorCode) => res.status(409).json({
 
 const dateKey = (value) => String(value || "").slice(0, 10);
 
-// Attendance is a same-day, write-once record. Dates are calculated by
+// Attendance is a same-day, write-once base record. Dates are calculated by
 // PostgreSQL in the academy timezone so a browser clock cannot bypass this
-// policy. Once a single attendance row exists for a session, the complete
-// session is considered locked and no role (including admin) can alter it.
+// policy. Once submitted, it is never reopened; an approved amendment records
+// the old and new values, requester, reviewer and timestamps separately.
 export const buildAttendancePolicy = ({
   attendanceDate,
   todayDate,
@@ -77,6 +78,32 @@ const parsePositiveId = (value) => {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
+
+const ATTENDANCE_STATUSES = new Set(["present", "absent", "excused"]);
+
+const normalizeNote = (value) => (typeof value === "string" ? value.trim() : "");
+
+const serializeAmendment = (row) => ({
+  id: row.id,
+  sessionId: row.session_id,
+  userId: row.user_id,
+  studentName: row.student_name || row.student_email,
+  studentEmail: row.student_email,
+  originalStatus: row.original_status,
+  originalNote: row.original_note || "",
+  requestedStatus: row.requested_status,
+  requestedNote: row.requested_note || "",
+  reason: row.reason,
+  status: row.status,
+  requestedBy: row.requested_by,
+  requestedByName: row.requested_by_name || null,
+  requestedAt: row.requested_at,
+  reviewedBy: row.reviewed_by,
+  reviewedByName: row.reviewed_by_name || null,
+  reviewedAt: row.reviewed_at,
+  reviewNote: row.review_note || "",
+  appliedAt: row.applied_at,
+});
 
 const getSessionForTeacher = async (sessionId) => {
   const result = await query(
@@ -415,6 +442,165 @@ router.get("/session/:sessionId", protectRoute, requireTeacher, async (req, res)
   }
 });
 
+// An attendance sheet remains write-once. Corrections are separate requests so
+// the original value, requester, reviewer and time stay available for audits.
+router.get("/session/:sessionId/amendments", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const sessionId = parsePositiveId(req.params.sessionId);
+    if (!sessionId) return validationError(res, "sessionId không hợp lệ");
+    const session = await getSessionForTeacher(sessionId);
+    if (!session) return notFound(res, "Không tìm thấy buổi học");
+    if (!(await canManageSession(session, req.user))) return forbidden(res, "Bạn không có quyền xem phiếu chỉnh sửa của buổi học này");
+    const result = await query(
+      `SELECT request.*, student.username AS student_name, student.email AS student_email,
+              requester.username AS requested_by_name, reviewer.username AS reviewed_by_name
+       FROM attendance_amendment_requests request
+       JOIN users student ON student.id = request.user_id
+       LEFT JOIN users requester ON requester.id = request.requested_by
+       LEFT JOIN users reviewer ON reviewer.id = request.reviewed_by
+       WHERE request.session_id = $1
+       ORDER BY CASE request.status WHEN 'pending' THEN 0 ELSE 1 END, request.requested_at DESC, request.id DESC`,
+      [sessionId],
+    );
+    return res.json({ success: true, data: result.rows.map(serializeAmendment), meta: { canReview: req.user.role === "admin" } });
+  } catch (error) {
+    console.error("Error fetching attendance amendments:", error);
+    return internalError(res, "Không thể tải phiếu chỉnh sửa điểm danh");
+  }
+});
+
+router.post("/amendments", protectRoute, requireTeacher, requirePermission("lms.attendance.manage"), async (req, res) => {
+  const sessionId = parsePositiveId(req.body?.sessionId);
+  const userId = parsePositiveId(req.body?.userId);
+  const requestedStatus = req.body?.requestedStatus;
+  const requestedNote = normalizeNote(req.body?.requestedNote);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  if (!sessionId || !userId || !ATTENDANCE_STATUSES.has(requestedStatus) || requestedNote.length > 255 || reason.length < 10 || reason.length > 2000) {
+    return validationError(res, "Phiếu chỉnh sửa cần có học viên, trạng thái, ghi chú hợp lệ và lý do từ 10 đến 2000 ký tự");
+  }
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const sessionResult = await client.query(
+      `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status, lc.instructor_id
+       FROM class_sessions cs JOIN live_classes lc ON lc.id = cs.live_class_id
+       WHERE cs.id = $1 FOR UPDATE`, [sessionId],
+    );
+    const session = sessionResult.rows[0];
+    if (!session) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy buổi học"); }
+    if (!(await canManageSession(session, req.user, client))) { await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền tạo phiếu chỉnh sửa cho buổi học này"); }
+    const attendance = await client.query(
+      `SELECT ca.status, COALESCE(ca.note, '') AS note
+       FROM class_attendance ca
+       JOIN class_enrollments ce ON ce.live_class_id = $2 AND ce.user_id = ca.user_id AND ce.status = 'active'
+       WHERE ca.session_id = $1 AND ca.user_id = $3 FOR UPDATE`,
+      [sessionId, session.live_class_id, userId],
+    );
+    const current = attendance.rows[0];
+    if (!current) { await client.query("ROLLBACK"); return validationError(res, "Học viên không có bản ghi điểm danh trong buổi này"); }
+    if (current.status === requestedStatus && current.note === requestedNote) {
+      await client.query("ROLLBACK");
+      return validationError(res, "Nội dung đề nghị phải khác bản điểm danh hiện tại");
+    }
+    const created = await client.query(
+      `INSERT INTO attendance_amendment_requests
+         (session_id, user_id, original_status, original_note, requested_status, requested_note, reason, requested_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [sessionId, userId, current.status, current.note, requestedStatus, requestedNote, reason, req.user.id],
+    );
+    await recordAuditEvent({
+      db: client, actorId: req.user.id, action: "attendance.amendment_requested", entityType: "attendance_amendment", entityId: created.rows[0].id,
+      beforeState: { status: current.status, note: current.note }, afterState: { status: requestedStatus, note: requestedNote },
+      metadata: { sessionId, userId, reason, ip: req.ip },
+    });
+    await client.query("COMMIT");
+    return res.status(201).json({ success: true, data: serializeAmendment(created.rows[0]), message: "Đã gửi phiếu chỉnh sửa để quản trị viên duyệt" });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "23505") return conflict(res, "Học viên này đã có một phiếu chỉnh sửa đang chờ duyệt", "ATTENDANCE_AMENDMENT_PENDING");
+    console.error("Error creating attendance amendment:", error);
+    return internalError(res, "Không thể tạo phiếu chỉnh sửa điểm danh");
+  } finally {
+    client.release();
+  }
+});
+
+router.post("/amendments/:amendmentId/review", protectRoute, requireTeacher, requirePermission("lms.attendance.amend.review"), async (req, res) => {
+  const amendmentId = parsePositiveId(req.params.amendmentId);
+  const decision = req.body?.decision;
+  const reviewNote = normalizeNote(req.body?.reviewNote);
+  if (!amendmentId || !["approved", "rejected"].includes(decision) || reviewNote.length > 2000) return validationError(res, "Quyết định duyệt phiếu không hợp lệ");
+  const client = await getClient();
+  let managementOutboxId = null;
+  try {
+    await client.query("BEGIN");
+    const requestResult = await client.query(
+      `SELECT request.*, cs.live_class_id, cs.title AS session_title, cs.start_time, cs.end_time, cs.status AS session_status,
+              lc.instructor_id, lc.management_class_source_id
+       FROM attendance_amendment_requests request
+       JOIN class_sessions cs ON cs.id = request.session_id
+       JOIN live_classes lc ON lc.id = cs.live_class_id
+       WHERE request.id = $1 FOR UPDATE OF request, cs`, [amendmentId],
+    );
+    const amendment = requestResult.rows[0];
+    if (!amendment) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy phiếu chỉnh sửa"); }
+    if (amendment.status !== "pending") { await client.query("ROLLBACK"); return conflict(res, "Phiếu này đã được xử lý", "ATTENDANCE_AMENDMENT_RESOLVED"); }
+    if (!(await canManageSession({ live_class_id: amendment.live_class_id, instructor_id: amendment.instructor_id }, req.user, client))) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Bạn không có quyền duyệt phiếu của lớp này");
+    }
+    const attendanceResult = await client.query(
+      `SELECT status, COALESCE(note, '') AS note FROM class_attendance
+       WHERE session_id = $1 AND user_id = $2 FOR UPDATE`, [amendment.session_id, amendment.user_id],
+    );
+    const current = attendanceResult.rows[0];
+    if (!current) { await client.query("ROLLBACK"); return conflict(res, "Bản điểm danh gốc không còn tồn tại", "ATTENDANCE_RECORD_MISSING"); }
+    let appliedAt = null;
+    if (decision === "approved") {
+      appliedAt = new Date().toISOString();
+      await client.query("UPDATE class_attendance SET status = $1, note = $2 WHERE session_id = $3 AND user_id = $4", [amendment.requested_status, amendment.requested_note, amendment.session_id, amendment.user_id]);
+    }
+    const reviewed = await client.query(
+      `UPDATE attendance_amendment_requests
+       SET status = $1, reviewed_by = $2, reviewed_at = NOW(), review_note = $3, applied_at = $4
+       WHERE id = $5 RETURNING *`,
+      [decision, req.user.id, reviewNote, appliedAt, amendmentId],
+    );
+    await recordAuditEvent({
+      db: client, actorId: req.user.id, action: `attendance.amendment_${decision}`, entityType: "attendance_amendment", entityId: amendmentId,
+      beforeState: { status: current.status, note: current.note },
+      afterState: decision === "approved" ? { status: amendment.requested_status, note: amendment.requested_note } : { status: current.status, note: current.note },
+      metadata: { sessionId: amendment.session_id, userId: amendment.user_id, reviewNote, ip: req.ip },
+    });
+    if (decision === "approved" && amendment.management_class_source_id) {
+      const snapshot = await client.query(
+        `SELECT u.external_student_id, ca.status, COALESCE(ca.note, '') AS note, ca.checked_at
+         FROM class_attendance ca JOIN users u ON u.id = ca.user_id
+         WHERE ca.session_id = $1 ORDER BY ca.user_id`, [amendment.session_id],
+      );
+      if (snapshot.rows.every((row) => row.external_student_id)) {
+        const outbox = await enqueueManagementAttendanceDelivery(client, {
+          managementClassId: amendment.management_class_source_id,
+          lmsSession: { id: amendment.session_id, title: amendment.session_title, start_time: amendment.start_time, end_time: amendment.end_time, status: amendment.session_status },
+          attendance: snapshot.rows.map((row) => ({ managementStudentId: String(row.external_student_id), status: row.status, checkedAt: row.checked_at, note: row.note || null })),
+          correlationId: `attendance-amendment:${amendment.session_id}:${amendmentId}:${crypto.randomUUID()}`,
+        });
+        managementOutboxId = outbox.id;
+      }
+    }
+    await client.query("COMMIT");
+    const managementDelivery = managementOutboxId ? await attemptManagementAttendanceDeliveryById(managementOutboxId) : null;
+    return res.json({ success: true, data: { ...serializeAmendment(reviewed.rows[0]), managementDelivery }, message: decision === "approved" ? "Đã duyệt và áp dụng chỉnh sửa điểm danh" : "Đã từ chối phiếu chỉnh sửa" });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Error reviewing attendance amendment:", error);
+    return internalError(res, "Không thể duyệt phiếu chỉnh sửa điểm danh");
+  } finally {
+    client.release();
+  }
+});
+
 // POST /api/attendance/check — transactional, same-day and write-once per session.
 router.post("/check", protectRoute, requireTeacher, requirePermission("lms.attendance.manage"), async (req, res) => {
   const sessionId = parsePositiveId(req.body?.sessionId);
@@ -424,13 +610,12 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
   }
   if (attendanceList.length > 1000) return validationError(res, "attendanceList vượt quá giới hạn");
 
-  const allowedStatuses = new Set(["present", "absent", "excused"]);
   const normalized = [];
   const seen = new Set();
   for (const item of attendanceList) {
     const userId = parsePositiveId(item?.userId);
     const status = item?.status || "present";
-    if (!userId || !allowedStatuses.has(status) || (item?.note !== undefined && (typeof item.note !== "string" || item.note.length > 255))) {
+    if (!userId || !ATTENDANCE_STATUSES.has(status) || (item?.note !== undefined && (typeof item.note !== "string" || item.note.length > 255))) {
       return validationError(res, "Danh sách điểm danh không hợp lệ");
     }
     if (seen.has(userId)) return validationError(res, "Một học viên chỉ được xuất hiện một lần trong attendanceList");

@@ -23,6 +23,7 @@ import orchestrationRouter from "./router/orchestration.router.js";
 import fileRouter from "./router/file.router.js";
 import adminCalendarRouter from "./router/adminCalendar.router.js";
 import announcementRouter from "./router/announcement.router.js";
+import reportRouter from "./router/report.router.js";
 import healthRouter from "./router/health.router.js";
 import { isAllowedOrigin, securityHeaders } from "./middleware/security.js";
 
@@ -101,6 +102,7 @@ app.use("/api/assignments", assignmentRouter);
 app.use("/api/notifications", notificationRouter);
 app.use("/api/v1/lms/notifications", notificationRouter);
 app.use("/api/announcements", announcementRouter);
+app.use("/api/reports", reportRouter);
 app.use("/api/attendance", attendanceRouter);
 app.use("/api/certificates", certificateRouter);
 app.use("/api/teacher", teacherRouter);

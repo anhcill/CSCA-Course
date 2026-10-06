@@ -26,6 +26,7 @@ function countChineseChars(text) {
 }
 
 function timeRemaining(dueDate) {
+  if (!dueDate) return { text: "Không đặt hạn nộp", urgent: false };
   const diff = new Date(dueDate) - new Date();
   if (diff <= 0) return { text: "Đã hết hạn nộp bài", urgent: true };
   const d = Math.floor(diff / 86400000);
@@ -358,6 +359,7 @@ export default function AssignmentSubmitPage() {
                 </p>
               </div>
             </div>
+             {assignment.accommodation && <p className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 dark:border-blue-900/70 dark:bg-blue-950/30 dark:text-blue-200">Thời hạn hiển thị là điều chỉnh riêng đã được giáo viên áp dụng cho bạn.</p>}
           </div>
         </div>
 

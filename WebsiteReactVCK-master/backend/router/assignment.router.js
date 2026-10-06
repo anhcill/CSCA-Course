@@ -175,6 +175,97 @@ const canGradeAssignment = async (assignment, user, db = { query }) => {
   return result.rows.length > 0;
 };
 
+const getAssessmentAccommodation = async ({ assessmentType, assessmentId, userId, db = { query } }) => {
+  const result = await db.query(
+    `SELECT id, assessment_type, assessment_id, user_id, due_at, extra_time_minutes,
+            attempt_limit_override, reason, status, created_at, updated_at
+     FROM assessment_accommodations
+     WHERE assessment_type = $1 AND assessment_id = $2 AND user_id = $3 AND status = 'active'`,
+    [assessmentType, assessmentId, userId],
+  );
+  return result.rows[0] || null;
+};
+
+const serializeAccommodation = (row) => row ? {
+  id: row.id,
+  assessmentType: row.assessment_type,
+  assessmentId: row.assessment_id,
+  userId: row.user_id,
+  dueAt: row.due_at || null,
+  extraTimeMinutes: Number(row.extra_time_minutes || 0),
+  attemptLimitOverride: row.attempt_limit_override === null ? null : Number(row.attempt_limit_override),
+  reason: row.reason,
+  status: row.status,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+} : null;
+
+const effectiveAssignmentDueDate = (assignment, accommodation) => accommodation?.due_at || assignment.due_date || null;
+
+const effectiveQuizForStudent = (quiz, accommodation) => {
+  if (!accommodation) return { ...quiz, accommodation: null };
+  return {
+    ...quiz,
+    due_date: accommodation.due_at || quiz.due_date,
+    available_until: accommodation.due_at || quiz.available_until,
+    duration_minutes: Number(quiz.duration_minutes || 0) + Number(accommodation.extra_time_minutes || 0),
+    attempt_limit: accommodation.attempt_limit_override || quiz.attempt_limit,
+    accommodation: serializeAccommodation(accommodation),
+  };
+};
+
+const canManageCourseQuestionBank = async ({ courseId, user, db = { query } }) => {
+  if (user.role === "admin") return true;
+  const result = await db.query(
+    `SELECT 1
+     FROM courses c
+     WHERE c.id = $1 AND (
+       c.author_id = $2 OR EXISTS (
+         SELECT 1 FROM live_classes lc
+         WHERE lc.course_id = c.id AND (
+           lc.instructor_id = $2 OR EXISTS (
+             SELECT 1 FROM class_teachers ct
+             WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+           )
+         )
+       )
+     )`,
+    [courseId, user.id],
+  );
+  return result.rows.length > 0;
+};
+
+const normalizeQuestionBankInput = (value) => {
+  const questionText = typeof value?.questionText === "string" ? value.questionText.trim() : "";
+  const options = Array.isArray(value?.options)
+    ? value.options.slice(0, 6).map((text, index) => ({ key: String.fromCharCode(65 + index), text: String(text || "").trim() })).filter((option) => option.text)
+    : [];
+  const correctAnswer = Number.isInteger(value?.correctAnswer) ? value.correctAnswer : -1;
+  const explanation = typeof value?.explanation === "string" ? value.explanation.trim() : "";
+  const points = Number(value?.points);
+  const rawTags = Array.isArray(value?.tags) ? value.tags : [];
+  const tags = [...new Set(rawTags.map((tag) => String(tag || "").trim().toLocaleLowerCase()).filter((tag) => tag && tag.length <= 48))].slice(0, 12);
+  if (!questionText || questionText.length > 6000 || options.length < 2 || options.some((option) => option.text.length > 2000) || !options[correctAnswer] || explanation.length > 4000 || !Number.isFinite(points) || points <= 0 || points > 100) {
+    throw new Error("INVALID_BANK_QUESTION");
+  }
+  return { questionText, options, correctAnswer: options[correctAnswer].key, explanation, points, tags };
+};
+
+const serializeQuestionBankItem = (row) => {
+  const options = parseOptions(row.options_json);
+  return {
+    id: row.id,
+    courseId: row.course_id,
+    questionText: row.question_text,
+    options: options.map((option) => option.text),
+    correctAnswer: Math.max(0, options.findIndex((option) => String(option.key) === String(row.correct_answer))),
+    explanation: row.explanation || "",
+    points: Number(row.points),
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    createdAt: row.created_at,
+  };
+};
+
 const serializeAssignment = (row) => ({
   id: row.id,
   title: row.title,
@@ -211,6 +302,7 @@ const serializeAssignment = (row) => ({
   instructor_name: row.grader_name || row.instructor_name || null,
   instructor_avatar: row.grader_avatar || row.instructor_avatar || null,
   rubric: parseJsonArray(row.rubric_criteria),
+  accommodation: row.accommodation || null,
   status: row.status,
 });
 
@@ -329,8 +421,8 @@ router.get("/", protectRoute, async (req, res) => {
     const quizSessionScope = sessionParamIndex ? `AND q.class_session_id = $${sessionParamIndex}` : "";
     const result = await query(
       `WITH assignment_rows AS (
-         SELECT a.id, a.title, a.assignment_type AS type, a.course_id, a.live_class_id, a.description,
-                a.max_score, a.due_date, a.attachment_url, a.created_at, a.updated_at,
+          SELECT a.id, a.title, a.assignment_type AS type, a.course_id, a.live_class_id, a.description,
+                 a.max_score, COALESCE(assignment_accommodation.due_at, a.due_date) AS due_date, a.attachment_url, a.created_at, a.updated_at,
                 COALESCE(c.title, c.name) AS course_title,
                 s.id AS submission_id, s.status AS submission_status,
                 s.submitted_at, s.content_text, s.file_asset_id, s.audio_asset_id,
@@ -338,9 +430,9 @@ router.get("/", protectRoute, async (req, res) => {
                 sg.score, sg.feedback_text, sg.graded_at,
                 a.class_session_id, NULL::varchar AS activity_scope, assignment_session.title AS session_title,
                 assignment_session.start_time AS session_start, assignment_session.end_time AS session_end, lc.title AS class_title,
-                CASE WHEN sg.score IS NOT NULL THEN 'graded'
+                 CASE WHEN sg.score IS NOT NULL THEN 'graded'
                      WHEN s.id IS NOT NULL THEN s.status
-                     WHEN a.due_date IS NOT NULL AND a.due_date < NOW() THEN 'late'
+                      WHEN COALESCE(assignment_accommodation.due_at, a.due_date) IS NOT NULL AND COALESCE(assignment_accommodation.due_at, a.due_date) < NOW() THEN 'late'
                      ELSE 'todo' END AS status
          FROM assignments a
          LEFT JOIN courses c ON c.id = a.course_id
@@ -348,6 +440,9 @@ router.get("/", protectRoute, async (req, res) => {
          LEFT JOIN class_sessions assignment_session ON assignment_session.id = a.class_session_id
          LEFT JOIN courses class_course ON class_course.id = lc.course_id
          LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.user_id = $1
+          LEFT JOIN assessment_accommodations assignment_accommodation
+            ON assignment_accommodation.assessment_type = 'assignment' AND assignment_accommodation.assessment_id = a.id
+            AND assignment_accommodation.user_id = $1 AND assignment_accommodation.status = 'active'
          LEFT JOIN submission_assets fa ON fa.id = s.file_asset_id
          LEFT JOIN submission_assets aa ON aa.id = s.audio_asset_id
          LEFT JOIN LATERAL (
@@ -356,9 +451,9 @@ router.get("/", protectRoute, async (req, res) => {
          ) sg ON true
          WHERE ${visibilityClause} ${assignmentCourseScope} ${assignmentClassScope} ${assignmentSessionScope}
        ), quiz_rows AS (
-         SELECT q.id, q.title, 'quiz' AS type, COALESCE(q.course_id, l.course_id) AS course_id, q.live_class_id, q.description,
+          SELECT q.id, q.title, 'quiz' AS type, COALESCE(q.course_id, l.course_id) AS course_id, q.live_class_id, q.description,
                 (SELECT COALESCE(SUM(qq.points), 0) FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS max_score,
-                q.due_date, NULL::varchar AS attachment_url, q.created_at, q.updated_at,
+                 COALESCE(quiz_accommodation.due_at, q.due_date) AS due_date, NULL::varchar AS attachment_url, q.created_at, q.updated_at,
                 COALESCE(c.title, c.name) AS course_title,
                 qa.id AS submission_id, qa.status AS submission_status, qa.submitted_at,
                 NULL::text AS content_text, NULL::bigint AS file_asset_id, NULL::bigint AS audio_asset_id,
@@ -366,8 +461,8 @@ router.get("/", protectRoute, async (req, res) => {
                 qa.score, NULL::text AS feedback_text, qa.submitted_at AS graded_at,
                 q.class_session_id, q.activity_scope, quiz_session.title AS session_title,
                 quiz_session.start_time AS session_start, quiz_session.end_time AS session_end, quiz_lc.title AS class_title,
-                CASE WHEN qa.status = 'submitted' THEN 'graded'
-                     WHEN q.activity_scope = 'homework' AND q.due_date IS NOT NULL AND q.due_date < NOW() THEN 'late'
+                 CASE WHEN qa.status = 'submitted' THEN 'graded'
+                      WHEN q.activity_scope = 'homework' AND COALESCE(quiz_accommodation.due_at, q.due_date) IS NOT NULL AND COALESCE(quiz_accommodation.due_at, q.due_date) < NOW() THEN 'late'
                      ELSE 'todo' END AS status
          FROM quizzes q
          LEFT JOIN lessons l ON l.id = q.lesson_id
@@ -375,6 +470,9 @@ router.get("/", protectRoute, async (req, res) => {
          LEFT JOIN live_classes quiz_lc ON quiz_lc.id = q.live_class_id
          LEFT JOIN class_sessions quiz_session ON quiz_session.id = q.class_session_id
          LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.user_id = $1
+          LEFT JOIN assessment_accommodations quiz_accommodation
+            ON quiz_accommodation.assessment_type = 'quiz' AND quiz_accommodation.assessment_id = q.id
+            AND quiz_accommodation.user_id = $1 AND quiz_accommodation.status = 'active'
          WHERE ${quizVisibilityClause} ${quizCourseScope} ${quizClassScope} ${quizSessionScope}
        )
        SELECT * FROM (
@@ -635,6 +733,154 @@ router.delete("/teacher/quizzes/:quizId", protectRoute, requireTeacher, requireP
   }
 });
 
+// Course-scoped reusable questions. They never expose correct answers to students;
+// only a teacher who can manage the course may read or reuse them in the authoring UI.
+router.get("/teacher/question-bank", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.query.courseId);
+    const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 120) : "";
+    if (!courseId) return validationError(res, "courseId không hợp lệ");
+    if (!(await canManageCourseQuestionBank({ courseId, user: req.user }))) return forbidden(res, "Bạn không có quyền dùng ngân hàng câu hỏi của khóa học này");
+    const result = await query(
+      `SELECT id, course_id, question_text, options_json, correct_answer, explanation, points, tags, created_at
+       FROM quiz_question_bank
+       WHERE course_id = $1 AND (owner_id = $2 OR $3 = 'admin')
+         AND ($4 = '' OR question_text ILIKE '%' || $4 || '%' OR $4 = ANY(tags))
+       ORDER BY created_at DESC, id DESC LIMIT 100`,
+      [courseId, req.user.id, req.user.role, search],
+    );
+    return res.json({ success: true, data: result.rows.map(serializeQuestionBankItem) });
+  } catch (error) {
+    console.error("Error fetching question bank:", error);
+    return internalError(res, "Không thể tải ngân hàng câu hỏi");
+  }
+});
+
+router.post("/teacher/question-bank", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.body?.courseId);
+    if (!courseId) return validationError(res, "courseId không hợp lệ");
+    if (!(await canManageCourseQuestionBank({ courseId, user: req.user }))) return forbidden(res, "Bạn không có quyền thêm câu hỏi cho khóa học này");
+    const question = normalizeQuestionBankInput(req.body);
+    const result = await query(
+      `INSERT INTO quiz_question_bank (course_id, owner_id, question_text, question_type, options_json, correct_answer, explanation, points, tags)
+       VALUES ($1, $2, $3, 'single_choice', $4::jsonb, $5, $6, $7, $8::text[])
+       RETURNING id, course_id, question_text, options_json, correct_answer, explanation, points, tags, created_at`,
+      [courseId, req.user.id, question.questionText, JSON.stringify(question.options), question.correctAnswer, question.explanation, question.points, question.tags],
+    );
+    await recordAuditEvent({ actorId: req.user.id, action: "question_bank.created", entityType: "quiz_question_bank", entityId: result.rows[0].id, afterState: { courseId, tags: question.tags }, metadata: { ip: req.ip } });
+    return res.status(201).json({ success: true, data: serializeQuestionBankItem(result.rows[0]), message: "Đã lưu câu hỏi vào ngân hàng" });
+  } catch (error) {
+    if (error.message === "INVALID_BANK_QUESTION") return validationError(res, "Câu hỏi cần có nội dung, từ 2 đến 6 phương án, đáp án đúng và điểm hợp lệ");
+    console.error("Error creating question bank item:", error);
+    return internalError(res, "Không thể lưu câu hỏi vào ngân hàng");
+  }
+});
+
+router.delete("/teacher/question-bank/:itemId", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  try {
+    const itemId = parsePositiveId(req.params.itemId);
+    if (!itemId) return validationError(res, "itemId không hợp lệ");
+    const result = await query(
+      `DELETE FROM quiz_question_bank WHERE id = $1 AND (owner_id = $2 OR $3 = 'admin')
+       RETURNING id, course_id, question_text`, [itemId, req.user.id, req.user.role],
+    );
+    if (!result.rows[0]) return notFound(res, "Không tìm thấy câu hỏi hoặc bạn không có quyền xóa");
+    await recordAuditEvent({ actorId: req.user.id, action: "question_bank.deleted", entityType: "quiz_question_bank", entityId: itemId, beforeState: result.rows[0], metadata: { ip: req.ip } });
+    return res.json({ success: true, message: "Đã xóa câu hỏi khỏi ngân hàng" });
+  } catch (error) {
+    console.error("Error deleting question bank item:", error);
+    return internalError(res, "Không thể xóa câu hỏi khỏi ngân hàng");
+  }
+});
+
+const assessmentContextForAccommodation = async ({ assessmentType, assessmentId, user, db = { query } }) => {
+  if (assessmentType === "assignment") {
+    const assignment = await getAssignment(assessmentId, db);
+    if (!assignment || !(await canGradeAssignment(assignment, user, db))) return null;
+    return { assessment, liveClassId: assignment.live_class_id, baseAttemptLimit: null };
+  }
+  const result = await db.query(
+    `SELECT q.id, q.live_class_id, q.attempt_limit, q.instructor_id, c.author_id
+     FROM quizzes q JOIN courses c ON c.id = q.course_id WHERE q.id = $1`, [assessmentId],
+  );
+  const quiz = result.rows[0];
+  if (!quiz) return null;
+  const allowed = user.role === "admin" || String(quiz.instructor_id) === String(user.id) || String(quiz.author_id) === String(user.id)
+    || Boolean((await db.query("SELECT 1 FROM class_teachers WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'", [quiz.live_class_id, user.id])).rows[0]);
+  return allowed ? { assessment: quiz, liveClassId: quiz.live_class_id, baseAttemptLimit: Number(quiz.attempt_limit || 1) } : null;
+};
+
+router.get("/teacher/accommodations", protectRoute, requireTeacher, requirePermission("lms.assessment.accommodate"), async (req, res) => {
+  try {
+    const assessmentType = req.query.assessmentType;
+    const assessmentId = parsePositiveId(req.query.assessmentId);
+    if (!["assignment", "quiz"].includes(assessmentType) || !assessmentId) return validationError(res, "assessmentType/assessmentId không hợp lệ");
+    const context = await assessmentContextForAccommodation({ assessmentType, assessmentId, user: req.user });
+    if (!context) return forbidden(res, "Bạn không có quyền xem điều chỉnh của hoạt động này");
+    const result = await query(
+      `SELECT accommodation.*, COALESCE(u.username, u.email) AS student_name, u.email AS student_email
+       FROM assessment_accommodations accommodation JOIN users u ON u.id = accommodation.user_id
+       WHERE accommodation.assessment_type = $1 AND accommodation.assessment_id = $2
+       ORDER BY accommodation.status = 'active' DESC, LOWER(COALESCE(u.username, u.email))`, [assessmentType, assessmentId],
+    );
+    return res.json({ success: true, data: result.rows.map((row) => ({ ...serializeAccommodation(row), studentName: row.student_name, studentEmail: row.student_email })) });
+  } catch (error) {
+    console.error("Error fetching assessment accommodations:", error);
+    return internalError(res, "Không thể tải điều chỉnh riêng của học viên");
+  }
+});
+
+router.put("/teacher/accommodations", protectRoute, requireTeacher, requirePermission("lms.assessment.accommodate"), async (req, res) => {
+  const assessmentType = req.body?.assessmentType;
+  const assessmentId = parsePositiveId(req.body?.assessmentId);
+  const userId = parsePositiveId(req.body?.userId);
+  const dueAt = req.body?.dueAt ? new Date(req.body.dueAt) : null;
+  const extraTimeMinutes = Number(req.body?.extraTimeMinutes || 0);
+  const rawAttemptLimit = req.body?.attemptLimitOverride;
+  const attemptLimitOverride = rawAttemptLimit === undefined || rawAttemptLimit === null || rawAttemptLimit === "" ? null : Number(rawAttemptLimit);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  if (!["assignment", "quiz"].includes(assessmentType) || !assessmentId || !userId || (dueAt && Number.isNaN(dueAt.getTime())) || (dueAt && dueAt.getTime() <= Date.now()) || !Number.isInteger(extraTimeMinutes) || extraTimeMinutes < 0 || extraTimeMinutes > 480 || (attemptLimitOverride !== null && (!Number.isInteger(attemptLimitOverride) || attemptLimitOverride < 1 || attemptLimitOverride > 10)) || reason.length < 10 || reason.length > 2000) {
+    return validationError(res, "Dữ liệu điều chỉnh chưa hợp lệ; hạn nộp phải ở tương lai và lý do từ 10 đến 2000 ký tự");
+  }
+  if (!dueAt && extraTimeMinutes === 0 && attemptLimitOverride === null) return validationError(res, "Hãy thiết lập ít nhất một điều chỉnh cho học viên");
+  if (assessmentType === "assignment" && (extraTimeMinutes !== 0 || attemptLimitOverride !== null)) return validationError(res, "Bài tự luận chỉ hỗ trợ gia hạn nộp riêng");
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const context = await assessmentContextForAccommodation({ assessmentType, assessmentId, user: req.user, db: client });
+    if (!context) { await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền điều chỉnh hoạt động này"); }
+    if (!context.liveClassId) { await client.query("ROLLBACK"); return validationError(res, "Hoạt động này chưa gắn lớp nên không thể điều chỉnh theo học viên"); }
+    const enrolled = await client.query("SELECT 1 FROM class_enrollments WHERE live_class_id = $1 AND user_id = $2 AND status = 'active'", [context.liveClassId, userId]);
+    if (!enrolled.rows[0]) { await client.query("ROLLBACK"); return validationError(res, "Học viên không thuộc lớp nhận hoạt động này"); }
+    if (assessmentType === "quiz" && attemptLimitOverride !== null && attemptLimitOverride < context.baseAttemptLimit) {
+      await client.query("ROLLBACK");
+      return validationError(res, "Số lượt riêng không được thấp hơn số lượt làm mặc định của quiz");
+    }
+    const existing = await getAssessmentAccommodation({ assessmentType, assessmentId, userId, db: client });
+    const result = await client.query(
+      `INSERT INTO assessment_accommodations
+         (assessment_type, assessment_id, user_id, due_at, extra_time_minutes, attempt_limit_override, reason, status, created_by, revoked_by, revoked_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, NULL, NULL)
+       ON CONFLICT (assessment_type, assessment_id, user_id) DO UPDATE SET
+         due_at = EXCLUDED.due_at, extra_time_minutes = EXCLUDED.extra_time_minutes,
+         attempt_limit_override = EXCLUDED.attempt_limit_override, reason = EXCLUDED.reason,
+         status = 'active', created_by = EXCLUDED.created_by, revoked_by = NULL, revoked_at = NULL, updated_at = NOW()
+       RETURNING *`,
+      [assessmentType, assessmentId, userId, dueAt?.toISOString() || null, extraTimeMinutes, attemptLimitOverride, reason, req.user.id],
+    );
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "assessment.accommodation_upserted", entityType: "assessment_accommodation", entityId: result.rows[0].id, beforeState: serializeAccommodation(existing), afterState: serializeAccommodation(result.rows[0]), metadata: { ip: req.ip } });
+    await client.query("COMMIT");
+    return res.json({ success: true, data: serializeAccommodation(result.rows[0]), message: "Đã lưu điều chỉnh riêng cho học viên" });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Error updating assessment accommodation:", error);
+    return internalError(res, "Không thể lưu điều chỉnh riêng cho học viên");
+  } finally {
+    client.release();
+  }
+});
+
 // GET /api/assignments/:assignmentId — detail used by the submit screen.
 router.get("/:assignmentId", protectRoute, async (req, res, next) => {
   if (["all", "quizzes", "submissions", "submission-assets"].includes(req.params.assignmentId)) return next();
@@ -648,6 +894,9 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
     if (!assignment) return notFound(res, "Không tìm thấy bài tập");
     if (req.user.role === "user" && !(await ensureAssignmentVisibleToStudent(assignment, req.user.id))) return forbidden(res, "Bạn chưa được cấp quyền truy cập bài tập này");
     if (req.user.role === "creator" && !(await canGradeAssignment(assignment, req.user))) return forbidden(res, "Bạn không có quyền xem bài tập này");
+    const accommodation = req.user.role === "user"
+      ? await getAssessmentAccommodation({ assessmentType: "assignment", assessmentId, userId: req.user.id })
+      : null;
     const submission = await query(
       `SELECT s.id AS submission_id, s.status AS submission_status, s.submitted_at,
               s.content_text, s.file_asset_id, s.audio_asset_id,
@@ -665,7 +914,12 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
        WHERE s.assignment_id = $1 AND s.user_id = $2`,
       [assignmentId, req.user.id],
     );
-    const row = { ...assignment, ...(submission.rows[0] || {}) };
+    const row = {
+      ...assignment,
+      ...(submission.rows[0] || {}),
+      due_date: effectiveAssignmentDueDate(assignment, accommodation),
+      accommodation: serializeAccommodation(accommodation),
+    };
     return res.json({
       success: true,
       data: serializeAssignment({ ...row, status: row.score !== null && row.score !== undefined ? "graded" : row.submission_status || (row.due_date && new Date(row.due_date) < new Date() ? "late" : "todo") }),
@@ -1036,7 +1290,9 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
         return validationError(res, "Tệp bài nộp không hợp lệ hoặc chưa upload xong");
       }
     }
-    const isLate = assignment.due_date && Date.now() > new Date(assignment.due_date).getTime();
+    const accommodation = await getAssessmentAccommodation({ assessmentType: "assignment", assessmentId, userId: req.user.id, db: client });
+    const dueDate = effectiveAssignmentDueDate(assignment, accommodation);
+    const isLate = dueDate && Date.now() > new Date(dueDate).getTime();
     const result = await client.query(
       `INSERT INTO assignment_submissions (assignment_id, user_id, content_text, file_asset_id, audio_asset_id, status)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -1260,6 +1516,22 @@ const serializeAttempt = (attempt) => attempt ? {
   autoSubmitted: Boolean(attempt.auto_submitted),
 } : null;
 
+// A new accommodation may be granted while a learner has an open attempt. It
+// may extend a deadline, never shorten one that has already been issued.
+const resolveAttemptExpiry = ({ attempt, quiz, now = new Date() }) => {
+  const configured = getAttemptExpiry({
+    startedAt: attempt.started_at,
+    durationMinutes: quiz.duration_minutes,
+    closesAt: getQuizAvailability(quiz, now).closesAt,
+  });
+  const stored = attempt.expires_at ? new Date(attempt.expires_at) : null;
+  const expiresAt = stored && (!configured || stored >= configured) ? stored : configured;
+  return {
+    expiresAt,
+    shouldPersist: Boolean(expiresAt && (!stored || expiresAt.getTime() !== stored.getTime())),
+  };
+};
+
 const submitAttempt = async ({ client, attempt, questions, autoSubmitted = false }) => {
   const computed = buildQuizResult(questions, attempt.answers_json || {});
   const result = await client.query(
@@ -1288,16 +1560,12 @@ const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
   const now = new Date();
   let attempt = activeResult.rows[0] || null;
   if (attempt) {
-    const expiresAt = attempt.expires_at || getAttemptExpiry({
-      startedAt: attempt.started_at,
-      durationMinutes: quiz.duration_minutes,
-      closesAt: getQuizAvailability(quiz, now).closesAt,
-    });
+    const { expiresAt, shouldPersist } = resolveAttemptExpiry({ attempt, quiz, now });
+    if (shouldPersist) {
+      const expiryUpdate = await client.query("UPDATE quiz_attempts SET expires_at = $1, updated_at = NOW() WHERE id = $2 RETURNING expires_at", [expiresAt.toISOString(), attempt.id]);
+      attempt.expires_at = expiryUpdate.rows[0].expires_at;
+    }
     if (expiresAt && new Date(expiresAt).getTime() <= now.getTime()) {
-      if (!attempt.expires_at) {
-        const expiryUpdate = await client.query("UPDATE quiz_attempts SET expires_at = $1 WHERE id = $2 RETURNING expires_at", [expiresAt.toISOString(), attempt.id]);
-        attempt.expires_at = expiryUpdate.rows[0].expires_at;
-      }
       return { ...(await submitAttempt({ client, attempt, questions: attemptQuestions(attempt, questions), autoSubmitted: true })), created: false, timedOut: true };
     }
     return { attempt, computed: null, created: false, timedOut: false };
@@ -1363,6 +1631,7 @@ const quizResponse = ({ quiz, questions, attempt, computed, now = new Date() }) 
     attemptLimit: Number(quiz.attempt_limit || 1),
     attemptsUsed: attempt ? Number(attempt.attempt_number || 1) : 0,
     attemptsRemaining: Math.max(0, Number(quiz.attempt_limit || 1) - (attempt ? Number(attempt.attempt_number || 1) : 0)),
+    accommodation: quiz.accommodation || null,
     questions: questions.map(publicQuestion),
     attempt: serializeAttempt(attempt),
     result,
@@ -1393,11 +1662,13 @@ router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
     const questions = await getQuizQuestions(quizId);
     if (questions.length === 0) return notFound(res, "Đề thi chưa có câu hỏi");
     if (req.user.role !== "user") return res.json({ success: true, data: quizResponse({ quiz, questions, attempt: null, computed: null }) });
+    const accommodation = await getAssessmentAccommodation({ assessmentType: "quiz", assessmentId: quizId, userId: req.user.id, db: client });
+    const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation);
     await client.query("BEGIN");
-    const state = await getStudentAttempt({ client, quiz, userId: req.user.id, questions });
+    const state = await getStudentAttempt({ client, quiz: effectiveQuiz, userId: req.user.id, questions });
     await client.query("COMMIT");
     const responseQuestions = attemptQuestions(state.attempt, questions);
-    return res.json({ success: true, data: quizResponse({ quiz, questions: responseQuestions, attempt: state.attempt, computed: state.computed }) });
+    return res.json({ success: true, data: quizResponse({ quiz: effectiveQuiz, questions: responseQuestions, attempt: state.attempt, computed: state.computed }) });
   } catch (error) {
     if (client) await client.query("ROLLBACK").catch(() => {});
     if (error.message === "QUIZ_NOT_OPEN" || error.message === "QUIZ_CLOSED") return quizWindowError(res, error);
@@ -1421,6 +1692,8 @@ router.put("/quizzes/:quizId/answers", protectRoute, requireRole("user"), requir
     const questions = await getQuizQuestions(quizId);
     const answerError = validateQuizAnswers(questions, req.body.answers);
     if (answerError) return validationError(res, answerError);
+    const accommodation = await getAssessmentAccommodation({ assessmentType: "quiz", assessmentId: quizId, userId: req.user.id, db: client });
+    const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation);
     await client.query("BEGIN");
     await client.query("SELECT id FROM quizzes WHERE id = $1 FOR UPDATE", [quiz.id]);
     const active = await client.query(
@@ -1431,12 +1704,12 @@ router.put("/quizzes/:quizId/answers", protectRoute, requireRole("user"), requir
     );
     const attempt = active.rows[0];
     if (!attempt) { await client.query("ROLLBACK"); return conflict(res, "Không có lượt làm bài đang mở để lưu nháp", "QUIZ_NO_ACTIVE_ATTEMPT"); }
-    const expiry = attempt.expires_at || getAttemptExpiry({ startedAt: attempt.started_at, durationMinutes: quiz.duration_minutes, closesAt: getQuizAvailability(quiz).closesAt });
+    const { expiresAt: expiry, shouldPersist } = resolveAttemptExpiry({ attempt, quiz: effectiveQuiz });
+    if (shouldPersist) {
+      const expiryUpdate = await client.query("UPDATE quiz_attempts SET expires_at = $1, updated_at = NOW() WHERE id = $2 RETURNING expires_at", [expiry.toISOString(), attempt.id]);
+      attempt.expires_at = expiryUpdate.rows[0].expires_at;
+    }
     if (expiry && new Date(expiry).getTime() <= Date.now()) {
-      if (!attempt.expires_at) {
-        const expiryUpdate = await client.query("UPDATE quiz_attempts SET expires_at = $1 WHERE id = $2 RETURNING expires_at", [expiry.toISOString(), attempt.id]);
-        attempt.expires_at = expiryUpdate.rows[0].expires_at;
-      }
       await submitAttempt({ client, attempt, questions: attemptQuestions(attempt, questions), autoSubmitted: true });
       await client.query("COMMIT");
       return conflict(res, "Đã hết thời gian. Hệ thống đã nộp phần đáp án đã lưu.", "QUIZ_ATTEMPT_EXPIRED");
@@ -1469,18 +1742,20 @@ router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), requir
     const questions = await getQuizQuestions(quizId);
     const answerError = validateQuizAnswers(questions, req.body.answers);
     if (answerError) return validationError(res, answerError);
+    const accommodation = await getAssessmentAccommodation({ assessmentType: "quiz", assessmentId: quizId, userId: req.user.id, db: client });
+    const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation);
     await client.query("BEGIN");
-    const state = await getStudentAttempt({ client, quiz, userId: req.user.id, questions });
+    const state = await getStudentAttempt({ client, quiz: effectiveQuiz, userId: req.user.id, questions });
     let attempt = state.attempt;
     let computed = state.computed;
     const alreadySubmitted = attempt.status === "submitted";
     if (!alreadySubmitted) {
-      const expiry = attempt.expires_at || getAttemptExpiry({ startedAt: attempt.started_at, durationMinutes: quiz.duration_minutes, closesAt: getQuizAvailability(quiz).closesAt });
+      const { expiresAt: expiry, shouldPersist } = resolveAttemptExpiry({ attempt, quiz: effectiveQuiz });
+      if (shouldPersist) {
+        const expiryUpdate = await client.query("UPDATE quiz_attempts SET expires_at = $1, updated_at = NOW() WHERE id = $2 RETURNING expires_at", [expiry.toISOString(), attempt.id]);
+        attempt.expires_at = expiryUpdate.rows[0].expires_at;
+      }
       if (expiry && new Date(expiry).getTime() <= Date.now()) {
-        if (!attempt.expires_at) {
-          const expiryUpdate = await client.query("UPDATE quiz_attempts SET expires_at = $1 WHERE id = $2 RETURNING expires_at", [expiry.toISOString(), attempt.id]);
-          attempt.expires_at = expiryUpdate.rows[0].expires_at;
-        }
         ({ attempt, computed } = await submitAttempt({ client, attempt, questions: attemptQuestions(attempt, questions), autoSubmitted: true }));
       } else {
         const save = await client.query("UPDATE quiz_attempts SET answers_json = $1::jsonb, expires_at = COALESCE(expires_at, $2) WHERE id = $3 RETURNING *", [JSON.stringify(req.body.answers), expiry?.toISOString() || null, attempt.id]);

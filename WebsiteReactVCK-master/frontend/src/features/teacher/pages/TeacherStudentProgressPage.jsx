@@ -1,8 +1,8 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Search, Users } from "lucide-react";
-import { fetchClassStudentProgress, fetchTeacherDashboardStats } from "../../api/lmsClient";
+import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Download, Search, SlidersHorizontal, Users } from "lucide-react";
+import { fetchAssessmentAccommodations, fetchClassStudentProgress, fetchTeacherDashboardStats, gradebookExportUrl, saveAssessmentAccommodation } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 
@@ -41,6 +41,91 @@ function StatCard({ icon: Icon, label, value, tone }) {
   );
 }
 
+const datetimeLocalValue = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  const local = new Date(date.getTime() - (date.getTimezoneOffset() * 60 * 1000));
+  return local.toISOString().slice(0, 16);
+};
+
+function AccommodationModal({ student, activities, initialActivity, onClose, onSaved }) {
+  const [activityId, setActivityId] = useState(initialActivity?.id || activities[0]?.id || "");
+  const [dueAt, setDueAt] = useState("");
+  const [extraTimeMinutes, setExtraTimeMinutes] = useState("");
+  const [attemptLimitOverride, setAttemptLimitOverride] = useState("");
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const activity = activities.find((item) => item.id === activityId) || null;
+  const [assessmentType, assessmentId] = String(activity?.id || "").split("-");
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!assessmentType || !assessmentId) return;
+      setLoading(true);
+      try {
+        const response = await fetchAssessmentAccommodations({ assessmentType, assessmentId });
+        const current = (response?.data || []).find((item) => String(item.userId) === String(student.id) && item.status === "active");
+        if (!cancelled) {
+          setDueAt(datetimeLocalValue(current?.dueAt));
+          setExtraTimeMinutes(current?.extraTimeMinutes ? String(current.extraTimeMinutes) : "");
+          setAttemptLimitOverride(current?.attemptLimitOverride ? String(current.attemptLimitOverride) : "");
+          setReason(current?.reason || "");
+        }
+      } catch {
+        if (!cancelled) setReason("");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [assessmentId, assessmentType, student.id]);
+
+  const handleSave = async () => {
+    if (!activity) return;
+    if (!reason.trim() || reason.trim().length < 10) {
+      window.alert("Hãy nhập lý do điều chỉnh ít nhất 10 ký tự.");
+      return;
+    }
+    try {
+      setSaving(true);
+      await saveAssessmentAccommodation({
+        assessmentType,
+        assessmentId: Number(assessmentId),
+        userId: Number(student.id),
+        dueAt: dueAt ? new Date(dueAt).toISOString() : null,
+        extraTimeMinutes: assessmentType === "quiz" && extraTimeMinutes ? Number(extraTimeMinutes) : 0,
+        attemptLimitOverride: assessmentType === "quiz" && attemptLimitOverride ? Number(attemptLimitOverride) : null,
+        reason: reason.trim(),
+      });
+      onSaved();
+    } catch (error) {
+      window.alert(error?.message || "Không thể lưu điều chỉnh riêng.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Điều chỉnh hỗ trợ riêng">
+      <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:p-6">
+        <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-blue-600 dark:text-sky-400">Hỗ trợ cá nhân</p><h2 className="mt-1 text-lg font-black text-slate-950 dark:text-white">Điều chỉnh cho {student.name}</h2><p className="mt-1 text-xs text-slate-500">Mọi thay đổi đều có lý do và log kiểm tra.</p></div><button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">Đóng</button></div>
+        <div className="mt-5 space-y-4">
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">Hoạt động<select value={activityId} onChange={(event) => setActivityId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">{activities.map((item) => <option key={item.id} value={item.id}>{item.type === "quiz" ? "Quiz" : "Bài tập"}: {item.title}</option>)}</select></label>
+          {loading ? <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-950">Đang tải điều chỉnh hiện có...</p> : <>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">Gia hạn riêng <span className="font-medium text-slate-400">(không bắt buộc)</span><input type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+            {assessmentType === "quiz" && <div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-bold text-slate-700 dark:text-slate-200">Cộng thêm thời gian (phút)<input type="number" min="0" max="480" value={extraTimeMinutes} onChange={(event) => setExtraTimeMinutes(event.target.value)} placeholder="Ví dụ: 15" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label><label className="block text-xs font-bold text-slate-700 dark:text-slate-200">Tổng số lượt làm riêng<input type="number" min="1" max="10" value={attemptLimitOverride} onChange={(event) => setAttemptLimitOverride(event.target.value)} placeholder="Ví dụ: 2" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label></div>}
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">Lý do <span className="text-rose-500">*</span><textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} placeholder="Ví dụ: Học viên có xác nhận cần thêm thời gian làm bài." className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+          </>}
+        </div>
+        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</button><button type="button" disabled={loading || saving || !activity} onClick={handleSave} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-50">{saving ? "Đang lưu..." : "Lưu điều chỉnh"}</button></div>
+      </div>
+    </div>
+  );
+}
+
 export default function TeacherStudentProgressPage() {
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState("");
@@ -50,6 +135,7 @@ export default function TeacherStudentProgressPage() {
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [loadingGradebook, setLoadingGradebook] = useState(false);
   const [error, setError] = useState("");
+  const [accommodationTarget, setAccommodationTarget] = useState(null);
 
   const loadClasses = useCallback(async () => {
     setLoadingClasses(true);
@@ -146,12 +232,7 @@ export default function TeacherStudentProgressPage() {
               <h1 className="text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">Học viên, điểm & chuyên cần</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">Theo dõi bài tự luận, quiz tự chấm và điểm danh theo từng buổi học của một lớp.</p>
             </div>
-            <label className="block text-xs font-bold text-slate-600 dark:text-slate-300">
-              Chọn lớp
-              <select value={classId} onChange={(event) => { setClassId(event.target.value); setSelectedSessionId("all"); }} className="mt-1.5 block min-w-[16rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
-                {classes.map((item) => <option key={item.id} value={item.id}>{item.title}{item.courseTitle ? ` · ${item.courseTitle}` : ""}</option>)}
-              </select>
-            </label>
+            <div className="flex flex-wrap items-end gap-2"><label className="block text-xs font-bold text-slate-600 dark:text-slate-300">Chọn lớp<select value={classId} onChange={(event) => { setClassId(event.target.value); setSelectedSessionId("all"); }} className="mt-1.5 block min-w-[16rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{classes.map((item) => <option key={item.id} value={item.id}>{item.title}{item.courseTitle ? ` · ${item.courseTitle}` : ""}</option>)}</select></label><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, format: "xlsx" })} className="inline-flex h-[42px] items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-xs font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"><Download className="h-3.5 w-3.5" /> Xuất XLSX</a><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, format: "csv" })} className="inline-flex h-[42px] items-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">CSV</a></div>
           </div>
         </header>
 
@@ -198,7 +279,7 @@ export default function TeacherStudentProgressPage() {
                         const sessionAttendance = selectedSessionId !== "all" ? attendance : null;
                         return (
                           <tr key={student.id} className="align-top hover:bg-slate-50/70 dark:hover:bg-slate-800/30">
-                            <td className="px-4 py-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 font-black text-blue-700 dark:bg-blue-950 dark:text-sky-300">{student.avatar ? <img src={student.avatar} alt="" className="h-full w-full object-cover" /> : student.name.slice(0, 1).toUpperCase()}</span><div><p className="font-black text-slate-900 dark:text-white">{student.name}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{student.email}</p></div></div></td>
+                            <td className="px-4 py-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 font-black text-blue-700 dark:bg-blue-950 dark:text-sky-300">{student.avatar ? <img src={student.avatar} alt="" className="h-full w-full object-cover" /> : student.name.slice(0, 1).toUpperCase()}</span><div><p className="font-black text-slate-900 dark:text-white">{student.name}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{student.email}</p>{scopedActivities.length > 0 && <button type="button" onClick={() => setAccommodationTarget({ student, activity: scopedActivities[0] })} className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 dark:text-sky-400"><SlidersHorizontal className="h-3 w-3" /> Hỗ trợ riêng</button>}</div></div></td>
                             <td className="px-4 py-4">{selectedSessionId === "all" ? <><p className="font-black text-slate-900 dark:text-white">{attendance?.rate ?? "—"}{attendance?.rate !== null ? "%" : ""}</p><p className="mt-1 text-[11px] text-slate-500">Có mặt {attendance?.present || 0}/{attendance?.recorded || 0} buổi đã điểm danh</p></> : sessionAttendance ? <><span className={`inline-flex rounded-full px-2 py-1 font-bold ${attendanceLabel[sessionAttendance.status]?.cls || "bg-slate-100 text-slate-600"}`}>{attendanceLabel[sessionAttendance.status]?.text || sessionAttendance.status}</span><p className="mt-1 text-[11px] text-slate-500">Điểm danh lúc {formatCheckedAt(sessionAttendance.checkedAt)}</p></> : <span className="text-slate-400">Chưa điểm danh</span>}</td>
                             <td className="px-4 py-4"><p className="flex items-center gap-1.5 font-black text-slate-900 dark:text-white"><BarChart3 className="h-4 w-4 text-blue-600 dark:text-sky-400" /> {score.average === null ? "Chưa có điểm" : `${score.average}%`}</p><p className="mt-1 text-[11px] text-slate-500">Đã có điểm {score.gradedCount}/{score.rows.length} hoạt động</p></td>
                             <td className="px-4 py-4"><div className="max-w-sm space-y-1.5">{score.rows.length === 0 ? <span className="text-slate-400">Không có bài hoặc quiz trong phạm vi này</span> : score.rows.map(({ activity, record }) => { const maxScore = record?.maxScore ?? activity.maxScore; const hasScore = record?.score !== null && record?.score !== undefined; return <div key={activity.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-100/70 px-2.5 py-2 dark:bg-slate-950/70"><span className="min-w-0 truncate font-semibold text-slate-700 dark:text-slate-200">{activity.type === "quiz" ? "Quiz" : "Bài tập"}: {activity.title}</span><span className={`shrink-0 font-black ${hasScore ? "text-emerald-600 dark:text-emerald-400" : record ? "text-amber-600 dark:text-amber-400" : "text-slate-400"}`}>{hasScore ? `${record.score}${maxScore ? `/${maxScore}` : ""}` : record ? "Chờ chấm" : "Chưa nộp"}</span></div>; })}</div></td>
@@ -214,6 +295,7 @@ export default function TeacherStudentProgressPage() {
           </>
         )}
       </div>
+      {accommodationTarget && <AccommodationModal student={accommodationTarget.student} activities={scopedActivities.length ? scopedActivities : gradebook.activities} initialActivity={accommodationTarget.activity} onClose={() => setAccommodationTarget(null)} onSaved={() => { setAccommodationTarget(null); loadGradebook(); }} />}
     </div>
   );
 }
