@@ -30,26 +30,53 @@ export default function PostDetail() {
 
   const articleSchema = {
     "@context": "https://schema.org",
-    "@type": "BlogPosting",
-    "headline": article.title,
-    "description": article.excerpt,
-    "datePublished": article.publishedAt,
-    "author": {
-      "@type": "Organization",
-      "name": article.author || "Moly Course"
-    },
-    "publisher": {
-      "@type": "Organization",
-      "name": "Moly Course",
-      "logo": {
-        "@type": "ImageObject",
-        "url": "https://www.molycourse.online/favicon-512x512.png"
+    "@graph": [
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Trang chủ",
+            "item": "https://www.molycourse.online/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Bài viết",
+            "item": "https://www.molycourse.online/post"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": article.title,
+            "item": `https://www.molycourse.online/post/${article.id}`
+          }
+        ]
+      },
+      {
+        "@type": "BlogPosting",
+        "headline": article.title,
+        "description": article.excerpt,
+        "datePublished": article.publishedAt,
+        "author": {
+          "@type": "Organization",
+          "name": article.author || "Moly Course"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "Moly Course",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://www.molycourse.online/favicon-512x512.png"
+          }
+        },
+        "mainEntityOfPage": {
+          "@type": "WebPage",
+          "@id": `https://www.molycourse.online/post/${article.id}`
+        }
       }
-    },
-    "mainEntityOfPage": {
-      "@type": "WebPage",
-      "@id": `https://www.molycourse.online/post/${article.id}`
-    }
+    ]
   };
 
   return (

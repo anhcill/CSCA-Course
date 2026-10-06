@@ -19,6 +19,81 @@ const CATEGORIES = [
   { id: 'CHINESE', label: 'Mục Tiếng Trung (HSK & HSKK)', icon: Trophy },
 ];
 
+
+const COURSES_STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Trang chủ",
+          "item": "https://www.molycourse.online/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Khóa học",
+          "item": "https://www.molycourse.online/courses"
+        }
+      ]
+    },
+    {
+      "@type": "ItemList",
+      "name": "Danh sách khóa học Moly Course",
+      "description": "Lộ trình ôn thi CSCA, chứng chỉ tiếng Trung HSK, HSKK chuẩn hóa",
+      "itemListElement": [
+        {
+          "@type": "Course",
+          "position": 1,
+          "name": "Luyện Thi CSCA Dự Bị & Chuẩn Đầu Vào",
+          "description": "Chuyên đề ôn luyện thi CSCA (Toán học & Khoa học), hệ thống ngân hàng đề thi thử bám sát đề thi thực tế.",
+          "provider": {
+            "@type": "Organization",
+            "name": "Moly Course",
+            "sameAs": "https://www.molycourse.online"
+          }
+        },
+        {
+          "@type": "Course",
+          "position": 2,
+          "name": "Tiếng Trung HSK 1–2 · Xây Nền Tảng",
+          "description": "Phát âm Pinyin, chữ Hán và giao tiếp cơ bản dành cho người mới bắt đầu từ số 0.",
+          "provider": {
+            "@type": "Organization",
+            "name": "Moly Course",
+            "sameAs": "https://www.molycourse.online"
+          }
+        },
+        {
+          "@type": "Course",
+          "position": 3,
+          "name": "Tiếng Trung HSK 3–4 · Trung Cấp",
+          "description": "Mở rộng từ vựng, ngữ pháp ứng dụng và phản xạ hội thoại theo tình huống thực tế.",
+          "provider": {
+            "@type": "Organization",
+            "name": "Moly Course",
+            "sameAs": "https://www.molycourse.online"
+          }
+        },
+        {
+          "@type": "Course",
+          "position": 4,
+          "name": "Luyện Thi Khẩu Ngữ HSKK Sơ - Trung - Cao Cấp",
+          "description": "Khóa học luyện thi HSKK phát âm chuẩn, ngữ điệu tự nhiên và kỹ năng trả lời lưu loát.",
+          "provider": {
+            "@type": "Organization",
+            "name": "Moly Course",
+            "sameAs": "https://www.molycourse.online"
+          }
+        }
+      ]
+    }
+  ]
+};
+
 const Courses = () => {
   const { t } = useTranslation();
   const { courses, loading, isDemo } = useGetCourse({ demoFallback: true });
@@ -246,6 +321,8 @@ const Courses = () => {
         title={t('coursesMetaTitle')}
         description={t('coursesMetaDescription')}
         keywords={t('coursesMetaKeywords')}
+        url="https://www.molycourse.online/courses"
+        structuredData={COURSES_STRUCTURED_DATA}
       />
 
       {loading ? (

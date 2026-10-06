@@ -68,13 +68,35 @@ const policySections = [
   }
 ];
 
+
+const LEGAL_STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Trang chủ",
+      "item": "https://www.molycourse.online/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Chính sách & Pháp lý",
+      "item": "https://www.molycourse.online/policy-and-legal"
+    }
+  ]
+};
+
 export default function PoliceAndLegal() {
   return (
     <div className="min-h-screen bg-[#fffaf6] py-12 dark:bg-slate-950 sm:py-16">
       <Meta
-        title="Chính sách & Pháp lý | MOLY COURSE 2026"
-        description="Điều khoản sử dụng, chính sách bảo mật, bản quyền và thông tin liên hệ của MOLY COURSE 2026."
-        keywords="MOLY COURSE 2026, chính sách, pháp lý, bảo mật, điều khoản, bản quyền"
+        title="Chính Sách & Điều Khoản Sử Dụng | Moly Course"
+        description="Quy định điều khoản sử dụng, chính sách bảo mật thông tin học viên, quyền sở hữu trí tuệ và thông tin liên hệ chính thức của Moly Course."
+        keywords="Moly Course, chính sách bảo mật, điều khoản sử dụng, bản quyền khóa học"
+        url="https://www.molycourse.online/policy-and-legal"
+        structuredData={LEGAL_STRUCTURED_DATA}
       />
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
         <header className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-slate-900 to-red-950 px-6 py-12 text-white shadow-2xl sm:px-10 lg:px-14 lg:py-16">

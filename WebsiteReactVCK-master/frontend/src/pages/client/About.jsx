@@ -20,13 +20,51 @@ const values = [
   }
 ];
 
+
+const ABOUT_STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Trang chủ",
+          "item": "https://www.molycourse.online/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Về chúng tôi",
+          "item": "https://www.molycourse.online/about"
+        }
+      ]
+    },
+    {
+      "@type": "AboutPage",
+      "@id": "https://www.molycourse.online/about#webpage",
+      "url": "https://www.molycourse.online/about",
+      "name": "Giới thiệu về Moly Course",
+      "description": "Moly Course là nền tảng học tập & luyện thi trực tuyến chuyên sâu chuẩn đầu vào CSCA, tiếng Trung HSK, HSKK và kế hoạch du học Trung Quốc.",
+      "mainEntity": {
+        "@type": "EducationalOrganization",
+        "name": "Moly Course",
+        "url": "https://www.molycourse.online"
+      }
+    }
+  ]
+};
+
 export default function About() {
   return (
     <div className="min-h-screen bg-[#fffaf6] py-12 dark:bg-slate-950 sm:py-16">
       <Meta
-        title="Về MOLY COURSE 2026"
-        description="MOLY COURSE 2026 xây dựng lộ trình học tiếng Trung, HSK, HSKK, CSCA và chuẩn bị kế hoạch học tập tại Trung Quốc."
-        keywords="MOLY COURSE 2026, về chúng tôi, học tiếng Trung, HSK, HSKK, CSCA"
+        title="Giới Thiệu Moly Course — Nền Tảng Luyện Thi CSCA & Tiếng Trung"
+        description="Tìm hiểu về Moly Course: Sứ mệnh xây dựng lộ trình học tiếng Trung HSK, HSKK, luyện thi chuẩn đầu vào CSCA bài bản và chuẩn bị hồ sơ du học Trung Quốc."
+        keywords="Moly Course, về chúng tôi, luyện thi CSCA, học tiếng Trung, HSK, HSKK, du học Trung Quốc"
+        url="https://www.molycourse.online/about"
+        structuredData={ABOUT_STRUCTURED_DATA}
       />
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <header className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-red-700 via-red-600 to-orange-500 px-6 py-14 text-white shadow-2xl sm:px-10 lg:px-16 lg:py-20">

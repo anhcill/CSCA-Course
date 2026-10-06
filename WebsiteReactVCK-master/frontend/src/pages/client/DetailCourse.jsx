@@ -245,9 +245,48 @@ const DetailCourse = () => {
       }`}
     >
       <Meta
-        title={t("courseDetailMetaTitle") || "Chi Tiết Khóa Học - Moly Course"}
-        description={t("courseDetailMetaDescription")}
+        title={course?.nameCourse ? `${course.nameCourse} | Moly Course` : (t("courseDetailMetaTitle") || "Chi Tiết Khóa Học - Moly Course")}
+        description={course?.description || t("courseDetailMetaDescription")}
         keywords={t("courseDetailMetaKeywords")}
+        url={`https://www.molycourse.online/detail-course/${id}`}
+        structuredData={course ? {
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "BreadcrumbList",
+              "itemListElement": [
+                {
+                  "@type": "ListItem",
+                  "position": 1,
+                  "name": "Trang chủ",
+                  "item": "https://www.molycourse.online/"
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 2,
+                  "name": "Khóa học",
+                  "item": "https://www.molycourse.online/courses"
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 3,
+                  "name": course.nameCourse || "Chi tiết khóa học",
+                  "item": `https://www.molycourse.online/detail-course/${id}`
+                }
+              ]
+            },
+            {
+              "@type": "Course",
+              "name": course.nameCourse,
+              "description": course.description,
+              "provider": {
+                "@type": "Organization",
+                "name": "Moly Course",
+                "sameAs": "https://www.molycourse.online"
+              }
+            }
+          ]
+        } : null}
       />
       {loading ? (
         <Loading loading={true} text="Đang tải thông tin bài học..." fullScreen={false} className="min-h-[60vh] py-16" />

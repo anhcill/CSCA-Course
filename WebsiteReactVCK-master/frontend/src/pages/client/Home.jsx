@@ -23,6 +23,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import Loading from '../../components/Loading';
 import Meta from '../../components/Meta.jsx';
+import FAQSection, { FAQ_SCHEMA } from '../../components/FAQSection.jsx';
 import { fetchLeaderboard } from '../../features/api/lmsClient';
 
 const FeedBack = React.lazy(() => import('../../components/FeedBack'));
@@ -96,7 +97,7 @@ function HomeLeaderboard() {
                   <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-sm font-black ${podiumTone[index] || 'border-white/10 bg-white/10 text-slate-200'}`}>{entry.rank}</span>
                   <img
                     src={entry.avatar || '/avatar/default-avatar.jpg'}
-                    alt=""
+                    alt={`Học viên ${entry.username}`}
                     className="h-10 w-10 rounded-full border border-white/20 object-cover"
                     onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
                   />
@@ -233,7 +234,7 @@ const HeroBanner = () => {
             >
               <img
                 src={item.bgImage}
-                alt=""
+                alt={item.title || "Khóa học Moly Course"}
                 className="h-full w-full object-cover"
                 loading={index === 0 ? 'eager' : 'lazy'}
                 onError={handleImageError}
@@ -697,7 +698,7 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-white text-gray-950 dark:bg-gray-950 dark:text-white">
-      <Meta title={t('homeMetaTitle')} description={t('homeMetaDescription')} keywords={t('homeMetaKeywords')} />
+      <Meta title={t('homeMetaTitle')} description={t('homeMetaDescription')} keywords={t('homeMetaKeywords')} url="https://www.molycourse.online/" structuredData={FAQ_SCHEMA} />
       <HeroBanner />
       <HomeLeaderboard />
       <StatsSection />
@@ -705,6 +706,7 @@ const Home = () => {
       <PartnerStrip />
       <FeaturedCourses />
       <CampusGallery />
+      <FAQSection />
       <Suspense fallback={<Loading loading text="Đang tải phản hồi..." />}>
         <div id="hoc-vien">
           <FeedBack />

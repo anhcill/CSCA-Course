@@ -46,6 +46,45 @@ function ArticleCard({ article, featured = false }) {
   );
 }
 
+
+const BLOG_STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Trang chủ",
+          "item": "https://www.molycourse.online/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Bài viết & Tin tức",
+          "item": "https://www.molycourse.online/post"
+        }
+      ]
+    },
+    {
+      "@type": "CollectionPage",
+      "@id": "https://www.molycourse.online/post#collection",
+      "url": "https://www.molycourse.online/post",
+      "name": "Bài viết & Cẩm nang du học Trung Quốc | Moly Course",
+      "description": "Tổng hợp bài viết chia sẻ kinh nghiệm học tiếng Trung, lộ trình ôn thi HSK, HSKK, bí quyết luyện thi CSCA và chuẩn bị hồ sơ du học Trung Quốc.",
+      "publisher": {
+        "@type": "Organization",
+        "name": "Moly Course",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://www.molycourse.online/favicon-512x512.png"
+        }
+      }
+    }
+  ]
+};
+
 export default function Post() {
   const [searchTerm, setSearchTerm] = useState('');
   const [category, setCategory] = useState('TẤT CẢ');
@@ -62,9 +101,11 @@ export default function Post() {
   return (
     <div className="min-h-screen bg-[#fffaf6] py-12 dark:bg-slate-950 sm:py-16">
       <Meta
-        title="Bài viết | MOLY COURSE 2026"
-        description="Bài viết mới từ MOLY COURSE 2026 về học tiếng Trung, HSK, HSKK, CSCA và chuẩn bị du học Trung Quốc."
-        keywords="MOLY COURSE 2026, học tiếng Trung, HSK, HSKK, CSCA, du học Trung Quốc"
+        title="Bài Viết & Cẩm Nang Luyện Thi CSCA, Tiếng Trung HSK | Moly Course"
+        description="Tổng hợp bài viết hướng dẫn học tiếng Trung từ số 0, cẩm nang luyện thi HSK, HSKK, bí quyết thi CSCA và kinh nghiệm làm hồ sơ học bổng du học Trung Quốc."
+        keywords="Moly Course, bài viết tiếng Trung, luyện thi HSK, kinh nghiệm thi CSCA, hồ sơ du học Trung Quốc"
+        url="https://www.molycourse.online/post"
+        structuredData={BLOG_STRUCTURED_DATA}
       />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
