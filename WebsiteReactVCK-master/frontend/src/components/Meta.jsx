@@ -2,8 +2,8 @@ import { Helmet } from 'react-helmet-async';
 
 const DEFAULT_TITLE = 'Moly Course — Hệ thống Khóa học & Luyện thi Trực tuyến';
 const DEFAULT_DESCRIPTION = 'Moly Course — Nền tảng học tập & luyện thi trực tuyến chất lượng cao: chuyên sâu chuẩn đầu vào CSCA, tiếng Trung HSK, HSKK, hệ thống LMS làm bài tập & thi thử 24/7.';
-const DEFAULT_IMAGE = 'https://molycourse.online/og-image.png';
-const BASE_URL = 'https://molycourse.online';
+const DEFAULT_IMAGE = 'https://www.molycourse.online/og-image.png';
+const BASE_URL = 'https://www.molycourse.online';
 
 const Meta = ({
   title,

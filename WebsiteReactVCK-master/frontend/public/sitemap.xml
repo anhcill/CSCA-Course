@@ -6,7 +6,7 @@
 
   <!-- Trang chủ (Homepage) -->
   <url>
-    <loc>https://molycourse.online/</loc>
+    <loc>https://www.molycourse.online/</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
@@ -14,7 +14,7 @@
 
   <!-- Danh sách khóa học -->
   <url>
-    <loc>https://molycourse.online/courses</loc>
+    <loc>https://www.molycourse.online/courses</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -22,7 +22,7 @@
 
   <!-- Blog & Bài viết tin tức -->
   <url>
-    <loc>https://molycourse.online/post</loc>
+    <loc>https://www.molycourse.online/post</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
@@ -30,7 +30,7 @@
 
   <!-- Chi tiết bài viết: Bắt đầu tiếng Trung từ số 0 -->
   <url>
-    <loc>https://molycourse.online/post/moly-course-2026-bat-dau-tieng-trung</loc>
+    <loc>https://www.molycourse.online/post/moly-course-2026-bat-dau-tieng-trung</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -38,7 +38,7 @@
 
   <!-- Chi tiết bài viết: HSK, HSKK và CSCA -->
   <url>
-    <loc>https://molycourse.online/post/moly-course-2026-hsk-hskk-csca</loc>
+    <loc>https://www.molycourse.online/post/moly-course-2026-hsk-hskk-csca</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -46,7 +46,7 @@
 
   <!-- Chi tiết bài viết: Thói quen 30 phút mỗi ngày -->
   <url>
-    <loc>https://molycourse.online/post/moly-course-2026-thoi-quen-30-phut</loc>
+    <loc>https://www.molycourse.online/post/moly-course-2026-thoi-quen-30-phut</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -54,7 +54,7 @@
 
   <!-- Chi tiết bài viết: Hồ sơ du học Trung Quốc -->
   <url>
-    <loc>https://molycourse.online/post/moly-course-2026-ho-so-du-hoc</loc>
+    <loc>https://www.molycourse.online/post/moly-course-2026-ho-so-du-hoc</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -62,7 +62,7 @@
 
   <!-- Chi tiết bài viết: Học từ vựng theo ngữ cảnh -->
   <url>
-    <loc>https://molycourse.online/post/moly-course-2026-hoc-tu-vung-theo-ngu-canh</loc>
+    <loc>https://www.molycourse.online/post/moly-course-2026-hoc-tu-vung-theo-ngu-canh</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -70,7 +70,7 @@
 
   <!-- Giới thiệu về Moly Course -->
   <url>
-    <loc>https://molycourse.online/about</loc>
+    <loc>https://www.molycourse.online/about</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -78,7 +78,7 @@
 
   <!-- Chính sách & Pháp lý -->
   <url>
-    <loc>https://molycourse.online/policy-and-legal</loc>
+    <loc>https://www.molycourse.online/policy-and-legal</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>

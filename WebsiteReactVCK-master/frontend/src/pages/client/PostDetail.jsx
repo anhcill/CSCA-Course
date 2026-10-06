@@ -43,12 +43,12 @@ export default function PostDetail() {
       "name": "Moly Course",
       "logo": {
         "@type": "ImageObject",
-        "url": "https://molycourse.online/favicon-512x512.png"
+        "url": "https://www.molycourse.online/favicon-512x512.png"
       }
     },
     "mainEntityOfPage": {
       "@type": "WebPage",
-      "@id": `https://molycourse.online/post/${article.id}`
+      "@id": `https://www.molycourse.online/post/${article.id}`
     }
   };
 
@@ -59,7 +59,7 @@ export default function PostDetail() {
         description={article.excerpt}
         keywords={`MOLY COURSE 2026, ${article.tags.join(', ')}`}
         type="article"
-        url={`https://molycourse.online/post/${article.id}`}
+        url={`https://www.molycourse.online/post/${article.id}`}
         structuredData={articleSchema}
       />
       <div className="mx-auto max-w-4xl px-4 sm:px-6">

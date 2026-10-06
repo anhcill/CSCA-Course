@@ -17,5 +17,5 @@ Disallow: /unauthorized
 Disallow: /forbidden
 
 # Host & Sitemap definition for search engine indexers
-Host: https://molycourse.online
-Sitemap: https://molycourse.online/sitemap.xml
+Host: https://www.molycourse.online
+Sitemap: https://www.molycourse.online/sitemap.xml
