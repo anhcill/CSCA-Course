@@ -9,9 +9,10 @@ const NotFound = () => {
   return (
     <div className="grid h-screen place-content-center bg-white dark:bg-gray-800 px-4">
       <Meta
-        title={t("notFoundMetaTitle")} // Sử dụng translation cho title
-        description={t("notFoundMetaDescription")} // Sử dụng translation cho description
-        keywords={t("notFoundMetaKeywords")} // Sử dụng translation cho keywords
+        title={t("notFoundMetaTitle")}
+        description={t("notFoundMetaDescription")}
+        keywords={t("notFoundMetaKeywords")}
+        noindex={true}
       />
       <div className="text-center">
         <h1 className="text-9xl font-black text-gray-200 dark:text-gray-400">404</h1>

@@ -16,6 +16,7 @@ export default function PostDetail() {
   if (!article) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-[#fffaf6] px-4 dark:bg-slate-950">
+        <Meta title="Không tìm thấy bài viết | Moly Course" noindex={true} />
         <div className="text-center">
           <p className="text-sm font-black uppercase tracking-[0.2em] text-red-600 dark:text-amber-300">MOLY COURSE 2026</p>
           <h1 className="mt-4 text-3xl font-black text-slate-950 dark:text-white">Không tìm thấy bài viết</h1>
@@ -27,9 +28,40 @@ export default function PostDetail() {
 
   const related = MOLY_ARTICLES.filter((item) => item.id !== article.id && item.category === article.category).slice(0, 2);
 
+  const articleSchema = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": article.title,
+    "description": article.excerpt,
+    "datePublished": article.publishedAt,
+    "author": {
+      "@type": "Organization",
+      "name": article.author || "Moly Course"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Moly Course",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://molycourse.online/favicon-512x512.png"
+      }
+    },
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": `https://molycourse.online/post/${article.id}`
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#fffaf6] py-12 dark:bg-slate-950 sm:py-16">
-      <Meta title={`${article.title} | MOLY COURSE 2026`} description={article.excerpt} keywords={`MOLY COURSE 2026, ${article.tags.join(', ')}`} />
+      <Meta
+        title={`${article.title} | MOLY COURSE 2026`}
+        description={article.excerpt}
+        keywords={`MOLY COURSE 2026, ${article.tags.join(', ')}`}
+        type="article"
+        url={`https://molycourse.online/post/${article.id}`}
+        structuredData={articleSchema}
+      />
       <div className="mx-auto max-w-4xl px-4 sm:px-6">
         <Link to="/post" className="inline-flex items-center gap-2 text-sm font-black text-slate-600 transition hover:text-red-600 dark:text-slate-300 dark:hover:text-amber-300"><ArrowLeft className="h-4 w-4" /> Tất cả bài viết</Link>
 

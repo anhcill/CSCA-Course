@@ -17,6 +17,7 @@ export default function Forbidden() {
       <Meta
         title="Từ Chối Truy Cập (403) - CSCA LMS"
         description="Bạn không có quyền truy cập vào phân hệ này."
+        noindex={true}
       />
 
       <div className="w-full max-w-lg rounded-3xl border border-amber-500/25 bg-slate-900/80 p-8 sm:p-12 text-center shadow-2xl backdrop-blur-md">

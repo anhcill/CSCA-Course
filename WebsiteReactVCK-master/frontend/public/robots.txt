@@ -1,2 +1,21 @@
+# Robots.txt for molycourse.online
 User-agent: *
 Allow: /
+Allow: /courses
+Allow: /post
+Allow: /post/
+Allow: /about
+Allow: /policy-and-legal
+Disallow: /admin/
+Disallow: /lms/
+Disallow: /profile
+Disallow: /api/
+Disallow: /shedule
+Disallow: /select-course
+Disallow: /select-level
+Disallow: /unauthorized
+Disallow: /forbidden
+
+# Host & Sitemap definition for search engine indexers
+Host: https://molycourse.online
+Sitemap: https://molycourse.online/sitemap.xml
