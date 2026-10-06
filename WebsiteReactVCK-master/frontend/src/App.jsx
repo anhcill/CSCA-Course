@@ -63,6 +63,9 @@ const TeacherClassDetailPage = lazy(() => import("./features/teacher/pages/Teach
 const TeacherClassCurriculumPage = lazy(() => import("./features/teacher/pages/TeacherClassCurriculumPage.jsx"));
 const TeacherSessionWorkspacePage = lazy(() => import("./features/teacher/pages/TeacherSessionWorkspacePage.jsx"));
 const TeacherStudentProgressPage = lazy(() => import("./features/teacher/pages/TeacherStudentProgressPage.jsx"));
+const AttendanceReviewPage = lazy(() => import("./features/teacher/pages/AttendanceReviewPage.jsx"));
+const QuestionBankPage = lazy(() => import("./features/teacher/pages/QuestionBankPage.jsx"));
+const StudentSupportPage = lazy(() => import("./features/teacher/pages/StudentSupportPage.jsx"));
 const StudentFilesPage = lazy(() => import("./features/learning/pages/StudentFilesPage.jsx"));
 const TeacherQuizPage = lazy(() => import("./features/teacher/pages/TeacherQuizPage.jsx"));
 const NotificationCenterPage = lazy(() => import("./features/notifications/pages/NotificationCenterPage.jsx"));
@@ -147,6 +150,9 @@ function AppRoutes() {
       <Route path="/lms/teach/classes/:classId/attendance" element={<TeacherAttendancePage />} />
       <Route path="/lms/teach/attendance" element={<TeacherAttendancePage />} />
       <Route path="/lms/teach/student-progress" element={<TeacherStudentProgressPage />} />
+      <Route path="/lms/teach/attendance-review" element={<AttendanceReviewPage />} />
+      <Route path="/lms/teach/question-bank" element={<QuestionBankPage />} />
+      <Route path="/lms/teach/support" element={<StudentSupportPage />} />
       <Route path="/lms/teach/calendar" element={<ClassCalendarPage />} />
       <Route path="/lms/teacher-hub" element={<Navigate to="/lms/teach" replace />} />
       <Route path="/lms/teacher/schedule" element={<Navigate to="/lms/teach/calendar" replace />} />
@@ -173,6 +179,10 @@ function AppRoutes() {
         <Route path="curriculum" element={<AdminCurriculumPage />} />
         <Route path="grading" element={<TeacherGradingPage />} />
         <Route path="quizzes" element={<TeacherQuizPage />} />
+        <Route path="attendance-review" element={<AttendanceReviewPage />} />
+        <Route path="question-bank" element={<QuestionBankPage />} />
+        <Route path="student-progress" element={<TeacherStudentProgressPage />} />
+        <Route path="support" element={<StudentSupportPage />} />
         <Route path="classes" element={<AdminClassesPage />} />
         <Route path="classes/:classId" element={<TeacherClassDetailPage />} />
         <Route path="calendar" element={<AdminCalendarPage />} />

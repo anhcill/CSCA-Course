@@ -1,4 +1,4 @@
-import { publishCalendarChange } from "../calendar/calendarSync";
+import { publishCalendarChange } from "../calendar/calendarSync.js";
 
 const API_BASE = "/api";
 
@@ -63,6 +63,21 @@ const requestCalendarMutation = async (path, options, detail) => {
   if (response?.success) publishCalendarChange(detail);
   return response;
 };
+
+export const fetchAttendanceReviewQueue = (filters) => request(`/attendance/amendments?${new URLSearchParams(filters)}`);
+export const revokeAccommodation = (id, reason) => request(`/assignments/teacher/accommodations/${id}/revoke`, { method: "POST", body: JSON.stringify({ reason }) });
+export const fetchGradebook = (classId, sessionId) => request(`/reports/gradebook?${new URLSearchParams({ classId, sessionId: sessionId || "all" })}`);
+export const fetchMyFinalGrade = (classId) => request(`/reports/gradebook/my-result?classId=${encodeURIComponent(classId)}`);
+export const saveGradebookPolicy = (classId, policy) => request("/reports/gradebook/policy", { method: "PUT", body: JSON.stringify({ classId, policy }) });
+export const finalizeGradebook = (classId) => request("/reports/gradebook/finalize", { method: "POST", body: JSON.stringify({ classId }) });
+export const reopenGradebook = (classId, reason) => request("/reports/gradebook/reopen", { method: "POST", body: JSON.stringify({ classId, reason }) });
+export const fetchSubmissionHistory = (id) => request(`/assignments/submissions/${id}/history`);
+export const saveGradingDraft = (id, payload) => request(`/assignments/submissions/${id}/draft`, { method: "PUT", body: JSON.stringify(payload) });
+export const returnSubmission = (id, payload) => request(`/assignments/submissions/${id}/return`, { method: "POST", body: JSON.stringify(payload) });
+export const updateQuestionBankItem = (id, payload) => request(`/assignments/teacher/question-bank/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+export const sampleQuestionBank = (payload) => request("/assignments/teacher/question-bank/sample", { method: "POST", body: JSON.stringify(payload) });
+export const fetchSupportCases = (classId) => request(`/support-cases?classId=${encodeURIComponent(classId)}`);
+export const saveSupportCase = (id, payload) => request(`/support-cases${id ? "/" + id : ""}`, { method: id ? "PUT" : "POST", body: JSON.stringify(payload) });
 
 export const fetchCoursesCatalog = async ({ category, level, search, sort } = {}) => {
   const params = new URLSearchParams();
@@ -395,9 +410,10 @@ export const reviewAttendanceAmendment = async ({ amendmentId, decision, reviewN
   })
 );
 
-export const gradebookExportUrl = ({ classId, courseId, format = "xlsx" }) => {
+export const gradebookExportUrl = ({ classId, courseId, sessionId, format = "xlsx" }) => {
   const params = new URLSearchParams({ classId: String(classId), format });
   if (courseId) params.set("courseId", String(courseId));
+  if (sessionId && sessionId !== "all") params.set("sessionId", String(sessionId));
   return `${API_BASE}/reports/gradebook/export?${params.toString()}`;
 };
 
@@ -410,9 +426,9 @@ export const fetchAssignments = async ({ courseId, classId, sessionId } = {}) =>
   return request(`/assignments${params.size ? `?${params.toString()}` : ""}`);
 };
 
-export const createAssignment = async ({ title, description, liveClassId, classSessionId, assignmentType, maxScore, dueDate, attachmentUrl }) => request("/assignments", {
+export const createAssignment = async ({ title, description, liveClassId, classSessionId, assignmentType, maxScore, dueDate, attachmentUrl, rubric }) => request("/assignments", {
   method: "POST",
-  body: JSON.stringify({ title, description, liveClassId, classSessionId, assignmentType, maxScore, dueDate, attachmentUrl }),
+  body: JSON.stringify({ title, description, liveClassId, classSessionId, assignmentType, maxScore, dueDate, attachmentUrl, rubric }),
 });
 
 export const fetchAssignmentDetail = async (assignmentId) => (
@@ -436,7 +452,7 @@ export const confirmSubmissionAsset = async ({ assetId, mimeType, sizeBytes }) =
 export const submitAssignment = async ({ assignmentId, contentText, fileAssetId, audioAssetId }) => (
   request(`/assignments/${encodeURIComponent(assignmentId)}/submit`, {
     method: "POST",
-    body: JSON.stringify({ contentText, fileAssetId, audioAssetId }),
+    body: JSON.stringify({ contentText, fileAssetId: fileAssetId || null, audioAssetId: audioAssetId || null }),
   })
 );
 
@@ -448,10 +464,10 @@ export const fetchSubmissions = async (assignmentId = "all", { classId, sessionI
   return request(`/assignments/${encodeURIComponent(assignmentId)}/submissions${suffix}`);
 };
 
-export const gradeSubmission = async ({ submissionId, score, feedbackText, rubricScores }) => (
+export const gradeSubmission = async ({ submissionId, score, feedbackText, rubricScores, revision, annotations, changeReason }) => (
   request(`/assignments/submissions/${encodeURIComponent(submissionId)}/grade`, {
     method: "POST",
-    body: JSON.stringify({ score, feedbackText, rubricScores }),
+    body: JSON.stringify({ score, feedbackText, rubricScores, revision, annotations, changeReason }),
   })
 );
 
@@ -490,15 +506,17 @@ export const deleteTeacherQuiz = async (quizId) => request(
   { method: "DELETE" },
 );
 
-export const fetchQuestionBank = async ({ courseId, search } = {}) => {
+export const fetchQuestionBank = async ({ courseId, search, difficulty, page } = {}) => {
   const params = new URLSearchParams({ courseId: String(courseId || "") });
   if (search) params.set("search", search);
+  if (difficulty) params.set("difficulty", difficulty);
+  if (page) params.set("page", page);
   return request(`/assignments/teacher/question-bank?${params.toString()}`);
 };
 
-export const createQuestionBankItem = async ({ courseId, questionText, options, correctAnswer, explanation, points, tags }) => request(
+export const createQuestionBankItem = async (payload) => request(
   "/assignments/teacher/question-bank",
-  { method: "POST", body: JSON.stringify({ courseId, questionText, options, correctAnswer, explanation, points, tags }) },
+  { method: "POST", body: JSON.stringify(payload) },
 );
 
 export const deleteQuestionBankItem = async (itemId) => request(

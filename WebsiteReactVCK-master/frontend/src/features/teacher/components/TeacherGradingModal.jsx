@@ -1,10 +1,10 @@
+/* eslint-disable react/prop-types */
 import { useState } from "react";
 import toast from "react-hot-toast";
 import {
   FiX,
   FiCheckCircle,
   FiAward,
-  FiMessageSquare,
   FiFileText,
   FiDownload,
   FiUser,
@@ -37,6 +37,7 @@ export default function TeacherGradingModal({ isOpen, onClose, submission, onGra
     try {
       await gradeSubmission({
         submissionId: submission.id,
+        revision: submission.revision,
         score: Number(score),
         feedbackText: feedback.trim(),
       });

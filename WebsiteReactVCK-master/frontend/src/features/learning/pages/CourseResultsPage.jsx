@@ -1,15 +1,23 @@
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { fetchMyFinalGrade } from "../../api/lmsClient";
 import { CheckCircle2, ClipboardCheck, Trophy } from "lucide-react";
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString("vi-VN") : "—";
 
 export default function CourseResultsPage() {
+  const {classId}=useParams();
+  const [finalGrade,setFinalGrade]=useState(null);
+  const [finalError,setFinalError]=useState("");
+  useEffect(()=>{let active=true;setFinalGrade(null);setFinalError("");fetchMyFinalGrade(classId).then((r)=>{if(active)setFinalGrade(r.data);}).catch((e)=>{if(active)setFinalError(e.message);});return()=>{active=false;};},[classId]);
   const { progress = {}, assignments = [] } = useOutletContext();
   const graded = assignments.filter((item) => item.score !== null && item.score !== undefined);
   const averageScore = graded.length ? (graded.reduce((sum, item) => sum + Number(item.score || 0), 0) / graded.length).toFixed(1) : null;
 
   return (
     <div className="space-y-6 pb-10">
+      {finalError && <p role="alert" className="text-sm text-red-600">{finalError}</p>}
+      {finalGrade && <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100"><h2 className="font-bold">Điểm tổng kết đã chốt</h2><p className="mt-2 text-3xl font-bold">{finalGrade.total ?? "—"}/100</p><p>{finalGrade.passed===null?"Chưa xác định":finalGrade.passed?"Đạt yêu cầu":"Chưa đạt yêu cầu"} · Chốt {new Date(finalGrade.finalizedAt).toLocaleString("vi-VN")}</p><p className="mt-2 text-xs">Trọng số: bài tập {finalGrade.policy.weights.assignment}%, quiz {finalGrade.policy.weights.quiz}%, chuyên cần {finalGrade.policy.weights.attendance}%.</p></section>}
       <section className="grid gap-4 sm:grid-cols-3">
         {[
           ["Hoàn thành bài học", `${progress.percent || 0}%`, CheckCircle2, "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400"],

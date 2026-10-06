@@ -58,6 +58,9 @@ function getTypeBadge(type) {
   return { label: "Bài Luận Tự Luận", cls: "bg-rose-500/20 text-rose-400 border-rose-500/30" };
 }
 
+import GradingWorkflowPanel from "../components/GradingWorkflowPanel";
+import SubmissionAnnotations from "../components/SubmissionAnnotations";
+
 export default function TeacherGradingPage() {
   const [searchParams] = useSearchParams();
   const requestedAssignmentId = searchParams.get("assignmentId") || "all";
@@ -72,6 +75,8 @@ export default function TeacherGradingPage() {
   const [feedback, setFeedback] = useState("");
   const [rubricScores, setRubricScores] = useState([]);
   const [grading, setGrading] = useState(false);
+  const [annotations, setAnnotations] = useState([]);
+  const [changeReason, setChangeReason] = useState("");
 
   // Filters & Sorting
   const [filterStatus, setFilterStatus] = useState("pending"); // all | pending | graded
@@ -94,6 +99,7 @@ export default function TeacherGradingPage() {
       setSubmissions(rows);
       setSelectedSub(rows[0] || null);
       setScore(rows[0]?.score || 0);
+      setFeedback(rows[0]?.feedbackText || ""); setAnnotations(rows[0]?.annotations || []); setChangeReason("");
       setRubricScores(rows[0]?.rubric?.map((criterion) => {
         const saved = (rows[0]?.rubricScores || []).find((item) => item.criterionId === criterion.id);
         return { criterionId: criterion.id, score: saved?.score ?? 0, feedback: saved?.feedback || "" };
@@ -119,6 +125,7 @@ export default function TeacherGradingPage() {
   // Handle selecting a submission from queue
   const handleSelectSub = useCallback((sub) => {
     setSelectedSub(sub);
+    setAnnotations(sub.annotations || []); setChangeReason("");
     setScore(sub.score !== null && sub.score !== undefined ? sub.score : 8.5);
     setFeedback(sub.feedbackText || "");
     setRubricScores((sub.rubric || []).map((criterion) => {
@@ -131,7 +138,7 @@ export default function TeacherGradingPage() {
   const filteredSubs = useMemo(() => {
     let list = [...submissions];
 
-    if (filterStatus === "pending") list = list.filter((s) => ["submitted", "late"].includes(s.status));
+    if (filterStatus === "pending") list = list.filter((s) => !s.returnRequested && ["submitted", "late"].includes(s.status));
     if (filterStatus === "graded") list = list.filter((s) => s.status === "graded");
 
     if (filterClass !== "all") {
@@ -166,7 +173,7 @@ export default function TeacherGradingPage() {
   // Grade submit logic (with auto advance to next submission)
   const handleGradeSubmit = useCallback(
     async (advanceToNext = true) => {
-      if (!selectedSub) return;
+      if (!selectedSub || grading || selectedSub.returnRequested) return;
 
       const numScore = (selectedSub.rubric || []).length
         ? rubricScores.reduce((total, item) => total + (Number(item.score) || 0), 0)
@@ -182,6 +189,7 @@ export default function TeacherGradingPage() {
       try {
         const res = await gradeSubmission({
           submissionId: selectedSub.id,
+          revision: selectedSub.revision, annotations, changeReason,
           score: numScore,
           feedbackText: feedback,
           rubricScores: selectedSub.rubric?.length ? rubricScores : undefined,
@@ -194,7 +202,7 @@ export default function TeacherGradingPage() {
           setSubmissions((prev) =>
             prev.map((s) =>
               s.id === selectedSub.id
-                ? { ...s, status: "graded", score: numScore, feedbackText: feedback, rubricScores }
+                ? { ...s, status: "graded", score: numScore, feedbackText: feedback, rubricScores, annotations, gradedAt: res.data.graded_at }
                 : s
             )
           );
@@ -204,13 +212,15 @@ export default function TeacherGradingPage() {
             score: numScore,
             feedbackText: feedback,
             rubricScores,
+            annotations,
+            gradedAt: res.data.graded_at,
           }));
 
           // Automatically advance to the next pending submission if requested
           if (advanceToNext) {
             const currentIndex = filteredSubs.findIndex((s) => s.id === selectedSub.id);
             const nextSub = filteredSubs.find(
-                (s, i) => i > currentIndex && ["submitted", "late"].includes(s.status)
+                (s, i) => i > currentIndex && !s.returnRequested && ["submitted", "late"].includes(s.status)
             );
             if (nextSub) {
               handleSelectSub(nextSub);
@@ -220,12 +230,12 @@ export default function TeacherGradingPage() {
         }
       } catch (err) {
         console.error("Error grading:", err);
-        toast.error("Có lỗi xảy ra khi chấm điểm!");
+        toast.error(err.message || "Có lỗi xảy ra khi chấm điểm!");
       } finally {
         setGrading(false);
       }
     },
-    [selectedSub, score, feedback, rubricScores, filteredSubs, handleSelectSub]
+    [selectedSub, score, feedback, rubricScores, annotations, changeReason, grading, filteredSubs, handleSelectSub]
   );
 
   // Keyboard shortcut: Ctrl+Enter (or Cmd+Enter) to submit and advance
@@ -244,7 +254,7 @@ export default function TeacherGradingPage() {
   const stats = useMemo(
     () => ({
       total: submissions.length,
-              pending: submissions.filter((s) => ["submitted", "late"].includes(s.status)).length,
+      pending: submissions.filter((s) => !s.returnRequested && ["submitted", "late"].includes(s.status)).length,
       graded: submissions.filter((s) => s.status === "graded").length,
       avgScore: (() => {
         const scored = submissions.filter((s) => s.score !== null && s.score !== undefined);
@@ -456,6 +466,7 @@ export default function TeacherGradingPage() {
                         </div>
                       )}
 
+                      <details className="rounded-xl border border-slate-200 p-3 dark:border-slate-700"><summary className="cursor-pointer text-sm font-semibold">Chú thích bài làm ({annotations.length})</summary><div className="mt-3"><SubmissionAnnotations items={annotations} onChange={setAnnotations} fileUrl={selectedSub.fileUrl} fileName={selectedSub.fileName}/></div></details>
                       {selectedSub.audioUrl && (
                         <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-950">
                           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -503,10 +514,12 @@ export default function TeacherGradingPage() {
                       </details>
                     </div>
 
+                    {selectedSub.status === "graded" && <label className="mt-4 block text-sm">Lý do sửa điểm đã công bố<textarea required minLength={10} maxLength={2000} value={changeReason} onChange={(e)=>setChangeReason(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:border-slate-700 dark:bg-slate-950" /></label>}
                     <div className="mt-5 space-y-2">
-                      <button type="button" onClick={() => handleGradeSubmit(true)} disabled={grading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"><IconCheck />{grading ? "Đang lưu..." : "Lưu điểm & chuyển bài tiếp"}</button>
-                      <button type="button" onClick={() => handleGradeSubmit(false)} disabled={grading} className="w-full rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white">Lưu điểm, chưa chuyển bài</button>
+                      <button type="button" onClick={() => handleGradeSubmit(true)} disabled={grading || selectedSub.returnRequested} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"><IconCheck />{grading ? "Đang lưu..." : "Công bố điểm & chuyển bài tiếp"}</button>
+                      <button type="button" onClick={() => handleGradeSubmit(false)} disabled={grading} className="w-full rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white">Công bố điểm, giữ bài hiện tại</button>
                     </div>
+                    <GradingWorkflowPanel key={selectedSub.id + ":" + selectedSub.revision} submission={selectedSub} payload={{score,feedbackText:feedback,rubricScores,annotations}} onRestore={(draft)=>{setScore(draft.score);setFeedback(draft.feedbackText);setRubricScores(draft.rubricScores || []);setAnnotations(draft.annotations || []);}} onReturned={loadSubmissions}/>
                   </aside>
                 </div>
               </>

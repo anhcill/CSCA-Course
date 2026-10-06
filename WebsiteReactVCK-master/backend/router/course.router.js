@@ -156,7 +156,12 @@ router.get("/admin", protectRoute, requireTeacher, async (req, res) => {
         c.author_id = $${params.length}
         OR EXISTS (
           SELECT 1 FROM live_classes lc
-          WHERE lc.course_id = c.id AND lc.instructor_id = $${params.length} AND lc.status = 'active'
+          WHERE lc.course_id = c.id AND lc.status = 'active' AND (
+            lc.instructor_id = $${params.length} OR EXISTS (
+              SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id
+                AND ct.teacher_id = $${params.length} AND ct.status = 'active'
+            )
+          )
         )
       )`;
     }
@@ -673,7 +678,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
          LEFT JOIN LATERAL (
            SELECT score, feedback_text, graded_at
            FROM submission_grades
-           WHERE submission_id = s.id
+           WHERE submission_id = s.id AND submission_revision = s.revision
            ORDER BY graded_at DESC, id DESC
            LIMIT 1
          ) grade ON TRUE

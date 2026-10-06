@@ -127,6 +127,7 @@ const serializeRisk = (row) => ({
 const serializeSubmission = (row) => ({
   id: row.id,
   assignmentId: row.assignment_id,
+  revision: Number(row.revision || 1),
   classId: row.class_id,
   studentName: row.student_name || row.email,
   studentEmail: row.email,
@@ -273,7 +274,7 @@ const buildRiskQuery = (scope) => `
     JOIN assignments a ON a.id = s.assignment_id
     JOIN LATERAL (
       SELECT sg.score FROM submission_grades sg
-      WHERE sg.submission_id = s.id ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1
+      WHERE sg.submission_id = s.id AND sg.submission_revision = s.revision ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1
     ) latest_grade ON true
     WHERE s.user_id = ce.user_id
       AND (a.live_class_id = mc.id OR (a.live_class_id IS NULL AND mc.course_id IS NOT NULL AND a.course_id = mc.course_id))
@@ -282,9 +283,10 @@ const buildRiskQuery = (scope) => `
   LEFT JOIN LATERAL (
     SELECT COUNT(DISTINCT a.id)::int AS total_assignments,
            COUNT(DISTINCT s.id) FILTER (WHERE s.id IS NOT NULL)::int AS submitted_assignments,
-           COUNT(DISTINCT a.id) FILTER (WHERE a.due_date < NOW() AND s.id IS NULL)::int AS overdue_missing
+           COUNT(DISTINCT a.id) FILTER (WHERE COALESCE(CASE WHEN s.return_requested THEN s.resubmit_until END, ac.due_at, a.due_date) < NOW() AND (s.id IS NULL OR s.return_requested))::int AS overdue_missing
     FROM assignments a
     LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.user_id = ce.user_id
+    LEFT JOIN assessment_accommodations ac ON ac.assessment_type = 'assignment' AND ac.assessment_id = a.id AND ac.user_id = ce.user_id AND ac.status = 'active'
     WHERE (a.live_class_id = mc.id OR (a.live_class_id IS NULL AND mc.course_id IS NOT NULL AND a.course_id = mc.course_id))
       AND (a.live_class_id IS NOT NULL OR a.course_id IS NOT NULL)
   ) assignments ON true
@@ -301,6 +303,7 @@ const buildPendingQuery = (scope, statusFilter = "all", page = 1, limit = 8) => 
   const filters = [
     scope.clause,
     "s.status IN ('submitted', 'late')",
+    "NOT s.return_requested",
     "(a.live_class_id = lc.id OR (a.live_class_id IS NULL AND lc.course_id IS NOT NULL AND a.course_id = lc.course_id))",
   ];
   if (statusFilter === "late") filters.push("s.status = 'late'");
@@ -313,7 +316,7 @@ const buildPendingQuery = (scope, statusFilter = "all", page = 1, limit = 8) => 
     params,
     text: `
       SELECT DISTINCT ON (s.id)
-             s.id, s.assignment_id, s.status, s.submitted_at,
+             s.id, s.assignment_id, s.status, s.submitted_at, s.revision,
              a.title AS assignment_title, a.assignment_type, a.max_score, a.due_date,
              lc.id AS class_id, lc.title AS class_name,
              u.username AS student_name, u.email, u.avatar_url,
@@ -356,7 +359,7 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, async (req, res) =>
          FROM assignment_submissions s
          JOIN assignments a ON a.id = s.assignment_id
          JOIN live_classes lc ON (a.live_class_id = lc.id OR (a.live_class_id IS NULL AND lc.course_id IS NOT NULL AND a.course_id = lc.course_id))
-         WHERE ${scope.clause} AND s.status IN ('submitted', 'late')`,
+         WHERE ${scope.clause} AND s.status IN ('submitted', 'late') AND NOT s.return_requested`,
         pendingCountParams,
       ),
       query(
@@ -459,12 +462,12 @@ router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, a
         `SELECT a.class_session_id AS session_id, CONCAT('assignment-', a.id) AS activity_id,
                 a.title, 'assignment' AS activity_type, a.max_score
          FROM assignments a
-         WHERE a.live_class_id = $1 AND a.class_session_id IS NOT NULL
+         WHERE a.live_class_id = $1
          UNION ALL
          SELECT q.class_session_id AS session_id, CONCAT('quiz-', q.id) AS activity_id,
                 q.title, 'quiz' AS activity_type, NULL::numeric AS max_score
          FROM quizzes q
-         WHERE q.live_class_id = $1 AND q.class_session_id IS NOT NULL
+         WHERE q.live_class_id = $1
          ORDER BY session_id DESC, activity_type, title`,
         [classId],
       ),
@@ -476,7 +479,7 @@ router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, a
          JOIN assignments a ON a.id = s.assignment_id
          LEFT JOIN LATERAL (
            SELECT sg.score FROM submission_grades sg
-           WHERE sg.submission_id = s.id
+           WHERE sg.submission_id = s.id AND sg.submission_revision = s.revision
            ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1
          ) latest_grade ON true
          WHERE a.live_class_id = $1 AND a.class_session_id IS NOT NULL
@@ -584,7 +587,7 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req,
            SELECT ROUND(AVG(latest_grade.score), 1) AS gpa
            FROM assignment_submissions s
            JOIN assignments a ON a.id = s.assignment_id
-           JOIN LATERAL (SELECT sg.score FROM submission_grades sg WHERE sg.submission_id = s.id ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1) latest_grade ON true
+           JOIN LATERAL (SELECT sg.score FROM submission_grades sg WHERE sg.submission_id = s.id AND sg.submission_revision = s.revision ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1) latest_grade ON true
            WHERE s.user_id = ce.user_id
              AND (a.live_class_id = $1 OR (a.live_class_id IS NULL AND $2::bigint IS NOT NULL AND a.course_id = $2::bigint))
              AND ${ownerFilter}
@@ -606,13 +609,13 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req,
                 cs.title AS session_title, cs.start_time AS session_start,
                 COUNT(DISTINCT ce.user_id)::int AS total_count,
                 COUNT(DISTINCT s.id) FILTER (WHERE s.status IN ('submitted', 'late', 'graded'))::int AS submitted_count,
-                COUNT(DISTINCT s.id) FILTER (WHERE s.status IN ('submitted', 'late'))::int AS pending_grading_count,
+                COUNT(DISTINCT s.id) FILTER (WHERE s.status IN ('submitted', 'late') AND NOT s.return_requested)::int AS pending_grading_count,
                 ROUND(AVG(latest_grade.score), 1) AS avg_score
          FROM assignments a
          LEFT JOIN class_sessions cs ON cs.id = a.class_session_id
          LEFT JOIN class_enrollments ce ON ce.live_class_id = $1 AND ce.status = 'active'
          LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.user_id = ce.user_id
-         LEFT JOIN LATERAL (SELECT sg.score FROM submission_grades sg WHERE sg.submission_id = s.id ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1) latest_grade ON true
+         LEFT JOIN LATERAL (SELECT sg.score FROM submission_grades sg WHERE sg.submission_id = s.id AND sg.submission_revision = s.revision ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1) latest_grade ON true
          WHERE (a.live_class_id = $1 OR (a.live_class_id IS NULL AND $2::bigint IS NOT NULL AND a.course_id = $2::bigint))
            AND ${ownerFilter}
          GROUP BY a.id, cs.id
@@ -656,7 +659,7 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req,
            SELECT ROUND(AVG(sg.score), 1) AS gpa
            FROM assignment_submissions s
            JOIN assignments a ON a.id = s.assignment_id
-           JOIN LATERAL (SELECT sg2.score FROM submission_grades sg2 WHERE sg2.submission_id = s.id ORDER BY sg2.graded_at DESC, sg2.id DESC LIMIT 1) sg ON true
+           JOIN LATERAL (SELECT sg2.score FROM submission_grades sg2 WHERE sg2.submission_id = s.id AND sg2.submission_revision = s.revision ORDER BY sg2.graded_at DESC, sg2.id DESC LIMIT 1) sg ON true
            WHERE a.live_class_id = $1 OR (a.live_class_id IS NULL AND $2::bigint IS NOT NULL AND a.course_id = $2::bigint)
          ) student_grades ON true
          LEFT JOIN LATERAL (

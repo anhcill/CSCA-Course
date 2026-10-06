@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, ExternalLink, Filter } from "lucide-react";
 import { EmptyState } from "../../../components/common/StateView";
@@ -120,10 +121,10 @@ export default function TeacherRiskStudentsSection({
               <div className="flex items-center justify-between mt-4">
                 <span className="text-[11px] text-slate-500 dark:text-slate-400">Hoạt động: {formatRelative(student.lastActive)}</span>
                 <Link
-                  to={`/lms/teach/classes/${student.classId}`}
+                  to={`/lms/teach/support?classId=${student.classId}&studentId=${student.id}`}
                   className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
                 >
-                  Mở lớp <ExternalLink className="w-3.5 h-3.5" />
+                  Theo dõi hỗ trợ <ExternalLink className="w-3.5 h-3.5" />
                 </Link>
               </div>
             </article>

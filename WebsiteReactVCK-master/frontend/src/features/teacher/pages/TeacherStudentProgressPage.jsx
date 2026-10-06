@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Download, Search, SlidersHorizontal, Users } from "lucide-react";
-import { fetchAssessmentAccommodations, fetchClassStudentProgress, fetchTeacherDashboardStats, gradebookExportUrl, saveAssessmentAccommodation } from "../../api/lmsClient";
+import GradebookPolicyPanel from "../components/GradebookPolicyPanel";
+import { revokeAccommodation, fetchAssessmentAccommodations, fetchClassStudentProgress, fetchTeacherDashboardStats, gradebookExportUrl, saveAssessmentAccommodation } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 
@@ -56,6 +57,7 @@ function AccommodationModal({ student, activities, initialActivity, onClose, onS
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [currentId, setCurrentId] = useState(null);
   const activity = activities.find((item) => item.id === activityId) || null;
   const [assessmentType, assessmentId] = String(activity?.id || "").split("-");
 
@@ -68,13 +70,14 @@ function AccommodationModal({ student, activities, initialActivity, onClose, onS
         const response = await fetchAssessmentAccommodations({ assessmentType, assessmentId });
         const current = (response?.data || []).find((item) => String(item.userId) === String(student.id) && item.status === "active");
         if (!cancelled) {
+          setCurrentId(current?.id || null);
           setDueAt(datetimeLocalValue(current?.dueAt));
           setExtraTimeMinutes(current?.extraTimeMinutes ? String(current.extraTimeMinutes) : "");
           setAttemptLimitOverride(current?.attemptLimitOverride ? String(current.attemptLimitOverride) : "");
           setReason(current?.reason || "");
         }
-      } catch {
-        if (!cancelled) setReason("");
+      } catch (error) {
+        if (!cancelled) { setCurrentId(null); setDueAt(""); setExtraTimeMinutes(""); setAttemptLimitOverride(""); setReason(""); window.alert(error.message); }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -82,6 +85,12 @@ function AccommodationModal({ student, activities, initialActivity, onClose, onS
     load();
     return () => { cancelled = true; };
   }, [assessmentId, assessmentType, student.id]);
+
+  const handleRevoke = async () => {
+    if (!reason || reason.trim().length < 10) return window.alert("Nhập lý do thu hồi ít nhất 10 ký tự.");
+    setSaving(true);
+    try { await revokeAccommodation(currentId, reason); onSaved(); } catch (e) { window.alert(e.message); } finally { setSaving(false); }
+  };
 
   const handleSave = async () => {
     if (!activity) return;
@@ -120,7 +129,7 @@ function AccommodationModal({ student, activities, initialActivity, onClose, onS
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">Lý do <span className="text-rose-500">*</span><textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} placeholder="Ví dụ: Học viên có xác nhận cần thêm thời gian làm bài." className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
           </>}
         </div>
-        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</button><button type="button" disabled={loading || saving || !activity} onClick={handleSave} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-50">{saving ? "Đang lưu..." : "Lưu điều chỉnh"}</button></div>
+        <div className="mt-5 flex justify-end gap-2">{currentId && <button type="button" disabled={saving || loading} onClick={handleRevoke} className="rounded-xl px-4 py-2 text-xs font-bold text-red-600">Thu hồi hỗ trợ</button>}<button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</button><button type="button" disabled={loading || saving || !activity} onClick={handleSave} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-50">{saving ? "Đang lưu..." : "Lưu điều chỉnh"}</button></div>
       </div>
     </div>
   );
@@ -129,6 +138,7 @@ function AccommodationModal({ student, activities, initialActivity, onClose, onS
 export default function TeacherStudentProgressPage() {
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState("");
+  const [courseFilter, setCourseFilter] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState("all");
   const [gradebook, setGradebook] = useState(EMPTY_GRADEBOOK);
   const [search, setSearch] = useState("");
@@ -232,7 +242,7 @@ export default function TeacherStudentProgressPage() {
               <h1 className="text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">Học viên, điểm & chuyên cần</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">Theo dõi bài tự luận, quiz tự chấm và điểm danh theo từng buổi học của một lớp.</p>
             </div>
-            <div className="flex flex-wrap items-end gap-2"><label className="block text-xs font-bold text-slate-600 dark:text-slate-300">Chọn lớp<select value={classId} onChange={(event) => { setClassId(event.target.value); setSelectedSessionId("all"); }} className="mt-1.5 block min-w-[16rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{classes.map((item) => <option key={item.id} value={item.id}>{item.title}{item.courseTitle ? ` · ${item.courseTitle}` : ""}</option>)}</select></label><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, format: "xlsx" })} className="inline-flex h-[42px] items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-xs font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"><Download className="h-3.5 w-3.5" /> Xuất XLSX</a><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, format: "csv" })} className="inline-flex h-[42px] items-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">CSV</a></div>
+            <div className="flex flex-wrap items-end gap-2"><label className="block text-xs font-bold">Khóa học<select aria-label="Lọc khóa học" value={courseFilter} onChange={(e)=>{const next=e.target.value;setCourseFilter(next);setClassId(String(classes.find((c)=>!next || String(c.courseId)===next)?.id || ""));setSelectedSessionId("all");}} className="mt-1.5 block rounded-xl border bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900"><option value="">Tất cả khóa</option>{[...new Map(classes.filter((c)=>c.courseId).map((c)=>[String(c.courseId),c])).values()].map((c)=><option key={c.courseId} value={c.courseId}>{c.courseTitle || c.courseId}</option>)}</select></label><label className="block text-xs font-bold text-slate-600 dark:text-slate-300">Chọn lớp<select value={classId} onChange={(event) => { setClassId(event.target.value); setSelectedSessionId("all"); }} className="mt-1.5 block min-w-[16rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{classes.filter((c)=>!courseFilter || String(c.courseId)===courseFilter).map((item) => <option key={item.id} value={item.id}>{item.title}{item.courseTitle ? ` · ${item.courseTitle}` : ""}</option>)}</select></label><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "xlsx" })} className="inline-flex h-[42px] items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-xs font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"><Download className="h-3.5 w-3.5" /> Xuất XLSX</a><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "csv" })} className="inline-flex h-[42px] items-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">CSV</a></div>
           </div>
         </header>
 
@@ -240,6 +250,7 @@ export default function TeacherStudentProgressPage() {
           <Loading loading text="Đang tổng hợp chuyên cần và điểm theo buổi..." fullScreen={false} className="py-16" />
         ) : (
           <>
+            <GradebookPolicyPanel key={classId + ":" + selectedSessionId} classId={classId} sessionId={selectedSessionId} search={search} />
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard icon={BookOpen} label="Khóa học" value={gradebook.classInfo?.courseTitle || selectedClass?.courseTitle || "Chưa gắn"} tone="bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-sky-400" />
               <StatCard icon={Users} label="Sĩ số đang học" value={gradebook.students.length} tone="bg-violet-50 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400" />
@@ -270,7 +281,7 @@ export default function TeacherStudentProgressPage() {
                 <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
                   <table className="w-full min-w-[850px] text-left text-xs">
                     <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-                      <tr><th className="px-4 py-3">Học viên</th><th className="px-4 py-3">Điểm danh vào lớp</th><th className="px-4 py-3">Điểm tổng quan</th><th className="px-4 py-3">Chi tiết bài / quiz</th></tr>
+                      <tr><th className="px-4 py-3">Học viên</th><th className="px-4 py-3">Điểm danh vào lớp</th><th className="px-4 py-3">Trung bình bài đã chấm</th><th className="px-4 py-3">Chi tiết bài / quiz</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                       {visibleStudents.map((student) => {

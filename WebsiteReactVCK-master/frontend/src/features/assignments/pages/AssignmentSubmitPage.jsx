@@ -40,6 +40,9 @@ function isImageFile(fileName) {
   return /\.(?:jpe?g|png|webp|gif)$/i.test(String(fileName || ""));
 }
 
+import SubmissionHistory from "../components/SubmissionHistory";
+import SubmissionAnnotations from "../components/SubmissionAnnotations";
+
 export default function AssignmentSubmitPage() {
   const { id, courseId, classId } = useParams();
   const assignmentListPath = courseId && classId
@@ -85,9 +88,12 @@ export default function AssignmentSubmitPage() {
       if (res.success && res.data) {
         const currentAssignment = res.data;
         setAssignment(currentAssignment);
+        setIsGraded(false); setIsAlreadySubmitted(false);
 
         // Check submission state
-        if (currentAssignment.status === "graded" || (currentAssignment.score !== undefined && currentAssignment.score !== null)) {
+        if (currentAssignment.can_resubmit) {
+          setContentText(currentAssignment.content_text || ""); setFileUrl(currentAssignment.file_url || ""); setFileAssetId(currentAssignment.file_asset_id || ""); setFileName(currentAssignment.file_name || ""); setAudioUrl(currentAssignment.audio_url || ""); setAudioAssetId(currentAssignment.audio_asset_id || "");
+        } else if (currentAssignment.status === "graded" || (currentAssignment.score !== undefined && currentAssignment.score !== null)) {
           setIsGraded(true);
           setIsAlreadySubmitted(true);
           setContentText(currentAssignment.content_text || "");
@@ -238,7 +244,7 @@ export default function AssignmentSubmitPage() {
       });
 
       if (res.success) {
-        setIsAlreadySubmitted(true);
+        await loadAssignment();
         toast.success("Nộp bài tập thành công! Giáo viên sẽ chấm điểm và gửi phản hồi sớm. 🎉", {
           duration: 4000,
         });
@@ -511,11 +517,13 @@ export default function AssignmentSubmitPage() {
                 </div>
               )}
 
+              {assignment.annotations?.length > 0 && <SubmissionAnnotations readOnly items={assignment.annotations} fileUrl={fileUrl} fileName={fileName}/>}
+              <SubmissionHistory submissionId={assignment.submission_id}/>
               {/* Policy note & resubmit lock */}
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500">
                 <span className="flex items-center gap-1.5">
                   <span>🔒</span>
-                  <span>Chính sách: Khóa chỉnh sửa bài làm sau khi đã nộp để chống trùng lặp.</span>
+                  <span>Bài nộp được lưu cố định. Khi giáo viên yêu cầu sửa, bạn có thể nộp phiên bản mới trong hạn được cấp.</span>
                 </span>
                 <Link
                   to={assignmentListPath}
@@ -529,6 +537,7 @@ export default function AssignmentSubmitPage() {
         ) : (
           /* VIEW MODE 2: SUBMIT WORKSPACE FORM */
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-sm dark:shadow-2xl">
+            {assignment.return_requested && <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100"><b>Yêu cầu sửa bài:</b> {assignment.return_reason}<p>Hạn nộp lại: {new Date(assignment.resubmit_until).toLocaleString("vi-VN")}. Phiên bản cũ vẫn được lưu.</p><SubmissionHistory submissionId={assignment.submission_id}/></div>}
             {/* Tab navigation for submission methods */}
             <div className="flex border-b border-slate-200 dark:border-slate-800 gap-2 pb-3">
               <button

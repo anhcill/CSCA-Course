@@ -1,6 +1,10 @@
 import zlib from "node:zlib";
 
-const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+const csvCell = (value) => {
+  const text = String(value ?? "");
+  const safe = typeof value === "string" && /^\s*[=+@-]/.test(text) ? "'" + text : text;
+  return `"${safe.replace(/"/g, '""')}"`;
+};
 const xmlEscape = (value) => String(value ?? "")
   .replace(/&/g, "&amp;")
   .replace(/</g, "&lt;")

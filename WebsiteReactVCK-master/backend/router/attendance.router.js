@@ -9,6 +9,7 @@ import {
   enqueueManagementAttendanceDelivery,
 } from "../services/managementAttendanceDelivery.service.js";
 import { recordAuditEvent } from "../services/audit.service.js";
+import { assertGradebookOpen, mayReviewAttendance, notifyWorkflow } from "../services/lmsWorkflow.service.js";
 
 const router = express.Router();
 
@@ -444,6 +445,34 @@ router.get("/session/:sessionId", protectRoute, requireTeacher, async (req, res)
 
 // An attendance sheet remains write-once. Corrections are separate requests so
 // the original value, requester, reviewer and time stay available for audits.
+router.get("/amendments", protectRoute, requireTeacher, requirePermission("lms.attendance.amend.review"), async (req, res) => {
+  try {
+    const status = req.query.status || "pending";
+    const classId = req.query.classId ? parsePositiveId(req.query.classId) : null;
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    if (!["pending", "approved", "rejected", "all"].includes(status) || (req.query.classId && !classId)) return validationError(res, "Bộ lọc không hợp lệ");
+    const result = await query(
+      `SELECT r.*, u.username AS student_name, u.email AS student_email, requester.username AS requested_by_name,
+              reviewer.username AS reviewed_by_name, lc.title AS class_title, cs.title AS session_title, cs.start_time,
+              COUNT(*) OVER() AS total_count
+       FROM attendance_amendment_requests r JOIN class_sessions cs ON cs.id = r.session_id
+       JOIN live_classes lc ON lc.id = cs.live_class_id JOIN users u ON u.id = r.user_id
+       LEFT JOIN users requester ON requester.id = r.requested_by LEFT JOIN users reviewer ON reviewer.id = r.reviewed_by
+       WHERE ($1 = 'all' OR r.status = $1) AND ($2::bigint IS NULL OR lc.id = $2)
+         AND ($3 = 'admin' OR lc.instructor_id = $4 OR EXISTS (
+           SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $4 AND ct.status = 'active'))
+       ORDER BY r.requested_at DESC, r.id DESC LIMIT 30 OFFSET $5`,
+      [status, classId, req.user.role, req.user.id, (page - 1) * 30],
+    );
+    res.json({ success: true, data: result.rows.map((row) => ({
+      ...serializeAmendment(row), classTitle: row.class_title, sessionTitle: row.session_title, startTime: row.start_time,
+    })), meta: { total: Number(result.rows[0]?.total_count || 0), page } });
+  } catch (error) {
+    console.error("Attendance review queue:", error);
+    return internalError(res, "Không thể tải hàng đợi duyệt.");
+  }
+});
+
 router.get("/session/:sessionId/amendments", protectRoute, requireTeacher, async (req, res) => {
   try {
     const sessionId = parsePositiveId(req.params.sessionId);
@@ -462,7 +491,7 @@ router.get("/session/:sessionId/amendments", protectRoute, requireTeacher, async
        ORDER BY CASE request.status WHEN 'pending' THEN 0 ELSE 1 END, request.requested_at DESC, request.id DESC`,
       [sessionId],
     );
-    return res.json({ success: true, data: result.rows.map(serializeAmendment), meta: { canReview: req.user.role === "admin" } });
+    return res.json({ success: true, data: result.rows.map(serializeAmendment), meta: { canReview: await mayReviewAttendance(req.user) } });
   } catch (error) {
     console.error("Error fetching attendance amendments:", error);
     return internalError(res, "Không thể tải phiếu chỉnh sửa điểm danh");
@@ -514,6 +543,17 @@ router.post("/amendments", protectRoute, requireTeacher, requirePermission("lms.
       beforeState: { status: current.status, note: current.note }, afterState: { status: requestedStatus, note: requestedNote },
       metadata: { sessionId, userId, reason, ip: req.ip },
     });
+    const reviewers = await client.query(
+      `SELECT DISTINCT u.id FROM users u WHERE u.id <> $1 AND (u.role = 'admin' OR (
+        EXISTS (SELECT 1 FROM lms_role_permissions rp JOIN lms_permissions p ON p.id = rp.permission_id
+                WHERE rp.role = u.role::text AND rp.is_allowed AND p.code = 'lms.attendance.amend.review')
+        AND (u.id = $2 OR EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = $3 AND ct.teacher_id = u.id AND ct.status = 'active'))))`,
+      [req.user.id, session.instructor_id, session.live_class_id],
+    );
+    for (const reviewer of reviewers.rows) await notifyWorkflow(client, {
+      userId: reviewer.id, title: "Có phiếu sửa điểm danh chờ duyệt", message: reason,
+      link: "/lms/teach/attendance-review", key: `attendance-request:${created.rows[0].id}:${reviewer.id}`, actorId: req.user.id,
+    });
     await client.query("COMMIT");
     return res.status(201).json({ success: true, data: serializeAmendment(created.rows[0]), message: "Đã gửi phiếu chỉnh sửa để quản trị viên duyệt" });
   } catch (error) {
@@ -531,6 +571,7 @@ router.post("/amendments/:amendmentId/review", protectRoute, requireTeacher, req
   const decision = req.body?.decision;
   const reviewNote = normalizeNote(req.body?.reviewNote);
   if (!amendmentId || !["approved", "rejected"].includes(decision) || reviewNote.length > 2000) return validationError(res, "Quyết định duyệt phiếu không hợp lệ");
+  if (decision === "rejected" && reviewNote.length < 10) return validationError(res, "Lý do từ chối cần ít nhất 10 ký tự");
   const client = await getClient();
   let managementOutboxId = null;
   try {
@@ -545,6 +586,7 @@ router.post("/amendments/:amendmentId/review", protectRoute, requireTeacher, req
     );
     const amendment = requestResult.rows[0];
     if (!amendment) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy phiếu chỉnh sửa"); }
+    if (String(amendment.requested_by) === String(req.user.id)) { await client.query("ROLLBACK"); return forbidden(res, "Người gửi không được tự duyệt phiếu của mình"); }
     if (amendment.status !== "pending") { await client.query("ROLLBACK"); return conflict(res, "Phiếu này đã được xử lý", "ATTENDANCE_AMENDMENT_RESOLVED"); }
     if (!(await canManageSession({ live_class_id: amendment.live_class_id, instructor_id: amendment.instructor_id }, req.user, client))) {
       await client.query("ROLLBACK");
@@ -558,6 +600,11 @@ router.post("/amendments/:amendmentId/review", protectRoute, requireTeacher, req
     if (!current) { await client.query("ROLLBACK"); return conflict(res, "Bản điểm danh gốc không còn tồn tại", "ATTENDANCE_RECORD_MISSING"); }
     let appliedAt = null;
     if (decision === "approved") {
+      await assertGradebookOpen(client, amendment.live_class_id);
+      if (current.status !== amendment.original_status || current.note !== amendment.original_note) {
+        await client.query("ROLLBACK");
+        return conflict(res, "Điểm danh đã thay đổi. Hãy từ chối phiếu cũ và tạo phiếu mới.", "ATTENDANCE_CHANGED");
+      }
       appliedAt = new Date().toISOString();
       await client.query("UPDATE class_attendance SET status = $1, note = $2 WHERE session_id = $3 AND user_id = $4", [amendment.requested_status, amendment.requested_note, amendment.session_id, amendment.user_id]);
     }
@@ -589,12 +636,18 @@ router.post("/amendments/:amendmentId/review", protectRoute, requireTeacher, req
         managementOutboxId = outbox.id;
       }
     }
+    await notifyWorkflow(client, {
+      userId: amendment.requested_by, title: decision === "approved" ? "Phiếu sửa điểm danh đã được duyệt" : "Phiếu sửa điểm danh bị từ chối",
+      message: reviewNote || "Điều chỉnh đã được áp dụng và lưu lịch sử.",
+      link: `/lms/teach/classes/${amendment.live_class_id}/attendance`, key: `attendance-reviewed:${amendmentId}`, actorId: req.user.id,
+    });
     await client.query("COMMIT");
-    const managementDelivery = managementOutboxId ? await attemptManagementAttendanceDeliveryById(managementOutboxId) : null;
+    const managementDelivery = managementOutboxId ? await attemptManagementAttendanceDeliveryById(managementOutboxId).catch(() => ({ status: "pending" })) : null;
     return res.json({ success: true, data: { ...serializeAmendment(reviewed.rows[0]), managementDelivery }, message: decision === "approved" ? "Đã duyệt và áp dụng chỉnh sửa điểm danh" : "Đã từ chối phiếu chỉnh sửa" });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Error reviewing attendance amendment:", error);
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
     return internalError(res, "Không thể duyệt phiếu chỉnh sửa điểm danh");
   } finally {
     client.release();
@@ -646,6 +699,7 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
       await client.query("ROLLBACK");
       return forbidden(res, "Bạn không có quyền điểm danh buổi học này");
     }
+    await assertGradebookOpen(client, session.live_class_id);
 
     // The session row is locked first, which serializes all attendance writes
     // through this endpoint. It prevents two concurrent submissions from both
@@ -773,6 +827,7 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Error checking attendance:", error);
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
     return internalError(res, "Lỗi khi điểm danh học viên");
   } finally {
     client.release();

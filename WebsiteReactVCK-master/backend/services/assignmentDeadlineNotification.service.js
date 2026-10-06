@@ -109,7 +109,7 @@ const getAssignmentAudience = async ({ assignmentId, excludeSubmitted = false })
          $2::boolean = FALSE
          OR NOT EXISTS (
            SELECT 1 FROM assignment_submissions submitted
-           WHERE submitted.assignment_id = a.id AND submitted.user_id = u.id
+           WHERE submitted.assignment_id = a.id AND submitted.user_id = u.id AND NOT submitted.return_requested
          )
        )`,
     [assignmentId, excludeSubmitted],
@@ -194,10 +194,13 @@ export const processAssignmentDeadlineReminders = async () => {
   try {
     const candidates = await query(
       `SELECT id, title, due_date
-       FROM assignments
-       WHERE due_date IS NOT NULL
-         AND due_date > NOW() - INTERVAL '48 hours'
-         AND due_date <= NOW() + INTERVAL '24 hours'
+       FROM assignments a
+       WHERE (due_date > NOW() - INTERVAL '48 hours' AND due_date <= NOW() + INTERVAL '24 hours')
+         OR EXISTS (SELECT 1 FROM assessment_accommodations ac WHERE ac.assessment_type = 'assignment'
+           AND ac.assessment_id = a.id AND ac.status = 'active'
+           AND ac.due_at > NOW() - INTERVAL '48 hours' AND ac.due_at <= NOW() + INTERVAL '24 hours')
+         OR EXISTS (SELECT 1 FROM assignment_submissions s WHERE s.assignment_id = a.id AND s.return_requested
+           AND s.resubmit_until > NOW() - INTERVAL '48 hours' AND s.resubmit_until <= NOW() + INTERVAL '24 hours')
        ORDER BY due_date ASC
        LIMIT $1`,
       [MAX_REMINDER_ASSIGNMENTS],
@@ -206,19 +209,28 @@ export const processAssignmentDeadlineReminders = async () => {
     let notifications = 0;
     const now = Date.now();
     for (const assignment of candidates.rows) {
-      const stage = getDeadlineReminderStage(assignment.due_date, now);
-      if (!stage) continue;
       const recipients = await getAssignmentAudience({ assignmentId: assignment.id, excludeSubmitted: true });
       if (recipients.length === 0) continue;
-      const copy = reminderCopy(assignment, stage);
-      const dueKey = new Date(assignment.due_date).toISOString();
-      notifications += await notifyAudience({
-        assignment,
-        recipients,
-        ...copy,
-        dedupePrefix: `assignment:${assignment.id}:deadline:${dueKey}:${stage}`,
-        data: { kind: stage, reminderStage: stage },
-      });
+      const deadlines = await query(
+        `SELECT u.id, COALESCE(CASE WHEN s.return_requested THEN s.resubmit_until END, ac.due_at, $3::timestamptz) AS due_at,
+                COALESCE(s.revision, 0) AS revision
+         FROM users u LEFT JOIN assessment_accommodations ac ON ac.user_id = u.id AND ac.assessment_id = $1
+           AND ac.assessment_type = 'assignment' AND ac.status = 'active'
+         LEFT JOIN assignment_submissions s ON s.user_id = u.id AND s.assignment_id = $1
+         WHERE u.id = ANY($2::bigint[])`, [assignment.id, recipients, assignment.due_date],
+      );
+      for (const recipient of deadlines.rows) {
+        if (!recipient.due_at) continue;
+        const effective = { ...assignment, due_date: recipient.due_at };
+        const stage = getDeadlineReminderStage(effective.due_date, now);
+        if (!stage) continue;
+        const dueKey = new Date(effective.due_date).toISOString();
+        notifications += await notifyAudience({
+          assignment: effective, recipients: [recipient.id], ...reminderCopy(effective, stage),
+          dedupePrefix: `assignment:${assignment.id}:revision:${recipient.revision}:deadline:${dueKey}:${stage}`,
+          data: { kind: stage, reminderStage: stage },
+        });
+      }
     }
     return { scanned: candidates.rows.length, notifications };
   } catch (error) {

@@ -20,7 +20,6 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
   const [dueDate, setDueDate] = useState("");
   const [maxScore, setMaxScore] = useState(10);
   const [rubric, setRubric] = useState([]);
-  const [allowResubmit, setAllowResubmit] = useState(true);
   const [type, setType] = useState("homework"); // homework | essay | speaking | quiz
   const [submitting, setSubmitting] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -304,18 +303,12 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
             </div>
           </div>
 
-          {/* Allow Resubmission Toggle */}
+          {/* Resubmissions are authorized per student from the grading workspace. */}
           <div className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800">
             <div>
-              <span className="font-bold text-gray-900 dark:text-white block text-[11px]">Cho phép nộp lại (Resubmission)</span>
-              <span className="text-[10px] text-gray-500 dark:text-slate-400">Học viên có thể cập nhật bài làm trước deadline</span>
+              <span className="font-bold text-gray-900 dark:text-white block text-[11px]">Nộp lại có kiểm soát</span>
+              <span className="text-[10px] text-gray-500 dark:text-slate-400">Giáo viên trả bài và đặt hạn nộp lại tại trang Chấm bài. Mỗi lần nộp được lưu thành phiên bản riêng.</span>
             </div>
-            <input
-              type="checkbox"
-              checked={allowResubmit}
-              onChange={(e) => setAllowResubmit(e.target.checked)}
-              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-            />
           </div>
         </form>
 

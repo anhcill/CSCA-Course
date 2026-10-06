@@ -114,7 +114,7 @@ const getEligibility = async (courseId, userId, db = { query }) => {
      LEFT JOIN LATERAL (
        SELECT sg.submission_id
        FROM submission_grades sg
-       WHERE sg.submission_id = s.id
+       WHERE sg.submission_id = s.id AND sg.submission_revision = s.revision
        ORDER BY sg.graded_at DESC, sg.id DESC
        LIMIT 1
      ) sg ON true

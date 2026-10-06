@@ -23,6 +23,8 @@ import {
 } from "../services/assignmentDeadlineNotification.service.js";
 import { broadcastToClass } from "../services/notification.service.js";
 import { sendNotificationEmail } from "../services/brevoEmail.service.js";
+import { assertGradebookOpen, notifyWorkflow, requiredReason } from "../services/lmsWorkflow.service.js";
+import { canResubmit, normalizeAnnotations } from "../services/lmsWorkflowPolicy.service.js";
 import {
   QUIZ_REVIEW_POLICIES,
   getAttemptExpiry,
@@ -248,7 +250,10 @@ const normalizeQuestionBankInput = (value) => {
   if (!questionText || questionText.length > 6000 || options.length < 2 || options.some((option) => option.text.length > 2000) || !options[correctAnswer] || explanation.length > 4000 || !Number.isFinite(points) || points <= 0 || points > 100) {
     throw new Error("INVALID_BANK_QUESTION");
   }
-  return { questionText, options, correctAnswer: options[correctAnswer].key, explanation, points, tags };
+  const difficulty = value.difficulty || "medium";
+  const visibility = value.visibility || "private";
+  if (!["easy", "medium", "hard"].includes(difficulty) || !["private", "course"].includes(visibility)) throw new Error("INVALID_BANK_QUESTION");
+  return { questionText, options, correctAnswer: options[correctAnswer].key, explanation, points, tags, difficulty, visibility };
 };
 
 const serializeQuestionBankItem = (row) => {
@@ -256,6 +261,9 @@ const serializeQuestionBankItem = (row) => {
   return {
     id: row.id,
     courseId: row.course_id,
+    ownerId: row.owner_id,
+    difficulty: row.difficulty,
+    visibility: row.visibility,
     questionText: row.question_text,
     options: options.map((option) => option.text),
     correctAnswer: Math.max(0, options.findIndex((option) => String(option.key) === String(row.correct_answer))),
@@ -303,6 +311,12 @@ const serializeAssignment = (row) => ({
   instructor_avatar: row.grader_avatar || row.instructor_avatar || null,
   rubric: parseJsonArray(row.rubric_criteria),
   accommodation: row.accommodation || null,
+  revision: Number(row.revision || 1),
+  return_requested: Boolean(row.return_requested),
+  return_reason: row.return_reason || "",
+  resubmit_until: row.resubmit_until || null,
+  can_resubmit: canResubmit(row),
+  annotations: parseJsonArray(row.annotations),
   status: row.status,
 });
 
@@ -447,7 +461,7 @@ router.get("/", protectRoute, async (req, res) => {
          LEFT JOIN submission_assets aa ON aa.id = s.audio_asset_id
          LEFT JOIN LATERAL (
            SELECT score, feedback_text, graded_at FROM submission_grades
-           WHERE submission_id = s.id ORDER BY graded_at DESC, id DESC LIMIT 1
+           WHERE submission_id = s.id AND submission_revision = s.revision ORDER BY graded_at DESC, id DESC LIMIT 1
          ) sg ON true
          WHERE ${visibilityClause} ${assignmentCourseScope} ${assignmentClassScope} ${assignmentSessionScope}
        ), quiz_rows AS (
@@ -739,17 +753,21 @@ router.get("/teacher/question-bank", protectRoute, requireTeacher, requirePermis
   try {
     const courseId = parsePositiveId(req.query.courseId);
     const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 120) : "";
+    const difficulty = req.query.difficulty || "";
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    if (difficulty && !["easy", "medium", "hard"].includes(difficulty)) return validationError(res, "Độ khó không hợp lệ");
     if (!courseId) return validationError(res, "courseId không hợp lệ");
     if (!(await canManageCourseQuestionBank({ courseId, user: req.user }))) return forbidden(res, "Bạn không có quyền dùng ngân hàng câu hỏi của khóa học này");
     const result = await query(
-      `SELECT id, course_id, question_text, options_json, correct_answer, explanation, points, tags, created_at
+      `SELECT *, COUNT(*) OVER() AS total_count
        FROM quiz_question_bank
-       WHERE course_id = $1 AND (owner_id = $2 OR $3 = 'admin')
+       WHERE course_id = $1 AND (owner_id = $2 OR $3 = 'admin' OR visibility = 'course')
          AND ($4 = '' OR question_text ILIKE '%' || $4 || '%' OR $4 = ANY(tags))
-       ORDER BY created_at DESC, id DESC LIMIT 100`,
-      [courseId, req.user.id, req.user.role, search],
+         AND ($5 = '' OR difficulty = $5)
+       ORDER BY created_at DESC, id DESC LIMIT 30 OFFSET $6`,
+      [courseId, req.user.id, req.user.role, search, difficulty, (page - 1) * 30],
     );
-    return res.json({ success: true, data: result.rows.map(serializeQuestionBankItem) });
+    return res.json({ success: true, data: result.rows.map((row) => ({ ...serializeQuestionBankItem(row), canEdit: req.user.role === "admin" || String(row.owner_id) === String(req.user.id) })), meta: { page, total: Number(result.rows[0]?.total_count || 0) } });
   } catch (error) {
     console.error("Error fetching question bank:", error);
     return internalError(res, "Không thể tải ngân hàng câu hỏi");
@@ -757,51 +775,99 @@ router.get("/teacher/question-bank", protectRoute, requireTeacher, requirePermis
 });
 
 router.post("/teacher/question-bank", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  const client = await getClient();
   try {
     const courseId = parsePositiveId(req.body?.courseId);
     if (!courseId) return validationError(res, "courseId không hợp lệ");
     if (!(await canManageCourseQuestionBank({ courseId, user: req.user }))) return forbidden(res, "Bạn không có quyền thêm câu hỏi cho khóa học này");
     const question = normalizeQuestionBankInput(req.body);
-    const result = await query(
-      `INSERT INTO quiz_question_bank (course_id, owner_id, question_text, question_type, options_json, correct_answer, explanation, points, tags)
-       VALUES ($1, $2, $3, 'single_choice', $4::jsonb, $5, $6, $7, $8::text[])
-       RETURNING id, course_id, question_text, options_json, correct_answer, explanation, points, tags, created_at`,
-      [courseId, req.user.id, question.questionText, JSON.stringify(question.options), question.correctAnswer, question.explanation, question.points, question.tags],
+    await client.query("BEGIN");
+    const result = await client.query(
+      `INSERT INTO quiz_question_bank (course_id, owner_id, question_text, question_type, options_json, correct_answer, explanation, points, tags, difficulty, visibility)
+       VALUES ($1, $2, $3, 'single_choice', $4::jsonb, $5, $6, $7, $8::text[], $9, $10)
+       RETURNING *`,
+      [courseId, req.user.id, question.questionText, JSON.stringify(question.options), question.correctAnswer, question.explanation, question.points, question.tags, question.difficulty, question.visibility],
     );
-    await recordAuditEvent({ actorId: req.user.id, action: "question_bank.created", entityType: "quiz_question_bank", entityId: result.rows[0].id, afterState: { courseId, tags: question.tags }, metadata: { ip: req.ip } });
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "question_bank.created", entityType: "quiz_question_bank", entityId: result.rows[0].id, afterState: { courseId, tags: question.tags }, metadata: { ip: req.ip } });
+    await client.query("COMMIT");
     return res.status(201).json({ success: true, data: serializeQuestionBankItem(result.rows[0]), message: "Đã lưu câu hỏi vào ngân hàng" });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     if (error.message === "INVALID_BANK_QUESTION") return validationError(res, "Câu hỏi cần có nội dung, từ 2 đến 6 phương án, đáp án đúng và điểm hợp lệ");
     console.error("Error creating question bank item:", error);
     return internalError(res, "Không thể lưu câu hỏi vào ngân hàng");
-  }
+  } finally { client.release(); }
+});
+
+router.put("/teacher/question-bank/:itemId", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  const client = await getClient();
+  try {
+    const id = parsePositiveId(req.params.itemId);
+    if (!id) return validationError(res, "Mã câu hỏi không hợp lệ");
+    const question = normalizeQuestionBankInput(req.body);
+    await client.query("BEGIN");
+    const before = (await client.query("SELECT * FROM quiz_question_bank WHERE id=$1 AND (owner_id=$2 OR $3='admin') FOR UPDATE", [id, req.user.id, req.user.role])).rows[0];
+    if (!before || !(await canManageCourseQuestionBank({ courseId: before.course_id, user: req.user, db: client }))) { await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền sửa câu hỏi này"); }
+    const row = (await client.query(`UPDATE quiz_question_bank SET question_text=$2,options_json=$3::jsonb,correct_answer=$4,explanation=$5,points=$6,tags=$7::text[],difficulty=$8,visibility=$9 WHERE id=$1 RETURNING *`,
+      [id, question.questionText, JSON.stringify(question.options), question.correctAnswer, question.explanation, question.points, question.tags, question.difficulty, question.visibility])).rows[0];
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "question_bank.updated", entityType: "quiz_question_bank", entityId: id, beforeState: before, afterState: row });
+    await client.query("COMMIT"); res.json({ success: true, data: serializeQuestionBankItem(row) });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    res.status(error.message === "INVALID_BANK_QUESTION" ? 422 : 500).json({ success: false, message: "Không thể lưu câu hỏi. Kiểm tra nội dung, đáp án và điểm." });
+  } finally { client.release(); }
+});
+
+router.post("/teacher/question-bank/sample", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.body.courseId);
+    const blueprint = ["easy", "medium", "hard"].map((difficulty) => ({ difficulty, count: Number(req.body.blueprint?.[difficulty] || 0) }));
+    if (!courseId || blueprint.some((v) => !Number.isInteger(v.count) || v.count < 0 || v.count > 100)
+      || blueprint.reduce((sum, v) => sum + v.count, 0) < 1 || blueprint.reduce((sum, v) => sum + v.count, 0) > 100) return validationError(res, "Chọn tổng số câu từ 1 đến 100");
+    if (!(await canManageCourseQuestionBank({ courseId, user: req.user }))) return forbidden(res, "Bạn không có quyền dùng ngân hàng khóa này");
+    const tag = String(req.body.tag || "").trim().toLocaleLowerCase().slice(0, 48);
+    const questions = [];
+    for (const item of blueprint) {
+      if (!item.count) continue;
+      const result = await query(`SELECT * FROM quiz_question_bank WHERE course_id=$1
+        AND (owner_id=$2 OR $3='admin' OR visibility='course') AND difficulty=$4 AND ($5='' OR $5=ANY(tags))
+        ORDER BY RANDOM() LIMIT $6`, [courseId, req.user.id, req.user.role, item.difficulty, tag, item.count]);
+      if (result.rows.length < item.count) return validationError(res, `Không đủ câu mức ${({easy:"dễ",medium:"vừa",hard:"khó"})[item.difficulty]} trong bộ lọc.`);
+      questions.push(...result.rows.map(serializeQuestionBankItem));
+    }
+    return res.json({ success: true, data: questions });
+  } catch (error) { console.error("Sample bank:", error); return internalError(res, "Không thể rút câu hỏi"); }
 });
 
 router.delete("/teacher/question-bank/:itemId", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  const client = await getClient();
   try {
     const itemId = parsePositiveId(req.params.itemId);
     if (!itemId) return validationError(res, "itemId không hợp lệ");
-    const result = await query(
-      `DELETE FROM quiz_question_bank WHERE id = $1 AND (owner_id = $2 OR $3 = 'admin')
-       RETURNING id, course_id, question_text`, [itemId, req.user.id, req.user.role],
-    );
-    if (!result.rows[0]) return notFound(res, "Không tìm thấy câu hỏi hoặc bạn không có quyền xóa");
-    await recordAuditEvent({ actorId: req.user.id, action: "question_bank.deleted", entityType: "quiz_question_bank", entityId: itemId, beforeState: result.rows[0], metadata: { ip: req.ip } });
+    await client.query("BEGIN");
+    const before = (await client.query("SELECT * FROM quiz_question_bank WHERE id=$1 AND (owner_id=$2 OR $3='admin') FOR UPDATE", [itemId, req.user.id, req.user.role])).rows[0];
+    if (!before || !(await canManageCourseQuestionBank({ courseId: before.course_id, user: req.user, db: client }))) {
+      await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền xóa câu hỏi này");
+    }
+    await client.query("DELETE FROM quiz_question_bank WHERE id=$1", [itemId]);
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "question_bank.deleted", entityType: "quiz_question_bank", entityId: itemId, beforeState: before, metadata: { ip: req.ip } });
+    await client.query("COMMIT");
     return res.json({ success: true, message: "Đã xóa câu hỏi khỏi ngân hàng" });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Error deleting question bank item:", error);
     return internalError(res, "Không thể xóa câu hỏi khỏi ngân hàng");
-  }
+  } finally { client.release(); }
 });
 
 const assessmentContextForAccommodation = async ({ assessmentType, assessmentId, user, db = { query } }) => {
   if (assessmentType === "assignment") {
     const assignment = await getAssignment(assessmentId, db);
     if (!assignment || !(await canGradeAssignment(assignment, user, db))) return null;
-    return { assessment, liveClassId: assignment.live_class_id, baseAttemptLimit: null };
+    return { assessment: assignment, liveClassId: assignment.live_class_id, baseAttemptLimit: null };
   }
   const result = await db.query(
-    `SELECT q.id, q.live_class_id, q.attempt_limit, q.instructor_id, c.author_id
+    `SELECT q.id, q.live_class_id, q.attempt_limit, q.instructor_id, q.due_date, q.available_until, c.author_id
      FROM quizzes q JOIN courses c ON c.id = q.course_id WHERE q.id = $1`, [assessmentId],
   );
   const quiz = result.rows[0];
@@ -850,6 +916,9 @@ router.put("/teacher/accommodations", protectRoute, requireTeacher, requirePermi
     await client.query("BEGIN");
     const context = await assessmentContextForAccommodation({ assessmentType, assessmentId, user: req.user, db: client });
     if (!context) { await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền điều chỉnh hoạt động này"); }
+    const baseDeadline = context.assessment.due_date || context.assessment.available_until;
+    if (dueAt && baseDeadline && dueAt < new Date(baseDeadline)) { await client.query("ROLLBACK"); return validationError(res, "Gia hạn riêng không được sớm hơn hạn chung"); }
+    if (assessmentType === "assignment" && (extraTimeMinutes > 0 || attemptLimitOverride !== null)) { await client.query("ROLLBACK"); return validationError(res, "Bài tự luận chỉ hỗ trợ gia hạn nộp"); }
     if (!context.liveClassId) { await client.query("ROLLBACK"); return validationError(res, "Hoạt động này chưa gắn lớp nên không thể điều chỉnh theo học viên"); }
     const enrolled = await client.query("SELECT 1 FROM class_enrollments WHERE live_class_id = $1 AND user_id = $2 AND status = 'active'", [context.liveClassId, userId]);
     if (!enrolled.rows[0]) { await client.query("ROLLBACK"); return validationError(res, "Học viên không thuộc lớp nhận hoạt động này"); }
@@ -870,6 +939,12 @@ router.put("/teacher/accommodations", protectRoute, requireTeacher, requirePermi
       [assessmentType, assessmentId, userId, dueAt?.toISOString() || null, extraTimeMinutes, attemptLimitOverride, reason, req.user.id],
     );
     await recordAuditEvent({ db: client, actorId: req.user.id, action: "assessment.accommodation_upserted", entityType: "assessment_accommodation", entityId: result.rows[0].id, beforeState: serializeAccommodation(existing), afterState: serializeAccommodation(result.rows[0]), metadata: { ip: req.ip } });
+    await notifyWorkflow(client, {
+      userId, title: "Hỗ trợ học tập của bạn đã được cập nhật",
+      message: `Hạn riêng: ${dueAt ? dueAt.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }) : "giữ hạn chung"}. Thêm ${extraTimeMinutes} phút; lượt làm: ${attemptLimitOverride || "mặc định"}.`,
+      link: assessmentType === "assignment" ? `/lms/assignment/${assessmentId}/submit` : `/lms/quiz/${assessmentId}`,
+      key: `accommodation:${result.rows[0].id}:${new Date(result.rows[0].updated_at).toISOString()}`, actorId: req.user.id,
+    });
     await client.query("COMMIT");
     return res.json({ success: true, data: serializeAccommodation(result.rows[0]), message: "Đã lưu điều chỉnh riêng cho học viên" });
   } catch (error) {
@@ -882,6 +957,32 @@ router.put("/teacher/accommodations", protectRoute, requireTeacher, requirePermi
 });
 
 // GET /api/assignments/:assignmentId — detail used by the submit screen.
+router.post("/teacher/accommodations/:id/revoke", protectRoute, requireTeacher, requirePermission("lms.assessment.accommodate"), async (req, res) => {
+  const client = await getClient();
+  try {
+    const id = parsePositiveId(req.params.id);
+    const reason = requiredReason(req.body.reason);
+    if (!id) return validationError(res, "Mã điều chỉnh không hợp lệ");
+    await client.query("BEGIN");
+    const result = await client.query("SELECT * FROM assessment_accommodations WHERE id = $1 FOR UPDATE", [id]);
+    const item = result.rows[0];
+    if (!item) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy điều chỉnh"); }
+    const context = await assessmentContextForAccommodation({ assessmentType: item.assessment_type, assessmentId: item.assessment_id, user: req.user, db: client });
+    if (!context) { await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền thu hồi điều chỉnh này"); }
+    if (item.status !== "active") { await client.query("ROLLBACK"); return conflict(res, "Điều chỉnh đã được thu hồi"); }
+    await client.query("UPDATE assessment_accommodations SET status = 'revoked', revoked_by = $2, revoked_at = NOW() WHERE id = $1", [id, req.user.id]);
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "assessment.accommodation_revoked", entityType: "assessment_accommodation", entityId: id, beforeState: item, afterState: { status: "revoked", reason } });
+    await notifyWorkflow(client, { userId: item.user_id, title: "Điều chỉnh riêng đã được thu hồi", message: reason,
+      link: item.assessment_type === "assignment" ? `/lms/assignment/${item.assessment_id}/submit` : `/lms/quiz/${item.assessment_id}`,
+      key: `accommodation-revoked:${id}:${Date.now()}`, actorId: req.user.id });
+    await client.query("COMMIT");
+    res.json({ success: true });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    res.status(error.status || 500).json({ success: false, message: error.status ? error.message : "Không thể thu hồi điều chỉnh" });
+  } finally { client.release(); }
+});
+
 router.get("/:assignmentId", protectRoute, async (req, res, next) => {
   if (["all", "quizzes", "submissions", "submission-assets"].includes(req.params.assignmentId)) return next();
   try {
@@ -895,10 +996,11 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
     if (req.user.role === "user" && !(await ensureAssignmentVisibleToStudent(assignment, req.user.id))) return forbidden(res, "Bạn chưa được cấp quyền truy cập bài tập này");
     if (req.user.role === "creator" && !(await canGradeAssignment(assignment, req.user))) return forbidden(res, "Bạn không có quyền xem bài tập này");
     const accommodation = req.user.role === "user"
-      ? await getAssessmentAccommodation({ assessmentType: "assignment", assessmentId, userId: req.user.id })
+      ? await getAssessmentAccommodation({ assessmentType: "assignment", assessmentId: assignmentId, userId: req.user.id })
       : null;
     const submission = await query(
       `SELECT s.id AS submission_id, s.status AS submission_status, s.submitted_at,
+              s.revision, s.return_requested, s.return_reason, s.resubmit_until, sg.annotations,
               s.content_text, s.file_asset_id, s.audio_asset_id,
               fa.original_filename AS file_name, aa.original_filename AS audio_name,
               sg.score, sg.feedback_text, sg.rubric_scores, sg.graded_at, sg.grader_name, sg.grader_avatar
@@ -906,10 +1008,10 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
        LEFT JOIN submission_assets fa ON fa.id = s.file_asset_id
        LEFT JOIN submission_assets aa ON aa.id = s.audio_asset_id
        LEFT JOIN LATERAL (
-         SELECT sg.score, sg.feedback_text, sg.rubric_scores, sg.graded_at,
+         SELECT sg.score, sg.feedback_text, sg.rubric_scores, sg.graded_at, sg.annotations,
                 grader.username AS grader_name, grader.avatar_url AS grader_avatar
          FROM submission_grades sg LEFT JOIN users grader ON grader.id = sg.grader_id
-         WHERE sg.submission_id = s.id ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1
+         WHERE sg.submission_id = s.id AND sg.submission_revision = s.revision ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1
        ) sg ON true
        WHERE s.assignment_id = $1 AND s.user_id = $2`,
       [assignmentId, req.user.id],
@@ -917,7 +1019,7 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
     const row = {
       ...assignment,
       ...(submission.rows[0] || {}),
-      due_date: effectiveAssignmentDueDate(assignment, accommodation),
+      due_date: submission.rows[0]?.return_requested ? submission.rows[0].resubmit_until : effectiveAssignmentDueDate(assignment, accommodation),
       accommodation: serializeAccommodation(accommodation),
     };
     return res.json({
@@ -1061,6 +1163,7 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
     const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
     const result = await query(
       `SELECT s.id, s.assignment_id, s.user_id, s.content_text, s.status, s.submitted_at,
+              s.revision, s.return_requested, s.return_reason, s.resubmit_until, sg.annotations,
               s.file_asset_id, s.audio_asset_id, a.title AS assignment_title, a.assignment_type, a.max_score, a.due_date,
               a.live_class_id, a.class_session_id, lc.title AS class_title,
               class_session.title AS session_title, class_session.start_time AS session_start,
@@ -1078,8 +1181,8 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
        LEFT JOIN submission_assets aa ON aa.id = s.audio_asset_id
        LEFT JOIN assignment_rubrics rubric ON rubric.assignment_id = a.id
        LEFT JOIN LATERAL (
-         SELECT score, feedback_text, graded_at, rubric_scores FROM submission_grades
-         WHERE submission_id = s.id ORDER BY graded_at DESC, id DESC LIMIT 1
+         SELECT score, feedback_text, graded_at, rubric_scores, annotations FROM submission_grades
+         WHERE submission_id = s.id AND submission_revision = s.revision ORDER BY graded_at DESC, id DESC LIMIT 1
        ) sg ON true
        ${whereClause}
        ORDER BY s.submitted_at DESC, s.id DESC`,
@@ -1088,6 +1191,11 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
     return res.json({ success: true, data: result.rows.map((row) => ({
       id: row.id,
       assignmentId: row.assignment_id,
+      revision: Number(row.revision),
+      returnRequested: row.return_requested,
+      returnReason: row.return_reason,
+      resubmitUntil: row.resubmit_until,
+      annotations: parseJsonArray(row.annotations),
       userId: row.user_id,
       assignmentTitle: row.assignment_title,
       assignmentType: row.assignment_type,
@@ -1271,8 +1379,9 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
     if (!((typeof contentText === "string" && contentText.trim()) || fileAssetId || audioAssetId)) return validationError(res, "Bài nộp phải có nội dung, file hoặc audio");
     if (fileAssetId && audioAssetId && fileAssetId === audioAssetId) return validationError(res, "File và audio phải là hai asset khác nhau");
     await client.query("BEGIN");
-    const existing = await client.query("SELECT id, status FROM assignment_submissions WHERE assignment_id = $1 AND user_id = $2 FOR UPDATE", [assignmentId, req.user.id]);
-    if (existing.rows.length > 0) {
+    await assertGradebookOpen(client, assignment.live_class_id);
+    const existing = await client.query("SELECT * FROM assignment_submissions WHERE assignment_id = $1 AND user_id = $2 FOR UPDATE", [assignmentId, req.user.id]);
+    if (existing.rows.length > 0 && !canResubmit(existing.rows[0])) {
       await client.query("ROLLBACK");
       return conflict(res, existing.rows[0].status === "graded" ? "Bài đã được chấm và đã khóa" : "Bài đã được nộp, không thể nộp đè", "SUBMISSION_LOCKED");
     }
@@ -1290,10 +1399,24 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
         return validationError(res, "Tệp bài nộp không hợp lệ hoặc chưa upload xong");
       }
     }
-    const accommodation = await getAssessmentAccommodation({ assessmentType: "assignment", assessmentId, userId: req.user.id, db: client });
-    const dueDate = effectiveAssignmentDueDate(assignment, accommodation);
+    const accommodation = await getAssessmentAccommodation({ assessmentType: "assignment", assessmentId: assignmentId, userId: req.user.id, db: client });
+    const dueDate = existing.rows[0]?.return_requested ? existing.rows[0].resubmit_until : effectiveAssignmentDueDate(assignment, accommodation);
     const isLate = dueDate && Date.now() > new Date(dueDate).getTime();
-    const result = await client.query(
+    let result;
+    if (existing.rows[0]) {
+      const old = existing.rows[0];
+      await client.query("INSERT INTO submission_revisions(submission_id, revision, snapshot) VALUES ($1, $2, $3::jsonb)", [old.id, old.revision, JSON.stringify(old)]);
+      result = await client.query(
+        `UPDATE assignment_submissions SET content_text = $2, file_asset_id = $3, audio_asset_id = $4,
+          status = $5, submitted_at = NOW(), revision = revision + 1, return_requested = FALSE,
+          return_reason = NULL, returned_by = NULL, returned_at = NULL, resubmit_until = NULL
+         WHERE id = $1 RETURNING *`, [old.id, contentText?.trim() || "", fileAssetId, audioAssetId, isLate ? "late" : "submitted"],
+      );
+      await client.query("DELETE FROM grading_drafts WHERE submission_id = $1", [old.id]);
+      await recordAuditEvent({ db: client, actorId: req.user.id, action: "submission.resubmitted", entityType: "assignment_submission", entityId: old.id, beforeState: { revision: old.revision }, afterState: { revision: old.revision + 1 } });
+      await notifyWorkflow(client, { userId: assignment.instructor_id, title: "Học viên đã nộp lại bài", message: assignment.title,
+        link: `/lms/teacher/grading?assignmentId=${assignmentId}`, key: `resubmission:${old.id}:${old.revision + 1}`, actorId: req.user.id });
+    } else result = await client.query(
       `INSERT INTO assignment_submissions (assignment_id, user_id, content_text, file_asset_id, audio_asset_id, status)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, assignment_id, user_id, content_text, file_asset_id, audio_asset_id, status, submitted_at`,
@@ -1305,6 +1428,7 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Error submitting assignment:", error);
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
     if (error.code === "23505") return conflict(res, "Bài đã được nộp, không thể nộp đè", "SUBMISSION_LOCKED");
     return internalError(res, "Lỗi khi nộp bài tập");
   } finally {
@@ -1313,6 +1437,86 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
 });
 
 // POST /api/assignments/submissions/:submissionId/grade — transactional grade + history + notification.
+router.get("/submissions/:submissionId/history", protectRoute, async (req, res) => {
+  try {
+    const submissionId = parsePositiveId(req.params.submissionId);
+    if (!submissionId) return validationError(res, "Mã bài nộp không hợp lệ");
+    const current = (await query("SELECT * FROM assignment_submissions WHERE id = $1", [submissionId])).rows[0];
+    if (!current) return notFound(res, "Không tìm thấy bài nộp");
+    const assignment = await getAssignment(current.assignment_id);
+    const isStudent = req.user.role === "user";
+    const allowed = isStudent
+      ? hasActiveStudentLmsAccess(req.user) && String(current.user_id) === String(req.user.id) && await ensureAssignmentVisibleToStudent(assignment, req.user.id)
+      : await canGradeAssignment(assignment, req.user);
+    if (!allowed) return forbidden(res, "Bạn không có quyền xem lịch sử bài nộp");
+    const revisions = await query("SELECT revision, snapshot, archived_at FROM submission_revisions WHERE submission_id = $1 ORDER BY revision DESC", [submissionId]);
+    const grades = await query(`SELECT g.*, u.username AS grader_name FROM submission_grades g LEFT JOIN users u ON u.id = g.grader_id
+      WHERE g.submission_id = $1 ORDER BY g.graded_at DESC, g.id DESC`, [submissionId]);
+    const draft = isStudent ? null : (await query("SELECT payload, updated_at FROM grading_drafts WHERE submission_id = $1 AND grader_id = $2 AND submission_revision = $3", [submissionId, req.user.id, current.revision])).rows[0] || null;
+    res.json({ success: true, data: { current, revisions: revisions.rows, grades: grades.rows, draft } });
+  } catch (error) { console.error("Submission history:", error); return internalError(res, "Không thể tải lịch sử bài nộp"); }
+});
+
+router.post("/submissions/:submissionId/return", protectRoute, requireTeacher, requirePermission("lms.assignment.grade"), async (req, res) => {
+  const client = await getClient();
+  try {
+    const reason = requiredReason(req.body.reason);
+    const deadline = new Date(req.body.resubmitUntil);
+    if (!Number.isFinite(deadline.getTime()) || deadline <= new Date()) return validationError(res, "Hạn nộp lại phải ở tương lai");
+    const submissionId = parsePositiveId(req.params.submissionId);
+    if (!submissionId) return validationError(res, "Mã bài nộp không hợp lệ");
+    const initial = (await client.query("SELECT assignment_id FROM assignment_submissions WHERE id = $1", [submissionId])).rows[0];
+    if (!initial) return notFound(res, "Không tìm thấy bài nộp");
+    const assignment = await getAssignment(initial.assignment_id, client);
+    if (!(await canGradeAssignment(assignment, req.user, client))) return forbidden(res, "Bạn không có quyền trả bài");
+    await client.query("BEGIN");
+    await assertGradebookOpen(client, assignment.live_class_id);
+    const current = (await client.query("SELECT * FROM assignment_submissions WHERE id = $1 FOR UPDATE", [submissionId])).rows[0];
+    if (Number(req.body.revision) !== current.revision) { await client.query("ROLLBACK"); return conflict(res, "Bài nộp đã thay đổi. Hãy tải lại."); }
+    if (current.return_requested) { await client.query("ROLLBACK"); return conflict(res, "Bài đang chờ học viên nộp lại."); }
+    await client.query(`UPDATE assignment_submissions SET return_requested = TRUE, return_reason = $2, returned_by = $3,
+      returned_at = NOW(), resubmit_until = $4 WHERE id = $1`, [submissionId, reason, req.user.id, deadline.toISOString()]);
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "submission.returned", entityType: "assignment_submission", entityId: submissionId, afterState: { reason, deadline, revision: current.revision } });
+    await notifyWorkflow(client, { userId: current.user_id, title: "Giáo viên yêu cầu sửa và nộp lại bài", message: reason,
+      link: `/lms/assignment/${assignment.id}/submit`, key: `submission-return:${submissionId}:${current.revision}`, actorId: req.user.id });
+    await client.query("COMMIT");
+    res.json({ success: true });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    res.status(error.status || 500).json({ success: false, message: error.status ? error.message : "Không thể trả bài" });
+  } finally { client.release(); }
+});
+
+router.put("/submissions/:submissionId/draft", protectRoute, requireTeacher, requirePermission("lms.assignment.grade"), async (req, res) => {
+  const client = await getClient();
+  try {
+    const submissionId = parsePositiveId(req.params.submissionId);
+    if (!submissionId) return validationError(res, "Mã bài nộp không hợp lệ");
+    const initial = (await client.query("SELECT assignment_id FROM assignment_submissions WHERE id = $1", [submissionId])).rows[0];
+    if (!initial) return notFound(res, "Không tìm thấy bài nộp");
+    const assignment = await getAssignment(initial.assignment_id, client);
+    if (!(await canGradeAssignment(assignment, req.user, client))) return forbidden(res, "Bạn không có quyền chấm bài này");
+    const annotations = normalizeAnnotations(req.body.annotations);
+    const rubric = parseJsonArray(assignment.rubric_criteria);
+    const rubricScores = rubric.length ? normalizeRubricScores(req.body.rubricScores, rubric) : [];
+    const score = rubric.length ? rubricScores.reduce((sum, item) => sum + item.score, 0) : Number(req.body.score);
+    if (!Number.isFinite(score) || score < 0 || score > Number(assignment.max_score) || typeof req.body.feedbackText !== "string" || req.body.feedbackText.length > 10000) return validationError(res, "Điểm hoặc nhận xét không hợp lệ");
+    await client.query("BEGIN");
+    await assertGradebookOpen(client, assignment.live_class_id);
+    const current = (await client.query("SELECT * FROM assignment_submissions WHERE id = $1 FOR UPDATE", [submissionId])).rows[0];
+    if (Number(req.body.revision) !== current.revision || current.return_requested) { await client.query("ROLLBACK"); return conflict(res, "Bài đã thay đổi hoặc đang chờ nộp lại. Hãy tải lại."); }
+    const payload = { score, feedbackText: req.body.feedbackText, rubricScores, annotations, revision: current.revision };
+    await client.query(`INSERT INTO grading_drafts(submission_id, grader_id, submission_revision, payload) VALUES ($1, $2, $3, $4::jsonb)
+      ON CONFLICT (submission_id, grader_id) DO UPDATE SET submission_revision = EXCLUDED.submission_revision, payload = EXCLUDED.payload, updated_at = NOW()`,
+    [submissionId, req.user.id, current.revision, JSON.stringify(payload)]);
+    await client.query("COMMIT");
+    res.json({ success: true, data: payload });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    res.status(error.status || 422).json({ success: false, message: error.status || !error.code ? error.message : "Không thể lưu nháp" });
+  } finally { client.release(); }
+});
+
 router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, requirePermission("lms.assignment.grade"), async (req, res) => {
   const client = await getClient();
   try {
@@ -1320,20 +1524,28 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
     let numericScore = Number(req.body.score);
     if (!submissionId) return validationError(res, "submissionId không hợp lệ");
     if (req.body.feedbackText !== undefined && (typeof req.body.feedbackText !== "string" || req.body.feedbackText.length > 10000)) return validationError(res, "Nội dung phản hồi không hợp lệ");
+    let annotations;
+    try { annotations = normalizeAnnotations(req.body.annotations); } catch (error) { return validationError(res, error.message); }
     await client.query("BEGIN");
+    const scope = await client.query("SELECT a.live_class_id FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id WHERE s.id = $1", [submissionId]);
+    await assertGradebookOpen(client, scope.rows[0]?.live_class_id);
     const submissionResult = await client.query(
-      `SELECT s.id, s.user_id, s.assignment_id, a.title AS assignment_title, a.instructor_id, a.live_class_id, a.max_score,
+      `SELECT s.id, s.user_id, s.assignment_id, s.revision, s.return_requested, a.title AS assignment_title, a.instructor_id, a.live_class_id, a.max_score,
               rubric.criteria_json AS rubric_criteria,
               u.email AS student_email, u.username AS student_username
        FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id
        JOIN users u ON u.id = s.user_id
        LEFT JOIN assignment_rubrics rubric ON rubric.assignment_id = a.id
-       WHERE s.id = $1 FOR UPDATE`,
+       WHERE s.id = $1 FOR UPDATE OF s`,
       [submissionId],
     );
     const submission = submissionResult.rows[0];
     if (!submission) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy bài nộp"); }
     if (!(await canGradeAssignment(submission, req.user, client))) { await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền chấm bài nộp này"); }
+    if (Number(req.body.revision) !== submission.revision || submission.return_requested) { await client.query("ROLLBACK"); return conflict(res, "Bài đã thay đổi hoặc đang chờ nộp lại. Hãy tải lại trước khi chấm."); }
+    const previousGrade = (await client.query("SELECT * FROM submission_grades WHERE submission_id = $1 AND submission_revision = $2 ORDER BY id DESC LIMIT 1", [submissionId, submission.revision])).rows[0];
+    let changeReason = null;
+    if (previousGrade) changeReason = requiredReason(req.body.changeReason);
     const rubric = parseJsonArray(submission.rubric_criteria);
     let rubricScores = [];
     try {
@@ -1341,16 +1553,17 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
         rubricScores = normalizeRubricScores(req.body.rubricScores, rubric);
         numericScore = rubricScores.reduce((total, item) => total + item.score, 0);
       }
-    } catch (error) {
+    } catch {
       await client.query("ROLLBACK");
       return validationError(res, "Điểm từng tiêu chí rubric chưa hợp lệ");
     }
     if (!Number.isFinite(numericScore) || numericScore < 0 || numericScore > Number(submission.max_score)) { await client.query("ROLLBACK"); return validationError(res, `Điểm phải nằm trong khoảng 0 đến ${submission.max_score}`); }
     const grade = await client.query(
-      `INSERT INTO submission_grades (submission_id, grader_id, score, feedback_text, rubric_scores)
-       VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id, submission_id, grader_id, score, feedback_text, rubric_scores, graded_at`,
-      [submissionId, req.user.id, numericScore, req.body.feedbackText?.trim() || "", JSON.stringify(rubricScores)],
+      `INSERT INTO submission_grades (submission_id, grader_id, score, feedback_text, rubric_scores, submission_revision, annotations, change_reason)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8) RETURNING *`,
+      [submissionId, req.user.id, numericScore, req.body.feedbackText?.trim() || "", JSON.stringify(rubricScores), submission.revision, JSON.stringify(annotations), changeReason],
     );
+    await client.query("DELETE FROM grading_drafts WHERE submission_id = $1 AND grader_id = $2", [submissionId, req.user.id]);
     await client.query("UPDATE assignment_submissions SET status = 'graded' WHERE id = $1", [submissionId]);
     await recordAuditEvent({
       db: client,
@@ -1358,8 +1571,9 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
       action: "submission.graded",
       entityType: "assignment_submission",
       entityId: submissionId,
+      beforeState: previousGrade || null,
       afterState: { score: numericScore, feedbackText: req.body.feedbackText?.trim() || "", rubricScores, status: "graded" },
-      metadata: { assignmentId: submission.assignment_id, ip: req.ip, rubricCriteria: rubric.length },
+      metadata: { assignmentId: submission.assignment_id, ip: req.ip, rubricCriteria: rubric.length, revision: submission.revision, changeReason },
     });
     await client.query(
       `INSERT INTO notifications (user_id, title, message, type, link_url, dedupe_key)
@@ -1392,6 +1606,7 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Error grading submission:", error);
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
     return internalError(res, "Lỗi khi chấm điểm bài nộp");
   } finally {
     client.release();
@@ -1546,6 +1761,7 @@ const submitAttempt = async ({ client, attempt, questions, autoSubmitted = false
 };
 
 const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
+  if (quiz.live_class_id) await client.query("SELECT id FROM live_classes WHERE id=$1 FOR UPDATE", [quiz.live_class_id]);
   // Locking the quiz serializes first-open requests, preventing two tabs from
   // consuming two attempts or creating parallel active attempts.
   await client.query("SELECT id FROM quizzes WHERE id = $1 FOR UPDATE", [quiz.id]);
@@ -1578,7 +1794,9 @@ const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
      ORDER BY attempt_number DESC`,
     [quiz.id, userId],
   );
-  if (submitted.rows.length >= Number(quiz.attempt_limit || 1)) {
+  const finalized = quiz.live_class_id && (await client.query("SELECT 1 FROM gradebook_finalizations WHERE class_id=$1 AND reopened_at IS NULL", [quiz.live_class_id])).rows.length > 0;
+  if (finalized && !submitted.rows.length) throw Object.assign(new Error("Sổ điểm đã chốt; không thể bắt đầu lượt mới."), {status:409});
+  if (finalized || submitted.rows.length >= Number(quiz.attempt_limit || 1)) {
     const latest = submitted.rows[0] || null;
     return { attempt: latest, computed: latest ? buildQuizResult(attemptQuestions(latest, questions), latest.answers_json || {}) : null, created: false, timedOut: false };
   }
@@ -1673,6 +1891,7 @@ router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
     if (client) await client.query("ROLLBACK").catch(() => {});
     if (error.message === "QUIZ_NOT_OPEN" || error.message === "QUIZ_CLOSED") return quizWindowError(res, error);
     console.error("Error fetching quiz:", error);
+    if (error.status) return res.status(error.status).json({success:false,message:error.message});
     return internalError(res, "Lỗi khi lấy đề trắc nghiệm");
   } finally {
     client?.release();
@@ -1779,6 +1998,7 @@ router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), requir
     await client.query("ROLLBACK").catch(() => {});
     if (error.message === "QUIZ_NOT_OPEN" || error.message === "QUIZ_CLOSED") return quizWindowError(res, error);
     console.error("Error submitting quiz:", error);
+    if (error.status) return res.status(error.status).json({success:false,message:error.message});
     return internalError(res, "Lỗi khi nộp bài trắc nghiệm");
   } finally {
     client.release();

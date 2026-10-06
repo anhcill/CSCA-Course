@@ -23,6 +23,8 @@ const TEACHER_NAV = [
   { label: 'Giáo trình', path: '/lms/teacher/curriculum', icon: BookOpen },
   { label: 'Quiz học viên', path: '/lms/teacher/quizzes', icon: FileQuestion },
   { label: 'Chấm bài', path: '/lms/teacher/grading', icon: ClipboardCheck },
+  { label: 'Ngân hàng câu hỏi', path: '/lms/teach/question-bank', icon: FileQuestion },
+  { label: 'Hỗ trợ học viên', path: '/lms/teach/support', icon: Users },
 ];
 
 function TeacherNavItem({ item, active, collapsed, onNavigate }) {
