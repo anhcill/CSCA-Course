@@ -784,7 +784,7 @@ export default function ClassroomPage() {
                     { title: "File Audio nghe phát âm chuẩn", type: "MP3", size: "16.8 MB", desc: "Giọng đọc chuẩn bản xứ cho bài hội thoại." },
                     { title: "Phiếu bài tập tự luyện kèm đáp án", type: "PDF", size: "4.5 MB", desc: "Các dạng bài tập tương ứng với cấu trúc bài thi." }
                   ].map((mat, i) => (
-                    <div key={i} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex flex-col justify-between space-y-3">
+                    <div key={i} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex flex-col justify-between space-y-3">
                       <div className="flex items-start gap-3">
                         <span className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-sky-300 font-black text-xs flex items-center justify-center shrink-0">
                           {mat.type}

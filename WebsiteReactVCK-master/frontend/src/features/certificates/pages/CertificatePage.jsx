@@ -394,7 +394,7 @@ export default function CertificatePage() {
                 return (
                   <div
                     key={cert.id || cert.certificate_code}
-                    className="bg-slate-900 border border-slate-850 hover:border-amber-500/40 rounded-2xl overflow-hidden transition-all duration-300 flex flex-col justify-between shadow-lg hover:shadow-amber-500/5 group"
+                    className="bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-2xl overflow-hidden transition-all duration-300 flex flex-col justify-between shadow-lg hover:shadow-amber-500/5 group"
                   >
                     {/* Phần trên của Card */}
                     <div className="p-6 space-y-4">
@@ -448,7 +448,7 @@ export default function CertificatePage() {
                     </div>
 
                     {/* Footer của Card chứa nút bấm */}
-                    <div className="px-6 py-4 bg-slate-950/50 border-t border-slate-850 flex items-center justify-between gap-2">
+                    <div className="px-6 py-4 bg-slate-950/50 border-t border-slate-800 flex items-center justify-between gap-2">
                       <div className="flex gap-2">
                         <button
                           onClick={(e) => handleShareCertificate(cert.certificate_code, e)}
@@ -482,7 +482,7 @@ export default function CertificatePage() {
         )}
 
         {/* PHẦN 1.5: Eligibility Tracker - Bảng theo dõi điều kiện cấp chứng chỉ */}
-        <div className="bg-slate-900 border border-slate-850 rounded-3xl p-6 md:p-8 space-y-6 print:hidden">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 print:hidden">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
             <div className="flex items-center gap-3">
               <div className="p-3 rounded-xl bg-blue-500/10 text-blue-400">
@@ -579,7 +579,7 @@ export default function CertificatePage() {
         </div>
 
         {/* PHẦN 4: Verification Panel (Bảng xác minh chứng chỉ) */}
-        <div id="verification-section" className="bg-slate-900 border border-slate-850 rounded-3xl p-6 md:p-8 space-y-6 print:hidden">
+        <div id="verification-section" className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 print:hidden">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400">
               <ShieldCheck className="w-6 h-6" />
@@ -656,7 +656,7 @@ export default function CertificatePage() {
                     </div>
 
                     {/* Chi tiết chứng chỉ đã xác thực */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm bg-slate-950/60 p-5 rounded-xl border border-slate-850">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm bg-slate-950/60 p-5 rounded-xl border border-slate-800">
                       <div className="space-y-1">
                         <span className="text-slate-400 text-xs block">Mã chứng chỉ:</span>
                         <span className="font-mono font-bold text-white tracking-wider uppercase">{verifiedResult.certificateCode}</span>

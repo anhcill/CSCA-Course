@@ -26,6 +26,9 @@ export default {
           'text-primary': '#ffffff',
           'text-secondary': '#a0a0a0',
         },
+        slate: {
+          850: '#172033',
+        },
       },
       backgroundColor: {
         dark: '#1a1a1a',

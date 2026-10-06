@@ -38,7 +38,7 @@ export default function AdminCalendarSessionRow({
   const { dateStr, timeStr } = formatTimeRange(session.start_time, session.end_time);
 
   return (
-    <tr className="border-b border-slate-100 dark:border-slate-800/80 hover:bg-slate-50/70 dark:hover:bg-slate-850/50 transition">
+    <tr className="border-b border-slate-100 dark:border-slate-800/80 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition">
       {/* Buổi học & Lớp */}
       <td className="py-4 px-4">
         <div>

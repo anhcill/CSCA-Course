@@ -207,7 +207,7 @@ export default function StudentDashboardPage() {
             </div>
 
             {recentCourse ? (
-              <div className="flex items-center gap-5 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/85 dark:bg-slate-850 dark:bg-slate-900/90 p-4 shadow-sm backdrop-blur sm:min-w-[300px]">
+              <div className="flex items-center gap-5 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/90 p-4 shadow-sm backdrop-blur sm:min-w-[300px]">
                 <ProgressRing value={getProgress(recentCourse)} />
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Đang học gần đây</p>
