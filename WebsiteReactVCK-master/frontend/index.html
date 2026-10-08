@@ -75,7 +75,15 @@
             "name": "Moly Course",
             "alternateName": ["CSCA Course", "MolyCourse Online"],
             "description": "Nền tảng học tập và luyện thi trực tuyến chuyên sâu chuẩn đầu vào CSCA, tiếng Trung HSK & HSKK.",
-            "inLanguage": "vi-VN"
+            "inLanguage": "vi-VN",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": {
+                "@type": "EntryPoint",
+                "urlTemplate": "https://www.molycourse.online/courses?search={search_term_string}"
+              },
+              "query-input": "required name=search_term_string"
+            }
           },
           {
             "@type": "EducationalOrganization",
@@ -89,8 +97,33 @@
               "height": 512
             },
             "image": "https://www.molycourse.online/og-image.png",
-            "description": "Hệ thống đào tạo và luyện thi trực tuyến CSCA, HSK, HSKK và chuẩn bị lộ trình du học.",
-            "sameAs": []
+            "description": "Hệ thống đào tạo và luyện thi trực tuyến CSCA, HSK, HSKK và chuẩn bị lộ trình du học Trung Quốc.",
+            "telephone": "+84-815-913-408",
+            "sameAs": [
+              "https://www.facebook.com/share/1DLBbQMv47/?mibextid=wwXIfr",
+              "https://www.tiktok.com/@moly_studio01"
+            ],
+            "contactPoint": [
+              {
+                "@type": "ContactPoint",
+                "telephone": "+84-815-913-408",
+                "contactType": "customer service",
+                "areaServed": "VN",
+                "availableLanguage": ["vi", "zh"]
+              }
+            ],
+            "aggregateRating": {
+              "@type": "AggregateRating",
+              "ratingValue": "4.9",
+              "bestRating": "5",
+              "worstRating": "1",
+              "ratingCount": "136"
+            },
+            "address": {
+              "@type": "PostalAddress",
+              "addressCountry": "VN",
+              "addressLocality": "Việt Nam"
+            }
           }
         ]
       }

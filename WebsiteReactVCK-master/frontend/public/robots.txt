@@ -16,6 +16,19 @@ Disallow: /select-level
 Disallow: /unauthorized
 Disallow: /forbidden
 
+# Explicitly invite major search engine crawlers
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Baiduspider
+Allow: /
+
 # Host & Sitemap definition for search engine indexers
 Host: https://www.molycourse.online
 Sitemap: https://www.molycourse.online/sitemap.xml

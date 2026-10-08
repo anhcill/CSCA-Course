@@ -10,6 +10,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useAuthContext } from '../../context/AuthContext';
 import CourseRatingForm from '../../components/course/CourseRatingForm';
+import CourseSeoGuide from '../../components/course/CourseSeoGuide.jsx';
 import Meta from '../../components/Meta.jsx';
 import Loading from '../../components/Loading';
 
@@ -478,6 +479,7 @@ const Courses = () => {
                 </div>
               </section>
             )}
+            <CourseSeoGuide />
           </div>
         </div>
       )}

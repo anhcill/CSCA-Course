@@ -27,6 +27,7 @@ import reportRouter from "./router/report.router.js";
 import supportRouter from "./router/support.router.js";
 import healthRouter from "./router/health.router.js";
 import { isAllowedOrigin, securityHeaders } from "./middleware/security.js";
+import { renderHtmlWithSeo } from "./services/seoPrerender.service.js";
 
 dotenv.config({ path: "./backend/.env" });
 
@@ -67,6 +68,15 @@ validateEnvironment();
 app.disable("x-powered-by");
 app.set("trust proxy", process.env.TRUST_PROXY === "true");
 app.use(securityHeaders);
+
+// Keep the root domain on the same canonical host as the sitemap and page metadata.
+app.use((req, res, next) => {
+  const host = req.get("host")?.toLowerCase().replace(/:\d+$/, "");
+  if (host !== "molycourse.online") return next();
+
+  const status = req.method === "GET" || req.method === "HEAD" ? 301 : 308;
+  return res.redirect(status, `https://www.molycourse.online${req.originalUrl}`);
+});
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -122,9 +132,15 @@ app.use("/api", (req, res) => {
 });
 
 if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "frontend", "dist")));
+  const distPath = path.join(__dirname, "frontend", "dist");
+  const indexPath = path.resolve(distPath, "index.html");
+
+  app.use(express.static(distPath));
+
   app.get("*", (req, res) => {
-    res.sendFile(path.resolve(__dirname, "frontend", "dist", "index.html"));
+    const renderedHtml = renderHtmlWithSeo(indexPath, req.originalUrl || req.url);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(renderedHtml);
   });
 }
 
