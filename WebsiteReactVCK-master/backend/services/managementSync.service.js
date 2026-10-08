@@ -247,7 +247,7 @@ const syncTeacher = async (client, event) => {
        SET email = $1, management_staff_source_id = $2, management_display_name = $3,
            is_management_managed = TRUE, lms_account_status = $4,
            management_source_updated_at = $5, is_locked = $6,
-           role = CASE WHEN role = 'admin' THEN 'admin' ELSE 'creator' END
+           role = (CASE WHEN role = 'admin' THEN 'admin' ELSE 'creator' END)::user_role
        WHERE id = $7
        RETURNING id, role, management_staff_source_id, management_display_name, lms_account_status`,
       [input.email, input.teacherSourceId, input.fullName, input.status, input.sourceUpdatedAt, locked, user.id],
