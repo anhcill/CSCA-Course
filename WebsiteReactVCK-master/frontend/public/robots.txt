@@ -23,6 +23,9 @@ Allow: /
 User-agent: Googlebot-Image
 Allow: /
 
+User-agent: Google-Favicon
+Allow: /
+
 User-agent: Bingbot
 Allow: /
 
