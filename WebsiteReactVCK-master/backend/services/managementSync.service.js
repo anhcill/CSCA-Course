@@ -431,14 +431,21 @@ const syncClassTeacher = async (client, event) => {
   return { action: "class.teacher.synced", entityType: "live_class", entityId: Number(liveClass.id), data: row || { staleIgnored: true } };
 };
 
-const parseStudent = (payload, occurredAt) => ({
-  studentSourceId: sourceId(payload.studentSourceId || payload.externalStudentId, "studentSourceId"),
-  fullName: text(payload.fullName, 120, "fullName"),
-  email: email(payload.email),
-  phone: optionalText(payload.phone, 50, "phone"),
-  accountStatus: enumValue(payload.accountStatus, ACCOUNT_STATUSES, "pending_payment", "accountStatus"),
-  sourceUpdatedAt: sourceDate(payload, occurredAt),
-});
+const parseStudent = (payload, occurredAt) => {
+  const legacyIds = payload.legacyStudentSourceIds === undefined ? [] : payload.legacyStudentSourceIds;
+  if (!Array.isArray(legacyIds) || legacyIds.length > 100) {
+    throw new SyncValidationError("legacyStudentSourceIds không hợp lệ");
+  }
+  return {
+    studentSourceId: sourceId(payload.studentSourceId || payload.externalStudentId, "studentSourceId"),
+    legacyStudentSourceIds: legacyIds.map((id) => sourceId(id, "legacyStudentSourceIds")),
+    fullName: text(payload.fullName, 120, "fullName"),
+    email: email(payload.email),
+    phone: optionalText(payload.phone, 50, "phone"),
+    accountStatus: enumValue(payload.accountStatus, ACCOUNT_STATUSES, "pending_payment", "accountStatus"),
+    sourceUpdatedAt: sourceDate(payload, occurredAt),
+  };
+};
 
 const syncStudent = async (client, event) => {
   const input = parseStudent(event.payload, event.occurredAt);
@@ -455,7 +462,8 @@ const syncStudent = async (client, event) => {
       [input.email],
     );
     user = byEmail.rows[0] || null;
-    if (user?.external_student_id && lower(user.external_student_id) !== lower(input.studentSourceId)) {
+    if (user?.external_student_id && lower(user.external_student_id) !== lower(input.studentSourceId) &&
+        !input.legacyStudentSourceIds.some((id) => lower(id) === lower(user.external_student_id))) {
       throw new SyncValidationError("Email đã liên kết với học viên Management khác");
     }
   }
