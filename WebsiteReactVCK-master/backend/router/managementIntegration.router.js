@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import express from "express";
-import { getClient } from "../db/connect.js";
+import { getClient, query } from "../db/connect.js";
 import requireManagementIntegration from "../middleware/requireManagementIntegration.js";
 import { enqueueManagementEvent, parseManagementEvent, SyncValidationError } from "../services/managementSync.service.js";
 
@@ -39,6 +39,37 @@ router.post("/events", requireManagementIntegration, async (req, res) => {
     if (error?.code === "23505") return res.status(409).json(errorBody("Event đồng bộ bị trùng", "IDEMPOTENCY_CONFLICT"));
     console.error("Management event enqueue error:", error.message);
     return internalError(res);
+  }
+});
+
+// The ingress returns 202 after durable enqueue. Management must consult this
+// endpoint before treating a course/class projection as ready for learner access.
+router.post("/events/status", requireManagementIntegration, async (req, res) => {
+  const eventId = typeof req.body?.eventId === "string" ? req.body.eventId.trim() : "";
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(eventId)) {
+    return res.status(422).json({ success: false, message: "eventId không hợp lệ", errorCode: "VALIDATION_ERROR" });
+  }
+  try {
+    const result = await query(
+      `SELECT j.status, j.retry_count, j.max_retries, j.last_error
+       FROM lms_sync_inbox i
+       JOIN lms_sync_jobs j ON j.inbox_id = i.id
+       WHERE i.event_id = $1
+       ORDER BY j.id DESC LIMIT 1`,
+      [eventId],
+    );
+    const job = result.rows[0];
+    if (!job) return res.status(404).json({ success: false, message: "Không tìm thấy event", errorCode: "NOT_FOUND" });
+    return res.json({ success: true, data: {
+      eventId,
+      status: job.status,
+      retryCount: Number(job.retry_count || 0),
+      maxRetries: Number(job.max_retries || 0),
+      lastError: job.last_error || null,
+    } });
+  } catch (error) {
+    console.error("Management event status error:", error.message);
+    return res.status(500).json({ success: false, message: "Không thể kiểm tra trạng thái đồng bộ", errorCode: "INTERNAL_ERROR" });
   }
 });
 
