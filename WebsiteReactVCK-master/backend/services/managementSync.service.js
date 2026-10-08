@@ -743,15 +743,16 @@ const markJobFailure = async (client, job, error) => {
   try {
     await client.query(
       `UPDATE lms_sync_jobs
-       SET status = $1, last_error = $2, locked_at = NULL, locked_by = NULL,
-           next_attempt_at = CASE WHEN $3::int IS NULL THEN NULL ELSE NOW() + ($3 * INTERVAL '1 second') END,
-           processed_at = CASE WHEN $1 = 'DEAD_LETTER' THEN NOW() ELSE NULL END
+       SET status = $1::varchar, last_error = $2, locked_at = NULL, locked_by = NULL,
+           next_attempt_at = CASE WHEN $3::int IS NULL THEN NULL ELSE NOW() + ($3::int * INTERVAL '1 second') END,
+           processed_at = CASE WHEN $1::varchar = 'DEAD_LETTER' THEN NOW() ELSE NULL END
        WHERE id = $4`,
       [status, message, nextDelay, job.id],
     );
     await client.query(
       `UPDATE lms_sync_inbox
-       SET status = $1, last_error = $2, processed_at = CASE WHEN $1 = 'DEAD_LETTER' THEN NOW() ELSE NULL END
+       SET status = $1::varchar, last_error = $2,
+           processed_at = CASE WHEN $1::varchar = 'DEAD_LETTER' THEN NOW() ELSE NULL END
        WHERE id = $3`,
       [status, message, job.inbox_id],
     );
