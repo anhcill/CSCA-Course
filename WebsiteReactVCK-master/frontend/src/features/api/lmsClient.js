@@ -682,8 +682,9 @@ export const fetchAdminSyncOverview = async () => {
   return request("/v1/application-orchestration/overview");
 };
 
-export const fetchAdminDeliveryQueue = async ({ status = "ALL", page = 1, limit = 20 } = {}) => {
+export const fetchAdminDeliveryQueue = async ({ status = "ALL", page = 1, limit = 20, search = "" } = {}) => {
   const params = new URLSearchParams({ status, page, limit });
+  if (search.trim()) params.set("q", search.trim());
   return request(`/v1/application-orchestration/delivery-queue?${params.toString()}`);
 };
 

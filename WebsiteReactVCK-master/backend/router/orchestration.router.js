@@ -11,6 +11,13 @@ const sendError = (res, status, message, errorCode) => res.status(status).json({
   success: false, message, errorCode,
 });
 
+const sourceIdentifiers = (payload) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const keys = ["teacherSourceId", "courseSourceId", "classSourceId", "studentSourceId", "externalStudentId", "membershipSourceId"];
+  return Object.fromEntries(keys.filter((key) => typeof payload[key] === "string" && payload[key].trim())
+    .map((key) => [key, payload[key]]));
+};
+
 const serializeJob = (row) => ({
   id: String(row.id),
   eventType: row.event_type,
@@ -29,7 +36,14 @@ const serializeJob = (row) => ({
   lastAttemptAt: row.last_attempt_at || null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
-  payload: row.payload || {},
+  payload: row.payload && typeof row.payload === "object" ? {
+    eventId: row.payload.eventId || null,
+    status: row.payload.status || null,
+    success: row.payload.success ?? null,
+    correlationId: row.payload.correlationId || null,
+  } : {},
+  sourceEventId: row.source_event_id || null,
+  sourcePayload: sourceIdentifiers(row.source_payload),
 });
 
 router.get("/overview", ...adminOnly, async (req, res) => {
@@ -67,18 +81,31 @@ router.get("/delivery-queue", ...adminOnly, async (req, res) => {
   if (!allowedStatuses.has(status)) return sendError(res, 422, "status không hợp lệ", "VALIDATION_ERROR");
   const page = Math.min(Math.max(Number(req.query.page) || 1, 1), 10000);
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+  const search = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 160) : "";
   const params = [];
   const filters = [];
   if (status !== "ALL") {
     params.push(status);
-    filters.push(`status = $${params.length}`);
+    filters.push(`j.status = $${params.length}`);
   }
+  if (search) {
+    params.push(`%${search}%`);
+    filters.push(`(j.id::text ILIKE $${params.length} OR j.event_type ILIKE $${params.length}
+      OR j.entity_id ILIKE $${params.length} OR j.correlation_id ILIKE $${params.length}
+      OR j.last_error ILIKE $${params.length} OR i.event_id ILIKE $${params.length}
+      OR i.payload::text ILIKE $${params.length})`);
+  }
+  const countParams = [...params];
   params.push(limit, (page - 1) * limit);
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
   try {
     const [items, total] = await Promise.all([
-      query(`SELECT * FROM lms_sync_jobs ${where} ORDER BY created_at DESC, id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params),
-      query(`SELECT COUNT(*)::int AS total FROM lms_sync_jobs ${where}`, params.slice(0, status === "ALL" ? 0 : 1)),
+      query(`SELECT j.*, i.event_id AS source_event_id, i.payload AS source_payload
+        FROM lms_sync_jobs j LEFT JOIN lms_sync_inbox i ON i.id = j.inbox_id
+        ${where} ORDER BY j.created_at DESC, j.id DESC
+        LIMIT $${params.length - 1} OFFSET $${params.length}`, params),
+      query(`SELECT COUNT(*)::int AS total FROM lms_sync_jobs j
+        LEFT JOIN lms_sync_inbox i ON i.id = j.inbox_id ${where}`, countParams),
     ]);
     return res.json({ success: true, data: {
       items: items.rows.map(serializeJob),

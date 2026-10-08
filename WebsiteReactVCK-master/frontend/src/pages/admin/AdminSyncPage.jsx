@@ -17,12 +17,61 @@ import {
 import { fetchAdminSyncOverview, fetchAdminDeliveryQueue, retryDeliveryQueueItem } from "../../features/api/lmsClient";
 import Loading from "../../components/Loading.jsx";
 
+const EVENT_STAGES = {
+  "teacher.upserted": "Đồng bộ hồ sơ giáo viên",
+  "course.upserted": "Tạo hoặc cập nhật khóa học",
+  "class.upserted": "Tạo hoặc cập nhật lớp học",
+  "class.teacher.assigned": "Phân công giáo viên",
+  "student.provisioned": "Tạo hoặc liên kết học viên",
+  "class.membership.changed": "Ghi danh học viên vào lớp",
+  "entitlement.changed": "Cấp quyền học",
+  "payment.refunded": "Thu hồi quyền sau hoàn tiền",
+};
+
+const explainJobError = (item) => {
+  const error = (item?.lastError || "").toLowerCase();
+  if (!error) return null;
+  if (/email đã liên kết|identity.*conflict|student.*khác/.test(error))
+    return "Kiểm tra học viên có cùng email ở hai lớp. Liên kết về một mã học viên chung trên hệ thống quản lý rồi đồng bộ lại.";
+  if (/chưa có giáo viên|teacher.*chưa|role dạy học|giáo viên.*role/.test(error))
+    return "Đồng bộ hồ sơ giáo viên có email và vai trò dạy học trước, sau đó thử lại khóa hoặc lớp.";
+  if (/chưa có mapping khóa|course.*chưa|khóa.*chưa/.test(error))
+    return "Đảm bảo sự kiện khóa học đã thành công trước khi thử lại lớp hoặc quyền học.";
+  if (/chưa có mapping lớp|class.*chưa|lớp.*chưa/.test(error))
+    return "Đảm bảo sự kiện lớp học đã thành công trước khi ghi danh học viên hoặc gửi điểm danh.";
+  if (/chưa được provision|học viên.*chưa/.test(error))
+    return "Đồng bộ tài khoản học viên trước khi ghi danh hoặc cấp quyền học.";
+  if (/duplicate key.*external_course_id|external_course_id.*duplicate/.test(error))
+    return "Mã khóa học Web đã gắn với khóa khác. Kiểm tra mã nguồn khóa và liên kết cũ trước khi thử lại.";
+  if (/duplicate key.*management_class_source_id|management_class_source_id.*duplicate/.test(error))
+    return "Mã lớp đã tồn tại trên Web. Kiểm tra liên kết lớp hiện có trước khi thử lại.";
+  if (/violates foreign key|foreign key constraint/.test(error))
+    return "Một dữ liệu phụ thuộc chưa tồn tại. Xem bước sự kiện và đồng bộ dữ liệu cha trước.";
+  if (/không hợp lệ|invalid|validation|must be|phải là/.test(error))
+    return "Kiểm tra dữ liệu nguồn của sự kiện này trên hệ thống quản lý. Sau khi sửa dữ liệu, gửi lại sự kiện mới.";
+  if (/timeout|connection|network|econn|503|502|500/.test(error))
+    return "Kiểm tra kết nối và tình trạng Railway của hai hệ thống, rồi thử lại khi dịch vụ ổn định.";
+  return "Xem lỗi đầy đủ bên dưới và đối chiếu dữ liệu nguồn. Chỉ thử lại sau khi nguyên nhân đã được xử lý.";
+};
+
+const sourceIdentifiers = (item) => {
+  const payload = item?.sourcePayload || {};
+  return [
+    ["Giáo viên", payload.teacherSourceId],
+    ["Khóa học", payload.courseSourceId],
+    ["Lớp", payload.classSourceId],
+    ["Học viên", payload.studentSourceId || payload.externalStudentId],
+    ["Ghi danh", payload.membershipSourceId],
+  ].filter(([, value]) => typeof value === "string" && value.trim());
+};
+
 export default function AdminSyncPage() {
   const [overview, setOverview] = useState(null);
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [searchTerm, setSearchTerm] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
   const [retryingId, setRetryingId] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -35,24 +84,34 @@ export default function AdminSyncPage() {
     try {
       const [ovRes, qRes] = await Promise.all([
         fetchAdminSyncOverview(),
-        fetchAdminDeliveryQueue({ status: statusFilter, page, limit: 20 }),
+        fetchAdminDeliveryQueue({ status: statusFilter, page, limit: 20, search: appliedSearch }),
       ]);
-      if (!ovRes?.success || !qRes?.success) throw new Error(ovRes?.message || qRes?.message || "Không thể tải dữ liệu đồng bộ.");
+      if (!ovRes?.success) throw new Error(ovRes?.message || "Không thể tải tổng quan đồng bộ.");
+      if (!qRes?.success) throw new Error(qRes?.message || "Không thể tải hàng đợi đồng bộ.");
       setOverview(ovRes.data || null);
       setQueue(Array.isArray(qRes.data?.items) ? qRes.data.items : []);
       setPagination({ total: Number(qRes.data?.total || 0), limit: Number(qRes.data?.limit || 20) });
     } catch (err) {
       console.error("Error loading sync data:", err);
+      setOverview(null);
       setQueue([]);
       setErrorMessage(err.message || "Không thể tải dữ liệu đồng bộ!");
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter]);
+  }, [page, statusFilter, appliedSearch]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPage(1);
+      setAppliedSearch(searchTerm);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
 
   const handleRetry = async (item) => {
     setRetryingId(item.id);
@@ -69,16 +128,6 @@ export default function AdminSyncPage() {
     }
   };
 
-  const filteredQueue = queue.filter((item) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      String(item.id || "").toLowerCase().includes(term) ||
-      String(item.eventType || "").toLowerCase().includes(term) ||
-      String(item.entityId || "").toLowerCase().includes(term) ||
-      String(item.lastError || "").toLowerCase().includes(term)
-    );
-  });
   const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.limit));
   const canRetry = (item) => ["FAILED", "DEAD_LETTER"].includes(item.status);
   const changeStatus = (status) => {
@@ -166,7 +215,7 @@ export default function AdminSyncPage() {
           <div className="text-3xl font-black text-gray-900 dark:text-white mt-3 font-mono">
             {(overview?.totalJobs ?? 0).toLocaleString()}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">24 giờ qua qua Outbox</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Lệnh tạo trong 24 giờ qua</p>
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 relative overflow-hidden shadow-sm">
@@ -181,7 +230,7 @@ export default function AdminSyncPage() {
           <div className="text-3xl font-black text-sky-500 mt-3 font-mono">
             {overview?.outboxPending ?? 0}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Đang chờ Moly ACK</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Đang chờ hoặc đang xử lý</p>
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 relative overflow-hidden shadow-sm">
@@ -196,7 +245,7 @@ export default function AdminSyncPage() {
           <div className="text-3xl font-black text-rose-500 mt-3 font-mono">
             {overview?.deadLetterCount ?? 0}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Vượt quá 5 lần retry</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Lệnh cần sửa dữ liệu hoặc kiểm tra thủ công</p>
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 relative overflow-hidden shadow-sm">
@@ -211,7 +260,7 @@ export default function AdminSyncPage() {
           <div className="text-3xl font-black text-emerald-500 mt-3 font-mono">
             {overview?.successRate ?? "0.0%"}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">SLA đạt chuẩn kiến trúc</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Trong số lệnh tạo trong 24 giờ qua</p>
         </div>
       </div>
 
@@ -241,7 +290,7 @@ export default function AdminSyncPage() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Tìm theo ID, Event, Entity..."
+            placeholder="Tìm toàn bộ hàng đợi theo ID, sự kiện, lỗi..."
             className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-purple-500 transition"
           />
         </div>
@@ -276,14 +325,14 @@ export default function AdminSyncPage() {
                     <Loading loading={true} text="Đang nạp dữ liệu hàng đợi Outbox..." fullScreen={false} />
                   </td>
                 </tr>
-              ) : filteredQueue.length === 0 ? (
+              ) : queue.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-gray-400">
                     Không có bản ghi hàng đợi nào phù hợp.
                   </td>
                 </tr>
               ) : (
-                filteredQueue.map((item) => (
+                queue.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition">
                     <td className="py-4 px-5">
                       <div className="font-mono font-bold text-gray-900 dark:text-white">{item.id}</div>
@@ -293,6 +342,7 @@ export default function AdminSyncPage() {
                       <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
                         {item.eventType}
                       </span>
+                      <div className="text-[11px] text-gray-600 dark:text-gray-300 mt-1">{EVENT_STAGES[item.eventType] || "Xử lý đồng bộ"}</div>
                       <div className="text-[10px] text-gray-400 mt-0.5">
                         {new Date(item.createdAt).toLocaleTimeString("vi-VN")} -{" "}
                         {new Date(item.createdAt).toLocaleDateString("vi-VN")}
@@ -309,15 +359,23 @@ export default function AdminSyncPage() {
                       </span>
                       <span className="text-gray-400">/{item.maxRetries}</span>
                     </td>
-                    <td className="py-4 px-5 max-w-xs truncate text-[11px] text-rose-500 dark:text-rose-400 font-mono">
-                      {item.lastError || "—"}
+                    <td className="py-4 px-5 min-w-64 max-w-md text-[11px]">
+                      {item.lastError ? (
+                        <div className="space-y-1.5">
+                          <p className="font-semibold text-rose-600 dark:text-rose-400 whitespace-pre-wrap break-words">{item.lastError}</p>
+                          <p className="text-gray-600 dark:text-gray-300 whitespace-normal">Cách xử lý: {explainJobError(item)}</p>
+                          {item.status === "PENDING" && item.retryCount > 0 && item.nextAttemptAt && (
+                            <p className="text-amber-600 dark:text-amber-400">Thử lại tự động: {new Date(item.nextAttemptAt).toLocaleString("vi-VN")}</p>
+                          )}
+                        </div>
+                      ) : "—"}
                     </td>
                     <td className="py-4 px-5 text-right">
                       <div className="inline-flex items-center gap-2">
                         <button
                           onClick={() => setSelectedItem(item)}
                           className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition"
-                          title="Xem chi tiết Payload"
+                          title="Xem lỗi và dữ liệu sự kiện"
                         >
                           <FiEye className="w-4 h-4" />
                         </button>
@@ -363,6 +421,7 @@ export default function AdminSyncPage() {
                 <p className="text-xs text-gray-500 font-mono mt-0.5">
                   Correlation ID: {selectedItem.correlationId}
                 </p>
+                {selectedItem.sourceEventId && <p className="text-xs text-gray-500 font-mono mt-0.5">Event ID: {selectedItem.sourceEventId}</p>}
               </div>
               <button
                 onClick={() => setSelectedItem(null)}
@@ -385,18 +444,24 @@ export default function AdminSyncPage() {
 
             {selectedItem.lastError && (
               <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 dark:text-rose-400 text-xs font-mono">
-                <span className="font-bold block text-[10px] uppercase">Last Stack Error:</span>
+                  <span className="font-bold block text-[10px] uppercase">Lỗi cụ thể tại bước {EVENT_STAGES[selectedItem.eventType] || selectedItem.eventType}:</span>
                 {selectedItem.lastError}
+                  <p className="mt-2 text-gray-700 dark:text-gray-200 font-sans">Cách xử lý: {explainJobError(selectedItem)}</p>
               </div>
             )}
 
             <div>
-              <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-2">
-                Dữ Liệu Payload (JSON):
-              </span>
-              <pre className="p-4 rounded-2xl bg-gray-950 text-emerald-400 font-mono text-xs overflow-x-auto max-h-60 border border-gray-800">
-                {JSON.stringify(selectedItem.payload, null, 2)}
-              </pre>
+              <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-2">Mã nguồn để đối chiếu:</span>
+              {sourceIdentifiers(selectedItem).length > 0 ? (
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {sourceIdentifiers(selectedItem).map(([label, value]) => (
+                    <div key={label} className="rounded-lg bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-xs">
+                      <dt className="text-gray-500 dark:text-gray-400">{label}</dt>
+                      <dd className="font-mono text-gray-900 dark:text-white break-all">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : <p className="text-xs text-gray-500 dark:text-gray-400">Event ID và Correlation ID ở phía trên dùng để tra cứu log.</p>}
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
