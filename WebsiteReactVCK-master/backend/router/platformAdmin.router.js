@@ -94,7 +94,8 @@ router.patch("/permissions/:id", ...adminOnly, async (req, res) => {
 router.get("/classes", ...adminOnly, async (req, res) => {
   try {
     const result = await query(
-      `SELECT lc.id, lc.title, lc.status, lc.management_class_source_id,
+      `SELECT lc.id, lc.title, lc.status, lc.management_approval_status,
+              lc.management_class_source_id,
               COALESCE(lc.management_course_source_id, c.external_course_id) AS management_course_source_id,
               COALESCE(c.title, c.name) AS course_title,
               c.external_course_id, u.username AS teacher_name,
@@ -123,11 +124,97 @@ router.get("/classes", ...adminOnly, async (req, res) => {
       studentCount: Number(row.student_count || 0),
       entitlementCount: Number(row.entitlement_count || 0),
       mappingStatus: row.management_class_source_id && row.management_course_source_id ? "MAPPED" : "PENDING",
+      approvalStatus: row.management_approval_status,
       active: row.status === "active" && Boolean(row.management_class_source_id && row.management_course_source_id),
     })) });
   } catch (error) {
     console.error("Error listing LMS class mappings:", error);
     return errorResponse(res, 500, "Không thể tải danh sách lớp học", "INTERNAL_ERROR");
+  }
+});
+
+// Management can stage a new class and its calendar, but an administrator must
+// approve the class before learners can access it.
+router.post("/classes/:id/approval", ...adminOnly, async (req, res) => {
+  const classId = parseId(req.params.id);
+  const decision = req.body?.decision;
+  if (!classId || !["approved", "rejected"].includes(decision)) {
+    return errorResponse(res, 422, "Quyết định duyệt lớp không hợp lệ", "VALIDATION_ERROR");
+  }
+  try {
+    const result = await query(
+      `UPDATE live_classes
+       SET management_approval_status = $1,
+           status = CASE WHEN $1 = 'approved' THEN COALESCE(management_requested_status, 'active') ELSE 'cancelled' END,
+           management_approved_by = $2, management_approved_at = NOW()
+       WHERE id = $3 AND management_class_source_id IS NOT NULL
+         AND management_approval_status = 'pending'
+       RETURNING id, title, status, management_approval_status`,
+      [decision, req.user.id, classId],
+    );
+    if (!result.rows[0]) return errorResponse(res, 409, "Lớp không còn ở trạng thái chờ duyệt", "APPROVAL_CONFLICT");
+    await recordAuditEvent({
+      actorId: req.user.id, action: `class.${decision}`, entityType: "live_class",
+      entityId: classId, afterState: result.rows[0], metadata: { ip: req.ip },
+    });
+    return res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    console.error("Error reviewing Management class:", error);
+    return errorResponse(res, 500, "Không thể duyệt lớp", "INTERNAL_ERROR");
+  }
+});
+
+router.get("/membership-approvals", ...adminOnly, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT ce.id, ce.status, ce.management_membership_status,
+              ce.management_membership_source_id, lc.id AS class_id, lc.title AS class_title,
+              lc.management_approval_status AS class_approval_status,
+              COALESCE(sp.full_name, u.username) AS student_name, u.email
+       FROM class_enrollments ce
+       JOIN live_classes lc ON lc.id = ce.live_class_id
+       JOIN users u ON u.id = ce.user_id
+       LEFT JOIN student_profiles sp ON sp.user_id = u.id
+       WHERE ce.management_approval_status = 'pending'
+         AND ce.management_membership_source_id IS NOT NULL
+       ORDER BY ce.enrolled_at DESC, ce.id DESC LIMIT 300`,
+    );
+    return res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error("Error listing membership approvals:", error);
+    return errorResponse(res, 500, "Không thể tải danh sách ghi danh chờ duyệt", "INTERNAL_ERROR");
+  }
+});
+
+router.post("/membership-approvals/:id", ...adminOnly, async (req, res) => {
+  const membershipId = parseId(req.params.id);
+  const decision = req.body?.decision;
+  if (!membershipId || !["approved", "rejected"].includes(decision)) {
+    return errorResponse(res, 422, "Quyết định duyệt học viên không hợp lệ", "VALIDATION_ERROR");
+  }
+  try {
+    const result = await query(
+      `UPDATE class_enrollments ce
+       SET management_approval_status = $1,
+           status = CASE WHEN $1 = 'approved' THEN COALESCE(ce.management_membership_status, 'suspended') ELSE 'revoked' END,
+           ended_at = CASE WHEN $1 = 'approved' AND ce.management_membership_status = 'active'
+             THEN NULL ELSE NOW() END,
+           management_approved_by = $2, management_approved_at = NOW()
+       WHERE ce.id = $3 AND ce.management_membership_source_id IS NOT NULL
+         AND ce.management_approval_status = 'pending'
+       RETURNING ce.id, ce.live_class_id, ce.user_id, ce.status, ce.management_approval_status`,
+      [decision, req.user.id, membershipId],
+    );
+    if (!result.rows[0]) return errorResponse(res, 409, "Ghi danh không còn ở trạng thái chờ duyệt", "APPROVAL_CONFLICT");
+    await recordAuditEvent({
+      actorId: req.user.id, action: `class.membership.${decision}`,
+      entityType: "class_enrollment", entityId: membershipId,
+      afterState: result.rows[0], metadata: { ip: req.ip },
+    });
+    return res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    console.error("Error reviewing Management membership:", error);
+    return errorResponse(res, 500, "Không thể duyệt ghi danh", "INTERNAL_ERROR");
   }
 });
 

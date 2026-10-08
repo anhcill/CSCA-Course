@@ -40,3 +40,12 @@ test("parseManagementEvent requires a payload object", () => {
     SyncValidationError,
   );
 });
+
+test("parseManagementEvent accepts inbound Management calendar events", () => {
+  for (const eventType of [
+    "class.schedule.upserted", "class.schedule.archived",
+    "class.session.upserted", "class.session.cancelled",
+  ]) {
+    assert.equal(parseManagementEvent(validEvent({ eventType })).eventType, eventType);
+  }
+});

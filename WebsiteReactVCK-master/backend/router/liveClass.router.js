@@ -194,10 +194,8 @@ const materializeScheduleSessions = async (client, schedule, liveClass) => {
   return result.rows;
 };
 
-// InternalManagement owns identity, finance and the class roster. The LMS owns
-// the teaching calendar, so it emits a durable projection event in the same
-// transaction as every recurring-calendar mutation. An unmapped LMS-only
-// class intentionally has no external event to send.
+// Locally authored calendar changes are projected to Management. Rows whose
+// source is Management never echo back, avoiding a two-way webhook loop.
 const enqueueManagementCalendarEvents = async (client, {
   liveClass,
   schedule,
@@ -205,7 +203,7 @@ const enqueueManagementCalendarEvents = async (client, {
   createdOrUpdatedSessions = [],
   cancelledSessions = [],
 }) => {
-  if (!liveClass.management_class_source_id) return [];
+  if (!liveClass.management_class_source_id || schedule.management_schedule_source_id) return [];
   const correlationId = `calendar:${liveClass.id}:${schedule.id}:v${schedule.version || 1}`;
   const events = [];
   events.push(await enqueueManagementCalendarDelivery(client, {
@@ -256,7 +254,7 @@ const getClassById = async (classId) => {
   const result = await query(
     `SELECT lc.id, lc.title, lc.course_id, lc.instructor_id, lc.description,
             lc.max_students, lc.status, lc.created_at, lc.updated_at,
-            lc.management_class_source_id,
+            lc.management_class_source_id, lc.management_approval_status,
             COALESCE(c.title, c.name) AS course_title,
             COALESCE(c.is_published, true) AS course_is_published
      FROM live_classes lc
@@ -474,6 +472,9 @@ router.patch("/:classId", protectRoute, requireTeacher, requirePermission("lms.c
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
     if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền sửa lớp này");
+    if (liveClass.management_class_source_id && liveClass.management_approval_status !== "approved") {
+      return res.status(409).json({ success: false, errorCode: "CLASS_APPROVAL_REQUIRED", message: "Lớp từ hệ thống quản lý cần được quản trị viên duyệt trước khi chỉnh sửa." });
+    }
 
     const body = req.body || {};
     const title = body.title === undefined ? liveClass.title : body.title;
@@ -789,7 +790,8 @@ router.get("/:classId/schedules", protectRoute, requireManagedLearner, async (re
     if (!(await canViewClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xem lịch lớp này");
     const result = await query(
       `SELECT id, live_class_id, title, day_of_week, start_time, end_time,
-              timezone, start_date, end_date, status, version, created_at, updated_at
+              timezone, start_date, end_date, status, version,
+              management_schedule_source_id, created_at, updated_at
        FROM class_schedules WHERE live_class_id = $1 AND status = 'active'
        ORDER BY day_of_week ASC, start_time ASC, id ASC`,
       [classId],
@@ -889,7 +891,7 @@ router.patch("/:classId/schedules/:scheduleId", protectRoute, requireRole("admin
     await client.query("BEGIN");
     const currentResult = await client.query(
       `SELECT id, live_class_id, title, day_of_week, start_time, end_time,
-              timezone, start_date, end_date, status, version
+              timezone, start_date, end_date, status, version, management_schedule_source_id
        FROM class_schedules
        WHERE id = $1 AND live_class_id = $2 AND status = 'active'
        FOR UPDATE`,
@@ -899,6 +901,10 @@ router.patch("/:classId/schedules/:scheduleId", protectRoute, requireRole("admin
     if (!current) {
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy lịch định kỳ");
+    }
+    if (current.management_schedule_source_id) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ success: false, errorCode: "MANAGEMENT_OWNED_SCHEDULE", message: "Lịch này được quản lý từ hệ thống nội bộ. Vui lòng sửa lịch tại đó." });
     }
     if (expectedVersion !== null && expectedVersion !== current.version) {
       await client.query("ROLLBACK");
@@ -1051,12 +1057,16 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireRole("admi
        SET status = 'archived', updated_by = $1, version = version + 1
        WHERE id = $2 AND live_class_id = $3 AND status = 'active'
        RETURNING id, live_class_id, title, day_of_week, start_time, end_time,
-                 timezone, start_date, end_date, status, version`,
+                 timezone, start_date, end_date, status, version, management_schedule_source_id`,
       [req.user.id, scheduleId, classId],
     );
     if (!archiveResult.rows[0]) {
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy lịch định kỳ");
+    }
+    if (archiveResult.rows[0].management_schedule_source_id) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ success: false, errorCode: "MANAGEMENT_OWNED_SCHEDULE", message: "Lịch này được quản lý từ hệ thống nội bộ. Vui lòng sửa lịch tại đó." });
     }
     const cancelledResult = await client.query(
       `UPDATE class_sessions cs
@@ -1224,9 +1234,12 @@ router.patch("/sessions/:sessionId/meeting-link", protectRoute, requireTeacher, 
     const currentResult = await client.query(
       `SELECT cs.id, cs.live_class_id, cs.schedule_id, cs.title, cs.meet_url, cs.passcode,
               cs.start_time, cs.end_time, cs.status, cs.change_reason, cs.version,
+              cs.management_session_source_id,
+              recurring_schedule.management_schedule_source_id AS management_schedule_owner_id,
               lc.instructor_id, lc.management_class_source_id, lc.course_id
        FROM class_sessions cs
        JOIN live_classes lc ON lc.id = cs.live_class_id
+       LEFT JOIN class_schedules recurring_schedule ON recurring_schedule.id = cs.schedule_id
        WHERE cs.id = $1
        FOR UPDATE OF cs`,
       [sessionId],
@@ -1283,12 +1296,14 @@ router.patch("/sessions/:sessionId/meeting-link", protectRoute, requireTeacher, 
         req.user.id,
       ],
     );
-    await enqueueManagementCalendarDelivery(client, {
-      managementClassId: current.management_class_source_id,
-      eventType: "lms.session.upserted",
-      lmsSession: session,
-      correlationId: `session:${session.id}:v${session.version || 1}`,
-    });
+    if (!current.management_session_source_id && !current.management_schedule_owner_id) {
+      await enqueueManagementCalendarDelivery(client, {
+        managementClassId: current.management_class_source_id,
+        eventType: "lms.session.upserted",
+        lmsSession: session,
+        correlationId: `session:${session.id}:v${session.version || 1}`,
+      });
+    }
     await client.query("COMMIT");
 
     if (current.meet_url !== session.meet_url || current.passcode !== nextPasscode) {
@@ -1315,9 +1330,12 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
       `SELECT cs.id, cs.live_class_id, cs.schedule_id, cs.title, cs.meet_url, cs.passcode,
               cs.start_time, cs.end_time, cs.status, cs.original_start_at, cs.original_end_at,
               cs.change_reason, cs.changed_by, cs.changed_at, cs.version, cs.created_at, cs.updated_at,
+              cs.management_session_source_id,
+              recurring_schedule.management_schedule_source_id AS management_schedule_owner_id,
               lc.instructor_id, lc.management_class_source_id, lc.course_id
        FROM class_sessions cs
        JOIN live_classes lc ON lc.id = cs.live_class_id
+       LEFT JOIN class_schedules recurring_schedule ON recurring_schedule.id = cs.schedule_id
        WHERE cs.id = $1`,
       [sessionId],
     );
@@ -1325,6 +1343,10 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
     if (!current) {
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy buổi học");
+    }
+    if (current.management_session_source_id || current.management_schedule_owner_id) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ success: false, errorCode: "MANAGEMENT_OWNED_SESSION", message: "Buổi học này được quản lý từ hệ thống nội bộ. Vui lòng sửa lịch tại đó." });
     }
     if (!(await canManageClass(current, req.user))) {
       await client.query("ROLLBACK");

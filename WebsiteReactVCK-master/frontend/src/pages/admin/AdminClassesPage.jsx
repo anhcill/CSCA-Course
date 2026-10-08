@@ -12,12 +12,18 @@ import {
   FiRefreshCw,
   FiPlus,
 } from "react-icons/fi";
-import { fetchAdminClasses, updateAdminClassMapping } from "../../features/api/lmsClient";
+import {
+  fetchAdminClasses, updateAdminClassMapping, reviewAdminClass,
+  fetchPendingMembershipApprovals, reviewAdminMembership,
+} from "../../features/api/lmsClient";
 import Loading from "../../components/Loading.jsx";
 
 export default function AdminClassesPage() {
   const [classes, setClasses] = useState([]);
+  const [pendingMemberships, setPendingMemberships] = useState([]);
+  const [reviewing, setReviewing] = useState("");
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [mappingModalClass, setMappingModalClass] = useState(null);
@@ -26,14 +32,18 @@ export default function AdminClassesPage() {
 
   const loadClasses = useCallback(async () => {
     setLoading(true);
+    setErrorMessage("");
     try {
-      const res = await fetchAdminClasses();
-      if (res?.data) {
-        setClasses(res.data);
-      }
+      const [res, memberships] = await Promise.all([fetchAdminClasses(), fetchPendingMembershipApprovals()]);
+      if (!res?.success || !Array.isArray(res.data)) throw new Error(res?.message || "Không thể tải danh sách lớp học.");
+      if (!memberships?.success || !Array.isArray(memberships.data)) throw new Error(memberships?.message || "Không thể tải ghi danh chờ duyệt.");
+      setClasses(res.data);
+      setPendingMemberships(memberships.data);
     } catch (err) {
       console.error("Error loading classes:", err);
-      toast.error("Không thể tải danh sách lớp học!");
+      setClasses([]);
+      setPendingMemberships([]);
+      setErrorMessage(err?.message || "Không thể tải danh sách lớp học.");
     } finally {
       setLoading(false);
     }
@@ -65,6 +75,20 @@ export default function AdminClassesPage() {
       setMappingModalClass(null);
     } catch (error) {
       toast.error(error?.message || "Lưu mapping thất bại!");
+    }
+  };
+
+  const review = async (type, id, decision) => {
+    setReviewing(`${type}:${id}`);
+    try {
+      if (type === "class") await reviewAdminClass(id, decision);
+      else await reviewAdminMembership(id, decision);
+      toast.success(decision === "approved" ? "Đã duyệt" : "Đã từ chối");
+      await loadClasses();
+    } catch (error) {
+      toast.error(error?.message || "Không thể lưu quyết định duyệt");
+    } finally {
+      setReviewing("");
     }
   };
 
@@ -104,6 +128,33 @@ export default function AdminClassesPage() {
           <span>Làm mới danh sách</span>
         </button>
       </div>
+
+      {(classes.some((item) => item.approvalStatus === "pending") || pendingMemberships.length > 0) && (
+        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
+          <h2 className="text-base font-bold text-amber-950 dark:text-amber-100">Chờ duyệt từ hệ thống quản lý</h2>
+          <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">Lịch học vẫn đồng bộ; lớp và ghi danh chỉ mở cho học viên sau khi quản trị viên duyệt.</p>
+          <div className="mt-4 space-y-2">
+            {classes.filter((item) => item.approvalStatus === "pending").map((item) => (
+              <div key={`class-${item.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-800 dark:bg-gray-900">
+                <div><span className="font-bold">Lớp: {item.name}</span><span className="ml-2 text-xs text-gray-500">{item.managementClassId}</span></div>
+                <div className="flex gap-2">
+                  <button type="button" disabled={Boolean(reviewing)} onClick={() => review("class", item.id, "approved")} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">Duyệt lớp</button>
+                  <button type="button" disabled={Boolean(reviewing)} onClick={() => review("class", item.id, "rejected")} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-bold text-rose-700 disabled:opacity-50">Từ chối</button>
+                </div>
+              </div>
+            ))}
+            {pendingMemberships.map((item) => (
+              <div key={`membership-${item.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-800 dark:bg-gray-900">
+                <div><span className="font-bold">Học viên: {item.student_name}</span><span className="ml-2 text-xs text-gray-500">{item.class_title} · {item.email}</span></div>
+                <div className="flex gap-2">
+                  <button type="button" disabled={Boolean(reviewing)} onClick={() => review("membership", item.id, "approved")} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">Duyệt ghi danh</button>
+                  <button type="button" disabled={Boolean(reviewing)} onClick={() => review("membership", item.id, "rejected")} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-bold text-rose-700 disabled:opacity-50">Từ chối</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* KPI Stats Bento */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -186,6 +237,12 @@ export default function AdminClassesPage() {
       </div>
 
       {/* Classes Table */}
+      {errorMessage && (
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+          <span>{errorMessage}</span>
+          <button type="button" onClick={loadClasses} className="shrink-0 font-bold underline">Thử lại</button>
+        </div>
+      )}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -210,7 +267,7 @@ export default function AdminClassesPage() {
               ) : filteredClasses.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-gray-400">
-                    Không tìm thấy lớp học nào phù hợp.
+                    {errorMessage ? "Danh sách lớp học chưa tải được." : "Không tìm thấy lớp học nào phù hợp."}
                   </td>
                 </tr>
               ) : (

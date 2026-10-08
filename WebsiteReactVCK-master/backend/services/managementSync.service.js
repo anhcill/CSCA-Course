@@ -6,6 +6,10 @@ const EVENT_TYPES = new Set([
   "teacher.upserted",
   "course.upserted",
   "class.upserted",
+  "class.schedule.upserted",
+  "class.schedule.archived",
+  "class.session.upserted",
+  "class.session.cancelled",
   "class.teacher.assigned",
   "student.provisioned",
   "class.membership.changed",
@@ -80,6 +84,36 @@ const sourceDate = (payload, fallback) => date(payload.sourceUpdatedAt || fallba
 const sourceId = (value, field) => text(value, 128, field);
 const sameOrNewer = (stored, incoming) => !stored || new Date(stored).getTime() <= incoming.getTime();
 const lower = (value) => String(value).toLowerCase();
+
+const calendarDate = (value, field) => {
+  const parsed = typeof value === "string" ? new Date(`${value}T00:00:00.000Z`) : null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)
+    || !parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new SyncValidationError(`${field} phải có dạng yyyy-MM-dd`);
+  }
+  return value;
+};
+
+const calendarTime = (value, field) => {
+  if (typeof value !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value)) {
+    throw new SyncValidationError(`${field} phải có dạng HH:mm:ss`);
+  }
+  return value.length === 5 ? `${value}:00` : value;
+};
+
+const calendarTimezone = (value) => {
+  const timezone = optionalText(value, 64, "timezone") || "Asia/Ho_Chi_Minh";
+  try { Intl.DateTimeFormat("en-US", { timeZone: timezone }); }
+  catch { throw new SyncValidationError("timezone không hợp lệ"); }
+  return timezone;
+};
+const dbDateOnly = (value) => value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+const optionalLmsId = (value, field) => {
+  if (value === undefined || value === null || value === "") return null;
+  const id = Number(value);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new SyncValidationError(`${field} không hợp lệ`);
+  return id;
+};
 
 const hash = (rawBody) => crypto.createHash("sha256").update(rawBody).digest("hex");
 const safeSlug = (prefix, value) => {
@@ -199,7 +233,7 @@ const findCourse = async (client, courseSourceId) => {
 
 const findClass = async (client, classSourceId) => {
   const result = await client.query(
-    `SELECT id, instructor_id, management_source_updated_at
+    `SELECT id, title, instructor_id, management_source_updated_at
      FROM live_classes WHERE LOWER(management_class_source_id) = LOWER($1) FOR UPDATE`,
     [classSourceId],
   );
@@ -370,7 +404,7 @@ const syncClass = async (client, event) => {
   }
   const leadTeacher = input.leadTeacherSourceId ? await findTeacher(client, input.leadTeacherSourceId) : null;
   const existing = await client.query(
-    `SELECT id, management_source_updated_at
+    `SELECT id, management_source_updated_at, management_approval_status
      FROM live_classes WHERE LOWER(management_class_source_id) = LOWER($1) FOR UPDATE`,
     [input.classSourceId],
   );
@@ -381,26 +415,30 @@ const syncClass = async (client, event) => {
 
   let row;
   if (liveClass) {
+    const effectiveStatus = liveClass.management_approval_status === "pending" ? "pending_approval"
+      : liveClass.management_approval_status === "rejected" ? "cancelled" : input.status;
     const updated = await client.query(
       `UPDATE live_classes
        SET title = $1, course_id = $2, instructor_id = COALESCE($3, instructor_id),
            description = $4, max_students = $5, status = $6,
-           management_course_source_id = $7, management_source_updated_at = $8
+           management_course_source_id = $7, management_source_updated_at = $8,
+           management_requested_status = $10
        WHERE id = $9
        RETURNING id, title, course_id, management_class_source_id, management_course_source_id, status`,
       [input.title, course.id, leadTeacher?.id || null, input.description, input.maxStudents,
-        input.status, input.courseSourceId, input.sourceUpdatedAt, liveClass.id],
+        effectiveStatus, input.courseSourceId, input.sourceUpdatedAt, liveClass.id, input.status],
     );
     row = updated.rows[0];
   } else {
     const created = await client.query(
       `INSERT INTO live_classes
          (title, course_id, instructor_id, description, max_students, status,
-          management_class_source_id, management_course_source_id, management_source_updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          management_class_source_id, management_course_source_id, management_source_updated_at,
+          management_approval_status, management_requested_status)
+       VALUES ($1, $2, $3, $4, $5, 'pending_approval', $6, $7, $8, 'pending', $9)
        RETURNING id, title, course_id, management_class_source_id, management_course_source_id, status`,
       [input.title, course.id, leadTeacher?.id || null, input.description, input.maxStudents,
-        input.status, input.classSourceId, input.courseSourceId, input.sourceUpdatedAt],
+        input.classSourceId, input.courseSourceId, input.sourceUpdatedAt, input.status],
     );
     row = created.rows[0];
   }
@@ -411,6 +449,224 @@ const syncClass = async (client, event) => {
     });
   }
   return { action: "class.synced", entityType: "live_class", entityId: Number(row.id), data: row };
+};
+
+const parseCalendarSchedule = (payload, event) => {
+  const startDate = calendarDate(payload.startDate, "startDate");
+  const endDate = calendarDate(payload.endDate, "endDate");
+  const startTime = calendarTime(payload.startTime, "startTime");
+  const endTime = calendarTime(payload.endTime, "endTime");
+  const day = Number(payload.dayOfWeek);
+  if (endDate < startDate) throw new SyncValidationError("endDate phải sau startDate");
+  if (endTime <= startTime) throw new SyncValidationError("endTime phải sau startTime");
+  if (payload.dayOfWeek === null || payload.dayOfWeek === undefined
+    || !Number.isInteger(day) || day < 0 || day > 6) {
+    throw new SyncValidationError("dayOfWeek phải từ 0 đến 6");
+  }
+  return {
+    classSourceId: sourceId(payload.classSourceId, "classSourceId"),
+    scheduleSourceId: sourceId(payload.scheduleSourceId, "scheduleSourceId"),
+    lmsScheduleId: optionalLmsId(payload.lmsScheduleId, "lmsScheduleId"),
+    title: optionalText(payload.title, 255, "title"),
+    dayOfWeek: day === 0 ? 7 : day,
+    startTime, endTime, startDate, endDate,
+    timezone: calendarTimezone(payload.timezone),
+    meetingUrl: optionalText(payload.meetingUrl, 1000, "meetingUrl"),
+    sourceUpdatedAt: sourceDate(payload, event.occurredAt),
+  };
+};
+
+const syncCalendarSchedule = async (client, event) => {
+  const input = parseCalendarSchedule(event.payload, event);
+  const liveClass = await findClass(client, input.classSourceId);
+  const existingResult = await client.query(
+    `SELECT * FROM class_schedules WHERE LOWER(management_schedule_source_id) = LOWER($1) FOR UPDATE`,
+    [input.scheduleSourceId],
+  );
+  let existing = existingResult.rows[0];
+  if (!existing && input.lmsScheduleId) {
+    const adoption = await client.query(
+      `SELECT * FROM class_schedules WHERE id = $1 AND live_class_id = $2
+         AND management_schedule_source_id IS NULL FOR UPDATE`,
+      [input.lmsScheduleId, liveClass.id],
+    );
+    existing = adoption.rows[0];
+  }
+  if (existing && Number(existing.live_class_id) !== Number(liveClass.id)) {
+    throw new SyncValidationError("scheduleSourceId đã thuộc lớp khác");
+  }
+  if (existing && new Date(existing.management_source_updated_at).getTime() >= input.sourceUpdatedAt.getTime()) {
+    return { action: "class.schedule.stale_ignored", entityType: "class_schedule", entityId: Number(existing.id), data: { scheduleSourceId: input.scheduleSourceId } };
+  }
+  const archived = event.eventType === "class.schedule.archived";
+  if (archived && !existing) throw new SyncDependencyError(`Chưa có lịch Management ${input.scheduleSourceId}`);
+  const title = input.title || `${liveClass.title} — Lịch học định kỳ`;
+  const changed = !existing || Number(existing.day_of_week) !== input.dayOfWeek
+    || existing.start_time !== input.startTime || existing.end_time !== input.endTime
+    || dbDateOnly(existing.start_date) !== input.startDate
+    || dbDateOnly(existing.end_date) !== input.endDate
+    || existing.timezone !== input.timezone;
+  const result = existing
+    ? await client.query(
+      `UPDATE class_schedules SET title = $1, day_of_week = $2, start_time = $3, end_time = $4,
+         start_date = $5, end_date = $6, timezone = $7, status = $8,
+         management_meeting_url = $9, management_source_updated_at = $10,
+         management_schedule_source_id = $11, version = version + 1
+       WHERE id = $12 RETURNING *`,
+      [title, input.dayOfWeek, input.startTime, input.endTime, input.startDate, input.endDate,
+        input.timezone, archived ? "archived" : "active", input.meetingUrl, input.sourceUpdatedAt,
+        input.scheduleSourceId, existing.id],
+    )
+    : await client.query(
+      `INSERT INTO class_schedules
+         (live_class_id, title, day_of_week, start_time, end_time, start_date, end_date,
+          timezone, management_meeting_url, management_schedule_source_id, management_source_updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [liveClass.id, title, input.dayOfWeek, input.startTime, input.endTime, input.startDate,
+        input.endDate, input.timezone, input.meetingUrl, input.scheduleSourceId, input.sourceUpdatedAt],
+    );
+  const schedule = result.rows[0];
+  if (archived || changed) {
+    // Keep attended and completed lessons as history. Replace only untouched future occurrences.
+    await client.query(
+      `UPDATE class_sessions cs SET status = 'cancelled', version = version + 1,
+         change_reason = 'Lịch quản lý đã thay đổi', changed_at = NOW()
+       WHERE cs.schedule_id = $1 AND cs.start_time >= NOW() AND cs.status = 'scheduled'
+         AND ($2::boolean OR cs.management_session_source_id IS NULL)
+         AND NOT EXISTS (SELECT 1 FROM class_attendance ca WHERE ca.session_id = cs.id)`,
+      [schedule.id, archived],
+    );
+  }
+  if (!archived) {
+    await client.query(
+      `WITH occurrences AS (
+         SELECT occurrence::date AS lesson_date FROM generate_series(
+           GREATEST($3::date, (CURRENT_TIMESTAMP AT TIME ZONE $8)::date), $4::date,
+           INTERVAL '1 day') occurrence
+         WHERE EXTRACT(ISODOW FROM occurrence)::int = $5
+       )
+       INSERT INTO class_sessions
+         (live_class_id, schedule_id, title, meet_url, start_time, end_time, status,
+          original_start_at, original_end_at)
+       SELECT $1, $2, $9, $10,
+         ((lesson_date + $6::time) AT TIME ZONE $8),
+         ((lesson_date + $7::time) AT TIME ZONE $8), 'scheduled',
+         ((lesson_date + $6::time) AT TIME ZONE $8),
+         ((lesson_date + $7::time) AT TIME ZONE $8)
+       FROM occurrences
+       WHERE NOT EXISTS (
+         SELECT 1 FROM class_sessions cs WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
+           AND cs.start_time = ((lesson_date + $6::time) AT TIME ZONE $8))`,
+      [liveClass.id, schedule.id, input.startDate, input.endDate, input.dayOfWeek,
+        input.startTime, input.endTime, input.timezone, title, input.meetingUrl],
+    );
+    await client.query(
+      `UPDATE class_sessions SET title = $2, meet_url = $3, version = version + 1
+       WHERE schedule_id = $1 AND management_session_source_id IS NULL
+         AND status = 'scheduled' AND start_time >= NOW()
+         AND (title IS DISTINCT FROM $2 OR meet_url IS DISTINCT FROM $3)`,
+      [schedule.id, title, input.meetingUrl],
+    );
+  }
+  return { action: archived ? "class.schedule.archived" : "class.schedule.synced", entityType: "class_schedule", entityId: Number(schedule.id), data: { scheduleSourceId: input.scheduleSourceId } };
+};
+
+const syncCalendarSession = async (client, event) => {
+  const payload = event.payload;
+  const input = {
+    classSourceId: sourceId(payload.classSourceId, "classSourceId"),
+    sessionSourceId: sourceId(payload.sessionSourceId, "sessionSourceId"),
+    lmsSessionId: optionalLmsId(payload.lmsSessionId, "lmsSessionId"),
+    scheduleSourceId: payload.scheduleSourceId == null ? null : sourceId(payload.scheduleSourceId, "scheduleSourceId"),
+    lessonDate: calendarDate(payload.lessonDate, "lessonDate"),
+    startTime: calendarTime(payload.startTime, "startTime"),
+    endTime: calendarTime(payload.endTime, "endTime"),
+    timezone: calendarTimezone(payload.timezone),
+    title: optionalText(payload.title, 255, "title"),
+    meetingUrl: optionalText(payload.meetingUrl, 1000, "meetingUrl"),
+    sourceUpdatedAt: sourceDate(payload, event.occurredAt),
+  };
+  if (input.endTime <= input.startTime) throw new SyncValidationError("endTime phải sau startTime");
+  const liveClass = await findClass(client, input.classSourceId);
+  let schedule = null;
+  if (input.scheduleSourceId) {
+    const result = await client.query(
+      `SELECT id, live_class_id FROM class_schedules WHERE LOWER(management_schedule_source_id) = LOWER($1) FOR UPDATE`,
+      [input.scheduleSourceId],
+    );
+    schedule = result.rows[0];
+    if (!schedule) throw new SyncDependencyError(`Chưa có lịch Management ${input.scheduleSourceId}`);
+    if (Number(schedule.live_class_id) !== Number(liveClass.id)) throw new SyncValidationError("Lịch không thuộc lớp này");
+  }
+  const timing = await client.query(
+    `SELECT (($1::date + $2::time) AT TIME ZONE $4) AS starts_at,
+            (($1::date + $3::time) AT TIME ZONE $4) AS ends_at`,
+    [input.lessonDate, input.startTime, input.endTime, input.timezone],
+  );
+  const startsAt = timing.rows[0].starts_at;
+  const endsAt = timing.rows[0].ends_at;
+  const existingResult = await client.query(
+    `SELECT * FROM class_sessions WHERE LOWER(management_session_source_id) = LOWER($1) FOR UPDATE`,
+    [input.sessionSourceId],
+  );
+  let existing = existingResult.rows[0];
+  if (!existing && input.lmsSessionId) {
+    const adoption = await client.query(
+      `SELECT * FROM class_sessions WHERE id = $1 AND live_class_id = $2
+         AND management_session_source_id IS NULL FOR UPDATE`,
+      [input.lmsSessionId, liveClass.id],
+    );
+    existing = adoption.rows[0];
+  }
+  if (!existing && schedule) {
+    // A schedule event already generated this occurrence; attach its source identity.
+    const generated = await client.query(
+      `SELECT * FROM class_sessions WHERE live_class_id = $1 AND schedule_id = $2
+         AND start_time = $3 AND management_session_source_id IS NULL
+       ORDER BY CASE WHEN status = 'scheduled' THEN 0 ELSE 1 END, id LIMIT 1 FOR UPDATE`,
+      [liveClass.id, schedule.id, startsAt],
+    );
+    existing = generated.rows[0];
+  }
+  if (existing && Number(existing.live_class_id) !== Number(liveClass.id)) throw new SyncValidationError("sessionSourceId đã thuộc lớp khác");
+  if (existing?.management_source_updated_at
+    && new Date(existing.management_source_updated_at).getTime() >= input.sourceUpdatedAt.getTime()) {
+    return { action: "class.session.stale_ignored", entityType: "class_session", entityId: Number(existing.id), data: { sessionSourceId: input.sessionSourceId } };
+  }
+  const status = event.eventType === "class.session.cancelled" ? "cancelled"
+    : enumValue(payload.status, new Set(["scheduled", "live", "ended", "cancelled", "rescheduled"]), "scheduled", "status");
+  const title = input.title || `${liveClass.title} — Buổi học`;
+  if (existing && schedule && status !== "cancelled") {
+    // A changed recurring pattern can pre-generate the new occurrence before
+    // its explicit Management session arrives. Retire that placeholder.
+    await client.query(
+      `UPDATE class_sessions cs SET status = 'cancelled', version = version + 1,
+         change_reason = 'Thay bằng buổi học Management', changed_at = NOW()
+       WHERE cs.live_class_id = $1 AND cs.schedule_id = $2 AND cs.start_time = $3
+         AND cs.id <> $4 AND cs.management_session_source_id IS NULL AND cs.status = 'scheduled'
+         AND NOT EXISTS (SELECT 1 FROM class_attendance ca WHERE ca.session_id = cs.id)`,
+      [liveClass.id, schedule.id, startsAt, existing.id],
+    );
+  }
+  const result = existing
+    ? await client.query(
+      `UPDATE class_sessions SET schedule_id = $1, title = $2, meet_url = $3,
+         start_time = $4, end_time = $5, status = $6,
+         management_session_source_id = $7, management_source_updated_at = $8,
+         version = version + 1
+       WHERE id = $9 RETURNING id`,
+      [schedule?.id || null, title, input.meetingUrl, startsAt, endsAt, status,
+        input.sessionSourceId, input.sourceUpdatedAt, existing.id],
+    )
+    : await client.query(
+      `INSERT INTO class_sessions
+         (live_class_id, schedule_id, title, meet_url, start_time, end_time, status,
+          original_start_at, original_end_at, management_session_source_id, management_source_updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$5,$6,$8,$9) RETURNING id`,
+      [liveClass.id, schedule?.id || null, title, input.meetingUrl, startsAt, endsAt, status,
+        input.sessionSourceId, input.sourceUpdatedAt],
+    );
+  return { action: "class.session.synced", entityType: "class_session", entityId: Number(result.rows[0].id), data: { sessionSourceId: input.sessionSourceId, status } };
 };
 
 const syncClassTeacher = async (client, event) => {
@@ -524,7 +780,7 @@ const syncMembership = async (client, event) => {
   const student = studentResult.rows[0];
   if (!student) throw new SyncDependencyError(`Chưa có học viên Management ${input.studentSourceId}`);
   const existing = await client.query(
-    `SELECT id, management_source_updated_at
+    `SELECT id, management_source_updated_at, management_approval_status
      FROM class_enrollments
      WHERE LOWER(management_membership_source_id) = LOWER($1)
         OR (live_class_id = $2 AND user_id = $3)
@@ -535,27 +791,32 @@ const syncMembership = async (client, event) => {
   if (membership && !sameOrNewer(membership.management_source_updated_at, input.sourceUpdatedAt)) {
     return { action: "class.membership.stale_ignored", entityType: "class_enrollment", entityId: Number(membership.id), data: { membershipSourceId: input.membershipSourceId } };
   }
-  const endedAt = input.status === "active" ? null : input.sourceUpdatedAt;
+  const approval = membership?.management_approval_status || "pending";
+  const effectiveStatus = approval === "pending" ? "suspended"
+    : approval === "rejected" ? "revoked" : input.status;
+  const endedAt = effectiveStatus === "active" || approval === "pending" ? null : input.sourceUpdatedAt;
   let row;
   if (membership) {
     const updated = await client.query(
       `UPDATE class_enrollments
        SET user_id = $1, live_class_id = $2, status = $3,
-           management_membership_source_id = $4, management_membership_status = $3,
-           management_source_updated_at = $5, ended_at = $6
-       WHERE id = $7
+           management_membership_source_id = $4, management_membership_status = $5,
+           management_source_updated_at = $6, ended_at = $7
+       WHERE id = $8
        RETURNING id, user_id, live_class_id, status, management_membership_source_id`,
-      [student.id, liveClass.id, input.status, input.membershipSourceId, input.sourceUpdatedAt, endedAt, membership.id],
+      [student.id, liveClass.id, effectiveStatus, input.membershipSourceId, input.status,
+        input.sourceUpdatedAt, endedAt, membership.id],
     );
     row = updated.rows[0];
   } else {
     const created = await client.query(
       `INSERT INTO class_enrollments
          (user_id, live_class_id, status, management_membership_source_id,
-          management_membership_status, management_source_updated_at, ended_at)
-       VALUES ($1, $2, $3, $4, $3, $5, $6)
+          management_membership_status, management_source_updated_at, ended_at,
+          management_approval_status)
+       VALUES ($1, $2, 'suspended', $3, $4, $5, NULL, 'pending')
        RETURNING id, user_id, live_class_id, status, management_membership_source_id`,
-      [student.id, liveClass.id, input.status, input.membershipSourceId, input.sourceUpdatedAt, endedAt],
+      [student.id, liveClass.id, input.membershipSourceId, input.status, input.sourceUpdatedAt],
     );
     row = created.rows[0];
   }
@@ -673,6 +934,10 @@ const applyManagementEvent = async (client, event) => {
     case "teacher.upserted": return syncTeacher(client, event);
     case "course.upserted": return syncCourse(client, event);
     case "class.upserted": return syncClass(client, event);
+    case "class.schedule.upserted":
+    case "class.schedule.archived": return syncCalendarSchedule(client, event);
+    case "class.session.upserted":
+    case "class.session.cancelled": return syncCalendarSession(client, event);
     case "class.teacher.assigned": return syncClassTeacher(client, event);
     case "student.provisioned": return syncStudent(client, event);
     case "class.membership.changed": return syncMembership(client, event);

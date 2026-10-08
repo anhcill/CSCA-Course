@@ -716,6 +716,18 @@ export const updateAdminClassMapping = async (classId, mapping) => request(
   { method: "PATCH", body: JSON.stringify(mapping) },
 );
 
+export const reviewAdminClass = (classId, decision) => request(
+  `/v1/admin/classes/${encodeURIComponent(classId)}/approval`,
+  { method: "POST", body: JSON.stringify({ decision }) },
+);
+
+export const fetchPendingMembershipApprovals = () => request("/v1/admin/membership-approvals");
+
+export const reviewAdminMembership = (membershipId, decision) => request(
+  `/v1/admin/membership-approvals/${encodeURIComponent(membershipId)}`,
+  { method: "POST", body: JSON.stringify({ decision }) },
+);
+
 // Admin Audit Logs
 export const fetchAdminAuditLogs = async ({ page = 1, limit = 20, action = "ALL" } = {}) => {
   const params = new URLSearchParams({ page, limit, action });
