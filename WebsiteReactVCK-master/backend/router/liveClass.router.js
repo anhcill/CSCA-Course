@@ -1183,7 +1183,7 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
        VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $6)
        RETURNING id, live_class_id, schedule_id, title, start_time, end_time, status,
                  original_start_at, original_end_at, change_reason, changed_at,
-                 meet_url, version, created_at, updated_at`,
+                 meet_url, version, management_session_source_id, created_at, updated_at`,
       [classId, req.body.title.trim(), req.body.meetUrl || null, req.body.passcode || null, startTime, endTime, req.body.status || "scheduled"],
     );
     const session = result.rows[0];
@@ -1336,7 +1336,7 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
        FROM class_sessions cs
        JOIN live_classes lc ON lc.id = cs.live_class_id
        LEFT JOIN class_schedules recurring_schedule ON recurring_schedule.id = cs.schedule_id
-       WHERE cs.id = $1`,
+       WHERE cs.id = $1 FOR UPDATE OF cs`,
       [sessionId],
     );
     const current = currentResult.rows[0];
@@ -1344,9 +1344,9 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy buổi học");
     }
-    if (current.management_session_source_id || current.management_schedule_owner_id) {
+    if ((current.management_session_source_id || current.management_schedule_owner_id) && req.user.role !== "admin") {
       await client.query("ROLLBACK");
-      return res.status(409).json({ success: false, errorCode: "MANAGEMENT_OWNED_SESSION", message: "Buổi học này được quản lý từ hệ thống nội bộ. Vui lòng sửa lịch tại đó." });
+      return res.status(403).json({ success: false, errorCode: "FORBIDDEN", message: "Chỉ quản trị viên được đổi lịch buổi học đồng bộ từ hệ thống nội bộ." });
     }
     if (!(await canManageClass(current, req.user))) {
       await client.query("ROLLBACK");
@@ -1363,6 +1363,10 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
     }
 
     const body = req.body || {};
+    if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== Number(current.version)) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ success: false, errorCode: "SESSION_VERSION_CONFLICT", message: "Buổi học đã được sửa ở nơi khác. Hãy tải lại lịch trước khi lưu." });
+    }
     const merged = {
       title: body.title === undefined ? current.title : body.title,
       startTime: body.startTime === undefined ? new Date(current.start_time).toISOString() : body.startTime,
@@ -1385,6 +1389,30 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
 
     const scheduleChanged = startTime.getTime() !== new Date(current.start_time).getTime()
       || endTime.getTime() !== new Date(current.end_time).getTime();
+    if (scheduleChanged && (!body.changeReason || !String(body.changeReason).trim())) {
+      await client.query("ROLLBACK");
+      return validationError(res, "Vui lòng nhập lý do đổi lịch buổi học.");
+    }
+    if (scheduleChanged && ["ended", "cancelled"].includes(current.status)) {
+      await client.query("ROLLBACK");
+      return validationError(res, "Không thể đổi lịch buổi đã kết thúc hoặc đã hủy.");
+    }
+    if (scheduleChanged) {
+      const overlap = await client.query(
+        `SELECT other.id, other.live_class_id
+         FROM class_sessions other
+         JOIN live_classes other_class ON other_class.id = other.live_class_id
+         WHERE other.id <> $1 AND other.status IN ('scheduled', 'rescheduled', 'live')
+           AND other.start_time < $3 AND other.end_time > $2
+           AND (other.live_class_id = $4 OR ($5::bigint IS NOT NULL AND other_class.instructor_id = $5))
+         LIMIT 1`,
+        [sessionId, startTime, endTime, current.live_class_id, current.instructor_id],
+      );
+      if (overlap.rows.length) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, errorCode: "SESSION_OVERLAP", message: "Giờ mới trùng với buổi khác của lớp hoặc giáo viên." });
+      }
+    }
     const nextStatus = body.status === undefined && scheduleChanged && current.status === "scheduled"
       ? "rescheduled"
       : merged.status;
@@ -1394,11 +1422,11 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
        SET title = $1, meet_url = $2, passcode = $3, start_time = $4, end_time = $5,
            status = $6, change_reason = $7, changed_by = $8,
            changed_at = CASE WHEN $9 THEN NOW() ELSE changed_at END,
-           version = version + 1
+           version = version + 1, updated_at = NOW()
        WHERE id = $10
        RETURNING id, live_class_id, schedule_id, title, start_time, end_time, status,
                  original_start_at, original_end_at, change_reason, changed_at,
-                 meet_url, version, created_at, updated_at`,
+                 meet_url, version, management_session_source_id, created_at, updated_at`,
       [
         merged.title.trim(), merged.meetUrl || null, merged.passcode || null,
         startTime, endTime, nextStatus, changeReason?.trim() || null, req.user.id,

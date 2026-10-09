@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { Video, User, History, Settings2 } from "lucide-react";
+import { Video, User, History, Settings2, CalendarClock } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const getStatusBadge = (status, hasReason) => {
@@ -22,16 +22,17 @@ const formatTimeRange = (start, end) => {
   if (!start) return "";
   const s = new Date(start);
   const e = end ? new Date(end) : null;
-  const timeStr = `${s.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} - ${
-    e ? e.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : ""
+  const timeStr = `${s.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh" })} - ${
+    e ? e.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh" }) : ""
   }`;
-  const dateStr = s.toLocaleDateString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+  const dateStr = s.toLocaleDateString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Ho_Chi_Minh" });
   return { dateStr, timeStr };
 };
 
 export default function AdminCalendarSessionRow({
   session,
   onOpenHistory,
+  onReschedule,
 }) {
   const hasReason = Boolean(session.change_reason);
   const statusBadge = getStatusBadge(session.status, hasReason);
@@ -85,6 +86,16 @@ export default function AdminCalendarSessionRow({
       {/* Thao tác */}
       <td className="py-2.5 px-3 whitespace-nowrap text-right">
         <div className="flex items-center justify-end gap-1.5">
+          {!(["completed", "ended", "cancelled"].includes(session.status)) && (
+            <button
+              type="button"
+              onClick={() => onReschedule(session)}
+              className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 px-2 py-1 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition"
+              title="Đổi ngày hoặc giờ chỉ cho buổi học này"
+            >
+              <CalendarClock className="h-3.5 w-3.5" /> Đổi buổi
+            </button>
+          )}
           {(hasReason || session.change_log_count > 0 || session.status === "rescheduled") && (
             <button
               type="button"

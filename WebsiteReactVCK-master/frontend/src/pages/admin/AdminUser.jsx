@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   FiPlus,
   FiEdit2,
@@ -14,15 +14,20 @@ import {
 } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { useAuthContext } from "../../context/AuthContext";
-import useGetUsers from "../../hooks/useGetUsers";
 import useCUDUser from "../../hooks/useCUDUser";
-import { toggleUserLockStatus } from "../../features/api/lmsClient";
+import { fetchAdminUsers, toggleUserLockStatus } from "../../features/api/lmsClient";
 import Loading from "../../components/Loading.jsx";
 
 export default function AdminUser() {
-  const { users, loading, refetchUsers } = useGetUsers();
   const { createUser, updateUser, deleteUser } = useCUDUser();
   const { authUser } = useAuthContext();
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [totalItems, setTotalItems] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(0);
+  const [refreshIndex, setRefreshIndex] = useState(0);
+  const refetchUsers = useCallback(() => setRefreshIndex((value) => value + 1), []);
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -32,6 +37,8 @@ export default function AdminUser() {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchPending = searchQuery.trim() !== debouncedSearch;
 
   // Modals state
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -59,44 +66,52 @@ export default function AdminUser() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // Filtered users list
-  const filteredUsers = useMemo(() => {
-    let list = Array.isArray(users) ? [...users] : [];
+  const totalPages = Math.max(1, serverTotalPages);
 
-    if (roleFilter !== "all") {
-      list = list.filter((u) => (u.role || "user") === roleFilter);
-    }
-
-    if (statusFilter !== "all") {
-      const isLocked = statusFilter === "locked";
-      list = list.filter((u) => !!u.isLocked === isLocked);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter(
-        (u) =>
-          (u.username || "").toLowerCase().includes(q) ||
-          (u.fullName || "").toLowerCase().includes(q) ||
-          (u.email || "").toLowerCase().includes(q)
-      );
-    }
-
-    return list;
-  }, [users, roleFilter, statusFilter, searchQuery]);
-
-  // Pagination calculations
-  const totalItems = filteredUsers.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const paginatedUsers = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredUsers.slice(start, start + pageSize);
-  }, [filteredUsers, currentPage, pageSize]);
-
-  // Reset page when filters change
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, roleFilter, statusFilter, pageSize]);
+    const timer = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (searchPending) return undefined;
+    const controller = new AbortController();
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+
+    fetchAdminUsers({
+      page: currentPage,
+      limit: pageSize,
+      search: debouncedSearch,
+      role: roleFilter,
+      status: statusFilter,
+      signal: controller.signal,
+    }).then((response) => {
+      if (!active) return;
+      const nextUsers = Array.isArray(response?.data) ? response.data : [];
+      const pagination = response?.pagination || {};
+      setUsers(nextUsers);
+      setTotalItems(Number(pagination.total) || 0);
+      setServerTotalPages(Number(pagination.totalPages) || 0);
+      if (currentPage > 1 && nextUsers.length === 0) {
+        setCurrentPage((page) => Math.max(1, page - 1));
+      }
+    }).catch((error) => {
+      if (!active || error?.name === "AbortError") return;
+      setUsers([]);
+      setTotalItems(0);
+      setServerTotalPages(0);
+      setLoadError(error?.message || "Không thể tải danh sách người dùng.");
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [currentPage, pageSize, debouncedSearch, roleFilter, statusFilter, refreshIndex, searchPending]);
 
   // Open Form Modal for Create or Edit
   const handleOpenFormModal = (user = null) => {
@@ -242,7 +257,7 @@ export default function AdminUser() {
             Danh Sách Học Viên & Giảng Viên
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm mt-1">
-            Tổng số: <strong className="text-gray-900 dark:text-white">{filteredUsers.length}</strong> tài khoản trong hệ thống LMS CSCA.
+            Tổng số: <strong className="text-gray-900 dark:text-white">{totalItems}</strong> tài khoản phù hợp.
           </p>
         </div>
 
@@ -264,7 +279,10 @@ export default function AdminUser() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
             placeholder="Tìm theo tên, email, username..."
             className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-2 text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
           />
@@ -277,7 +295,10 @@ export default function AdminUser() {
             <span className="hidden sm:inline">Vai trò:</span>
             <select
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
+              onChange={(e) => {
+                setRoleFilter(e.target.value);
+                setCurrentPage(1);
+              }}
               className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none"
             >
               <option value="all">Tất cả vai trò</option>
@@ -292,7 +313,10 @@ export default function AdminUser() {
             <span className="hidden sm:inline">Trạng thái:</span>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
               className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none"
             >
               <option value="all">Tất cả trạng thái</option>
@@ -304,7 +328,10 @@ export default function AdminUser() {
           {/* Page size selector */}
           <select
             value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setCurrentPage(1);
+            }}
             className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none"
           >
             <option value={8}>8 dòng/trang</option>
@@ -330,20 +357,29 @@ export default function AdminUser() {
             </thead>
 
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60 font-sans">
-              {loading ? (
+              {loading || searchPending ? (
                 <tr>
                   <td colSpan={6} className="py-12">
                     <Loading loading={true} text="Đang nạp danh sách tài khoản..." fullScreen={false} />
                   </td>
                 </tr>
-              ) : paginatedUsers.length === 0 ? (
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-rose-600 dark:text-rose-400">
+                    <p>{loadError}</p>
+                    <button type="button" onClick={refetchUsers} className="mt-3 px-4 py-2 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-500">
+                      Thử lại
+                    </button>
+                  </td>
+                </tr>
+              ) : users.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-gray-500">
                     Không tìm thấy người dùng nào phù hợp với điều kiện tìm kiếm.
                   </td>
                 </tr>
               ) : (
-                paginatedUsers.map((u) => {
+                users.map((u) => {
                   const isCurrent = u.id === authUser?.id;
                   const roleBadge =
                     u.role === "admin"
@@ -470,8 +506,8 @@ export default function AdminUser() {
           <div>
             Hiển thị{" "}
             <strong>
-              {paginatedUsers.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} -{" "}
-              {Math.min(currentPage * pageSize, totalItems)}
+              {users.length > 0 && !loadError ? (currentPage - 1) * pageSize + 1 : 0} -{" "}
+              {users.length > 0 && !loadError ? Math.min(currentPage * pageSize, totalItems) : 0}
             </strong>{" "}
             trong tổng số <strong>{totalItems}</strong> người dùng
           </div>

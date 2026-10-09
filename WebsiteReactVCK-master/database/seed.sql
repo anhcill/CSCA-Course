@@ -45,7 +45,7 @@ ON CONFLICT DO NOTHING;
 -- ============================================================
 INSERT INTO users (username, email, password_hash, role, email_verified, avatar_url) VALUES
   ('admin', 'admin@csca.vn',
-   '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+   '$2a$10$wi3o/YeIpqDAgJVY3rlwaubfrauQZLPTC6fnWh8itH0Ic7lyr512O',
    'admin', TRUE,
    'https://ui-avatars.com/api/?name=Admin&background=4f46e5&color=fff')
 ON CONFLICT (username) DO NOTHING;

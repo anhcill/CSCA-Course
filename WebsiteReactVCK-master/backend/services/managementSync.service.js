@@ -1,6 +1,9 @@
 import crypto from "crypto";
 import { getClient } from "../db/connect.js";
 import { recordAuditEvent } from "./audit.service.js";
+import { enqueueManagementCalendarDelivery } from "./managementCalendarDelivery.service.js";
+import { notifyClassStudents } from "./liveClass.service.js";
+import { createManagedUsername } from "../utils/usernameGenerator.js";
 
 const EVENT_TYPES = new Set([
   "teacher.upserted",
@@ -128,17 +131,7 @@ const safeSlug = (prefix, value) => {
   return `${prefix}-${body}-${suffix}`.slice(0, 300);
 };
 
-const createManagedUsername = async (client, prefix, externalId) => {
-  const compact = String(externalId).toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(-34) || crypto.randomBytes(8).toString("hex");
-  const base = `${prefix}-${compact}`.slice(0, 50);
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const suffix = attempt === 0 ? "" : `-${crypto.randomBytes(3).toString("hex")}`;
-    const candidate = `${base.slice(0, 50 - suffix.length)}${suffix}`;
-    const result = await client.query("SELECT 1 FROM users WHERE username = $1", [candidate]);
-    if (!result.rows[0]) return candidate;
-  }
-  throw new Error("Không thể tạo username LMS duy nhất");
-};
+// createManagedUsername is imported from usernameGenerator.js
 
 const parseCourseSourceIds = (value) => {
   if (!Array.isArray(value) || value.length === 0 || value.length > 100) {
@@ -289,7 +282,7 @@ const syncTeacher = async (client, event) => {
     return { action: "teacher.synced", entityType: "user", entityId: Number(user.id), data: updated.rows[0] };
   }
 
-  const username = await createManagedUsername(client, "teacher", input.teacherSourceId);
+  const username = await createManagedUsername(client, "teacher", input.teacherSourceId, { email: input.email, fullName: input.fullName });
   const created = await client.query(
     `INSERT INTO users
        (username, email, password_hash, role, email_verified, is_locked,
@@ -577,16 +570,22 @@ const syncCalendarSession = async (client, event) => {
     classSourceId: sourceId(payload.classSourceId, "classSourceId"),
     sessionSourceId: sourceId(payload.sessionSourceId, "sessionSourceId"),
     lmsSessionId: optionalLmsId(payload.lmsSessionId, "lmsSessionId"),
+    expectedLmsVersion: payload.expectedLmsVersion == null ? null : Number(payload.expectedLmsVersion),
     scheduleSourceId: payload.scheduleSourceId == null ? null : sourceId(payload.scheduleSourceId, "scheduleSourceId"),
+    lmsScheduleId: optionalLmsId(payload.lmsScheduleId, "lmsScheduleId"),
     lessonDate: calendarDate(payload.lessonDate, "lessonDate"),
     startTime: calendarTime(payload.startTime, "startTime"),
     endTime: calendarTime(payload.endTime, "endTime"),
     timezone: calendarTimezone(payload.timezone),
     title: optionalText(payload.title, 255, "title"),
     meetingUrl: optionalText(payload.meetingUrl, 1000, "meetingUrl"),
+    changeReason: optionalText(payload.changeReason, 2000, "changeReason"),
     sourceUpdatedAt: sourceDate(payload, event.occurredAt),
   };
   if (input.endTime <= input.startTime) throw new SyncValidationError("endTime phải sau startTime");
+  if (input.expectedLmsVersion !== null && (!Number.isSafeInteger(input.expectedLmsVersion) || input.expectedLmsVersion < 1)) {
+    throw new SyncValidationError("expectedLmsVersion không hợp lệ");
+  }
   const liveClass = await findClass(client, input.classSourceId);
   let schedule = null;
   if (input.scheduleSourceId) {
@@ -597,6 +596,19 @@ const syncCalendarSession = async (client, event) => {
     schedule = result.rows[0];
     if (!schedule) throw new SyncDependencyError(`Chưa có lịch Management ${input.scheduleSourceId}`);
     if (Number(schedule.live_class_id) !== Number(liveClass.id)) throw new SyncValidationError("Lịch không thuộc lớp này");
+  }
+  if (input.lmsScheduleId) {
+    const result = await client.query(
+      `SELECT id, live_class_id FROM class_schedules WHERE id = $1 FOR UPDATE`,
+      [input.lmsScheduleId],
+    );
+    if (!result.rows[0] || Number(result.rows[0].live_class_id) !== Number(liveClass.id)) {
+      throw new SyncValidationError("Lịch LMS không thuộc lớp này");
+    }
+    if (schedule && Number(schedule.id) !== Number(result.rows[0].id)) {
+      throw new SyncValidationError("Hai mã lịch cố định không khớp");
+    }
+    schedule = result.rows[0];
   }
   const timing = await client.query(
     `SELECT (($1::date + $2::time) AT TIME ZONE $4) AS starts_at,
@@ -629,13 +641,26 @@ const syncCalendarSession = async (client, event) => {
     existing = generated.rows[0];
   }
   if (existing && Number(existing.live_class_id) !== Number(liveClass.id)) throw new SyncValidationError("sessionSourceId đã thuộc lớp khác");
+  if (existing && input.lmsSessionId && Number(existing.id) !== Number(input.lmsSessionId)) {
+    throw new SyncValidationError("lmsSessionId không khớp với sessionSourceId");
+  }
+  if (existing && input.expectedLmsVersion !== null && Number(existing.version) !== input.expectedLmsVersion) {
+    await enqueueManagementCalendarDelivery(client, {
+      managementClassId: input.classSourceId,
+      eventType: existing.status === "cancelled" ? "lms.session.cancelled" : "lms.session.upserted",
+      lmsSession: existing,
+      correlationId: `management-session-conflict:${existing.id}:v${existing.version || 1}`,
+    });
+    return { action: "class.session.version_conflict", entityType: "class_session", entityId: Number(existing.id), data: { sessionSourceId: input.sessionSourceId } };
+  }
   if (existing?.management_source_updated_at
     && new Date(existing.management_source_updated_at).getTime() >= input.sourceUpdatedAt.getTime()) {
     return { action: "class.session.stale_ignored", entityType: "class_session", entityId: Number(existing.id), data: { sessionSourceId: input.sessionSourceId } };
   }
   const status = event.eventType === "class.session.cancelled" ? "cancelled"
     : enumValue(payload.status, new Set(["scheduled", "live", "ended", "cancelled", "rescheduled"]), "scheduled", "status");
-  const title = input.title || `${liveClass.title} — Buổi học`;
+  const title = input.title || existing?.title || `${liveClass.title} — Buổi học`;
+  const scheduleId = schedule?.id || existing?.schedule_id || null;
   if (existing && schedule && status !== "cancelled") {
     // A changed recurring pattern can pre-generate the new occurrence before
     // its explicit Management session arrives. Retire that placeholder.
@@ -653,20 +678,39 @@ const syncCalendarSession = async (client, event) => {
       `UPDATE class_sessions SET schedule_id = $1, title = $2, meet_url = $3,
          start_time = $4, end_time = $5, status = $6,
          management_session_source_id = $7, management_source_updated_at = $8,
-         version = version + 1
-       WHERE id = $9 RETURNING id`,
-      [schedule?.id || null, title, input.meetingUrl, startsAt, endsAt, status,
-        input.sessionSourceId, input.sourceUpdatedAt, existing.id],
+         change_reason = COALESCE($10, change_reason), changed_at = NOW(),
+         version = version + 1, updated_at = NOW()
+       WHERE id = $9 RETURNING *`,
+      [scheduleId, title, input.meetingUrl, startsAt, endsAt, status,
+        input.sessionSourceId, input.sourceUpdatedAt, existing.id, input.changeReason],
     )
     : await client.query(
       `INSERT INTO class_sessions
          (live_class_id, schedule_id, title, meet_url, start_time, end_time, status,
           original_start_at, original_end_at, management_session_source_id, management_source_updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$5,$6,$8,$9) RETURNING id`,
-      [liveClass.id, schedule?.id || null, title, input.meetingUrl, startsAt, endsAt, status,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$5,$6,$8,$9) RETURNING *`,
+      [liveClass.id, scheduleId, title, input.meetingUrl, startsAt, endsAt, status,
         input.sessionSourceId, input.sourceUpdatedAt],
     );
-  return { action: "class.session.synced", entityType: "class_session", entityId: Number(result.rows[0].id), data: { sessionSourceId: input.sessionSourceId, status } };
+  const session = result.rows[0];
+  const scheduleChanged = existing && (new Date(existing.start_time).getTime() !== new Date(startsAt).getTime()
+    || new Date(existing.end_time).getTime() !== new Date(endsAt).getTime());
+  if (scheduleChanged) {
+    await client.query(
+      `INSERT INTO class_session_change_logs (session_id, schedule_id, scope, before_state, after_state, reason)
+       VALUES ($1, $2, 'single', $3::jsonb, $4::jsonb, $5)`,
+      [session.id, scheduleId,
+        JSON.stringify({ startTime: existing.start_time, endTime: existing.end_time, status: existing.status }),
+        JSON.stringify({ startTime: startsAt, endTime: endsAt, status }), input.changeReason],
+    );
+  }
+  await enqueueManagementCalendarDelivery(client, {
+    managementClassId: input.classSourceId,
+    eventType: status === "cancelled" ? "lms.session.cancelled" : "lms.session.upserted",
+    lmsSession: session,
+    correlationId: `management-session:${session.id}:v${session.version || 1}`,
+  });
+  return { action: "class.session.synced", entityType: "class_session", entityId: Number(result.rows[0].id), data: { sessionSourceId: input.sessionSourceId, status, scheduleChanged: Boolean(scheduleChanged) } };
 };
 
 const syncClassTeacher = async (client, event) => {
@@ -743,7 +787,7 @@ const syncStudent = async (client, event) => {
     );
     row = updated.rows[0];
   } else {
-    const username = await createManagedUsername(client, "student", input.studentSourceId);
+    const username = await createManagedUsername(client, "student", input.studentSourceId, { email: input.email, fullName: input.fullName });
     const created = await client.query(
       `INSERT INTO users
          (username, email, password_hash, email_verified, external_student_id,
@@ -1086,6 +1130,14 @@ export const processNextManagementSyncJob = async ({ workerId }) => {
         metadata: { eventId: event.eventId, correlationId: event.correlationId, source: event.source },
       });
       await client.query("COMMIT");
+      if (outcome.action === "class.session.synced" && outcome.data.scheduleChanged) {
+        try {
+          const changed = await client.query("SELECT id, live_class_id, title, start_time, end_time, change_reason, updated_at FROM class_sessions WHERE id = $1", [outcome.entityId]);
+          if (changed.rows[0]) await notifyClassStudents(changed.rows[0], "rescheduled");
+        } catch (notifyError) {
+          console.error("Failed to notify students after Management session update:", notifyError);
+        }
+      }
       return { id: Number(job.id), status: "SUCCESS", eventType: event.eventType, outcome };
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});

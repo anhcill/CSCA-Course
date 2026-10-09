@@ -1,3 +1,4 @@
+import { createManagedUsername } from "../utils/usernameGenerator.js";
 import crypto from "crypto";
 import express from "express";
 import { getClient, query } from "../db/connect.js";
@@ -223,17 +224,7 @@ const respondTransaction = async (client, res, requestId, status, body) => {
   return res.status(status).json(body);
 };
 
-const createManagedUsername = async (client, externalStudentId) => {
-  const compactId = externalStudentId.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(-36) || crypto.randomBytes(8).toString("hex");
-  const base = `student-${compactId}`.slice(0, 50);
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const suffix = attempt === 0 ? "" : `-${crypto.randomBytes(3).toString("hex")}`;
-    const candidate = `${base.slice(0, 50 - suffix.length)}${suffix}`;
-    const result = await client.query("SELECT 1 FROM users WHERE username = $1", [candidate]);
-    if (!result.rows[0]) return candidate;
-  }
-  throw new Error("Unable to create a unique LMS username");
-};
+// createManagedUsername is imported from usernameGenerator.js
 
 const shouldApplySourceUpdate = (stored, incoming) => !stored || new Date(stored).getTime() <= incoming.getTime();
 
@@ -362,7 +353,7 @@ router.post("/students/provision", requireManagementIntegration, async (req, res
         );
       }
     } else {
-      const username = await createManagedUsername(client, payload.externalStudentId);
+      const username = await createManagedUsername(client, "student", payload.externalStudentId, { email: payload.email, fullName: payload.fullName });
       const created = await client.query(
         `INSERT INTO users
            (username, email, password_hash, email_verified, external_student_id,

@@ -5,13 +5,11 @@ import {
   FiSearch,
   FiCheck,
   FiX,
-  FiInfo,
-  FiLock,
-  FiFilter,
   FiAlertCircle,
 } from "react-icons/fi";
 import { fetchAdminPermissions, updateAdminPermission } from "../../features/api/lmsClient";
 import Loading from "../../components/Loading.jsx";
+import { ErrorState } from "../../components/common/StateView";
 
 export default function AdminPermissionsPage() {
   const [permissions, setPermissions] = useState([]);
@@ -19,17 +17,19 @@ export default function AdminPermissionsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedScope, setSelectedScope] = useState("ALL");
   const [savingId, setSavingId] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
   const loadPermissions = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const res = await fetchAdminPermissions();
-      if (res?.data) {
-        setPermissions(res.data);
-      }
+      if (!res?.success || !Array.isArray(res.data)) throw new Error(res?.message || "Không thể tải danh sách quyền.");
+      setPermissions(res.data);
     } catch (err) {
       console.error("Error loading permissions:", err);
-      toast.error("Không thể tải danh sách quyền!");
+      setPermissions([]);
+      setLoadError(err.message || "Không thể tải danh sách quyền.");
     } finally {
       setLoading(false);
     }
@@ -120,7 +120,9 @@ export default function AdminPermissionsPage() {
             Ma Trận Phân Quyền LMS
           </h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Thiết lập 15 mã quyền hạn theo 4 phạm vi (Scope) áp dụng đồng bộ toàn hệ thống.
+            {loading || loadError
+              ? "Quản lý các mã quyền LMS theo phạm vi áp dụng."
+              : `Quản lý ${permissions.length} mã quyền LMS theo phạm vi áp dụng.`}
           </p>
         </div>
       </div>
@@ -168,6 +170,10 @@ export default function AdminPermissionsPage() {
         </div>
       </div>
 
+      {loadError && (
+        <ErrorState title="Chưa thể tải ma trận phân quyền" message={loadError} onRetry={loadPermissions} />
+      )}
+
       {/* Permissions Matrix Table */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
@@ -189,7 +195,7 @@ export default function AdminPermissionsPage() {
                     <Loading loading={true} text="Đang tải ma trận phân quyền..." fullScreen={false} />
                   </td>
                 </tr>
-              ) : filteredPermissions.length === 0 ? (
+              ) : loadError ? null : filteredPermissions.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-gray-400">
                     Không tìm thấy quyền hạn phù hợp với bộ lọc.

@@ -22,6 +22,13 @@ npm run serve
 npm run dev --prefix frontend
 ```
 
+Để xem log local với nhãn trạng thái, thời gian và màu cảnh báo/lỗi, chạy hai lệnh sau trong hai tab Windows Terminal:
+
+```powershell
+npm run --silent dev:console:backend
+npm run --silent dev:console:frontend
+```
+
 ## Database và migration
 
 Migration chạy theo thứ tự trong `run_sql.js` và được thiết kế để chạy lại an toàn. Luôn backup trước khi chạy trên database có dữ liệu:

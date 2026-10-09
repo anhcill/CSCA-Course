@@ -5,6 +5,12 @@ import App from './App.jsx'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthContextProvider } from './context/AuthContext.jsx'
 import { HelmetProvider } from 'react-helmet-async'
+import { registerSW } from 'virtual:pwa-register'
+
+// Đăng ký Service Worker cho Progressive Web App (PWA)
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  registerSW({ immediate: true })
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

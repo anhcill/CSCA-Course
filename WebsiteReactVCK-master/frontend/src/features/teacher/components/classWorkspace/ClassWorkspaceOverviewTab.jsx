@@ -14,23 +14,45 @@ export default function ClassWorkspaceOverviewTab({
   onOpenCreateSession
 }) {
   return (
-    <div className="space-y-4">
-      {/* 4 Thẻ KPI chính của lớp */}
-      <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        {[
-          ["Sĩ số lớp", stats.totalStudents || stats.total_students || 0, Users, "text-blue-600 dark:text-sky-400 bg-blue-50 dark:bg-blue-950/60"],
-          ["Chuyên cần TB", `${stats.attendanceRate || stats.average_attendance_rate || 0}%`, CheckCircle2, "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60"],
-          ["Bài cần chấm", stats.pendingGrading || stats.pending_assignments_count || 0, BookOpen, "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60"],
-          ["Buổi đã học", stats.completedSessions || stats.completed_sessions_count || 0, CalendarDays, "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60"],
-        ].map(([label, value, Icon, iconStyle]) => (
-          <div key={label} className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconStyle}`}>
-              <Icon className="h-4 w-4" />
+    <div className="space-y-3.5">
+      {/* Gộp Ghi chú lớp học & 4 Thẻ KPI */}
+      <section className="overflow-hidden rounded-2xl border border-blue-100 bg-blue-50/70 dark:border-blue-950/70 dark:bg-blue-950/20 p-3 sm:p-3.5 shadow-xs">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 items-center">
+          {/* Cột trái: Ghi chú */}
+          <div className="lg:col-span-5 flex items-start gap-2.5">
+            <span className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
+              <CalendarDays className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white leading-tight">
+                Lớp là tổng quan, buổi học là không gian làm việc
+              </h2>
+              <p className="mt-0.5 text-[11px] sm:text-xs leading-4 text-slate-600 dark:text-slate-300 line-clamp-2">
+                Chọn một buổi trong lịch bên dưới để giao bài, tạo Quiz, tải tài liệu, điểm danh và xem kết quả. Mọi dữ liệu đó được gắn riêng với đúng buổi học.
+              </p>
             </div>
-            <p className="mt-2 text-xl font-black text-slate-900 dark:text-white">{value}</p>
-            <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
           </div>
-        ))}
+
+          {/* Cột phải: 4 ô chỉ số thống kê */}
+          <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              ["Sĩ số lớp", stats.totalStudents || stats.total_students || 0, Users, "text-blue-600 dark:text-sky-400 bg-blue-50 dark:bg-blue-950/60"],
+              ["Chuyên cần TB", `${stats.attendanceRate || stats.average_attendance_rate || 0}%`, CheckCircle2, "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60"],
+              ["Bài cần chấm", stats.pendingGrading || stats.pending_assignments_count || 0, BookOpen, "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60"],
+              ["Buổi đã học", stats.completedSessions || stats.completed_sessions_count || 0, CalendarDays, "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60"],
+            ].map(([label, value, Icon, iconStyle]) => (
+              <div key={label} className="flex items-center gap-2 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-slate-200/70 dark:border-slate-800 p-2 shadow-xs">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${iconStyle}`}>
+                  <Icon className="h-3.5 w-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-tight">{value}</p>
+                  <p className="text-[10px] sm:text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">{label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       {/* Phím tắt thao tác giảng dạy */}

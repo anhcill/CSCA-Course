@@ -4,6 +4,8 @@
   "main": "server.js",
   "scripts": {
     "serve": "cross-env NODE_ENV=development nodemon --watch backend --watch database --ignore frontend --ignore frontend/node_modules ./backend/server.js",
+    "dev:console:backend": "node scripts/dev-console.mjs backend",
+    "dev:console:frontend": "node scripts/dev-console.mjs frontend",
     "build": "npm install && npm install --prefix frontend && npm run build --prefix frontend",
     "migrate": "node ./run_sql.js",
     "migrate:baseline": "cross-env MIGRATION_BASELINE=true node ./run_sql.js",

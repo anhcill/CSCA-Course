@@ -18,6 +18,7 @@ export default function ClassWorkspaceScheduleTab({
   sessions = [],
   schedules = [],
   classId,
+  classBasePath = `/lms/teach/classes/${classId}`,
   onOpenCreateSession,
   onRefreshSchedules,
   onConfigureMeeting,
@@ -33,7 +34,7 @@ export default function ClassWorkspaceScheduleTab({
         </div>
         <div className="flex items-center gap-2">
           <Link
-            to={`/lms/teach/classes/${classId}/attendance`}
+            to={`${classBasePath}/attendance`}
             className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
           >
             Mở sổ điểm danh
@@ -120,13 +121,13 @@ export default function ClassWorkspaceScheduleTab({
 
                 <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                   <Link
-                    to={`/lms/teach/classes/${classId}/sessions/${s.id}`}
+                    to={`${classBasePath}/sessions/${s.id}`}
                     className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
                   >
                     <Video className="h-3.5 w-3.5" /> Mở buổi học
                   </Link>
                   <Link
-                    to={`/lms/teach/classes/${classId}/attendance?sessionId=${s.id}`}
+                    to={`${classBasePath}/attendance?sessionId=${s.id}`}
                     className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
                   >
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Điểm danh

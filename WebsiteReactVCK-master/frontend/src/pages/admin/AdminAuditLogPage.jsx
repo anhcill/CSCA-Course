@@ -20,6 +20,7 @@ export default function AdminAuditLogPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("ALL");
   const [selectedLog, setSelectedLog] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -30,7 +31,7 @@ export default function AdminAuditLogPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const res = await fetchAdminAuditLogs({ action: actionFilter, page, limit: 20 });
+      const res = await fetchAdminAuditLogs({ action: actionFilter, search: appliedSearch, page, limit: 20 });
       if (!res?.success) throw new Error(res?.message || "Không thể tải nhật ký kiểm toán.");
       setLogs(Array.isArray(res.data?.logs) ? res.data.logs : []);
       setPagination({ total: Number(res.data?.total || 0), limit: Number(res.data?.limit || 20) });
@@ -41,23 +42,20 @@ export default function AdminAuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [actionFilter, page]);
+  }, [actionFilter, appliedSearch, page]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPage(1);
+      setAppliedSearch(searchTerm.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
     loadLogs();
   }, [loadLogs]);
 
-  const filteredLogs = logs.filter((log) => {
-    const matchesAction = actionFilter === "ALL" || log.action === actionFilter;
-    const term = searchTerm.toLowerCase();
-    const matchesSearch =
-      !searchTerm ||
-      String(log.actor || "").toLowerCase().includes(term) ||
-      String(log.action || "").toLowerCase().includes(term) ||
-      String(log.target || "").toLowerCase().includes(term) ||
-      String(log.details || "").toLowerCase().includes(term);
-    return matchesAction && matchesSearch;
-  });
   const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.limit));
   const changeAction = (action) => {
     setActionFilter(action);
@@ -116,7 +114,7 @@ export default function AdminAuditLogPage() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Tìm theo actor, action, target..."
+            placeholder="Tìm toàn bộ nhật ký theo tài khoản, hành động, đối tượng..."
             className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-amber-500 transition"
           />
         </div>
@@ -151,14 +149,14 @@ export default function AdminAuditLogPage() {
                     <Loading loading={true} text="Đang tải nhật ký kiểm toán..." fullScreen={false} />
                   </td>
                 </tr>
-              ) : filteredLogs.length === 0 ? (
+              ) : logs.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-gray-400">
                     Không có bản ghi nhật ký kiểm toán nào.
                   </td>
                 </tr>
               ) : (
-                filteredLogs.map((log) => (
+                logs.map((log) => (
                   <tr key={log.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition">
                     <td className="py-4 px-5">
                       <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">

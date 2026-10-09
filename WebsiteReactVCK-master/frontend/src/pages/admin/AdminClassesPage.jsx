@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   FiBookOpen,
@@ -6,11 +7,9 @@ import {
   FiLink,
   FiCheckCircle,
   FiClock,
-  FiUsers,
   FiExternalLink,
   FiX,
   FiRefreshCw,
-  FiPlus,
 } from "react-icons/fi";
 import {
   fetchAdminClasses, updateAdminClassMapping, reviewAdminClass,
@@ -308,6 +307,12 @@ export default function AdminClassesPage() {
                       )}
                     </td>
                     <td className="py-4 px-5 text-right">
+                      <Link
+                        to={`/admin/classes/${cls.id}`}
+                        className="mr-2 inline-flex items-center gap-1.5 rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
+                      >
+                        <FiExternalLink className="h-3.5 w-3.5" /> Xem lớp
+                      </Link>
                       <button
                         onClick={() => openMappingModal(cls)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-bold text-xs transition shadow-sm"

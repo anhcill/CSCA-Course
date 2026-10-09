@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Calendar } from "lucide-react";
-import { fetchAdminCalendar } from "../../api/lmsClient";
+import { fetchAdminCalendar, updateLiveSession } from "../../api/lmsClient";
 import { LoadingState, ErrorState, EmptyState } from "../../../components/common/StateView";
 import AdminCalendarConflictBanner from "../components/calendar/AdminCalendarConflictBanner";
 import AdminCalendarFilterBar from "../components/calendar/AdminCalendarFilterBar";
 import AdminCalendarSessionRow from "../components/calendar/AdminCalendarSessionRow";
 import SessionChangeHistoryModal from "../../calendar/components/SessionChangeHistoryModal";
 import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
+import AdminSessionRescheduleModal from "../components/calendar/AdminSessionRescheduleModal";
 
 export default function AdminCalendarPage() {
   const [loading, setLoading] = useState(true);
@@ -14,6 +15,7 @@ export default function AdminCalendarPage() {
   const [data, setData] = useState({ sessions: [], conflicts: [], classes: [], teachers: [], summary: {} });
   const [filters, setFilters] = useState({ timeRange: "next_30_days", classId: "", teacherId: "", status: "" });
   const [selectedSessionForHistory, setSelectedSessionForHistory] = useState(null);
+  const [selectedSessionForEdit, setSelectedSessionForEdit] = useState(null);
 
   const calculateDateRange = useCallback((timeRange) => {
     const now = new Date();
@@ -180,6 +182,7 @@ export default function AdminCalendarPage() {
                       key={session.id}
                       session={session}
                       onOpenHistory={(sess) => setSelectedSessionForHistory(sess)}
+                      onReschedule={setSelectedSessionForEdit}
                     />
                   ))}
                 </tbody>
@@ -194,6 +197,21 @@ export default function AdminCalendarPage() {
           onClose={() => setSelectedSessionForHistory(null)}
           sessionId={selectedSessionForHistory?.id}
           sessionTitle={selectedSessionForHistory?.title}
+        />
+        <AdminSessionRescheduleModal
+          session={selectedSessionForEdit}
+          onClose={() => setSelectedSessionForEdit(null)}
+          onSave={async ({ startTime, endTime, changeReason }) => {
+            await updateLiveSession({
+              sessionId: selectedSessionForEdit.id,
+              startTime,
+              endTime,
+              changeReason,
+              expectedVersion: selectedSessionForEdit.version,
+            });
+            setSelectedSessionForEdit(null);
+            await loadCalendar();
+          }}
         />
       </div>
     </div>

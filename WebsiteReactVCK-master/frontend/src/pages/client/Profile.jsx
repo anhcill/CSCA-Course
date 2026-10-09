@@ -34,19 +34,19 @@ const tabs = [
 ];
 
 const StatCard = ({ icon, value, label, accent }) => (
-  <article className="rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm dark:border-stone-700 dark:bg-stone-900">
-    <div className={`mb-4 inline-flex rounded-xl p-3 ${accent}`}>{icon}</div>
-    <p className="text-3xl font-black text-stone-900 dark:text-white">{value}</p>
-    <p className="mt-1 text-sm text-stone-600 dark:text-stone-400">{label}</p>
+  <article className="rounded-xl border border-cyan-200/80 bg-white p-3.5 shadow-sm transition hover:shadow-md dark:border-stone-700 dark:bg-stone-900">
+    <div className={`mb-2.5 inline-flex rounded-lg p-2 text-sm ${accent}`}>{icon}</div>
+    <p className="text-2xl font-black text-stone-900 dark:text-white">{value}</p>
+    <p className="mt-0.5 text-xs text-stone-600 dark:text-stone-400">{label}</p>
   </article>
 );
 
 const Detail = ({ icon, label, value, wide = false }) => (
-  <div className={`flex gap-3 rounded-2xl border border-cyan-100 bg-white/80 p-4 dark:border-stone-700 dark:bg-stone-800/70 ${wide ? 'sm:col-span-2' : ''}`}>
-    <span className="mt-1 text-teal-700 dark:text-teal-400">{icon}</span>
+  <div className={`flex gap-2.5 rounded-xl border border-cyan-100 bg-white/80 p-3 dark:border-stone-700 dark:bg-stone-800/70 ${wide ? 'sm:col-span-2' : ''}`}>
+    <span className="mt-0.5 text-teal-700 dark:text-teal-400">{icon}</span>
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">{label}</p>
-      <p className="mt-1 font-semibold text-stone-900 dark:text-stone-100">{value || 'Chưa cập nhật'}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">{label}</p>
+      <p className="mt-0.5 text-sm font-semibold text-stone-900 dark:text-stone-100">{value || 'Chưa cập nhật'}</p>
     </div>
   </div>
 );
@@ -97,31 +97,31 @@ const Profile = () => {
   if (!authUser) return null;
 
   return (
-    <main className="min-h-screen bg-[#f4f8f7] pb-8 pt-24 text-slate-900 dark:bg-slate-900 dark:text-slate-100 md:pb-12 md:pt-28">
+    <div className="min-h-screen bg-[#f4f8f7] pb-8 pt-3 text-slate-900 dark:bg-slate-900 dark:text-slate-100 md:pb-10 md:pt-4">
       <Meta title="Hồ sơ du học | CSCA Course" description="Quản lý hành trình học HSK, HSKK, CSCA và kế hoạch du học Trung Quốc." keywords="hồ sơ du học Trung Quốc, HSK, HSKK, CSCA" />
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <section className="relative overflow-hidden rounded-t-[2rem] bg-gradient-to-br from-teal-700 via-cyan-700 to-slate-800 p-6 text-white shadow-2xl shadow-teal-950/20 md:p-10">
-          <div className="pointer-events-none absolute -right-16 -top-20 h-72 w-72 rounded-full border-[34px] border-cyan-300/10" />
-          <div className="relative grid items-center gap-7 md:grid-cols-[auto_1fr]">
+        <section className="relative overflow-hidden rounded-t-2xl bg-gradient-to-br from-teal-700 via-cyan-700 to-slate-800 p-5 text-white shadow-xl shadow-teal-950/20 sm:p-6 md:px-8 md:py-6">
+          <div className="pointer-events-none absolute -right-10 -top-14 h-48 w-48 rounded-full border-[20px] border-cyan-300/10" />
+          <div className="relative grid items-center gap-4 sm:gap-6 md:grid-cols-[auto_1fr]">
             <div className="relative mx-auto md:mx-0">
-              <img src={getAvatarUrl(authUser)} onError={handleAvatarError} alt={`Ảnh đại diện của ${displayName}`} className="h-36 w-36 rounded-full border-4 border-cyan-200 object-cover shadow-xl md:h-44 md:w-44" />
-              <button onClick={() => setAvatarOpen(true)} className="absolute bottom-1 right-1 rounded-full bg-cyan-300 p-3 text-teal-950 shadow-lg hover:bg-cyan-200 focus:outline-none focus:ring-2 focus:ring-white" aria-label="Đổi ảnh đại diện"><FaCamera /></button>
+              <img src={getAvatarUrl(authUser)} onError={handleAvatarError} alt={`Ảnh đại diện của ${displayName}`} className="h-24 w-24 rounded-full border-2 border-cyan-200 object-cover shadow-lg sm:h-28 sm:w-28 md:h-32 md:w-32" />
+              <button onClick={() => setAvatarOpen(true)} className="absolute bottom-0 right-0 rounded-full bg-cyan-300 p-2 text-xs text-teal-950 shadow-md hover:bg-cyan-200 focus:outline-none focus:ring-2 focus:ring-white" aria-label="Đổi ảnh đại diện"><FaCamera /></button>
             </div>
             <div className="text-center md:text-left">
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-cyan-200">我的留学之路</p>
-              <h1 className="mt-2 text-3xl font-black md:text-5xl">{displayName}</h1>
-              <p className="mt-3 text-teal-100">Hành trình học tập và kế hoạch du học Trung Quốc của bạn</p>
-              <div className="mt-5 flex flex-wrap justify-center gap-2 md:justify-start">
-                {heroChips.length ? heroChips.map((chip) => <span key={chip} className="rounded-full border border-cyan-200/50 bg-white/10 px-4 py-2 text-sm font-semibold backdrop-blur">{chip}</span>) : <span className="rounded-full border border-white/30 px-4 py-2 text-sm">Hoàn thiện kế hoạch du học để bắt đầu hành trình</span>}
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-200">我的留学之路</p>
+              <h1 className="mt-1 text-2xl font-black sm:text-3xl">{displayName}</h1>
+              <p className="mt-1 text-xs text-teal-100 sm:text-sm">Hành trình học tập và kế hoạch du học Trung Quốc của bạn</p>
+              <div className="mt-3 flex flex-wrap justify-center gap-1.5 md:justify-start">
+                {heroChips.length ? heroChips.map((chip) => <span key={chip} className="rounded-full border border-cyan-200/50 bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">{chip}</span>) : <span className="rounded-full border border-white/30 px-3 py-1 text-xs">Hoàn thiện kế hoạch du học để bắt đầu hành trình</span>}
               </div>
-              <p className="mt-5 text-sm text-teal-100">Thành viên từ {authUser.createdAt ? new Date(authUser.createdAt).toLocaleDateString('vi-VN') : '—'} · {authUser.emailVerified ? 'Email đã xác minh' : 'Email chưa xác minh'}</p>
+              <p className="mt-2.5 text-xs text-teal-100/90">Thành viên từ {authUser.createdAt ? new Date(authUser.createdAt).toLocaleDateString('vi-VN') : '—'} · {authUser.emailVerified ? 'Email đã xác minh' : 'Email chưa xác minh'}</p>
             </div>
           </div>
         </section>
 
-        <nav className="overflow-x-auto border-x border-b border-slate-200 bg-slate-100 p-2 shadow-lg dark:border-slate-700 dark:bg-slate-800" aria-label="Các mục hồ sơ">
-          <div className="flex min-w-max gap-2 md:min-w-0">
+        <nav className="overflow-x-auto border-x border-b border-slate-200 bg-slate-100 p-1.5 shadow-md dark:border-slate-700 dark:bg-slate-800" aria-label="Các mục hồ sơ">
+          <div className="flex min-w-max gap-1.5 md:min-w-0">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.key;
@@ -131,38 +131,38 @@ const Profile = () => {
                   type="button"
                   onClick={() => setActiveTab(tab.key)}
                   aria-current={active ? 'page' : undefined}
-                  className={`group flex min-w-[150px] flex-1 items-center justify-center gap-3 rounded-xl border px-5 py-3.5 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${active ? 'border-indigo-600 bg-indigo-600 text-white shadow-md shadow-indigo-900/20 dark:border-indigo-400 dark:bg-indigo-500 dark:text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:border-indigo-400 dark:hover:bg-slate-600'}`}
+                  className={`group flex min-w-[125px] flex-1 items-center justify-center gap-2.5 rounded-lg border px-3.5 py-2.5 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${active ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm dark:border-indigo-400 dark:bg-indigo-500 dark:text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:border-indigo-400 dark:hover:bg-slate-600'}`}
                 >
-                  <Icon className={active ? 'text-indigo-100' : 'text-slate-400 group-hover:text-indigo-500'} />
-                  <span><strong className="block whitespace-nowrap text-sm">{tab.label}</strong><small className="text-xs opacity-70">{tab.chinese}</small></span>
+                  <Icon className={`text-sm ${active ? 'text-indigo-100' : 'text-slate-400 group-hover:text-indigo-500'}`} />
+                  <span><strong className="block whitespace-nowrap text-xs sm:text-sm">{tab.label}</strong><small className="text-[11px] opacity-70">{tab.chinese}</small></span>
                 </button>
               );
             })}
           </div>
         </nav>
 
-        <div className="min-h-[480px] rounded-b-[2rem] border-x border-b border-cyan-200 bg-white/55 p-5 shadow-lg dark:border-stone-700 dark:bg-stone-950/40 md:p-8">
+        <div className="min-h-[360px] rounded-b-2xl border-x border-b border-cyan-200 bg-white/55 p-4 shadow-lg dark:border-stone-700 dark:bg-stone-950/40 sm:p-5 md:p-6">
           {activeTab === 'overview' && (
             <section aria-labelledby="overview-title">
-              <div className="mb-6 flex items-end justify-between gap-4">
-                <div><p className="text-xs font-bold uppercase tracking-[0.25em] text-teal-700 dark:text-teal-400">学习概览</p><h2 id="overview-title" className="mt-1 text-2xl font-black">Tổng quan học tập</h2></div>
-                {error && <button onClick={loadDashboard} className="rounded-xl border border-teal-300 px-4 py-2 text-sm font-semibold text-teal-700 dark:text-teal-300">Thử lại</button>}
+              <div className="mb-4 flex items-end justify-between gap-4">
+                <div><p className="text-[11px] font-bold uppercase tracking-[0.2em] text-teal-700 dark:text-teal-400">学习概览</p><h2 id="overview-title" className="mt-0.5 text-xl font-black">Tổng quan học tập</h2></div>
+                {error && <button onClick={loadDashboard} className="rounded-xl border border-teal-300 px-3.5 py-1.5 text-xs font-semibold text-teal-700 dark:text-teal-300">Thử lại</button>}
               </div>
               {loading ? (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-36 animate-pulse rounded-2xl bg-stone-200 dark:bg-stone-800" />)}</div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-24 animate-pulse rounded-xl bg-stone-200 dark:bg-stone-800" />)}</div>
               ) : error ? (
-                <div className="rounded-2xl border border-teal-200 bg-teal-50 p-5 text-teal-800 dark:border-teal-900 dark:bg-teal-950/30 dark:text-teal-200">{error}</div>
+                <div className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-800 dark:border-teal-900 dark:bg-teal-950/30 dark:text-teal-200">{error}</div>
               ) : (
                 <>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <StatCard icon={<FaBookOpen />} value={dashboard.summary.coursesStarted} label="Khóa học đã bắt đầu" accent="bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300" />
                     <StatCard icon={<FaCheckCircle />} value={dashboard.summary.coursesCompleted} label="Khóa học hoàn thành" accent="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" />
                     <StatCard icon={<FaGraduationCap />} value={dashboard.summary.lessonsCompleted} label="Bài học hoàn thành" accent="bg-cyan-100 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300" />
                     <StatCard icon={<FaAward />} value={`${dashboard.summary.averageProgressPct}%`} label="Tiến độ trung bình" accent="bg-stone-200 text-stone-700 dark:bg-stone-700 dark:text-stone-100" />
                   </div>
-                  <div className="mt-7 rounded-3xl border border-cyan-200 bg-[#fffaf0] p-6 dark:border-stone-700 dark:bg-stone-900">
-                    <h3 className="text-xl font-bold">Chào mừng trở lại, {displayName}</h3>
-                    <p className="mt-2 text-stone-600 dark:text-stone-400">Theo dõi tiến độ học, hoàn thiện kế hoạch du học và lưu giữ các chứng chỉ của bạn trong từng mục phía trên.</p>
+                  <div className="mt-5 rounded-2xl border border-cyan-200 bg-[#fffaf0] p-4 dark:border-stone-700 dark:bg-stone-900 sm:p-5">
+                    <h3 className="text-lg font-bold">Chào mừng trở lại, {displayName}</h3>
+                    <p className="mt-1 text-sm text-stone-600 dark:text-stone-400">Theo dõi tiến độ học, hoàn thiện kế hoạch du học và lưu giữ các chứng chỉ của bạn trong từng mục phía trên.</p>
                   </div>
                 </>
               )}
@@ -171,18 +171,18 @@ const Profile = () => {
 
           {activeTab === 'courses' && (
             <section aria-labelledby="courses-title">
-              <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-teal-700 dark:text-teal-400">在学课程</p><h2 id="courses-title" className="mt-1 text-2xl font-black">Khóa học đang học</h2></div><Link to="/courses" className="rounded-xl bg-teal-700 px-5 py-2.5 font-semibold text-white hover:bg-teal-800">Khám phá khóa học</Link></div>
+              <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-[11px] font-bold uppercase tracking-[0.2em] text-teal-700 dark:text-teal-400">在学课程</p><h2 id="courses-title" className="mt-0.5 text-xl font-black">Khóa học đang học</h2></div><Link to="/courses" className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800">Khám phá khóa học</Link></div>
               {!loading && !error && dashboard.learningProgress.length === 0 ? (
-                <div className="mt-6 rounded-2xl border border-dashed border-cyan-300 p-10 text-center text-stone-600 dark:border-stone-700 dark:text-stone-400">Bạn chưa có tiến trình học. Hãy chọn khóa HSK, HSKK hoặc CSCA phù hợp.</div>
+                <div className="mt-5 rounded-xl border border-dashed border-cyan-300 p-8 text-center text-sm text-stone-600 dark:border-stone-700 dark:text-stone-400">Bạn chưa có tiến trình học. Hãy chọn khóa HSK, HSKK hoặc CSCA phù hợp.</div>
               ) : (
-                <div className="mt-6 grid gap-5 md:grid-cols-2">
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
                   {dashboard.learningProgress.map((course) => (
-                    <article key={course.courseId} className="overflow-hidden rounded-2xl border border-cyan-100 bg-white shadow-sm dark:border-stone-700 dark:bg-stone-800">
-                      <div className="p-5">
-                        <div className="flex items-start justify-between gap-3"><h3 className="text-lg font-bold">{course.courseName}</h3><span className={`rounded-full px-3 py-1 text-xs font-bold ${course.progressPct === 100 ? 'bg-emerald-100 text-emerald-700' : 'bg-cyan-100 text-cyan-800'}`}>{course.progressPct === 100 ? 'Hoàn thành' : `${course.progressPct}%`}</span></div>
-                        <progress max="100" value={course.progressPct} className="mt-5 h-2 w-full accent-teal-700" aria-label={`Tiến độ ${course.courseName}`} />
-                        <div className="mt-3 flex justify-between text-sm text-stone-600 dark:text-stone-400"><span>{course.completedLessons}/{course.totalLessons} bài học</span>{course.lastLessonName && <span className="max-w-[55%] truncate">Gần nhất: {course.lastLessonName}</span>}</div>
-                        {course.progressPct < 100 && <Link to={`/detail-course/${course.courseId}`} className="mt-5 inline-flex font-semibold text-teal-700 hover:underline dark:text-teal-400">Tiếp tục học →</Link>}
+                    <article key={course.courseId} className="overflow-hidden rounded-xl border border-cyan-100 bg-white shadow-sm dark:border-stone-700 dark:bg-stone-800">
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3"><h3 className="font-bold">{course.courseName}</h3><span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${course.progressPct === 100 ? 'bg-emerald-100 text-emerald-700' : 'bg-cyan-100 text-cyan-800'}`}>{course.progressPct === 100 ? 'Hoàn thành' : `${course.progressPct}%`}</span></div>
+                        <progress max="100" value={course.progressPct} className="mt-3 h-2 w-full accent-teal-700" aria-label={`Tiến độ ${course.courseName}`} />
+                        <div className="mt-2.5 flex justify-between text-xs text-stone-600 dark:text-stone-400"><span>{course.completedLessons}/{course.totalLessons} bài học</span>{course.lastLessonName && <span className="max-w-[55%] truncate">Gần nhất: {course.lastLessonName}</span>}</div>
+                        {course.progressPct < 100 && <Link to={`/detail-course/${course.courseId}`} className="mt-3 inline-flex text-sm font-semibold text-teal-700 hover:underline dark:text-teal-400">Tiếp tục học →</Link>}
                       </div>
                     </article>
                   ))}
@@ -193,10 +193,10 @@ const Profile = () => {
 
           {activeTab === 'study-plan' && (
             <section aria-labelledby="study-plan-title">
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-teal-700 dark:text-teal-400">留学计划</p>
-              <h2 id="study-plan-title" className="mt-1 text-2xl font-black">Kế hoạch du học Trung Quốc</h2>
-              <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">Thông tin định hướng do bạn tự khai báo, không phải hồ sơ tuyển sinh chính thức.</p>
-              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-teal-700 dark:text-teal-400">留学计划</p>
+              <h2 id="study-plan-title" className="mt-0.5 text-xl font-black">Kế hoạch du học Trung Quốc</h2>
+              <p className="mt-1 text-xs text-stone-600 dark:text-stone-400">Thông tin định hướng do bạn tự khai báo, không phải hồ sơ tuyển sinh chính thức.</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <Detail icon={<FaGraduationCap />} label="Bậc học hiện tại" value={educationLabels[study.currentEducationLevel]} />
                 <Detail icon={<FaSchool />} label="Trường hiện tại" value={study.currentSchool} />
                 <Detail icon={<FaUniversity />} label="Hệ / ngành mục tiêu" value={[programLabels[study.targetProgram], study.targetMajor].filter(Boolean).join(' · ')} />
@@ -204,33 +204,33 @@ const Profile = () => {
                 <Detail icon={<FaBookOpen />} label="Mục tiêu HSK / HSKK" value={[study.hskLevel && `HSK ${study.hskLevel}`, study.hskkLevel && `HSKK ${hskkLabels[study.hskkLevel]}`].filter(Boolean).join(' · ')} />
                 <Detail icon={<FaPen />} label="Mục tiêu" value={study.studyGoal} wide />
               </div>
-              <button onClick={() => setActiveTab('settings')} className="mt-6 rounded-xl bg-teal-700 px-6 py-3 font-semibold text-white hover:bg-teal-800">Cập nhật kế hoạch</button>
+              <button onClick={() => setActiveTab('settings')} className="mt-5 rounded-xl bg-teal-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-800">Cập nhật kế hoạch</button>
             </section>
           )}
 
           {activeTab === 'certificates' && (
             <section aria-labelledby="certificates-title">
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-teal-700 dark:text-teal-400">学习成果</p>
-              <h2 id="certificates-title" className="mt-1 text-2xl font-black">Chứng chỉ hoàn thành</h2>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-teal-700 dark:text-teal-400">学习成果</p>
+              <h2 id="certificates-title" className="mt-0.5 text-xl font-black">Chứng chỉ hoàn thành</h2>
               {dashboard.certificates.length ? (
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {dashboard.certificates.map((certificate) => (
-                    <button key={certificate.courseId} onClick={() => setSelectedCertificate(certificate)} className="flex w-full items-center gap-4 rounded-2xl border border-cyan-200 bg-[#fffaf0] p-5 text-left transition hover:border-teal-400 hover:shadow-md dark:border-stone-700 dark:bg-stone-900">
-                      <span className="rounded-xl bg-cyan-100 p-4 text-cyan-700"><FaAward /></span>
-                      <span><strong className="block">{certificate.courseName}</strong><small className="text-stone-500">Hoàn thành {new Date(certificate.completedAt).toLocaleDateString('vi-VN')}</small><span className="mt-2 block text-sm font-semibold text-teal-700 dark:text-teal-400">Xem và tải PNG →</span></span>
+                    <button key={certificate.courseId} onClick={() => setSelectedCertificate(certificate)} className="flex w-full items-center gap-3.5 rounded-xl border border-cyan-200 bg-[#fffaf0] p-4 text-left transition hover:border-teal-400 hover:shadow-md dark:border-stone-700 dark:bg-stone-900">
+                      <span className="rounded-lg bg-cyan-100 p-3 text-cyan-700"><FaAward /></span>
+                      <span><strong className="block text-sm">{certificate.courseName}</strong><small className="text-xs text-stone-500">Hoàn thành {new Date(certificate.completedAt).toLocaleDateString('vi-VN')}</small><span className="mt-1 block text-xs font-semibold text-teal-700 dark:text-teal-400">Xem và tải PNG →</span></span>
                     </button>
                   ))}
                 </div>
               ) : (
-                <p className="mt-6 rounded-2xl border border-dashed border-cyan-300 p-10 text-center text-stone-600 dark:border-stone-700 dark:text-stone-400">Hoàn thành một khóa học để mở chứng chỉ đầu tiên.</p>
+                <p className="mt-5 rounded-xl border border-dashed border-cyan-300 p-8 text-center text-sm text-stone-600 dark:border-stone-700 dark:text-stone-400">Hoàn thành một khóa học để mở chứng chỉ đầu tiên.</p>
               )}
             </section>
           )}
 
           {activeTab === 'settings' && (
             <section aria-labelledby="settings-title">
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-teal-700 dark:text-teal-400">个人设置</p>
-              <h2 id="settings-title" className="mb-6 mt-1 text-2xl font-black">Cài đặt hồ sơ</h2>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-teal-700 dark:text-teal-400">个人设置</p>
+              <h2 id="settings-title" className="mb-4 mt-0.5 text-xl font-black">Cài đặt hồ sơ</h2>
               <ProfileSettings authUser={authUser} />
             </section>
           )}
@@ -239,7 +239,7 @@ const Profile = () => {
 
       <AvatarModal isOpen={avatarOpen} onClose={() => setAvatarOpen(false)} onSave={saveAvatar} currentAvatarUrl={authUser.avatarUrl} saving={saving} />
       <CertificateModal certificate={selectedCertificate} studentName={displayName} onClose={() => setSelectedCertificate(null)} />
-    </main>
+    </div>
   );
 };
 

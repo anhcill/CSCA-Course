@@ -264,6 +264,7 @@ router.get("/audit-logs", ...adminOnly, async (req, res) => {
   const page = Math.min(Math.max(Number(req.query.page) || 1, 1), 10000);
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
   const action = typeof req.query.action === "string" ? req.query.action.trim().toUpperCase() : "ALL";
+  const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 200) : "";
   const offset = (page - 1) * limit;
   const params = [];
   const filters = [];
@@ -275,7 +276,15 @@ router.get("/audit-logs", ...adminOnly, async (req, res) => {
     };
     const mappedActions = actionMap[action] || [action.toLowerCase().replaceAll("_", ".")];
     params.push(mappedActions);
-    filters.push(`a.action = ANY($1::text[])`);
+    filters.push(`a.action = ANY($${params.length}::text[])`);
+  }
+  if (search) {
+    params.push(`%${search}%`);
+    filters.push(`(COALESCE(u.email, 'system_sync') ILIKE $${params.length}
+      OR u.username ILIKE $${params.length}
+      OR REPLACE(a.action, '.', '_') ILIKE $${params.length}
+      OR (a.entity_type || CASE WHEN a.entity_id IS NOT NULL THEN ': ' || a.entity_id ELSE '' END) ILIKE $${params.length}
+      OR COALESCE(a.metadata->>'details', a.metadata->>'reason', '') ILIKE $${params.length})`);
   }
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
   const limitParam = `$${params.length + 1}`;
@@ -290,7 +299,7 @@ router.get("/audit-logs", ...adminOnly, async (req, res) => {
          ${where} ORDER BY a.created_at DESC, a.id DESC LIMIT ${limitParam} OFFSET ${offsetParam}`,
         [...params, limit, offset],
       ),
-      query(`SELECT COUNT(*)::int AS total FROM audit_events a ${where}`, params),
+      query(`SELECT COUNT(*)::int AS total FROM audit_events a LEFT JOIN users u ON u.id = a.actor_id ${where}`, params),
     ]);
     return res.json({ success: true, data: {
       logs: rows.rows.map((row) => ({

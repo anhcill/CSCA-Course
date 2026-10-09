@@ -290,10 +290,10 @@ export const fetchLiveClassSessions = async (classId) => (
   request(`/live-classes/${encodeURIComponent(classId)}/sessions`)
 );
 
-export const updateLiveSession = async ({ sessionId, title, startTime, endTime, meetUrl, passcode, status, changeReason }) => (
+export const updateLiveSession = async ({ sessionId, title, startTime, endTime, meetUrl, passcode, status, changeReason, expectedVersion }) => (
   requestCalendarMutation(`/live-classes/sessions/${encodeURIComponent(sessionId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status, changeReason }),
+    body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status, changeReason, expectedVersion }),
   }, { sessionId, type: "session-updated" })
 );
 
@@ -599,6 +599,14 @@ export const fetchClassStudentProgress = async (classId) => (
 // Admin Console API helpers
 export const fetchAdminDashboardKpi = async () => request("/admin/kpi-summary");
 
+export const fetchAdminUsers = async ({ page = 1, limit = 8, search = "", role = "all", status = "all", signal } = {}) => {
+  const params = new URLSearchParams({ page, limit });
+  if (search.trim()) params.set("search", search.trim());
+  if (role !== "all") params.set("role", role);
+  if (status !== "all") params.set("status", status);
+  return request(`/admin/users?${params.toString()}`, { signal });
+};
+
 export const toggleUserLockStatus = async (userId, isLocked) => (
   request(`/admin/users/${encodeURIComponent(userId)}/lock`, {
     method: "PATCH",
@@ -729,8 +737,9 @@ export const reviewAdminMembership = (membershipId, decision) => request(
 );
 
 // Admin Audit Logs
-export const fetchAdminAuditLogs = async ({ page = 1, limit = 20, action = "ALL" } = {}) => {
+export const fetchAdminAuditLogs = async ({ page = 1, limit = 20, action = "ALL", search = "" } = {}) => {
   const params = new URLSearchParams({ page, limit, action });
+  if (search.trim()) params.set("search", search.trim());
   return request(`/v1/admin/audit-logs?${params.toString()}`);
 };
 

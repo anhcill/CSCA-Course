@@ -16,6 +16,7 @@ import {
 } from "react-icons/fi";
 import { fetchAdminDashboardKpi } from "../../features/api/lmsClient";
 import Loading from "../../components/Loading.jsx";
+import { ErrorState } from "../../components/common/StateView";
 
 const EMPTY_ADMIN_KPIS = {
   activeLearnersCount: 0,
@@ -36,17 +37,17 @@ const EMPTY_ADMIN_KPIS = {
 export default function Dashboard() {
   const [kpiData, setKpiData] = useState(EMPTY_ADMIN_KPIS);
   const [loadingKpi, setLoadingKpi] = useState(true);
+  const [kpiError, setKpiError] = useState("");
 
   const loadKpis = useCallback(async () => {
     setLoadingKpi(true);
+    setKpiError("");
     try {
       const res = await fetchAdminDashboardKpi();
-      if (res && res.success && res.data) {
-        setKpiData({ ...EMPTY_ADMIN_KPIS, ...res.data });
-      }
+      if (!res?.success || !res.data) throw new Error(res?.message || "Không thể tải KPI quản trị");
+      setKpiData({ ...EMPTY_ADMIN_KPIS, ...res.data });
     } catch (error) {
-      toast.error(error?.message || "Không thể tải KPI quản trị");
-      setKpiData(EMPTY_ADMIN_KPIS);
+      setKpiError(error?.message || "Không thể tải KPI quản trị");
     } finally {
       setLoadingKpi(false);
     }
@@ -131,6 +132,10 @@ export default function Dashboard() {
 
   if (isLoading) {
     return <Loading loading={true} text="Đang đồng bộ dữ liệu KPI hệ thống..." fullScreen={false} className="min-h-[60vh] py-16" />;
+  }
+
+  if (kpiError) {
+    return <div className="mx-auto max-w-xl py-16"><ErrorState title="Chưa thể tải bảng điều khiển" message={kpiError} onRetry={loadKpis} /></div>;
   }
 
   return (
@@ -441,9 +446,9 @@ export default function Dashboard() {
             </p>
           </div>
 
-          <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
-            ● Hệ thống hoạt động bình thường
-          </span>
+          <Link to="/admin/audit-logs" className="text-[11px] font-bold text-blue-600 hover:underline dark:text-blue-400">
+            Xem nhật ký đầy đủ
+          </Link>
         </div>
 
         <div className="divide-y divide-gray-100 dark:divide-gray-700/60">

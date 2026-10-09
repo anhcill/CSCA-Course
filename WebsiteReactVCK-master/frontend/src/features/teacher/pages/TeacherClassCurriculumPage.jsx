@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { ArrowLeft, BookOpen, Clock3, ExternalLink, FileText, PlayCircle } from "lucide-react";
 import { fetchClassDetails, fetchCourseWorkspace } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
@@ -13,6 +13,9 @@ const formatDuration = (seconds) => {
 
 export default function TeacherClassCurriculumPage() {
   const { classId } = useParams();
+  const location = useLocation();
+  const classBasePath = location.pathname.startsWith("/admin/classes/")
+    ? `/admin/classes/${classId}` : `/lms/teach/classes/${classId}`;
   const [workspace, setWorkspace] = useState(null);
   const [classInfo, setClassInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -63,7 +66,7 @@ export default function TeacherClassCurriculumPage() {
   return (
     <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl space-y-6">
-        <Link to={`/lms/teach/classes/${classId}`} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400">
+        <Link to={classBasePath} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400">
           <ArrowLeft className="h-4 w-4" /> Quay lại lớp và lịch dạy
         </Link>
 

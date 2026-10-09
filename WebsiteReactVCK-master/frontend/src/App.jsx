@@ -32,6 +32,7 @@ import { LoadingProvider } from "./context/LoadingContext.jsx";
 import { useAuthContext } from "./context/AuthContext.jsx";
 import { TEACHER_ROLES, USER_ROLES, isTeacherRole } from "./constants/roles";
 import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
+import PwaInstallPrompt from "./components/common/PwaInstallPrompt.jsx";
 
 // LMS feature pages
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.jsx"));
@@ -185,6 +186,9 @@ function AppRoutes() {
         <Route path="support" element={<StudentSupportPage />} />
         <Route path="classes" element={<AdminClassesPage />} />
         <Route path="classes/:classId" element={<TeacherClassDetailPage />} />
+        <Route path="classes/:classId/curriculum" element={<TeacherClassCurriculumPage />} />
+        <Route path="classes/:classId/sessions/:sessionId" element={<TeacherSessionWorkspacePage />} />
+        <Route path="classes/:classId/attendance" element={<TeacherAttendancePage />} />
         <Route path="calendar" element={<AdminCalendarPage />} />
         <Route path="permissions" element={<AdminPermissionsPage />} />
         <Route path="sync" element={<AdminSyncPage />} />
@@ -225,6 +229,7 @@ function AppContent() {
             <AppRoutes />
           </Layout>
         </LmsRouteGuard>
+        <PwaInstallPrompt />
         <SessionExpiredModal
           isOpen={sessionExpired}
           onClose={dismissSessionExpired}
@@ -245,6 +250,7 @@ function AppContent() {
         <AppRoutes />
       </main>
       {!isAdminPage && <Footer />}
+      <PwaInstallPrompt />
       <SessionExpiredModal
         isOpen={sessionExpired}
         onClose={dismissSessionExpired}

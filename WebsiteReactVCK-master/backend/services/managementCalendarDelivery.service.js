@@ -168,6 +168,7 @@ const schedulePayload = (schedule) => ({
 
 const sessionPayload = (session) => ({
   id: String(session.id),
+  managementSessionSourceId: session.management_session_source_id || null,
   liveClassId: String(session.live_class_id),
   scheduleId: session.schedule_id === null || session.schedule_id === undefined ? null : String(session.schedule_id),
   title: session.title || null,

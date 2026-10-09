@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, BookOpen, CalendarDays } from "lucide-react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, BookOpen } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import {
   fetchClassDetails,
@@ -19,6 +19,9 @@ import MeetingLinkModal from "../components/classWorkspace/MeetingLinkModal";
 export default function TeacherClassDetailPage() {
   const { classId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAdminView = location.pathname.startsWith("/admin/classes/");
+  const classBasePath = isAdminView ? `/admin/classes/${classId}` : `/lms/teach/classes/${classId}`;
   const { authUser } = useAuthContext();
   const [classData, setClassData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -78,10 +81,10 @@ export default function TeacherClassDetailPage() {
     <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <Link to="/lms/teach" className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400">
-            <ArrowLeft className="h-4 w-4" /> Quay lại trang Giảng dạy
+          <Link to={isAdminView ? "/admin/classes" : "/lms/teach"} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400">
+            <ArrowLeft className="h-4 w-4" /> {isAdminView ? "Quay lại quản lý lớp" : "Quay lại trang Giảng dạy"}
           </Link>
-          <Link to={`/lms/teach/classes/${classId}/curriculum`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
+          <Link to={`${classBasePath}/curriculum`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
             <BookOpen className="h-3.5 w-3.5" /> Giáo trình lớp
           </Link>
         </div>
@@ -90,21 +93,11 @@ export default function TeacherClassDetailPage() {
           classTitle={classInfo.title}
           classId={classId}
           nextSession={nextSession}
-          onOpenSession={(session) => navigate(`/lms/teach/classes/${classId}/sessions/${session.id}`)}
-          onOpenAttendance={(session) => navigate(`/lms/teach/classes/${classId}/attendance?sessionId=${session.id}`)}
+          onOpenSession={(session) => navigate(`${classBasePath}/sessions/${session.id}`)}
+          onOpenAttendance={(session) => navigate(`${classBasePath}/attendance?sessionId=${session.id}`)}
           onOpenSchedule={scrollToSchedule}
           onCreateSession={() => setIsCreateSessionOpen(true)}
         />
-
-        <section className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3 text-sm dark:border-blue-950/70 dark:bg-blue-950/20">
-          <div className="flex items-start gap-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white"><CalendarDays className="h-4 w-4" /></span>
-            <div>
-              <h2 className="font-black text-slate-900 dark:text-white">Lớp là tổng quan, buổi học là không gian làm việc</h2>
-              <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">Chọn một buổi trong lịch bên dưới để giao bài, tạo Quiz, tải tài liệu, điểm danh và xem kết quả. Mọi dữ liệu đó được gắn riêng với đúng buổi học.</p>
-            </div>
-          </div>
-        </section>
 
         <ClassWorkspaceOverviewTab stats={stats} atRiskStudents={atRiskStudents} onOpenCreateSession={() => setIsCreateSessionOpen(true)} />
 
@@ -113,6 +106,7 @@ export default function TeacherClassDetailPage() {
             sessions={sessions}
             schedules={schedules}
             classId={classId}
+            classBasePath={classBasePath}
             onOpenCreateSession={() => setIsCreateSessionOpen(true)}
             onRefreshSchedules={loadData}
             onConfigureMeeting={setMeetingLinkSession}
