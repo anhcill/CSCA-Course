@@ -24,7 +24,6 @@ export default function TeacherRiskStudentsSection({
   classOptions = [],
   riskFilter,
   setRiskFilter,
-  setPendingPage
 }) {
   return (
     <section className="bg-white dark:bg-slate-900/80 border border-amber-200 dark:border-amber-500/30 rounded-3xl p-6 sm:p-8 space-y-5 shadow-sm">
@@ -40,10 +39,7 @@ export default function TeacherRiskStudentsSection({
         <div className="flex flex-wrap gap-2">
           <select
             value={classFilter}
-            onChange={(e) => {
-              setClassFilter(e.target.value);
-              setPendingPage(1);
-            }}
+            onChange={(e) => setClassFilter(e.target.value)}
             className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-slate-200"
           >
             <option value="all">Tất cả lớp</option>

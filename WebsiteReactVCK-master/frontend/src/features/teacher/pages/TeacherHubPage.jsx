@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -15,7 +15,6 @@ import { useAuthContext } from "../../../context/AuthContext";
 import { fetchTeacherDashboardStats, getLiveSessionAccess } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState, PermissionDeniedState } from "../../../components/common/StateView";
-import TeacherRiskStudentsSection from "../components/TeacherRiskStudentsSection";
 import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 
 const EMPTY_DATA = {
@@ -28,7 +27,6 @@ const EMPTY_DATA = {
   },
   classes: [],
   todaySessions: [],
-  atRiskStudents: [],
   pendingSubmissions: [],
   pagination: { page: 1, limit: 8, total: 0, totalPages: 0 },
 };
@@ -45,42 +43,31 @@ export default function TeacherHubPage() {
   const { authUser } = useAuthContext();
   const isTeacher = authUser?.role === "creator" || authUser?.role === "admin";
   const [data, setData] = useState(EMPTY_DATA);
-  const [classOptions, setClassOptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [classFilter, setClassFilter] = useState("all");
-  const [riskFilter, setRiskFilter] = useState("all");
-  const [pendingPage, setPendingPage] = useState(1);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const response = await fetchTeacherDashboardStats({
-        classId: classFilter === "all" ? undefined : classFilter,
         status: "all",
-        page: pendingPage,
+        page: 1,
         limit: 8,
       });
       const nextData = { ...EMPTY_DATA, ...(response?.data || {}) };
       setData(nextData);
-      if (classFilter === "all") setClassOptions(nextData.classes || []);
     } catch (loadError) {
       setError(loadError.message || "Không thể tải bảng điều khiển giảng viên");
       setData(EMPTY_DATA);
     } finally {
       setLoading(false);
     }
-  }, [classFilter, pendingPage]);
+  }, []);
 
   useEffect(() => {
     if (isTeacher) loadDashboard();
   }, [isTeacher, loadDashboard]);
-
-  const filteredRiskStudents = useMemo(
-    () => (data.atRiskStudents || []).filter((student) => riskFilter === "all" || student.riskLevel === riskFilter),
-    [data.atRiskStudents, riskFilter],
-  );
 
   const openLiveRoom = async (session) => {
     const meetingWindow = reserveMeetingWindow();
@@ -227,17 +214,6 @@ export default function TeacherHubPage() {
                 </div>
               )}
             </section>
-
-            {/* Học viên cần chú ý */}
-            <TeacherRiskStudentsSection
-              filteredRiskStudents={filteredRiskStudents}
-              classFilter={classFilter}
-              setClassFilter={setClassFilter}
-              classOptions={classOptions}
-              riskFilter={riskFilter}
-              setRiskFilter={setRiskFilter}
-              setPendingPage={setPendingPage}
-            />
           </>
         )}
       </div>

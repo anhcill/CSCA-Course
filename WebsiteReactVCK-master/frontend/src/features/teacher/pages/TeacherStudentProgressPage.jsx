@@ -1,8 +1,9 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Download, Search, SlidersHorizontal, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Download, Search, SlidersHorizontal, Users } from "lucide-react";
 import GradebookPolicyPanel from "../components/GradebookPolicyPanel";
+import TeacherRiskStudentsSection from "../components/TeacherRiskStudentsSection";
 import { revokeAccommodation, fetchAssessmentAccommodations, fetchClassStudentProgress, fetchTeacherDashboardStats, gradebookExportUrl, saveAssessmentAccommodation } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
@@ -146,6 +147,12 @@ export default function TeacherStudentProgressPage() {
   const [loadingGradebook, setLoadingGradebook] = useState(false);
   const [error, setError] = useState("");
   const [accommodationTarget, setAccommodationTarget] = useState(null);
+  const [activeView, setActiveView] = useState("overview");
+  const [riskStudents, setRiskStudents] = useState([]);
+  const [riskClassFilter, setRiskClassFilter] = useState("all");
+  const [riskFilter, setRiskFilter] = useState("all");
+  const [loadingRisk, setLoadingRisk] = useState(false);
+  const [riskError, setRiskError] = useState("");
 
   const loadClasses = useCallback(async () => {
     setLoadingClasses(true);
@@ -180,8 +187,33 @@ export default function TeacherStudentProgressPage() {
     }
   }, [classId]);
 
+  const loadRiskStudents = useCallback(async () => {
+    setLoadingRisk(true);
+    setRiskError("");
+    try {
+      const result = await fetchTeacherDashboardStats({
+        classId: riskClassFilter === "all" ? undefined : riskClassFilter,
+        limit: 1,
+      });
+      setRiskStudents(result?.data?.atRiskStudents || []);
+    } catch (loadError) {
+      setRiskStudents([]);
+      setRiskError(loadError.message || "Không thể tải cảnh báo chuyên cần.");
+    } finally {
+      setLoadingRisk(false);
+    }
+  }, [riskClassFilter]);
+
   useEffect(() => { loadClasses(); }, [loadClasses]);
   useEffect(() => { loadGradebook(); }, [loadGradebook]);
+  useEffect(() => {
+    if (activeView === "alerts") loadRiskStudents();
+  }, [activeView, loadRiskStudents]);
+
+  const filteredRiskStudents = useMemo(
+    () => riskStudents.filter((student) => riskFilter === "all" || student.riskLevel === riskFilter),
+    [riskStudents, riskFilter],
+  );
 
   const attendanceByKey = useMemo(() => new Map(
     gradebook.attendance.map((record) => [`${record.userId}:${record.sessionId}`, record]),
@@ -240,13 +272,49 @@ export default function TeacherStudentProgressPage() {
           <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h1 className="text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">Học viên, điểm & chuyên cần</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">Theo dõi bài tự luận, quiz tự chấm và điểm danh theo từng buổi học của một lớp.</p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">Theo dõi điểm, chuyên cần theo buổi và các học viên cần hỗ trợ.</p>
             </div>
-            <div className="flex flex-wrap items-end gap-2"><label className="block text-xs font-bold">Khóa học<select aria-label="Lọc khóa học" value={courseFilter} onChange={(e)=>{const next=e.target.value;setCourseFilter(next);setClassId(String(classes.find((c)=>!next || String(c.courseId)===next)?.id || ""));setSelectedSessionId("all");}} className="mt-1.5 block rounded-xl border bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900"><option value="">Tất cả khóa</option>{[...new Map(classes.filter((c)=>c.courseId).map((c)=>[String(c.courseId),c])).values()].map((c)=><option key={c.courseId} value={c.courseId}>{c.courseTitle || c.courseId}</option>)}</select></label><label className="block text-xs font-bold text-slate-600 dark:text-slate-300">Chọn lớp<select value={classId} onChange={(event) => { setClassId(event.target.value); setSelectedSessionId("all"); }} className="mt-1.5 block min-w-[16rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{classes.filter((c)=>!courseFilter || String(c.courseId)===courseFilter).map((item) => <option key={item.id} value={item.id}>{item.title}{item.courseTitle ? ` · ${item.courseTitle}` : ""}</option>)}</select></label><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "xlsx" })} className="inline-flex h-[42px] items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-xs font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"><Download className="h-3.5 w-3.5" /> Xuất XLSX</a><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "csv" })} className="inline-flex h-[42px] items-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">CSV</a></div>
+            {activeView === "overview" && <div className="flex flex-wrap items-end gap-2"><label className="block text-xs font-bold">Khóa học<select aria-label="Lọc khóa học" value={courseFilter} onChange={(e)=>{const next=e.target.value;setCourseFilter(next);setClassId(String(classes.find((c)=>!next || String(c.courseId)===next)?.id || ""));setSelectedSessionId("all");}} className="mt-1.5 block rounded-xl border bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900"><option value="">Tất cả khóa</option>{[...new Map(classes.filter((c)=>c.courseId).map((c)=>[String(c.courseId),c])).values()].map((c)=><option key={c.courseId} value={c.courseId}>{c.courseTitle || c.courseId}</option>)}</select></label><label className="block text-xs font-bold text-slate-600 dark:text-slate-300">Chọn lớp<select value={classId} onChange={(event) => { setClassId(event.target.value); setSelectedSessionId("all"); }} className="mt-1.5 block min-w-[16rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{classes.filter((c)=>!courseFilter || String(c.courseId)===courseFilter).map((item) => <option key={item.id} value={item.id}>{item.title}{item.courseTitle ? ` · ${item.courseTitle}` : ""}</option>)}</select></label><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "xlsx" })} className="inline-flex h-[42px] items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-xs font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"><Download className="h-3.5 w-3.5" /> Xuất XLSX</a><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "csv" })} className="inline-flex h-[42px] items-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">CSV</a></div>}
           </div>
         </header>
 
-        {error ? <ErrorState title="Không thể tải dữ liệu lớp" message={error} onRetry={loadGradebook} /> : loadingGradebook ? (
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Mục điểm và chuyên cần">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "overview"}
+            onClick={() => setActiveView("overview")}
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === "overview" ? "bg-blue-600 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"}`}
+          >
+            Tổng quát điểm & chuyên cần
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "alerts"}
+            onClick={() => setActiveView("alerts")}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === "alerts" ? "bg-amber-500 text-slate-950 shadow-sm" : "border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 dark:border-amber-900/60 dark:bg-slate-900 dark:text-amber-300 dark:hover:bg-slate-800"}`}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" /> Cảnh báo chuyên cần
+          </button>
+        </div>
+
+        {activeView === "alerts" ? (
+          <div role="tabpanel" aria-label="Cảnh báo chuyên cần">
+            {riskError ? <ErrorState title="Không thể tải cảnh báo" message={riskError} onRetry={loadRiskStudents} /> : loadingRisk ? (
+              <Loading loading text="Đang tổng hợp cảnh báo học viên..." fullScreen={false} className="py-16" />
+            ) : (
+              <TeacherRiskStudentsSection
+                filteredRiskStudents={filteredRiskStudents}
+                classFilter={riskClassFilter}
+                setClassFilter={setRiskClassFilter}
+                classOptions={classes}
+                riskFilter={riskFilter}
+                setRiskFilter={setRiskFilter}
+              />
+            )}
+          </div>
+        ) : error ? <ErrorState title="Không thể tải dữ liệu lớp" message={error} onRetry={loadGradebook} /> : loadingGradebook ? (
           <Loading loading text="Đang tổng hợp chuyên cần và điểm theo buổi..." fullScreen={false} className="py-16" />
         ) : (
           <>
