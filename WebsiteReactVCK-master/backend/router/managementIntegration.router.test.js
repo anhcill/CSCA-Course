@@ -59,4 +59,40 @@ test("student provisioning preserves login locks and separates student from teac
   response = await invoke(payload("teacher-party", "teacher@example.test", "Active"), "teacher-conflict");
   assert.equal(response.statusCode, 409);
   assert.equal(response.body.errorCode, "STUDENT_TEACHER_IDENTITY_CONFLICT");
+
+  const course = (await db.query("INSERT INTO courses(name,slug,author_id,external_course_id) VALUES ('Access course','access-course',(SELECT id FROM users WHERE email='teacher@example.test'),'course-source-1') RETURNING id")).rows[0];
+  const access = router.stack.find((layer) => layer.route?.path === "/students/:externalStudentId/access").route.stack.at(-1).handle;
+  const accessBody = {
+    accessStatus: "Active",
+    reason: "PAYMENT_PAID",
+    sourcePaymentId: "payment-1",
+    validFrom: "2026-10-09T10:00:00.000Z",
+    validUntil: null,
+    courseSourceIds: ["course-source-1"],
+  };
+  const accessRes = {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; return this; },
+  };
+  await access({
+    params: { externalStudentId: "fresh-party" },
+    body: accessBody,
+    rawBody: JSON.stringify(accessBody),
+    managementIntegration: { idempotencyKey: "fresh-access", correlationId: "fresh-access" },
+  }, accessRes);
+  assert.equal(accessRes.statusCode, 200, JSON.stringify(accessRes.body));
+  assert.deepEqual((await db.query("SELECT access_status, course_id FROM lms_access_grants WHERE user_id=(SELECT id FROM users WHERE email='fresh@example.test')")).rows[0],
+    { access_status: "active", course_id: course.id });
+
+  const revokedBody = { ...accessBody, accessStatus: "Revoked", reason: "PAYMENT_CANCELLED", validFrom: "2026-10-09T11:00:00.000Z" };
+  await access({
+    params: { externalStudentId: "fresh-party" },
+    body: revokedBody,
+    rawBody: JSON.stringify(revokedBody),
+    managementIntegration: { idempotencyKey: "fresh-revoke", correlationId: "fresh-revoke" },
+  }, accessRes);
+  assert.equal(accessRes.statusCode, 200, JSON.stringify(accessRes.body));
+  assert.equal((await db.query("SELECT access_status FROM lms_access_grants WHERE user_id=(SELECT id FROM users WHERE email='fresh@example.test')")).rows[0].access_status, "revoked");
 });

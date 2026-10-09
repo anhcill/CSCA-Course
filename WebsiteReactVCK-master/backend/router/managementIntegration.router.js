@@ -446,8 +446,8 @@ router.patch("/students/:externalStudentId/access", requireManagementIntegration
           `INSERT INTO lms_access_grants
              (user_id, course_id, access_status, source_payment_id, reason, valid_from,
               valid_until, source_updated_at, revoked_at, correlation_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $6,
-                   CASE WHEN $3 IN ('revoked', 'suspended') THEN $6 ELSE NULL END, $8)
+           VALUES ($1, $2, $3::varchar, $4, $5, $6::timestamptz, $7, $6::timestamptz,
+                   CASE WHEN $3::varchar IN ('revoked', 'suspended') THEN $6::timestamptz ELSE NULL END, $8)
            ON CONFLICT (user_id, course_id) DO UPDATE SET
              access_status = EXCLUDED.access_status,
              source_payment_id = EXCLUDED.source_payment_id,

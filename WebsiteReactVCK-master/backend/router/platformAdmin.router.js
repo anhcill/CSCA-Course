@@ -144,8 +144,8 @@ router.post("/classes/:id/approval", ...adminOnly, async (req, res) => {
   try {
     const result = await query(
       `UPDATE live_classes
-       SET management_approval_status = $1,
-           status = CASE WHEN $1 = 'approved' THEN COALESCE(management_requested_status, 'active') ELSE 'cancelled' END,
+       SET management_approval_status = $1::varchar,
+           status = CASE WHEN $1::varchar = 'approved' THEN COALESCE(management_requested_status, 'active') ELSE 'cancelled' END,
            management_approved_by = $2, management_approved_at = NOW()
        WHERE id = $3 AND management_class_source_id IS NOT NULL
          AND management_approval_status = 'pending'
@@ -195,9 +195,9 @@ router.post("/membership-approvals/:id", ...adminOnly, async (req, res) => {
   try {
     const result = await query(
       `UPDATE class_enrollments ce
-       SET management_approval_status = $1,
-           status = CASE WHEN $1 = 'approved' THEN COALESCE(ce.management_membership_status, 'suspended') ELSE 'revoked' END,
-           ended_at = CASE WHEN $1 = 'approved' AND ce.management_membership_status = 'active'
+       SET management_approval_status = $1::varchar,
+           status = CASE WHEN $1::varchar = 'approved' THEN COALESCE(ce.management_membership_status, 'suspended') ELSE 'revoked' END,
+           ended_at = CASE WHEN $1::varchar = 'approved' AND ce.management_membership_status = 'active'
              THEN NULL ELSE NOW() END,
            management_approved_by = $2, management_approved_at = NOW()
        WHERE ce.id = $3 AND ce.management_membership_source_id IS NOT NULL
