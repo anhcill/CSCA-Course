@@ -706,14 +706,14 @@ const parseStudent = (payload, occurredAt) => {
 const syncStudent = async (client, event) => {
   const input = parseStudent(event.payload, event.occurredAt);
   const bySource = await client.query(
-    `SELECT id, management_source_updated_at
+    `SELECT id, role, management_source_updated_at
      FROM users WHERE LOWER(external_student_id) = LOWER($1) FOR UPDATE`,
     [input.studentSourceId],
   );
   let user = bySource.rows[0];
   if (!user) {
     const byEmail = await client.query(
-      `SELECT id, external_student_id, management_source_updated_at
+      `SELECT id, role, external_student_id, management_source_updated_at
        FROM users WHERE LOWER(email) = LOWER($1) FOR UPDATE`,
       [input.email],
     );
@@ -723,33 +723,35 @@ const syncStudent = async (client, event) => {
       throw new SyncValidationError("Email đã liên kết với học viên Management khác");
     }
   }
+  if (user && (user.role === "creator" || user.role === "admin")) {
+    throw new SyncValidationError("Tài khoản giáo viên hoặc quản trị viên cần rà soát trước khi liên kết học viên");
+  }
   if (user && !sameOrNewer(user.management_source_updated_at, input.sourceUpdatedAt)) {
     return { action: "student.stale_ignored", entityType: "user", entityId: Number(user.id), data: { studentSourceId: input.studentSourceId } };
   }
-  const locked = input.accountStatus !== "active";
   let row;
   if (user) {
     const updated = await client.query(
       `UPDATE users
        SET email = $1, external_student_id = $2, management_phone = $3,
-           is_management_managed = TRUE, lms_account_status = $4,
-           management_source_updated_at = $5, lms_provisioned_at = COALESCE(lms_provisioned_at, NOW()),
-           is_locked = $6
-       WHERE id = $7
+           is_management_managed = TRUE,
+           lms_account_status = CASE WHEN role IN ('creator', 'admin') THEN lms_account_status ELSE $4 END,
+           management_source_updated_at = $5, lms_provisioned_at = COALESCE(lms_provisioned_at, NOW())
+       WHERE id = $6
        RETURNING id, external_student_id, lms_account_status`,
-      [input.email, input.studentSourceId, input.phone, input.accountStatus, input.sourceUpdatedAt, locked, user.id],
+      [input.email, input.studentSourceId, input.phone, input.accountStatus, input.sourceUpdatedAt, user.id],
     );
     row = updated.rows[0];
   } else {
     const username = await createManagedUsername(client, "student", input.studentSourceId);
     const created = await client.query(
       `INSERT INTO users
-         (username, email, password_hash, email_verified, is_locked, external_student_id,
+         (username, email, password_hash, email_verified, external_student_id,
           management_phone, is_management_managed, lms_account_status,
           management_source_updated_at, lms_provisioned_at)
-       VALUES ($1, $2, NULL, FALSE, $3, $4, $5, TRUE, $6, $7, NOW())
+       VALUES ($1, $2, NULL, FALSE, $3, $4, TRUE, $5, $6, NOW())
        RETURNING id, external_student_id, lms_account_status`,
-      [username, input.email, locked, input.studentSourceId, input.phone, input.accountStatus, input.sourceUpdatedAt],
+      [username, input.email, input.studentSourceId, input.phone, input.accountStatus, input.sourceUpdatedAt],
     );
     row = created.rows[0];
   }
@@ -921,10 +923,9 @@ const syncEntitlement = async (client, event, forceRevoked = false) => {
   const accountStatus = await deriveAccountStatus(client, user.id, user.lms_account_status);
   await client.query(
     `UPDATE users
-     SET lms_account_status = $1,
-         is_locked = CASE WHEN is_management_managed THEN $2 ELSE is_locked END
-     WHERE id = $3`,
-    [accountStatus, accountStatus !== "active", user.id],
+     SET lms_account_status = CASE WHEN role IN ('creator', 'admin') THEN lms_account_status ELSE $1 END
+     WHERE id = $2`,
+    [accountStatus, user.id],
   );
   return { action: forceRevoked ? "payment.refunded" : "entitlement.synced", entityType: "user", entityId: Number(user.id), data: { accountStatus, grants } };
 };

@@ -292,45 +292,66 @@ router.post("/students/provision", requireManagementIntegration, async (req, res
 
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [payload.externalStudentId]);
     let user = (await client.query(
-      `SELECT id, external_student_id, is_management_managed, lms_account_status,
-              management_source_updated_at
+      `SELECT id, role, external_student_id, management_party_id,
+              is_management_managed, lms_account_status, management_source_updated_at
        FROM users WHERE external_student_id = $1 FOR UPDATE`,
       [payload.externalStudentId],
     )).rows[0];
-    const alreadyExists = Boolean(user);
+    if (!user && payload.externalPartyId) {
+      user = (await client.query(
+        `SELECT id, role, external_student_id, management_party_id,
+                is_management_managed, lms_account_status, management_source_updated_at
+         FROM users WHERE management_party_id = $1 FOR UPDATE`,
+        [payload.externalPartyId],
+      )).rows[0] || null;
+    }
 
     if (!user) {
       const sameEmail = (await client.query(
-        `SELECT id, external_student_id, is_management_managed, lms_account_status,
-                management_source_updated_at
+        `SELECT id, role, external_student_id, management_party_id,
+                is_management_managed, lms_account_status, management_source_updated_at
          FROM users WHERE LOWER(email) = $1 FOR UPDATE`,
         [payload.email],
       )).rows[0];
-      if (sameEmail?.external_student_id && sameEmail.external_student_id !== payload.externalStudentId) {
+      if (sameEmail?.external_student_id && sameEmail.external_student_id !== payload.externalStudentId &&
+          (!payload.externalPartyId || sameEmail.management_party_id !== payload.externalPartyId)) {
         const body = errorBody("Email đã liên kết với một học viên Management khác", "STUDENT_IDENTITY_CONFLICT");
         return respondTransaction(client, res, request.id, 409, body);
       }
       user = sameEmail || null;
+    }
+    const alreadyExists = Boolean(user);
+
+    if (user && (user.role === "creator" || user.role === "admin")) {
+      return respondTransaction(client, res, request.id, 409,
+        errorBody("Tài khoản này đang là giáo viên hoặc quản trị viên; cần rà soát danh tính học viên", "STUDENT_TEACHER_IDENTITY_CONFLICT"));
+    }
+    if (user) {
+      const emailOwner = (await client.query(
+        `SELECT id FROM users WHERE LOWER(email) = $1 AND id <> $2 FOR UPDATE`,
+        [payload.email, user.id],
+      )).rows[0];
+      if (emailOwner) return respondTransaction(client, res, request.id, 409,
+        errorBody("Email đang thuộc tài khoản LMS khác", "STUDENT_EMAIL_CONFLICT"));
     }
 
     if (user) {
       if (shouldApplySourceUpdate(user.management_source_updated_at, payload.sourceUpdatedAt)) {
         const updated = await client.query(
           `UPDATE users
-           SET external_student_id = $1,
-               management_party_id = $2,
-               management_phone = $3,
-               management_class_source_id = $4,
-               lms_account_status = $5,
-               lms_last_payment_status = $6,
-               management_source_updated_at = $7,
-               lms_provisioned_at = COALESCE(lms_provisioned_at, NOW()),
-               is_locked = CASE WHEN is_management_managed THEN $8 ELSE is_locked END
+           SET email = $1,
+               external_student_id = $2,
+               management_party_id = $3,
+               management_phone = $4,
+               management_class_source_id = $5,
+               lms_account_status = $6,
+               lms_last_payment_status = $7,
+               management_source_updated_at = $8,
+               lms_provisioned_at = COALESCE(lms_provisioned_at, NOW())
            WHERE id = $9
            RETURNING id, lms_account_status, is_management_managed`,
-          [payload.externalStudentId, payload.externalPartyId, payload.phone, payload.classSourceId,
-            payload.accountStatus, payload.paymentStatus, payload.sourceUpdatedAt,
-            payload.accountStatus !== "active", user.id],
+          [payload.email, payload.externalStudentId, payload.externalPartyId, payload.phone, payload.classSourceId,
+            payload.accountStatus, payload.paymentStatus, payload.sourceUpdatedAt, user.id],
         );
         user = { ...user, ...updated.rows[0] };
         await client.query(
@@ -344,13 +365,13 @@ router.post("/students/provision", requireManagementIntegration, async (req, res
       const username = await createManagedUsername(client, payload.externalStudentId);
       const created = await client.query(
         `INSERT INTO users
-           (username, email, password_hash, email_verified, is_locked, external_student_id,
+           (username, email, password_hash, email_verified, external_student_id,
             management_party_id, management_phone, management_class_source_id,
             is_management_managed, lms_account_status, lms_last_payment_status,
             management_source_updated_at, lms_provisioned_at)
-         VALUES ($1, $2, NULL, FALSE, $3, $4, $5, $6, $7, TRUE, $8, $9, $10, NOW())
+         VALUES ($1, $2, NULL, FALSE, $3, $4, $5, $6, TRUE, $7, $8, $9, NOW())
          RETURNING id, lms_account_status, is_management_managed`,
-        [username, payload.email, payload.accountStatus !== "active", payload.externalStudentId,
+        [username, payload.email, payload.externalStudentId,
           payload.externalPartyId, payload.phone, payload.classSourceId, payload.accountStatus,
           payload.paymentStatus, payload.sourceUpdatedAt],
       );
@@ -471,10 +492,9 @@ router.patch("/students/:externalStudentId/access", requireManagementIntegration
     const accountStatus = await deriveAccountStatus(client, user.id, user.lms_account_status);
     await client.query(
       `UPDATE users
-       SET lms_account_status = $1,
-           is_locked = CASE WHEN is_management_managed THEN $2 ELSE is_locked END
-       WHERE id = $3`,
-      [accountStatus, accountStatus !== "active", user.id],
+       SET lms_account_status = CASE WHEN role IN ('creator', 'admin') THEN lms_account_status ELSE $1 END
+       WHERE id = $2`,
+      [accountStatus, user.id],
     );
 
     const body = {
