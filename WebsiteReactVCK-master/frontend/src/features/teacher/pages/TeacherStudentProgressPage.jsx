@@ -34,10 +34,10 @@ const attendanceLabel = {
 
 function StatCard({ icon: Icon, label, value, tone }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></span>
-      <p className="mt-3 text-xl font-black text-slate-950 dark:text-white">{value}</p>
-      <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tone}`}><Icon className="h-4 w-4" /></span>
+      <p className="mt-2 text-lg font-black leading-snug text-slate-950 dark:text-white">{value}</p>
+      <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
     </div>
   );
 }
@@ -258,7 +258,7 @@ export default function TeacherStudentProgressPage() {
               <StatCard icon={ClipboardCheck} label="Hoạt động có điểm" value={gradebook.activities.length} tone="bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400" />
             </section>
 
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+            <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <h2 className="text-lg font-black text-slate-950 dark:text-white">Chi tiết theo buổi</h2>

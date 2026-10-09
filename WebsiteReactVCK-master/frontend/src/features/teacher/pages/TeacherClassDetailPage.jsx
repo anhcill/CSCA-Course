@@ -76,7 +76,7 @@ export default function TeacherClassDetailPage() {
 
   return (
     <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <Link to="/lms/teach" className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400">
             <ArrowLeft className="h-4 w-4" /> Quay lại trang Giảng dạy
@@ -96,9 +96,9 @@ export default function TeacherClassDetailPage() {
           onCreateSession={() => setIsCreateSessionOpen(true)}
         />
 
-        <section className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm dark:border-blue-950/70 dark:bg-blue-950/20">
-          <div className="flex items-start gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white"><CalendarDays className="h-4 w-4" /></span>
+        <section className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3 text-sm dark:border-blue-950/70 dark:bg-blue-950/20">
+          <div className="flex items-start gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white"><CalendarDays className="h-4 w-4" /></span>
             <div>
               <h2 className="font-black text-slate-900 dark:text-white">Lớp là tổng quan, buổi học là không gian làm việc</h2>
               <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">Chọn một buổi trong lịch bên dưới để giao bài, tạo Quiz, tải tài liệu, điểm danh và xem kết quả. Mọi dữ liệu đó được gắn riêng với đúng buổi học.</p>

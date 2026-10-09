@@ -14,20 +14,20 @@ export default function ClassWorkspaceOverviewTab({
   onOpenCreateSession
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* 4 Thẻ KPI chính của lớp */}
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         {[
           ["Sĩ số lớp", stats.totalStudents || stats.total_students || 0, Users, "text-blue-600 dark:text-sky-400 bg-blue-50 dark:bg-blue-950/60"],
           ["Chuyên cần TB", `${stats.attendanceRate || stats.average_attendance_rate || 0}%`, CheckCircle2, "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60"],
           ["Bài cần chấm", stats.pendingGrading || stats.pending_assignments_count || 0, BookOpen, "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60"],
           ["Buổi đã học", stats.completedSessions || stats.completed_sessions_count || 0, CalendarDays, "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60"],
         ].map(([label, value, Icon, iconStyle]) => (
-          <div key={label} className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-            <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${iconStyle}`}>
+          <div key={label} className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
+            <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconStyle}`}>
               <Icon className="h-4 w-4" />
             </div>
-            <p className="mt-3 text-2xl font-black text-slate-900 dark:text-white">{value}</p>
+            <p className="mt-2 text-xl font-black text-slate-900 dark:text-white">{value}</p>
             <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
           </div>
         ))}

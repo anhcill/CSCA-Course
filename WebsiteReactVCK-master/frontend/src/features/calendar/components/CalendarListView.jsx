@@ -1,3 +1,4 @@
+import PropTypes from "prop-types";
 import { CalendarDays, Clock, FileQuestion, Video, ClipboardList } from "lucide-react";
 
 const formatDateTime = (isoString) => {
@@ -18,7 +19,7 @@ export default function CalendarListView({
 }) {
   if (events.length === 0) {
     return (
-      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-12 text-center shadow-sm">
+      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center shadow-sm">
         <CalendarDays className="mx-auto h-9 w-9 text-slate-400 dark:text-slate-500" />
         <h3 className="mt-3 text-base font-black text-slate-900 dark:text-white">Chưa có lịch sự kiện nào</h3>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Các buổi học và hạn nộp bài tập sẽ xuất hiện tại đây.</p>
@@ -34,10 +35,9 @@ export default function CalendarListView({
   });
 
   return (
-    <div className="space-y-3" role="feed" aria-label="Danh sách sự kiện và lịch học">
+    <div className="space-y-2" role="feed" aria-label="Danh sách sự kiện và lịch học">
       {sortedEvents.map((ev) => {
         const isSession = ev.eventType === "SESSION";
-        const isAssignment = ev.eventType === "ASSIGNMENT_DUE";
         const isQuiz = ev.eventType === "QUIZ_DUE";
         const isRescheduled = ev.status === "rescheduled";
         const isLive = ev.uiState === "live";
@@ -54,18 +54,18 @@ export default function CalendarListView({
                 onSelectEvent(ev);
               }
             }}
-            className={`group cursor-pointer rounded-2xl border p-4 sm:p-5 shadow-xs transition hover:shadow-md ${
+            className={`group cursor-pointer rounded-xl border p-3 sm:p-3.5 shadow-xs transition hover:shadow-md ${
               isLive
                 ? "border-rose-300 dark:border-rose-900 bg-rose-50/50 dark:bg-rose-950/20"
                 : "border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900"
             }`}
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-start gap-3.5 min-w-0">
-                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
                   isLive ? "bg-rose-600 text-white animate-pulse" : isSession ? "bg-blue-600 text-white" : isQuiz ? "bg-purple-600 text-white" : "bg-amber-600 text-white"
                 }`}>
-                  {isSession ? <Video className="h-5 w-5" /> : isQuiz ? <FileQuestion className="h-5 w-5" /> : <ClipboardList className="h-5 w-5" />}
+                  {isSession ? <Video className="h-4 w-4" /> : isQuiz ? <FileQuestion className="h-4 w-4" /> : <ClipboardList className="h-4 w-4" />}
                 </span>
 
                 <div className="min-w-0">
@@ -85,11 +85,11 @@ export default function CalendarListView({
                     )}
                   </div>
 
-                  <h3 className="mt-1 text-base font-black text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-sky-400">
+                  <h3 className="mt-0.5 text-sm font-black text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-sky-400">
                     {ev.title}
                   </h3>
 
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                     <span className="inline-flex items-center gap-1 font-semibold text-blue-600 dark:text-sky-400">
                       <Clock className="h-3.5 w-3.5" />
                       {formatDateTime(ev.start_time || ev.due_date)}
@@ -114,7 +114,7 @@ export default function CalendarListView({
                       e.stopPropagation();
                       onJoinSession(ev);
                     }}
-                    className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
                   >
                     Vào lớp ngay
                   </button>
@@ -122,7 +122,7 @@ export default function CalendarListView({
                   <button
                     type="button"
                     onClick={() => onSelectEvent(ev)}
-                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
                   >
                     Chi tiết
                   </button>
@@ -135,3 +135,9 @@ export default function CalendarListView({
     </div>
   );
 }
+
+CalendarListView.propTypes = {
+  events: PropTypes.arrayOf(PropTypes.object),
+  onSelectEvent: PropTypes.func.isRequired,
+  onJoinSession: PropTypes.func.isRequired,
+};

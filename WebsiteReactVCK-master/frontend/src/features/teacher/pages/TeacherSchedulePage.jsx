@@ -270,7 +270,7 @@ export default function TeacherSchedulePage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16">
       {/* Top Header Bar */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 py-5 px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 mb-2">
@@ -306,18 +306,18 @@ export default function TeacherSchedulePage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-5 space-y-5">
         {/* Stats Metrics Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { label: "Tổng số buổi dạy", value: stats.total, color: "text-slate-900 dark:text-white" },
             { label: "Đang diễn ra Live", value: stats.live, color: "text-rose-500 dark:text-rose-400" },
             { label: "Đã hoàn thành", value: stats.done, color: "text-emerald-600 dark:text-emerald-400" },
             { label: "Buổi dạy sắp tới", value: stats.upcoming, color: "text-amber-500 dark:text-amber-400" },
           ].map((st) => (
-            <div key={st.label} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-center shadow-sm">
-              <p className={`text-2xl font-black ${st.color}`}>{st.value}</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">{st.label}</p>
+            <div key={st.label} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 text-center shadow-sm">
+              <p className={`text-xl font-black ${st.color}`}>{st.value}</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">{st.label}</p>
             </div>
           ))}
         </div>
@@ -378,7 +378,7 @@ export default function TeacherSchedulePage() {
             onAction={() => setShowCreateModal(true)}
           />
         ) : viewMode === "list" ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {filtered.map((s) => {
               const cfg = STATUS_CFG[s._st] || STATUS_CFG.UPCOMING;
               const isLive = s._st === "LIVE";
@@ -387,13 +387,13 @@ export default function TeacherSchedulePage() {
               return (
                 <div
                   key={s.id}
-                  className={`bg-white dark:bg-slate-900 rounded-2xl border transition-all p-5 md:p-6 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm ${
+                  className={`bg-white dark:bg-slate-900 rounded-2xl border transition-all p-3 sm:p-4 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm ${
                     isLive ? "border-emerald-500/60 shadow-lg shadow-emerald-500/10 bg-gradient-to-r from-emerald-50/50 to-white dark:from-slate-900 dark:to-emerald-950/20" : "border-slate-200 dark:border-slate-800"
                   }`}
                 >
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                     {/* Session Info */}
-                    <div className="space-y-2 flex-1 min-w-0">
+                    <div className="space-y-1.5 flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[11px] font-bold border ${cfg.cls}`}>
                           {cfg.dot && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
@@ -413,7 +413,7 @@ export default function TeacherSchedulePage() {
                         {s.title}
                       </h3>
 
-                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400 pt-1">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                         <span className="inline-flex items-center gap-1.5">
                           <IconClock />
                           <span>

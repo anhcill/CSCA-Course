@@ -26,7 +26,7 @@ export default function ClassWorkspaceScheduleTab({
   return (
     <div className="space-y-4">
       {/* Header toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
         <div>
           <h3 className="text-base font-black text-slate-900 dark:text-white">Lịch giảng dạy & Buổi học</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">Các buổi học trực tuyến đã lên lịch cho lớp.</p>
@@ -78,15 +78,15 @@ export default function ClassWorkspaceScheduleTab({
             return (
               <div
                 key={s.id}
-                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border bg-white dark:bg-slate-900 shadow-xs transition hover:shadow-sm ${
+                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl border bg-white dark:bg-slate-900 shadow-xs transition hover:shadow-sm ${
                   isLive ? "border-rose-300 bg-rose-50/30 dark:border-rose-900" : "border-slate-200/80 dark:border-slate-800"
                 }`}
               >
                 <div className="flex items-start gap-3 min-w-0">
-                  <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                  <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
                     isLive ? "bg-rose-600 text-white animate-pulse" : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-sky-400"
                   }`}>
-                    <Video className="h-5 w-5" />
+                    <Video className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">

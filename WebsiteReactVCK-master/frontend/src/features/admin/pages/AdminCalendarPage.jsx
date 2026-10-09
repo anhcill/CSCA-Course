@@ -95,16 +95,16 @@ export default function AdminCalendarPage() {
   const conflicts = data.conflicts || [];
 
   return (
-    <div className="min-h-full bg-slate-50 dark:bg-slate-950 px-4 py-6 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div className="min-h-full bg-slate-50 dark:bg-slate-950 px-4 py-4 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100">
+      <div className="mx-auto max-w-7xl space-y-4">
         {/* Header Hero */}
-        <section className="rounded-3xl border border-blue-100 dark:border-blue-900/40 bg-gradient-to-r from-blue-50/80 via-white to-indigo-50/40 dark:from-slate-900 dark:via-blue-950/20 dark:to-slate-900 p-6 shadow-sm">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <section className="rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-gradient-to-r from-blue-50/80 via-white to-indigo-50/40 dark:from-slate-900 dark:via-blue-950/20 dark:to-slate-900 p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 dark:bg-blue-950 px-3 py-1 text-xs font-bold text-blue-700 dark:text-blue-300">
                 <Calendar className="h-3.5 w-3.5" /> Điều phối lịch toàn trường
               </span>
-              <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white sm:text-3xl">
+              <h1 className="mt-1.5 text-xl font-black text-slate-900 dark:text-white sm:text-2xl">
                 Trung tâm Quản trị Lịch học
               </h1>
               <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
@@ -113,22 +113,22 @@ export default function AdminCalendarPage() {
             </div>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 p-3 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 px-2.5 py-2 text-center">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Tổng số buổi</p>
-                <p className="mt-0.5 text-lg font-black text-slate-800 dark:text-slate-200">{summary.total || 0}</p>
+                <p className="text-base font-black text-slate-800 dark:text-slate-200">{summary.total || 0}</p>
               </div>
-              <div className="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 p-3 text-center">
+              <div className="rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 px-2.5 py-2 text-center">
                 <p className="text-[10px] font-bold text-blue-500 uppercase">Đã lên lịch</p>
-                <p className="mt-0.5 text-lg font-black text-blue-600 dark:text-blue-400">{summary.scheduled || 0}</p>
+                <p className="text-base font-black text-blue-600 dark:text-blue-400">{summary.scheduled || 0}</p>
               </div>
-              <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/20 p-3 text-center">
+              <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/20 px-2.5 py-2 text-center">
                 <p className="text-[10px] font-bold text-amber-500 uppercase">Đã dời lịch</p>
-                <p className="mt-0.5 text-lg font-black text-amber-600 dark:text-amber-400">{summary.rescheduled || 0}</p>
+                <p className="text-base font-black text-amber-600 dark:text-amber-400">{summary.rescheduled || 0}</p>
               </div>
-              <div className="rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 p-3 text-center">
+              <div className="rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 px-2.5 py-2 text-center">
                 <p className="text-[10px] font-bold text-rose-500 uppercase">Xung đột</p>
-                <p className="mt-0.5 text-lg font-black text-rose-600 dark:text-rose-400">{conflicts.length}</p>
+                <p className="text-base font-black text-rose-600 dark:text-rose-400">{conflicts.length}</p>
               </div>
             </div>
           </div>
@@ -162,16 +162,16 @@ export default function AdminCalendarPage() {
             description="Không có buổi học nào khớp với bộ lọc hiện tại. Thử chọn khoảng thời gian rộng hơn."
           />
         ) : (
-          <div className="overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    <th className="py-3 px-4">Buổi học & Lớp</th>
-                    <th className="py-3 px-4">Thời gian</th>
-                    <th className="py-3 px-4">Giảng viên</th>
-                    <th className="py-3 px-4">Trạng thái</th>
-                    <th className="py-3 px-4 text-right">Thao tác</th>
+                    <th className="py-2 px-3">Buổi học & Lớp</th>
+                    <th className="py-2 px-3">Thời gian</th>
+                    <th className="py-2 px-3">Giảng viên</th>
+                    <th className="py-2 px-3">Trạng thái</th>
+                    <th className="py-2 px-3 text-right">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { FileQuestion, Video, ClipboardList } from "lucide-react";
+import PropTypes from "prop-types";
+import { Video, ClipboardList } from "lucide-react";
 
 const getMonthMatrix = (date) => {
   const d = new Date(date);
@@ -63,7 +64,7 @@ export default function CalendarMonthView({
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors duration-200">
       {/* Header thứ */}
-      <div className="grid grid-cols-7 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-center text-xs font-bold text-slate-500 dark:text-slate-400 py-2.5">
+      <div className="grid grid-cols-7 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-center text-xs font-bold text-slate-500 dark:text-slate-400 py-2">
         {WEEKDAY_HEADERS.map((name) => (
           <div key={name}>{name}</div>
         ))}
@@ -72,7 +73,7 @@ export default function CalendarMonthView({
       {/* Grid các ngày */}
       <div className="divide-y divide-slate-200/80 dark:divide-slate-800">
         {monthMatrix.map((week, wIdx) => (
-          <div key={wIdx} className="grid grid-cols-7 divide-x divide-slate-200/80 dark:divide-slate-800 min-h-[90px]">
+          <div key={wIdx} className="grid grid-cols-7 divide-x divide-slate-200/80 dark:divide-slate-800 min-h-[76px]">
             {week.map(({ date, isCurrentMonth }) => {
               const dateStr = date.toDateString();
               const isToday = dateStr === todayStr;
@@ -84,12 +85,12 @@ export default function CalendarMonthView({
                 <div
                   key={dateStr}
                   onClick={() => onSelectDate && onSelectDate(date)}
-                  className={`p-1.5 flex flex-col justify-between transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer ${
+                  className={`p-1 flex flex-col justify-between transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer ${
                     !isCurrentMonth ? "bg-slate-50/40 dark:bg-slate-950/40 text-slate-400 dark:text-slate-600" : ""
                   } ${isToday ? "bg-blue-50/30 dark:bg-blue-950/20" : ""}`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold ${
                       isToday ? "bg-blue-600 text-white" : isCurrentMonth ? "text-slate-800 dark:text-slate-200" : "text-slate-400"
                     }`}>
                       {date.getDate()}
@@ -133,3 +134,10 @@ export default function CalendarMonthView({
     </div>
   );
 }
+
+CalendarMonthView.propTypes = {
+  currentDate: PropTypes.oneOfType([PropTypes.instanceOf(Date), PropTypes.string, PropTypes.number]).isRequired,
+  events: PropTypes.arrayOf(PropTypes.object),
+  onSelectEvent: PropTypes.func.isRequired,
+  onSelectDate: PropTypes.func,
+};

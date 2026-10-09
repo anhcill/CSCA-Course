@@ -74,7 +74,7 @@ export default function StudentCourseListPage() {
 
   return (
     <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 pb-12 pt-6 sm:px-8 lg:px-10 transition-colors duration-200">
-      <div className="mx-auto max-w-[1480px] space-y-6">
+      <div className="mx-auto max-w-[1480px] space-y-4">
         <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-4 shadow-sm dark:shadow-none sm:px-6">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-950 dark:text-white">
@@ -150,7 +150,7 @@ export default function StudentCourseListPage() {
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Thử đổi từ khóa hoặc bộ lọc.</p>
           </div>
         ) : (
-          <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {visibleCourses.map((course) => {
               const progress = getProgress(course);
               const completed = progress === 100;
@@ -161,24 +161,24 @@ export default function StudentCourseListPage() {
               return (
                 <div
                   key={course.course_id}
-                  className="group flex flex-col justify-between overflow-hidden rounded-[22px] border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none transition hover:-translate-y-1 hover:border-blue-200 dark:hover:border-slate-700 hover:shadow-lg"
+                  className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none transition hover:-translate-y-1 hover:border-blue-200 dark:hover:border-slate-700 hover:shadow-lg"
                 >
                   <div>
-                    <div className="relative h-36 overflow-hidden bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400 p-5">
+                    <div className="relative min-h-28 overflow-hidden bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400 p-3.5">
                       <div className="absolute -right-6 -top-10 h-36 w-36 rounded-full bg-white/15 blur-2xl" />
                       <div className="relative flex items-start justify-between gap-3">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20 text-white backdrop-blur">
-                          <BookOpen className="h-5 w-5" />
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 text-white backdrop-blur">
+                          <BookOpen className="h-4 w-4" />
                         </span>
                         <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-blue-700">
                           {course.category || "CSCA"}
                         </span>
                       </div>
-                      <p className="relative mt-5 line-clamp-2 text-lg font-black text-white">{course.title}</p>
+                      <p className="relative mt-2 line-clamp-2 text-base font-black text-white">{course.title}</p>
                     </div>
 
-                    <div className="space-y-4 p-5">
-                      <p className="line-clamp-2 min-h-10 text-sm leading-5 text-slate-500 dark:text-slate-400">
+                    <div className="space-y-2.5 p-3.5">
+                      <p className="line-clamp-2 text-sm leading-5 text-slate-500 dark:text-slate-400">
                         {course.description || "Chương trình học được quản lý và cấp quyền riêng cho bạn."}
                       </p>
 
@@ -216,7 +216,7 @@ export default function StudentCourseListPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 px-5 py-3.5">
+                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 px-3.5 py-2.5">
                     <Link
                       to="/lms/live-schedule"
                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-sky-400 transition"

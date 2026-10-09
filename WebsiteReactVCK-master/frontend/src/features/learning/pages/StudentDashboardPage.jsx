@@ -43,7 +43,7 @@ function ProgressRing({ value }) {
   const offset = circumference - (value / 100) * circumference;
 
   return (
-    <div className="relative h-24 w-24 shrink-0">
+    <div className="relative h-20 w-20 shrink-0">
       <svg className="h-full w-full -rotate-90" viewBox="0 0 88 88" aria-label={`Tiến độ ${value}%`}>
         <circle cx="44" cy="44" r={radius} fill="none" className="stroke-slate-200 dark:stroke-slate-700" strokeWidth="8" />
         <circle
@@ -72,13 +72,13 @@ function StatCard({ icon: Icon, label, value, tone }) {
   };
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
-      <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${tones[tone] || tones.blue}`}>
-        <Icon className="h-5 w-5" />
+    <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2.5 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tones[tone] || tones.blue}`}>
+        <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
         <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
-        <p className="mt-1 text-xl font-black text-slate-900 dark:text-white">{value}</p>
+        <p className="text-lg font-black leading-tight text-slate-900 dark:text-white">{value}</p>
       </div>
     </div>
   );
@@ -180,34 +180,34 @@ export default function StudentDashboardPage() {
   const displayName = authUser?.fullName || authUser?.username || "bạn";
 
   return (
-    <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 pb-12 pt-6 sm:px-8 lg:px-10 transition-colors duration-200">
-      <div className="mx-auto max-w-[1480px] space-y-6">
-        <section className="relative overflow-hidden rounded-[26px] border border-blue-100 dark:border-slate-800 bg-gradient-to-br from-[#e8f2ff] via-white to-[#eef8ff] dark:from-slate-900 dark:via-slate-900/95 dark:to-blue-950/30 px-6 py-7 shadow-[0_14px_50px_rgba(40,102,180,0.08)] dark:shadow-none sm:px-9 sm:py-8">
+    <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 pb-8 pt-4 sm:px-8 lg:px-10 transition-colors duration-200">
+      <div className="mx-auto max-w-[1480px] space-y-4">
+        <section className="relative overflow-hidden rounded-2xl border border-blue-100 dark:border-slate-800 bg-gradient-to-br from-[#e8f2ff] via-white to-[#eef8ff] dark:from-slate-900 dark:via-slate-900/95 dark:to-blue-950/30 px-5 py-4 shadow-[0_14px_50px_rgba(40,102,180,0.08)] dark:shadow-none sm:px-7 sm:py-5">
           <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-blue-200/40 dark:bg-blue-600/10 blur-3xl" />
           <div className="pointer-events-none absolute bottom-[-110px] left-1/3 h-64 w-64 rounded-full bg-emerald-100/70 dark:bg-emerald-600/10 blur-3xl" />
-          <div className="relative flex flex-col justify-between gap-8 lg:flex-row lg:items-center">
+          <div className="relative flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
             <div className="max-w-2xl">
               <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 dark:border-blue-900/60 bg-white/80 dark:bg-blue-950/50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:text-sky-300">
                 <Sparkles className="h-3.5 w-3.5" /> Không gian học tập cá nhân
               </span>
-              <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 dark:text-white sm:text-4xl">
+              <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">
                 Chào {displayName}, tiếp tục hành trình học tập nhé.
               </h1>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+              <p className="mt-1 max-w-xl text-sm leading-5 text-slate-600 dark:text-slate-300">
                 Theo dõi tiến độ, mở lớp đã được xếp và xử lý các nhiệm vụ học tập ngay tại một nơi.
               </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link to={recentCourse ? coursePath(recentCourse) : "/lms/my-learning"} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700">
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link to={recentCourse ? coursePath(recentCourse) : "/lms/my-learning"} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700">
                   <PlayCircle className="h-4 w-4" /> {recentCourse ? "Tiếp tục học" : "Xem khóa học"}
                 </Link>
-                <Link to="/lms/live-schedule" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-800/80 px-5 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 transition hover:border-blue-200 dark:hover:border-slate-600 hover:text-blue-700 dark:hover:text-white">
+                <Link to="/lms/live-schedule" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-800/80 px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 transition hover:border-blue-200 dark:hover:border-slate-600 hover:text-blue-700 dark:hover:text-white">
                   <CalendarDays className="h-4 w-4" /> Xem lịch học
                 </Link>
               </div>
             </div>
 
             {recentCourse ? (
-              <div className="flex items-center gap-5 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/90 p-4 shadow-sm backdrop-blur sm:min-w-[300px]">
+              <div className="flex items-center gap-3 rounded-xl border border-white/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/90 p-3 shadow-sm backdrop-blur sm:min-w-[280px]">
                 <ProgressRing value={getProgress(recentCourse)} />
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Đang học gần đây</p>
@@ -224,15 +224,15 @@ export default function StudentDashboardPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard icon={BookOpen} label="Khóa học đã cấp" value={courses.length} tone="blue" />
           <StatCard icon={Clock3} label="Đang học" value={stats.inProgress.length} tone="amber" />
           <StatCard icon={CheckCircle2} label="Đã hoàn thành" value={stats.completed.length} tone="mint" />
           <StatCard icon={BarChart3} label="Tiến độ trung bình" value={`${stats.average}%`} tone="violet" />
         </section>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="rounded-[22px] border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none sm:p-6">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg font-black text-slate-950 dark:text-white">Khóa học của tôi</h2>
@@ -248,20 +248,20 @@ export default function StudentDashboardPage() {
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Liên hệ bộ phận quản lý để được cấp quyền học.</p>
               </div>
             ) : (
-              <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <div className="mt-3 grid gap-2.5 md:grid-cols-2">
                 {courses.slice(0, 4).map((course) => {
                   const progress = getProgress(course);
                   return (
-                    <Link key={course.course_id} to={coursePath(course)} className="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-4 transition hover:-translate-y-0.5 hover:border-blue-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md">
+                    <Link key={course.course_id} to={coursePath(course)} className="group rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-3 transition hover:-translate-y-0.5 hover:border-blue-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md">
                       <div className="flex items-start gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-sky-400"><BookOpen className="h-5 w-5" /></div>
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-sky-400"><BookOpen className="h-4 w-4" /></div>
                         <div className="min-w-0 flex-1">
                           <h3 className="line-clamp-2 text-sm font-black text-slate-900 dark:text-white group-hover:text-blue-700 dark:group-hover:text-sky-400">{course.title}</h3>
                           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{course.category || "Chương trình CSCA"}</p>
                         </div>
                         <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500 transition group-hover:translate-x-1 group-hover:text-blue-600 dark:group-hover:text-sky-400" />
                       </div>
-                      <div className="mt-4 flex items-center gap-3">
+                      <div className="mt-2.5 flex items-center gap-3">
                         <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><div className="h-full rounded-full bg-blue-600" style={{ width: `${progress}%` }} /></div>
                         <span className="text-xs font-black text-slate-600 dark:text-slate-400">{progress}%</span>
                       </div>
@@ -272,7 +272,7 @@ export default function StudentDashboardPage() {
             )}
           </section>
 
-          <section className="rounded-[22px] border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none sm:p-6">
+          <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-black text-slate-950 dark:text-white">Lịch học sắp tới</h2>
@@ -280,11 +280,11 @@ export default function StudentDashboardPage() {
               </div>
               <CalendarDays className="h-5 w-5 text-blue-600 dark:text-sky-400" />
             </div>
-            <div className="mt-5 space-y-3">
+            <div className="mt-3 space-y-2">
               {upcomingSessions.length === 0 ? (
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/40 px-4 py-7 text-center text-xs text-slate-500 dark:text-slate-400">Chưa có buổi học sắp tới.</div>
               ) : upcomingSessions.map((session) => (
-                <div key={session.id} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-3.5">
+                <div key={session.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-2.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{session.title || "Buổi học trực tuyến"}</p>
@@ -292,7 +292,7 @@ export default function StudentDashboardPage() {
                     </div>
                     <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />
                   </div>
-                  <p className="mt-3 text-xs font-bold text-blue-700 dark:text-sky-400">{formatSessionTime(session.start_time)}</p>
+                  <p className="mt-1.5 text-xs font-bold text-blue-700 dark:text-sky-400">{formatSessionTime(session.start_time)}</p>
                 </div>
               ))}
             </div>
@@ -300,16 +300,16 @@ export default function StudentDashboardPage() {
           </section>
         </div>
 
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
           {[
             ["Bài tập & thi", "Theo dõi bài cần làm và deadline", FileCheck2, "/lms/assignments", "text-amber-600 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-400"],
             ["Tài nguyên", "Mở tài liệu của các lớp đã cấp", FolderOpen, "/lms/files", "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400"],
             ["Phân tích điểm", "Xem tiến độ theo từng khóa học", BarChart3, "/lms/analytics", "text-violet-600 bg-violet-50 dark:bg-violet-950/60 dark:text-violet-400"],
             ["Thông báo", "Cập nhật điểm, lịch và hệ thống", Bell, "/lms/notifications", "text-blue-600 bg-blue-50 dark:bg-blue-950/60 dark:text-blue-400"],
           ].map(([label, description, Icon, to, tone]) => (
-            <Link key={label} to={to} className="group rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-[0_8px_30px_rgba(41,72,110,0.04)] dark:shadow-none transition hover:-translate-y-0.5 hover:border-blue-200 dark:hover:border-slate-700 hover:shadow-md">
-              <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${tone}`}><Icon className="h-5 w-5" /></span>
-              <p className="mt-4 text-sm font-black text-slate-900 dark:text-white group-hover:text-blue-700 dark:group-hover:text-sky-400">{label}</p>
+            <Link key={label} to={to} className="group rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-[0_8px_30px_rgba(41,72,110,0.04)] dark:shadow-none transition hover:-translate-y-0.5 hover:border-blue-200 dark:hover:border-slate-700 hover:shadow-md">
+              <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tone}`}><Icon className="h-4 w-4" /></span>
+              <p className="mt-2 text-sm font-black text-slate-900 dark:text-white group-hover:text-blue-700 dark:group-hover:text-sky-400">{label}</p>
               <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{description}</p>
             </Link>
           ))}

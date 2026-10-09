@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { AlertCircle, Bell, CheckCircle2, ClipboardList, Clock, FileQuestion, Video } from "lucide-react";
+import PropTypes from "prop-types";
+import { ClipboardList, Clock, FileQuestion, Video } from "lucide-react";
 
 const getWeekDates = (date) => {
   const d = new Date(date);
@@ -45,13 +46,13 @@ export default function CalendarWeekView({
           );
 
           return (
-            <div key={dateStr} className={`flex flex-col min-h-[460px] ${isToday ? "bg-blue-50/30 dark:bg-blue-950/20" : ""}`}>
+            <div key={dateStr} className={`flex flex-col min-h-[320px] ${isToday ? "bg-blue-50/30 dark:bg-blue-950/20" : ""}`}>
               {/* Header ngày trong tuần */}
-              <div className={`p-3 text-center border-b border-slate-200/80 dark:border-slate-800 ${
+              <div className={`p-2 text-center border-b border-slate-200/80 dark:border-slate-800 ${
                 isToday ? "bg-blue-100/60 dark:bg-blue-900/40 text-blue-700 dark:text-sky-300" : "bg-slate-50/60 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300"
               }`}>
                 <p className="text-[11px] font-bold uppercase tracking-wider">{WEEKDAY_NAMES[idx]}</p>
-                <p className={`mt-1 inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${
+                <p className={`mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-black ${
                   isToday ? "bg-blue-600 text-white" : "text-slate-800 dark:text-white"
                 }`}>
                   {dayDate.getDate()}
@@ -59,9 +60,9 @@ export default function CalendarWeekView({
               </div>
 
               {/* Danh sách sự kiện trong ngày */}
-              <div className="flex-1 p-2 space-y-2">
+              <div className="flex-1 p-1.5 space-y-1.5">
                 {dayEvents.length === 0 ? (
-                  <div className="py-6 text-center text-[11px] text-slate-400 dark:text-slate-500">
+                  <div className="py-4 text-center text-[11px] text-slate-400 dark:text-slate-500">
                     Không có lịch
                   </div>
                 ) : (
@@ -76,7 +77,7 @@ export default function CalendarWeekView({
                       <div
                         key={`${ev.eventType}-${ev.id}`}
                         onClick={() => onSelectEvent(ev)}
-                        className={`group cursor-pointer rounded-xl p-2.5 text-xs transition border shadow-xs hover:-translate-y-0.5 hover:shadow-sm ${
+                        className={`group cursor-pointer rounded-lg p-2 text-xs transition border shadow-xs hover:-translate-y-0.5 hover:shadow-sm ${
                           isLive
                             ? "bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-900 text-rose-900 dark:text-rose-100"
                             : isSession
@@ -107,7 +108,7 @@ export default function CalendarWeekView({
                         </p>
 
                         {/* Thời gian */}
-                        <div className="mt-1.5 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
                           <Clock className="h-3 w-3 shrink-0" />
                           <span>
                             {formatTime(ev.start_time || ev.due_date)}
@@ -123,7 +124,7 @@ export default function CalendarWeekView({
                               e.stopPropagation();
                               onJoinSession(ev);
                             }}
-                            className="mt-2 w-full rounded-lg bg-blue-600 py-1 text-center font-bold text-white text-[11px] shadow-sm hover:bg-blue-700"
+                            className="mt-1.5 w-full rounded-lg bg-blue-600 py-1 text-center font-bold text-white text-[11px] shadow-sm hover:bg-blue-700"
                           >
                             Vào lớp ngay
                           </button>
@@ -140,3 +141,10 @@ export default function CalendarWeekView({
     </div>
   );
 }
+
+CalendarWeekView.propTypes = {
+  currentDate: PropTypes.oneOfType([PropTypes.instanceOf(Date), PropTypes.string, PropTypes.number]).isRequired,
+  events: PropTypes.arrayOf(PropTypes.object),
+  onSelectEvent: PropTypes.func.isRequired,
+  onJoinSession: PropTypes.func.isRequired,
+};

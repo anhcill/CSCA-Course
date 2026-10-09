@@ -74,7 +74,7 @@ export default function CalendarViewHeader({
   ];
 
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors duration-200">
+    <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors duration-200">
       {/* Cụm điều hướng thời gian */}
       <div className="flex items-center gap-2">
         <button
@@ -111,7 +111,7 @@ export default function CalendarViewHeader({
 
       {/* Cụm chuyển đổi chế độ xem và hành động */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 p-1">
+        <div className="flex rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 p-0.5">
           {viewModes.map((item) => {
             const Icon = item.icon;
             const active = viewMode === item.id;
@@ -120,7 +120,7 @@ export default function CalendarViewHeader({
                 key={item.id}
                 type="button"
                 onClick={() => onViewModeChange(item.id)}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
+                className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold transition ${
                   active
                     ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-sky-400 shadow-sm"
                     : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -137,7 +137,7 @@ export default function CalendarViewHeader({
           <button
             type="button"
             onClick={onCreateClick}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
           >
             <Plus className="h-4 w-4" /> {canManageFixedSchedule ? "Tạo lịch học" : "Bổ sung buổi học"}
           </button>

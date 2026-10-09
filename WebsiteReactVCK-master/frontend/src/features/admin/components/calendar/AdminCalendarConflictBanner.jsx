@@ -1,4 +1,5 @@
-import { AlertTriangle, Clock, MapPin, User, ChevronRight } from "lucide-react";
+/* eslint-disable react/prop-types */
+import { AlertTriangle, Clock, ChevronRight } from "lucide-react";
 
 const formatTimeRange = (start, end) => {
   if (!start) return "";
@@ -18,7 +19,7 @@ export default function AdminCalendarConflictBanner({
   if (!conflicts || conflicts.length === 0) return null;
 
   return (
-    <div className="rounded-3xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 p-5 shadow-sm space-y-3">
+    <div className="rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 p-3 sm:p-4 shadow-sm space-y-2.5">
       <div className="flex items-center gap-2.5 text-rose-700 dark:text-rose-400">
         <AlertTriangle className="h-5 w-5 shrink-0 animate-bounce" />
         <h3 className="text-sm font-black uppercase tracking-wide">
@@ -26,11 +27,11 @@ export default function AdminCalendarConflictBanner({
         </h3>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-1 md:grid-cols-2">
+      <div className="grid gap-2.5 sm:grid-cols-1 md:grid-cols-2">
         {conflicts.map((conflict, idx) => (
           <div
             key={idx}
-            className="flex flex-col justify-between rounded-2xl border border-rose-200/80 dark:border-rose-900/80 bg-white/90 dark:bg-slate-900/90 p-4 shadow-xs"
+            className="flex flex-col justify-between rounded-xl border border-rose-200/80 dark:border-rose-900/80 bg-white/90 dark:bg-slate-900/90 p-3 shadow-xs"
           >
             <div>
               <span className="inline-block rounded-md bg-rose-100 dark:bg-rose-950/80 px-2 py-0.5 text-[10px] font-black uppercase text-rose-700 dark:text-rose-300">
@@ -40,8 +41,8 @@ export default function AdminCalendarConflictBanner({
                 {conflict.message}
               </p>
 
-              <div className="mt-3 space-y-2 text-[11px] text-slate-600 dark:text-slate-300">
-                <div className="flex items-start gap-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 p-2">
+              <div className="mt-2 space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+                <div className="flex items-start gap-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2 py-1.5">
                   <Clock className="h-3.5 w-3.5 text-slate-400 mt-0.5 shrink-0" />
                   <div>
                     <span className="font-bold text-slate-700 dark:text-slate-200">
@@ -51,7 +52,7 @@ export default function AdminCalendarConflictBanner({
                   </div>
                 </div>
 
-                <div className="flex items-start gap-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 p-2">
+                <div className="flex items-start gap-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2 py-1.5">
                   <Clock className="h-3.5 w-3.5 text-slate-400 mt-0.5 shrink-0" />
                   <div>
                     <span className="font-bold text-slate-700 dark:text-slate-200">
@@ -64,7 +65,7 @@ export default function AdminCalendarConflictBanner({
             </div>
 
             {onSelectSession && (
-              <div className="mt-3 flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="mt-2 flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => onSelectSession(conflict.sessionA)}

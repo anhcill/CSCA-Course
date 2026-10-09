@@ -1,4 +1,5 @@
-import { Filter, RefreshCw, Calendar, Users, BookOpen } from "lucide-react";
+/* eslint-disable react/prop-types */
+import { Filter, RefreshCw } from "lucide-react";
 
 export default function AdminCalendarFilterBar({
   filters,
@@ -9,7 +10,7 @@ export default function AdminCalendarFilterBar({
   loading = false,
 }) {
   return (
-    <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm space-y-4">
+    <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 sm:p-4 shadow-sm space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
@@ -31,7 +32,7 @@ export default function AdminCalendarFilterBar({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
         {/* Khoảng thời gian */}
         <div>
           <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
@@ -40,7 +41,7 @@ export default function AdminCalendarFilterBar({
           <select
             value={filters.timeRange || "next_30_days"}
             onChange={(e) => onChangeFilter("timeRange", e.target.value)}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="this_week">Tuần này</option>
             <option value="next_week">Tuần tới</option>
@@ -58,7 +59,7 @@ export default function AdminCalendarFilterBar({
           <select
             value={filters.classId || ""}
             onChange={(e) => onChangeFilter("classId", e.target.value)}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="">Tất cả các lớp</option>
             {classes.map((cls) => (
@@ -77,7 +78,7 @@ export default function AdminCalendarFilterBar({
           <select
             value={filters.teacherId || ""}
             onChange={(e) => onChangeFilter("teacherId", e.target.value)}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="">Tất cả giảng viên</option>
             {teachers.map((tch) => (
@@ -96,7 +97,7 @@ export default function AdminCalendarFilterBar({
           <select
             value={filters.status || ""}
             onChange={(e) => onChangeFilter("status", e.target.value)}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="">Tất cả trạng thái</option>
             <option value="scheduled">Đã lên lịch</option>

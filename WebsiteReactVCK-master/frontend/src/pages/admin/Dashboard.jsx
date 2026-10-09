@@ -134,7 +134,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-8 font-sans pb-16">
+    <div className="space-y-6 font-sans pb-12">
       {/* Top Header Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-gray-700">
         <div>
@@ -180,33 +180,33 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {kpiCards.map((kpi) => {
           const Icon = kpi.icon;
           return (
             <Link
               key={kpi.id}
               to={kpi.link}
-              className="group bg-white dark:bg-gray-800/90 rounded-3xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:border-blue-500/40 transition-all duration-200 relative overflow-hidden flex flex-col justify-between"
+              className="group bg-white dark:bg-gray-800/90 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:border-blue-500/40 transition-all duration-200 relative overflow-hidden flex flex-col justify-between"
             >
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     {kpi.title}
                   </span>
-                  <p className="text-3xl font-black text-gray-900 dark:text-white font-mono tracking-tight">
+                  <p className="text-2xl font-black text-gray-900 dark:text-white font-mono tracking-tight">
                   {kpi.value}
                   </p>
                 </div>
 
                 <div
-                  className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${kpi.color} flex items-center justify-center text-white shadow-lg shrink-0 group-hover:scale-110 transition`}
+                  className={`w-9 h-9 rounded-xl bg-gradient-to-br ${kpi.color} flex items-center justify-center text-white shadow-lg shrink-0 group-hover:scale-110 transition`}
                 >
-                  <Icon className="w-6 h-6" />
+                  <Icon className="w-5 h-5" />
                 </div>
               </div>
 
-              <div className="pt-4 mt-2 border-t border-gray-100 dark:border-gray-700/60 flex items-center justify-between text-xs">
+              <div className="pt-2 mt-2 border-t border-gray-100 dark:border-gray-700/60 flex items-center justify-between text-xs">
                 <span className="text-gray-500 dark:text-gray-400 truncate max-w-[150px]">
                   {kpi.subtext}
                 </span>
@@ -218,7 +218,7 @@ export default function Dashboard() {
       </div>
 
       {/* SECTION 1.5: MOLYBRIDGE & ENTITLEMENT HEALTH */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-7 border border-indigo-900/40 text-white shadow-xl">
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-4 sm:p-5 border border-indigo-900/40 text-white shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
@@ -256,28 +256,28 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-indigo-900/60">
-          <div className="bg-slate-900/60 rounded-2xl p-4 border border-indigo-500/20">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-4 pt-4 border-t border-indigo-900/60">
+          <div className="bg-slate-900/60 rounded-xl p-2.5 border border-indigo-500/20">
             <span className="text-[10px] uppercase font-bold text-indigo-300">Quyền Đang Hoạt Động</span>
-              <div className="text-2xl font-black font-mono text-emerald-400 mt-1">{kpiData.entitlements.active}</div>
+              <div className="text-xl font-black font-mono text-emerald-400 mt-0.5">{kpiData.entitlements.active}</div>
             <span className="text-[11px] text-indigo-200/60">Active Entitlements</span>
           </div>
 
-          <div className="bg-slate-900/60 rounded-2xl p-4 border border-indigo-500/20">
+          <div className="bg-slate-900/60 rounded-xl p-2.5 border border-indigo-500/20">
             <span className="text-[10px] uppercase font-bold text-indigo-300">Đang tạm dừng</span>
-            <div className="text-2xl font-black font-mono text-amber-400 mt-1">{kpiData.entitlements.suspended}</div>
+            <div className="text-xl font-black font-mono text-amber-400 mt-0.5">{kpiData.entitlements.suspended}</div>
             <span className="text-[11px] text-indigo-200/60">Suspended entitlements</span>
           </div>
 
-          <div className="bg-slate-900/60 rounded-2xl p-4 border border-indigo-500/20">
+          <div className="bg-slate-900/60 rounded-xl p-2.5 border border-indigo-500/20">
             <span className="text-[10px] uppercase font-bold text-indigo-300">Đã Thu Hồi / Hết Hạn</span>
-            <div className="text-2xl font-black font-mono text-rose-400 mt-1">{kpiData.entitlements.inactive}</div>
+            <div className="text-xl font-black font-mono text-rose-400 mt-0.5">{kpiData.entitlements.inactive}</div>
             <span className="text-[11px] text-indigo-200/60">Revoked / Expired</span>
           </div>
 
-          <div className="bg-slate-900/60 rounded-2xl p-4 border border-indigo-500/20">
+          <div className="bg-slate-900/60 rounded-xl p-2.5 border border-indigo-500/20">
             <span className="text-[10px] uppercase font-bold text-indigo-300">Dead-Letter Queue (DLQ)</span>
-            <div className="text-2xl font-black font-mono text-rose-500 mt-1">{kpiData.syncJobs.deadLetter}</div>
+            <div className="text-xl font-black font-mono text-rose-500 mt-0.5">{kpiData.syncJobs.deadLetter}</div>
             <span className="text-[11px] text-indigo-200/60">Cần retry thủ công</span>
           </div>
         </div>

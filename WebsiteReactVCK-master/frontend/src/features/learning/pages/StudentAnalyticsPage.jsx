@@ -69,7 +69,7 @@ export default function StudentAnalyticsPage() {
 
   return (
     <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 pb-12 pt-6 sm:px-8 lg:px-10 transition-colors duration-200">
-      <div className="mx-auto max-w-[1200px] space-y-6">
+      <div className="mx-auto max-w-[1200px] space-y-4">
         <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-950 dark:text-white">
@@ -85,25 +85,25 @@ export default function StudentAnalyticsPage() {
           </button>
         </header>
 
-        <section className="grid gap-4 sm:grid-cols-4">
-          <div className="rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 bg-white dark:bg-slate-900 p-5 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
+        <section className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+          <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-900/60 bg-white dark:bg-slate-900 p-3 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
             <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-            <p className="mt-5 text-3xl font-black text-slate-950 dark:text-white">{gradeSummary.percentage}%</p>
+            <p className="mt-2 text-xl font-black text-slate-950 dark:text-white">{gradeSummary.percentage}%</p>
             <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Điểm tổng ({gradeSummary.gradedCount} bài đã chấm)</p>
           </div>
-          <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
+          <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
             <TrendingUp className="h-5 w-5 text-blue-600 dark:text-sky-400" />
-            <p className="mt-5 text-3xl font-black text-slate-950 dark:text-white">{average}%</p>
+            <p className="mt-2 text-xl font-black text-slate-950 dark:text-white">{average}%</p>
             <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Tiến độ trung bình</p>
           </div>
-          <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
+          <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
             <BookOpen className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-            <p className="mt-5 text-3xl font-black text-slate-950 dark:text-white">{courses.length}</p>
+            <p className="mt-2 text-xl font-black text-slate-950 dark:text-white">{courses.length}</p>
             <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Khóa học đã cấp quyền</p>
           </div>
-          <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
+          <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none">
             <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-            <p className="mt-5 text-3xl font-black text-slate-950 dark:text-white">{courses.filter((course) => getProgress(course) === 100).length}</p>
+            <p className="mt-2 text-xl font-black text-slate-950 dark:text-white">{courses.filter((course) => getProgress(course) === 100).length}</p>
             <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Khóa học hoàn thành</p>
           </div>
         </section>
