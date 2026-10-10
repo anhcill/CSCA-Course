@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Calendar, X } from "lucide-react";
-import { createLiveClassSchedule, createLiveSession, fetchClassChapters } from "../../api/lmsClient";
+import { createLiveClassSchedule, createLiveSession, fetchClassChapters, fetchLiveClasses } from "../../api/lmsClient";
 import { useAuthContext } from "../../../context/AuthContext";
 
 const DAYS_OF_WEEK = [
@@ -19,15 +19,52 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
   const { authUser } = useAuthContext();
   const [tab, setTab] = useState(canManageFixedSchedule ? "series" : "single");
   const [submitting, setSubmitting] = useState(false);
+  const [classOptions, setClassOptions] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState(classId ? String(classId) : "");
+  const [classesLoading, setClassesLoading] = useState(!classId);
+  const [classesError, setClassesError] = useState("");
   const [chapters, setChapters] = useState([]);
+  const [chaptersLoading, setChaptersLoading] = useState(Boolean(classId));
+  const [chaptersError, setChaptersError] = useState("");
+  const [chaptersReloadKey, setChaptersReloadKey] = useState(0);
   const [teachers, setTeachers] = useState([]);
   const [chapterMode, setChapterMode] = useState("existing");
   const [chapterId, setChapterId] = useState("");
   const [newChapter, setNewChapter] = useState({ title: "", description: "", objectives: "", teacherId: "" });
 
+  const effectiveClassId = classId || selectedClassId;
+
+  useEffect(() => {
+    if (classId) return;
+    let cancelled = false;
+    setClassesLoading(true);
+    fetchLiveClasses().then((response) => {
+      if (cancelled) return;
+      const options = (Array.isArray(response?.data) ? response.data : [])
+        .filter((item) => item.course_id && item.status === "active");
+      setClassOptions(options);
+      if (options.length === 1) setChaptersLoading(true);
+      setSelectedClassId(options.length === 1 ? String(options[0].id) : "");
+      setClassesError("");
+    }).catch((error) => {
+      if (!cancelled) setClassesError(error?.message || "Không tải được danh sách lớp.");
+    }).finally(() => { if (!cancelled) setClassesLoading(false); });
+    return () => { cancelled = true; };
+  }, [classId]);
+
   useEffect(() => {
     let cancelled = false;
-    fetchClassChapters(classId).then((response) => {
+    setChapters([]);
+    setChapterId("");
+    setChapterMode("existing");
+    setTeachers([]);
+    setChaptersError("");
+    if (!effectiveClassId) {
+      setChaptersLoading(false);
+      return () => { cancelled = true; };
+    }
+    setChaptersLoading(true);
+    fetchClassChapters(effectiveClassId).then((response) => {
       if (cancelled) return;
       const items = (Array.isArray(response?.data) ? response.data : [])
         .filter((chapter) => canManageFixedSchedule || String(chapter.assigned_teacher_id) === String(authUser?.id));
@@ -35,9 +72,11 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
       setTeachers(Array.isArray(response?.teachers) ? response.teachers : []);
       if (items.length === 0) setChapterMode("new");
       else setChapterId(String(items[0].id));
-    }).catch(() => { if (!cancelled) toast.error("Không tải được các chương của lớp."); });
+    }).catch((error) => {
+      if (!cancelled) setChaptersError(error?.message || "Không tải được các chương của lớp.");
+    }).finally(() => { if (!cancelled) setChaptersLoading(false); });
     return () => { cancelled = true; };
-  }, [classId, canManageFixedSchedule, authUser?.id]);
+  }, [effectiveClassId, canManageFixedSchedule, authUser?.id, chaptersReloadKey]);
 
   // Form tạo lịch cố định (Series)
   const [seriesForm, setSeriesForm] = useState({
@@ -60,11 +99,11 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
 
   const handleSeriesSubmit = async (e) => {
     e.preventDefault();
-    if (!classId) return toast.error("Vui lòng chọn lớp học để tạo lịch.");
+    if (!effectiveClassId) return toast.error("Vui lòng chọn lớp học để tạo lịch.");
     setSubmitting(true);
     try {
       const res = await createLiveClassSchedule({
-        classId,
+        classId: effectiveClassId,
         dayOfWeek: Number(seriesForm.dayOfWeek),
         startTime: seriesForm.startTime,
         endTime: seriesForm.endTime,
@@ -85,7 +124,8 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
 
   const handleSessionSubmit = async (e) => {
     e.preventDefault();
-    if (!classId) return toast.error("Vui lòng chọn lớp học.");
+    if (!effectiveClassId) return toast.error("Vui lòng chọn lớp học.");
+    if (chaptersLoading || chaptersError) return toast.error("Cần tải được các chương của lớp trước khi tạo buổi học.");
     if (!sessionForm.title.trim()) return toast.error("Vui lòng nhập tên buổi học.");
     if (chapterMode === "existing" && !chapterId) return toast.error("Chọn chương cho buổi học.");
     if (chapterMode === "new" && !newChapter.title.trim()) return toast.error("Nhập tên chương mới.");
@@ -95,7 +135,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
       const endDateTime = new Date(`${sessionForm.date}T${sessionForm.endTime}:00`).toISOString();
 
       const res = await createLiveSession({
-        liveClassId: classId,
+        liveClassId: effectiveClassId,
         title: sessionForm.title.trim(),
         startTime: startDateTime,
         endTime: endDateTime,
@@ -122,9 +162,9 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-      <div className="w-full max-w-lg rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden transition-all">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4 bg-slate-50/50 dark:bg-slate-800/30">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-xs sm:p-6">
+      <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl transition-all dark:border-slate-800 dark:bg-slate-900 sm:max-h-[calc(100dvh-3rem)]">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50/50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/30 sm:px-6">
           <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
             <Calendar className="h-5 w-5 text-blue-600 dark:text-sky-400" />
             {canManageFixedSchedule ? "Tạo Lịch & Buổi Học" : "Bổ Sung Buổi Học"}
@@ -135,7 +175,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
         </div>
 
         {/* Tab switch */}
-        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 px-6 pt-3">
+        <div className="flex shrink-0 border-b border-slate-200 bg-slate-50/50 px-4 pt-3 dark:border-slate-800 dark:bg-slate-800/20 sm:px-6">
           {canManageFixedSchedule && (
             <button
               type="button"
@@ -159,7 +199,20 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
         </div>
 
         {/* Form content */}
-        <div className="p-6">
+        <div className="min-h-0 overflow-y-auto p-4 sm:p-6">
+          {!classId && <div className="mb-4">
+            <label htmlFor="schedule-class" className="block text-xs font-bold text-slate-700 dark:text-slate-300">Lớp học</label>
+            <select id="schedule-class" value={selectedClassId} disabled={classesLoading} onChange={(e) => { setChaptersLoading(Boolean(e.target.value)); setSelectedClassId(e.target.value); }} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+              <option value="">{classesLoading ? "Đang tải lớp học..." : "Chọn lớp học"}</option>
+              {classOptions.map((item) => <option key={item.id} value={item.id}>{item.title}{item.course_title ? ` · ${item.course_title}` : ""}</option>)}
+            </select>
+            {classesError && <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{classesError}</p>}
+            {!classesLoading && !classesError && classOptions.length === 0 && <p className="mt-2 text-xs text-slate-500">Bạn chưa có lớp phù hợp để bổ sung buổi học.</p>}
+          </div>}
+          {effectiveClassId && chaptersError && <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+            <span>{chaptersError}</span>
+            <button type="button" onClick={() => setChaptersReloadKey((key) => key + 1)} className="font-bold underline">Tải lại chương</button>
+          </div>}
           {canManageFixedSchedule && tab === "series" ? (
             <form onSubmit={handleSeriesSubmit} className="space-y-4">
               <div>
@@ -185,7 +238,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Giờ bắt đầu</label>
                   <input
@@ -206,7 +259,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Áp dụng từ ngày</label>
                   <input
@@ -232,7 +285,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
 
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || !effectiveClassId}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
               >
                 {submitting ? "Đang tạo..." : "Lưu lịch cố định"}
@@ -256,15 +309,15 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
 
               <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-900/60 dark:bg-blue-950/20">
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Chương học của buổi này</label>
-                <select value={chapterMode} onChange={(e) => setChapterMode(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
+                <select value={chapterMode} disabled={!effectiveClassId || chaptersLoading || Boolean(chaptersError)} onChange={(e) => setChapterMode(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
                   {chapters.length > 0 && <option value="existing">Chọn chương đã có</option>}
                   <option value="new">Thêm chương mới cùng buổi học</option>
                 </select>
-                {chapterMode === "existing" && chapters.length > 0 ? (
+                {chaptersLoading ? <p className="mt-2 text-xs text-slate-500">Đang tải các chương của lớp...</p> : chapterMode === "existing" && chapters.length > 0 ? (
                   <select value={chapterId} onChange={(e) => setChapterId(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
                     {chapters.map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
                   </select>
-                ) : (
+                ) : !effectiveClassId || chaptersError ? <p className="mt-2 text-xs text-slate-500">Chọn lớp và tải chương trước khi tiếp tục.</p> : (
                   <div className="mt-2 space-y-2">
                     <input required maxLength={255} value={newChapter.title} onChange={(e) => setNewChapter({ ...newChapter, title: e.target.value })} placeholder="Tên chương" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800" />
                     <textarea maxLength={5000} rows={2} value={newChapter.objectives} onChange={(e) => setNewChapter({ ...newChapter, objectives: e.target.value })} placeholder="Mục tiêu học tập (tùy chọn)" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800" />
@@ -286,7 +339,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Giờ bắt đầu</label>
                   <input
@@ -320,7 +373,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
 
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || !effectiveClassId || chaptersLoading || Boolean(chaptersError)}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
               >
                 {submitting ? "Đang tạo..." : "Tạo buổi học"}
