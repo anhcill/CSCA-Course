@@ -26,6 +26,7 @@ import announcementRouter from "./router/announcement.router.js";
 import reportRouter from "./router/report.router.js";
 import supportRouter from "./router/support.router.js";
 import healthRouter from "./router/health.router.js";
+import postRouter from "./router/post.router.js";
 import { isAllowedOrigin, securityHeaders } from "./middleware/security.js";
 import { renderHtmlWithSeo } from "./services/seoPrerender.service.js";
 
@@ -121,6 +122,7 @@ app.use("/api/teacher", teacherRouter);
 app.use("/api/admin/calendar", adminCalendarRouter);
 app.use("/api/v1/admin/calendar", adminCalendarRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/posts", postRouter);
 app.use("/api", fileRouter);
 
 app.use("/api", (req, res) => {
