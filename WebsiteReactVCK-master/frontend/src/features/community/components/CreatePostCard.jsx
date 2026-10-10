@@ -39,7 +39,7 @@ export default function CreatePostCard({ currentUser, onPostCreated }) {
     setTags(tags.filter((t) => t !== tagToRemove));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!content.trim()) {
       toast.error('Vui lòng nhập nội dung bài viết!');
