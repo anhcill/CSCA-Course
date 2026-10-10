@@ -96,10 +96,10 @@ export default function Dashboard() {
         id: "attendance",
         title: "Chuyên Cần Lớp Live Meet",
         value: kpiData.avgAttendanceRate,
-        subtext: `${kpiData.pendingGradingCount} bài tập chờ chấm`,
+        subtext: "Xem báo cáo theo lớp và buổi",
         icon: FiVideo,
         color: "from-amber-600 to-orange-600",
-        link: "/admin/calendar",
+        link: "/admin/attendance-report",
       },
     ],
     [kpiData]

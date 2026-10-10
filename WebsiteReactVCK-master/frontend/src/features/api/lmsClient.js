@@ -65,6 +65,10 @@ const requestCalendarMutation = async (path, options, detail) => {
 };
 
 export const fetchAttendanceReviewQueue = (filters) => request(`/attendance/amendments?${new URLSearchParams(filters)}`);
+export const fetchAdminAttendanceReport = (filters = {}) => {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+  return request(`/admin/attendance-report${query.size ? `?${query}` : ""}`);
+};
 export const fetchFinalizedAttendanceSheets = (filters) => request(`/attendance/finalized-sheets?${new URLSearchParams(filters)}`);
 export const fetchFinalizedAttendanceSheet = (sessionId) => request(`/attendance/finalized-sheets/${encodeURIComponent(sessionId)}`);
 export const reviewFinalizedAttendanceSheet = (sessionId, reviewNote) => request(

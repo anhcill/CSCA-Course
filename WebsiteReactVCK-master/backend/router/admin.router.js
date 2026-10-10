@@ -4,6 +4,7 @@ import { getClient, query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireAdmin from "../middleware/requireAdmin.js";
 import { recordAuditEvent } from "../services/audit.service.js";
+import { getAttendanceReport, parseReportDate } from "../services/attendanceReport.service.js";
 import {
   ALLOWED_VIDEO_MIME_TYPES,
   MAX_VIDEO_SIZE_BYTES,
@@ -174,8 +175,12 @@ router.get("/kpi-summary", ...adminOnly, async (req, res) => {
              FROM courses`),
       query("SELECT COUNT(*)::int AS count FROM enrollments WHERE status = 'active'"),
       query("SELECT COUNT(*)::int AS count FROM assignment_submissions WHERE status IN ('submitted', 'late')"),
-      query(`SELECT COALESCE(AVG(CASE WHEN status IN ('present', 'excused') THEN 100 ELSE 0 END), 0)::numeric(5,1) AS rate
-             FROM class_attendance`),
+      query(`SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE ca.status = 'present') /
+                          NULLIF(COUNT(*) FILTER (WHERE ca.status IN ('present', 'absent', 'excused')), 0), 1) AS rate
+             FROM class_attendance ca
+             JOIN class_attendance_sheets sheet ON sheet.session_id = ca.session_id
+             JOIN class_sessions cs ON cs.id = sheet.session_id
+             WHERE cs.status <> 'cancelled' AND cs.start_time <= NOW()`),
       query("SELECT COALESCE(AVG(progress_pct), 0)::numeric(5,1) AS rate FROM progress"),
       query("SELECT COALESCE(SUM(final_amount_vnd) FILTER (WHERE status = 'success'), 0)::bigint AS total FROM transactions"),
       query(`WITH months AS (
@@ -253,7 +258,7 @@ router.get("/kpi-summary", ...adminOnly, async (req, res) => {
         },
         activeEnrollments: Number(enrollments.rows[0]?.count || 0),
         pendingSubmissions: Number(pending.rows[0]?.count || 0),
-        attendanceRate: Number(attendance.rows[0]?.rate || 0),
+        attendanceRate: attendance.rows[0]?.rate == null ? null : Number(attendance.rows[0].rate),
         completionRate: `${Number(completion.rows[0]?.rate || 0)}%`,
         completionRateValue: Number(completion.rows[0]?.rate || 0),
         monthlyEnrollmentStats,
@@ -263,13 +268,28 @@ router.get("/kpi-summary", ...adminOnly, async (req, res) => {
         activeLearnersCount: Number(userStats.active_learners || 0),
         totalEnrollmentsCount: Number(enrollments.rows[0]?.count || 0),
         pendingGradingCount: Number(pending.rows[0]?.count || 0),
-        avgAttendanceRate: `${Number(attendance.rows[0]?.rate || 0)}%`,
+        avgAttendanceRate: attendance.rows[0]?.rate == null ? "—" : `${Number(attendance.rows[0].rate)}%`,
         totalRevenueVnd: `${Number(revenue.rows[0]?.total || 0).toLocaleString("vi-VN")} đ`,
         monthlyGrowthPct: `${growth >= 0 ? "+" : ""}${growth.toFixed(1)}%`,
       },
     });
   } catch (error) {
     return handleDbError(res, error, "Không thể tải KPI quản trị");
+  }
+});
+
+// GET /api/admin/attendance-report — finalized attendance by class and due session.
+router.get("/attendance-report", ...adminOnly, async (req, res) => {
+  const from = parseReportDate(req.query.from);
+  const to = parseReportDate(req.query.to);
+  if (from === undefined || to === undefined || (from && to && from > to)) {
+    return sendError(res, 422, "Khoảng ngày không hợp lệ", "INVALID_DATE_RANGE");
+  }
+  try {
+    const report = await getAttendanceReport({ query }, { from, to });
+    return res.json({ success: true, data: report });
+  } catch (error) {
+    return handleDbError(res, error, "Không thể tải báo cáo điểm danh");
   }
 });
 

@@ -12,6 +12,7 @@ import {
   FiFileText,
   FiList,
   FiChevronRight,
+  FiBarChart2,
 } from 'react-icons/fi';
 import { useAuthContext } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -65,6 +66,7 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
       group: 'Đào tạo',
       items: [
         { title: 'Kiểm tra điểm danh', icon: <FiCheckSquare className="w-4 h-4 shrink-0" />, path: '/admin/attendance-review' },
+        { title: 'Báo cáo điểm danh', icon: <FiBarChart2 className="w-4 h-4 shrink-0" />, path: '/admin/attendance-report' },
         { title: 'Sổ điểm & tổng kết', icon: <FiFileText className="w-4 h-4 shrink-0" />, path: '/admin/student-progress' },
         { title: 'Hỗ trợ học viên', icon: <FiUser className="w-4 h-4 shrink-0" />, path: '/admin/support' },
         { title: 'Ngân hàng câu hỏi', icon: <FiList className="w-4 h-4 shrink-0" />, path: '/admin/question-bank' },

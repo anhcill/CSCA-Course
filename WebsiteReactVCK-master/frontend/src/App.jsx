@@ -65,6 +65,7 @@ const TeacherClassCurriculumPage = lazy(() => import("./features/teacher/pages/T
 const TeacherSessionWorkspacePage = lazy(() => import("./features/teacher/pages/TeacherSessionWorkspacePage.jsx"));
 const TeacherStudentProgressPage = lazy(() => import("./features/teacher/pages/TeacherStudentProgressPage.jsx"));
 const AttendanceReviewPage = lazy(() => import("./features/teacher/pages/AttendanceReviewPage.jsx"));
+const AttendanceReportPage = lazy(() => import("./pages/admin/AttendanceReportPage.jsx"));
 const QuestionBankPage = lazy(() => import("./features/teacher/pages/QuestionBankPage.jsx"));
 const StudentSupportPage = lazy(() => import("./features/teacher/pages/StudentSupportPage.jsx"));
 const StudentFilesPage = lazy(() => import("./features/learning/pages/StudentFilesPage.jsx"));
@@ -181,6 +182,7 @@ function AppRoutes() {
         <Route path="grading" element={<TeacherGradingPage />} />
         <Route path="quizzes" element={<TeacherQuizPage />} />
         <Route path="attendance-review" element={<AttendanceReviewPage />} />
+        <Route path="attendance-report" element={<AttendanceReportPage />} />
         <Route path="question-bank" element={<QuestionBankPage />} />
         <Route path="student-progress" element={<TeacherStudentProgressPage />} />
         <Route path="support" element={<StudentSupportPage />} />
