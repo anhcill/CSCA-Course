@@ -1371,7 +1371,7 @@ router.get("/:classId/sessions", protectRoute, requireManagedLearner, async (req
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
     if (!(await canViewClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xem session của lớp này");
     const result = await query(
-      `SELECT cs.id, cs.live_class_id, cs.chapter_id, cs.schedule_id, cs.title, cs.start_time, cs.end_time, cs.status,
+      `SELECT cs.id, cs.live_class_id, cs.chapter_id, cs.schedule_id, cs.title, cs.start_time, cs.end_time, cs.status, cs.version,
               cs.original_start_at, cs.original_end_at, cs.change_reason, cs.changed_at,
               cs.meet_url, cs.created_at, cs.updated_at
        FROM class_sessions cs

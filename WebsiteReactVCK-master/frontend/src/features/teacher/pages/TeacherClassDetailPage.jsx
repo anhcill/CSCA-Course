@@ -15,6 +15,7 @@ import ClassWorkspaceScheduleTab from "../components/classWorkspace/ClassWorkspa
 import CreateScheduleModal from "../../calendar/components/CreateScheduleModal";
 import TeacherNextSessionHero from "../components/classWorkspace/TeacherNextSessionHero";
 import MeetingLinkModal from "../components/classWorkspace/MeetingLinkModal";
+import ClassChaptersManager from "../components/classWorkspace/ClassChaptersManager";
 
 export default function TeacherClassDetailPage() {
   const { classId } = useParams();
@@ -87,6 +88,9 @@ export default function TeacherClassDetailPage() {
           <Link to={`${classBasePath}/curriculum`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
             <BookOpen className="h-3.5 w-3.5" /> Giáo trình lớp
           </Link>
+          {isAdminView && <a href="#class-chapters-manager" className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
+            <BookOpen className="h-3.5 w-3.5" /> Chương & buổi học
+          </a>}
         </div>
 
         <TeacherNextSessionHero
@@ -100,6 +104,10 @@ export default function TeacherClassDetailPage() {
         />
 
         <ClassWorkspaceOverviewTab stats={stats} atRiskStudents={atRiskStudents} onOpenCreateSession={() => setIsCreateSessionOpen(true)} />
+
+        {isAdminView && authUser?.role === "admin" && <section id="class-chapters-manager" className="scroll-mt-20">
+          <ClassChaptersManager classId={classId} sessions={sessions} onChanged={loadData} />
+        </section>}
 
         <section id="class-session-schedule" className="scroll-mt-6">
           <ClassWorkspaceScheduleTab

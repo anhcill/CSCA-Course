@@ -86,11 +86,19 @@ test("chapters group legacy sessions and enforce the session/class binding", asy
   }, { ...teacher, role: "creator" });
   assert.equal(session.statusCode, 201, JSON.stringify(session.body));
   assert.equal(String(session.body.data.chapter_id), String(chapterId));
+  const listedSessions = await invoke("get", "/:classId/sessions", { classId: cls.id }, {}, { ...admin, role: "admin" });
+  assert.equal(listedSessions.statusCode, 200, JSON.stringify(listedSessions.body));
+  assert.equal(typeof listedSessions.body.data.find((item) => String(item.id) === String(session.body.data.id)).version, "number");
   const updatedSession = await invoke("patch", "/sessions/:sessionId", { sessionId: session.body.data.id }, {
     title: "Buổi 2 đã sửa",
   }, { ...teacher, role: "creator" });
   assert.equal(updatedSession.statusCode, 200, JSON.stringify(updatedSession.body));
   assert.equal(String(updatedSession.body.data.chapter_id), String(chapterId));
+  const reassignedSession = await invoke("patch", "/sessions/:sessionId", { sessionId: session.body.data.id }, {
+    chapterId: legacyRow.chapter_id, expectedVersion: updatedSession.body.data.version,
+  }, { ...admin, role: "admin" });
+  assert.equal(reassignedSession.statusCode, 200, JSON.stringify(reassignedSession.body));
+  assert.equal(String(reassignedSession.body.data.chapter_id), String(legacyRow.chapter_id));
   const newChapterSession = await invoke("post", "/:classId/sessions", { classId: cls.id }, {
     title: "Buổi 3", newChapter: { title: "Chương 2", objectives: "Luyện tập" },
     startTime: "2027-01-03T09:00:00Z", endTime: "2027-01-03T10:00:00Z",

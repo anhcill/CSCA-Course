@@ -318,10 +318,10 @@ export const fetchLiveClassSessions = async (classId) => (
   request(`/live-classes/${encodeURIComponent(classId)}/sessions`)
 );
 
-export const updateLiveSession = async ({ sessionId, title, startTime, endTime, meetUrl, passcode, status, changeReason, expectedVersion }) => (
+export const updateLiveSession = async ({ sessionId, title, startTime, endTime, meetUrl, passcode, status, chapterId, changeReason, expectedVersion }) => (
   requestCalendarMutation(`/live-classes/sessions/${encodeURIComponent(sessionId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status, changeReason, expectedVersion }),
+    body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status, chapterId, changeReason, expectedVersion }),
   }, { sessionId, type: "session-updated" })
 );
 
