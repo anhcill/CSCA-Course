@@ -161,13 +161,26 @@ const ensureAssignmentVisibleToStudent = async (assignment, userId, db = { query
   return courseId !== null || assignment.live_class_id !== null;
 };
 
-const ownsAssignment = (assignment, user) => user.role === "admin" || String(assignment.instructor_id) === String(user.id);
+const isAssignedTeacher = async (classId, userId, db = { query }) => Boolean((await db.query(
+  `SELECT 1 FROM live_classes lc WHERE lc.id = $1 AND
+   (EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id
+      AND ct.teacher_id = $2 AND ct.status = 'active') OR
+    lc.instructor_id = $2 AND NOT EXISTS (SELECT 1 FROM class_teachers ct
+      WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2))`,
+  [classId, userId],
+)).rows[0]);
+
+const ownsAssignment = async (assignment, user, db = { query }) => {
+  if (user.role === "admin") return true;
+  if (user.role !== "creator" || String(assignment.instructor_id) !== String(user.id)) return false;
+  return !assignment.live_class_id || await isAssignedTeacher(assignment.live_class_id, user.id, db);
+};
 
 // A class can have a lead teacher and active co-teachers. Co-teachers share
 // the grading queue for class-bound work, while editing remains reserved for
 // the activity author (or an administrator).
 const canGradeAssignment = async (assignment, user, db = { query }) => {
-  if (ownsAssignment(assignment, user)) return true;
+  if (await ownsAssignment(assignment, user, db)) return true;
   if (user.role !== "creator" || !assignment.live_class_id) return false;
   const result = await db.query(
     `SELECT 1 FROM class_teachers
@@ -351,7 +364,8 @@ router.get("/", protectRoute, async (req, res) => {
       let classAccessClause = "TRUE";
       if (isTeacher) {
         classAccessParams.push(req.user.id);
-        classAccessClause = `(lc.instructor_id = $3 OR EXISTS (
+        classAccessClause = `((lc.instructor_id = $3 AND NOT EXISTS
+          (SELECT 1 FROM class_teachers ct0 WHERE ct0.live_class_id=lc.id AND ct0.teacher_id=$3)) OR EXISTS (
           SELECT 1 FROM class_teachers ct
           WHERE ct.live_class_id = lc.id AND ct.teacher_id = $3 AND ct.status = 'active'
         ))`;
@@ -386,7 +400,10 @@ router.get("/", protectRoute, async (req, res) => {
     const visibilityClause = isAdmin
       ? "TRUE"
       : isTeacher
-        ? "a.instructor_id = $1"
+        ? `(a.live_class_id IS NULL AND a.instructor_id = $1 OR a.live_class_id IS NOT NULL AND
+            ((lc.instructor_id = $1 AND NOT EXISTS (SELECT 1 FROM class_teachers ct0
+              WHERE ct0.live_class_id=lc.id AND ct0.teacher_id=$1)) OR EXISTS (SELECT 1 FROM class_teachers ct
+              WHERE ct.live_class_id=a.live_class_id AND ct.teacher_id=$1 AND ct.status='active')))`
         : `(
              COALESCE(c.is_published, class_course.is_published) = true
              AND EXISTS (
@@ -403,7 +420,10 @@ router.get("/", protectRoute, async (req, res) => {
     const quizVisibilityClause = isAdmin
       ? "TRUE"
       : isTeacher
-        ? "(q.instructor_id = $1 OR c.author_id = $1)"
+        ? `(q.live_class_id IS NULL AND (q.instructor_id = $1 OR c.author_id = $1) OR
+            q.live_class_id IS NOT NULL AND ((quiz_lc.instructor_id = $1 AND NOT EXISTS
+              (SELECT 1 FROM class_teachers ct0 WHERE ct0.live_class_id=quiz_lc.id AND ct0.teacher_id=$1)) OR EXISTS
+              (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id=q.live_class_id AND ct.teacher_id=$1 AND ct.status='active')))`
         : `q.status = 'PUBLISHED' AND c.is_published = true AND EXISTS (
              SELECT 1 FROM lms_access_grants g
              WHERE g.user_id = $1 AND g.course_id = c.id AND g.access_status = 'active'
@@ -508,7 +528,10 @@ router.get("/", protectRoute, async (req, res) => {
 // GET /api/assignments/teacher/quizzes — real quiz authoring list for the teacher UI.
 router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
   try {
-    const ownerFilter = req.user.role === "admin" ? "TRUE" : "(q.instructor_id = $1 OR c.author_id = $1)";
+    const ownerFilter = req.user.role === "admin" ? "TRUE" : `(q.live_class_id IS NULL AND (q.instructor_id=$1 OR c.author_id=$1)
+      OR q.live_class_id IS NOT NULL AND ((lc.instructor_id=$1 AND NOT EXISTS
+        (SELECT 1 FROM class_teachers ct0 WHERE ct0.live_class_id=lc.id AND ct0.teacher_id=$1)) OR EXISTS
+        (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id=q.live_class_id AND ct.teacher_id=$1 AND ct.status='active')))`;
     const params = req.user.role === "admin" ? [] : [req.user.id];
     const result = await query(
       `SELECT q.id, q.title, q.description, q.paper_file_id, q.live_class_id, q.class_session_id, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score,
@@ -559,7 +582,8 @@ router.get("/teacher/quiz-targets", protectRoute, requireTeacher, requirePermiss
     const courseId = parsePositiveId(req.query.courseId);
     if (!courseId) return validationError(res, "courseId không hợp lệ");
     const isAdmin = req.user.role === "admin";
-    const accessClause = isAdmin ? "TRUE" : `(c.author_id = $2 OR lc.instructor_id = $2 OR EXISTS (
+    const accessClause = isAdmin ? "TRUE" : `((lc.instructor_id = $2 AND NOT EXISTS
+      (SELECT 1 FROM class_teachers ct0 WHERE ct0.live_class_id=lc.id AND ct0.teacher_id=$2)) OR EXISTS (
       SELECT 1 FROM class_teachers ct
       WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
     ))`;
@@ -624,6 +648,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     // Keep the session lock from validation through the insert. This prevents a
     // schedule update from moving the selected session into the past mid-request.
     await client.query("BEGIN");
+    await assertGradebookOpen(client, liveClassId);
     const course = await client.query(
       "SELECT c.id, c.author_id FROM courses c WHERE c.id = $1",
       [courseId],
@@ -640,8 +665,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     );
     if (!target.rows[0]) { await client.query("ROLLBACK"); return validationError(res, "Buổi học không thuộc lớp hoặc khóa học đã chọn"); }
     const targetSession = target.rows[0];
-    if (req.user.role !== "admin" && String(course.rows[0].author_id) !== String(req.user.id)
-      && String(targetSession.instructor_id) !== String(req.user.id) && !targetSession.is_class_teacher) {
+    if (req.user.role !== "admin" && !(await isAssignedTeacher(liveClassId, req.user.id, client))) {
       await client.query("ROLLBACK");
       return forbidden(res, "Bạn không phụ trách lớp hoặc buổi học này");
     }
@@ -655,7 +679,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     if (activityScope === "homework" && availableUntil.getTime() > new Date(dueDate).getTime()) { await client.query("ROLLBACK"); return validationError(res, "Quiz về nhà không thể đóng sau hạn nộp"); }
     if (paperFileId) {
       const paper = await client.query(
-        "SELECT id FROM lms_learning_files WHERE id = $1 AND course_id = $2 AND mime_type = 'application/pdf' AND status = 'ready'",
+        "SELECT id FROM lms_learning_files WHERE id = $1 AND course_id = $2 AND mime_type = 'application/pdf' AND status = 'ready' AND visibility = 'COURSE'",
         [paperFileId, courseId],
       );
       if (!paper.rows[0]) { await client.query("ROLLBACK"); return validationError(res, "File đề PDF không hợp lệ hoặc chưa tải lên hoàn tất"); }
@@ -722,29 +746,32 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
 router.delete("/teacher/quizzes/:quizId", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
   const quizId = parsePositiveId(req.params.quizId);
   if (!quizId) return validationError(res, "quizId không hợp lệ");
+  const client = await getClient();
+  let inTransaction = false;
   try {
-    const quiz = await query(
-      `SELECT q.id, q.title,
-              EXISTS (SELECT 1 FROM quiz_attempts qa WHERE qa.quiz_id = q.id) AS has_attempts
-       FROM quizzes q
-       WHERE q.id = $1 AND ($2 = 'admin' OR q.instructor_id = $3 OR EXISTS (SELECT 1 FROM courses c WHERE c.id = q.course_id AND c.author_id = $3))`,
-      [quizId, req.user.role, req.user.id],
-    );
-    if (!quiz.rows[0]) return notFound(res, "Không tìm thấy đề hoặc bạn không có quyền xóa");
-    if (quiz.rows[0].has_attempts) return conflict(res, "Quiz đã có học viên mở/làm bài nên không thể xóa. Hãy giữ lịch sử điểm hoặc chuyển sang lưu trữ.", "QUIZ_HAS_ATTEMPTS");
-    const result = await query(
-      `DELETE FROM quizzes q
-       WHERE q.id = $1 AND ($2 = 'admin' OR q.instructor_id = $3 OR EXISTS (SELECT 1 FROM courses c WHERE c.id = q.course_id AND c.author_id = $3))
-       RETURNING q.id, q.title`,
-      [quizId, req.user.role, req.user.id],
-    );
-    if (!result.rows[0]) return notFound(res, "Không tìm thấy đề hoặc bạn không có quyền xóa");
-    await recordAuditEvent({ actorId: req.user.id, action: "quiz.deleted", entityType: "quiz", entityId: quizId, beforeState: result.rows[0], metadata: { ip: req.ip } });
+    await client.query("BEGIN"); inTransaction = true;
+    const scope = (await client.query("SELECT live_class_id FROM quizzes WHERE id=$1", [quizId])).rows[0];
+    if (!scope) return notFound(res, "Không tìm thấy đề kiểm tra");
+    if (scope.live_class_id) await assertGradebookOpen(client, scope.live_class_id);
+    const quiz = (await client.query(`SELECT q.id,q.title,q.live_class_id,q.instructor_id,c.author_id,
+      EXISTS (SELECT 1 FROM quiz_attempts qa WHERE qa.quiz_id=q.id) AS has_attempts
+      FROM quizzes q LEFT JOIN courses c ON c.id=q.course_id WHERE q.id=$1 FOR UPDATE OF q`, [quizId])).rows[0];
+    if (!quiz) return notFound(res, "Không tìm thấy đề kiểm tra");
+    const canDelete = req.user.role === "admin" || (quiz.live_class_id
+      ? String(quiz.instructor_id) === String(req.user.id) && await isAssignedTeacher(quiz.live_class_id, req.user.id, client)
+      : String(quiz.instructor_id) === String(req.user.id) || String(quiz.author_id) === String(req.user.id));
+    if (!canDelete) return forbidden(res, "Bạn không có quyền xóa đề kiểm tra này");
+    if (quiz.has_attempts) return conflict(res, "Quiz đã có học viên mở/làm bài nên không thể xóa. Hãy giữ lịch sử điểm hoặc chuyển sang lưu trữ.", "QUIZ_HAS_ATTEMPTS");
+    await client.query("DELETE FROM quizzes WHERE id=$1", [quizId]);
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.deleted", entityType: "quiz", entityId: quizId, beforeState: quiz, metadata: { ip: req.ip } });
+    await client.query("COMMIT"); inTransaction = false;
     return res.json({ success: true, message: "Đã xóa đề kiểm tra" });
   } catch (error) {
+    if (inTransaction) { await client.query("ROLLBACK").catch(() => {}); inTransaction = false; }
+    if (error.status) return res.status(error.status).json({success:false,message:error.message});
     console.error("Error deleting teacher quiz:", error);
     return internalError(res, "Lỗi khi xóa đề kiểm tra");
-  }
+  } finally { if (inTransaction) await client.query("ROLLBACK").catch(() => {}); client.release(); }
 });
 
 // Course-scoped reusable questions. They never expose correct answers to students;
@@ -872,8 +899,9 @@ const assessmentContextForAccommodation = async ({ assessmentType, assessmentId,
   );
   const quiz = result.rows[0];
   if (!quiz) return null;
-  const allowed = user.role === "admin" || String(quiz.instructor_id) === String(user.id) || String(quiz.author_id) === String(user.id)
-    || Boolean((await db.query("SELECT 1 FROM class_teachers WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'", [quiz.live_class_id, user.id])).rows[0]);
+  const allowed = user.role === "admin" || (quiz.live_class_id
+    ? await isAssignedTeacher(quiz.live_class_id, user.id, db)
+    : String(quiz.instructor_id) === String(user.id) || String(quiz.author_id) === String(user.id));
   return allowed ? { assessment: quiz, liveClassId: quiz.live_class_id, baseAttemptLimit: Number(quiz.attempt_limit || 1) } : null;
 };
 
@@ -1145,12 +1173,14 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
       filters.push(`s.assignment_id = $${values.length}`);
     } else if (req.user.role !== "admin") {
       values.push(req.user.id);
-      filters.push(`(a.instructor_id = $${values.length} OR EXISTS (
+      filters.push(`((a.live_class_id IS NULL AND a.instructor_id = $${values.length}) OR
+        a.live_class_id IS NOT NULL AND ((lc.instructor_id = $${values.length} AND NOT EXISTS
+          (SELECT 1 FROM class_teachers ct0 WHERE ct0.live_class_id=lc.id AND ct0.teacher_id=$${values.length})) OR EXISTS (
         SELECT 1 FROM class_teachers ct
         WHERE ct.live_class_id = a.live_class_id
           AND ct.teacher_id = $${values.length}
           AND ct.status = 'active'
-      ))`);
+      )))`);
     }
     if (classId) {
       values.push(classId);
@@ -1230,6 +1260,8 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
 
 // POST /api/assignments — teacher/admin creates a scoped assignment.
 router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment.manage"), async (req, res) => {
+  const client = await getClient();
+  let inTransaction = false;
   try {
     const { title, description, maxScore, dueDate, attachmentUrl } = req.body;
     const assignmentType = req.body.assignmentType || req.body.type || "homework";
@@ -1254,39 +1286,36 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
       if (error.message === "RUBRIC_TOTAL_MISMATCH") return validationError(res, "Tổng điểm rubric phải bằng thang điểm tối đa");
       return validationError(res, "Rubric cần có tiêu chí và điểm hợp lệ");
     }
+    await client.query("BEGIN"); inTransaction = true;
+    if (liveClassId) await assertGradebookOpen(client, liveClassId);
     if (courseId) {
-      const courseResult = await query("SELECT author_id FROM courses WHERE id = $1", [courseId]);
+      const courseResult = await client.query("SELECT author_id FROM courses WHERE id = $1", [courseId]);
       if (courseResult.rows.length === 0) return notFound(res, "Không tìm thấy khóa học");
-      if (req.user.role !== "admin" && String(courseResult.rows[0].author_id) !== String(req.user.id)) return forbidden(res, "Bạn không có quyền tạo bài tập cho khóa học này");
+      if (!liveClassId && req.user.role !== "admin" && String(courseResult.rows[0].author_id) !== String(req.user.id))
+        return forbidden(res, "Bạn không có quyền tạo bài tập cho khóa học này");
     }
     if (liveClassId) {
-      const classResult = await query("SELECT course_id, instructor_id FROM live_classes WHERE id = $1", [liveClassId]);
+      const classResult = await client.query("SELECT course_id, instructor_id FROM live_classes WHERE id = $1", [liveClassId]);
       if (classResult.rows.length === 0) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-      if (req.user.role !== "admin" && String(classResult.rows[0].instructor_id) !== String(req.user.id)) {
-        const classTeacher = await query(
-          `SELECT 1 FROM class_teachers
-           WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'`,
-          [liveClassId, req.user.id],
-        );
-        if (classTeacher.rows.length === 0) return forbidden(res, "Bạn không có quyền tạo bài tập cho lớp học này");
-      }
+      if (req.user.role !== "admin" && !(await isAssignedTeacher(liveClassId, req.user.id, client)))
+        return forbidden(res, "Bạn không có quyền tạo bài tập cho lớp học này");
       if (courseId && classResult.rows[0].course_id !== null && String(classResult.rows[0].course_id) !== String(courseId)) return validationError(res, "Khóa học và lớp trực tuyến không cùng một phạm vi");
     }
     if (classSessionId) {
-      const sessionResult = await query(
+      const sessionResult = await client.query(
         "SELECT id FROM class_sessions WHERE id = $1 AND live_class_id = $2 AND status <> 'cancelled'",
         [classSessionId, liveClassId],
       );
       if (sessionResult.rows.length === 0) return validationError(res, "Buổi học không thuộc lớp đã chọn hoặc đã bị hủy");
     }
-    const result = await query(
+    const result = await client.query(
       `INSERT INTO assignments (title, assignment_type, course_id, live_class_id, class_session_id, instructor_id, description, max_score, due_date, attachment_url)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id, title, assignment_type, course_id, live_class_id, class_session_id, instructor_id, description, max_score, due_date, attachment_url, created_at, updated_at`,
       [title.trim(), assignmentType, courseId, liveClassId, classSessionId, req.user.id, description?.trim() || "", parsedMaxScore, dueDate || null, attachmentUrl || null],
     );
     if (rubric.length) {
-      await query(
+      await client.query(
         `INSERT INTO assignment_rubrics (assignment_id, criteria_json, created_by)
          VALUES ($1, $2::jsonb, $3)`,
         [result.rows[0].id, JSON.stringify(rubric), req.user.id],
@@ -1294,6 +1323,7 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
       result.rows[0].rubric = rubric;
     }
     await recordAuditEvent({
+      db: client,
       actorId: req.user.id,
       action: "assignment.created",
       entityType: "assignment",
@@ -1301,22 +1331,32 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
       afterState: result.rows[0],
       metadata: { ip: req.ip, classSessionId, rubricCriteria: rubric.length },
     });
+    await client.query("COMMIT"); inTransaction = false;
     await notifyAssignmentPublished({ assignmentId: result.rows[0].id, actorId: req.user.id });
     return res.status(201).json({ success: true, data: result.rows[0], message: "Tạo bài tập mới thành công" });
   } catch (error) {
+    if (inTransaction) { await client.query("ROLLBACK").catch(() => {}); inTransaction = false; }
+    if (error.status) return res.status(error.status).json({success:false,message:error.message});
     console.error("Error creating assignment:", error);
     return internalError(res, "Lỗi khi tạo bài tập");
-  }
+  } finally { if (inTransaction) await client.query("ROLLBACK").catch(() => {}); client.release(); }
 });
 
 // PATCH /api/assignments/:id — whitelist editable fields and audit deadline changes.
 router.patch("/:id", protectRoute, requireTeacher, requirePermission("lms.assignment.manage"), async (req, res) => {
+  const client = await getClient();
+  let inTransaction = false;
   try {
     const assignmentId = parsePositiveId(req.params.id);
     if (!assignmentId) return validationError(res, "assignmentId không hợp lệ");
-    const assignment = await getAssignment(assignmentId);
+    await client.query("BEGIN");
+    inTransaction = true;
+    // The class lock serializes edits with gradebook finalization.
+    const scope = (await client.query("SELECT live_class_id FROM assignments WHERE id=$1", [assignmentId])).rows[0];
+    if (scope?.live_class_id) await assertGradebookOpen(client, scope.live_class_id);
+    const assignment = await getAssignment(assignmentId, client);
     if (!assignment) return notFound(res, "Không tìm thấy bài tập");
-    if (!ownsAssignment(assignment, req.user)) return forbidden(res, "Bạn không có quyền sửa bài tập này");
+    if (!(await ownsAssignment(assignment, req.user, client))) return forbidden(res, "Bạn không có quyền sửa bài tập này");
 
     const body = req.body || {};
     const allowedFields = ["title", "description", "maxScore", "dueDate", "attachmentUrl"];
@@ -1333,8 +1373,12 @@ router.patch("/:id", protectRoute, requireTeacher, requirePermission("lms.assign
     if (nextAttachmentUrl !== null && nextAttachmentUrl !== "" && !isSafeAssignmentAttachmentUrl(nextAttachmentUrl)) {
       return validationError(res, "attachmentUrl phải là link HTTPS hoặc tài liệu bảo mật của LMS");
     }
+    if (nextMaxScore !== Number(assignment.max_score)) {
+      const submitted = await client.query("SELECT 1 FROM assignment_submissions WHERE assignment_id=$1 LIMIT 1", [assignmentId]);
+      if (submitted.rows.length) return conflict(res, "Bài tập đã có bài nộp; không thể đổi thang điểm và làm sai lệch điểm cũ.");
+    }
 
-    const result = await query(
+    const result = await client.query(
       `UPDATE assignments
        SET title = $1, description = $2, max_score = $3, due_date = $4, attachment_url = $5
        WHERE id = $6
@@ -1343,6 +1387,7 @@ router.patch("/:id", protectRoute, requireTeacher, requirePermission("lms.assign
     );
     const updated = result.rows[0];
     await recordAuditEvent({
+      db: client,
       actorId: req.user.id,
       action: String(assignment.due_date || "") !== String(updated.due_date || "") ? "assignment.deadline_updated" : "assignment.updated",
       entityType: "assignment",
@@ -1351,13 +1396,20 @@ router.patch("/:id", protectRoute, requireTeacher, requirePermission("lms.assign
       afterState: updated,
       metadata: { ip: req.ip },
     });
+    await client.query("COMMIT");
+    inTransaction = false;
     if (String(assignment.due_date || "") !== String(updated.due_date || "")) {
       await notifyAssignmentDeadlineChanged({ assignmentId, actorId: req.user.id });
     }
     return res.json({ success: true, data: updated, message: "Cập nhật bài tập thành công" });
   } catch (error) {
+    if (inTransaction) await client.query("ROLLBACK").catch(() => {});
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
     console.error("Error updating assignment:", error);
     return internalError(res, "Lỗi khi cập nhật bài tập");
+  } finally {
+    if (inTransaction) await client.query("ROLLBACK").catch(() => {});
+    client.release();
   }
 });
 
@@ -1637,7 +1689,9 @@ const getQuiz = async (quizId, db = { query }) => {
 
 const ensureQuizAccess = async (quiz, user, db = { query }) => {
   if (user.role === "admin") return true;
-  if (user.role === "creator") return String(quiz.course_author_id) === String(user.id) || String(quiz.instructor_id) === String(user.id);
+  if (user.role === "creator") return quiz.live_class_id
+    ? await isAssignedTeacher(quiz.live_class_id, user.id, db)
+    : String(quiz.course_author_id) === String(user.id) || String(quiz.instructor_id) === String(user.id);
   if (user.role !== "user" || quiz.quiz_status !== "PUBLISHED" || !quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
   const enrollment = await db.query(
     `SELECT 1 FROM lms_access_grants

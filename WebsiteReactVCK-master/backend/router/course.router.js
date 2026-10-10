@@ -3,6 +3,7 @@ import { query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requireRole from "../middleware/requireRole.js";
+import requirePermission from "../middleware/requirePermission.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
 
 const router = express.Router();
@@ -499,9 +500,16 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     const isLearner = req.user.role === "user";
     const isAssignedTeacher = !isLearner && !isAdmin && req.user.role === "creator" && selectedClassId
       ? (await query(
-        `SELECT 1 FROM class_teachers ct
-         JOIN live_classes lc ON lc.id = ct.live_class_id
-         WHERE ct.teacher_id = $1 AND ct.status = 'active' AND lc.id = $2 AND lc.course_id = $3`,
+        `SELECT 1 FROM live_classes lc
+         WHERE lc.id = $2 AND lc.course_id = $3 AND (
+           (lc.instructor_id = $1 AND NOT EXISTS (
+             SELECT 1 FROM class_teachers former
+             WHERE former.live_class_id = lc.id AND former.teacher_id = $1
+           )) OR EXISTS (
+             SELECT 1 FROM class_teachers ct
+             WHERE ct.live_class_id = lc.id AND ct.teacher_id = $1 AND ct.status = 'active'
+           )
+         )`,
         [req.user.id, selectedClassId, courseId],
       )).rows.length > 0
       : false;
@@ -525,7 +533,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         )`;
       } else if (!isAdmin) {
         selectedClassParams.push(req.user.id);
-        selectedClassVisibility = `(lc.instructor_id = $3 OR EXISTS (
+        selectedClassVisibility = `((lc.instructor_id = $3 AND NOT EXISTS (
+          SELECT 1 FROM class_teachers former
+          WHERE former.live_class_id = lc.id AND former.teacher_id = $3
+        )) OR EXISTS (
           SELECT 1 FROM class_teachers ct
           WHERE ct.live_class_id = lc.id AND ct.teacher_id = $3 AND ct.status = 'active'
         ))`;
@@ -553,7 +564,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       )`;
     } else if (!isAdmin) {
       scopedClassParams.push(req.user.id);
-      scopedClassVisibility = `(lc.instructor_id = $2 OR EXISTS (
+      scopedClassVisibility = `((lc.instructor_id = $2 AND NOT EXISTS (
+        SELECT 1 FROM class_teachers former
+        WHERE former.live_class_id = lc.id AND former.teacher_id = $2
+      )) OR EXISTS (
         SELECT 1 FROM class_teachers ct
         WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
       ))`;
@@ -571,7 +585,12 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         )
       )`;
     } else if (!isAdmin) {
-      assignmentVisibility = "a.instructor_id = $2";
+      assignmentVisibility = `((a.live_class_id IS NULL AND a.instructor_id = $2) OR
+        (a.live_class_id IS NOT NULL AND ((lc.instructor_id = $2 AND NOT EXISTS (
+          SELECT 1 FROM class_teachers former WHERE former.live_class_id = lc.id AND former.teacher_id = $2
+        )) OR EXISTS (
+          SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+        ))))`;
     }
     const assignmentClassScope = selectedClassId ? ` AND (a.live_class_id IS NULL OR a.live_class_id = $${assignmentParams.length + 1})` : "";
     if (selectedClassId) assignmentParams.push(selectedClassId);
@@ -585,7 +604,12 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         ))
       )`;
     } else if (!isAdmin) {
-      quizVisibility = "(q.instructor_id = $2 OR course_for_quiz.author_id = $2)";
+      quizVisibility = `((q.live_class_id IS NULL AND (q.instructor_id = $2 OR course_for_quiz.author_id = $2)) OR
+        (q.live_class_id IS NOT NULL AND ((quiz_lc.instructor_id = $2 AND NOT EXISTS (
+          SELECT 1 FROM class_teachers former WHERE former.live_class_id = quiz_lc.id AND former.teacher_id = $2
+        )) OR EXISTS (
+          SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = quiz_lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+        ))))`;
     }
     const quizClassScope = selectedClassId ? ` AND (q.live_class_id IS NULL OR q.live_class_id = $${assignmentParams.length})` : "";
 
@@ -593,12 +617,24 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     let fileVisibility = "TRUE";
     if (isLearner) {
       fileParams.push(req.user.id);
-      fileVisibility = `(
-        f.live_class_id IS NULL OR EXISTS (
+      fileVisibility = `f.visibility IN ('CLASS_ONLY', 'COURSE') AND EXISTS (
+        SELECT 1 FROM lms_access_grants g
+        WHERE g.user_id = $2 AND g.course_id = COALESCE(f.course_id, lc.course_id)
+          AND g.access_status = 'active' AND g.valid_from <= NOW()
+          AND (g.valid_until IS NULL OR g.valid_until > NOW())
+      ) AND (f.visibility = 'COURSE' OR (f.visibility = 'CLASS_ONLY'
+        AND f.live_class_id IS NOT NULL AND lc.status = 'active' AND EXISTS (
           SELECT 1 FROM class_enrollments ce
           WHERE ce.live_class_id = f.live_class_id AND ce.user_id = $2 AND ce.status = 'active'
-        )
-      )`;
+        )))`;
+    } else if (!isAdmin) {
+      fileParams.push(req.user.id);
+      fileVisibility = `(f.visibility <> 'PRIVATE' OR f.uploaded_by = $2) AND
+        (f.live_class_id IS NULL OR ((lc.instructor_id = $2 AND NOT EXISTS (
+          SELECT 1 FROM class_teachers former WHERE former.live_class_id = lc.id AND former.teacher_id = $2
+        )) OR EXISTS (
+          SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+        )))`;
     }
     const fileClassScope = selectedClassId ? ` AND (f.live_class_id IS NULL OR f.live_class_id = $${fileParams.length + 1})` : "";
     if (selectedClassId) fileParams.push(selectedClassId);
@@ -881,7 +917,7 @@ router.get("/:slug", async (req, res) => {
 });
 
 // PATCH /api/courses/admin/:courseId/status - Publish or unpublish a course
-router.patch("/admin/:courseId/status", protectRoute, requireTeacher, async (req, res) => {
+router.patch("/admin/:courseId/status", protectRoute, requireRole("admin"), async (req, res) => {
   try {
     const courseId = parsePositiveId(req.params.courseId);
     if (!courseId) return validationError(res, "courseId không hợp lệ");
@@ -916,7 +952,7 @@ router.patch("/admin/:courseId/status", protectRoute, requireTeacher, async (req
 });
 
 // Admin: Create Course
-router.post("/admin", protectRoute, requireTeacher, async (req, res) => {
+router.post("/admin", protectRoute, requireRole("admin"), async (req, res) => {
   try {
     const { title, slug, description, category, level, price, isFree, thumbnailUrl } = req.body;
     if (typeof title !== "string" || !title.trim() || typeof slug !== "string" || !slug.trim()) {
@@ -951,7 +987,7 @@ router.post("/admin", protectRoute, requireTeacher, async (req, res) => {
 });
 
 // Admin: Create Section
-router.post("/admin/:courseId/sections", protectRoute, requireTeacher, async (req, res) => {
+router.post("/admin/:courseId/sections", protectRoute, requireTeacher, requirePermission("lms.course.manage"), async (req, res) => {
   try {
     const courseId = parsePositiveId(req.params.courseId);
     const { title, sortOrder } = req.body;
@@ -985,7 +1021,7 @@ router.post("/admin/:courseId/sections", protectRoute, requireTeacher, async (re
 });
 
 // Admin: Create Lesson
-router.post("/admin/sections/:sectionId/lessons", protectRoute, requireTeacher, async (req, res) => {
+router.post("/admin/sections/:sectionId/lessons", protectRoute, requireTeacher, requirePermission("lms.course.manage"), async (req, res) => {
   try {
     const sectionId = parsePositiveId(req.params.sectionId);
     const { courseId, title, videoAssetId, durationSeconds, isPreview, sortOrder, learningUrl } = req.body;
@@ -1012,7 +1048,10 @@ router.post("/admin/sections/:sectionId/lessons", protectRoute, requireTeacher, 
       return validationError(res, "videoAssetId không hợp lệ");
     }
     if (parsedVideoAssetId) {
-      const videoResult = await query("SELECT id FROM video_assets WHERE id = $1 AND status = 'ready'", [parsedVideoAssetId]);
+      const videoResult = await query(
+        "SELECT id FROM video_assets WHERE id = $1 AND status = 'ready' AND ($2::boolean OR uploaded_by = $3)",
+        [parsedVideoAssetId, req.user.role === "admin", req.user.id],
+      );
       if (videoResult.rows.length === 0) return notFound(res, "Không tìm thấy video đã sẵn sàng");
     }
     const parsedDuration = durationSeconds === undefined ? 0 : Number(durationSeconds);
@@ -1043,7 +1082,7 @@ router.post("/admin/sections/:sectionId/lessons", protectRoute, requireTeacher, 
 });
 
 // Teacher/Admin: replace or clear the learning link for an existing lesson.
-router.patch("/admin/lessons/:lessonId/learning-link", protectRoute, requireTeacher, async (req, res) => {
+router.patch("/admin/lessons/:lessonId/learning-link", protectRoute, requireTeacher, requirePermission("lms.course.manage"), async (req, res) => {
   try {
     const lessonId = parsePositiveId(req.params.lessonId);
     if (!lessonId) return validationError(res, "lessonId không hợp lệ");

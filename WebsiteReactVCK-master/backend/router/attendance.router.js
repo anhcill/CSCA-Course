@@ -45,10 +45,27 @@ const conflict = (res, message, errorCode) => res.status(409).json({
 
 const dateKey = (value) => String(value || "").slice(0, 10);
 
-// Attendance is a same-day, write-once base record. Dates are calculated by
-// PostgreSQL in the academy timezone so a browser clock cannot bypass this
-// policy. Once submitted, it is never reopened; an approved amendment records
-// the old and new values, requester, reviewer and timestamps separately.
+export const buildStudentCheckInPolicy = ({ startTime, endTime, status, now = new Date(), finalized = false, checkedIn = false } = {}) => {
+  const current = new Date(now).getTime();
+  const start = new Date(startTime).getTime();
+  const end = new Date(endTime).getTime();
+  const validTimes = Number.isFinite(current) && Number.isFinite(start) && Number.isFinite(end) && end > start;
+  const localDate = (value) => new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date(value));
+  const sameDay = validTimes && localDate(current) === localDate(start);
+  const inWindow = validTimes && current >= start - 15 * 60 * 1000 && current <= end;
+  let reason = null;
+  if (checkedIn) reason = "Bạn đã báo có mặt cho buổi học này.";
+  else if (finalized) reason = "Giáo viên đã chốt điểm danh buổi học.";
+  else if (status === "cancelled" || status === "ended") reason = "Buổi học đã kết thúc hoặc bị hủy.";
+  else if (!sameDay || !inWindow) reason = "Chỉ được báo có mặt từ 15 phút trước giờ học đến khi buổi học kết thúc, trong đúng ngày học.";
+  return { canCheckIn: !reason, reason };
+};
+
+// Teachers finalize the full attendance sheet on the academy day. Student
+// check-ins remain provisional until then; afterwards only approved amendments
+// can change the sheet. The teacher's day is calculated by PostgreSQL.
 export const buildAttendancePolicy = ({
   attendanceDate,
   todayDate,
@@ -113,7 +130,7 @@ const getSessionForTeacher = async (sessionId) => {
             (cs.start_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date::text AS attendance_date,
             (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date::text AS attendance_today,
             EXISTS (
-              SELECT 1 FROM class_attendance ca WHERE ca.session_id = cs.id
+              SELECT 1 FROM class_attendance_sheets sheet WHERE sheet.session_id = cs.id
             ) AS attendance_locked
      FROM class_sessions cs
      JOIN live_classes lc ON lc.id = cs.live_class_id
@@ -123,16 +140,18 @@ const getSessionForTeacher = async (sessionId) => {
   return result.rows[0] || null;
 };
 
-const canManageSession = async (session, user, db = { query }) => {
+export const canManageSession = async (session, user, db = { query }) => {
   if (!session) return false;
-  if (user.role === "admin" || String(session.instructor_id) === String(user.id)) return true;
+  if (user.role === "admin") return true;
   if (user.role !== "creator") return false;
   const result = await db.query(
-    `SELECT 1 FROM class_teachers
-     WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'`,
+    `SELECT status FROM class_teachers
+     WHERE live_class_id = $1 AND teacher_id = $2`,
     [session.live_class_id, user.id],
   );
-  return result.rows.length > 0;
+  if (result.rows.length) return result.rows[0].status === "active";
+  // Classes created before explicit teacher assignments still have an instructor.
+  return String(session.instructor_id) === String(user.id);
 };
 
 const parseLeaderboardOptions = (req) => {
@@ -243,7 +262,7 @@ const handleLeaderboard = async (req, res) => {
         [classId],
       );
       if (!classResult.rows[0]) return notFound(res, "Không tìm thấy lớp học");
-      if (req.user.role === "creator" && String(classResult.rows[0].instructor_id) !== String(req.user.id)) {
+      if (req.user.role === "creator" && !(await canManageSession({ live_class_id: classId, instructor_id: classResult.rows[0].instructor_id }, req.user))) {
         return forbidden(res, "Bạn không có quyền xem bảng xếp hạng lớp này");
       }
       if (req.user.role === "user") {
@@ -376,6 +395,100 @@ router.get("/leaderboard", (req, res) => {
   return protectRoute(req, res, () => handleLeaderboard(req, res));
 });
 
+// A student can see only their own check-in state, and only for an active,
+// Management-approved enrollment backed by a current course access grant.
+const getStudentCheckIn = async (db, sessionId, userId, { lock = false } = {}) => {
+  const result = await db.query(
+    `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
+            lc.management_class_source_id,
+            ca.status AS attendance_status, ca.checked_at, ca.source,
+            sheet.finalized_at
+     FROM class_sessions cs
+     JOIN live_classes lc ON lc.id = cs.live_class_id
+     JOIN class_enrollments ce ON ce.live_class_id = lc.id AND ce.user_id = $2
+       AND ce.status = 'active'
+       AND (lc.management_class_source_id IS NULL OR ce.management_approval_status = 'approved')
+     JOIN lms_access_grants grant_access ON grant_access.user_id = $2 AND grant_access.course_id = lc.course_id
+       AND grant_access.access_status = 'active' AND grant_access.valid_from <= NOW()
+       AND (grant_access.valid_until IS NULL OR grant_access.valid_until > NOW())
+     LEFT JOIN class_attendance ca ON ca.session_id = cs.id AND ca.user_id = $2
+     LEFT JOIN class_attendance_sheets sheet ON sheet.session_id = cs.id
+     WHERE cs.id = $1 AND lc.status = 'active'
+       AND (lc.management_class_source_id IS NULL OR lc.management_approval_status = 'approved')
+     ${lock ? 'FOR UPDATE OF cs' : ''}`,
+    [sessionId, userId],
+  );
+  return result.rows[0] || null;
+};
+
+router.get("/session/:sessionId/my-check-in", protectRoute, async (req, res) => {
+  if (req.user.role !== "user") return forbidden(res, "Chỉ học viên được tự báo có mặt");
+  const sessionId = parsePositiveId(req.params.sessionId);
+  if (!sessionId) return validationError(res, "sessionId không hợp lệ");
+  try {
+    const session = await getStudentCheckIn({ query }, sessionId, req.user.id);
+    if (!session) return notFound(res, "Không tìm thấy buổi học được cấp quyền");
+    const policy = buildStudentCheckInPolicy({
+      startTime: session.start_time, endTime: session.end_time, status: session.status,
+      finalized: Boolean(session.finalized_at), checkedIn: Boolean(session.attendance_status),
+    });
+    return res.json({ success: true, data: {
+      sessionId, canCheckIn: policy.canCheckIn, reason: policy.reason,
+      status: session.attendance_status, checkedAt: session.checked_at,
+      source: session.source, finalized: Boolean(session.finalized_at),
+    } });
+  } catch (error) {
+    console.error("Error fetching student check-in:", error);
+    return internalError(res, "Không thể tải trạng thái báo có mặt");
+  }
+});
+
+router.post("/session/:sessionId/my-check-in", protectRoute, async (req, res) => {
+  if (req.user.role !== "user") return forbidden(res, "Chỉ học viên được tự báo có mặt");
+  const sessionId = parsePositiveId(req.params.sessionId);
+  if (!sessionId) return validationError(res, "sessionId không hợp lệ");
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const session = await getStudentCheckIn(client, sessionId, req.user.id, { lock: true });
+    if (!session) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy buổi học được cấp quyền"); }
+    if (session.attendance_status) {
+      await client.query("COMMIT");
+      return res.json({ success: true, data: { sessionId, status: session.attendance_status, checkedAt: session.checked_at, source: session.source, alreadyRecorded: true }, message: "Buổi học đã có điểm danh của bạn" });
+    }
+    const policy = buildStudentCheckInPolicy({
+      startTime: session.start_time, endTime: session.end_time, status: session.status,
+      finalized: Boolean(session.finalized_at),
+    });
+    if (!policy.canCheckIn) { await client.query("ROLLBACK"); return conflict(res, policy.reason, "CHECK_IN_CLOSED"); }
+    await assertGradebookOpen(client, session.live_class_id);
+    const recorded = await client.query(
+      `INSERT INTO class_attendance (session_id, user_id, status, note, source)
+       VALUES ($1, $2, 'present', '', 'student') RETURNING checked_at`,
+      [sessionId, req.user.id],
+    );
+    await recordAuditEvent({
+      db: client, actorId: req.user.id, action: "attendance.student_checked_in",
+      entityType: "class_attendance", entityId: sessionId,
+      afterState: { userId: req.user.id, status: "present", checkedAt: recorded.rows[0].checked_at },
+      metadata: { sessionId, ip: req.ip },
+    });
+    // The teacher and admin roster reads this record immediately. Management
+    // receives the complete final sheet from /check; sending partial events
+    // here could later overwrite a teacher's corrected status out of order.
+    await client.query("COMMIT");
+    return res.status(201).json({ success: true, data: {
+      sessionId, status: "present", checkedAt: recorded.rows[0].checked_at,
+      source: "student", alreadyRecorded: false,
+    }, message: "Đã báo có mặt cho buổi học" });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Error recording student check-in:", error);
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+    return internalError(res, "Không thể báo có mặt");
+  } finally { client.release(); }
+});
+
 // GET /api/attendance/session/:sessionId — real roster and current attendance.
 router.get("/session/:sessionId", protectRoute, requireTeacher, async (req, res) => {
   try {
@@ -397,7 +510,7 @@ router.get("/session/:sessionId", protectRoute, requireTeacher, async (req, res)
       `SELECT u.id, u.username, u.email, u.avatar_url,
               ce.status AS enrollment_status, ce.enrolled_at,
               ca.status AS attendance_status, ca.note AS attendance_note,
-              ca.checked_at,
+              ca.checked_at, ca.source AS attendance_source,
               stats.total_sessions, stats.present_sessions
        FROM class_enrollments ce
        JOIN users u ON u.id = ce.user_id
@@ -459,8 +572,10 @@ router.get("/amendments", protectRoute, requireTeacher, requirePermission("lms.a
        JOIN live_classes lc ON lc.id = cs.live_class_id JOIN users u ON u.id = r.user_id
        LEFT JOIN users requester ON requester.id = r.requested_by LEFT JOIN users reviewer ON reviewer.id = r.reviewed_by
        WHERE ($1 = 'all' OR r.status = $1) AND ($2::bigint IS NULL OR lc.id = $2)
-         AND ($3 = 'admin' OR lc.instructor_id = $4 OR EXISTS (
-           SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $4 AND ct.status = 'active'))
+          AND ($3 = 'admin' OR EXISTS (
+            SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $4 AND ct.status = 'active')
+            OR (lc.instructor_id = $4 AND NOT EXISTS (
+              SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $4)))
        ORDER BY r.requested_at DESC, r.id DESC LIMIT 30 OFFSET $5`,
       [status, classId, req.user.role, req.user.id, (page - 1) * 30],
     );
@@ -701,11 +816,10 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
     }
     await assertGradebookOpen(client, session.live_class_id);
 
-    // The session row is locked first, which serializes all attendance writes
-    // through this endpoint. It prevents two concurrent submissions from both
-    // passing the write-once check below.
+    // All student and teacher writes lock the session first. Student records
+    // may exist before the teacher finalizes the roster.
     const existingAttendance = await client.query(
-      `SELECT 1 FROM class_attendance WHERE session_id = $1 LIMIT 1`,
+      `SELECT 1 FROM class_attendance_sheets WHERE session_id = $1`,
       [sessionId],
     );
     const attendancePolicy = buildAttendancePolicy({
@@ -753,12 +867,36 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
 
     const checkedAt = new Date().toISOString();
     for (const item of normalized) {
+      const old = await client.query(
+        `SELECT status, COALESCE(note, '') AS note, source FROM class_attendance
+         WHERE session_id = $1 AND user_id = $2`, [sessionId, item.userId],
+      );
       await client.query(
-        `INSERT INTO class_attendance (session_id, user_id, status, note)
-         VALUES ($1, $2, $3, $4)`,
+        `INSERT INTO class_attendance (session_id, user_id, status, note, source)
+         VALUES ($1, $2, $3, $4, 'teacher')
+         ON CONFLICT (user_id, session_id) DO UPDATE
+         SET status = EXCLUDED.status, note = EXCLUDED.note, source = 'teacher'`,
         [sessionId, item.userId, item.status, item.note],
       );
+      if (old.rows[0] && (old.rows[0].status !== item.status || old.rows[0].note !== item.note)) {
+        await recordAuditEvent({
+          db: client, actorId: req.user.id, action: "attendance.teacher_overrode_check_in",
+          entityType: "class_attendance", entityId: sessionId,
+          beforeState: { userId: item.userId, status: old.rows[0].status, note: old.rows[0].note, source: old.rows[0].source },
+          afterState: { userId: item.userId, status: item.status, note: item.note, source: "teacher" },
+          metadata: { sessionId, ip: req.ip },
+        });
+      }
     }
+    await client.query(
+      `INSERT INTO class_attendance_sheets (session_id, finalized_by) VALUES ($1, $2)`,
+      [sessionId, req.user.id],
+    );
+    await recordAuditEvent({
+      db: client, actorId: req.user.id, action: "attendance.sheet_finalized",
+      entityType: "class_session", entityId: sessionId,
+      afterState: { recordedCount: normalized.length }, metadata: { ip: req.ip },
+    });
 
     let managementDelivery = {
       status: "NOT_MANAGED",

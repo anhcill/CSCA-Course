@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+/* eslint-disable react/prop-types */
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -8,7 +9,8 @@ import {
 import { useAuthContext } from "../../../context/AuthContext";
 import { isTeacherRole } from "../../../constants/roles";
 import {
-  fetchAssignments, fetchClassAnnouncements, fetchLiveClassSessions, fetchStudentFiles, getLiveSessionAccess,
+  checkInToSession, fetchAssignments, fetchClassAnnouncements, fetchLiveClassSessions,
+  fetchMySessionCheckIn, fetchStudentFiles, getLiveSessionAccess,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
@@ -46,6 +48,8 @@ export default function SessionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [resourcesLoading, setResourcesLoading] = useState(true);
   const [error, setError] = useState("");
+  const [checkIn, setCheckIn] = useState(null);
+  const [checkingIn, setCheckingIn] = useState(false);
 
   const loadSession = useCallback(async () => {
     setLoading(true);
@@ -88,6 +92,27 @@ export default function SessionDetailPage() {
 
   useEffect(() => { loadSession(); }, [loadSession]);
   useEffect(() => { loadResources(); }, [loadResources]);
+  useEffect(() => {
+    if (isTeacher || !sessionId) return undefined;
+    let active = true;
+    fetchMySessionCheckIn(sessionId)
+      .then((response) => { if (active) setCheckIn(response?.data || null); })
+      .catch(() => { if (active) setCheckIn(null); });
+    return () => { active = false; };
+  }, [isTeacher, sessionId]);
+
+  const handleCheckIn = async () => {
+    setCheckingIn(true);
+    try {
+      const response = await checkInToSession(sessionId);
+      setCheckIn((current) => ({ ...current, ...response.data, canCheckIn: false, reason: "Bạn đã được ghi nhận có mặt." }));
+      toast.success(response.message || "Đã báo có mặt.");
+    } catch (requestError) {
+      toast.error(requestError.message || "Không thể báo có mặt.");
+      const response = await fetchMySessionCheckIn(sessionId).catch(() => null);
+      if (response?.data) setCheckIn(response.data);
+    } finally { setCheckingIn(false); }
+  };
 
   const handleJoin = async () => {
     if (!session) return;
@@ -122,21 +147,81 @@ export default function SessionDetailPage() {
         <ArrowLeft className="h-4 w-4" /> Quay lại lớp và lịch học
       </Link>
 
-      <section className="overflow-hidden rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 p-6 text-white shadow-lg dark:border-blue-900/60 dark:shadow-none sm:p-8">
-        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
-          <div className="min-w-0">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-black backdrop-blur"><Video className="h-3.5 w-3.5" /> Không gian buổi học</span>
-            <h1 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">{session.title}</h1>
-            <p className="mt-3 inline-flex items-center gap-1.5 text-sm text-blue-100"><Clock className="h-4 w-4 text-blue-200" /> {formatDateTime(session.start_time)}</p>
+      <section className="overflow-hidden rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 px-4 py-3.5 text-white shadow-sm dark:border-blue-900/60 dark:shadow-none sm:px-6 sm:py-4">
+        <div className="flex flex-col justify-between gap-3.5 lg:flex-row lg:items-center">
+          <div className="min-w-0 space-y-1 sm:space-y-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-bold backdrop-blur">
+              <Video className="h-3 w-3" /> Không gian buổi học
+            </span>
+            <h1 className="text-lg font-bold tracking-tight sm:text-xl">{session.title}</h1>
+            <p className="inline-flex items-center gap-1.5 text-xs text-blue-100 sm:text-sm">
+              <Clock className="h-3.5 w-3.5 text-blue-200 shrink-0" /> {formatDateTime(session.start_time)}
+            </p>
           </div>
-          <div className="flex flex-wrap gap-2.5">
-            {isJoinable ? <button type="button" onClick={handleJoin} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><Play className="h-4 w-4" /> Vào lớp học</button> : <span className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2.5 text-xs font-bold">{isEnded ? <CheckCircle2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />}{isEnded ? "Buổi học đã kết thúc" : "Phòng mở trước 15 phút"}</span>}
-            <a href={googleCalendarEventUrl({ title: session.title, startTime: session.start_time, endTime: session.end_time, details: "Buổi học CSCA Academy" })} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20"><CalendarDays className="h-4 w-4" /> Thêm Google Calendar</a>
-            <a href={classCalendarIcsUrl(classId)} className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20"><FileText className="h-4 w-4" /> Tải lịch .ics</a>
-            {isTeacher && <Link to={`/lms/teach/classes/${classId}/attendance?sessionId=${session.id}`} className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20"><Users className="h-4 w-4" /> Điểm danh</Link>}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {isJoinable ? (
+              <button
+                type="button"
+                onClick={handleJoin}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-xs font-bold text-blue-700 shadow-sm transition hover:bg-blue-50"
+              >
+                <Play className="h-3.5 w-3.5" /> Vào lớp học
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-xs font-semibold">
+                {isEnded ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+                {isEnded ? "Buổi học đã kết thúc" : "Phòng mở trước 15 phút"}
+              </span>
+            )}
+            <a
+              href={googleCalendarEventUrl({
+                title: session.title,
+                startTime: session.start_time,
+                endTime: session.end_time,
+                details: "Buổi học CSCA Academy",
+              })}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs font-medium transition hover:bg-white/20"
+            >
+              <CalendarDays className="h-3.5 w-3.5" /> Thêm Google Calendar
+            </a>
+            <a
+              href={classCalendarIcsUrl(classId)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs font-medium transition hover:bg-white/20"
+            >
+              <FileText className="h-3.5 w-3.5" /> Tải lịch .ics
+            </a>
+            {isTeacher && (
+              <Link
+                to={`/lms/teach/classes/${classId}/attendance?sessionId=${session.id}`}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs font-medium transition hover:bg-white/20"
+              >
+                <Users className="h-3.5 w-3.5" /> Điểm danh
+              </Link>
+            )}
           </div>
         </div>
       </section>
+
+      {!isTeacher && checkIn && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className={`h-5 w-5 ${checkIn.status === "present" ? "text-emerald-500" : "text-slate-400"}`} />
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Báo có mặt buổi học</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {checkIn.status === "present" ? "Đã ghi nhận có mặt" : checkIn.status === "absent" ? "Giáo viên ghi vắng mặt" : checkIn.status === "excused" ? "Giáo viên ghi có phép" : checkIn.reason || "Bạn chưa báo có mặt"}
+              </p>
+            </div>
+          </div>
+          {checkIn.canCheckIn && !checkIn.status && (
+            <button type="button" disabled={checkingIn} onClick={handleCheckIn} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-60">
+              {checkingIn ? "Đang ghi nhận..." : "Tôi có mặt"}
+            </button>
+          )}
+        </section>
+      )}
 
       <nav className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none" aria-label="Chức năng của buổi học">
         {tabs.map((tab) => {
@@ -147,7 +232,7 @@ export default function SessionDetailPage() {
 
       {resourcesLoading ? <Loading loading text="Đang đồng bộ học liệu của buổi..." fullScreen={false} className="min-h-40 py-10" /> : <>
         {activeTab === "overview" && <div className="grid gap-4 sm:grid-cols-4"><InfoCard label="Bài tập & Quiz" value={tasks.length} /><InfoCard label="Tài liệu" value={files.length} /><InfoCard label="Thông báo" value={announcements.length} /><InfoCard label="Đã hoàn thành" value={`${completeTasks.length}/${tasks.length}`} /></div>}
-        {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black text-slate-900 dark:text-white">Nội dung buổi học</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Giáo viên sẽ cập nhật nội dung, slide và bài tập trong đúng không gian buổi học này."}</p><Link to={`${basePath}/learn`} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700"><BookOpen className="h-4 w-4" /> Mở bài học của khóa</Link></section>}
+        {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black text-slate-900 dark:text-white">Nội dung buổi học</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Giáo viên sẽ cập nhật nội dung, slide và bài tập trong đúng không gian buổi học này."}</p><button type="button" onClick={() => setSearchParams({ tab: "materials" })} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700"><BookOpen className="h-4 w-4" /> Xem tài liệu buổi học</button></section>}
         {activeTab === "tasks" && <SessionTaskList tasks={tasks} basePath={basePath} />}
         {activeTab === "materials" && <SessionFileList files={files} />}
         {activeTab === "announcements" && <SessionAnnouncementList announcements={announcements} />}

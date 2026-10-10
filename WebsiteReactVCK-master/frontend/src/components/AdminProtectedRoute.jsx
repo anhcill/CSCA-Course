@@ -8,7 +8,7 @@ const AdminProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (authUser.role !== 'admin' && authUser.role !== 'creator') {
+  if (authUser.role !== 'admin') {
     return <Navigate to="/notfound" replace />;
   }
 

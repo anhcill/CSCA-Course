@@ -2,11 +2,14 @@ import express from "express";
 import { query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
+import requirePermission from "../middleware/requirePermission.js";
+import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
 import {
   ALLOWED_VIDEO_MIME_TYPES,
   MAX_VIDEO_SIZE_BYTES,
   generateUploadPresignedUrl,
   generatePlaybackSignedUrl,
+  generateVideoHeadSignedUrl,
 } from "../services/video.service.js";
 
 const router = express.Router();
@@ -47,8 +50,8 @@ const isValidVideoSize = (value) => Number.isSafeInteger(Number(value))
   && Number(value) > 0
   && Number(value) <= MAX_VIDEO_SIZE_BYTES;
 
-// POST /api/videos/upload-url - Admin xin link presigned upload R2
-router.post("/upload-url", protectRoute, requireTeacher, async (req, res) => {
+// POST /api/videos/upload-url - Create a teacher-owned upload intent.
+router.post("/upload-url", protectRoute, requireTeacher, requirePermission("lms.file.manage"), async (req, res) => {
   try {
     const { filename, mimeType, sizeBytes } = req.body;
     if (typeof filename !== "string" || !filename.trim()) return validationError(res, "Thiếu filename");
@@ -56,9 +59,15 @@ router.post("/upload-url", protectRoute, requireTeacher, async (req, res) => {
     if (!isValidVideoSize(sizeBytes)) return validationError(res, "Kích thước video không hợp lệ hoặc vượt quá 1GB");
 
     const presignedData = await generateUploadPresignedUrl({ filename, mimeType, sizeBytes });
+    const intent = await query(
+      `INSERT INTO video_assets (title, r2_key, mime_type, size_bytes, duration_seconds, status, uploaded_by)
+       VALUES ($1, $2, $3, $4, 0, 'pending', $5)
+       RETURNING id`,
+      [filename.trim().slice(0, 255), presignedData.fileKey, mimeType, Number(sizeBytes), req.user.id],
+    );
     return res.json({
       success: true,
-      data: presignedData
+      data: { ...presignedData, assetId: intent.rows[0].id }
     });
   } catch (error) {
     console.error("Error generating video upload URL:", error);
@@ -68,7 +77,7 @@ router.post("/upload-url", protectRoute, requireTeacher, async (req, res) => {
 });
 
 // POST /api/videos/confirm - Lưu thông tin video asset vào DB sau khi upload xong
-router.post("/confirm", protectRoute, requireTeacher, async (req, res) => {
+router.post("/confirm", protectRoute, requireTeacher, requirePermission("lms.file.manage"), async (req, res) => {
   try {
     const { title, r2Key, mimeType, sizeBytes, durationSeconds } = req.body;
 
@@ -80,19 +89,31 @@ router.post("/confirm", protectRoute, requireTeacher, async (req, res) => {
       return validationError(res, "durationSeconds không hợp lệ");
     }
 
+    const intent = (await query(
+      `SELECT id, mime_type, size_bytes FROM video_assets
+       WHERE r2_key = $1 AND uploaded_by = $2 AND status = 'pending'`,
+      [r2Key, req.user.id],
+    )).rows[0];
+    if (!intent) return forbidden(res, "Video chưa được cấp quyền upload hoặc đã xác nhận");
+    if (intent.mime_type !== mimeType || Number(intent.size_bytes) !== Number(sizeBytes)) {
+      return validationError(res, "Thông tin video không khớp với yêu cầu upload");
+    }
+
+    const { headUrl } = await generateVideoHeadSignedUrl({ r2Key });
+    const headResponse = await fetch(headUrl, { method: "HEAD" });
+    if (!headResponse.ok) return validationError(res, "Không tìm thấy video trên R2");
+    const uploadedSize = Number(headResponse.headers.get("content-length"));
+    if (!Number.isSafeInteger(uploadedSize) || uploadedSize !== Number(intent.size_bytes)) {
+      return validationError(res, "Kích thước video trên R2 không khớp");
+    }
+
     const dbRes = await query(
-      `INSERT INTO video_assets (title, r2_key, mime_type, size_bytes, duration_seconds, status)
-       VALUES ($1, $2, $3, $4, $5, 'ready')
-       ON CONFLICT (r2_key) DO UPDATE SET
-         title = EXCLUDED.title,
-         mime_type = EXCLUDED.mime_type,
-         size_bytes = EXCLUDED.size_bytes,
-         duration_seconds = EXCLUDED.duration_seconds,
-         status = 'ready',
-         updated_at = NOW()
+      `UPDATE video_assets SET title = $1, duration_seconds = $2, status = 'ready', updated_at = NOW()
+       WHERE id = $3 AND uploaded_by = $4 AND status = 'pending'
        RETURNING id, title, r2_key, mime_type, size_bytes, duration_seconds, status, created_at, updated_at`,
-      [title?.trim() || "Video Bài Giảng", r2Key, mimeType, Number(sizeBytes), Number(durationSeconds)],
+      [title?.trim() || "Video Bài Giảng", Number(durationSeconds), intent.id, req.user.id],
     );
+    if (!dbRes.rows.length) return forbidden(res, "Video đã được xác nhận");
 
     return res.json({
       success: true,
@@ -101,6 +122,7 @@ router.post("/confirm", protectRoute, requireTeacher, async (req, res) => {
     });
   } catch (error) {
     console.error("Error confirming video asset:", error);
+    if (error.code === "R2_NOT_CONFIGURED") return serviceUnavailable(res, "Kho video Cloudflare R2 chưa được cấu hình");
     if (error.code === "23505") return res.status(409).json({ success: false, message: "Video đã tồn tại", errorCode: "CONFLICT" });
     return res.status(500).json({ success: false, message: "Lỗi khi xác nhận thông tin video", errorCode: "INTERNAL_ERROR" });
   }
@@ -127,11 +149,16 @@ router.get("/playback-url", protectRoute, async (req, res) => {
     const asset = assetResult.rows[0];
     if (req.user.role === "user") {
       if (!asset.course_is_published) return notFound(res, "Không tìm thấy video bài học");
+      if (!hasActiveStudentLmsAccess(req.user)) {
+        return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
+      }
       const enrollmentResult = await query(
-        "SELECT 1 FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = 'active'",
+        `SELECT 1 FROM lms_access_grants
+         WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
+           AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())`,
         [req.user.id, asset.course_id],
       );
-      if (enrollmentResult.rows.length === 0) return forbidden(res, "Bạn chưa đăng ký khóa học này");
+      if (enrollmentResult.rows.length === 0) return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
     } else if (req.user.role === "creator" && String(asset.author_id) !== String(req.user.id)) {
       return forbidden(res, "Bạn không có quyền xem video của khóa học này");
     }

@@ -399,6 +399,12 @@ export default function ClassroomPage() {
           </div>
         </div>
 
+        {classId && (
+          <div className="border-b border-blue-100 bg-blue-50 px-6 py-3 text-sm text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-sky-200">
+            Buổi học của lớp được sắp theo chương. <Link to={`/lms/courses/${courseId}/classes/${classId}`} className="font-bold underline underline-offset-2">Xem các chương và buổi học →</Link>
+          </div>
+        )}
+
         {/* Lesson link: course content now opens from the link supplied by the teacher/admin. */}
         <div className="p-5 md:p-8 bg-gradient-to-br from-blue-50 via-white to-sky-50 dark:from-slate-900 dark:via-slate-900 dark:to-blue-950/30 border-b border-slate-200 dark:border-slate-800 min-h-[260px] flex items-center justify-center">
           <div className="w-full max-w-3xl rounded-3xl border border-blue-100 dark:border-blue-900/60 bg-white/90 dark:bg-slate-950/70 shadow-xl shadow-blue-950/5 p-6 md:p-8 text-center space-y-4">
@@ -761,51 +767,10 @@ export default function ClassroomPage() {
 
             {/* RESOURCES TAB */}
             {activeTab === "resources" && (
-              <div className="space-y-6 max-w-3xl">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Danh Mục Tài Liệu Đi Kèm Bài Học</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Tải tài liệu, slide giáo trình và bài tập tự luyện.</p>
-                  </div>
-                  {classId && (
-                    <Link
-                      to={`/lms/courses/${courseId}/classes/${classId}/materials`}
-                      className="px-3.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-300 text-xs font-bold hover:bg-blue-100 transition border border-blue-200 dark:border-blue-900/40"
-                    >
-                      Kho tài liệu lớp →
-                    </Link>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {[
-                    { title: "Slide bài giảng & Lý thuyết bài học", type: "PDF", size: "8.4 MB", desc: "Tóm tắt cấu trúc ngữ pháp và điểm ngữ âm quan trọng." },
-                    { title: "Sổ tay từ vựng & Cụm từ thông dụng", type: "PDF", size: "3.2 MB", desc: "Hán tự, Pinyin và ví dụ ngữ cảnh thực tế." },
-                    { title: "File Audio nghe phát âm chuẩn", type: "MP3", size: "16.8 MB", desc: "Giọng đọc chuẩn bản xứ cho bài hội thoại." },
-                    { title: "Phiếu bài tập tự luyện kèm đáp án", type: "PDF", size: "4.5 MB", desc: "Các dạng bài tập tương ứng với cấu trúc bài thi." }
-                  ].map((mat, i) => (
-                    <div key={i} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex flex-col justify-between space-y-3">
-                      <div className="flex items-start gap-3">
-                        <span className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-sky-300 font-black text-xs flex items-center justify-center shrink-0">
-                          {mat.type}
-                        </span>
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">{mat.title}</h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{mat.desc}</p>
-                          <span className="text-[10px] text-slate-400 font-mono mt-1 block">{mat.size}</span>
-                        </div>
-                      </div>
-                      <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
-                        <button
-                          onClick={() => toast.success(`Đang tải: ${mat.title}`)}
-                          className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-sm"
-                        >
-                          Tải về
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="max-w-3xl rounded-2xl border border-blue-100 bg-blue-50/60 p-5 dark:border-blue-900/40 dark:bg-blue-950/20">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Tài liệu theo buổi học</h3>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Tài liệu và slide được đặt trong từng buổi học để bạn dễ tìm đúng nội dung đang học.</p>
+                {classId && <Link to={`/lms/courses/${courseId}/classes/${classId}`} className="mt-4 inline-flex rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700">Mở danh sách chương →</Link>}
               </div>
             )}
 
@@ -871,7 +836,7 @@ export default function ClassroomPage() {
       {/* Curriculum Sidebar (Desktop - hidden on mobile) */}
       <div className="hidden lg:flex w-96 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 flex-col h-full">
         <div className="p-5 border-b border-slate-200 dark:border-slate-800">
-          <h3 className="font-bold text-base text-slate-900 dark:text-white mb-1">Nội Dung Khóa Học</h3>
+          <h3 className="font-bold text-base text-slate-900 dark:text-white mb-1">Bài học tự học</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Đã hoàn thành {completedLessonsCount} / {totalLessonsCount} bài giảng
           </p>
@@ -898,7 +863,7 @@ export default function ClassroomPage() {
           <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 rounded-t-3xl max-h-[75vh] w-full flex flex-col z-10 overflow-hidden shadow-2xl">
             <div className="border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-5 py-4">
               <div>
-                <h3 className="font-bold text-slate-900 dark:text-white text-base">Nội Dung Khóa Học</h3>
+                <h3 className="font-bold text-slate-900 dark:text-white text-base">Bài học tự học</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Đã hoàn thành {completedLessonsCount} / {totalLessonsCount} bài học
                 </p>

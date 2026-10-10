@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildAttendancePolicy } from "./attendance.router.js";
+import { buildAttendancePolicy, buildStudentCheckInPolicy, canManageSession } from "./attendance.router.js";
 
 test("attendance is allowed only on the scheduled local calendar day", () => {
   const policy = buildAttendancePolicy({
@@ -55,4 +55,31 @@ test("cancelled sessions can never be marked", () => {
 
   assert.equal(policy.canMarkAttendance, false);
   assert.match(policy.reason, /đã hủy/i);
+});
+
+test("student check-in is limited to the live session window on the academy day", () => {
+  const session = { startTime: "2026-09-26T02:00:00.000Z", endTime: "2026-09-26T03:30:00.000Z", status: "scheduled" };
+  assert.equal(buildStudentCheckInPolicy({ ...session, now: "2026-09-26T01:44:59.000Z" }).canCheckIn, false);
+  assert.equal(buildStudentCheckInPolicy({ ...session, now: "2026-09-26T01:45:00.000Z" }).canCheckIn, true);
+  assert.equal(buildStudentCheckInPolicy({ ...session, now: "2026-09-26T03:30:01.000Z" }).canCheckIn, false);
+  assert.equal(buildStudentCheckInPolicy({ ...session, now: "2026-09-27T02:20:00.000Z" }).canCheckIn, false);
+});
+
+test("student cannot overwrite an attendance record or a finalized sheet", () => {
+  const session = { startTime: "2026-09-26T02:00:00.000Z", endTime: "2026-09-26T03:30:00.000Z", status: "scheduled", now: "2026-09-26T02:20:00.000Z" };
+  assert.equal(buildStudentCheckInPolicy({ ...session, checkedIn: true }).canCheckIn, false);
+  assert.equal(buildStudentCheckInPolicy({ ...session, finalized: true }).canCheckIn, false);
+  assert.equal(buildStudentCheckInPolicy({ ...session, status: "cancelled" }).canCheckIn, false);
+  assert.equal(buildStudentCheckInPolicy({ ...session, status: "ended" }).canCheckIn, false);
+});
+
+test("revoked class teacher cannot access attendance even when still recorded as instructor", async () => {
+  const session = { live_class_id: 7, instructor_id: 11 };
+  const teacher = { id: 11, role: "creator" };
+  const db = (status) => ({ query: async () => ({ rows: status ? [{ status }] : [] }) });
+  assert.equal(await canManageSession(session, teacher, db("active")), true);
+  assert.equal(await canManageSession(session, teacher, db("revoked")), false);
+  assert.equal(await canManageSession(session, teacher, db(null)), true);
+  assert.equal(await canManageSession(session, { id: 12, role: "creator" }, db(null)), false);
+  assert.equal(await canManageSession(session, { id: 12, role: "admin" }, db("revoked")), true);
 });

@@ -41,12 +41,17 @@ const classAccess = async (classId, user) => {
   );
   const liveClass = result.rows[0];
   if (!liveClass) return { error: "not_found" };
-  if (user.role === "admin" || String(liveClass.instructor_id) === String(user.id)) return { liveClass, canManage: true };
+  if (user.role === "admin") return { liveClass, canManage: true };
   if (user.role === "creator") {
     const teacher = await query(
       `SELECT 1 FROM class_teachers
-       WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'`,
-      [liveClass.id, user.id],
+       WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'
+       UNION ALL
+       SELECT 1 WHERE $3::bigint = $2
+         AND NOT EXISTS (SELECT 1 FROM class_teachers
+                         WHERE live_class_id = $1 AND teacher_id = $2 AND status <> 'active')
+       LIMIT 1`,
+      [liveClass.id, user.id, liveClass.instructor_id],
     );
     if (teacher.rows.length > 0) return { liveClass, canManage: true };
   }
@@ -82,7 +87,10 @@ const courseAccess = async (courseId, user) => {
        FROM live_classes lc
        LEFT JOIN class_teachers ct ON ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
        WHERE lc.course_id = $1 AND lc.status = 'active'
-         AND (lc.instructor_id = $2 OR ct.teacher_id IS NOT NULL)
+         AND (ct.teacher_id IS NOT NULL OR (lc.instructor_id = $2
+           AND NOT EXISTS (SELECT 1 FROM class_teachers revoked
+                           WHERE revoked.live_class_id = lc.id AND revoked.teacher_id = $2
+                             AND revoked.status <> 'active')))
        LIMIT 1`,
       [courseId, user.id],
     );
@@ -103,33 +111,28 @@ const fileAccess = async (fileId, user) => {
   );
   const file = result.rows[0];
   if (!file) return { error: "not_found" };
-  if (user.role === "admin" || String(file.uploaded_by) === String(user.id) || String(file.instructor_id) === String(user.id)) return { file };
-  if (user.role === "creator" && file.live_class_id) {
-    const classTeacher = await query(
-      `SELECT 1 FROM class_teachers
-       WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'`,
-      [file.live_class_id, user.id],
-    );
-    if (classTeacher.rows.length > 0) return { file };
+  if (user.role === "admin") return { file };
+  if (user.role === "creator") {
+    const scope = file.live_class_id
+      ? await classAccess(file.live_class_id, user)
+      : await courseAccess(file.course_id, user);
+    if (scope.error || !scope.canManage) return { error: "forbidden" };
+    if (file.visibility === "PRIVATE" && String(file.uploaded_by) !== String(user.id)) return { error: "forbidden" };
+    return { file };
   }
   if (user.role !== "user") return { error: "forbidden" };
+  if (file.visibility === "PRIVATE") return { error: "forbidden" };
   const access = await query(
-    `SELECT 1
-     FROM class_enrollments ce
-     WHERE $1::bigint IS NOT NULL AND ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
-       AND EXISTS (
-         SELECT 1 FROM lms_access_grants g
-         WHERE g.course_id = $3 AND g.user_id = $2 AND g.access_status = 'active'
-           AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-       )
-     UNION ALL
-     SELECT 1
-     FROM lms_access_grants g
-     WHERE $1::bigint IS NULL AND $3::bigint IS NOT NULL AND g.course_id = $3 AND g.user_id = $2
-       AND g.access_status = 'active' AND g.valid_from <= NOW()
-       AND (g.valid_until IS NULL OR g.valid_until > NOW())
+    `SELECT 1 FROM lms_access_grants g
+     WHERE g.course_id = $3 AND g.user_id = $2 AND g.access_status = 'active'
+       AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+       AND ($4 = 'COURSE' OR ($4 = 'CLASS_ONLY' AND $1::bigint IS NOT NULL
+         AND EXISTS (SELECT 1 FROM live_classes lc
+                     JOIN class_enrollments ce ON ce.live_class_id = lc.id
+                     WHERE lc.id = $1 AND lc.status = 'active'
+                       AND ce.user_id = $2 AND ce.status = 'active')))
      LIMIT 1`,
-    [file.live_class_id, user.id, file.course_id || file.class_course_id],
+    [file.live_class_id, user.id, file.live_class_id ? file.class_course_id : file.course_id, file.visibility],
   );
   return access.rows.length ? { file } : { error: "forbidden" };
 };
@@ -203,8 +206,9 @@ router.get("/teacher/classes/:classId/files", protectRoute, requireTeacher, asyn
        LEFT JOIN class_sessions cs ON cs.id = f.class_session_id
        WHERE f.live_class_id = $1 AND f.status = 'ready'
          AND ($2::bigint IS NULL OR f.class_session_id = $2)
+         AND ($3::boolean OR f.visibility <> 'PRIVATE' OR f.uploaded_by = $4)
        ORDER BY f.created_at DESC, f.id DESC`,
-      [classId, sessionId],
+      [classId, sessionId, req.user.role === "admin", req.user.id],
     );
     return res.json({ success: true, data: files.rows.map(serializeFile) });
   } catch (error) {
@@ -257,17 +261,21 @@ router.post("/teacher/files/:fileId/confirm", protectRoute, requireTeacher, requ
   try {
     const file = (await query("SELECT * FROM lms_learning_files WHERE id = $1", [fileId])).rows[0];
     if (!file) return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
+    if (file.status !== "pending") return errorResponse(res, 409, "Tài liệu không ở trạng thái chờ xác nhận", "INVALID_STATUS");
     const access = file.live_class_id
       ? await classAccess(file.live_class_id, req.user)
       : await courseAccess(file.course_id, req.user);
-    if (access.error || !access.canManage || String(file.uploaded_by) !== String(req.user.id)) return errorResponse(res, 403, "Bạn không có quyền xác nhận tài liệu này", "FORBIDDEN");
+    if (access.error || !access.canManage || (req.user.role !== "admin" && String(file.uploaded_by) !== String(req.user.id))) {
+      return errorResponse(res, 403, "Bạn không có quyền xác nhận tài liệu này", "FORBIDDEN");
+    }
     const { headUrl } = await generateLearningFileHeadSignedUrl({ r2Key: file.storage_key });
     const headResponse = await fetch(headUrl, { method: "HEAD" });
     if (!headResponse.ok) {
       await query("UPDATE lms_learning_files SET status = 'failed' WHERE id = $1", [fileId]);
       return errorResponse(res, 422, "Không tìm thấy object tài liệu trên R2", "UPLOAD_NOT_FOUND");
     }
-    const result = await query("UPDATE lms_learning_files SET status = 'ready' WHERE id = $1 RETURNING *", [fileId]);
+    const result = await query("UPDATE lms_learning_files SET status = 'ready' WHERE id = $1 AND status = 'pending' RETURNING *", [fileId]);
+    if (!result.rows.length) return errorResponse(res, 409, "Tài liệu đã được xác nhận", "INVALID_STATUS");
     await recordAuditEvent({ actorId: req.user.id, action: "learning_file.confirmed", entityType: "learning_file", entityId: fileId, afterState: result.rows[0], metadata: { ip: req.ip } });
     return res.json({ success: true, data: serializeFile(result.rows[0]) });
   } catch (error) {
@@ -333,22 +341,17 @@ router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async 
          AND ($2::bigint IS NULL OR COALESCE(f.course_id, lc.course_id) = $2)
          AND ($3::bigint IS NULL OR f.live_class_id IS NULL OR f.live_class_id = $3)
          AND ($4::bigint IS NULL OR f.class_session_id = $4)
-         AND (
-           (f.live_class_id IS NOT NULL AND EXISTS (
-             SELECT 1 FROM class_enrollments ce
-             LEFT JOIN courses class_course ON class_course.id = lc.course_id
-             WHERE ce.live_class_id = f.live_class_id AND ce.user_id = $1 AND ce.status = 'active'
-               AND EXISTS (
-                 SELECT 1 FROM lms_access_grants g
-                 WHERE g.user_id = $1 AND g.course_id = class_course.id AND g.access_status = 'active'
-                   AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-               )
-           ))
-           OR (f.course_id IS NOT NULL AND EXISTS (
-             SELECT 1 FROM lms_access_grants g WHERE g.course_id = f.course_id AND g.user_id = $1 AND g.access_status = 'active'
-               AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-           ))
-       )
+         AND f.visibility IN ('CLASS_ONLY', 'COURSE')
+         AND EXISTS (
+           SELECT 1 FROM lms_access_grants g
+           WHERE g.course_id = CASE WHEN f.live_class_id IS NOT NULL THEN lc.course_id ELSE f.course_id END
+             AND g.user_id = $1 AND g.access_status = 'active'
+             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+         )
+         AND (f.visibility = 'COURSE' OR (f.visibility = 'CLASS_ONLY'
+           AND f.live_class_id IS NOT NULL AND lc.status = 'active'
+           AND EXISTS (SELECT 1 FROM class_enrollments ce
+                       WHERE ce.live_class_id = f.live_class_id AND ce.user_id = $1 AND ce.status = 'active')))
        ORDER BY f.created_at DESC, f.id DESC`,
       [req.user.id, courseId, classId, sessionId],
     );
@@ -363,15 +366,12 @@ const canDeleteFile = async (fileId, user) => {
   const result = await query("SELECT id, uploaded_by, live_class_id, course_id, storage_key, status FROM lms_learning_files WHERE id = $1", [fileId]);
   const file = result.rows[0];
   if (!file) return { error: "not_found" };
-  if (user.role === "admin" || String(file.uploaded_by) === String(user.id)) return { file };
+  if (user.role === "admin") return { file };
   if (user.role === "creator") {
-    if (file.live_class_id) {
-      const owner = await query("SELECT instructor_id FROM live_classes WHERE id = $1", [file.live_class_id]);
-      if (String(owner.rows[0]?.instructor_id) === String(user.id)) return { file };
-    } else if (file.course_id) {
-      const access = await courseAccess(file.course_id, user);
-      if (!access.error && access.canManage) return { file };
-    }
+    const access = file.live_class_id
+      ? await classAccess(file.live_class_id, user)
+      : await courseAccess(file.course_id, user);
+    if (!access.error && access.canManage && String(file.uploaded_by) === String(user.id)) return { file };
   }
   return { error: "forbidden" };
 };

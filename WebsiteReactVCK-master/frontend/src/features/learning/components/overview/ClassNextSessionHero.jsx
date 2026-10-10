@@ -84,12 +84,6 @@ export default function ClassNextSessionHero({
             <CalendarDays className="h-4 w-4" />
             {nextSession ? "Xem chi tiết buổi học" : "Xem lịch toàn khóa"}
           </Link>
-          <Link
-            to={nextSession ? `${basePath}/sessions/${nextSession.id}?tab=content` : "/lms/calendar"}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/35 bg-white/15 px-3.5 py-2 text-xs font-bold text-white backdrop-blur transition hover:bg-white/25 active:scale-95"
-          >
-            <Play className="h-4 w-4" /> Mở không gian buổi học
-          </Link>
         </div>
       </div>
 

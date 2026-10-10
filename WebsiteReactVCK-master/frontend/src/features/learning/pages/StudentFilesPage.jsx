@@ -63,51 +63,57 @@ export default function StudentFilesPage() {
   };
 
   return (
-    <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 py-6 sm:px-6 lg:px-8 transition-colors duration-200">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <section className="rounded-3xl border border-blue-100 dark:border-slate-800 bg-gradient-to-r from-[#edf6ff] via-white to-[#f5f9ff] dark:from-slate-900 dark:via-slate-900/95 dark:to-blue-950/30 p-6 shadow-sm dark:shadow-none sm:p-8">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 px-3 py-1 text-xs font-semibold text-blue-600 dark:text-sky-300 shadow-sm ring-1 ring-blue-100 dark:ring-slate-700">
-            <FolderOpen className="h-3.5 w-3.5" /> Kho tài liệu học tập
-          </span>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-            {classId ? "Tài liệu của lớp" : courseId ? "Tài liệu của khóa học" : "Tài liệu học tập của tôi"}
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-            Tập hợp giáo trình, bài mẫu và tài liệu được giáo viên chia sẻ cho các lớp bạn đã ghi danh.
-          </p>
-        </section>
-
-        <section className="flex flex-col gap-3 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm dark:shadow-none md:flex-row md:items-center md:justify-between">
-          <div className="flex overflow-x-auto">
-            {[
-              ["all", "Tất cả"],
-              ["pdf", "PDF"],
-              ["doc", "Word"],
-              ["sheet", "Excel"],
-            ].map(([kind, label]) => (
-              <button
-                key={kind}
-                type="button"
-                onClick={() => setSelectedKind(kind)}
-                className={`whitespace-nowrap rounded-xl px-4 py-2 text-xs font-semibold transition ${
-                  selectedKind === kind
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+    <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 py-4 sm:px-6 lg:px-8 transition-colors duration-200">
+      <div className="mx-auto max-w-6xl space-y-4">
+        <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm dark:shadow-none">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-blue-600 dark:text-sky-300 ring-1 ring-blue-100 dark:ring-slate-700">
+                  <FolderOpen className="h-3 w-3" /> Kho tài liệu
+                </span>
+                <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+                  {classId ? "Tài liệu của lớp" : courseId ? "Tài liệu của khóa học" : "Tài liệu học tập của tôi"}
+                </h1>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Tập hợp giáo trình, bài mẫu và tài liệu được giáo viên chia sẻ cho các lớp bạn đã ghi danh.
+              </p>
+            </div>
           </div>
-          <label className="relative block w-full md:w-80">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Tìm tài liệu, khóa học, giáo viên..."
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 py-2.5 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-200 outline-none transition placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-400 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-800"
-            />
-          </label>
+
+          <div className="mt-3.5 flex flex-col gap-2.5 border-t border-slate-100 dark:border-slate-800/80 pt-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {[
+                ["all", "Tất cả"],
+                ["pdf", "PDF"],
+                ["doc", "Word"],
+                ["sheet", "Excel"],
+              ].map(([kind, label]) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => setSelectedKind(kind)}
+                  className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    selectedKind === kind
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <label className="relative block w-full md:w-72">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Tìm tài liệu, khóa học, giáo viên..."
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 py-2 pl-8 pr-3 text-xs text-slate-800 dark:text-slate-200 outline-none transition placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-400 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-800"
+              />
+            </label>
+          </div>
         </section>
 
         {loading ? (

@@ -38,4 +38,19 @@ test("admin can approve a Management class and its enrollment", async (t) => {
     { status: "active", management_approval_status: "approved" });
   assert.deepEqual((await db.query("SELECT status,management_approval_status FROM class_enrollments WHERE id=$1", [membership.id])).rows[0],
     { status: "active", management_approval_status: "approved" });
+
+  const updatePermission = router.stack.find((layer) => layer.route?.path === "/permissions/:id" && layer.route.methods.patch).route.stack.at(-1).handle;
+  const permission = (await db.query("SELECT id FROM lms_permissions WHERE code='lms.class.manage'")).rows[0];
+  const response = () => ({ statusCode: 200, body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; return this; },
+  });
+  const denyTeacher = response();
+  await updatePermission({ params: { id: permission.id }, body: { teacher: true }, user: admin }, denyTeacher);
+  assert.equal(denyTeacher.statusCode, 409);
+  assert.equal(denyTeacher.body.errorCode, "ADMIN_ONLY_PERMISSION");
+  const denyAdminReduction = response();
+  await updatePermission({ params: { id: permission.id }, body: { admin: false }, user: admin }, denyAdminReduction);
+  assert.equal(denyAdminReduction.statusCode, 409);
+  assert.equal(denyAdminReduction.body.errorCode, "ADMIN_FULL_ACCESS");
 });

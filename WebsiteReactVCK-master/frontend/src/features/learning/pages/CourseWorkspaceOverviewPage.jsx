@@ -1,16 +1,14 @@
 import { useOutletContext, useParams } from "react-router-dom";
 import ClassPendingTasksCard from "../components/overview/ClassPendingTasksCard";
 import ClassProgressCard from "../components/overview/ClassProgressCard";
-import ClassMaterialsNoticesCard from "../components/overview/ClassMaterialsNoticesCard";
+import ClassChaptersCard from "../components/overview/ClassChaptersCard";
 
 export default function CourseWorkspaceOverviewPage() {
   const { courseId, classId } = useParams();
   const workspace = useOutletContext();
   const {
     progress = {},
-    sections = [],
     assignments = [],
-    files = [],
     selectedClass = {}
   } = workspace;
 
@@ -26,6 +24,8 @@ export default function CourseWorkspaceOverviewPage() {
 
   return (
     <div className="space-y-6 pb-10 transition-colors duration-200">
+      <ClassChaptersCard classId={classId} basePath={basePath} />
+
       {/* MAIN 2 COLUMNS: Việc cần làm & Tiến độ học tập */}
       <div className="grid gap-6 lg:grid-cols-2">
         <ClassPendingTasksCard
@@ -37,18 +37,15 @@ export default function CourseWorkspaceOverviewPage() {
           percent={percent}
           completedLessons={completedLessons}
           totalLessons={totalLessons}
-          sections={sections}
-          basePath={basePath}
         />
       </div>
 
-      {/* 3. TÀI LIỆU & THÔNG BÁO CỦA LỚP */}
-      <ClassMaterialsNoticesCard
-        files={files}
-        classNotice={selectedClass.description}
-        classTitle={selectedClass.title}
-        basePath={basePath}
-      />
+      {selectedClass.description && (
+        <section className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+          <h2 className="mb-2 font-bold text-slate-900 dark:text-white">Thông báo lớp {selectedClass.title || ""}</h2>
+          <p className="whitespace-pre-line">{selectedClass.description}</p>
+        </section>
+      )}
     </div>
   );
 }

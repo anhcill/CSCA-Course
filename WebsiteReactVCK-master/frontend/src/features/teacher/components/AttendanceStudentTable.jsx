@@ -42,6 +42,9 @@ export default function AttendanceStudentTable({
                     <div>
                       <p className="font-bold text-slate-900 dark:text-white text-sm">{student.username || student.email}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{student.email}</p>
+                      {student.attendance_source === "student" && (
+                        <p className="mt-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Học viên tự báo có mặt</p>
+                      )}
                     </div>
                   </div>
                 </td>

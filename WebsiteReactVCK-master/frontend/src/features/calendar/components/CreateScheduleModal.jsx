@@ -1,8 +1,9 @@
 /* eslint-disable react/prop-types */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Calendar, X } from "lucide-react";
-import { createLiveClassSchedule, createLiveSession } from "../../api/lmsClient";
+import { createLiveClassSchedule, createLiveSession, fetchClassChapters } from "../../api/lmsClient";
+import { useAuthContext } from "../../../context/AuthContext";
 
 const DAYS_OF_WEEK = [
   { value: 1, label: "Thứ Hai" },
@@ -15,8 +16,28 @@ const DAYS_OF_WEEK = [
 ];
 
 export default function CreateScheduleModal({ classId, onClose, onSuccess, canManageFixedSchedule = false }) {
+  const { authUser } = useAuthContext();
   const [tab, setTab] = useState(canManageFixedSchedule ? "series" : "single");
   const [submitting, setSubmitting] = useState(false);
+  const [chapters, setChapters] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [chapterMode, setChapterMode] = useState("existing");
+  const [chapterId, setChapterId] = useState("");
+  const [newChapter, setNewChapter] = useState({ title: "", description: "", objectives: "", teacherId: "" });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchClassChapters(classId).then((response) => {
+      if (cancelled) return;
+      const items = (Array.isArray(response?.data) ? response.data : [])
+        .filter((chapter) => canManageFixedSchedule || String(chapter.assigned_teacher_id) === String(authUser?.id));
+      setChapters(items);
+      setTeachers(Array.isArray(response?.teachers) ? response.teachers : []);
+      if (items.length === 0) setChapterMode("new");
+      else setChapterId(String(items[0].id));
+    }).catch(() => { if (!cancelled) toast.error("Không tải được các chương của lớp."); });
+    return () => { cancelled = true; };
+  }, [classId, canManageFixedSchedule, authUser?.id]);
 
   // Form tạo lịch cố định (Series)
   const [seriesForm, setSeriesForm] = useState({
@@ -66,6 +87,8 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
     e.preventDefault();
     if (!classId) return toast.error("Vui lòng chọn lớp học.");
     if (!sessionForm.title.trim()) return toast.error("Vui lòng nhập tên buổi học.");
+    if (chapterMode === "existing" && !chapterId) return toast.error("Chọn chương cho buổi học.");
+    if (chapterMode === "new" && !newChapter.title.trim()) return toast.error("Nhập tên chương mới.");
     setSubmitting(true);
     try {
       const startDateTime = new Date(`${sessionForm.date}T${sessionForm.startTime}:00`).toISOString();
@@ -78,6 +101,14 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
         endTime: endDateTime,
         meetUrl: sessionForm.meetUrl.trim() || undefined,
         status: "scheduled",
+        ...(chapterMode === "existing"
+          ? { chapterId: Number(chapterId) }
+          : { newChapter: {
+            title: newChapter.title.trim(),
+            description: newChapter.description.trim(),
+            objectives: newChapter.objectives.trim(),
+            ...(canManageFixedSchedule ? { teacherId: newChapter.teacherId ? Number(newChapter.teacherId) : null } : {}),
+          } }),
       });
       if (!res?.success) throw new Error(res?.message || "Không thể tạo buổi học");
       toast.success("Đã bổ sung buổi học thành công!");
@@ -221,6 +252,28 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
                   onChange={(e) => setSessionForm({ ...sessionForm, title: e.target.value })}
                   className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white"
                 />
+              </div>
+
+              <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-900/60 dark:bg-blue-950/20">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Chương học của buổi này</label>
+                <select value={chapterMode} onChange={(e) => setChapterMode(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
+                  {chapters.length > 0 && <option value="existing">Chọn chương đã có</option>}
+                  <option value="new">Thêm chương mới cùng buổi học</option>
+                </select>
+                {chapterMode === "existing" && chapters.length > 0 ? (
+                  <select value={chapterId} onChange={(e) => setChapterId(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
+                    {chapters.map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
+                  </select>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    <input required maxLength={255} value={newChapter.title} onChange={(e) => setNewChapter({ ...newChapter, title: e.target.value })} placeholder="Tên chương" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800" />
+                    <textarea maxLength={5000} rows={2} value={newChapter.objectives} onChange={(e) => setNewChapter({ ...newChapter, objectives: e.target.value })} placeholder="Mục tiêu học tập (tùy chọn)" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800" />
+                    {canManageFixedSchedule && <select value={newChapter.teacherId} onChange={(e) => setNewChapter({ ...newChapter, teacherId: e.target.value })} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
+                      <option value="">Chưa phân công giáo viên</option>
+                      {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name || teacher.email}</option>)}
+                    </select>}
+                  </div>
+                )}
               </div>
 
               <div>

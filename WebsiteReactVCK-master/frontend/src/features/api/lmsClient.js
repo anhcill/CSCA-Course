@@ -267,6 +267,24 @@ export const updateLiveClass = async ({ classId, title, description, maxStudents
   })
 );
 
+export const fetchClassChapters = async (classId) => (
+  request(`/live-classes/${encodeURIComponent(classId)}/chapters`)
+);
+
+export const createClassChapter = async ({ classId, title, description, objectives, position, teacherId }) => (
+  request(`/live-classes/${encodeURIComponent(classId)}/chapters`, {
+    method: "POST",
+    body: JSON.stringify({ title, description, objectives, position, teacherId }),
+  })
+);
+
+export const updateClassChapter = async ({ classId, chapterId, title, description, objectives, position, teacherId }) => (
+  request(`/live-classes/${encodeURIComponent(classId)}/chapters/${encodeURIComponent(chapterId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title, description, objectives, position, teacherId }),
+  })
+);
+
 export const fetchMyLiveSchedule = async ({ courseId, classId, from, to } = {}) => {
   const params = new URLSearchParams();
   if (courseId) params.set("courseId", courseId);
@@ -279,10 +297,10 @@ export const fetchMyLiveSchedule = async ({ courseId, classId, from, to } = {}) 
   });
 };
 
-export const createLiveSession = async ({ liveClassId, title, startTime, endTime, meetUrl, passcode, status }) => (
+export const createLiveSession = async ({ liveClassId, title, startTime, endTime, meetUrl, passcode, status, chapterId, newChapter }) => (
   requestCalendarMutation(`/live-classes/${encodeURIComponent(liveClassId)}/sessions`, {
     method: "POST",
-    body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status }),
+    body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status, chapterId, newChapter }),
   }, { classId: liveClassId, type: "session-created" })
 );
 
@@ -381,6 +399,14 @@ export const createClassAnnouncement = async ({ classId, sessionId, title, messa
 export const cancelClassAnnouncement = async (announcementId) => request(`/announcements/${encodeURIComponent(announcementId)}/cancel`, { method: "PATCH" });
 
 // Attendance Helpers
+export const fetchMySessionCheckIn = (sessionId) => (
+  request(`/attendance/session/${encodeURIComponent(sessionId)}/my-check-in`)
+);
+
+export const checkInToSession = (sessionId) => (
+  request(`/attendance/session/${encodeURIComponent(sessionId)}/my-check-in`, { method: "POST" })
+);
+
 export const markAttendance = async ({ sessionId, attendanceList }) => (
   request("/attendance/check", {
     method: "POST",

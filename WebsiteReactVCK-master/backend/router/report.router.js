@@ -11,6 +11,29 @@ import { normalizeGradebookPolicy } from "../services/lmsWorkflowPolicy.service.
 import { assertGradebookOpen, assertManagedClass, positiveId, requiredReason, workflowError, notifyWorkflow } from "../services/lmsWorkflow.service.js";
 
 const router = express.Router();
+const gradebookCapabilities = async (db, classId, user) => {
+  if (user.role === "admin") return { canManagePolicy: true, canFinalize: true, canReopen: true };
+  const permissions = await db.query(`SELECT p.code FROM lms_permissions p
+    JOIN lms_role_permissions rp ON rp.permission_id=p.id
+    WHERE rp.role=$1 AND rp.is_allowed=TRUE AND p.code=ANY($2::text[])`,
+    [user.role, ["lms.gradebook.policy.manage", "lms.gradebook.finalize", "lms.gradebook.reopen"]]);
+  const allowed = new Set(permissions.rows.map((row) => row.code));
+  const lead = (await db.query(`SELECT 1 FROM live_classes lc WHERE lc.id=$1 AND
+    (EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id=lc.id
+      AND ct.teacher_id=$2 AND ct.status='active' AND ct.teaching_role='lead') OR
+     lc.instructor_id=$2 AND NOT EXISTS (SELECT 1 FROM class_teachers ct
+       WHERE ct.live_class_id=lc.id AND ct.teacher_id=$2))`,
+    [classId, user.id])).rows.length > 0;
+  return {
+    canManagePolicy: lead && allowed.has("lms.gradebook.policy.manage"),
+    canFinalize: lead && allowed.has("lms.gradebook.finalize"),
+    canReopen: allowed.has("lms.gradebook.reopen"),
+  };
+};
+const requireGradebookCapability = (capability) => async (req, res, db, classId) => {
+  const capabilities = await gradebookCapabilities(db, classId, req.user);
+  if (!capabilities[capability]) throw workflowError("Bạn không có quyền thực hiện thao tác sổ điểm này.", 403);
+};
 router.get("/gradebook/my-result", protectRoute, requireActiveStudentLmsAccess, async (req, res) => {
   const db = await getClient();
   try {
@@ -50,12 +73,14 @@ const getScopedBook = async (req, db, classId) => {
 };
 router.get("/gradebook", handler(async (req, res, db, classId) => {
   const { book, final } = await getScopedBook(req, db, classId);
+  const capabilities = await gradebookCapabilities(db, classId, req.user);
   const history = await db.query(`SELECT f.id, f.finalized_at, f.reopened_at, f.reopen_reason, u.username AS finalized_by_name
     FROM gradebook_finalizations f LEFT JOIN users u ON u.id=f.finalized_by WHERE class_id=$1 ORDER BY f.id DESC LIMIT 20`, [classId]);
   await db.query("COMMIT");
-  res.json({ success: true, data: { ...book, finalization: final ? { id: final.id, finalizedAt: final.finalized_at } : null, history: history.rows } });
+  res.json({ success: true, data: { ...book, finalization: final ? { id: final.id, finalizedAt: final.finalized_at } : null, history: history.rows, capabilities } });
 }));
-router.put("/gradebook/policy", requirePermission("lms.gradebook.manage"), handler(async (req, res, db, classId) => {
+router.put("/gradebook/policy", handler(async (req, res, db, classId) => {
+  await requireGradebookCapability("canManagePolicy")(req, res, db, classId);
   let policy;
   try { policy = normalizeGradebookPolicy(req.body.policy); } catch (error) { throw workflowError(error.message); }
   await assertGradebookOpen(db, classId);
@@ -65,7 +90,8 @@ router.put("/gradebook/policy", requirePermission("lms.gradebook.manage"), handl
   await recordAuditEvent({ db, actorId: req.user.id, action: "gradebook.policy_updated", entityType: "live_class", entityId: classId, beforeState: before, afterState: policy });
   await db.query("COMMIT"); res.json({ success: true });
 }));
-router.post("/gradebook/finalize", requirePermission("lms.gradebook.manage"), handler(async (req, res, db, classId) => {
+router.post("/gradebook/finalize", handler(async (req, res, db, classId) => {
+  await requireGradebookCapability("canFinalize")(req, res, db, classId);
   await assertGradebookOpen(db, classId);
   const pending = await db.query(`SELECT 1 FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id
     WHERE a.live_class_id=$1 AND (s.status <> 'graded' OR s.return_requested)
@@ -82,7 +108,8 @@ router.post("/gradebook/finalize", requirePermission("lms.gradebook.manage"), ha
     link:`/lms/courses/${snapshot.classInfo.course_id}/classes/${classId}/results`,key:`gradebook-finalized:${row.id}:${student.id}`,actorId:req.user.id});
   await db.query("COMMIT"); res.json({ success: true });
 }));
-router.post("/gradebook/reopen", requirePermission("lms.gradebook.manage"), handler(async (req, res, db, classId) => {
+router.post("/gradebook/reopen", handler(async (req, res, db, classId) => {
+  await requireGradebookCapability("canReopen")(req, res, db, classId);
   const reason = requiredReason(req.body.reason);
   await db.query("SELECT id FROM live_classes WHERE id=$1 FOR UPDATE", [classId]);
   const rows = await db.query("UPDATE gradebook_finalizations SET reopened_by=$2,reopened_at=NOW(),reopen_reason=$3 WHERE class_id=$1 AND reopened_at IS NULL RETURNING id", [classId, req.user.id, reason]);

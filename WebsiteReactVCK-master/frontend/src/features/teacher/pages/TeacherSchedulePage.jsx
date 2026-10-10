@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   createLiveSession,
+  fetchClassChapters,
   fetchLiveClassRoster,
   fetchLiveClasses,
   fetchMyLiveSchedule,
@@ -10,6 +11,7 @@ import {
 } from "../../api/lmsClient";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
 import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
+import { useAuthContext } from "../../../context/AuthContext";
 import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 
 /* ── SVG Icons ───────────────────────────────────────────────── */
@@ -67,6 +69,7 @@ const WEEKDAYS = ["Chủ Nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "T
 
 export default function TeacherSchedulePage() {
   const navigate = useNavigate();
+  const { authUser } = useAuthContext();
 
   const [sessions, setSessions] = useState([]);
   const [liveClasses, setLiveClasses] = useState([]);
@@ -85,6 +88,10 @@ export default function TeacherSchedulePage() {
     meetUrl: "",
   });
   const [submittingSession, setSubmittingSession] = useState(false);
+  const [chapters, setChapters] = useState([]);
+  const [chapterMode, setChapterMode] = useState("existing");
+  const [chapterId, setChapterId] = useState("");
+  const [newChapter, setNewChapter] = useState({ title: "", description: "", objectives: "" });
 
   // Student Roster Modal state
   const [rosterSession, setRosterSession] = useState(null);
@@ -127,6 +134,20 @@ export default function TeacherSchedulePage() {
   useEffect(() => {
     loadSchedule();
   }, [loadSchedule]);
+
+  useEffect(() => {
+    if (!showCreateModal || !sessionForm.liveClassId) return;
+    let cancelled = false;
+    fetchClassChapters(sessionForm.liveClassId).then((response) => {
+      if (cancelled) return;
+      const items = (Array.isArray(response?.data) ? response.data : [])
+        .filter((chapter) => String(chapter.assigned_teacher_id) === String(authUser?.id));
+      setChapters(items);
+      setChapterId(items[0] ? String(items[0].id) : "");
+      setChapterMode(items.length ? "existing" : "new");
+    }).catch(() => { if (!cancelled) toast.error("Không tải được các chương của lớp."); });
+    return () => { cancelled = true; };
+  }, [showCreateModal, sessionForm.liveClassId, authUser?.id]);
 
   // Refresh silently so timetable edits made by an administrator in another
   // browser are visible to the teacher without a manual reload.
@@ -189,6 +210,8 @@ export default function TeacherSchedulePage() {
       if (!liveClassId) {
         throw new Error("Chọn một lớp đã gắn với khóa học. Quản trị viên tạo lớp và lịch cố định trước.");
       }
+      if (chapterMode === "existing" && !chapterId) throw new Error("Chọn chương cho buổi học.");
+      if (chapterMode === "new" && !newChapter.title.trim()) throw new Error("Nhập tên chương mới.");
 
       await createLiveSession({
         liveClassId,
@@ -197,6 +220,13 @@ export default function TeacherSchedulePage() {
         endTime,
         meetUrl: sessionForm.meetUrl || undefined,
         status: "scheduled",
+        ...(chapterMode === "existing"
+          ? { chapterId: Number(chapterId) }
+          : { newChapter: {
+            title: newChapter.title.trim(),
+            description: newChapter.description.trim(),
+            objectives: newChapter.objectives.trim(),
+          } }),
       });
       setShowCreateModal(false);
       setSessionForm((previous) => ({
@@ -207,6 +237,7 @@ export default function TeacherSchedulePage() {
         endTime: "",
         meetUrl: "",
       }));
+      setNewChapter({ title: "", description: "", objectives: "" });
       await loadSchedule();
       toast.success("Đã bổ sung buổi học cho khóa học thành công! 📅");
     } catch (err) {
@@ -561,6 +592,22 @@ export default function TeacherSchedulePage() {
                   </div>
                 )}
                 <p className="mt-1 text-[10px] text-slate-500">Đây là buổi bổ sung, không thay đổi lịch cố định của khóa học.</p>
+              </div>
+
+              <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900/60 dark:bg-blue-950/20">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Chương học của buổi này</label>
+                <select value={chapterMode} onChange={(e) => setChapterMode(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
+                  {chapters.length > 0 && <option value="existing">Chọn chương đã có</option>}
+                  <option value="new">Thêm chương mới cùng buổi dạy</option>
+                </select>
+                {chapterMode === "existing" && chapters.length > 0 ? (
+                  <select value={chapterId} onChange={(e) => setChapterId(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
+                    {chapters.map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
+                  </select>
+                ) : <div className="mt-2 space-y-2">
+                  <input required maxLength={255} value={newChapter.title} onChange={(e) => setNewChapter({ ...newChapter, title: e.target.value })} placeholder="Tên chương" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800" />
+                  <textarea maxLength={5000} rows={2} value={newChapter.objectives} onChange={(e) => setNewChapter({ ...newChapter, objectives: e.target.value })} placeholder="Mục tiêu học tập (tùy chọn)" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800" />
+                </div>}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

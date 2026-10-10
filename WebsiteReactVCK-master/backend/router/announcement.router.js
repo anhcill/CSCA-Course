@@ -2,6 +2,7 @@ import express from "express";
 import { query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
+import requirePermission from "../middleware/requirePermission.js";
 import { deliverClassAnnouncement, serializeAnnouncement } from "../services/classAnnouncement.service.js";
 
 const router = express.Router();
@@ -25,7 +26,9 @@ const getClassAccess = async (classId, user, { manage = false } = {}) => {
   if (user.role === "admin") return { liveClass };
   if (user.role === "creator") {
     const teacher = await query(
-      `SELECT 1 WHERE $1::bigint = $2::bigint
+      `SELECT 1 WHERE $1::bigint = $2::bigint AND NOT EXISTS (
+         SELECT 1 FROM class_teachers former WHERE former.live_class_id = $3 AND former.teacher_id = $1
+       )
        UNION ALL SELECT 1 FROM class_teachers WHERE live_class_id = $3 AND teacher_id = $1 AND status = 'active' LIMIT 1`,
       [user.id, liveClass.instructor_id, classId],
     );
@@ -68,7 +71,7 @@ router.get("/", protectRoute, async (req, res) => {
   }
 });
 
-router.post("/", protectRoute, requireTeacher, async (req, res) => {
+router.post("/", protectRoute, requireTeacher, requirePermission("lms.notification.send"), async (req, res) => {
   try {
     const classId = parseId(req.body?.classId);
     const sessionId = req.body?.sessionId === undefined || req.body?.sessionId === null || req.body?.sessionId === "" ? null : parseId(req.body.sessionId);
@@ -102,7 +105,7 @@ router.post("/", protectRoute, requireTeacher, async (req, res) => {
   }
 });
 
-router.patch("/:id/cancel", protectRoute, requireTeacher, async (req, res) => {
+router.patch("/:id/cancel", protectRoute, requireTeacher, requirePermission("lms.notification.send"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return invalid(res, "id không hợp lệ");

@@ -14,8 +14,10 @@ export const requiredReason = (value) => {
 export const assertManagedClass = async (db, classId, user) => {
   const result = await db.query(
     `SELECT lc.* FROM live_classes lc WHERE lc.id = $1 AND
-      ($3 = 'admin' OR lc.instructor_id = $2 OR EXISTS (
-        SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'))`,
+      ($3 = 'admin' OR EXISTS (
+        SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active')
+       OR (lc.instructor_id = $2 AND NOT EXISTS (
+        SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2)))`,
     [classId, user.id, user.role],
   );
   if (!result.rows[0]) throw workflowError("Bạn không có quyền quản lý lớp này.", 403);

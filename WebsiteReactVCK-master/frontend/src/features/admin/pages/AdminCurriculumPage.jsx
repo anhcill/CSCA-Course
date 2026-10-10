@@ -455,7 +455,7 @@ export default function AdminCurriculumPage() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/30 uppercase tracking-wider">
-                Admin Console
+                {isAdmin ? "Admin Console" : "Không gian giáo viên"}
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-400">Khóa Học & Chương Trình Giảng Dạy</span>
             </div>
@@ -463,18 +463,20 @@ export default function AdminCurriculumPage() {
               Quản Lý Khóa Học & Curriculum
             </h1>
             <p className="text-slate-600 dark:text-slate-400 text-xs md:text-sm mt-1">
-              Khởi tạo lộ trình CSCA/HSK/HSKK, biên tập danh mục chương bài và đính kèm Video Cloudflare R2.
+              {isAdmin
+                ? "Khởi tạo lộ trình CSCA/HSK/HSKK, biên tập danh mục chương bài và đính kèm Video Cloudflare R2."
+                : "Biên tập chương bài trong các khóa học được phân công."}
             </p>
           </div>
 
-          <button
+          {isAdmin && <button
             id="admin-create-course-btn"
             onClick={() => handleOpenCourseModal()}
             className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-5 py-2.5 rounded-2xl transition shadow-lg shadow-rose-600/30 flex items-center gap-2 text-sm"
           >
             <span>+</span>
             <span>Tạo Khóa Học Mới</span>
-          </button>
+          </button>}
         </div>
 
         {/* Courses Table / Management Grid */}
@@ -500,9 +502,8 @@ export default function AdminCurriculumPage() {
           ) : courses.length === 0 ? (
             <EmptyState
               title="Chưa Có Khóa Học Nào"
-              message="Hệ thống chưa có khóa học nào. Hãy nhấp nút bên dưới để tạo khóa học đầu tiên."
-              actionLabel="+ Tạo Khóa Học Ngay"
-              onAction={() => handleOpenCourseModal()}
+               message={isAdmin ? "Hệ thống chưa có khóa học nào. Hãy tạo khóa học đầu tiên." : "Bạn chưa được phân công khóa học nào."}
+               {...(isAdmin ? { actionLabel: "+ Tạo Khóa Học Ngay", onAction: () => handleOpenCourseModal() } : {})}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -530,7 +531,7 @@ export default function AdminCurriculumPage() {
                         </div>
 
                         {/* Status badge toggle button */}
-                        <button
+                         {isAdmin ? <button
                           onClick={(e) => handleToggleStatus(c.id, e)}
                           title="Nhấp để đổi trạng thái Công khai / Nháp"
                           className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-md border transition ${
@@ -540,7 +541,7 @@ export default function AdminCurriculumPage() {
                           }`}
                         >
                           {status === "published" ? "✓ Public" : "✎ Draft"}
-                        </button>
+                         </button> : <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-md border ${status === "published" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : "bg-amber-500/10 text-amber-600 border-amber-500/30"}`}>{status === "published" ? "✓ Public" : "✎ Draft"}</span>}
                       </div>
 
                       <div>
@@ -761,7 +762,7 @@ export default function AdminCurriculumPage() {
       </div>
 
       {/* Modal: Create Course */}
-      {showCourseModal && (
+      {isAdmin && showCourseModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 max-w-lg w-full space-y-5 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-3">

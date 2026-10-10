@@ -11,6 +11,11 @@ import { fetchAdminPermissions, updateAdminPermission } from "../../features/api
 import Loading from "../../components/Loading.jsx";
 import { ErrorState } from "../../components/common/StateView";
 
+const adminOnlyPermissionCodes = new Set([
+  "lms.admin.view", "lms.class.manage", "lms.teacher.assign",
+  "lms.sync.retry", "lms.permission.manage",
+]);
+
 export default function AdminPermissionsPage() {
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -218,13 +223,13 @@ export default function AdminPermissionsPage() {
                     <td className="py-4 px-4 text-center">
                       <button
                         onClick={() => handleToggle(perm.id, "admin")}
-                        disabled={savingId === `${perm.id}_admin` || perm.code === "lms.permission.manage"}
+                        disabled
                         className={`inline-flex items-center justify-center w-8 h-8 rounded-xl transition ${
                           perm.admin
                             ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
                             : "bg-gray-100 dark:bg-gray-800 text-gray-400 border border-gray-200 dark:border-gray-700"
-                        } ${perm.code === "lms.permission.manage" ? "opacity-60 cursor-not-allowed" : "hover:scale-105"}`}
-                        title={perm.code === "lms.permission.manage" ? "Quyền hệ thống bắt buộc" : "Nhấn để bật/tắt"}
+                        } opacity-60 cursor-not-allowed`}
+                        title="Quản trị viên luôn có toàn quyền LMS"
                       >
                         {perm.admin ? <FiCheck className="w-4 h-4 stroke-[3]" /> : <FiX className="w-4 h-4" />}
                       </button>
@@ -234,13 +239,13 @@ export default function AdminPermissionsPage() {
                     <td className="py-4 px-4 text-center">
                       <button
                         onClick={() => handleToggle(perm.id, "teacher")}
-                        disabled={savingId === `${perm.id}_teacher`}
+                        disabled={savingId === `${perm.id}_teacher` || adminOnlyPermissionCodes.has(perm.code)}
                         className={`inline-flex items-center justify-center w-8 h-8 rounded-xl transition ${
                           perm.teacher
                             ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
                             : "bg-gray-100 dark:bg-gray-800 text-gray-400 border border-gray-200 dark:border-gray-700"
-                        } hover:scale-105`}
-                        title="Nhấn để bật/tắt quyền cho Giáo viên"
+                        } ${adminOnlyPermissionCodes.has(perm.code) ? "opacity-60 cursor-not-allowed" : "hover:scale-105"}`}
+                        title={adminOnlyPermissionCodes.has(perm.code) ? "Chỉ dành cho quản trị viên" : "Nhấn để bật/tắt quyền cho Giáo viên"}
                       >
                         {perm.teacher ? <FiCheck className="w-4 h-4 stroke-[3]" /> : <FiX className="w-4 h-4" />}
                       </button>

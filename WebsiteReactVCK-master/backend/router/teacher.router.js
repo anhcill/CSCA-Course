@@ -1,6 +1,7 @@
 import express from "express";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
+import requirePermission from "../middleware/requirePermission.js";
 import { query } from "../db/connect.js";
 
 const router = express.Router();
@@ -45,7 +46,10 @@ const classScope = (user, classId = null, alias = "lc") => {
   const params = [user.id];
   const clauses = [`${alias}.status = 'active'`];
   if (user.role !== "admin") {
-    clauses.push(`(${alias}.instructor_id = $1 OR EXISTS (
+    clauses.push(`((${alias}.instructor_id = $1 AND NOT EXISTS (
+      SELECT 1 FROM class_teachers former
+      WHERE former.live_class_id = ${alias}.id AND former.teacher_id = $1
+    )) OR EXISTS (
       SELECT 1 FROM class_teachers ct
       WHERE ct.live_class_id = ${alias}.id
         AND ct.teacher_id = $1
@@ -74,13 +78,15 @@ const ensureManagedClass = async (classId, user) => {
   );
   const liveClass = result.rows[0];
   if (!liveClass) return { error: "not_found" };
-  if (user.role !== "admin" && String(liveClass.instructor_id) !== String(user.id)) {
+  if (user.role !== "admin") {
     const teachingAssignment = await query(
-      `SELECT 1 FROM class_teachers
-       WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'`,
+      `SELECT status FROM class_teachers
+       WHERE live_class_id = $1 AND teacher_id = $2`,
       [classId, user.id],
     );
-    if (teachingAssignment.rows.length === 0) return { error: "forbidden" };
+    if (teachingAssignment.rows.length
+      ? teachingAssignment.rows[0].status !== "active"
+      : String(liveClass.instructor_id) !== String(user.id)) return { error: "forbidden" };
   }
   return { liveClass };
 };
@@ -333,7 +339,7 @@ const buildPendingQuery = (scope, statusFilter = "all", page = 1, limit = 8) => 
 };
 
 // GET /api/teacher/dashboard-stats — one aggregation payload for Teacher Hub.
-router.get("/dashboard-stats", protectRoute, requireTeacher, async (req, res) => {
+router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("lms.student.view"), async (req, res) => {
   try {
     const classId = req.query.classId ? parsePositiveId(req.query.classId) : null;
     if (req.query.classId && !classId) return validationError(res, "classId không hợp lệ");
@@ -427,7 +433,7 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, async (req, res) =>
 // GET /api/teacher/classes/:classId/student-progress — one compact gradebook
 // for a class. Quiz attempts are already auto-graded; written-work scores are
 // read from the latest teacher grade. The UI groups both by lesson session.
-router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, async (req, res) => {
+router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, requirePermission("lms.student.view"), async (req, res) => {
   try {
     const classId = parsePositiveId(req.params.classId);
     if (!classId) return validationError(res, "classId không hợp lệ");
@@ -536,7 +542,7 @@ router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, a
 });
 
 // GET /api/teacher/classes/:classId/detail — roster/progress/attendance/assignment status.
-router.get("/classes/:classId/detail", protectRoute, requireTeacher, async (req, res) => {
+router.get("/classes/:classId/detail", protectRoute, requireTeacher, requirePermission("lms.student.view"), async (req, res) => {
   try {
     const classId = parsePositiveId(req.params.classId);
     if (!classId) return validationError(res, "classId không hợp lệ");

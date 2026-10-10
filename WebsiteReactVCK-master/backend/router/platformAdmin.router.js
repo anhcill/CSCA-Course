@@ -15,6 +15,10 @@ const parseId = (value) => {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
+const adminOnlyPermissionCodes = new Set([
+  "lms.admin.view", "lms.class.manage", "lms.teacher.assign",
+  "lms.sync.retry", "lms.permission.manage",
+]);
 
 const permissionRows = (rows) => rows.map((row) => ({
   id: String(row.id),
@@ -61,6 +65,12 @@ router.patch("/permissions/:id", ...adminOnly, async (req, res) => {
   try {
     const permission = (await query("SELECT id, code, is_system FROM lms_permissions WHERE id = $1", [permissionId])).rows[0];
     if (!permission) return errorResponse(res, 404, "Không tìm thấy permission", "NOT_FOUND");
+    if (role === "admin" && req.body[uiRole] === false) {
+      return errorResponse(res, 409, "Quản trị viên luôn có toàn quyền LMS", "ADMIN_FULL_ACCESS");
+    }
+    if (role !== "admin" && adminOnlyPermissionCodes.has(permission.code) && req.body[uiRole]) {
+      return errorResponse(res, 409, "Quyền này chỉ dành cho quản trị viên", "ADMIN_ONLY_PERMISSION");
+    }
     if (permission.is_system && role === "admin") {
       return errorResponse(res, 409, "Không thể tắt quyền hệ thống của Admin", "SYSTEM_PERMISSION_LOCKED");
     }
