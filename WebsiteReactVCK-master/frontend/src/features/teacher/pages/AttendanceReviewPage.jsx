@@ -1,10 +1,63 @@
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useAuthContext } from "../../../context/AuthContext";
-import { fetchAttendanceReviewQueue, fetchTeacherDashboardStats, reviewAttendanceAmendment } from "../../api/lmsClient";
+import {
+  fetchAttendanceReviewQueue, fetchFinalizedAttendanceSheet, fetchFinalizedAttendanceSheets,
+  fetchTeacherDashboardStats, reviewAttendanceAmendment, reviewFinalizedAttendanceSheet,
+} from "../../api/lmsClient";
 import { panel, input, button, secondary } from "../components/workflowStyles";
 
 const labels = { present: "Có mặt", absent: "Vắng", excused: "Có phép", pending: "Chờ duyệt", approved: "Đã duyệt", rejected: "Từ chối" };
+
+function FinalizedSheetsPanel() {
+  const [status, setStatus] = useState("pending");
+  const [page, setPage] = useState(1);
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [detail, setDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const result = await fetchFinalizedAttendanceSheets({ status, page });
+      setRows(result.data || []); setTotal(result.meta?.total || 0);
+    } catch (e) { setError(e.message); setRows([]); }
+    finally { setLoading(false); }
+  }, [status, page]);
+  useEffect(() => { load(); }, [load]);
+  const open = async (sessionId) => {
+    if (String(detail?.sessionId) === String(sessionId)) { setDetail(null); return; }
+    setDetailLoading(true); setDetail(null); setReviewNote("");
+    try { setDetail((await fetchFinalizedAttendanceSheet(sessionId)).data); }
+    catch (e) { toast.error(e.message); }
+    finally { setDetailLoading(false); }
+  };
+  const acknowledge = async (sessionId) => {
+    setSaving(true);
+    try {
+      await reviewFinalizedAttendanceSheet(sessionId, reviewNote);
+      toast.success("Đã ghi nhận kiểm tra bản điểm danh.");
+      setDetail(null); setReviewNote(""); await load();
+    } catch (e) { toast.error(e.message); }
+    finally { setSaving(false); }
+  };
+  return <section className={panel + " space-y-4"}>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-bold">Bản điểm danh giáo viên đã chốt</h2><p className="mt-1 text-xs text-slate-500">Có hiệu lực ngay sau khi chốt. Admin kiểm tra và ghi nhận tại đây; thao tác kiểm tra không thay đổi điểm danh.</p></div><button className={secondary} onClick={load}>Tải lại</button></div>
+    <select aria-label="Trạng thái kiểm tra bản chốt" className={input + " sm:w-48"} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); setDetail(null); }}><option value="pending">Chờ kiểm tra</option><option value="reviewed">Đã kiểm tra</option><option value="all">Tất cả</option></select>
+    {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+    {loading ? <p className="text-sm">Đang tải bản chốt...</p> : !rows.length ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-slate-800">Không có bản điểm danh trong bộ lọc này.</p> : rows.map((row) => <article key={row.sessionId} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{row.classTitle} · {row.sessionTitle}</h3><p className="mt-1 text-xs text-slate-500">Buổi học {new Date(row.startTime).toLocaleString("vi-VN")} · Chốt bởi {row.finalizedByName || "Giáo viên"} lúc {new Date(row.finalizedAt).toLocaleString("vi-VN")}</p><p className="mt-2 text-sm">{row.counts.total} học viên · Có mặt {row.counts.present} · Vắng {row.counts.absent} · Có phép {row.counts.excused}</p></div><span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{row.reviewedAt ? "Đã kiểm tra" : "Chờ kiểm tra"}</span></div>
+      <button type="button" className={secondary + " mt-3"} disabled={detailLoading} onClick={() => open(row.sessionId)}>{String(detail?.sessionId) === String(row.sessionId) ? "Đóng chi tiết" : "Xem điểm danh"}</button>
+      {String(detail?.sessionId) === String(row.sessionId) && <div className="mt-4 space-y-3"><div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b dark:border-slate-700"><th className="py-2 pr-3">Học viên</th><th className="py-2 pr-3">Trạng thái</th><th className="py-2">Ghi chú</th></tr></thead><tbody>{detail.students.map((student) => <tr key={student.userId} className="border-b border-slate-100 dark:border-slate-800"><td className="py-2 pr-3">{student.name}</td><td className="py-2 pr-3">{labels[student.status] || student.status}</td><td className="py-2">{student.note || "—"}</td></tr>)}</tbody></table></div>{!row.reviewedAt && <div className="flex flex-wrap items-end gap-2"><label className="min-w-52 flex-1 text-xs">Ghi chú kiểm tra (nếu có)<input className={input + " mt-1"} maxLength={2000} value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} /></label><button type="button" className={button} disabled={saving} onClick={() => acknowledge(row.sessionId)}>{saving ? "Đang lưu..." : "Đánh dấu đã kiểm tra"}</button></div>}{row.reviewedAt && <p className="text-xs text-slate-500">Kiểm tra bởi {row.reviewedByName || "Admin"} lúc {new Date(row.reviewedAt).toLocaleString("vi-VN")}{row.reviewNote ? ` · ${row.reviewNote}` : ""}</p>}</div>}
+    </article>)}
+    <div className="flex items-center gap-3 text-sm"><button disabled={page === 1 || loading} className={secondary} onClick={() => { setPage(page - 1); setDetail(null); }}>Trước</button><span>Trang {page} · {total} bản chốt</span><button disabled={page * 30 >= total || loading} className={secondary} onClick={() => { setPage(page + 1); setDetail(null); }}>Tiếp</button></div>
+  </section>;
+}
+
 export default function AttendanceReviewPage() {
   const { authUser } = useAuthContext();
   const [classes, setClasses] = useState([]);
@@ -35,7 +88,9 @@ export default function AttendanceReviewPage() {
     } catch (e) { toast.error(e.message); } finally { setSaving(false); }
   };
   return <div className="mx-auto max-w-5xl space-y-5 p-4 text-slate-900 dark:text-slate-100">
-    <header><h1 className="text-2xl font-bold">Duyệt sửa điểm danh</h1><p className="mt-2 text-sm text-slate-500">Đối chiếu nội dung cũ và đề nghị mới. Người gửi phiếu cần một người khác duyệt.</p></header>
+    <header><h1 className="text-2xl font-bold">{authUser?.role === "admin" ? "Kiểm tra điểm danh" : "Duyệt sửa điểm danh"}</h1><p className="mt-2 text-sm text-slate-500">{authUser?.role === "admin" ? "Bản chốt của giáo viên xuất hiện ngay bên dưới. Phiếu sửa chỉ dùng khi cần thay đổi điểm danh đã chốt." : "Đối chiếu nội dung cũ và đề nghị mới. Người gửi phiếu cần một người khác duyệt."}</p></header>
+    {authUser?.role === "admin" && <FinalizedSheetsPanel />}
+    <h2 className="text-lg font-bold">Phiếu sửa điểm danh</h2>
     <div className={panel + " flex flex-wrap gap-3"}>
       <select aria-label="Lọc lớp" className={input + " sm:w-64"} value={classId} onChange={(e) => {setClassId(e.target.value);setPage(1);}}><option value="">Tất cả lớp</option>{classes.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</select>
       <select aria-label="Trạng thái phiếu" className={input + " sm:w-44"} value={status} onChange={(e) => {setStatus(e.target.value);setPage(1);}}>{["pending","approved","rejected","all"].map((s) => <option key={s} value={s}>{labels[s] || "Tất cả"}</option>)}</select>

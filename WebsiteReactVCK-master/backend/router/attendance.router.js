@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { getClient, query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
+import requireRole from "../middleware/requireRole.js";
 import requirePermission from "../middleware/requirePermission.js";
 import {
   attemptManagementAttendanceDeliveryById,
@@ -558,6 +559,126 @@ router.get("/session/:sessionId", protectRoute, requireTeacher, async (req, res)
 
 // An attendance sheet remains write-once. Corrections are separate requests so
 // the original value, requester, reviewer and time stay available for audits.
+router.get("/finalized-sheets", protectRoute, requireRole("admin"), async (req, res) => {
+  try {
+    const status = req.query.status || "pending";
+    const classId = req.query.classId ? parsePositiveId(req.query.classId) : null;
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    if (!["pending", "reviewed", "all"].includes(status) || (req.query.classId && !classId)) {
+      return validationError(res, "Bộ lọc không hợp lệ");
+    }
+    const result = await query(
+      `SELECT sheet.session_id, sheet.finalized_at, sheet.finalized_by,
+              sheet.reviewed_at, sheet.reviewed_by, sheet.review_note,
+              finalizer.username AS finalized_by_name, reviewer.username AS reviewed_by_name,
+              lc.id AS class_id, lc.title AS class_title,
+              cs.title AS session_title, cs.start_time,
+              counts.total, counts.present, counts.absent, counts.excused,
+              COUNT(*) OVER() AS total_count
+       FROM class_attendance_sheets sheet
+       JOIN class_sessions cs ON cs.id = sheet.session_id
+       JOIN live_classes lc ON lc.id = cs.live_class_id
+       LEFT JOIN users finalizer ON finalizer.id = sheet.finalized_by
+       LEFT JOIN users reviewer ON reviewer.id = sheet.reviewed_by
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE ca.status = 'present')::int AS present,
+                COUNT(*) FILTER (WHERE ca.status = 'absent')::int AS absent,
+                COUNT(*) FILTER (WHERE ca.status = 'excused')::int AS excused
+         FROM class_attendance ca WHERE ca.session_id = sheet.session_id
+       ) counts ON true
+       WHERE ($1 = 'all' OR ($1 = 'pending' AND sheet.reviewed_at IS NULL)
+              OR ($1 = 'reviewed' AND sheet.reviewed_at IS NOT NULL))
+         AND ($2::bigint IS NULL OR lc.id = $2)
+       ORDER BY sheet.finalized_at DESC, sheet.session_id DESC
+       LIMIT 30 OFFSET $3`,
+      [status, classId, (page - 1) * 30],
+    );
+    return res.json({ success: true, data: result.rows.map((row) => ({
+      sessionId: row.session_id, classId: row.class_id, classTitle: row.class_title,
+      sessionTitle: row.session_title, startTime: row.start_time,
+      finalizedAt: row.finalized_at, finalizedBy: row.finalized_by,
+      finalizedByName: row.finalized_by_name, reviewedAt: row.reviewed_at,
+      reviewedByName: row.reviewed_by_name, reviewNote: row.review_note || "",
+      counts: { total: row.total, present: row.present, absent: row.absent, excused: row.excused },
+    })), meta: { total: Number(result.rows[0]?.total_count || 0), page } });
+  } catch (error) {
+    console.error("Attendance sheet review queue:", error);
+    return internalError(res, "Không thể tải bản điểm danh đã chốt");
+  }
+});
+
+router.get("/finalized-sheets/:sessionId", protectRoute, requireRole("admin"), async (req, res) => {
+  try {
+    const sessionId = parsePositiveId(req.params.sessionId);
+    if (!sessionId) return validationError(res, "sessionId không hợp lệ");
+    const sheet = (await query(
+      `SELECT sheet.session_id, sheet.finalized_at, sheet.reviewed_at,
+              lc.title AS class_title, cs.title AS session_title
+       FROM class_attendance_sheets sheet
+       JOIN class_sessions cs ON cs.id = sheet.session_id
+       JOIN live_classes lc ON lc.id = cs.live_class_id
+       WHERE sheet.session_id = $1`, [sessionId],
+    )).rows[0];
+    if (!sheet) return notFound(res, "Không tìm thấy bản điểm danh đã chốt");
+    const students = await query(
+      `SELECT ca.user_id, u.username, u.email, ca.status, ca.note, ca.checked_at
+       FROM class_attendance ca JOIN users u ON u.id = ca.user_id
+       WHERE ca.session_id = $1 ORDER BY LOWER(COALESCE(u.username, u.email)), ca.user_id`,
+      [sessionId],
+    );
+    return res.json({ success: true, data: {
+      sessionId: sheet.session_id, classTitle: sheet.class_title, sessionTitle: sheet.session_title,
+      finalizedAt: sheet.finalized_at, reviewedAt: sheet.reviewed_at,
+      students: students.rows.map((row) => ({
+        userId: row.user_id, name: row.username || row.email, status: row.status,
+        note: row.note || "", checkedAt: row.checked_at,
+      })),
+    } });
+  } catch (error) {
+    console.error("Attendance sheet detail:", error);
+    return internalError(res, "Không thể tải chi tiết điểm danh");
+  }
+});
+
+router.post("/finalized-sheets/:sessionId/review", protectRoute, requireRole("admin"), async (req, res) => {
+  const sessionId = parsePositiveId(req.params.sessionId);
+  const reviewNote = normalizeNote(req.body?.reviewNote);
+  if (!sessionId || reviewNote.length > 2000) return validationError(res, "Thông tin kiểm tra điểm danh không hợp lệ");
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const sheet = (await client.query(
+      `SELECT session_id, finalized_by, reviewed_at FROM class_attendance_sheets
+       WHERE session_id = $1 FOR UPDATE`, [sessionId],
+    )).rows[0];
+    if (!sheet) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy bản điểm danh đã chốt"); }
+    if (sheet.reviewed_at) { await client.query("ROLLBACK"); return conflict(res, "Bản điểm danh đã được kiểm tra", "ATTENDANCE_ALREADY_REVIEWED"); }
+    const reviewed = (await client.query(
+      `UPDATE class_attendance_sheets SET reviewed_at = NOW(), reviewed_by = $2, review_note = $3
+       WHERE session_id = $1 RETURNING reviewed_at`, [sessionId, req.user.id, reviewNote],
+    )).rows[0];
+    await recordAuditEvent({
+      db: client, actorId: req.user.id, action: "attendance.sheet_reviewed",
+      entityType: "class_session", entityId: sessionId,
+      afterState: { reviewedAt: reviewed.reviewed_at, reviewNote }, metadata: { ip: req.ip },
+    });
+    if (sheet.finalized_by && String(sheet.finalized_by) !== String(req.user.id)) {
+      await notifyWorkflow(client, {
+        userId: sheet.finalized_by, title: "Bản điểm danh đã được quản trị viên kiểm tra",
+        message: reviewNote || "Bản điểm danh đã chốt được ghi nhận.",
+        link: "/lms/teach/attendance", key: `attendance-sheet-reviewed:${sessionId}`, actorId: req.user.id,
+      });
+    }
+    await client.query("COMMIT");
+    return res.json({ success: true, data: { sessionId, reviewedAt: reviewed.reviewed_at } });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Attendance sheet review:", error);
+    return internalError(res, "Không thể ghi nhận đã kiểm tra điểm danh");
+  } finally { client.release(); }
+});
+
 router.get("/amendments", protectRoute, requireTeacher, requirePermission("lms.attendance.amend.review"), async (req, res) => {
   try {
     const status = req.query.status || "pending";
@@ -897,6 +1018,13 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
       entityType: "class_session", entityId: sessionId,
       afterState: { recordedCount: normalized.length }, metadata: { ip: req.ip },
     });
+    const admins = await client.query("SELECT id FROM users WHERE role = 'admin' AND id <> $1", [req.user.id]);
+    for (const admin of admins.rows) await notifyWorkflow(client, {
+      userId: admin.id, title: "Có bản điểm danh mới cần kiểm tra",
+      message: `${session.title}: ${normalized.length} học viên đã được chốt điểm danh.`,
+      link: "/admin/attendance-review", key: `attendance-sheet-finalized:${sessionId}:${admin.id}`,
+      actorId: req.user.id,
+    });
 
     let managementDelivery = {
       status: "NOT_MANAGED",
@@ -959,8 +1087,8 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
         managementDelivery,
       },
       message: managementDelivery.status === "SUCCESS"
-        ? "Điểm danh đã được lưu vào InternalManagement"
-        : "Điểm danh đã được chốt và khóa chỉnh sửa",
+        ? "Điểm danh đã được lưu vào InternalManagement và gửi admin kiểm tra"
+        : "Điểm danh đã được chốt, khóa chỉnh sửa và gửi admin kiểm tra",
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});

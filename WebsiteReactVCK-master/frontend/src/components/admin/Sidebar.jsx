@@ -64,7 +64,7 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
     {
       group: 'Đào tạo',
       items: [
-        { title: 'Duyệt sửa điểm danh', icon: <FiCheckSquare className="w-4 h-4 shrink-0" />, path: '/admin/attendance-review' },
+        { title: 'Kiểm tra điểm danh', icon: <FiCheckSquare className="w-4 h-4 shrink-0" />, path: '/admin/attendance-review' },
         { title: 'Sổ điểm & tổng kết', icon: <FiFileText className="w-4 h-4 shrink-0" />, path: '/admin/student-progress' },
         { title: 'Hỗ trợ học viên', icon: <FiUser className="w-4 h-4 shrink-0" />, path: '/admin/support' },
         { title: 'Ngân hàng câu hỏi', icon: <FiList className="w-4 h-4 shrink-0" />, path: '/admin/question-bank' },

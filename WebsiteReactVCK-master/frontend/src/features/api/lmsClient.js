@@ -65,6 +65,12 @@ const requestCalendarMutation = async (path, options, detail) => {
 };
 
 export const fetchAttendanceReviewQueue = (filters) => request(`/attendance/amendments?${new URLSearchParams(filters)}`);
+export const fetchFinalizedAttendanceSheets = (filters) => request(`/attendance/finalized-sheets?${new URLSearchParams(filters)}`);
+export const fetchFinalizedAttendanceSheet = (sessionId) => request(`/attendance/finalized-sheets/${encodeURIComponent(sessionId)}`);
+export const reviewFinalizedAttendanceSheet = (sessionId, reviewNote) => request(
+  `/attendance/finalized-sheets/${encodeURIComponent(sessionId)}/review`,
+  { method: "POST", body: JSON.stringify({ reviewNote }) },
+);
 export const revokeAccommodation = (id, reason) => request(`/assignments/teacher/accommodations/${id}/revoke`, { method: "POST", body: JSON.stringify({ reason }) });
 export const fetchGradebook = (classId, sessionId) => request(`/reports/gradebook?${new URLSearchParams({ classId, sessionId: sessionId || "all" })}`);
 export const fetchMyFinalGrade = (classId) => request(`/reports/gradebook/my-result?classId=${encodeURIComponent(classId)}`);
