@@ -5,6 +5,7 @@ import protectRoute from "../middleware/protectRoute.js";
 import requireAdmin from "../middleware/requireAdmin.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import { getAttendanceReport, parseReportDate } from "../services/attendanceReport.service.js";
+import { makeCsv, makeXlsx } from "../services/spreadsheetExport.service.js";
 import {
   ALLOWED_VIDEO_MIME_TYPES,
   MAX_VIDEO_SIZE_BYTES,
@@ -290,6 +291,285 @@ router.get("/attendance-report", ...adminOnly, async (req, res) => {
     return res.json({ success: true, data: report });
   } catch (error) {
     return handleDbError(res, error, "Không thể tải báo cáo điểm danh");
+  }
+});
+
+// GET /api/admin/gradebook/summary — aggregated KPIs, recharts datasets, and class gradebook snapshots.
+router.get("/gradebook/summary", ...adminOnly, async (req, res) => {
+  const from = parseReportDate(req.query.from);
+  const to = parseReportDate(req.query.to);
+  if (from === undefined || to === undefined || (from && to && from > to)) {
+    return sendError(res, 422, "Khoảng ngày không hợp lệ", "INVALID_DATE_RANGE");
+  }
+  const client = await getClient();
+  try {
+    const classId = parseId(req.query.classId);
+    const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+
+    const conditions = [];
+    const params = [];
+    if (classId) {
+      params.push(classId);
+      conditions.push(`cgr.class_id = $${params.length}`);
+    }
+    if (from) {
+      params.push(from);
+      conditions.push(`cgr.created_at >= $${params.length}`);
+    }
+    if (to) {
+      params.push(`${to} 23:59:59.999+07`);
+      conditions.push(`cgr.created_at <= $${params.length}`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const reportsQuery = `
+      SELECT DISTINCT ON (cgr.class_id)
+        cgr.id,
+        cgr.class_id,
+        cgr.course_id,
+        cgr.reported_by,
+        cgr.student_count,
+        cgr.average_score,
+        cgr.pass_count,
+        cgr.fail_count,
+        cgr.pass_rate,
+        cgr.notes,
+        cgr.created_at,
+        cgr.updated_at,
+        cgr.snapshot,
+        lc.title AS class_title,
+        COALESCE(c.title, c.name) AS course_title,
+        COALESCE(u.username, u.email) AS reported_by_name,
+        u.email AS reported_by_email
+      FROM class_gradebook_reports cgr
+      JOIN live_classes lc ON lc.id = cgr.class_id
+      LEFT JOIN courses c ON c.id = COALESCE(cgr.course_id, lc.course_id)
+      JOIN users u ON u.id = cgr.reported_by
+      ${whereClause}
+      ORDER BY cgr.class_id, cgr.id DESC
+    `;
+
+    const reportsResult = await client.query(reportsQuery, params);
+    let reports = reportsResult.rows;
+
+    if (search) {
+      const term = search.toLowerCase();
+      reports = reports.filter((r) =>
+        (r.class_title && r.class_title.toLowerCase().includes(term)) ||
+        (r.course_title && r.course_title.toLowerCase().includes(term)) ||
+        (r.reported_by_name && r.reported_by_name.toLowerCase().includes(term)) ||
+        (Array.isArray(r.snapshot?.rows) && r.snapshot.rows.some((s) =>
+          (s.name && s.name.toLowerCase().includes(term)) ||
+          (s.email && s.email.toLowerCase().includes(term))
+        ))
+      );
+    }
+
+    // Sort reports by latest update
+    reports.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    let totalClasses = reports.length;
+    let totalStudents = 0;
+    let totalPassed = 0;
+    let totalFailed = 0;
+    const allStudentScores = [];
+
+    let bucketUnder50 = 0;
+    let bucket50To69 = 0;
+    let bucket70To84 = 0;
+    let bucket85To100 = 0;
+
+    const classComparison = [];
+
+    for (const report of reports) {
+      const sCount = Number(report.student_count) || 0;
+      const pCount = Number(report.pass_count) || 0;
+      const fCount = Number(report.fail_count) || 0;
+      totalStudents += sCount;
+      totalPassed += pCount;
+      totalFailed += fCount;
+
+      const studentRows = Array.isArray(report.snapshot?.rows) ? report.snapshot.rows : [];
+      for (const st of studentRows) {
+        if (st.total !== null && st.total !== undefined) {
+          const score = Number(st.total);
+          allStudentScores.push(score);
+          if (score < 50) bucketUnder50 += 1;
+          else if (score < 70) bucket50To69 += 1;
+          else if (score < 85) bucket70To84 += 1;
+          else bucket85To100 += 1;
+        }
+      }
+
+      classComparison.push({
+        classId: report.class_id,
+        className: report.class_title,
+        courseTitle: report.course_title || "Chưa gắn khóa",
+        averageScore: report.average_score != null ? Number(report.average_score) : null,
+        passRate: report.pass_rate != null ? Number(report.pass_rate) : null,
+        studentCount: sCount,
+        passCount: pCount,
+        failCount: fCount,
+      });
+    }
+
+    const overallAverageScore = allStudentScores.length
+      ? Math.round((allStudentScores.reduce((a, b) => a + b, 0) / allStudentScores.length) * 100) / 100
+      : null;
+
+    const overallPassRate = totalStudents > 0
+      ? Math.round((totalPassed / totalStudents) * 10000) / 100
+      : 0;
+
+    const distribution = [
+      { range: "0 - 49 (Chưa đạt)", count: bucketUnder50, fill: "#f43f5e" },
+      { range: "50 - 69 (Trung bình)", count: bucket50To69, fill: "#f59e0b" },
+      { range: "70 - 84 (Khá)", count: bucket70To84, fill: "#3b82f6" },
+      { range: "85 - 100 (Giỏi)", count: bucket85To100, fill: "#10b981" },
+    ];
+
+    const passFail = [
+      { name: "Đạt", value: totalPassed, color: "#10b981" },
+      { name: "Chưa đạt", value: totalFailed, color: "#f43f5e" },
+    ];
+
+    // All available classes for filtering dropdown
+    const availableClassesRes = await client.query(
+      `SELECT lc.id, lc.title, COALESCE(c.title, c.name) AS course_title
+       FROM live_classes lc
+       LEFT JOIN courses c ON c.id = lc.course_id
+       ORDER BY lc.title ASC`
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        kpis: {
+          totalClasses,
+          totalStudents,
+          totalPassed,
+          totalFailed,
+          overallPassRate,
+          overallAverageScore,
+        },
+        charts: {
+          distribution,
+          passFail,
+          classComparison,
+        },
+        reports,
+        availableClasses: availableClassesRes.rows.map((c) => ({
+          id: c.id,
+          title: c.title,
+          courseTitle: c.course_title,
+        })),
+      },
+    });
+  } catch (error) {
+    return handleDbError(res, error, "Không thể tải báo cáo điểm học viên");
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/admin/gradebook/export — export full reported gradebooks to XLSX or CSV
+router.get("/gradebook/export", ...adminOnly, async (req, res) => {
+  const from = parseReportDate(req.query.from);
+  const to = parseReportDate(req.query.to);
+  if (from === undefined || to === undefined || (from && to && from > to)) {
+    return sendError(res, 422, "Khoảng ngày không hợp lệ", "INVALID_DATE_RANGE");
+  }
+  const client = await getClient();
+  try {
+    const format = req.query.format === "csv" ? "csv" : "xlsx";
+    const classId = parseId(req.query.classId);
+
+    const conditions = [];
+    const params = [];
+    if (classId) {
+      params.push(classId);
+      conditions.push(`cgr.class_id = $${params.length}`);
+    }
+    if (from) {
+      params.push(from);
+      conditions.push(`cgr.created_at >= $${params.length}`);
+    }
+    if (to) {
+      params.push(`${to} 23:59:59.999+07`);
+      conditions.push(`cgr.created_at <= $${params.length}`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const reportsQuery = `
+      SELECT DISTINCT ON (cgr.class_id)
+        cgr.id, cgr.class_id, cgr.student_count, cgr.average_score, cgr.pass_rate, cgr.notes,
+        cgr.created_at, cgr.snapshot,
+        lc.title AS class_title,
+        COALESCE(c.title, c.name) AS course_title,
+        COALESCE(u.username, u.email) AS reported_by_name
+      FROM class_gradebook_reports cgr
+      JOIN live_classes lc ON lc.id = cgr.class_id
+      LEFT JOIN courses c ON c.id = COALESCE(cgr.course_id, lc.course_id)
+      JOIN users u ON u.id = cgr.reported_by
+      ${whereClause}
+      ORDER BY cgr.class_id, cgr.id DESC
+    `;
+
+    const result = await client.query(reportsQuery, params);
+    const reports = result.rows;
+
+    const rows = [
+      [
+        "Khóa học",
+        "Lớp học",
+        "Giáo viên báo cáo",
+        "Thời gian báo cáo",
+        "Học viên",
+        "Email",
+        "Chuyên cần (%)",
+        "Tổng điểm (/100)",
+        "Kết quả",
+        "Ghi chú",
+      ],
+    ];
+
+    for (const report of reports) {
+      const studentRows = Array.isArray(report.snapshot?.rows) ? report.snapshot.rows : [];
+      const reportedAtStr = report.created_at
+        ? new Date(report.created_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })
+        : "";
+
+      for (const st of studentRows) {
+        rows.push([
+          report.course_title || "",
+          report.class_title || "",
+          report.reported_by_name || "",
+          reportedAtStr,
+          st.name || "",
+          st.email || "",
+          st.attendancePercent != null ? `${Math.round(st.attendancePercent * 10) / 10}%` : "Chưa có",
+          st.total != null ? st.total : "Chưa có điểm",
+          st.passed === null ? "Chưa xác định" : st.passed ? "Đạt" : "Chưa đạt",
+          report.notes || "",
+        ]);
+      }
+    }
+
+    const file = format === "csv" ? makeCsv(rows) : makeXlsx(rows, "Bao cao diem");
+    res.set({
+      "Content-Type": format === "csv"
+        ? "text/csv; charset=utf-8"
+        : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="bao-cao-thong-ke-diem-${Date.now()}.${format}"`,
+      "Cache-Control": "no-store",
+    });
+    return res.send(file);
+  } catch (error) {
+    return handleDbError(res, error, "Không thể xuất file báo cáo điểm");
+  } finally {
+    client.release();
   }
 });
 

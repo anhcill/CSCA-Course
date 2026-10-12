@@ -76,8 +76,73 @@ router.get("/gradebook", handler(async (req, res, db, classId) => {
   const capabilities = await gradebookCapabilities(db, classId, req.user);
   const history = await db.query(`SELECT f.id, f.finalized_at, f.reopened_at, f.reopen_reason, u.username AS finalized_by_name
     FROM gradebook_finalizations f LEFT JOIN users u ON u.id=f.finalized_by WHERE class_id=$1 ORDER BY f.id DESC LIMIT 20`, [classId]);
+  const lastReport = (await db.query(`SELECT cgr.id, cgr.created_at, cgr.updated_at, cgr.student_count, cgr.average_score, cgr.pass_rate,
+      COALESCE(u.username, u.email) AS reported_by_name
+    FROM class_gradebook_reports cgr
+    LEFT JOIN users u ON u.id = cgr.reported_by
+    WHERE cgr.class_id = $1 ORDER BY cgr.id DESC LIMIT 1`, [classId])).rows[0] || null;
   await db.query("COMMIT");
-  res.json({ success: true, data: { ...book, finalization: final ? { id: final.id, finalizedAt: final.finalized_at } : null, history: history.rows, capabilities } });
+  res.json({ success: true, data: { ...book, finalization: final ? { id: final.id, finalizedAt: final.finalized_at } : null, history: history.rows, capabilities, lastReport } });
+}));
+router.post("/gradebook/report-to-admin", handler(async (req, res, db, classId) => {
+  const snapshot = await buildGradebook(db, classId);
+  const studentCount = snapshot.rows.length;
+  const validScores = snapshot.rows.map((r) => r.total).filter((t) => t !== null && t !== undefined).map(Number);
+  const averageScore = validScores.length ? Math.round((validScores.reduce((a, b) => a + b, 0) / validScores.length) * 100) / 100 : null;
+  const passCount = snapshot.rows.filter((r) => r.passed === true).length;
+  const failCount = snapshot.rows.filter((r) => r.passed === false).length;
+  const passRate = studentCount > 0 ? Math.round((passCount / studentCount) * 10000) / 100 : 0;
+  const notes = req.body.notes ? String(req.body.notes).slice(0, 1000) : null;
+
+  const result = await db.query(
+    `INSERT INTO class_gradebook_reports (
+      class_id, course_id, reported_by, snapshot,
+      student_count, average_score, pass_count, fail_count, pass_rate, notes, updated_at
+    ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, NOW())
+    RETURNING id, created_at, updated_at`,
+    [classId, snapshot.classInfo?.course_id || null, req.user.id, JSON.stringify(snapshot), studentCount, averageScore, passCount, failCount, passRate, notes]
+  );
+  const reportRow = result.rows[0];
+
+  await recordAuditEvent({
+    db,
+    actorId: req.user.id,
+    action: "gradebook.reported_to_admin",
+    entityType: "live_class",
+    entityId: classId,
+    afterState: { reportId: reportRow.id, studentCount, averageScore, passCount, failCount, passRate },
+  });
+
+  const admins = await db.query("SELECT id FROM users WHERE role = 'admin' AND id <> $1", [req.user.id]);
+  const classTitle = snapshot.classInfo?.title || `Lớp #${classId}`;
+  for (const admin of admins.rows) {
+    await notifyWorkflow(db, {
+      userId: admin.id,
+      title: "Báo cáo điểm số lớp học mới",
+      message: `${classTitle}: Giáo viên đã cập nhật bảng điểm ${studentCount} học viên (Điểm TB: ${averageScore ?? "—"}, Đạt: ${passCount}/${studentCount}).`,
+      link: "/admin/grades-report",
+      key: `gradebook-reported:${classId}:${reportRow.id}:${admin.id}`,
+      actorId: req.user.id,
+    });
+  }
+
+  await db.query("COMMIT");
+  res.json({
+    success: true,
+    message: "Đã cập nhật điểm và gửi báo cáo về Admin thành công!",
+    data: {
+      ...snapshot,
+      lastReport: {
+        id: reportRow.id,
+        created_at: reportRow.created_at,
+        updated_at: reportRow.updated_at,
+        student_count: studentCount,
+        average_score: averageScore,
+        pass_rate: passRate,
+        reported_by_name: req.user.username || req.user.email,
+      },
+    },
+  });
 }));
 router.put("/gradebook/policy", handler(async (req, res, db, classId) => {
   await requireGradebookCapability("canManagePolicy")(req, res, db, classId);

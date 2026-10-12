@@ -77,6 +77,19 @@ export const reviewFinalizedAttendanceSheet = (sessionId, reviewNote) => request
 );
 export const revokeAccommodation = (id, reason) => request(`/assignments/teacher/accommodations/${id}/revoke`, { method: "POST", body: JSON.stringify({ reason }) });
 export const fetchGradebook = (classId, sessionId) => request(`/reports/gradebook?${new URLSearchParams({ classId, sessionId: sessionId || "all" })}`);
+export const reportGradebookToAdmin = (classId, notes = "") => request("/reports/gradebook/report-to-admin", { method: "POST", body: JSON.stringify({ classId, notes }) });
+export const fetchAdminGradebookSummary = (filters = {}) => {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+  return request(`/admin/gradebook/summary${query.size ? `?${query.toString()}` : ""}`);
+};
+export const adminGradebookExportUrl = ({ format = "xlsx", classId = null, from = null, to = null } = {}) => {
+  const params = new URLSearchParams();
+  if (format) params.set("format", format);
+  if (classId) params.set("classId", String(classId));
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  return `${API_BASE}/admin/gradebook/export?${params.toString()}`;
+};
 export const fetchMyFinalGrade = (classId) => request(`/reports/gradebook/my-result?classId=${encodeURIComponent(classId)}`);
 export const saveGradebookPolicy = (classId, policy) => request("/reports/gradebook/policy", { method: "PUT", body: JSON.stringify({ classId, policy }) });
 export const finalizeGradebook = (classId) => request("/reports/gradebook/finalize", { method: "POST", body: JSON.stringify({ classId }) });

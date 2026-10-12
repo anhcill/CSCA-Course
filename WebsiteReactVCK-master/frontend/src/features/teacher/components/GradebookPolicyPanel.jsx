@@ -1,13 +1,14 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { fetchGradebook, saveGradebookPolicy, finalizeGradebook, reopenGradebook } from "../../api/lmsClient";
+import { fetchGradebook, saveGradebookPolicy, finalizeGradebook, reopenGradebook, reportGradebookToAdmin } from "../../api/lmsClient";
 import { panel, input, button, secondary } from "./workflowStyles";
 
 export default function GradebookPolicyPanel({ classId, sessionId, search = "" }) {
   const [book, setBook] = useState(null);
   const [policy, setPolicy] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const [error, setError] = useState("");
   const [reason, setReason] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -17,6 +18,18 @@ export default function GradebookPolicyPanel({ classId, sessionId, search = "" }
     catch (e) { setError(e.message); setBook(null); }
   }, [classId, sessionId]);
   useEffect(() => { load(); }, [load]);
+  const handleUpdateAndReport = async () => {
+    setReporting(true);
+    try {
+      const res = await reportGradebookToAdmin(classId);
+      await load();
+      toast.success(res?.message || "Đã cập nhật điểm và gửi báo cáo về Admin thành công!");
+    } catch (e) {
+      toast.error(e.message || "Không thể cập nhật và gửi báo cáo điểm.");
+    } finally {
+      setReporting(false);
+    }
+  };
   const act = async (action) => {
     if ((action === "save" && !book?.capabilities?.canManagePolicy)
       || (action === "finalize" && !book?.capabilities?.canFinalize)
@@ -35,7 +48,38 @@ export default function GradebookPolicyPanel({ classId, sessionId, search = "" }
   const dirty = JSON.stringify(policy) !== JSON.stringify(book.policy);
   const { canManagePolicy = false, canFinalize = false, canReopen = false } = book.capabilities || {};
   return <section className={panel + " space-y-4"}>
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold">Điểm tổng kết theo trọng số</h2><p className="text-xs text-slate-500">{book.finalization ? `Sổ đã chốt lúc ${new Date(book.finalization.finalizedAt).toLocaleString("vi-VN")}` : "Điểm tạm tính; lưu quy tắc trước khi chốt."}{sessionId!=="all" && " · Đang xem riêng buổi được chọn."}</p></div><button className={secondary} onClick={load}>Cập nhật điểm</button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div className="flex items-center gap-2">
+          <h2 className="font-bold">Điểm tổng kết theo trọng số</h2>
+          {book.lastReport && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+              ✓ Đã báo cáo Admin
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-slate-500">
+          {book.finalization ? `Sổ đã chốt lúc ${new Date(book.finalization.finalizedAt).toLocaleString("vi-VN")}` : "Điểm tạm tính; lưu quy tắc trước khi chốt."}
+          {sessionId!=="all" && " · Đang xem riêng buổi được chọn."}
+          {book.lastReport && ` · Lần báo cáo: ${new Date(book.lastReport.created_at).toLocaleString("vi-VN")}`}
+        </p>
+      </div>
+      <button
+        disabled={busy || reporting}
+        className={`${secondary} inline-flex items-center gap-2 font-medium`}
+        onClick={handleUpdateAndReport}
+        title="Tính toán lại toàn bộ điểm học viên và gửi báo cáo về trung tâm Admin"
+      >
+        {reporting ? (
+          <>
+            <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            Đang cập nhật & gửi Admin...
+          </>
+        ) : (
+          <>Cập nhật & báo cáo điểm</>
+        )}
+      </button>
+    </div>
     <details><summary className="cursor-pointer text-sm font-semibold text-blue-600">Quy tắc tính điểm</summary>
       <fieldset disabled={busy || Boolean(book.finalization) || !canManagePolicy} className="mt-3 grid gap-3 sm:grid-cols-3">
         {Object.entries({assignment:"Bài tập (%)",quiz:"Quiz (%)",attendance:"Chuyên cần (%)"}).map(([key,label]) => <label key={key} className="text-sm">{label}<input className={input} type="number" min="0" max="100" value={policy.weights[key]} onChange={(e)=>setPolicy({...policy,weights:{...policy.weights,[key]:Number(e.target.value)}})}/></label>)}
