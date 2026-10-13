@@ -7,12 +7,14 @@ import {
   FiCheck,
   FiCheckCircle,
   FiClipboard,
+  FiEdit3,
   FiFileText,
   FiMinus,
   FiPlus,
   FiSend,
   FiTrash2,
   FiX,
+  FiZap,
 } from "react-icons/fi";
 import { EmptyState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
@@ -78,27 +80,34 @@ const normalizeQuestionForSubmit = (question) => {
 };
 
 function AnswerKeySheet({ questions, onChooseAnswer, onScrollToQuestion }) {
+  const maxOptions = Math.max(4, ...questions.map((q) => q.options?.length || 4));
+  const visibleKeys = QUIZ_OPTION_KEYS.slice(0, Math.min(maxOptions, 6));
+
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto max-h-[380px] overflow-y-auto pr-1">
       <div
-        className="grid min-w-[355px] items-center gap-y-2 text-center text-xs font-bold text-slate-700 dark:text-slate-200"
-        style={{ gridTemplateColumns: "62px repeat(6, minmax(34px, 1fr))" }}
+        className="grid min-w-[280px] items-center gap-y-2 text-center text-xs font-bold text-slate-700 dark:text-slate-200"
+        style={{ gridTemplateColumns: `64px repeat(${visibleKeys.length}, minmax(36px, 1fr))` }}
       >
-        <span />
-        {QUIZ_OPTION_KEYS.map((key) => <span key={key}>{key}</span>)}
+        <span className="text-[11px] font-black uppercase text-slate-400">Câu</span>
+        {visibleKeys.map((key) => (
+          <span key={key} className="text-xs font-black text-violet-700 dark:text-violet-300">
+            {key}
+          </span>
+        ))}
         {questions.map((question, index) => (
-          <div className="contents" key={question.id}>
+          <div className="contents" key={question.id || `q-${index}`}>
             <button
               type="button"
               onClick={() => onScrollToQuestion(index)}
-              className="rounded-lg py-2 text-left font-black text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="rounded-lg py-1.5 text-left font-black text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
               title={`Đi tới câu ${index + 1}`}
             >
               Câu {index + 1}
             </button>
-            {QUIZ_OPTION_KEYS.map((key) => {
+            {visibleKeys.map((key) => {
               const optionIndex = optionIndexForQuizKey(key);
-              const exists = optionIndex < question.options.length;
+              const exists = optionIndex < (question.options?.length || 4);
               const active = question.correctAnswer === optionIndex;
               return (
                 <button
@@ -106,14 +115,14 @@ function AnswerKeySheet({ questions, onChooseAnswer, onScrollToQuestion }) {
                   type="button"
                   disabled={!exists}
                   onClick={() => onChooseAnswer(index, optionIndex)}
-                  aria-label={`Câu ${index + 1}, đáp án đúng ${key}`}
-                  className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full border-2 transition disabled:cursor-not-allowed disabled:opacity-20 ${
+                  aria-label={`Câu ${index + 1}, chọn đáp án ${key}`}
+                  className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs font-black transition-all disabled:cursor-not-allowed disabled:opacity-20 ${
                     active
-                      ? "border-violet-600 bg-violet-600 text-white shadow-sm shadow-violet-600/30"
-                      : "border-slate-300 bg-white text-transparent hover:border-violet-500 dark:border-slate-600 dark:bg-slate-950"
+                      ? "border-violet-600 bg-violet-600 text-white shadow-md shadow-violet-600/30 scale-105"
+                      : "border-slate-300 bg-white text-slate-600 hover:border-violet-400 hover:text-violet-600 hover:bg-violet-50/50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-violet-950/30"
                   }`}
                 >
-                  {active && <FiCheck className="h-3.5 w-3.5" />}
+                  {key}
                 </button>
               );
             })}
@@ -155,6 +164,9 @@ export default function TeacherQuizPage() {
   const [shuffleQuestions, setShuffleQuestions] = useState(true);
   const [questions, setQuestions] = useState([createBlankQuestion()]);
   const [answerKeyPaste, setAnswerKeyPaste] = useState("");
+  const [paperAnswerTab, setPaperAnswerTab] = useState("paste"); // "paste" | "manual"
+  const [manualQuestionCount, setManualQuestionCount] = useState(40);
+  const [quickFillSequence, setQuickFillSequence] = useState("");
   const [paperFile, setPaperFile] = useState(null);
   const [paperProgress, setPaperProgress] = useState(null);
   const [questionBank, setQuestionBank] = useState([]);
@@ -166,12 +178,21 @@ export default function TeacherQuizPage() {
     [parsedAnswerKey, questions.length],
   );
   const paperAnswersAreApplied = useMemo(() => {
+    if (questions.length === 0) return false;
+    const allHaveAnswers = questions.every(
+      (q) => typeof q.correctAnswer === "number" && q.correctAnswer >= 0 && q.correctAnswer < (q.options?.length || 4)
+    );
+    if (paperAnswerTab === "manual") {
+      return allHaveAnswers;
+    }
     if (!parsedAnswerKey.entries.length) return false;
     const largestQuestionNumber = Math.max(...parsedAnswerKey.entries.map((entry) => entry.questionNumber));
-    return questions.length >= largestQuestionNumber
-      && Array.from({ length: largestQuestionNumber }, (_, index) => parsedAnswerKey.answerByQuestion.has(index + 1)).every(Boolean)
-      && questions.slice(0, largestQuestionNumber).every((question) => question.questionText.trim());
-  }, [parsedAnswerKey, questions]);
+    return (
+      questions.length >= largestQuestionNumber &&
+      Array.from({ length: largestQuestionNumber }, (_, index) => parsedAnswerKey.answerByQuestion.has(index + 1)).every(Boolean) &&
+      allHaveAnswers
+    );
+  }, [paperAnswerTab, parsedAnswerKey, questions]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -271,6 +292,9 @@ export default function TeacherQuizPage() {
     setShuffleQuestions(true);
     setQuestions([createBlankQuestion()]);
     setAnswerKeyPaste("");
+    setPaperAnswerTab("paste");
+    setManualQuestionCount(40);
+    setQuickFillSequence("");
     setPaperFile(null);
   };
 
@@ -291,6 +315,9 @@ export default function TeacherQuizPage() {
     setQuizMode(nextMode);
     setPaperFile(null);
     setAnswerKeyPaste("");
+    setPaperAnswerTab("paste");
+    setManualQuestionCount(40);
+    setQuickFillSequence("");
     setQuestions([createBlankQuestion()]);
   };
 
@@ -384,8 +411,75 @@ export default function TeacherQuizPage() {
       applied += 1;
       return { ...question, options: nextOptions, correctAnswer: answerIndex };
       });
-    });
+    setManualQuestionCount(largestQuestionNumber);
     toast.success(`Đã gán ${applied} đáp án từ danh sách dán.${quizMode === "paper" ? " Bảng câu PDF đã được tạo." : ""}`);
+  };
+
+  const handleApplyQuestionCount = (countToSet) => {
+    const targetCount = Math.max(1, Math.min(200, Number(countToSet) || 1));
+    setManualQuestionCount(targetCount);
+    setQuestions((current) => {
+      const newQuestions = [];
+      for (let i = 0; i < targetCount; i++) {
+        if (i < current.length && current[i].options && current[i].options.length >= 2) {
+          newQuestions.push({
+            ...current[i],
+            questionText: current[i].questionText || `Câu ${i + 1} — xem nội dung trong file đề PDF.`,
+            options: current[i].options.length ? current[i].options : ["A", "B", "C", "D"],
+            correctAnswer: typeof current[i].correctAnswer === "number" && current[i].correctAnswer >= 0 ? current[i].correctAnswer : 0,
+          });
+        } else {
+          newQuestions.push(createPaperQuestion(i, 0));
+        }
+      }
+      const synced = newQuestions.map((q, idx) => `${idx + 1} ${QUIZ_OPTION_KEYS[q.correctAnswer] || "A"}`).join("\n");
+      setAnswerKeyPaste(synced);
+      return newQuestions;
+    });
+    toast.success(`Đã thiết lập bảng ${targetCount} câu hỏi.`);
+  };
+
+  const handleQuickFillSequence = () => {
+    const raw = quickFillSequence.trim();
+    if (!raw) {
+      toast.error("Vui lòng nhập chuỗi đáp án (ví dụ: ABCDDCBA...).");
+      return;
+    }
+    const letters = raw.toUpperCase().replace(/[^A-F]/g, "").split("");
+    if (!letters.length) {
+      toast.error("Không tìm thấy ký tự đáp án A/B/C/D hợp lệ trong chuỗi.");
+      return;
+    }
+    setQuestions((current) => {
+      const count = Math.max(current.length, letters.length);
+      const newQuestions = [];
+      for (let i = 0; i < count; i++) {
+        const base = i < current.length ? current[i] : createPaperQuestion(i, 0);
+        const letter = letters[i];
+        const newAns = letter ? optionIndexForQuizKey(letter) : base.correctAnswer;
+        newQuestions.push({
+          ...base,
+          correctAnswer: newAns >= 0 ? newAns : (base.correctAnswer ?? 0),
+        });
+      }
+      const synced = newQuestions.map((q, idx) => `${idx + 1} ${QUIZ_OPTION_KEYS[q.correctAnswer] || "A"}`).join("\n");
+      setAnswerKeyPaste(synced);
+      return newQuestions;
+    });
+    setManualQuestionCount((curr) => Math.max(curr, letters.length));
+    toast.success(`Đã điền nhanh đáp án cho ${letters.length} câu.`);
+    setQuickFillSequence("");
+  };
+
+  const handleSetAllAnswers = (optionIndex) => {
+    setQuestions((current) => {
+      const updated = current.map((q) => ({ ...q, correctAnswer: optionIndex }));
+      const key = QUIZ_OPTION_KEYS[optionIndex] || "A";
+      const synced = updated.map((_, idx) => `${idx + 1} ${key}`).join("\n");
+      setAnswerKeyPaste(synced);
+      return updated;
+    });
+    toast.success(`Đã gán tất cả ${questions.length} câu thành đáp án ${QUIZ_OPTION_KEYS[optionIndex]}.`);
   };
 
   const handlePaperSelect = async (event) => {
@@ -507,17 +601,26 @@ export default function TeacherQuizPage() {
       toast.error("Quiz về nhà cần có hạn nộp.");
       return;
     }
-    if (quizMode === "paper" && !paperFile) {
-      toast.error("Hãy tải file PDF đề trước khi xuất bản.");
-      return;
-    }
-    if (quizMode === "paper" && !parsedAnswerKey.entries.length) {
-      toast.error("Hãy dán và gán danh sách đáp án cho file đề.");
-      return;
-    }
-    if (quizMode === "paper" && !paperAnswersAreApplied) {
-      toast.error("Danh sách đáp án phải đủ liên tiếp từ Câu 1, sau đó nhấn “Gán đáp án”.");
-      return;
+    if (quizMode === "paper") {
+      if (!paperFile) {
+        toast.error("Hãy tải file PDF đề trước khi xuất bản.");
+        return;
+      }
+      if (questions.length === 0) {
+        toast.error("Đề kiểm tra cần ít nhất 1 câu hỏi.");
+        return;
+      }
+      const unassignedIndex = questions.findIndex(
+        (q) => typeof q.correctAnswer !== "number" || q.correctAnswer < 0 || q.correctAnswer >= (q.options?.length || 4)
+      );
+      if (unassignedIndex !== -1) {
+        toast.error(`Câu ${unassignedIndex + 1} chưa được chọn đáp án đúng.`);
+        return;
+      }
+      if (paperAnswerTab === "paste" && !paperAnswersAreApplied) {
+        toast.error("Danh sách đáp án phải đủ liên tiếp từ Câu 1, sau đó nhấn “Gán đáp án”.");
+        return;
+      }
     }
     if (!quizTitle.trim()) {
       toast.error("Hãy nhập tiêu đề đề kiểm tra.");
@@ -741,15 +844,224 @@ export default function TeacherQuizPage() {
                 <aside className="space-y-4 xl:sticky xl:top-0 xl:self-start">
                   {quizMode === "paper" ? <>
                   <section className="rounded-2xl border border-violet-300 bg-violet-50 p-4 dark:border-violet-800 dark:bg-violet-950/25">
-                    <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white"><FiClipboard className="h-4 w-4" /></span><div><h3 className="text-sm font-black text-violet-950 dark:text-violet-100">Dán danh sách đáp án</h3><p className="mt-0.5 text-xs leading-5 text-violet-800 dark:text-violet-200">Chấp nhận <b>1 A</b>, <b>2. b</b>, <b>Câu 3: C</b> hoặc <b>4-D</b>. Hệ thống tự nhận dạng chữ hoa/thường.</p></div></div>
-                    <textarea value={answerKeyPaste} onChange={(event) => setAnswerKeyPaste(event.target.value)} rows={7} placeholder={"1 A\n2 B\n3 C\n4 D"} className="mt-3 w-full rounded-xl border border-violet-200 bg-white p-3 font-mono text-xs leading-5 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-violet-800 dark:bg-slate-950 dark:text-white" />
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs"><span className="font-bold text-violet-800 dark:text-violet-200">Nhận diện: {matchedAnswerCount}/{questions.length} câu</span><button type="button" onClick={applyPastedAnswerKey} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 font-black text-white transition hover:bg-violet-500"><FiCheck className="h-3.5 w-3.5" /> Gán đáp án</button></div>
-                    {parsedAnswerKey.duplicateQuestionNumbers.length > 0 && <p className="mt-2 flex items-start gap-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300"><FiAlertCircle className="mt-0.5 shrink-0" /> Câu {parsedAnswerKey.duplicateQuestionNumbers.join(", ")} lặp lại; hệ thống sẽ lấy đáp án xuất hiện sau cùng.</p>}
+                    {/* Tab Switcher: Paste vs Manual */}
+                    <div className="flex rounded-xl bg-violet-200/70 p-1 dark:bg-violet-900/40">
+                      <button
+                        type="button"
+                        onClick={() => setPaperAnswerTab("paste")}
+                        className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-black transition ${
+                          paperAnswerTab === "paste"
+                            ? "bg-white text-violet-950 shadow-sm dark:bg-slate-900 dark:text-violet-200"
+                            : "text-violet-700 hover:text-violet-950 dark:text-violet-300 dark:hover:text-white"
+                        }`}
+                      >
+                        <FiClipboard className="h-3.5 w-3.5" /> Dán đáp án (1A, 2B...)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaperAnswerTab("manual");
+                          if (questions.length <= 1) {
+                            handleApplyQuestionCount(manualQuestionCount || 40);
+                          }
+                        }}
+                        className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-black transition ${
+                          paperAnswerTab === "manual"
+                            ? "bg-white text-violet-950 shadow-sm dark:bg-slate-900 dark:text-violet-200"
+                            : "text-violet-700 hover:text-violet-950 dark:text-violet-300 dark:hover:text-white"
+                        }`}
+                      >
+                        <FiEdit3 className="h-3.5 w-3.5" /> Nhập thủ công (Số câu)
+                      </button>
+                    </div>
+
+                    {paperAnswerTab === "paste" ? (
+                      /* Tab 1: Dán danh sách đáp án */
+                      <div className="mt-3.5 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-xs">
+                            <FiClipboard className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <h3 className="text-sm font-black text-violet-950 dark:text-violet-100">Dán danh sách đáp án</h3>
+                            <p className="mt-0.5 text-xs leading-5 text-violet-800 dark:text-violet-200">
+                              Chấp nhận <b>1 A</b>, <b>2. b</b>, <b>Câu 3: C</b> hoặc <b>4-D</b>. Hệ thống tự nhận dạng chữ hoa/thường.
+                            </p>
+                          </div>
+                        </div>
+
+                        <textarea
+                          value={answerKeyPaste}
+                          onChange={(event) => setAnswerKeyPaste(event.target.value)}
+                          rows={7}
+                          placeholder={"1 A\n2 B\n3 C\n4 D"}
+                          className="w-full rounded-xl border border-violet-200 bg-white p-3 font-mono text-xs leading-5 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-violet-800 dark:bg-slate-950 dark:text-white"
+                        />
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="font-bold text-violet-800 dark:text-violet-200">
+                            Nhận diện: {matchedAnswerCount}/{questions.length} câu
+                          </span>
+                          <button
+                            type="button"
+                            onClick={applyPastedAnswerKey}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 py-1.5 font-black text-white shadow-xs transition hover:bg-violet-500"
+                          >
+                            <FiCheck className="h-3.5 w-3.5" /> Gán đáp án
+                          </button>
+                        </div>
+
+                        {parsedAnswerKey.duplicateQuestionNumbers.length > 0 && (
+                          <p className="flex items-start gap-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                            <FiAlertCircle className="mt-0.5 shrink-0" /> Câu {parsedAnswerKey.duplicateQuestionNumbers.join(", ")} lặp lại; hệ thống sẽ lấy đáp án xuất hiện sau cùng.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      /* Tab 2: Nhập đáp án thủ công */
+                      <div className="mt-3.5 space-y-3.5">
+                        <div className="flex items-start gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-xs">
+                            <FiEdit3 className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <h3 className="text-sm font-black text-violet-950 dark:text-violet-100">Tạo đáp án thủ công</h3>
+                            <p className="mt-0.5 text-xs leading-5 text-violet-800 dark:text-violet-200">
+                              Nhập số câu của đề, sau đó chọn đáp án A/B/C/D cho từng câu ở bảng bên dưới.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Bước 1: Nhập số câu hỏi */}
+                        <div className="rounded-xl border border-violet-200/90 bg-white/90 p-3 dark:border-violet-800/60 dark:bg-slate-900/90 space-y-2.5">
+                          <div className="flex items-center justify-between text-xs font-black text-slate-800 dark:text-slate-200">
+                            <span>1. Số lượng câu hỏi của đề PDF:</span>
+                            <span className="text-violet-600 dark:text-violet-400 font-bold">{questions.length} câu</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              max="200"
+                              value={manualQuestionCount}
+                              onChange={(e) => setManualQuestionCount(Math.max(1, Math.min(200, Number(e.target.value) || 1)))}
+                              className="w-24 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-center text-sm font-black text-slate-900 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 dark:border-violet-700 dark:bg-slate-950 dark:text-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleApplyQuestionCount(manualQuestionCount)}
+                              className="flex-1 rounded-lg bg-violet-600 px-3 py-2 text-xs font-black text-white hover:bg-violet-500 transition shadow-xs"
+                            >
+                              Tạo / Cập nhật số câu
+                            </button>
+                          </div>
+
+                          {/* Presets */}
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Chọn nhanh:</span>
+                            {[10, 20, 25, 40, 50].map((preset) => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => handleApplyQuestionCount(preset)}
+                                className={`rounded-md px-2 py-0.5 text-[11px] font-black transition ${
+                                  questions.length === preset
+                                    ? "bg-violet-600 text-white shadow-xs"
+                                    : "bg-violet-100 text-violet-800 hover:bg-violet-200 dark:bg-violet-950/60 dark:text-violet-300"
+                                }`}
+                              >
+                                {preset} câu
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Bước 2: Điền nhanh chuỗi đáp án */}
+                        <div className="rounded-xl border border-violet-200/90 bg-white/90 p-3 dark:border-violet-800/60 dark:bg-slate-900/90 space-y-2">
+                          <div className="flex items-center justify-between text-xs font-black text-slate-800 dark:text-slate-200">
+                            <span>2. Điền nhanh chuỗi đáp án:</span>
+                            <span className="text-[10px] font-semibold text-slate-500">Tùy chọn</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={quickFillSequence}
+                              onChange={(e) => setQuickFillSequence(e.target.value.toUpperCase())}
+                              placeholder="VD: ABCDABCDDCBA..."
+                              className="min-w-0 flex-1 rounded-lg border border-violet-300 bg-white px-3 py-1.5 font-mono text-xs font-bold text-slate-900 uppercase tracking-widest outline-none focus:border-violet-500 dark:border-violet-700 dark:bg-slate-950 dark:text-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleQuickFillSequence}
+                              disabled={!quickFillSequence.trim()}
+                              className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-black text-white hover:bg-violet-500 transition disabled:opacity-40 shrink-0"
+                            >
+                              Điền nhanh
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Nhập liên tiếp các chữ cái A, B, C, D để hệ thống tự điền vào các câu từ Câu 1.
+                          </p>
+                        </div>
+
+                        {/* Tiện ích gán nhanh */}
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 text-xs">
+                          <span className="text-[11px] font-bold text-violet-800 dark:text-violet-300">
+                            Đã gán: {questions.length} câu
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleSetAllAnswers(0)}
+                              className="rounded-lg bg-violet-100 hover:bg-violet-200 dark:bg-violet-950/60 dark:hover:bg-violet-900/60 px-2 py-1 text-[11px] font-bold text-violet-800 dark:text-violet-300 transition"
+                              title="Đặt tất cả thành đáp án A"
+                            >
+                              Đặt tất cả là A
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSetAllAnswers(1)}
+                              className="rounded-lg bg-violet-100 hover:bg-violet-200 dark:bg-violet-950/60 dark:hover:bg-violet-900/60 px-2 py-1 text-[11px] font-bold text-violet-800 dark:text-violet-300 transition"
+                              title="Đặt tất cả thành đáp án B"
+                            >
+                              Đặt tất cả là B
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </section>
 
+                  {/* Bảng đáp án trực quan */}
                   <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                    <div className="mb-3 flex items-start justify-between gap-3"><div><h3 className="text-sm font-black text-slate-950 dark:text-white">Bảng đáp án</h3><p className="mt-0.5 text-xs text-slate-500">Nhấn vào ô tròn để đổi đáp án từng câu.</p></div><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-black text-emerald-700 dark:text-emerald-300">{questions.length} câu</span></div>
-                    <AnswerKeySheet questions={questions} onChooseAnswer={(questionIndex, answerIndex) => updateQuestion(questionIndex, { correctAnswer: answerIndex })} onScrollToQuestion={scrollToQuestion} />
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-black text-slate-950 dark:text-white">Bảng đáp án</h3>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Nhấn vào ô tròn A, B, C, D để đổi đáp án từng câu.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-black text-emerald-700 dark:text-emerald-300">
+                        {questions.length} câu
+                      </span>
+                    </div>
+                    <AnswerKeySheet
+                      questions={questions}
+                      onChooseAnswer={(questionIndex, answerIndex) => {
+                        updateQuestion(questionIndex, { correctAnswer: answerIndex });
+                        setAnswerKeyPaste((currentText) => {
+                          const lines = currentText ? currentText.split("\n") : [];
+                          while (lines.length < questions.length) {
+                            const idx = lines.length;
+                            const existingKey = QUIZ_OPTION_KEYS[questions[idx]?.correctAnswer] || "A";
+                            lines.push(`${idx + 1} ${existingKey}`);
+                          }
+                          lines[questionIndex] = `${questionIndex + 1} ${QUIZ_OPTION_KEYS[answerIndex] || "A"}`;
+                          return lines.join("\n");
+                        });
+                      }}
+                      onScrollToQuestion={scrollToQuestion}
+                    />
                   </section>
                   </> : <><section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900/70 dark:bg-sky-950/25"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white"><FiCheck className="h-4 w-4" /></span><div><h3 className="text-sm font-black text-sky-950 dark:text-sky-100">Tự soạn từng câu</h3><p className="mt-0.5 text-xs leading-5 text-sky-800 dark:text-sky-200">Chọn đáp án đúng trực tiếp trong từng thẻ câu hỏi. Chế độ này không dùng file PDF và không có ô dán đáp án.</p></div></div></section><section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center justify-between gap-2"><div><h3 className="text-sm font-black text-slate-950 dark:text-white">Ngân hàng câu hỏi</h3><QuestionBankSampler courseId={courseId} onAdd={(items)=>setQuestions((current)=>[...current.filter((q)=>q.questionText.trim() || q.options.some((option)=>String(option).trim())),...items.map((item)=>({...item,id:crypto.randomUUID()}))])}/><p className="mt-0.5 text-[11px] text-slate-500">Lưu hoặc chèn lại câu đã soạn trong cùng khóa học.</p></div><span className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">{questionBank.length}</span></div>{!courseId ? <p className="mt-3 text-xs text-slate-500">Chọn khóa học để mở ngân hàng câu hỏi.</p> : questionBankLoading ? <p className="mt-3 text-xs text-slate-500">Đang tải câu hỏi...</p> : questionBank.length === 0 ? <p className="mt-3 text-xs text-slate-500">Chưa có câu hỏi đã lưu. Hoàn thiện một câu rồi nhấn “Lưu ngân hàng”.</p> : <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">{questionBank.map((item) => <div key={item.id} className="rounded-xl border border-slate-100 p-2.5 dark:border-slate-800"><p className="line-clamp-2 text-xs font-bold text-slate-800 dark:text-slate-100">{item.questionText}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-[10px] text-slate-500">{item.points} điểm · {item.options.length} đáp án</span><button type="button" onClick={() => addQuestionFromBank(item)} className="rounded-lg bg-violet-600 px-2 py-1 text-[10px] font-black text-white hover:bg-violet-500">Dùng câu này</button></div></div>)}</div>}</section></>}
 
