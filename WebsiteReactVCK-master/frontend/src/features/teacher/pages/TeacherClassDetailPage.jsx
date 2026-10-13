@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, BookOpen } from "lucide-react";
+import { ArrowLeft, BookOpen, Files } from "lucide-react";
+import toast from "react-hot-toast";
 import { useAuthContext } from "../../../context/AuthContext";
 import {
+  deleteClassFile,
   fetchClassDetails,
+  fetchClassFiles,
   fetchLiveClassSchedules,
   fetchLiveClassSessions,
+  uploadClassFile,
 } from "../../api/lmsClient";
 import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
 import Loading from "../../../components/Loading.jsx";
 import { ErrorState } from "../../../components/common/StateView";
 import ClassWorkspaceOverviewTab from "../components/classWorkspace/ClassWorkspaceOverviewTab";
 import ClassWorkspaceScheduleTab from "../components/classWorkspace/ClassWorkspaceScheduleTab";
+import ClassWorkspaceFilesTab from "../components/classWorkspace/ClassWorkspaceFilesTab";
 import CreateScheduleModal from "../../calendar/components/CreateScheduleModal";
 import TeacherNextSessionHero from "../components/classWorkspace/TeacherNextSessionHero";
 import MeetingLinkModal from "../components/classWorkspace/MeetingLinkModal";
@@ -29,6 +34,8 @@ export default function TeacherClassDetailPage() {
   const [error, setError] = useState("");
   const [sessions, setSessions] = useState([]);
   const [schedules, setSchedules] = useState([]);
+  const [files, setFiles] = useState([]);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false);
   const [meetingLinkSession, setMeetingLinkSession] = useState(null);
 
@@ -36,15 +43,17 @@ export default function TeacherClassDetailPage() {
     setLoading(true);
     setError("");
     try {
-      const [classResponse, sessionsResponse, schedulesResponse] = await Promise.all([
+      const [classResponse, sessionsResponse, schedulesResponse, filesResponse] = await Promise.all([
         fetchClassDetails(classId),
         fetchLiveClassSessions(classId),
         fetchLiveClassSchedules(classId),
+        fetchClassFiles(classId).catch(() => ({ data: [] })),
       ]);
       if (!classResponse?.data) throw new Error("Không tìm thấy dữ liệu lớp học.");
       setClassData(classResponse.data);
       setSessions(Array.isArray(sessionsResponse?.data) ? sessionsResponse.data : []);
       setSchedules(Array.isArray(schedulesResponse?.data) ? schedulesResponse.data : []);
+      setFiles(Array.isArray(filesResponse?.data) ? filesResponse.data : []);
     } catch (requestError) {
       setClassData(null);
       setError(requestError.message || "Không thể tải chi tiết lớp học.");
@@ -78,6 +87,31 @@ export default function TeacherClassDetailPage() {
   const atRiskStudents = students.filter((item) => item.riskLevel === "danger" || item.riskLevel === "warning");
   const scrollToSchedule = () => document.getElementById("class-session-schedule")?.scrollIntoView({ behavior: "smooth", block: "start" });
 
+  const handleUploadFile = async (file, sessionId) => {
+    setIsUploadingFile(true);
+    try {
+      await uploadClassFile(classId, file, { sessionId });
+      toast.success(`Đã tải lên "${file.name}" cho lớp.`);
+      await loadData();
+    } catch (err) {
+      toast.error(err.message || "Tải lên tài liệu thất bại.");
+      throw err;
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  const handleDeleteFile = async (fileId) => {
+    if (!window.confirm("Xóa tài liệu này khỏi lớp?")) return;
+    try {
+      await deleteClassFile(fileId);
+      toast.success("Đã xóa tài liệu.");
+      setFiles((current) => current.filter((f) => String(f.id) !== String(fileId)));
+    } catch (err) {
+      toast.error(err.message || "Không thể xóa tài liệu.");
+    }
+  };
+
   return (
     <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-4">
@@ -88,6 +122,9 @@ export default function TeacherClassDetailPage() {
           <Link to={`${classBasePath}/curriculum`} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
             <BookOpen className="h-3.5 w-3.5" /> Giáo trình lớp
           </Link>
+          <a href="#class-workspace-files" className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
+            <Files className="h-3.5 w-3.5" /> Tài liệu của lớp ({files.length})
+          </a>
           {isAdminView && <a href="#class-chapters-manager" className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
             <BookOpen className="h-3.5 w-3.5" /> Chương & buổi học
           </a>}
@@ -108,6 +145,17 @@ export default function TeacherClassDetailPage() {
         {isAdminView && authUser?.role === "admin" && <section id="class-chapters-manager" className="scroll-mt-20">
           <ClassChaptersManager classId={classId} sessions={sessions} onChanged={loadData} />
         </section>}
+
+        <section id="class-workspace-files" className="scroll-mt-6">
+          <ClassWorkspaceFilesTab
+            files={files}
+            sessions={sessions}
+            classId={classId}
+            onUploadFile={handleUploadFile}
+            onDeleteFile={handleDeleteFile}
+            isUploading={isUploadingFile}
+          />
+        </section>
 
         <section id="class-session-schedule" className="scroll-mt-6">
           <ClassWorkspaceScheduleTab

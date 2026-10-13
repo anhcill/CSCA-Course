@@ -52,6 +52,11 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
           path: '/admin/curriculum',
         },
         {
+          title: 'Tài liệu học tập',
+          icon: <FiFileText className="w-4 h-4 shrink-0" />,
+          path: '/admin/files',
+        },
+        {
           title: 'Lớp học',
           icon: <FiLink className="w-4 h-4 shrink-0" />,
           path: '/admin/classes',

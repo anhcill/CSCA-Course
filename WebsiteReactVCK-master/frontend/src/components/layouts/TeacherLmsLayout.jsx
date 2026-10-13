@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   BarChart3, BookOpen, CalendarDays, ChevronRight, ClipboardCheck, FileQuestion,
-  Home, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Presentation, Settings, Users, X,
+  FolderOpen, Home, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Presentation, Settings, Users, X,
 } from 'lucide-react';
 import Logo from '../Logo';
 import NotificationBell from '../../features/notifications/components/NotificationBell';
@@ -21,6 +21,7 @@ const TEACHER_NAV = [
   { label: 'Điểm danh', path: '/lms/teach/attendance', icon: Users },
   { label: 'Điểm & chuyên cần', path: '/lms/teach/student-progress', icon: BarChart3 },
   { label: 'Giáo trình', path: '/lms/teacher/curriculum', icon: BookOpen },
+  { label: 'Tài liệu học tập', path: '/lms/teach/files', icon: FolderOpen },
   { label: 'Quiz học viên', path: '/lms/teacher/quizzes', icon: FileQuestion },
   { label: 'Chấm bài', path: '/lms/teacher/grading', icon: ClipboardCheck },
   { label: 'Ngân hàng câu hỏi', path: '/lms/teach/question-bank', icon: FileQuestion },

@@ -793,17 +793,31 @@ export const fetchAdminAuditLogs = async ({ page = 1, limit = 20, action = "ALL"
 };
 
 // Teacher & Student Files
+export const fetchTeacherFiles = async ({ courseId, classId, sessionId, date, search } = {}) => {
+  const params = new URLSearchParams();
+  if (courseId) params.set("courseId", courseId);
+  if (classId) params.set("classId", classId);
+  if (sessionId) params.set("sessionId", sessionId);
+  if (date) params.set("date", date);
+  if (search) params.set("search", search);
+  return request(`/teacher/files${params.size ? `?${params.toString()}` : ""}`);
+};
+
+export const fetchTeacherClassesLookup = async () => request("/teacher/classes-lookup");
+
 export const fetchClassFiles = async (classId, { sessionId } = {}) => {
   const params = new URLSearchParams();
   if (sessionId) params.set("sessionId", sessionId);
   return request(`/teacher/classes/${encodeURIComponent(classId)}/files${params.size ? `?${params.toString()}` : ""}`);
 };
 
-export const fetchStudentFiles = async ({ courseId, classId, sessionId } = {}) => {
+export const fetchStudentFiles = async ({ courseId, classId, sessionId, date, search } = {}) => {
   const params = new URLSearchParams();
   if (courseId) params.set("courseId", courseId);
   if (classId) params.set("classId", classId);
   if (sessionId) params.set("sessionId", sessionId);
+  if (date) params.set("date", date);
+  if (search) params.set("search", search);
   return request(`/student/files${params.size ? `?${params.toString()}` : ""}`);
 };
 

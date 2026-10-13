@@ -144,11 +144,130 @@ const serializeFile = (row) => ({
   mimeType: row.mime_type,
   uploadedAt: row.created_at,
   uploadedBy: row.uploaded_by_name || row.uploader_email || "Giáo viên",
+  courseId: row.course_id ? String(row.course_id) : (row.class_course_id ? String(row.class_course_id) : null),
   courseTitle: row.course_title || null,
+  courseCategory: row.course_category || null,
+  classId: row.live_class_id ? String(row.live_class_id) : null,
+  classTitle: row.class_title || null,
   classSessionId: row.class_session_id ? String(row.class_session_id) : null,
   sessionTitle: row.session_title || null,
+  sessionStartTime: row.session_start_time || null,
+  sessionEndTime: row.session_end_time || null,
+  chapterId: row.chapter_id ? String(row.chapter_id) : null,
+  chapterTitle: row.chapter_title || null,
   visibility: row.visibility,
   downloadUrl: `/api/files/${row.id}/download`,
+});
+
+// GET /api/teacher/files
+router.get("/teacher/files", protectRoute, requireTeacher, async (req, res) => {
+  const courseId = req.query.courseId === undefined ? null : parseId(req.query.courseId);
+  const classId = req.query.classId === undefined ? null : parseId(req.query.classId);
+  const sessionId = req.query.sessionId === undefined ? null : parseId(req.query.sessionId);
+  const date = typeof req.query.date === "string" && req.query.date.trim() ? req.query.date.trim() : null;
+  const search = typeof req.query.search === "string" && req.query.search.trim() ? req.query.search.trim() : null;
+
+  try {
+    const isAdmin = req.user.role === "admin";
+    const files = await query(
+      `SELECT f.*, u.username AS uploaded_by_name, u.email AS uploader_email,
+              COALESCE(c.title, c.name, c_lc.title, c_lc.name) AS course_title,
+              COALESCE(c.category, c_lc.category) AS course_category,
+              lc.title AS class_title, lc.course_id AS class_course_id,
+              cs.title AS session_title, cs.start_time AS session_start_time, cs.end_time AS session_end_time,
+              ch.id AS chapter_id, ch.title AS chapter_title
+       FROM lms_learning_files f
+       JOIN users u ON u.id = f.uploaded_by
+       LEFT JOIN courses c ON c.id = f.course_id
+       LEFT JOIN live_classes lc ON lc.id = f.live_class_id
+       LEFT JOIN courses c_lc ON c_lc.id = lc.course_id
+       LEFT JOIN class_sessions cs ON cs.id = f.class_session_id
+       LEFT JOIN class_chapters ch ON ch.id = cs.chapter_id
+       WHERE f.status = 'ready'
+         AND ($1::boolean OR (
+           f.uploaded_by = $2
+           OR (f.live_class_id IS NOT NULL AND (
+             lc.instructor_id = $2
+             OR EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active')
+           ))
+           OR (f.course_id IS NOT NULL AND EXISTS (SELECT 1 FROM courses c2 WHERE c2.id = f.course_id AND c2.author_id = $2))
+         ))
+         AND ($3::bigint IS NULL OR COALESCE(f.course_id, lc.course_id) = $3)
+         AND ($4::bigint IS NULL OR f.live_class_id = $4)
+         AND ($5::bigint IS NULL OR f.class_session_id = $5)
+         AND ($6::date IS NULL OR (cs.start_time IS NOT NULL AND cs.start_time::date = $6::date))
+         AND ($7::text IS NULL OR (
+           f.original_name ILIKE '%' || $7 || '%'
+           OR COALESCE(c.title, c.name, c_lc.title, c_lc.name, '') ILIKE '%' || $7 || '%'
+           OR COALESCE(lc.title, '') ILIKE '%' || $7 || '%'
+           OR COALESCE(cs.title, '') ILIKE '%' || $7 || '%'
+         ))
+       ORDER BY COALESCE(cs.start_time, f.created_at) DESC, f.id DESC`,
+      [isAdmin, req.user.id, courseId, classId, sessionId, date, search],
+    );
+    return res.json({ success: true, data: files.rows.map(serializeFile) });
+  } catch (error) {
+    console.error("Error listing teacher files:", error);
+    return errorResponse(res, 500, "Không thể tải danh sách tài liệu", "INTERNAL_ERROR");
+  }
+});
+
+// GET /api/teacher/classes-lookup
+router.get("/teacher/classes-lookup", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const isAdmin = req.user.role === "admin";
+    const classesRes = await query(
+      `SELECT lc.id, lc.title, lc.status, lc.course_id,
+              COALESCE(c.title, c.name) AS course_title, c.category AS course_category
+       FROM live_classes lc
+       LEFT JOIN courses c ON c.id = lc.course_id
+       WHERE lc.status <> 'cancelled'
+         AND ($1::boolean OR lc.instructor_id = $2 OR EXISTS (
+           SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+         ))
+       ORDER BY lc.created_at DESC`,
+      [isAdmin, req.user.id],
+    );
+
+    const classIds = classesRes.rows.map((r) => r.id);
+    let sessions = [];
+    if (classIds.length > 0) {
+      const sessionsRes = await query(
+        `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
+                ch.id AS chapter_id, ch.title AS chapter_title
+         FROM class_sessions cs
+         LEFT JOIN class_chapters ch ON ch.id = cs.chapter_id
+         WHERE cs.live_class_id = ANY($1::bigint[]) AND cs.status <> 'cancelled'
+         ORDER BY cs.start_time ASC, cs.id ASC`,
+        [classIds],
+      );
+      sessions = sessionsRes.rows.map((s) => ({
+        id: String(s.id),
+        classId: String(s.live_class_id),
+        title: s.title,
+        startTime: s.start_time,
+        endTime: s.end_time,
+        status: s.status,
+        chapterId: s.chapter_id ? String(s.chapter_id) : null,
+        chapterTitle: s.chapter_title || null,
+      }));
+    }
+
+    const classes = classesRes.rows.map((c) => ({
+      id: String(c.id),
+      title: c.title,
+      status: c.status,
+      courseId: c.course_id ? String(c.course_id) : null,
+      courseTitle: c.course_title || "Khóa học",
+      courseCategory: c.course_category || "CSCA",
+      sessions: sessions.filter((s) => s.classId === String(c.id)),
+    }));
+
+    return res.json({ success: true, data: classes });
+  } catch (error) {
+    console.error("Error looking up teacher classes:", error);
+    return errorResponse(res, 500, "Không thể tải danh sách lớp học", "INTERNAL_ERROR");
+  }
 });
 
 // POST /api/teacher/courses/:courseId/files/upload-url
@@ -199,15 +318,20 @@ router.get("/teacher/classes/:classId/files", protectRoute, requireTeacher, asyn
     }
     const files = await query(
       `SELECT f.*, u.username AS uploaded_by_name, u.email AS uploader_email,
-              COALESCE(c.title, c.name) AS course_title, cs.title AS session_title
+              COALESCE(c.title, c.name) AS course_title, c.category AS course_category,
+              lc.title AS class_title,
+              cs.title AS session_title, cs.start_time AS session_start_time, cs.end_time AS session_end_time,
+              ch.id AS chapter_id, ch.title AS chapter_title
        FROM lms_learning_files f
        JOIN users u ON u.id = f.uploaded_by
-       LEFT JOIN courses c ON c.id = f.course_id
+       LEFT JOIN live_classes lc ON lc.id = f.live_class_id
+       LEFT JOIN courses c ON c.id = COALESCE(f.course_id, lc.course_id)
        LEFT JOIN class_sessions cs ON cs.id = f.class_session_id
+       LEFT JOIN class_chapters ch ON ch.id = cs.chapter_id
        WHERE f.live_class_id = $1 AND f.status = 'ready'
          AND ($2::bigint IS NULL OR f.class_session_id = $2)
          AND ($3::boolean OR f.visibility <> 'PRIVATE' OR f.uploaded_by = $4)
-       ORDER BY f.created_at DESC, f.id DESC`,
+       ORDER BY COALESCE(cs.start_time, f.created_at) DESC, f.id DESC`,
       [classId, sessionId, req.user.role === "admin", req.user.id],
     );
     return res.json({ success: true, data: files.rows.map(serializeFile) });
@@ -297,9 +421,6 @@ router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async 
     if (req.query.classId !== undefined && !classId) {
       return errorResponse(res, 422, "classId không hợp lệ", "VALIDATION_ERROR");
     }
-    if (classId && !courseId) {
-      return errorResponse(res, 422, "classId cần đi kèm courseId", "VALIDATION_ERROR");
-    }
     const sessionId = req.query.sessionId === undefined ? null : parseId(req.query.sessionId);
     if (req.query.sessionId !== undefined && !sessionId) {
       return errorResponse(res, 422, "sessionId không hợp lệ", "VALIDATION_ERROR");
@@ -307,19 +428,22 @@ router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async 
     if (sessionId && !classId) {
       return errorResponse(res, 422, "sessionId cần đi kèm classId", "VALIDATION_ERROR");
     }
+    const date = typeof req.query.date === "string" && req.query.date.trim() ? req.query.date.trim() : null;
+    const search = typeof req.query.search === "string" && req.query.search.trim() ? req.query.search.trim() : null;
+
     if (classId) {
       const classAccessResult = await query(
-        `SELECT 1 FROM live_classes lc
+        `SELECT lc.course_id FROM live_classes lc
          JOIN class_enrollments ce ON ce.live_class_id = lc.id
-         LEFT JOIN courses c ON c.id = lc.course_id
-         WHERE lc.id = $1 AND lc.course_id = $2 AND lc.status = 'active'
-           AND ce.user_id = $3 AND ce.status = 'active'
+         WHERE lc.id = $1 AND lc.status = 'active'
+           AND ce.user_id = $2 AND ce.status = 'active'
+           AND ($3::bigint IS NULL OR lc.course_id = $3)
            AND EXISTS (
              SELECT 1 FROM lms_access_grants g
-             WHERE g.user_id = $3 AND g.course_id = lc.course_id AND g.access_status = 'active'
+             WHERE g.user_id = $2 AND g.course_id = lc.course_id AND g.access_status = 'active'
                AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
            )`,
-        [classId, courseId, req.user.id],
+        [classId, req.user.id, courseId],
       );
       if (classAccessResult.rows.length === 0) {
         return errorResponse(res, 403, "Bạn không có quyền xem tài liệu của lớp này", "FORBIDDEN");
@@ -330,17 +454,32 @@ router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async 
       }
     }
     const result = await query(
-      `SELECT DISTINCT f.*, COALESCE(c.title, c.name) AS course_title,
-              u.username AS uploaded_by_name, u.email AS uploader_email, cs.title AS session_title
+      `SELECT DISTINCT f.*,
+              COALESCE(cs.start_time, f.created_at) AS sort_time,
+              COALESCE(c.title, c.name, c_lc.title, c_lc.name) AS course_title,
+              COALESCE(c.category, c_lc.category) AS course_category,
+              lc.title AS class_title, lc.course_id AS class_course_id,
+              cs.title AS session_title, cs.start_time AS session_start_time, cs.end_time AS session_end_time,
+              ch.id AS chapter_id, ch.title AS chapter_title,
+              u.username AS uploaded_by_name, u.email AS uploader_email
        FROM lms_learning_files f
        LEFT JOIN courses c ON c.id = f.course_id
        LEFT JOIN live_classes lc ON lc.id = f.live_class_id
+       LEFT JOIN courses c_lc ON c_lc.id = lc.course_id
        LEFT JOIN class_sessions cs ON cs.id = f.class_session_id
+       LEFT JOIN class_chapters ch ON ch.id = cs.chapter_id
        LEFT JOIN users u ON u.id = f.uploaded_by
-         WHERE f.status = 'ready'
+       WHERE f.status = 'ready'
          AND ($2::bigint IS NULL OR COALESCE(f.course_id, lc.course_id) = $2)
          AND ($3::bigint IS NULL OR f.live_class_id IS NULL OR f.live_class_id = $3)
          AND ($4::bigint IS NULL OR f.class_session_id = $4)
+         AND ($5::date IS NULL OR (cs.start_time IS NOT NULL AND cs.start_time::date = $5::date))
+         AND ($6::text IS NULL OR (
+           f.original_name ILIKE '%' || $6 || '%'
+           OR COALESCE(c.title, c.name, c_lc.title, c_lc.name, '') ILIKE '%' || $6 || '%'
+           OR COALESCE(lc.title, '') ILIKE '%' || $6 || '%'
+           OR COALESCE(cs.title, '') ILIKE '%' || $6 || '%'
+         ))
          AND f.visibility IN ('CLASS_ONLY', 'COURSE')
          AND EXISTS (
            SELECT 1 FROM lms_access_grants g
@@ -352,8 +491,8 @@ router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async 
            AND f.live_class_id IS NOT NULL AND lc.status = 'active'
            AND EXISTS (SELECT 1 FROM class_enrollments ce
                        WHERE ce.live_class_id = f.live_class_id AND ce.user_id = $1 AND ce.status = 'active')))
-       ORDER BY f.created_at DESC, f.id DESC`,
-      [req.user.id, courseId, classId, sessionId],
+       ORDER BY sort_time DESC, f.id DESC`,
+      [req.user.id, courseId, classId, sessionId, date, search],
     );
     return res.json({ success: true, data: result.rows.map(serializeFile) });
   } catch (error) {
