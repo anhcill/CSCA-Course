@@ -4,7 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Bell, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
-  FileText, Lock, Play, Trophy, Users, Video,
+  Download, ExternalLink, FileSpreadsheet, FileText, Files, FolderOpen, Lock, Play, Trophy, Users, Video,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { isTeacherRole } from "../../../constants/roles";
@@ -29,6 +29,33 @@ const tabs = [
 const formatDateTime = (value) => value ? new Date(value).toLocaleString("vi-VN", {
   weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
 }) : "Chưa xác định";
+
+const formatBytes = (bytes) => {
+  const b = Number(bytes) || 0;
+  if (!b) return "";
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const kindForFile = (mime, name = "") => {
+  const val = (String(mime || "") + " " + String(name || "")).toLowerCase();
+  if (val.includes("pdf")) return "pdf";
+  if (val.includes("word") || val.includes("doc")) return "doc";
+  if (val.includes("sheet") || val.includes("excel") || val.includes("xls") || val.includes("csv")) return "sheet";
+  if (val.includes("presentation") || val.includes("powerpoint") || val.includes("ppt")) return "slide";
+  if (val.includes("image") || val.includes("png") || val.includes("jpg") || val.includes("jpeg")) return "image";
+  return "other";
+};
+
+const kindConfig = {
+  pdf: { label: "PDF", icon: FileText, badge: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50" },
+  doc: { label: "Word", icon: FileText, badge: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-sky-400 dark:border-blue-900/50" },
+  sheet: { label: "Excel", icon: FileSpreadsheet, badge: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50" },
+  slide: { label: "Slide", icon: FileText, badge: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/50" },
+  image: { label: "Ảnh", icon: Files, badge: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-900/50" },
+  other: { label: "Tài liệu", icon: Files, badge: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/50" },
+};
 
 const taskHref = (basePath, task) => task.type === "quiz"
   ? `${basePath}/quizzes/${task.id}`
@@ -139,7 +166,7 @@ export default function SessionDetailPage() {
   const isJoinable = isLive || (start - now <= 15 * 60 * 1000 && now <= end);
   const isEnded = now > end || session.status === "ended";
   const completeTasks = tasks.filter((task) => ["submitted", "graded"].includes(task.status));
-  const tabClass = (isActive) => `inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition ${isActive ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"}`;
+  const tabClass = (isActive) => `inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition ${isActive ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400/20" : "text-slate-600 hover:bg-emerald-50/80 hover:text-emerald-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-emerald-300"}`;
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 pb-12 transition-colors duration-200">
@@ -252,8 +279,93 @@ function SessionTaskList({ tasks, basePath }) {
 }
 
 function SessionFileList({ files }) {
-  if (!files.length) return <EmptyState icon={FileText} title="Chưa có tài liệu" description="Slide, đề mẫu và tài liệu của buổi này sẽ được hiển thị tại đây." />;
-  return <section className="grid gap-3 sm:grid-cols-2">{files.map((file) => <a key={file.id} href={file.downloadUrl || file.download_url} target="_blank" rel="noreferrer" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"><FileText className="h-5 w-5 text-blue-600 dark:text-sky-400" /><h2 className="mt-3 truncate text-sm font-black text-slate-900 dark:text-white">{file.name}</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString("vi-VN") : "Tài liệu buổi học"}</p></a>)}</section>;
+  if (!files.length) {
+    return (
+      <EmptyState
+        icon={FileText}
+        title="Chưa có tài liệu cho buổi học này"
+        description="Slide bài giảng, đề ôn tập và tài liệu học tập của buổi học sẽ hiển thị tại đây khi giáo viên tải lên."
+      />
+    );
+  }
+
+  return (
+    <section className="space-y-3.5">
+      <div className="flex items-center justify-between rounded-2xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50/70 via-teal-50/30 to-white dark:border-emerald-900/40 dark:bg-gradient-to-r dark:from-emerald-950/20 dark:via-slate-900 dark:to-slate-900 p-4 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-800/40">
+            <FolderOpen className="h-4.5 w-4.5" />
+          </div>
+          <div>
+            <h2 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+              Tài liệu & Học liệu đính kèm
+            </h2>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Bạn có thể tải về để ôn tập trước và sau buổi học ({files.length} tệp)
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {files.map((file) => {
+          const kind = kindForFile(file.mimeType || file.mime_type, file.name);
+          const kindInfo = kindConfig[kind] || kindConfig.other;
+          const IconComponent = kindInfo.icon;
+          const downloadUrl = file.downloadUrl || file.download_url;
+
+          return (
+            <div
+              key={file.id}
+              className="group flex flex-col justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs transition-all hover:border-emerald-400 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-700/60"
+            >
+              <div className="flex items-start gap-3">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${kindInfo.badge}`}>
+                  <IconComponent className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3
+                    className="truncate text-sm font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition"
+                    title={file.name}
+                  >
+                    {file.name}
+                  </h3>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-bold uppercase tracking-wider text-[10px] text-slate-600 dark:text-slate-300">
+                      {kindInfo.label}
+                    </span>
+                    {(file.sizeBytes || file.size_bytes) && (
+                      <span>{formatBytes(file.sizeBytes || file.size_bytes)}</span>
+                    )}
+                    {file.uploadedAt && (
+                      <span>• {new Date(file.uploadedAt).toLocaleDateString("vi-VN")}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-2.5">
+                <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
+                  {file.sessionTitle || "Buổi học này"}
+                </span>
+                {downloadUrl && (
+                  <a
+                    href={downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-600 transition"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Tải xuống</span>
+                  </a>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function SessionAnnouncementList({ announcements }) {

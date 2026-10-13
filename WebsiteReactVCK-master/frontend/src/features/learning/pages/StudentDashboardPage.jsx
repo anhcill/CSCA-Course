@@ -37,6 +37,33 @@ const formatSessionTime = (value) => {
 
 const coursePath = (course) => `/lms/courses/${course.course_id}/classes`;
 
+const DASHBOARD_COURSE_THEMES = [
+  {
+    iconBg: "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-sky-300",
+    barBg: "bg-gradient-to-r from-blue-500 to-indigo-500",
+    hoverBorder: "hover:border-blue-300 dark:hover:border-blue-700",
+    accentStrip: "bg-blue-500",
+  },
+  {
+    iconBg: "bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300",
+    barBg: "bg-gradient-to-r from-purple-500 to-pink-500",
+    hoverBorder: "hover:border-purple-300 dark:hover:border-purple-700",
+    accentStrip: "bg-purple-500",
+  },
+  {
+    iconBg: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
+    barBg: "bg-gradient-to-r from-emerald-500 to-teal-500",
+    hoverBorder: "hover:border-emerald-300 dark:hover:border-emerald-700",
+    accentStrip: "bg-emerald-500",
+  },
+  {
+    iconBg: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
+    barBg: "bg-gradient-to-r from-amber-500 to-orange-500",
+    hoverBorder: "hover:border-amber-300 dark:hover:border-amber-700",
+    accentStrip: "bg-amber-500",
+  },
+];
+
 function ProgressRing({ value }) {
   const radius = 34;
   const circumference = 2 * Math.PI * radius;
@@ -248,22 +275,41 @@ export default function StudentDashboardPage() {
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Liên hệ bộ phận quản lý để được cấp quyền học.</p>
               </div>
             ) : (
-              <div className="mt-3 grid gap-2.5 md:grid-cols-2">
-                {courses.slice(0, 4).map((course) => {
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {courses.slice(0, 4).map((course, index) => {
+                  const theme = DASHBOARD_COURSE_THEMES[index % DASHBOARD_COURSE_THEMES.length];
                   const progress = getProgress(course);
                   return (
-                    <Link key={course.course_id} to={coursePath(course)} className="group rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-3 transition hover:-translate-y-0.5 hover:border-blue-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md">
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-sky-400"><BookOpen className="h-4 w-4" /></div>
+                    <Link
+                      key={course.course_id}
+                      to={coursePath(course)}
+                      className={`group relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-3.5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${theme.hoverBorder}`}
+                    >
+                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${theme.accentStrip}`} />
+                      <div className="flex items-start gap-3 pl-1">
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-xs ${theme.iconBg}`}>
+                          <BookOpen className="h-4.5 w-4.5" />
+                        </div>
                         <div className="min-w-0 flex-1">
-                          <h3 className="line-clamp-2 text-sm font-black text-slate-900 dark:text-white group-hover:text-blue-700 dark:group-hover:text-sky-400">{course.title}</h3>
-                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{course.category || "Chương trình CSCA"}</p>
+                          <h3 className="line-clamp-2 text-sm font-black text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-sky-400 transition-colors">
+                            {course.title}
+                          </h3>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            {course.category || "Chương trình CSCA"}
+                          </p>
                         </div>
                         <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500 transition group-hover:translate-x-1 group-hover:text-blue-600 dark:group-hover:text-sky-400" />
                       </div>
-                      <div className="mt-2.5 flex items-center gap-3">
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><div className="h-full rounded-full bg-blue-600" style={{ width: `${progress}%` }} /></div>
-                        <span className="text-xs font-black text-slate-600 dark:text-slate-400">{progress}%</span>
+                      <div className="mt-3 flex items-center gap-3 pl-1">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 ring-1 ring-black/5 dark:ring-white/5">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${progress === 100 ? "bg-gradient-to-r from-emerald-500 to-teal-400" : theme.barBg}`}
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <span className={`text-xs font-black ${progress === 100 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-600 dark:text-slate-300"}`}>
+                          {progress}%
+                        </span>
                       </div>
                     </Link>
                   );
@@ -280,21 +326,37 @@ export default function StudentDashboardPage() {
               </div>
               <CalendarDays className="h-5 w-5 text-blue-600 dark:text-sky-400" />
             </div>
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 space-y-2.5">
               {upcomingSessions.length === 0 ? (
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/40 px-4 py-7 text-center text-xs text-slate-500 dark:text-slate-400">Chưa có buổi học sắp tới.</div>
-              ) : upcomingSessions.map((session) => (
-                <div key={session.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-2.5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{session.title || "Buổi học trực tuyến"}</p>
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{session.class_title || session.course_title || "CSCA LMS"}</p>
+              ) : (
+                upcomingSessions.map((session, sIdx) => {
+                  const sTheme = DASHBOARD_COURSE_THEMES[sIdx % DASHBOARD_COURSE_THEMES.length];
+                  return (
+                    <div
+                      key={session.id}
+                      className="group relative overflow-hidden rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-3 shadow-2xs hover:border-blue-200 dark:hover:border-slate-700 transition"
+                    >
+                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${sTheme.accentStrip}`} />
+                      <div className="flex items-start justify-between gap-3 pl-1.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-sky-400 transition-colors">
+                            {session.title || "Buổi học trực tuyến"}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">
+                            {session.class_title || session.course_title || "CSCA LMS"}
+                          </p>
+                        </div>
+                        <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-xs animate-pulse" />
+                      </div>
+                      <p className="mt-1.5 pl-1.5 text-xs font-bold text-blue-600 dark:text-sky-400 flex items-center gap-1.5">
+                        <Clock3 className="h-3.5 w-3.5 text-slate-400" />
+                        {formatSessionTime(session.start_time)}
+                      </p>
                     </div>
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />
-                  </div>
-                  <p className="mt-1.5 text-xs font-bold text-blue-700 dark:text-sky-400">{formatSessionTime(session.start_time)}</p>
-                </div>
-              ))}
+                  );
+                })
+              )}
             </div>
             <Link to="/lms/live-schedule" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-sky-400 hover:text-blue-800 dark:hover:text-sky-300">Mở lịch đầy đủ <ArrowRight className="h-3.5 w-3.5" /></Link>
           </section>

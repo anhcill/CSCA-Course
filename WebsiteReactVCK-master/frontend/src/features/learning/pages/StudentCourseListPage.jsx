@@ -1,9 +1,62 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Compass, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Compass, RefreshCw, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import { fetchMyEnrolledCourses } from "../../api/lmsClient";
+
+const COURSE_THEMES = [
+  {
+    // Blue / Indigo / Sky
+    headerBg: "bg-gradient-to-br from-blue-600 via-indigo-600 to-sky-500",
+    patternGlow: "bg-sky-400/20",
+    tagBg: "bg-white/20 text-white backdrop-blur-md border border-white/25",
+    barColor: "bg-gradient-to-r from-blue-500 via-indigo-500 to-sky-400",
+    btnBg: "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-500/20",
+    badgeActive: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-sky-300 ring-1 ring-blue-200/50 dark:ring-blue-800/50",
+    borderHover: "hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-blue-500/10",
+  },
+  {
+    // Purple / Fuchsia / Pink
+    headerBg: "bg-gradient-to-br from-purple-600 via-fuchsia-600 to-pink-500",
+    patternGlow: "bg-pink-400/20",
+    tagBg: "bg-white/20 text-white backdrop-blur-md border border-white/25",
+    barColor: "bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-400",
+    btnBg: "bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 text-white shadow-purple-500/20",
+    badgeActive: "bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 ring-1 ring-purple-200/50 dark:ring-purple-800/50",
+    borderHover: "hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-purple-500/10",
+  },
+  {
+    // Emerald / Teal / Cyan
+    headerBg: "bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-500",
+    patternGlow: "bg-emerald-400/20",
+    tagBg: "bg-white/20 text-white backdrop-blur-md border border-white/25",
+    barColor: "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-400",
+    btnBg: "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-500/20",
+    badgeActive: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 ring-1 ring-emerald-200/50 dark:ring-emerald-800/50",
+    borderHover: "hover:border-emerald-400 dark:hover:border-emerald-500 hover:shadow-emerald-500/10",
+  },
+  {
+    // Amber / Orange / Rose
+    headerBg: "bg-gradient-to-br from-amber-500 via-orange-600 to-rose-500",
+    patternGlow: "bg-amber-400/20",
+    tagBg: "bg-white/20 text-white backdrop-blur-md border border-white/25",
+    barColor: "bg-gradient-to-r from-amber-500 via-orange-500 to-rose-400",
+    btnBg: "bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-orange-500/20",
+    badgeActive: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 ring-1 ring-amber-200/50 dark:ring-amber-800/50",
+    borderHover: "hover:border-amber-400 dark:hover:border-amber-500 hover:shadow-amber-500/10",
+  },
+  {
+    // Rose / Pink / Purple
+    headerBg: "bg-gradient-to-br from-rose-600 via-pink-600 to-purple-600",
+    patternGlow: "bg-rose-400/20",
+    tagBg: "bg-white/20 text-white backdrop-blur-md border border-white/25",
+    barColor: "bg-gradient-to-r from-rose-500 via-pink-500 to-purple-400",
+    btnBg: "bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white shadow-rose-500/20",
+    badgeActive: "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 ring-1 ring-rose-200/50 dark:ring-rose-800/50",
+    borderHover: "hover:border-rose-400 dark:hover:border-rose-500 hover:shadow-rose-500/10",
+  },
+];
 
 const getProgress = (course) => {
   const value = Number(course?.progress_percent ?? course?.progressPercent ?? 0);
@@ -150,8 +203,9 @@ export default function StudentCourseListPage() {
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Thử đổi từ khóa hoặc bộ lọc.</p>
           </div>
         ) : (
-          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {visibleCourses.map((course) => {
+          <section className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {visibleCourses.map((course, index) => {
+              const theme = COURSE_THEMES[index % COURSE_THEMES.length];
               const progress = getProgress(course);
               const completed = progress === 100;
               const hasStarted = progress > 0;
@@ -161,39 +215,45 @@ export default function StudentCourseListPage() {
               return (
                 <div
                   key={course.course_id}
-                  className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-[0_8px_30px_rgba(41,72,110,0.05)] dark:shadow-none transition hover:-translate-y-1 hover:border-blue-200 dark:hover:border-slate-700 hover:shadow-lg"
+                  className={`group relative flex flex-col justify-between overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl ${theme.borderHover}`}
                 >
                   <div>
-                    <div className="relative min-h-28 overflow-hidden bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400 p-3.5">
-                      <div className="absolute -right-6 -top-10 h-36 w-36 rounded-full bg-white/15 blur-2xl" />
-                      <div className="relative flex items-start justify-between gap-3">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 text-white backdrop-blur">
-                          <BookOpen className="h-4 w-4" />
+                    {/* Top Vibrant Header Banner */}
+                    <div className={`relative min-h-[120px] overflow-hidden ${theme.headerBg} p-4 sm:p-5 flex flex-col justify-between`}>
+                      <div className="absolute -right-6 -top-8 h-36 w-36 rounded-full bg-white/15 blur-2xl transition-transform duration-500 group-hover:scale-125" />
+                      <div className={`absolute -left-10 -bottom-10 h-32 w-32 rounded-full ${theme.patternGlow} blur-2xl`} />
+
+                      <div className="relative flex items-center justify-between gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20 text-white shadow-sm backdrop-blur-md transition-transform duration-300 group-hover:scale-110">
+                          <BookOpen className="h-4.5 w-4.5" />
                         </span>
-                        <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-blue-700">
+                        <span className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wider ${theme.tagBg} shadow-xs`}>
                           {course.category || "CSCA"}
                         </span>
                       </div>
-                      <p className="relative mt-2 line-clamp-2 text-base font-black text-white">{course.title}</p>
+                      <h3 className="relative mt-3 line-clamp-2 text-base sm:text-lg font-black leading-snug text-white drop-shadow-xs">
+                        {course.title}
+                      </h3>
                     </div>
 
-                    <div className="space-y-2.5 p-3.5">
-                      <p className="line-clamp-2 text-sm leading-5 text-slate-500 dark:text-slate-400">
+                    {/* Card Body */}
+                    <div className="space-y-3 p-4 sm:p-5">
+                      <p className="line-clamp-2 text-xs sm:text-sm leading-relaxed text-slate-600 dark:text-slate-300 min-h-[2.5rem]">
                         {course.description || "Chương trình học được quản lý và cấp quyền riêng cho bạn."}
                       </p>
 
-                      <div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-slate-500 dark:text-slate-400">
+                      <div className="pt-1">
+                        <div className="flex items-center justify-between text-xs font-semibold">
+                          <span className="text-slate-500 dark:text-slate-400">
                             {totalLessons > 0 ? `${completedLessons}/${totalLessons} bài học` : "Tiến độ học tập"}
                           </span>
-                          <span className={`font-black ${completed ? "text-emerald-600 dark:text-emerald-400" : "text-blue-700 dark:text-sky-400"}`}>
+                          <span className={`font-black ${completed ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-sky-400"}`}>
                             {progress}%
                           </span>
                         </div>
-                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 ring-1 ring-black/5 dark:ring-white/5">
                           <div
-                            className={`h-full rounded-full transition-all duration-300 ${completed ? "bg-emerald-500" : "bg-blue-600"}`}
+                            className={`h-full rounded-full transition-all duration-500 ${completed ? "bg-gradient-to-r from-emerald-500 to-teal-400" : theme.barColor}`}
                             style={{ width: `${progress}%` }}
                           />
                         </div>
@@ -201,34 +261,41 @@ export default function StudentCourseListPage() {
 
                       <div className="flex items-center gap-2 pt-1">
                         <span
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold ${
                             completed
-                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 ring-1 ring-emerald-200/60 dark:ring-emerald-800/60"
                               : hasStarted
-                              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-sky-300"
-                              : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                              ? theme.badgeActive
+                              : "bg-slate-100 text-slate-600 dark:bg-slate-800/80 dark:text-slate-300"
                           }`}
                         >
-                          {completed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <BookOpen className="h-3.5 w-3.5" />}
+                          {completed ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                          ) : hasStarted ? (
+                            <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                          ) : (
+                            <BookOpen className="h-3.5 w-3.5 text-slate-400" />
+                          )}
                           {completed ? "Đã hoàn thành" : hasStarted ? "Đang học" : "Chưa bắt đầu"}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 px-3.5 py-2.5">
+                  {/* Card Footer */}
+                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-900/40 px-4 sm:px-5 py-3">
                     <Link
                       to="/lms/live-schedule"
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-sky-400 transition"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400 transition"
                     >
                       <CalendarDays className="h-3.5 w-3.5" /> Xem lịch
                     </Link>
                     <Link
                       to={`/lms/courses/${course.course_id}/classes`}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500"
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all duration-200 hover:shadow-md ${theme.btnBg}`}
                     >
                       {completed ? "Xem lại lớp" : hasStarted ? "Vào học" : "Mở lớp"}
-                      <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                      <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" />
                     </Link>
                   </div>
                 </div>

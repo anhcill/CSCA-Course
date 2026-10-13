@@ -31,6 +31,45 @@ const EMPTY_DATA = {
   pagination: { page: 1, limit: 8, total: 0, totalPages: 0 },
 };
 
+const TEACHER_CLASS_THEMES = [
+  {
+    topBar: "from-blue-500 via-indigo-500 to-sky-500",
+    codeBadge: "bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-sky-300 ring-1 ring-blue-200/60 dark:ring-blue-800/60",
+    studentBox: "bg-blue-50/50 dark:bg-blue-950/30 border-blue-100/60 dark:border-blue-900/40",
+    studentText: "text-blue-700 dark:text-sky-300",
+    glow: "from-blue-500/10 to-indigo-500/5",
+    borderHover: "hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-blue-500/10",
+    buttonBg: "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-500/20",
+  },
+  {
+    topBar: "from-purple-500 via-fuchsia-500 to-pink-500",
+    codeBadge: "bg-purple-50 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300 ring-1 ring-purple-200/60 dark:ring-purple-800/60",
+    studentBox: "bg-purple-50/50 dark:bg-purple-950/30 border-purple-100/60 dark:border-purple-900/40",
+    studentText: "text-purple-700 dark:text-purple-300",
+    glow: "from-purple-500/10 to-fuchsia-500/5",
+    borderHover: "hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-purple-500/10",
+    buttonBg: "bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 text-white shadow-purple-500/20",
+  },
+  {
+    topBar: "from-emerald-500 via-teal-500 to-cyan-500",
+    codeBadge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 ring-1 ring-emerald-200/60 dark:ring-emerald-800/60",
+    studentBox: "bg-emerald-50/50 dark:bg-emerald-950/30 border-emerald-100/60 dark:border-emerald-900/40",
+    studentText: "text-emerald-700 dark:text-emerald-300",
+    glow: "from-emerald-500/10 to-teal-500/5",
+    borderHover: "hover:border-emerald-400 dark:hover:border-emerald-500 hover:shadow-emerald-500/10",
+    buttonBg: "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-500/20",
+  },
+  {
+    topBar: "from-amber-400 via-orange-500 to-rose-500",
+    codeBadge: "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 ring-1 ring-amber-200/60 dark:ring-amber-800/60",
+    studentBox: "bg-amber-50/50 dark:bg-amber-950/30 border-amber-100/60 dark:border-amber-900/40",
+    studentText: "text-amber-700 dark:text-amber-300",
+    glow: "from-amber-500/10 to-orange-500/5",
+    borderHover: "hover:border-amber-400 dark:hover:border-amber-500 hover:shadow-amber-500/10",
+    buttonBg: "bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-orange-500/20",
+  },
+];
+
 const formatDateTime = (value, fallback = "Chưa có lịch") => {
   if (!value) return fallback;
   const date = new Date(value);
@@ -151,43 +190,72 @@ export default function TeacherHubPage() {
               {data.classes.length === 0 ? (
                 <EmptyState icon={BookOpen} title="Chưa có lớp được phân công" description="Khi quản trị viên phân công lớp, số liệu sẽ xuất hiện tại đây." />
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {data.classes.map((item) => (
-                    <article key={item.id} className="bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 hover:border-blue-300 dark:hover:border-slate-700 rounded-2xl p-3.5 space-y-2.5 transition shadow-xs">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                          {item.code || "LỚP"}
-                        </span>
-                        <span className={`text-[10px] font-bold ${item.isLiveNow ? "text-rose-500 animate-pulse" : "text-slate-500"}`}>
-                          {item.isLiveNow ? "● Đang live" : item.status}
-                        </span>
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">{item.title}</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">{item.courseTitle || "Lớp trực tuyến"}</p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-2 border border-slate-100 dark:border-transparent">
-                          <p className="text-slate-500 text-[11px]">Học viên</p>
-                          <p className="font-bold text-slate-900 dark:text-white mt-0.5">{item.totalStudents}</p>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-2 border border-slate-100 dark:border-transparent">
-                          <p className="text-slate-500 text-[11px]">Chuyên cần</p>
-                          <p className="font-bold text-emerald-600 mt-0.5">{item.attendanceRate ?? "—"}%</p>
-                        </div>
-                      </div>
-                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5" />
-                        {item.nextSession ? formatDateTime(item.nextSession) : "Chưa có session kế tiếp"}
-                      </div>
-                      <Link
-                        to={`/lms/teach/classes/${item.id}`}
-                        className="w-full inline-flex justify-center items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-xl text-xs font-bold text-white transition shadow-sm"
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {data.classes.map((item, index) => {
+                    const theme = TEACHER_CLASS_THEMES[index % TEACHER_CLASS_THEMES.length];
+                    return (
+                      <article
+                        key={item.id}
+                        className={`group relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${theme.borderHover}`}
                       >
-                        Quản lý lớp <ArrowRight className="w-3.5 h-3.5" />
-                      </Link>
-                    </article>
-                  ))}
+                        {/* Top Colorful Accent Strip */}
+                        <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${theme.topBar}`} />
+
+                        {/* Soft Background Glow */}
+                        <div
+                          className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br ${theme.glow} blur-xl`}
+                        />
+
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${theme.codeBadge}`}>
+                            {item.code || "LỚP"}
+                          </span>
+                          {item.isLiveNow ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400 ring-1 ring-rose-200/60">
+                              <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-ping" />
+                              Đang live
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                              {item.status || "Hoạt động"}
+                            </span>
+                          )}
+                        </div>
+
+                        <div>
+                          <h3 className="text-sm font-black text-slate-900 dark:text-white line-clamp-1 group-hover:text-blue-600 dark:group-hover:text-sky-400 transition-colors">
+                            {item.title}
+                          </h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
+                            {item.courseTitle || "Lớp trực tuyến"}
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className={`rounded-xl p-2.5 border ${theme.studentBox}`}>
+                            <p className="text-slate-500 dark:text-slate-400 text-[11px] font-medium">Học viên</p>
+                            <p className={`font-black text-sm mt-0.5 ${theme.studentText}`}>{item.totalStudents}</p>
+                          </div>
+                          <div className="rounded-xl p-2.5 border bg-emerald-50/50 dark:bg-emerald-950/30 border-emerald-100/60 dark:border-emerald-900/40">
+                            <p className="text-slate-500 dark:text-slate-400 text-[11px] font-medium">Chuyên cần</p>
+                            <p className="font-black text-sm text-emerald-600 dark:text-emerald-400 mt-0.5">{item.attendanceRate ?? "—"}%</p>
+                          </div>
+                        </div>
+
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          <span className="truncate">{item.nextSession ? formatDateTime(item.nextSession) : "Chưa có session kế tiếp"}</span>
+                        </div>
+
+                        <Link
+                          to={`/lms/teach/classes/${item.id}`}
+                          className={`w-full inline-flex justify-center items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition shadow-sm ${theme.buttonBg}`}
+                        >
+                          Quản lý lớp <ArrowRight className="w-3.5 h-3.5 transition group-hover:translate-x-1" />
+                        </Link>
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -202,18 +270,23 @@ export default function TeacherHubPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                   {data.todaySessions.map((session) => (
-                    <div key={session.id} className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{session.title}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">{session.className}</p>
-                        <p className="text-[11px] text-blue-600 dark:text-sky-400 font-semibold mt-1">
+                    <div
+                      key={session.id}
+                      className="group relative overflow-hidden rounded-2xl border border-blue-100 dark:border-slate-800 bg-gradient-to-br from-blue-50/40 via-white to-indigo-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800/60 p-3.5 flex items-center justify-between gap-3 shadow-xs hover:border-blue-300 dark:hover:border-slate-700 transition"
+                    >
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500 to-indigo-600" />
+                      <div className="min-w-0 pl-1.5">
+                        <p className="text-sm font-black text-slate-900 dark:text-white truncate">{session.title}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{session.className}</p>
+                        <p className="text-[11px] text-blue-600 dark:text-sky-400 font-bold mt-1 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
                           {formatDateTime(session.startTime)}
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => openLiveRoom(session)}
-                        className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition"
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md shadow-blue-500/20 transition-all duration-200 hover:scale-105 shrink-0"
                         title="Vào phòng dạy"
                       >
                         <Video className="w-4 h-4" />

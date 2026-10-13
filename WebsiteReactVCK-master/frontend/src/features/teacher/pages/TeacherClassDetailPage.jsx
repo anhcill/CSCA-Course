@@ -87,10 +87,10 @@ export default function TeacherClassDetailPage() {
   const atRiskStudents = students.filter((item) => item.riskLevel === "danger" || item.riskLevel === "warning");
   const scrollToSchedule = () => document.getElementById("class-session-schedule")?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-  const handleUploadFile = async (file, sessionId) => {
+  const handleUploadFile = async (file, sessionId, onProgress) => {
     setIsUploadingFile(true);
     try {
-      await uploadClassFile(classId, file, { sessionId });
+      await uploadClassFile(classId, file, { sessionId, onProgress });
       toast.success(`Đã tải lên "${file.name}" cho lớp.`);
       await loadData();
     } catch (err) {

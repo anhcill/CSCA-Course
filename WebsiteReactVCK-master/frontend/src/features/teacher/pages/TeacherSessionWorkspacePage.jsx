@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Bell, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
-  FileText, GraduationCap, Play, Trophy, UploadCloud, Users, Video,
+  Download, ExternalLink, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Play, Trash2, Trophy, UploadCloud, Users, Video,
 } from "lucide-react";
 import {
   createClassAnnouncement, deleteClassFile, fetchClassAnnouncements, fetchClassDetails, fetchClassFiles, fetchLiveClassSessions,
@@ -13,6 +13,7 @@ import {
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import CreateAssignmentModal from "../components/CreateAssignmentModal";
+import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
 import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 import { classCalendarIcsUrl, googleCalendarEventUrl } from "../../calendar/calendarLinks";
 
@@ -29,6 +30,33 @@ const tabs = [
 const formatDateTime = (value) => value ? new Date(value).toLocaleString("vi-VN", {
   weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
 }) : "Chưa xác định";
+
+const formatBytes = (bytes) => {
+  const b = Number(bytes) || 0;
+  if (!b) return "";
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const kindForFile = (mime, name = "") => {
+  const val = (String(mime || "") + " " + String(name || "")).toLowerCase();
+  if (val.includes("pdf")) return "pdf";
+  if (val.includes("word") || val.includes("doc")) return "doc";
+  if (val.includes("sheet") || val.includes("excel") || val.includes("xls") || val.includes("csv")) return "sheet";
+  if (val.includes("presentation") || val.includes("powerpoint") || val.includes("ppt")) return "slide";
+  if (val.includes("image") || val.includes("png") || val.includes("jpg") || val.includes("jpeg")) return "image";
+  return "other";
+};
+
+const kindConfig = {
+  pdf: { label: "PDF", icon: FileText, badge: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50" },
+  doc: { label: "Word", icon: FileText, badge: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-sky-400 dark:border-blue-900/50" },
+  sheet: { label: "Excel", icon: FileSpreadsheet, badge: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50" },
+  slide: { label: "Slide", icon: FileText, badge: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/50" },
+  image: { label: "Ảnh", icon: Files, badge: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-900/50" },
+  other: { label: "Tài liệu", icon: Files, badge: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/50" },
+};
 
 export default function TeacherSessionWorkspacePage() {
   const { classId, sessionId } = useParams();
@@ -47,6 +75,8 @@ export default function TeacherSessionWorkspacePage() {
   const [error, setError] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isCreateHomeworkOpen, setIsCreateHomeworkOpen] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const [uploadFile, setUploadFile] = useState(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -91,20 +121,84 @@ export default function TeacherSessionWorkspacePage() {
     }
   };
 
-  const handleUpload = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  const executeUploadFile = async (file) => {
     if (!file) return;
+    if (file.size > 100 * 1024 * 1024) {
+      setUploadFile(file);
+      setUploadProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Kích thước tệp vượt quá giới hạn",
+        errorMessage: "Kích thước tài liệu không được vượt quá 100MB theo quy định.",
+      });
+      return;
+    }
+
+    setUploadFile(file);
     setIsUploading(true);
+    setUploadProgress({
+      status: "uploading",
+      percent: 5,
+      stage: "init",
+      message: "Đang khởi tạo liên kết tải lên an toàn...",
+      loaded: 0,
+      total: file.size,
+      errorMessage: "",
+    });
+
     try {
-      await uploadClassFile(classId, file, { sessionId });
-      toast.success(`Đã thêm ${file.name} vào buổi học.`);
+      await uploadClassFile(classId, file, {
+        sessionId,
+        onProgress: (p) => {
+          setUploadProgress((curr) => ({
+            ...curr,
+            status: p.stage === "done" ? "success" : "uploading",
+            percent: p.percent,
+            stage: p.stage,
+            message: p.message,
+            loaded: p.loaded ?? curr?.loaded ?? 0,
+            total: p.total ?? file.size,
+          }));
+        },
+      });
+
+      setUploadProgress({
+        status: "success",
+        percent: 100,
+        stage: "done",
+        message: `Đã thêm "${file.name}" vào buổi học thành công!`,
+        loaded: file.size,
+        total: file.size,
+      });
+      toast.success(`Đã thêm "${file.name}" vào buổi học.`);
       await loadData();
+
+      setTimeout(() => {
+        setUploadProgress(null);
+        setUploadFile(null);
+      }, 1500);
     } catch (requestError) {
-      toast.error(requestError.message || "Không thể tải tài liệu.");
+      const errText = requestError.message || "Không thể tải tài liệu. Vui lòng thử lại.";
+      setUploadProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Đã xảy ra lỗi khi tải tài liệu",
+        errorMessage: errText,
+        loaded: 0,
+        total: file.size,
+      });
+      toast.error(errText);
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleUpload = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) executeUploadFile(file);
   };
 
   const handleDeleteFile = async (fileId) => {
@@ -138,7 +232,7 @@ export default function TeacherSessionWorkspacePage() {
   const classInfo = classData.classInfo || {};
   const now = Date.now();
   const canJoin = now <= new Date(session.end_time).getTime() || session.status === "live";
-  const tabClass = (isActive) => `inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition ${isActive ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"}`;
+  const tabClass = (isActive) => `inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition ${isActive ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400/20" : "text-slate-600 hover:bg-emerald-50/80 hover:text-emerald-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-emerald-300"}`;
 
   return (
     <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
@@ -167,7 +261,21 @@ export default function TeacherSessionWorkspacePage() {
         {activeTab === "students" && <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800"><div><h2 className="font-black">Học viên của buổi học</h2><p className="mt-1 text-xs text-slate-500">Điểm danh và theo dõi chuyên cần theo đúng buổi này.</p></div><button type="button" onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)} className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white">Mở điểm danh</button></div><div className="divide-y divide-slate-100 dark:divide-slate-800">{students.map((student) => <div key={student.id} className="flex items-center justify-between p-4 text-sm"><span className="font-bold">{student.name || student.email}</span><span className="text-xs text-slate-500">{student.email}</span></div>)}</div></section>}
         {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black">Nội dung buổi dạy</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Chuẩn bị nội dung, slide và hoạt động học tập cho buổi này tại đây."}</p><Link to={`${classBasePath}/curriculum`} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white"><BookOpen className="h-4 w-4" /> Xem giáo trình khóa học</Link></section>}
         {activeTab === "tasks" && <TeacherSessionTasks tasks={tasks} classId={classId} sessionId={sessionId} onCreateHomework={() => setIsCreateHomeworkOpen(true)} onCreateSessionQuiz={() => navigate(`${assessmentBasePath}/quizzes?classId=${classId}&sessionId=${sessionId}&scope=session&new=1`)} onOpenGrading={(assignmentId) => navigate(`${assessmentBasePath}/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${assignmentId}`)} />}
-        {activeTab === "files" && <TeacherSessionFiles files={files} isUploading={isUploading} onUpload={handleUpload} onDelete={handleDeleteFile} />}
+        {activeTab === "files" && (
+          <TeacherSessionFiles
+            files={files}
+            isUploading={isUploading}
+            onUpload={handleUpload}
+            onDelete={handleDeleteFile}
+            uploadFile={uploadFile}
+            uploadProgress={uploadProgress}
+            onRetryUpload={() => executeUploadFile(uploadFile)}
+            onCancelUpload={() => {
+              setUploadProgress(null);
+              setUploadFile(null);
+            }}
+          />
+        )}
         {activeTab === "announcements" && <TeacherSessionAnnouncements announcements={announcements} onCreate={handleCreateAnnouncement} />}
         {activeTab === "results" && <TeacherSessionResults tasks={tasks} />}
       </div>
@@ -193,7 +301,125 @@ function TeacherSessionTasks({ tasks, onCreateHomework, onCreateSessionQuiz, onO
 
 function TaskGroup({ title, tasks, empty, onOpenGrading }) { return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="mb-3 flex items-center justify-between"><h2 className="font-black">{title}</h2><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">{tasks.length}</span></div>{tasks.length ? <div className="space-y-2.5">{tasks.map((task) => <article key={`${task.type}-${task.id}`} className="flex flex-col justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/30 sm:flex-row sm:items-center"><div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${task.type === "quiz" ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"}`}>{task.type === "quiz" ? "QUIZ TỰ CHẤM" : "NỘP FILE / TỰ LUẬN"}</span><h3 className="mt-2 text-sm font-black">{task.title}</h3><p className="mt-1 text-xs text-slate-500">Đã nộp: {task.submittedCount || 0}/{task.totalCount || 0}{task.pendingGradingCount ? ` · Cần chấm: ${task.pendingGradingCount}` : ""}</p></div>{task.type === "quiz" ? <span className="text-xs font-bold text-violet-700 dark:text-violet-300">Chấm tự động</span> : <button type="button" onClick={() => onOpenGrading?.(task.id)} className="rounded-xl border border-emerald-300 bg-white px-3.5 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300">Mở Cổng chấm</button>}</article>)}</div> : <p className="py-5 text-center text-xs text-slate-500">{empty}</p>}</section>; }
 
-function TeacherSessionFiles({ files, isUploading, onUpload, onDelete }) { return <section className="space-y-4"><div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div><h2 className="font-black">Tài liệu của buổi</h2><p className="mt-1 text-xs text-slate-500">Tài liệu tải lên chỉ hiện trong buổi học này.</p></div><label className={`cursor-pointer rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white ${isUploading ? "pointer-events-none opacity-50" : ""}`}><UploadCloud className="mr-1 inline h-4 w-4" />{isUploading ? "Đang tải..." : "Tải tài liệu"}<input type="file" className="hidden" disabled={isUploading} onChange={onUpload} /></label></div>{files.length ? <div className="grid gap-3 sm:grid-cols-2">{files.map((file) => <article key={file.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="min-w-0"><h3 className="truncate text-sm font-black">{file.name}</h3><a href={file.downloadUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-bold text-blue-600">Mở / tải xuống</a></div><button type="button" onClick={() => onDelete(file.id)} className="text-xs font-bold text-rose-600">Xóa</button></article>)}</div> : <EmptyState icon={FileText} title="Chưa có tài liệu" description="Tải slide hoặc đề bài để học viên xem trong buổi này." />}</section>; }
+function TeacherSessionFiles({
+  files,
+  isUploading,
+  onUpload,
+  onDelete,
+  uploadFile,
+  uploadProgress,
+  onRetryUpload,
+  onCancelUpload,
+}) {
+  return (
+    <section className="space-y-4">
+      {/* Header banner with soft emerald tint */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-2xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-white dark:border-emerald-900/40 dark:bg-gradient-to-r dark:from-emerald-950/30 dark:via-slate-900 dark:to-slate-900 p-4.5 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-800/50">
+            <FolderOpen className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+              Tài liệu học tập của buổi
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+              Tài liệu tải lên sẽ hiển thị ngay cho học viên trong buổi học này ({files.length} tệp).
+            </p>
+          </div>
+        </div>
+        <label className={`inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm ring-1 ring-emerald-500/30 transition active:scale-95 ${isUploading ? "pointer-events-none opacity-50" : ""}`}>
+          <UploadCloud className="h-4 w-4" />
+          <span>{isUploading ? "Đang tải lên..." : "Tải tài liệu mới"}</span>
+          <input type="file" className="hidden" disabled={isUploading} onChange={onUpload} />
+        </label>
+      </div>
+
+      {/* Ô thông báo tiến độ & cảnh báo lỗi chi tiết */}
+      {uploadProgress && (
+        <FileUploadProgressBox
+          file={uploadFile}
+          progress={uploadProgress}
+          onRetry={onRetryUpload}
+          onCancel={onCancelUpload}
+        />
+      )}
+
+      {files.length ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {files.map((file) => {
+            const kind = kindForFile(file.mimeType || file.mime_type, file.name);
+            const kindInfo = kindConfig[kind] || kindConfig.other;
+            const IconComponent = kindInfo.icon;
+            const downloadUrl = file.downloadUrl || file.download_url;
+
+            return (
+              <article
+                key={file.id}
+                className="group relative flex flex-col justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white p-4.5 shadow-2xs transition-all hover:border-emerald-400 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-700/60"
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${kindInfo.badge}`}>
+                    <IconComponent className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3
+                      className="truncate text-sm font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition"
+                      title={file.name}
+                    >
+                      {file.name}
+                    </h3>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-bold uppercase tracking-wider text-[10px] text-slate-600 dark:text-slate-300">
+                        {kindInfo.label}
+                      </span>
+                      {(file.sizeBytes || file.size_bytes) && (
+                        <span>{formatBytes(file.sizeBytes || file.size_bytes)}</span>
+                      )}
+                      {file.uploadedAt && (
+                        <span>• {new Date(file.uploadedAt).toLocaleDateString("vi-VN")}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-3">
+                  {downloadUrl ? (
+                    <a
+                      href={downloadUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:bg-emerald-600 transition"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>Mở / Tải file</span>
+                    </a>
+                  ) : <span />}
+
+                  <button
+                    type="button"
+                    onClick={() => onDelete(file.id)}
+                    className="inline-flex items-center gap-1 rounded-xl p-1.5 text-xs font-medium text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 transition"
+                    title="Xóa tài liệu khỏi buổi học"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="text-[11px]">Xóa</span>
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState
+          icon={FileText}
+          title="Chưa có tài liệu cho buổi học này"
+          description="Tải lên slide bài giảng, đề thi hoặc tài liệu đính kèm để học viên xem trong buổi này."
+        />
+      )}
+    </section>
+  );
+}
 
 function TeacherSessionResults({ tasks }) { return tasks.length ? <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500 dark:bg-slate-800 dark:text-slate-400"><tr><th className="p-4">Nhiệm vụ</th><th className="p-4 text-center">Đã nộp</th><th className="p-4 text-center">Điểm TB</th></tr></thead><tbody>{tasks.map((task) => <tr key={`${task.type}-${task.id}`} className="border-t border-slate-100 dark:border-slate-800"><td className="p-4 font-bold">{task.title}</td><td className="p-4 text-center">{task.submittedCount || 0}/{task.totalCount || 0}</td><td className="p-4 text-center font-black text-blue-600">{task.avgScore ?? "—"}</td></tr>)}</tbody></table></section> : <EmptyState icon={GraduationCap} title="Chưa có kết quả" description="Kết quả của các nhiệm vụ trong buổi học sẽ tổng hợp tại đây." />; }
 

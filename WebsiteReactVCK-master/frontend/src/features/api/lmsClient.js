@@ -821,39 +821,187 @@ export const fetchStudentFiles = async ({ courseId, classId, sessionId, date, se
   return request(`/student/files${params.size ? `?${params.toString()}` : ""}`);
 };
 
-export const uploadClassFile = async (classId, file, { visibility = "CLASS_ONLY", sessionId } = {}) => {
+export const uploadClassFile = async (classId, file, { visibility = "CLASS_ONLY", sessionId, onProgress } = {}) => {
+  onProgress?.({
+    stage: "init",
+    percent: 5,
+    message: "Khởi tạo và xin cấp quyền tải lên...",
+    loaded: 0,
+    total: file.size,
+  });
+
   const uploadResponse = await request(`/teacher/classes/${encodeURIComponent(classId)}/files/upload-url`, {
     method: "POST",
     body: JSON.stringify({ filename: file.name, mimeType: file.type, sizeBytes: file.size, visibility, classSessionId: sessionId }),
   });
   const upload = uploadResponse?.data;
   if (!upload?.uploadUrl || !upload?.fileId) throw new LmsApiError("Máy chủ không trả về upload target");
-  const putResponse = await fetch(upload.uploadUrl, {
-    method: "PUT",
-    headers: upload.headers || { "Content-Type": file.type },
-    body: file,
+
+  onProgress?.({
+    stage: "uploading",
+    percent: 10,
+    message: "Đang tải dữ liệu tệp lên đám mây (Cloudflare R2)...",
+    loaded: 0,
+    total: file.size,
   });
-  if (!putResponse.ok) throw new LmsApiError("Upload tài liệu lên R2 thất bại", { status: putResponse.status });
-  return request(`/teacher/files/${encodeURIComponent(upload.fileId)}/confirm`, { method: "POST" });
+
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", upload.uploadUrl, true);
+    if (upload.headers && typeof upload.headers === "object") {
+      Object.entries(upload.headers).forEach(([k, v]) => {
+        try { xhr.setRequestHeader(k, v); } catch { /* ignore header error */ }
+      });
+    } else {
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        const rawPercent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        const mappedPercent = Math.min(90, Math.round(10 + (event.loaded / event.total) * 80));
+        onProgress?.({
+          stage: "uploading",
+          percent: mappedPercent,
+          rawPercent,
+          loaded: event.loaded,
+          total: event.total,
+          message: `Đang tải lên Cloudflare R2 (${rawPercent}%)...`,
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new LmsApiError(`Tải lên Cloudflare R2 thất bại (Mã phản hồi: ${xhr.status})`, { status: xhr.status }));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new LmsApiError("Lỗi kết nối mạng khi tải lên tài liệu"));
+    };
+
+    xhr.ontimeout = () => {
+      reject(new LmsApiError("Hết thời gian chờ phản hồi khi tải lên"));
+    };
+
+    xhr.send(file);
+  });
+
+  onProgress?.({
+    stage: "confirming",
+    percent: 92,
+    message: "Đang lưu và xác thực tài liệu vào hệ thống...",
+    loaded: file.size,
+    total: file.size,
+  });
+
+  const confirmRes = await request(`/teacher/files/${encodeURIComponent(upload.fileId)}/confirm`, { method: "POST" });
+
+  onProgress?.({
+    stage: "done",
+    percent: 100,
+    message: "Tải lên tài liệu thành công!",
+    loaded: file.size,
+    total: file.size,
+  });
+
+  return confirmRes;
 };
 
 // Quiz papers are course-scoped protected PDFs. Students open them through the
 // authenticated LMS route, never through a public storage URL.
-export const uploadCourseQuizPaper = async (courseId, file) => {
+export const uploadCourseQuizPaper = async (courseId, file, { onProgress } = {}) => {
   const mimeType = file.type || "application/pdf";
+  onProgress?.({
+    stage: "init",
+    percent: 5,
+    message: "Khởi tạo liên kết tải đề thi PDF...",
+    loaded: 0,
+    total: file.size,
+  });
+
   const uploadResponse = await request(`/teacher/courses/${encodeURIComponent(courseId)}/files/upload-url`, {
     method: "POST",
     body: JSON.stringify({ filename: file.name, mimeType, sizeBytes: file.size }),
   });
   const upload = uploadResponse?.data;
   if (!upload?.uploadUrl || !upload?.fileId) throw new LmsApiError("Máy chủ không trả về upload target");
-  const putResponse = await fetch(upload.uploadUrl, {
-    method: "PUT",
-    headers: upload.headers || { "Content-Type": mimeType },
-    body: file,
+
+  onProgress?.({
+    stage: "uploading",
+    percent: 10,
+    message: "Đang tải đề thi PDF lên Cloudflare R2...",
+    loaded: 0,
+    total: file.size,
   });
-  if (!putResponse.ok) throw new LmsApiError("Upload đề PDF lên R2 thất bại", { status: putResponse.status });
-  return request(`/teacher/files/${encodeURIComponent(upload.fileId)}/confirm`, { method: "POST" });
+
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", upload.uploadUrl, true);
+    if (upload.headers && typeof upload.headers === "object") {
+      Object.entries(upload.headers).forEach(([k, v]) => {
+        try { xhr.setRequestHeader(k, v); } catch { /* ignore header error */ }
+      });
+    } else {
+      xhr.setRequestHeader("Content-Type", mimeType);
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        const rawPercent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        const mappedPercent = Math.min(90, Math.round(10 + (event.loaded / event.total) * 80));
+        onProgress?.({
+          stage: "uploading",
+          percent: mappedPercent,
+          rawPercent,
+          loaded: event.loaded,
+          total: event.total,
+          message: `Đang tải đề PDF lên Cloudflare R2 (${rawPercent}%)...`,
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new LmsApiError(`Tải đề PDF lên R2 thất bại (Mã lỗi ${xhr.status})`, { status: xhr.status }));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new LmsApiError("Lỗi mạng khi tải đề PDF lên R2"));
+    };
+
+    xhr.ontimeout = () => {
+      reject(new LmsApiError("Hết thời gian chờ khi tải đề PDF"));
+    };
+
+    xhr.send(file);
+  });
+
+  onProgress?.({
+    stage: "confirming",
+    percent: 92,
+    message: "Đang lưu cấu hình đề PDF...",
+    loaded: file.size,
+    total: file.size,
+  });
+
+  const confirmRes = await request(`/teacher/files/${encodeURIComponent(upload.fileId)}/confirm`, { method: "POST" });
+
+  onProgress?.({
+    stage: "done",
+    percent: 100,
+    message: "Tải đề PDF thành công!",
+    loaded: file.size,
+    total: file.size,
+  });
+
+  return confirmRes;
 };
 
 export const deleteClassFile = async (fileId) => request(`/teacher/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });

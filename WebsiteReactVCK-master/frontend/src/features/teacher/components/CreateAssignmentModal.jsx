@@ -10,6 +10,7 @@ import {
   FiList,
 } from "react-icons/fi";
 import { createAssignment, uploadClassFile } from "../../api/lmsClient";
+import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
 
 const MAX_ASSIGNMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
@@ -25,6 +26,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
   const [selectedFile, setSelectedFile] = useState(null);
   const [attachmentUrl, setAttachmentUrl] = useState("");
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
@@ -39,23 +41,70 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
   const uploadAttachment = async (file) => {
     if (!file || uploadingFile || submitting) return;
     if (file.size > MAX_ASSIGNMENT_ATTACHMENT_BYTES) {
-      toast.error("Tệp đính kèm phải nhỏ hơn hoặc bằng 25MB.");
+      setSelectedFile(file);
+      setUploadProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Kích thước tệp vượt quá giới hạn",
+        errorMessage: "Tệp đính kèm phải nhỏ hơn hoặc bằng 25MB.",
+      });
       return;
     }
 
+    setSelectedFile(file);
     setUploadingFile(true);
     setAttachmentUrl("");
+    setUploadProgress({
+      status: "uploading",
+      percent: 5,
+      stage: "init",
+      message: "Đang khởi tạo liên kết tải lên...",
+      loaded: 0,
+      total: file.size,
+    });
+
     try {
-      const response = await uploadClassFile(classId, file, { sessionId });
+      const response = await uploadClassFile(classId, file, {
+        sessionId,
+        onProgress: (p) => {
+          setUploadProgress((curr) => ({
+            ...curr,
+            status: p.stage === "done" ? "success" : "uploading",
+            percent: p.percent,
+            stage: p.stage,
+            message: p.message,
+            loaded: p.loaded ?? curr?.loaded ?? 0,
+            total: p.total ?? file.size,
+          }));
+        },
+      });
+
       const uploadedUrl = response?.data?.downloadUrl;
       if (!response?.success || !uploadedUrl) {
         throw new Error(response?.message || "Không thể xác nhận tệp đính kèm");
       }
       setSelectedFile({ name: file.name, size: file.size });
       setAttachmentUrl(uploadedUrl);
+      setUploadProgress({
+        status: "success",
+        percent: 100,
+        stage: "done",
+        message: `Đã tải tệp đính kèm: ${file.name}`,
+        loaded: file.size,
+        total: file.size,
+      });
       toast.success(`Đã tải tệp đính kèm: ${file.name}`);
     } catch (error) {
-      setSelectedFile(null);
+      setUploadProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Lỗi tải tệp đính kèm",
+        errorMessage: error?.message || "Không thể tải tệp lên. Vui lòng thử lại.",
+        loaded: 0,
+        total: file.size,
+      });
       toast.error(error?.message || "Không thể tải tệp lên. Vui lòng thử lại.");
     } finally {
       setUploadingFile(false);
@@ -301,6 +350,22 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
                 <p className="text-[10px] text-gray-400">PDF, DOCX, XLSX, MP3 hoặc ZIP (Tối đa 25MB)</p>
               </button>
             </div>
+
+            {/* Ô thông báo tiến độ & cảnh báo lỗi đính kèm file */}
+            {uploadProgress && (
+              <div className="mt-2.5">
+                <FileUploadProgressBox
+                  file={selectedFile}
+                  progress={uploadProgress}
+                  onRetry={() => uploadAttachment(selectedFile)}
+                  onCancel={() => {
+                    setUploadProgress(null);
+                    setSelectedFile(null);
+                    setAttachmentUrl("");
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Resubmissions are authorized per student from the grading workspace. */}

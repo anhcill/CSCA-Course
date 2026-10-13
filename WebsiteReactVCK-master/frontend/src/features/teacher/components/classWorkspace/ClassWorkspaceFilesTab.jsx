@@ -12,6 +12,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
+import FileUploadProgressBox from "../../../../components/common/FileUploadProgressBox.jsx";
 
 const formatBytes = (bytes) => {
   const b = Number(bytes) || 0;
@@ -47,7 +48,7 @@ const kindConfig = {
   doc: { label: "Word", icon: FileText, className: "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-400 border-blue-200 dark:border-blue-900/40" },
   sheet: { label: "Excel", icon: FileSpreadsheet, className: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40" },
   slide: { label: "Slide", icon: FileText, className: "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/40" },
-  other: { label: "File", icon: Files, className: "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700" },
+  other: { label: "File", icon: Files, className: "bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-900/40" },
 };
 
 export default function ClassWorkspaceFilesTab({
@@ -62,6 +63,7 @@ export default function ClassWorkspaceFilesTab({
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [targetSessionId, setTargetSessionId] = useState("");
   const [fileToUpload, setFileToUpload] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(null);
 
   // Group files by session / date
   const groupedFiles = useMemo(() => {
@@ -86,36 +88,94 @@ export default function ClassWorkspaceFilesTab({
   }, [files, selectedSessionId]);
 
   const handleUploadSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!fileToUpload) return;
+
+    if (fileToUpload.size > 100 * 1024 * 1024) {
+      setUploadProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Kích thước tệp vượt quá giới hạn",
+        errorMessage: "Kích thước tài liệu không được vượt quá 100MB theo quy định.",
+      });
+      return;
+    }
+
+    setUploadProgress({
+      status: "uploading",
+      percent: 5,
+      stage: "init",
+      message: "Đang khởi tạo liên kết tải lên an toàn...",
+      loaded: 0,
+      total: fileToUpload.size,
+      errorMessage: "",
+    });
+
     try {
-      await onUploadFile(fileToUpload, targetSessionId || undefined);
-      setShowUploadModal(false);
-      setFileToUpload(null);
-      setTargetSessionId("");
-    } catch {
-      // toast already handled by caller
+      await onUploadFile(fileToUpload, targetSessionId || undefined, (p) => {
+        setUploadProgress((curr) => ({
+          ...curr,
+          status: p.stage === "done" ? "success" : "uploading",
+          percent: p.percent,
+          stage: p.stage,
+          message: p.message,
+          loaded: p.loaded ?? curr?.loaded ?? 0,
+          total: p.total ?? fileToUpload.size,
+        }));
+      });
+
+      setUploadProgress({
+        status: "success",
+        percent: 100,
+        stage: "done",
+        message: `Đã tải lên "${fileToUpload.name}" thành công!`,
+        loaded: fileToUpload.size,
+        total: fileToUpload.size,
+      });
+
+      setTimeout(() => {
+        setShowUploadModal(false);
+        setFileToUpload(null);
+        setUploadProgress(null);
+        setTargetSessionId("");
+      }, 1200);
+    } catch (err) {
+      const errText = err?.message || "Tải lên tài liệu thất bại. Vui lòng thử lại.";
+      setUploadProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Đã xảy ra lỗi khi tải lên tài liệu",
+        errorMessage: errText,
+        loaded: 0,
+        total: fileToUpload.size,
+      });
     }
   };
 
   return (
     <div className="space-y-4">
       {/* Tab Header & Upload trigger */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
-        <div>
-          <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <Files className="h-4 w-4 text-blue-600 dark:text-sky-400" />
-            Tài liệu & Học liệu của lớp
-          </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Slide bài giảng, đề thi và tài liệu học tập được sắp xếp theo từng buổi học.
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 p-4.5 rounded-2xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50/70 via-teal-50/30 to-white dark:border-emerald-900/40 dark:bg-gradient-to-r dark:from-emerald-950/20 dark:via-slate-900 dark:to-slate-900 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-800/40">
+            <Files className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+              Tài liệu & Học liệu của lớp
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+              Slide bài giảng, đề thi và tài liệu học tập được sắp xếp theo từng buổi học ({files.length} tệp).
+            </p>
+          </div>
         </div>
 
         <button
           type="button"
           onClick={() => setShowUploadModal(true)}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm ring-1 ring-emerald-500/30 transition active:scale-95"
         >
           <UploadCloud className="h-4 w-4" />
           <span>Tải lên tài liệu</span>
@@ -156,14 +216,14 @@ export default function ClassWorkspaceFilesTab({
               key={dateKey}
               className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs"
             >
-              <div className="bg-slate-50/80 dark:bg-slate-800/40 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+              <div className="bg-emerald-50/50 dark:bg-emerald-950/20 px-4 py-2.5 border-b border-emerald-100 dark:border-emerald-900/30 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  <CalendarDays className="h-3.5 w-3.5 text-blue-600" />
+                  <CalendarDays className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span className="font-bold text-slate-800 dark:text-white capitalize">
                     {dateKey === "common" ? "Tài liệu chung của lớp" : formatDateOnly(dateKey)}
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-400 font-semibold">
+                <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-100/70 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">
                   {groupFiles.length} file
                 </span>
               </div>
@@ -176,7 +236,7 @@ export default function ClassWorkspaceFilesTab({
                   return (
                     <div
                       key={file.id}
-                      className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 shadow-2xs hover:shadow-xs transition"
+                      className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-800/40 shadow-2xs hover:border-emerald-400 hover:shadow-xs dark:hover:border-emerald-700/60 transition"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${config.className}`}>
@@ -198,7 +258,7 @@ export default function ClassWorkspaceFilesTab({
                             href={file.downloadUrl || file.download_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            className="p-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-600 transition"
                             title="Tải xuống"
                           >
                             <Download className="h-4 w-4" />
@@ -208,7 +268,7 @@ export default function ClassWorkspaceFilesTab({
                           <button
                             type="button"
                             onClick={() => onDeleteFile(file.id)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
                             title="Xóa tài liệu"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -267,26 +327,53 @@ export default function ClassWorkspaceFilesTab({
                 <input
                   type="file"
                   required
-                  onChange={(e) => setFileToUpload(e.target.files?.[0] || null)}
-                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700"
+                  onChange={(e) => {
+                    setFileToUpload(e.target.files?.[0] || null);
+                    setUploadProgress(null);
+                  }}
+                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700"
                 />
               </div>
+
+              {/* Ô thông báo tiến độ & cảnh báo lỗi chi tiết */}
+              {uploadProgress && (
+                <FileUploadProgressBox
+                  file={fileToUpload}
+                  progress={uploadProgress}
+                  onRetry={handleUploadSubmit}
+                  onCancel={() => {
+                    setUploadProgress(null);
+                    setFileToUpload(null);
+                  }}
+                />
+              )}
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowUploadModal(false)}
+                  onClick={() => {
+                    if (isUploading) return;
+                    setShowUploadModal(false);
+                    setUploadProgress(null);
+                    setFileToUpload(null);
+                  }}
                   disabled={isUploading}
-                  className="rounded-xl px-3 py-1.5 font-bold text-slate-500 hover:bg-slate-100"
+                  className="rounded-xl px-3 py-1.5 font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
-                  Hủy
+                  {uploadProgress?.status === "success" ? "Đóng" : "Hủy"}
                 </button>
                 <button
                   type="submit"
-                  disabled={isUploading || !fileToUpload}
-                  className="rounded-xl bg-blue-600 px-4 py-1.5 font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                  disabled={isUploading || !fileToUpload || uploadProgress?.status === "success"}
+                  className="rounded-xl bg-emerald-600 px-4 py-1.5 font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
                 >
-                  {isUploading ? "Đang tải..." : "Tải lên"}
+                  {isUploading
+                    ? "Đang tải..."
+                    : uploadProgress?.status === "error"
+                    ? "Thử tải lại"
+                    : uploadProgress?.status === "success"
+                    ? "Đã tải xong ✓"
+                    : "Tải lên"}
                 </button>
               </div>
             </form>

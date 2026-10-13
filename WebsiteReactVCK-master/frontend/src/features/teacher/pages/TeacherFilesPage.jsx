@@ -32,6 +32,7 @@ import {
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
+import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
 
 const formatBytes = (bytes) => {
   const b = Number(bytes) || 0;
@@ -110,6 +111,7 @@ export default function TeacherFilesPage() {
   const [uploadVisibility, setUploadVisibility] = useState("CLASS_ONLY");
   const [selectedUploadFile, setSelectedUploadFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
 
   // Load lookup data & file list
   const loadData = useCallback(async () => {
@@ -300,25 +302,81 @@ export default function TeacherFilesPage() {
     setSearchParams(next);
   };
 
-  // Upload file action
+  // Upload file action with progress and error state
   const handleExecuteUpload = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!uploadClassId) return toast.error("Vui lòng chọn lớp học.");
     if (!selectedUploadFile) return toast.error("Vui lòng chọn file cần tải lên.");
 
+    if (selectedUploadFile.size > 100 * 1024 * 1024) {
+      setUploadProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Kích thước tệp vượt quá giới hạn",
+        errorMessage: "Kích thước tài liệu không được vượt quá 100MB theo quy định.",
+      });
+      return;
+    }
+
     setIsUploading(true);
+    setUploadProgress({
+      status: "uploading",
+      percent: 5,
+      stage: "init",
+      message: "Đang khởi tạo liên kết tải lên an toàn...",
+      loaded: 0,
+      total: selectedUploadFile.size,
+      errorMessage: "",
+    });
+
     try {
       await uploadClassFile(uploadClassId, selectedUploadFile, {
         visibility: uploadVisibility,
         sessionId: uploadSessionId || undefined,
+        onProgress: (p) => {
+          setUploadProgress((curr) => ({
+            ...curr,
+            status: p.stage === "done" ? "success" : "uploading",
+            percent: p.percent,
+            stage: p.stage,
+            message: p.message,
+            loaded: p.loaded ?? curr?.loaded ?? 0,
+            total: p.total ?? selectedUploadFile.size,
+          }));
+        },
+      });
+
+      setUploadProgress({
+        status: "success",
+        percent: 100,
+        stage: "done",
+        message: `Đã tải lên "${selectedUploadFile.name}" thành công!`,
+        loaded: selectedUploadFile.size,
+        total: selectedUploadFile.size,
       });
       toast.success(`Đã tải lên "${selectedUploadFile.name}" thành công!`);
-      setSelectedUploadFile(null);
-      setIsUploadOpen(false);
-      await loadData();
+
+      // Cho người dùng xem trạng thái hoàn tất 1.2s rồi tự đóng modal và reload dữ liệu
+      setTimeout(async () => {
+        setSelectedUploadFile(null);
+        setUploadProgress(null);
+        setIsUploadOpen(false);
+        await loadData();
+      }, 1200);
     } catch (err) {
-      console.error("Lỗi upload:", err);
-      toast.error(err.message || "Tải lên tài liệu thất bại.");
+      console.error("Lỗi upload tài liệu:", err);
+      const errText = err.message || "Tải lên tài liệu thất bại. Vui lòng kiểm tra lại kết nối mạng và thử lại.";
+      setUploadProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Đã xảy ra lỗi khi tải lên tài liệu",
+        errorMessage: errText,
+        loaded: 0,
+        total: selectedUploadFile.size,
+      });
+      toast.error(errText);
     } finally {
       setIsUploading(false);
     }
@@ -344,7 +402,7 @@ export default function TeacherFilesPage() {
     <div className="min-h-full bg-slate-50 dark:bg-slate-950 px-4 py-5 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       <div className="mx-auto max-w-7xl space-y-5">
         {/* Header Hero */}
-        <header className="overflow-hidden rounded-3xl border border-blue-200/80 bg-gradient-to-r from-blue-700 via-indigo-700 to-violet-800 p-5 sm:p-6 text-white shadow-lg dark:border-blue-900/60">
+        <header className="overflow-hidden rounded-3xl border border-emerald-300/60 dark:border-emerald-800/60 bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-800 dark:from-emerald-900 dark:via-teal-900 dark:to-slate-900 p-5 sm:p-6 text-white shadow-lg">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="space-y-1.5">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-bold backdrop-blur">
@@ -353,7 +411,7 @@ export default function TeacherFilesPage() {
               <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
                 {isAdmin ? "Kho Tài Liệu Toàn Hệ Thống" : "Tài Liệu & Học Liệu Giảng Dạy"}
               </h1>
-              <p className="text-xs sm:text-sm text-blue-100 max-w-2xl leading-relaxed">
+              <p className="text-xs sm:text-sm text-emerald-100 max-w-2xl leading-relaxed">
                 Quản lý các tệp tài liệu, đề thi, slide bài giảng được đăng tải mỗi ngày theo từng Lớp học và Giáo trình môn học.
               </p>
             </div>
@@ -361,7 +419,7 @@ export default function TeacherFilesPage() {
             <button
               type="button"
               onClick={() => setIsUploadOpen(true)}
-              className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-xs font-black text-blue-700 shadow-md transition hover:bg-blue-50 active:scale-95"
+              className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-xs font-black text-emerald-800 shadow-md transition hover:bg-emerald-50 active:scale-95"
             >
               <Plus className="h-4 w-4" /> Đăng tài liệu mới
             </button>
@@ -370,19 +428,19 @@ export default function TeacherFilesPage() {
           {/* Quick Metrics */}
           <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-white/20 pt-4 text-xs">
             <div className="bg-white/10 rounded-xl p-3 backdrop-blur-xs">
-              <span className="text-blue-200 block text-[11px]">Tổng số tài liệu</span>
+              <span className="text-emerald-200 block text-[11px]">Tổng số tài liệu</span>
               <span className="text-lg font-black">{files.length}</span>
             </div>
             <div className="bg-white/10 rounded-xl p-3 backdrop-blur-xs">
-              <span className="text-blue-200 block text-[11px]">Số môn / khóa học</span>
+              <span className="text-emerald-200 block text-[11px]">Số môn / khóa học</span>
               <span className="text-lg font-black">{uniqueCourses.length}</span>
             </div>
             <div className="bg-white/10 rounded-xl p-3 backdrop-blur-xs">
-              <span className="text-blue-200 block text-[11px]">Lớp đang theo dõi</span>
+              <span className="text-emerald-200 block text-[11px]">Lớp đang theo dõi</span>
               <span className="text-lg font-black">{availableClasses.length}</span>
             </div>
             <div className="bg-white/10 rounded-xl p-3 backdrop-blur-xs">
-              <span className="text-blue-200 block text-[11px]">Tổng dung lượng</span>
+              <span className="text-emerald-200 block text-[11px]">Tổng dung lượng</span>
               <span className="text-lg font-black">
                 {formatBytes(files.reduce((acc, f) => acc + (Number(f.sizeBytes) || 0), 0))}
               </span>
@@ -394,7 +452,7 @@ export default function TeacherFilesPage() {
         <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3.5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-blue-600 dark:text-sky-400" />
+              <Filter className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                 Bộ lọc sắp xếp khoa học
               </h2>
@@ -407,7 +465,7 @@ export default function TeacherFilesPage() {
                 onClick={() => setViewMode("timeline")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   viewMode === "timeline"
-                    ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-sky-400 shadow-xs"
+                    ? "bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs ring-1 ring-emerald-500/10"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
                 title="Sắp xếp theo Ngày học (Timeline)"
@@ -420,7 +478,7 @@ export default function TeacherFilesPage() {
                 onClick={() => setViewMode("tree")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   viewMode === "tree"
-                    ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-sky-400 shadow-xs"
+                    ? "bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs ring-1 ring-emerald-500/10"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
                 title="Sắp xếp theo Cây Môn & Lớp"
@@ -433,7 +491,7 @@ export default function TeacherFilesPage() {
                 onClick={() => setViewMode("table")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   viewMode === "table"
-                    ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-sky-400 shadow-xs"
+                    ? "bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs ring-1 ring-emerald-500/10"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
                 title="Dạng Bảng chi tiết"
@@ -454,7 +512,7 @@ export default function TeacherFilesPage() {
               <select
                 value={selectedCourseId}
                 onChange={handleCourseChange}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900"
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900"
               >
                 <option value="all">Tất cả môn học ({uniqueCourses.length})</option>
                 {uniqueCourses.map((c) => (
@@ -473,7 +531,7 @@ export default function TeacherFilesPage() {
               <select
                 value={selectedClassId}
                 onChange={handleClassChange}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900"
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900"
               >
                 <option value="all">Tất cả các lớp ({availableClasses.length})</option>
                 {availableClasses.map((cls) => (
@@ -492,7 +550,7 @@ export default function TeacherFilesPage() {
               <select
                 value={selectedDateFilter}
                 onChange={handleDateFilterChange}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900"
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900"
               >
                 <option value="all">Tất cả ngày</option>
                 <option value="today">Hôm nay ({new Date().toLocaleDateString("vi-VN")})</option>
@@ -511,7 +569,7 @@ export default function TeacherFilesPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Tên file, buổi học..."
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 py-2 pl-8 pr-3 text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 py-2 pl-8 pr-3 text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900"
                 />
               </div>
             </div>
@@ -534,7 +592,7 @@ export default function TeacherFilesPage() {
                 onClick={() => setSelectedKind(kind)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
                   selectedKind === kind
-                    ? "bg-blue-600 text-white shadow-xs"
+                    ? "bg-emerald-600 text-white shadow-xs"
                     : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
                 }`}
               >
@@ -564,7 +622,7 @@ export default function TeacherFilesPage() {
                 {/* Header Ngày học */}
                 <div className="bg-slate-50/80 dark:bg-slate-800/50 px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-sky-300 font-bold text-xs">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold text-xs">
                       <CalendarDays className="h-4 w-4" />
                     </span>
                     <div>
@@ -602,7 +660,7 @@ export default function TeacherFilesPage() {
                 {/* Course Header */}
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                   <div className="flex items-center gap-3">
-                    <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-sky-300 text-xs font-bold border border-blue-200 dark:border-blue-800">
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 text-xs font-bold border border-emerald-200 dark:border-emerald-800">
                       {course.courseCategory}
                     </span>
                     <h3 className="text-base font-black text-slate-900 dark:text-white">
@@ -713,7 +771,7 @@ export default function TeacherFilesPage() {
                               href={file.downloadUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 transition"
+                              className="p-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-600 transition"
                               title="Tải xuống"
                             >
                               <Download className="h-4 w-4" />
@@ -890,22 +948,46 @@ export default function TeacherFilesPage() {
                 </div>
               </div>
 
+              {/* Ô thông báo tiến độ tải & ô cảnh báo lỗi chi tiết */}
+              {uploadProgress && (
+                <FileUploadProgressBox
+                  file={selectedUploadFile}
+                  progress={uploadProgress}
+                  onRetry={handleExecuteUpload}
+                  onCancel={() => {
+                    setUploadProgress(null);
+                    setSelectedUploadFile(null);
+                  }}
+                />
+              )}
+
               {/* Action buttons */}
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setIsUploadOpen(false)}
+                  onClick={() => {
+                    if (isUploading) return;
+                    setIsUploadOpen(false);
+                    setUploadProgress(null);
+                    setSelectedUploadFile(null);
+                  }}
                   disabled={isUploading}
                   className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
                 >
-                  Hủy
+                  {uploadProgress?.status === "success" ? "Đóng" : "Hủy"}
                 </button>
                 <button
                   type="submit"
-                  disabled={isUploading || !selectedUploadFile}
+                  disabled={isUploading || !selectedUploadFile || uploadProgress?.status === "success"}
                   className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
                 >
-                  {isUploading ? "Đang tải lên..." : "Bắt đầu tải lên"}
+                  {isUploading
+                    ? "Đang tải lên..."
+                    : uploadProgress?.status === "error"
+                    ? "Thử tải lại"
+                    : uploadProgress?.status === "success"
+                    ? "Đã tải xong ✓"
+                    : "Bắt đầu tải lên"}
                 </button>
               </div>
             </form>

@@ -1,9 +1,44 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, BookOpen, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, GraduationCap, Sparkles, Users } from "lucide-react";
 import { fetchCourseWorkspace } from "../../api/lmsClient";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
+
+const CLASS_THEMES = [
+  {
+    topBar: "from-blue-500 via-indigo-500 to-violet-500",
+    iconBg: "bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-blue-500/30",
+    badge: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-sky-300 ring-blue-200/60 dark:ring-blue-800/60",
+    glow: "from-blue-500/15 to-indigo-500/5",
+    borderHover: "hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-blue-500/10",
+    buttonBg: "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-600/25",
+  },
+  {
+    topBar: "from-emerald-500 via-teal-500 to-cyan-500",
+    iconBg: "bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-emerald-500/30",
+    badge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 ring-emerald-200/60 dark:ring-emerald-800/60",
+    glow: "from-emerald-500/15 to-teal-500/5",
+    borderHover: "hover:border-emerald-400 dark:hover:border-emerald-500 hover:shadow-emerald-500/10",
+    buttonBg: "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/25",
+  },
+  {
+    topBar: "from-purple-500 via-fuchsia-500 to-pink-500",
+    iconBg: "bg-gradient-to-br from-purple-500 to-fuchsia-600 text-white shadow-purple-500/30",
+    badge: "bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 ring-purple-200/60 dark:ring-purple-800/60",
+    glow: "from-purple-500/15 to-fuchsia-500/5",
+    borderHover: "hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-purple-500/10",
+    buttonBg: "bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 text-white shadow-purple-600/25",
+  },
+  {
+    topBar: "from-amber-400 via-orange-500 to-rose-500",
+    iconBg: "bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-amber-500/30",
+    badge: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 ring-amber-200/60 dark:ring-amber-800/60",
+    glow: "from-amber-500/15 to-orange-500/5",
+    borderHover: "hover:border-amber-400 dark:hover:border-amber-500 hover:shadow-amber-500/10",
+    buttonBg: "bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-700 hover:to-rose-700 text-white shadow-amber-600/25",
+  },
+];
 
 export default function CourseClassListPage() {
   const { courseId } = useParams();
@@ -55,16 +90,16 @@ export default function CourseClassListPage() {
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Khóa học của tôi
         </Link>
-        <header className="mt-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm dark:shadow-none">
+        <header className="mt-3 rounded-2xl border border-blue-100 dark:border-slate-800 bg-gradient-to-r from-blue-50/80 via-white to-indigo-50/50 dark:from-slate-900 dark:via-slate-900/95 dark:to-blue-950/20 p-4 sm:p-5 shadow-sm dark:shadow-none">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-slate-800 px-2.5 py-0.5 text-xs font-semibold text-blue-600 dark:text-sky-300 ring-1 ring-blue-100 dark:ring-slate-700">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 text-xs font-black text-white shadow-xs">
               <Users className="h-3.5 w-3.5" /> Chọn lớp học
             </span>
-            <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+            <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white">
               {course.title}
             </h1>
           </div>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-300">
             Chỉ các lớp mà hệ thống quản lý đã xếp cho bạn được hiển thị. Chọn một lớp để mở nội dung và hoạt động học tập.
           </p>
         </header>
@@ -78,47 +113,72 @@ export default function CourseClassListPage() {
             />
           </div>
         ) : (
-          <section className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5 sm:gap-4">
-            {classes.map((liveClass) => (
-              <Link
-                key={liveClass.id}
-                to={`/lms/courses/${courseId}/classes/${liveClass.id}`}
-                className="group relative flex aspect-square flex-col justify-between rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 sm:p-4.5 shadow-sm dark:shadow-none transition hover:-translate-y-1 hover:border-blue-300 dark:hover:border-slate-700 hover:shadow-md"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-400 transition group-hover:bg-blue-600 group-hover:text-white">
-                      <BookOpen className="h-4 w-4 sm:h-5 sm:w-5" />
+          <section className="mt-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-4.5">
+            {classes.map((liveClass, index) => {
+              const theme = CLASS_THEMES[index % CLASS_THEMES.length];
+              const displayTitle = liveClass.title?.startsWith("Lớp") ? liveClass.title : `Lớp ${liveClass.title}`;
+              return (
+                <Link
+                  key={liveClass.id}
+                  to={`/lms/courses/${courseId}/classes/${liveClass.id}`}
+                  className={`group relative flex min-h-[220px] flex-col justify-between overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/95 p-4 sm:p-5 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl ${theme.borderHover}`}
+                >
+                  {/* Top Colorful Accent Strip */}
+                  <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${theme.topBar}`} />
+
+                  {/* Soft Background Glow */}
+                  <div
+                    className={`pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-gradient-to-br ${theme.glow} blur-2xl transition-transform duration-500 group-hover:scale-150`}
+                  />
+
+                  <div className="relative">
+                    {/* Header Row: Icon & Status Badge */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl shadow-md ${theme.iconBg} transition-transform duration-300 group-hover:scale-110`}
+                      >
+                        <BookOpen className="h-5 w-5" />
+                      </div>
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/70 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200/80 dark:ring-emerald-800/80 shadow-xs">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Đã cấp quyền
+                      </span>
                     </div>
-                    <span className="rounded-full bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-200/60 dark:ring-emerald-800/60">
-                      Đã cấp quyền
+
+                    {/* Class Title & Teacher */}
+                    <div className="mt-3.5 space-y-1.5">
+                      <h2 className="line-clamp-2 text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white transition-colors group-hover:text-blue-600 dark:group-hover:text-sky-400">
+                        {displayTitle}
+                      </h2>
+                      <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        <GraduationCap className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400 shrink-0" />
+                        <span className="truncate max-w-[170px]">
+                          GV: {liveClass.instructor_name || "Chưa phân công"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {liveClass.description && (
+                      <p className="mt-2 line-clamp-2 text-[11px] sm:text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                        {liveClass.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Footer Action */}
+                  <div className="relative mt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-3 text-xs">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-400 dark:text-slate-500">
+                      <Sparkles className="h-3 w-3 text-amber-500" /> Trực tuyến
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold shadow-md transition-all duration-200 ${theme.buttonBg} group-hover:scale-105`}
+                    >
+                      Vào lớp <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" />
                     </span>
                   </div>
-
-                  <div className="mt-2.5 sm:mt-3">
-                    <h2 className="line-clamp-2 text-sm sm:text-base font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-sky-400">
-                      {liveClass.title}
-                    </h2>
-                    <p className="mt-0.5 sm:mt-1 truncate text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
-                      Giáo viên: {liveClass.instructor_name || "Chưa phân công"}
-                    </p>
-                  </div>
-
-                  {liveClass.description && (
-                    <p className="mt-1.5 line-clamp-2 text-[11px] sm:text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                      {liveClass.description}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-2.5 sm:pt-3 text-xs">
-                  <span className="hidden sm:inline text-[11px] text-slate-400 dark:text-slate-500">Lớp học</span>
-                  <span className="inline-flex items-center gap-1 font-bold text-blue-600 dark:text-sky-400 text-xs ml-auto sm:ml-0">
-                    Vào lớp <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 transition group-hover:translate-x-1" />
-                  </span>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </section>
         )}
       </div>

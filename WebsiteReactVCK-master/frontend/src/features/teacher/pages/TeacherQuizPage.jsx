@@ -17,6 +17,7 @@ import {
 import { EmptyState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import QuestionBankSampler from "../components/QuestionBankSampler";
+import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
 import {
   createTeacherQuiz,
   createQuestionBankItem,
@@ -155,6 +156,7 @@ export default function TeacherQuizPage() {
   const [questions, setQuestions] = useState([createBlankQuestion()]);
   const [answerKeyPaste, setAnswerKeyPaste] = useState("");
   const [paperFile, setPaperFile] = useState(null);
+  const [paperProgress, setPaperProgress] = useState(null);
   const [questionBank, setQuestionBank] = useState([]);
   const [questionBankLoading, setQuestionBankLoading] = useState(false);
 
@@ -396,17 +398,78 @@ export default function TeacherQuizPage() {
       return;
     }
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setPaperFile(file);
+      setPaperProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Định dạng tệp không hợp lệ",
+        errorMessage: "Chỉ chấp nhận file PDF làm đề quiz.",
+      });
       toast.error("Chỉ chấp nhận file PDF làm đề quiz.");
       return;
     }
+    if (file.size > 100 * 1024 * 1024) {
+      setPaperFile(file);
+      setPaperProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Kích thước tệp vượt quá giới hạn",
+        errorMessage: "File đề PDF không được vượt quá 100MB.",
+      });
+      return;
+    }
+
+    setPaperFile(file);
+    setUploadingPaper(true);
+    setPaperProgress({
+      status: "uploading",
+      percent: 5,
+      stage: "init",
+      message: "Đang khởi tạo liên kết tải đề PDF...",
+      loaded: 0,
+      total: file.size,
+    });
+
     try {
-      setUploadingPaper(true);
-      const response = await uploadCourseQuizPaper(courseId, file);
+      const response = await uploadCourseQuizPaper(courseId, file, {
+        onProgress: (p) => {
+          setPaperProgress((curr) => ({
+            ...curr,
+            status: p.stage === "done" ? "success" : "uploading",
+            percent: p.percent,
+            stage: p.stage,
+            message: p.message,
+            loaded: p.loaded ?? curr?.loaded ?? 0,
+            total: p.total ?? file.size,
+          }));
+        },
+      });
+
       if (!response?.success || !response?.data?.id) throw new Error(response?.message || "Không thể xác nhận file PDF");
-      setPaperFile({ id: response.data.id, name: response.data.name || file.name });
+      setPaperFile({ id: response.data.id, name: response.data.name || file.name, size: file.size });
+      setPaperProgress({
+        status: "success",
+        percent: 100,
+        stage: "done",
+        message: `Đã tải đề PDF "${file.name}" thành công!`,
+        loaded: file.size,
+        total: file.size,
+      });
       toast.success("Đã tải đề PDF. Dán bảng đáp án để tạo quiz.");
     } catch (error) {
-      toast.error(error?.message || "Không thể tải đề PDF");
+      const errText = error?.message || "Không thể tải đề PDF. Vui lòng thử lại.";
+      setPaperProgress({
+        status: "error",
+        percent: 0,
+        stage: "error",
+        message: "Lỗi tải đề PDF",
+        errorMessage: errText,
+        loaded: 0,
+        total: file.size,
+      });
+      toast.error(errText);
     } finally {
       setUploadingPaper(false);
     }
@@ -603,7 +666,44 @@ export default function TeacherQuizPage() {
                     <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-200">Chỉ hiển thị các buổi đang diễn ra hoặc sắp tới. Buổi đã kết thúc/hủy không thể chọn và máy chủ cũng sẽ chặn tạo quiz.</div>
                     {activityScope === "homework" && <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Hạn nộp Quiz về nhà <b className="text-rose-500">*</b></span><input type="datetime-local" value={dueDate} onChange={(event) => setDueDate(event.target.value)} className="w-full rounded-xl border border-emerald-300 bg-emerald-50/50 px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-emerald-500 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-white" /></label>}
                     <div className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Cách tạo đề <b className="text-rose-500">*</b></span><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => selectQuizMode("manual")} className={`rounded-2xl border p-3 text-left transition ${quizMode === "manual" ? "border-violet-500 bg-violet-50 ring-2 ring-violet-500/15 dark:bg-violet-950/30" : "border-slate-200 bg-white hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900"}`}><span className="block text-xs font-black text-slate-950 dark:text-white">Tự soạn từng câu</span><span className="mt-1 block text-[11px] leading-4 text-slate-600 dark:text-slate-400">Nhập nội dung, phương án A/B/C/D và đáp án ngay trong LMS.</span></button><button type="button" onClick={() => selectQuizMode("paper")} className={`rounded-2xl border p-3 text-left transition ${quizMode === "paper" ? "border-violet-500 bg-violet-50 ring-2 ring-violet-500/15 dark:bg-violet-950/30" : "border-slate-200 bg-white hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900"}`}><span className="block text-xs font-black text-slate-950 dark:text-white">Dùng file đề PDF</span><span className="mt-1 block text-[11px] leading-4 text-slate-600 dark:text-slate-400">Tải PDF đề, dán đáp án 1 A / 2 B…; học viên làm trên bảng đáp án.</span></button></div></div>
-                    {quizMode === "paper" && <label className="md:col-span-2"><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">File đề PDF <b className="text-rose-500">*</b></span><div className="flex flex-col gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/70 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-violet-800 dark:bg-violet-950/20"><div className="min-w-0"><p className="truncate text-xs font-bold text-violet-950 dark:text-violet-100">{paperFile ? `📄 ${paperFile.name}` : "Tải đề PDF để học viên đọc ở cột bên trái."}</p><p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Sau khi tải, dán danh sách đáp án ở bảng bên phải để tạo số câu tương ứng.</p></div><input type="file" accept="application/pdf,.pdf" disabled={!courseId || uploadingPaper} onChange={handlePaperSelect} className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-2 file:text-xs file:font-black file:text-white hover:file:bg-violet-500 disabled:opacity-50 sm:w-auto" /></div></label>}
+                    {quizMode === "paper" && (
+                      <div className="md:col-span-2 space-y-2">
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">
+                            File đề PDF <b className="text-rose-500">*</b>
+                          </span>
+                          <div className="flex flex-col gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/70 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-violet-800 dark:bg-violet-950/20">
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-bold text-violet-950 dark:text-violet-100">
+                                {paperFile ? `📄 ${paperFile.name}` : "Tải đề PDF để học viên đọc ở cột bên trái."}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">
+                                Sau khi tải, dán danh sách đáp án ở bảng bên phải để tạo số câu tương ứng.
+                              </p>
+                            </div>
+                            <input
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              disabled={!courseId || uploadingPaper}
+                              onChange={handlePaperSelect}
+                              className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-2 file:text-xs file:font-black file:text-white hover:file:bg-violet-500 disabled:opacity-50 sm:w-auto"
+                            />
+                          </div>
+                        </label>
+
+                        {/* Ô thông báo tiến độ & cảnh báo lỗi tải file đề PDF */}
+                        {paperProgress && (
+                          <FileUploadProgressBox
+                            file={paperFile}
+                            progress={paperProgress}
+                            onCancel={() => {
+                              setPaperProgress(null);
+                              setPaperFile(null);
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
                     <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Thời gian (phút)</span><input type="number" min="1" max="240" value={timeLimit} onChange={(event) => setTimeLimit(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
                     <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Điểm đạt (%)</span><input type="number" min="0" max="100" value={passScore} onChange={(event) => setPassScore(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
                     <label><span className="mb-1.5 block text-xs font-black text-slate-700 dark:text-slate-200">Số lượt làm</span><select value={attemptLimit} onChange={(event) => setAttemptLimit(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{[1, 2, 3, 4, 5].map((count) => <option key={count} value={count}>{count} lượt</option>)}</select></label>

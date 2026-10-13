@@ -57,7 +57,7 @@ const fileConfig = {
   sheet: { label: "Excel", icon: FileSpreadsheet, className: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50" },
   slide: { label: "Slide", icon: FileText, className: "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/50" },
   image: { label: "Ảnh", icon: Files, className: "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-900/50" },
-  other: { label: "File", icon: Files, className: "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700" },
+  other: { label: "File", icon: Files, className: "bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-900/50" },
 };
 
 export default function StudentFilesPage() {
@@ -212,16 +212,16 @@ export default function StudentFilesPage() {
     <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 py-5 sm:px-6 lg:px-8 transition-colors duration-200">
       <div className="mx-auto max-w-6xl space-y-4">
         {/* Banner Section */}
-        <section className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
+        <section className="rounded-3xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-white dark:border-emerald-900/40 dark:bg-gradient-to-r dark:from-emerald-950/30 dark:via-slate-900 dark:to-slate-900 p-5 sm:p-6 shadow-2xs">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-1.5">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 px-3 py-1 text-xs font-bold text-blue-600 dark:text-sky-300 ring-1 ring-blue-100 dark:ring-blue-900/60">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 px-3 py-1 text-xs font-bold ring-1 ring-emerald-200 dark:ring-emerald-800/40">
                 <FolderOpen className="h-3.5 w-3.5" /> Kho tài liệu học tập
               </span>
               <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
                 {routeClassId ? "Tài Liệu Theo Buổi Của Lớp" : routeCourseId ? "Tài Liệu Môn Học" : "Tài Liệu & Học Liệu Mỗi Ngày"}
               </h1>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
                 Tất cả slide bài giảng, đề ôn tập và tài liệu học tập được sắp xếp theo từng Ngày học và Lớp học để bạn dễ dàng ôn luyện.
               </p>
             </div>
@@ -233,7 +233,7 @@ export default function StudentFilesPage() {
                 onClick={() => setViewMode("timeline")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   viewMode === "timeline"
-                    ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-sky-400 shadow-xs"
+                    ? "bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs ring-1 ring-emerald-500/10"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
               >
@@ -245,7 +245,7 @@ export default function StudentFilesPage() {
                 onClick={() => setViewMode("cards")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   viewMode === "cards"
-                    ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-sky-400 shadow-xs"
+                    ? "bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs ring-1 ring-emerald-500/10"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                 }`}
               >
@@ -265,7 +265,7 @@ export default function StudentFilesPage() {
                 <select
                   value={selectedCourseId}
                   onChange={handleCourseFilterChange}
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900"
                 >
                   <option value="all">Tất cả môn học ({filterOptions.courses.length})</option>
                   {filterOptions.courses.map((c) => (
@@ -285,7 +285,7 @@ export default function StudentFilesPage() {
                 <select
                   value={selectedClassId}
                   onChange={handleClassFilterChange}
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900"
                 >
                   <option value="all">Tất cả các lớp ({filterOptions.classes.length})</option>
                   {filterOptions.classes.map((cl) => (
@@ -307,7 +307,7 @@ export default function StudentFilesPage() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Tìm tên bài, tên file, giảng viên..."
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 py-2 pl-8 pr-3 text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 py-2 pl-8 pr-3 text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900"
                 />
               </div>
             </div>
