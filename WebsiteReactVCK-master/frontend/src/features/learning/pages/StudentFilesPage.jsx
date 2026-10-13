@@ -52,12 +52,48 @@ function kindForFile(file) {
 }
 
 const fileConfig = {
-  pdf: { label: "PDF", icon: FileText, className: "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/50" },
-  doc: { label: "Word", icon: FileText, className: "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-400 border-blue-200 dark:border-blue-900/50" },
-  sheet: { label: "Excel", icon: FileSpreadsheet, className: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50" },
-  slide: { label: "Slide", icon: FileText, className: "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/50" },
-  image: { label: "Ảnh", icon: Files, className: "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-900/50" },
-  other: { label: "File", icon: Files, className: "bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-900/50" },
+  pdf: {
+    label: "PDF",
+    icon: FileText,
+    className: "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/60",
+    pill: "bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300",
+    glow: "hover:border-rose-400 dark:hover:border-rose-600/70",
+  },
+  doc: {
+    label: "Word",
+    icon: FileText,
+    className: "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-400 border-blue-200 dark:border-blue-900/60",
+    pill: "bg-blue-100 text-blue-700 dark:bg-blue-950/80 dark:text-sky-300",
+    glow: "hover:border-blue-400 dark:hover:border-blue-600/70",
+  },
+  sheet: {
+    label: "Excel",
+    icon: FileSpreadsheet,
+    className: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/60",
+    pill: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300",
+    glow: "hover:border-emerald-400 dark:hover:border-emerald-600/70",
+  },
+  slide: {
+    label: "Slide",
+    icon: FileText,
+    className: "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/60",
+    pill: "bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300",
+    glow: "hover:border-amber-400 dark:hover:border-amber-600/70",
+  },
+  image: {
+    label: "Ảnh",
+    icon: Files,
+    className: "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-900/60",
+    pill: "bg-purple-100 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300",
+    glow: "hover:border-purple-400 dark:hover:border-purple-600/70",
+  },
+  other: {
+    label: "Tài liệu",
+    icon: Files,
+    className: "bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-900/60",
+    pill: "bg-teal-100 text-teal-700 dark:bg-teal-950/80 dark:text-teal-300",
+    glow: "hover:border-teal-400 dark:hover:border-teal-600/70",
+  },
 };
 
 export default function StudentFilesPage() {
@@ -401,49 +437,61 @@ export default function StudentFilesPage() {
                 </div>
 
                 {/* Danh sách file của ngày */}
-                <div className="p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="p-4 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
                   {groupFiles.map((file) => {
                     const kind = kindForFile(file);
-                    const config = fileConfig[kind];
+                    const config = fileConfig[kind] || fileConfig.other;
                     const Icon = config.icon;
+                    const downloadUrl = file.downloadUrl || file.download_url;
                     return (
                       <div
                         key={file.id}
-                        className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-800/40 p-4 flex flex-col justify-between space-y-3 hover:border-emerald-400 hover:shadow-md transition"
+                        className={`group rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/95 p-4 flex flex-col justify-between space-y-3 shadow-xs hover:shadow-lg dark:hover:shadow-blue-950/30 transition-all duration-200 hover:-translate-y-0.5 ${config.glow}`}
                       >
-                        <div className="space-y-2">
+                        <div className="space-y-2.5">
                           <div className="flex items-start justify-between gap-2">
-                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${config.className}`}>
-                              <Icon className="h-4 w-4" />
+                            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-transform duration-200 group-hover:scale-105 ${config.className}`}>
+                              <Icon className="h-5 w-5" />
                             </span>
-                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                              {fileSize(file.sizeBytes || file.size_bytes)}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md ${config.pill}`}>
+                                {config.label}
+                              </span>
+                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700">
+                                {fileSize(file.sizeBytes || file.size_bytes)}
+                              </span>
+                            </div>
                           </div>
 
                           <div>
-                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block truncate">
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-sky-400 block truncate">
                               {file.courseTitle || "CSCA Course"} · {file.classTitle || "Lớp học"}
                             </span>
-                            <h4 className="text-xs font-bold text-slate-900 dark:text-white line-clamp-2 mt-0.5 leading-relaxed" title={file.name}>
-                              {file.name}
+                            <h4 className="text-xs sm:text-[13px] font-bold text-slate-900 dark:text-white line-clamp-2 mt-0.5 leading-snug group-hover:text-blue-600 dark:group-hover:text-sky-400 transition-colors" title={file.name}>
+                              {downloadUrl ? (
+                                <a href={downloadUrl} target="_blank" rel="noreferrer" className="hover:underline">
+                                  {file.name}
+                                </a>
+                              ) : (
+                                file.name
+                              )}
                             </h4>
                             {file.sessionTitle && (
-                              <p className="mt-1 text-[11px] text-slate-500 truncate" title={file.sessionTitle}>
+                              <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500 truncate" title={file.sessionTitle}>
                                 Buổi: {file.sessionTitle}
                               </p>
                             )}
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2.5">
-                          <span className="text-[10px] text-slate-400">
+                        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-2.5">
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-[120px]">
                             {file.uploadedBy || "Giảng viên"}
                           </span>
                           <button
                             type="button"
                             onClick={() => download(file)}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-600 px-3 py-1.5 text-xs font-bold shadow-2xs transition"
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 px-3 py-1.5 text-xs font-bold shadow-xs transition active:scale-95"
                           >
                             <Download className="h-3.5 w-3.5" /> Tải về
                           </button>
@@ -460,26 +508,32 @@ export default function StudentFilesPage() {
           <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visibleFiles.map((file) => {
               const kind = kindForFile(file);
-              const config = fileConfig[kind];
+              const config = fileConfig[kind] || fileConfig.other;
               const Icon = config.icon;
+              const downloadUrl = file.downloadUrl || file.download_url;
               return (
                 <article
                   key={file.id}
-                  className="flex min-h-56 flex-col justify-between rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xs transition hover:border-emerald-400 hover:shadow-md"
+                  className={`group flex min-h-56 flex-col justify-between rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/95 p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-blue-950/30 ${config.glow}`}
                 >
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
-                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${config.className}`}>
-                        <Icon className="h-5 w-5" />
+                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition-transform duration-200 group-hover:scale-105 ${config.className}`}>
+                        <Icon className="h-6 w-6" />
                       </div>
-                      <span className="rounded-lg bg-slate-50 dark:bg-slate-800 px-2 py-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                        {fileSize(file.sizeBytes || file.size_bytes)}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${config.pill}`}>
+                          {config.label}
+                        </span>
+                        <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700">
+                          {fileSize(file.sizeBytes || file.size_bytes)}
+                        </span>
+                      </div>
                     </div>
 
                     <div>
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                        <span className="rounded-full bg-blue-50 dark:bg-blue-950/60 px-2.5 py-0.5 text-[10px] font-bold text-blue-700 dark:text-sky-300 ring-1 ring-blue-100 dark:ring-blue-900/40">
                           {file.courseTitle || "Tài liệu chung"}
                         </span>
                         {file.classTitle && (
@@ -489,26 +543,32 @@ export default function StudentFilesPage() {
                         )}
                       </div>
 
-                      <h2 className="mt-2.5 line-clamp-2 text-sm font-bold leading-snug text-slate-900 dark:text-white" title={file.name}>
-                        {file.name}
+                      <h2 className="mt-2.5 line-clamp-2 text-sm font-bold leading-snug text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-sky-400 transition-colors" title={file.name}>
+                        {downloadUrl ? (
+                          <a href={downloadUrl} target="_blank" rel="noreferrer" className="hover:underline">
+                            {file.name}
+                          </a>
+                        ) : (
+                          file.name
+                        )}
                       </h2>
 
                       {file.sessionTitle && (
-                        <p className="mt-1 text-xs text-slate-500 truncate" title={file.sessionTitle}>
+                        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500 truncate" title={file.sessionTitle}>
                           Buổi: {file.sessionTitle}
                         </p>
                       )}
                     </div>
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3.5">
-                    <span className="text-[11px] text-slate-400">
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-3.5">
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
                       {file.sessionStartTime ? formatDateOnly(file.sessionStartTime) : (file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString("vi-VN") : "")}
                     </span>
                     <button
                       type="button"
                       onClick={() => download(file)}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-600 px-3.5 py-2 text-xs font-bold shadow-2xs transition"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 px-3.5 py-2 text-xs font-bold shadow-xs transition active:scale-95"
                     >
                       <Download className="h-3.5 w-3.5" /> Tải về
                     </button>

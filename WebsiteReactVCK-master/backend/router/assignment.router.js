@@ -534,7 +534,7 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
         (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id=q.live_class_id AND ct.teacher_id=$1 AND ct.status='active')))`;
     const params = req.user.role === "admin" ? [] : [req.user.id];
     const result = await query(
-      `SELECT q.id, q.title, q.description, q.paper_file_id, q.live_class_id, q.class_session_id, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score,
+      `SELECT q.id, q.title, q.description, q.paper_file_id, q.solution_file_id, q.live_class_id, q.class_session_id, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score,
               q.attempt_limit, q.available_from, q.available_until, q.review_policy,
               q.status, q.shuffle_questions, q.created_at,
               COALESCE(c.title, c.name) AS course_title,
@@ -564,6 +564,8 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
       availableFrom: row.available_from || null, availableUntil: row.available_until || null,
       attemptLimit: Number(row.attempt_limit || 1), reviewPolicy: row.review_policy || "after_submit",
       hasPaper: Boolean(row.paper_file_id),
+      hasSolution: Boolean(row.solution_file_id),
+      solutionFileId: row.solution_file_id ? String(row.solution_file_id) : null,
       timeLimitMinutes: Number(row.duration_minutes || 0), passingScore: Number(row.passing_score || 0),
       status: row.status, attemptsCount: Number(row.attempts_count || 0),
       avgScore: row.avg_score === null ? null : Number(row.avg_score), createdAt: row.created_at,
@@ -630,6 +632,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     const liveClassId = parseOptionalId(req.body?.liveClassId);
     const classSessionId = parseOptionalId(req.body?.classSessionId);
     const paperFileId = parseOptionalId(req.body?.paperFileId);
+    const solutionFileId = parseOptionalId(req.body?.solutionFileId);
     const activityScope = req.body?.activityScope === undefined ? "session" : req.body.activityScope;
     const dueDate = req.body?.dueDate || null;
     const attemptLimit = Number(req.body?.attemptLimit ?? 1);
@@ -684,6 +687,13 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
       );
       if (!paper.rows[0]) { await client.query("ROLLBACK"); return validationError(res, "File đề PDF không hợp lệ hoặc chưa tải lên hoàn tất"); }
     }
+    if (solutionFileId) {
+      const sol = await client.query(
+        "SELECT id FROM lms_learning_files WHERE id = $1 AND course_id = $2 AND mime_type = 'application/pdf' AND status = 'ready' AND visibility = 'COURSE'",
+        [solutionFileId, courseId],
+      );
+      if (!sol.rows[0]) { await client.query("ROLLBACK"); return validationError(res, "File lời giải PDF không hợp lệ hoặc chưa tải lên hoàn tất"); }
+    }
     const normalizedQuestions = questions.map((question, index) => {
       const text = typeof question.questionText === "string" ? question.questionText.trim() : "";
       const options = Array.isArray(question.options)
@@ -704,10 +714,10 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
       };
     });
     const quizResult = await client.query(
-      `INSERT INTO quizzes (title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id, attempt_limit, available_from, available_until, review_policy)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-       RETURNING id, title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, attempt_limit, available_from, available_until, review_policy, created_at`,
-      [title, description, courseId, liveClassId, classSessionId, activityScope, activityScope === "homework" ? dueDate : null, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id, attemptLimit, availableFrom.toISOString(), availableUntil.toISOString(), reviewPolicy],
+      `INSERT INTO quizzes (title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id, attempt_limit, available_from, available_until, review_policy, solution_file_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+       RETURNING id, title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, solution_file_id, duration_minutes, passing_score, status, shuffle_questions, attempt_limit, available_from, available_until, review_policy, created_at`,
+      [title, description, courseId, liveClassId, classSessionId, activityScope, activityScope === "homework" ? dueDate : null, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id, attemptLimit, availableFrom.toISOString(), availableUntil.toISOString(), reviewPolicy, solutionFileId],
     );
     for (const question of normalizedQuestions) {
       await client.query(
@@ -1667,18 +1677,21 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
 
 const getQuiz = async (quizId, db = { query }) => {
   const result = await db.query(
-    `SELECT q.id, q.title, q.description, q.status AS quiz_status, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.live_class_id, q.class_session_id, q.course_id AS quiz_course_id, q.lesson_id,
+    `SELECT q.id, q.title, q.description, q.status AS quiz_status, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.solution_file_id, q.live_class_id, q.class_session_id, q.course_id AS quiz_course_id, q.lesson_id,
             q.attempt_limit, q.available_from, q.available_until, q.review_policy, q.shuffle_questions,
             COALESCE(q.course_id, l.course_id) AS resolved_course_id,
             c.is_published AS course_is_published,
             COALESCE(c.is_management_managed, FALSE) AS course_is_management_managed,
             c.author_id AS course_author_id,
             l.is_published AS lesson_is_published,
-            paper.status AS paper_status, lc.title AS class_title,
+            paper.status AS paper_status,
+            solution.status AS solution_status,
+            lc.title AS class_title,
             cs.title AS session_title, cs.start_time AS session_start, cs.end_time AS session_end
      FROM quizzes q LEFT JOIN lessons l ON l.id = q.lesson_id
      LEFT JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
      LEFT JOIN lms_learning_files paper ON paper.id = q.paper_file_id
+     LEFT JOIN lms_learning_files solution ON solution.id = q.solution_file_id
      LEFT JOIN live_classes lc ON lc.id = q.live_class_id
      LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
      WHERE q.id = $1`,
@@ -1880,6 +1893,7 @@ const quizResponse = ({ quiz, questions, attempt, computed, now = new Date() }) 
   const result = isSubmitted && computed
     ? { score: computed.score, maxScore: computed.maxScore, percentage: computed.percentage, passed: computed.percentage >= Number(quiz.passing_score), review: reviewAvailable ? computed.review : [], reviewAvailable }
     : null;
+  const canViewSolution = isSubmitted || !attempt;
   return {
     id: quiz.id,
     quizId: quiz.id,
@@ -1897,6 +1911,8 @@ const quizResponse = ({ quiz, questions, attempt, computed, now = new Date() }) 
     availableUntil: quiz.available_until || null,
     reviewPolicy: quiz.review_policy || "after_submit",
     paperUrl: quiz.paper_file_id && quiz.paper_status === "ready" ? `/api/files/${quiz.paper_file_id}/download` : null,
+    solutionUrl: (canViewSolution && quiz.solution_file_id && quiz.solution_status === "ready") ? `/api/files/${quiz.solution_file_id}/download` : null,
+    hasSolution: Boolean(quiz.solution_file_id),
     durationMinutes: quiz.duration_minutes,
     timeLimitSeconds: Number(quiz.duration_minutes) * 60,
     passingScore: Number(quiz.passing_score),
@@ -2047,7 +2063,7 @@ router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), requir
     });
     await client.query("COMMIT");
     const reviewAvailable = reviewIsAvailable(quiz);
-    return res.json({ success: true, data: { score: computed.score, maxScore: computed.maxScore, percentage: computed.percentage, passed, review: reviewAvailable ? computed.review : [], reviewAvailable, attemptId: attempt.id, attemptNumber: attempt.attempt_number, alreadySubmitted, autoSubmitted: Boolean(attempt.auto_submitted), gamification, message: attempt.auto_submitted ? "Đã hết thời gian. Hệ thống đã nộp phần đáp án đã lưu." : (passed ? "Chúc mừng, bạn đã đạt yêu cầu!" : "Bạn chưa đạt điểm yêu cầu.") } });
+    return res.json({ success: true, data: { score: computed.score, maxScore: computed.maxScore, percentage: computed.percentage, passed, review: reviewAvailable ? computed.review : [], reviewAvailable, solutionUrl: (quiz.solution_file_id && quiz.solution_status === "ready") ? `/api/files/${quiz.solution_file_id}/download` : null, hasSolution: Boolean(quiz.solution_file_id), attemptId: attempt.id, attemptNumber: attempt.attempt_number, alreadySubmitted, autoSubmitted: Boolean(attempt.auto_submitted), gamification, message: attempt.auto_submitted ? "Đã hết thời gian. Hệ thống đã nộp phần đáp án đã lưu." : (passed ? "Chúc mừng, bạn đã đạt yêu cầu!" : "Bạn chưa đạt điểm yêu cầu.") } });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     if (error.message === "QUIZ_NOT_OPEN" || error.message === "QUIZ_CLOSED") return quizWindowError(res, error);

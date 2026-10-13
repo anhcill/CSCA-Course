@@ -386,7 +386,7 @@ export default function TeacherQuizPage() {
 
   const applyPastedAnswerKey = () => {
     if (!parsedAnswerKey.entries.length) {
-      toast.error("Chưa nhận diện được đáp án. Ví dụ hợp lệ: 1 A, 2. B, Câu 3: C.");
+      toast.error("Chưa nhận diện được đáp án. Ví dụ hợp lệ: 1a 2b 3c hoặc 1 A, 2. B, Câu 3: C.");
       return;
     }
     let applied = 0;
@@ -395,25 +395,28 @@ export default function TeacherQuizPage() {
       const hasOnlyBlankStarter = current.length === 1
         && !current[0].questionText.trim()
         && current[0].options.every((option) => !option.trim());
+      const allArePaperQuestions = current.every((q) => q.questionText.includes("file đề PDF"));
       let workingQuestions = current;
-      if (quizMode === "paper" && hasOnlyBlankStarter) {
-        workingQuestions = Array.from({ length: largestQuestionNumber }, (_, index) => createPaperQuestion(index));
+      if (quizMode === "paper" && (hasOnlyBlankStarter || allArePaperQuestions)) {
+        workingQuestions = Array.from({ length: largestQuestionNumber }, (_, index) => current[index] || createPaperQuestion(index));
       } else if (quizMode === "paper" && largestQuestionNumber > current.length) {
         workingQuestions = [...current, ...Array.from({ length: largestQuestionNumber - current.length }, (_, index) => createPaperQuestion(current.length + index))];
       }
       return workingQuestions.map((question, index) => {
-      const answerKey = parsedAnswerKey.answerByQuestion.get(index + 1);
-      if (!answerKey) return question;
-      const answerIndex = optionIndexForQuizKey(answerKey);
-      if (answerIndex < 0) return question;
-      const nextOptions = [...question.options];
-      while (nextOptions.length <= answerIndex) nextOptions.push("");
-      applied += 1;
-      return { ...question, options: nextOptions, correctAnswer: answerIndex };
+        const answerKey = parsedAnswerKey.answerByQuestion.get(index + 1);
+        if (!answerKey) return question;
+        const answerIndex = optionIndexForQuizKey(answerKey);
+        if (answerIndex < 0) return question;
+        const nextOptions = [...question.options];
+        while (nextOptions.length <= answerIndex) nextOptions.push("");
+        applied += 1;
+        return { ...question, options: nextOptions, correctAnswer: answerIndex };
       });
+    });
     setManualQuestionCount(largestQuestionNumber);
     toast.success(`Đã gán ${applied} đáp án từ danh sách dán.${quizMode === "paper" ? " Bảng câu PDF đã được tạo." : ""}`);
   };
+
 
   const handleApplyQuestionCount = (countToSet) => {
     const targetCount = Math.max(1, Math.min(200, Number(countToSet) || 1));
@@ -885,7 +888,7 @@ export default function TeacherQuizPage() {
                           <div>
                             <h3 className="text-sm font-black text-violet-950 dark:text-violet-100">Dán danh sách đáp án</h3>
                             <p className="mt-0.5 text-xs leading-5 text-violet-800 dark:text-violet-200">
-                              Chấp nhận <b>1 A</b>, <b>2. b</b>, <b>Câu 3: C</b> hoặc <b>4-D</b>. Hệ thống tự nhận dạng chữ hoa/thường.
+                              Nhận diện thông minh: <b>1a 2b 3c</b>, <b>1 a 2 b</b>, <b>1 A</b>, <b>1.A</b>, <b>Câu 1: A</b>, bảng Excel... viết liền hay cách dòng đều được.
                             </p>
                           </div>
                         </div>
@@ -894,14 +897,20 @@ export default function TeacherQuizPage() {
                           value={answerKeyPaste}
                           onChange={(event) => setAnswerKeyPaste(event.target.value)}
                           rows={7}
-                          placeholder={"1 A\n2 B\n3 C\n4 D"}
+                          placeholder={"Ví dụ:\n1a 2b 3c 4d\nhoặc:\n1. A\n2. B\nCâu 3: C\nhoặc dán cột từ Excel..."}
                           className="w-full rounded-xl border border-violet-200 bg-white p-3 font-mono text-xs leading-5 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15 dark:border-violet-800 dark:bg-slate-950 dark:text-white"
                         />
 
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                           <span className="font-bold text-violet-800 dark:text-violet-200">
-                            Nhận diện: {matchedAnswerCount}/{questions.length} câu
+                            Nhận diện:{" "}
+                            {parsedAnswerKey.entries.length === 0
+                              ? "0 câu"
+                              : questions.length === parsedAnswerKey.entries.length
+                                ? `${matchedAnswerCount}/${questions.length} câu`
+                                : `${parsedAnswerKey.entries.length} câu`}
                           </span>
+
                           <button
                             type="button"
                             onClick={applyPastedAnswerKey}
