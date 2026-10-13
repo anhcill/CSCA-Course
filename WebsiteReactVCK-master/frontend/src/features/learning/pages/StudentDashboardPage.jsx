@@ -220,10 +220,8 @@ export default function StudentDashboardPage() {
               <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">
                 Chào {displayName}, tiếp tục hành trình học tập nhé.
               </h1>
-              <p className="mt-1 max-w-xl text-sm leading-5 text-slate-600 dark:text-slate-300">
-                Theo dõi tiến độ, mở lớp đã được xếp và xử lý các nhiệm vụ học tập ngay tại một nơi.
-              </p>
               <div className="mt-3 flex flex-wrap gap-2">
+
                 <Link to={recentCourse ? coursePath(recentCourse) : "/lms/my-learning"} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700">
                   <PlayCircle className="h-4 w-4" /> {recentCourse ? "Tiếp tục học" : "Xem khóa học"}
                 </Link>
@@ -263,9 +261,9 @@ export default function StudentDashboardPage() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg font-black text-slate-950 dark:text-white">Khóa học của tôi</h2>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Các khóa học bạn được hệ thống quản lý cấp quyền.</p>
               </div>
               <Link to="/lms/my-learning" className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-sky-400 hover:text-blue-800 dark:hover:text-sky-300">Xem tất cả <ArrowRight className="h-3.5 w-3.5" /></Link>
+
             </div>
 
             {courses.length === 0 ? (
@@ -322,8 +320,8 @@ export default function StudentDashboardPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-black text-slate-950 dark:text-white">Lịch học sắp tới</h2>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Các buổi live đã được xếp cho bạn.</p>
               </div>
+
               <CalendarDays className="h-5 w-5 text-blue-600 dark:text-sky-400" />
             </div>
             <div className="mt-3 space-y-2.5">

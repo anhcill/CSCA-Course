@@ -99,10 +99,8 @@ export default function CourseClassListPage() {
               {course.title}
             </h1>
           </div>
-          <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-300">
-            Chỉ các lớp mà hệ thống quản lý đã xếp cho bạn được hiển thị. Chọn một lớp để mở nội dung và hoạt động học tập.
-          </p>
         </header>
+
 
         {classes.length === 0 ? (
           <div className="mt-4">

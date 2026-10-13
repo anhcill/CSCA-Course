@@ -238,25 +238,36 @@ export default function TeacherSessionWorkspacePage() {
     <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-5">
         <Link to={classBasePath} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400"><ArrowLeft className="h-4 w-4" /> Quay lại lớp và lịch dạy</Link>
-        <section className="overflow-hidden rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 px-4 py-3.5 text-white shadow-lg dark:border-blue-900/60 dark:shadow-none sm:px-5 sm:py-4">
-          <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-            <div className="min-w-0">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-black"><Video className="h-3.5 w-3.5" /> Không gian buổi dạy</span>
-              <h1 className="mt-2 line-clamp-2 text-xl font-black leading-tight sm:text-2xl">{session.title}</h1>
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-blue-100">
-                <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {formatDateTime(session.start_time)}</span>
-                <span>Lớp: {classInfo.title || `Lớp #${classId}`}</span>
+        <section className="overflow-hidden rounded-2xl border border-blue-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 px-4 py-3.5 text-white sm:px-5 sm:py-4">
+            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+              <div className="min-w-0">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-black"><Video className="h-3.5 w-3.5" /> Không gian buổi dạy</span>
+                <h1 className="mt-2 line-clamp-2 text-xl font-black leading-tight sm:text-2xl">{session.title}</h1>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-blue-100">
+                  <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {formatDateTime(session.start_time)}</span>
+                  <span>Lớp: {classInfo.title || `Lớp #${classId}`}</span>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                {canJoin && <button type="button" onClick={handleJoin} className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><Play className="h-3.5 w-3.5" /> Vào phòng dạy</button>}
+                <a href={googleCalendarEventUrl({ title: session.title, startTime: session.start_time, endTime: session.end_time, details: "Buổi dạy CSCA Academy" })} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><CalendarDays className="h-3.5 w-3.5" /> Google Calendar</a>
+                <a href={classCalendarIcsUrl(classId)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><FileText className="h-3.5 w-3.5" /> Tải .ics</a>
+                <button type="button" onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><CheckCircle2 className="h-3.5 w-3.5" /> Điểm danh</button>
               </div>
             </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              {canJoin && <button type="button" onClick={handleJoin} className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><Play className="h-3.5 w-3.5" /> Vào phòng dạy</button>}
-              <a href={googleCalendarEventUrl({ title: session.title, startTime: session.start_time, endTime: session.end_time, details: "Buổi dạy CSCA Academy" })} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><CalendarDays className="h-3.5 w-3.5" /> Google Calendar</a>
-              <a href={classCalendarIcsUrl(classId)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><FileText className="h-3.5 w-3.5" /> Tải .ics</a>
-              <button type="button" onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><CheckCircle2 className="h-3.5 w-3.5" /> Điểm danh</button>
-            </div>
           </div>
+          <nav className="flex gap-1 overflow-x-auto border-t border-slate-100 bg-white p-1.5 dark:border-slate-800 dark:bg-slate-900 sm:px-4 sm:py-2" aria-label="Chức năng của buổi dạy">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button key={tab.id} type="button" onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })} className={tabClass(activeTab === tab.id)}>
+                  <Icon className="h-4 w-4" /> {tab.label}
+                </button>
+              );
+            })}
+          </nav>
         </section>
-        <nav className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none" aria-label="Chức năng của buổi dạy">{tabs.map((tab) => { const Icon = tab.icon; return <button key={tab.id} type="button" onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })} className={tabClass(activeTab === tab.id)}><Icon className="h-4 w-4" /> {tab.label}</button>; })}</nav>
         {activeTab === "overview" && <div className="grid gap-4 sm:grid-cols-5"><Stat label="Học viên" value={students.length} /><Stat label="Bài tập & Quiz" value={tasks.length} /><Stat label="Tài liệu" value={files.length} /><Stat label="Thông báo" value={announcements.length} /><Stat label="Cần chấm" value={tasks.reduce((sum, task) => sum + Number(task.pendingGradingCount || 0), 0)} /></div>}
         {activeTab === "students" && <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800"><div><h2 className="font-black">Học viên của buổi học</h2><p className="mt-1 text-xs text-slate-500">Điểm danh và theo dõi chuyên cần theo đúng buổi này.</p></div><button type="button" onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)} className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white">Mở điểm danh</button></div><div className="divide-y divide-slate-100 dark:divide-slate-800">{students.map((student) => <div key={student.id} className="flex items-center justify-between p-4 text-sm"><span className="font-bold">{student.name || student.email}</span><span className="text-xs text-slate-500">{student.email}</span></div>)}</div></section>}
         {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black">Nội dung buổi dạy</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Chuẩn bị nội dung, slide và hoạt động học tập cho buổi này tại đây."}</p><Link to={`${classBasePath}/curriculum`} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white"><BookOpen className="h-4 w-4" /> Xem giáo trình khóa học</Link></section>}

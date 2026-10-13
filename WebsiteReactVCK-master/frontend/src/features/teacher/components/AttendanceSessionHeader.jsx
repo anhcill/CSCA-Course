@@ -17,10 +17,8 @@ export default function AttendanceSessionHeader({
             <h1 className="text-xl font-black text-slate-900 dark:text-white">
               Sổ Điểm Danh Lớp Học Trực Tuyến
             </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Chỉ hiển thị buổi diễn ra hôm nay. Sau khi chốt, kết quả được lưu và khóa chỉnh sửa.
-            </p>
           </div>
+
 
           {sessions.length > 0 && (
             <select

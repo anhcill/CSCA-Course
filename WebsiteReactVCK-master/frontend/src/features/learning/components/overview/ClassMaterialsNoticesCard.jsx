@@ -84,7 +84,6 @@ export default function ClassMaterialsNoticesCard({
                       <span className={`px-1 rounded font-bold uppercase ${cfg.pill}`}>
                         {cfg.label}
                       </span>
-                      <span>{formatFileSize(file.sizeBytes || file.size_bytes)}</span>
                     </div>
                   </div>
                 </div>

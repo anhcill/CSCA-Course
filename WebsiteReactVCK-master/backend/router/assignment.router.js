@@ -550,8 +550,7 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
        LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.status = 'submitted'
        WHERE ${ownerFilter}
        GROUP BY q.id, c.id, lc.id, cs.id
-       ORDER BY CASE WHEN cs.start_time >= NOW() THEN 0 WHEN cs.start_time IS NULL THEN 1 ELSE 2 END,
-                cs.start_time ASC NULLS LAST, q.created_at DESC, q.id DESC`,
+       ORDER BY q.created_at DESC, q.id DESC`,
       params,
     );
     return res.json({ success: true, data: result.rows.map((row) => ({
@@ -750,6 +749,201 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     return internalError(res, "Lỗi khi tạo đề kiểm tra");
   } finally {
     client.release();
+  }
+});
+
+// GET /api/assignments/teacher/quizzes/:quizId/report — detailed quiz statistics and student submission status
+router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  try {
+    const quizId = parsePositiveId(req.params.quizId);
+    if (!quizId) return validationError(res, "quizId không hợp lệ");
+
+    const quizResult = await query(
+      `SELECT q.id, q.title, q.description, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score,
+              q.live_class_id, q.class_session_id, q.course_id, q.created_at, q.status, q.instructor_id,
+              q.attempt_limit, q.review_policy,
+              COALESCE(c.title, c.name) AS course_title,
+              lc.title AS class_title, lc.instructor_id AS class_instructor_id,
+              cs.title AS session_title, cs.start_time AS session_start,
+              COUNT(DISTINCT qq.id)::int AS question_count
+       FROM quizzes q
+       LEFT JOIN courses c ON c.id = q.course_id
+       LEFT JOIN live_classes lc ON lc.id = q.live_class_id
+       LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
+       LEFT JOIN quiz_questions qq ON qq.quiz_id = q.id
+       WHERE q.id = $1
+       GROUP BY q.id, c.id, lc.id, cs.id`,
+      [quizId],
+    );
+    const quizRow = quizResult.rows[0];
+    if (!quizRow) return notFound(res, "Không tìm thấy đề kiểm tra");
+
+    const canView = req.user.role === "admin" || (quizRow.live_class_id
+      ? (String(quizRow.class_instructor_id) === String(req.user.id) || await isAssignedTeacher(quizRow.live_class_id, req.user.id))
+      : String(quizRow.instructor_id) === String(req.user.id));
+    if (!canView) return forbidden(res, "Bạn không có quyền xem thống kê của đề kiểm tra này");
+
+    let students = [];
+    if (quizRow.live_class_id) {
+      const studentResult = await query(
+        `SELECT u.id AS user_id, u.username, u.email, u.avatar_url,
+                COALESCE(sp.full_name, u.username) AS full_name,
+                best_qa.id AS attempt_id,
+                best_qa.status AS attempt_status,
+                best_qa.score,
+                best_qa.max_score,
+                ROUND((best_qa.score / NULLIF(best_qa.max_score, 0) * 100)::numeric, 1) AS score_percentage,
+                best_qa.attempt_number,
+                best_qa.started_at,
+                best_qa.submitted_at,
+                COALESCE(att_count.cnt, 0)::int AS total_attempts
+         FROM class_enrollments ce
+         JOIN users u ON u.id = ce.user_id
+         LEFT JOIN student_profiles sp ON sp.user_id = u.id
+         LEFT JOIN LATERAL (
+           SELECT qa0.id, qa0.status, qa0.score, qa0.max_score, qa0.attempt_number, qa0.started_at, qa0.submitted_at
+           FROM quiz_attempts qa0
+           WHERE qa0.quiz_id = $1 AND qa0.user_id = u.id
+           ORDER BY CASE WHEN qa0.status = 'submitted' THEN 1 ELSE 2 END,
+                    qa0.score DESC NULLS LAST,
+                    qa0.submitted_at DESC NULLS LAST,
+                    qa0.attempt_number DESC
+           LIMIT 1
+         ) best_qa ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*)::int AS cnt FROM quiz_attempts qa_all WHERE qa_all.quiz_id = $1 AND qa_all.user_id = u.id
+         ) att_count ON true
+         WHERE ce.live_class_id = $2 AND ce.status = 'active'
+         ORDER BY CASE WHEN best_qa.status = 'submitted' THEN 1 WHEN best_qa.status = 'in_progress' THEN 2 ELSE 3 END,
+                  best_qa.score DESC NULLS LAST, u.username ASC`,
+        [quizId, quizRow.live_class_id],
+      );
+      students = studentResult.rows;
+    } else {
+      const studentResult = await query(
+        `SELECT u.id AS user_id, u.username, u.email, u.avatar_url,
+                COALESCE(sp.full_name, u.username) AS full_name,
+                best_qa.id AS attempt_id,
+                best_qa.status AS attempt_status,
+                best_qa.score,
+                best_qa.max_score,
+                ROUND((best_qa.score / NULLIF(best_qa.max_score, 0) * 100)::numeric, 1) AS score_percentage,
+                best_qa.attempt_number,
+                best_qa.started_at,
+                best_qa.submitted_at,
+                COALESCE(att_count.cnt, 0)::int AS total_attempts
+         FROM users u
+         JOIN (SELECT DISTINCT user_id FROM quiz_attempts WHERE quiz_id = $1) qa_users ON qa_users.user_id = u.id
+         LEFT JOIN student_profiles sp ON sp.user_id = u.id
+         LEFT JOIN LATERAL (
+           SELECT qa0.id, qa0.status, qa0.score, qa0.max_score, qa0.attempt_number, qa0.started_at, qa0.submitted_at
+           FROM quiz_attempts qa0
+           WHERE qa0.quiz_id = $1 AND qa0.user_id = u.id
+           ORDER BY CASE WHEN qa0.status = 'submitted' THEN 1 ELSE 2 END,
+                    qa0.score DESC NULLS LAST,
+                    qa0.submitted_at DESC NULLS LAST,
+                    qa0.attempt_number DESC
+           LIMIT 1
+         ) best_qa ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*)::int AS cnt FROM quiz_attempts qa_all WHERE qa_all.quiz_id = $1 AND qa_all.user_id = u.id
+         ) att_count ON true
+         ORDER BY CASE WHEN best_qa.status = 'submitted' THEN 1 WHEN best_qa.status = 'in_progress' THEN 2 ELSE 3 END,
+                  best_qa.score DESC NULLS LAST, u.username ASC`,
+        [quizId],
+      );
+      students = studentResult.rows;
+    }
+
+    const passingScore = Number(quizRow.passing_score || 0);
+    const mappedStudents = students.map((row) => {
+      const isSubmitted = row.attempt_status === "submitted";
+      const isInProgress = row.attempt_status === "in_progress";
+      const status = isSubmitted ? "submitted" : (isInProgress ? "in_progress" : "not_started");
+      const scorePct = row.score_percentage !== null ? Number(row.score_percentage) : null;
+      const passed = isSubmitted && scorePct !== null ? scorePct >= passingScore : false;
+
+      return {
+        userId: String(row.user_id),
+        username: row.username,
+        email: row.email,
+        avatarUrl: row.avatar_url,
+        fullName: row.full_name || row.username,
+        status,
+        score: row.score !== null ? Number(row.score) : null,
+        maxScore: row.max_score !== null ? Number(row.max_score) : null,
+        scorePercentage: scorePct,
+        passed,
+        attemptNumber: Number(row.attempt_number || 0),
+        totalAttempts: Number(row.total_attempts || 0),
+        startedAt: row.started_at,
+        submittedAt: row.submitted_at,
+      };
+    });
+
+    const totalStudents = mappedStudents.length;
+    const submittedList = mappedStudents.filter((s) => s.status === "submitted");
+    const submittedCount = submittedList.length;
+    const unsubmittedCount = mappedStudents.filter((s) => s.status === "not_started").length;
+    const inProgressCount = mappedStudents.filter((s) => s.status === "in_progress").length;
+    const submissionRate = totalStudents > 0 ? Number(((submittedCount / totalStudents) * 100).toFixed(1)) : 0;
+
+    const scores = submittedList.map((s) => s.scorePercentage).filter((p) => p !== null && !isNaN(p));
+    const avgScore = scores.length > 0 ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)) : null;
+    const maxScore = scores.length > 0 ? Math.max(...scores) : null;
+    const minScore = scores.length > 0 ? Math.min(...scores) : null;
+    const passedCount = submittedList.filter((s) => s.passed).length;
+    const failedCount = submittedCount - passedCount;
+
+    const excellentCount = scores.filter((p) => p >= 80).length;
+    const goodCount = scores.filter((p) => p >= 65 && p < 80).length;
+    const averageCount = scores.filter((p) => p >= 50 && p < 65).length;
+    const weakCount = scores.filter((p) => p < 50).length;
+
+    return res.json({
+      success: true,
+      data: {
+        quiz: {
+          id: String(quizRow.id),
+          title: quizRow.title,
+          description: quizRow.description || "",
+          courseTitle: quizRow.course_title || "Khóa học",
+          classTitle: quizRow.class_title || "Lớp học",
+          sessionTitle: quizRow.session_title || "Buổi học",
+          sessionStart: quizRow.session_start,
+          activityScope: quizRow.activity_scope,
+          dueDate: quizRow.due_date,
+          durationMinutes: Number(quizRow.duration_minutes || 0),
+          passingScore,
+          questionCount: Number(quizRow.question_count || 0),
+          attemptLimit: Number(quizRow.attempt_limit || 1),
+          status: quizRow.status,
+          createdAt: quizRow.created_at,
+        },
+        summary: {
+          totalStudents,
+          submittedCount,
+          unsubmittedCount,
+          inProgressCount,
+          submissionRate,
+          avgScore,
+          maxScore,
+          minScore,
+          passedCount,
+          failedCount,
+          distribution: {
+            excellent: excellentCount,
+            good: goodCount,
+            average: averageCount,
+            weak: weakCount,
+          },
+        },
+        students: mappedStudents,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching teacher quiz report:", error);
+    return internalError(res, "Lỗi khi lấy báo cáo kết quả đề kiểm tra");
   }
 });
 

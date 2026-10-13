@@ -40,8 +40,8 @@ export default function CourseResultsPage() {
       <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm dark:shadow-none">
         <div>
           <h2 className="text-lg font-black text-slate-950 dark:text-white">Điểm và nhận xét</h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Chỉ hiển thị kết quả thuộc lớp học hiện tại.</p>
         </div>
+
         {graded.length === 0 ? (
           <div className="mt-5 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-5 py-10 text-center">
             <ClipboardCheck className="mx-auto h-7 w-7 text-slate-400 dark:text-slate-500" />

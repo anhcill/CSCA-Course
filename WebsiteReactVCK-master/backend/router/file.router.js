@@ -11,6 +11,7 @@ import {
   generateLearningFileUploadPresignedUrl,
   generateLearningFilePlaybackSignedUrl,
   generateLearningFileHeadSignedUrl,
+  deleteLearningFileObject,
 } from "../services/video.service.js";
 import { createCloudinaryUploadSignature } from "../services/cloudinary.service.js";
 
@@ -505,6 +506,7 @@ const canDeleteFile = async (fileId, user) => {
   const result = await query("SELECT id, uploaded_by, live_class_id, course_id, storage_key, status FROM lms_learning_files WHERE id = $1", [fileId]);
   const file = result.rows[0];
   if (!file) return { error: "not_found" };
+  if (file.status === "deleted") return { error: "not_found" };
   if (user.role === "admin") return { file };
   if (user.role === "creator") {
     const access = file.live_class_id
@@ -522,8 +524,31 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
     const access = await canDeleteFile(fileId, req.user);
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
     if (access.error) return errorResponse(res, 403, "Bạn không có quyền xóa tài liệu", "FORBIDDEN");
-    await query("UPDATE lms_learning_files SET status = 'deleted' WHERE id = $1", [fileId]);
-    await recordAuditEvent({ actorId: req.user.id, action: "learning_file.deleted", entityType: "learning_file", entityId: fileId, metadata: { ip: req.ip } });
+
+    let r2Deleted = false;
+    const storageKey = access.file?.storage_key;
+    if (storageKey) {
+      try {
+        await deleteLearningFileObject({ r2Key: storageKey });
+        r2Deleted = true;
+      } catch (storageError) {
+        if (storageError.code === "R2_NOT_CONFIGURED") {
+          console.warn("R2 chưa được cấu hình, bỏ qua xóa object R2:", storageError.message);
+        } else {
+          console.error("Lỗi xóa file trên Cloudflare R2:", storageError);
+          return errorResponse(res, 502, "Không thể xóa tài liệu trên kho lưu trữ R2. Vui lòng thử lại sau.", "STORAGE_DELETE_FAILED");
+        }
+      }
+    }
+
+    await query("UPDATE lms_learning_files SET status = 'deleted', updated_at = NOW() WHERE id = $1", [fileId]);
+    await recordAuditEvent({
+      actorId: req.user.id,
+      action: "learning_file.deleted",
+      entityType: "learning_file",
+      entityId: fileId,
+      metadata: { ip: req.ip, storageKey, r2Deleted },
+    });
     return res.json({ success: true, message: "Đã xóa tài liệu" });
   } catch (error) {
     console.error("Error deleting learning file:", error);

@@ -115,10 +115,8 @@ export default function MyLearningPage() {
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
               Tổng Quan Học Tập
             </h1>
-            <p className="text-slate-400 text-xs sm:text-sm mt-0.5 max-w-xl">
-              Theo dõi tiến độ, làm bài tập và tiếp tục chinh phục các bài giảng HSK, HSKK & CSCA.
-            </p>
           </div>
+
 
           <div className="flex items-center gap-3">
             <Link

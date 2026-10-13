@@ -246,9 +246,11 @@ export default function ClassWorkspaceFilesTab({
                           <p className="text-xs font-bold text-slate-900 dark:text-white truncate" title={file.name || file.title}>
                             {file.name || file.title}
                           </p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            {formatBytes(file.sizeBytes || file.size_bytes)} {file.sessionTitle ? `· ${file.sessionTitle}` : ""}
-                          </p>
+                          {file.sessionTitle && (
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {file.sessionTitle}
+                            </p>
+                          )}
                         </div>
                       </div>
 

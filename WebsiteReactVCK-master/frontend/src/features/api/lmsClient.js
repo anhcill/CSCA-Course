@@ -555,6 +555,10 @@ export const deleteTeacherQuiz = async (quizId) => request(
   { method: "DELETE" },
 );
 
+export const fetchTeacherQuizReport = async (quizId) => (
+  request(`/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/report`)
+);
+
 export const fetchQuestionBank = async ({ courseId, search, difficulty, page } = {}) => {
   const params = new URLSearchParams({ courseId: String(courseId || "") });
   if (search) params.set("search", search);

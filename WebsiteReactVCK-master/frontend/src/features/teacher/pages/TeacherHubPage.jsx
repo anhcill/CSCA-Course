@@ -139,10 +139,8 @@ export default function TeacherHubPage() {
               <h1 className="text-lg font-black tracking-tight text-slate-950 dark:text-white sm:text-xl">
                 Tổng quan giảng dạy
               </h1>
-              <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
-                Ưu tiên các buổi học trực tuyến hôm nay, chấm bài nộp và quản lý các lớp phụ trách.
-              </p>
             </div>
+
 
             {/* Cột phải: 4 ô thống kê nhỏ gọn */}
             <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -180,8 +178,8 @@ export default function TeacherHubPage() {
                   <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
                     <BookOpen className="w-5 h-5 text-blue-600 dark:text-sky-400" /> Lớp đang phụ trách
                   </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Sĩ số, tiến độ, chuyên cần và session kế tiếp.</p>
                 </div>
+
                 <Link to="/lms/teach/calendar" className="text-xs font-bold text-blue-600 dark:text-sky-400 inline-flex items-center gap-1 hover:underline">
                   Mở lịch dạy <ArrowRight className="w-3.5 h-3.5" />
                 </Link>

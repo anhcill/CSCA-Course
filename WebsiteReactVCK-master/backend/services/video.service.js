@@ -303,3 +303,40 @@ export const generateLearningFileHeadSignedUrl = async ({ r2Key }) => {
   const expiresInSeconds = getTtl("R2_FILE_UPLOAD_URL_TTL_SECONDS", 900, 3600);
   return { headUrl: createPresignedUrl({ method: "HEAD", key: r2Key, expiresInSeconds }), expiresInSeconds };
 };
+
+export const isSafeR2StorageKey = (key) => (
+  typeof key === "string"
+  && key.length > 0
+  && key.length <= 500
+  && !key.includes("..")
+  && !/[\\\s]/.test(key)
+  && /^[a-zA-Z0-9_\-./]+$/.test(key)
+);
+
+export const generateLearningFileDeleteSignedUrl = async ({ r2Key }) => {
+  getR2Config();
+  if (!validateLearningFileKey(r2Key) && !isSafeR2StorageKey(r2Key)) {
+    throw new Error("storageKey tài liệu không hợp lệ");
+  }
+  const expiresInSeconds = getTtl("R2_FILE_DELETE_URL_TTL_SECONDS", 300, 900);
+  return { deleteUrl: createPresignedUrl({ method: "DELETE", key: r2Key, expiresInSeconds }), expiresInSeconds };
+};
+
+export const deleteLearningFileObject = async ({ r2Key }) => {
+  getR2Config();
+  if (!validateLearningFileKey(r2Key) && !isSafeR2StorageKey(r2Key)) {
+    throw new Error("storageKey tài liệu không hợp lệ");
+  }
+  const { deleteUrl } = await generateLearningFileDeleteSignedUrl({ r2Key });
+  const response = await fetch(deleteUrl, { method: "DELETE" });
+  if (!response.ok && response.status !== 404) {
+    const errorText = await response.text().catch(() => "");
+    const error = new Error(`Không thể xóa object khỏi Cloudflare R2 (status ${response.status}): ${errorText}`);
+    error.status = response.status;
+    throw error;
+  }
+  return { success: true, status: response.status };
+};
+
+export const deleteR2Object = async ({ r2Key }) => deleteLearningFileObject({ r2Key });
+

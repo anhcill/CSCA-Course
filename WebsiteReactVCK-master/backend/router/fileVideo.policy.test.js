@@ -122,6 +122,27 @@ test("file visibility and video upload intent enforce teacher and learner scope"
     user: teacher, params: { fileId: privateFile.id },
   })).statusCode, 403);
 
+  const deleteCalls = [];
+  const testFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    deleteCalls.push({ url: String(url), options });
+    return new Response(null, { status: 204 });
+  };
+  const adminDelete = await invoke(fileRouter, "delete", "/teacher/files/:fileId", {
+    user: admin, params: { fileId: privateFile.id },
+  });
+  assert.equal(adminDelete.statusCode, 200);
+  assert.equal(deleteCalls.length, 1);
+  assert.equal(deleteCalls[0].options.method, "DELETE");
+  assert.ok(deleteCalls[0].url.includes("bucket/learning-files/"));
+  const fileInDb = (await db.query("SELECT status FROM lms_learning_files WHERE id = $1", [privateFile.id])).rows[0];
+  assert.equal(fileInDb.status, "deleted");
+  const repeatDelete = await invoke(fileRouter, "delete", "/teacher/files/:fileId", {
+    user: admin, params: { fileId: privateFile.id },
+  });
+  assert.equal(repeatDelete.statusCode, 404);
+  globalThis.fetch = testFetch;
+
   await db.query(
     `UPDATE lms_role_permissions SET is_allowed = FALSE
      WHERE role = 'creator' AND permission_id = (SELECT id FROM lms_permissions WHERE code = 'lms.file.manage')`,

@@ -411,10 +411,8 @@ export default function TeacherFilesPage() {
               <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
                 {isAdmin ? "Kho Tài Liệu Toàn Hệ Thống" : "Tài Liệu & Học Liệu Giảng Dạy"}
               </h1>
-              <p className="text-xs sm:text-sm text-emerald-100 max-w-2xl leading-relaxed">
-                Quản lý các tệp tài liệu, đề thi, slide bài giảng được đăng tải mỗi ngày theo từng Lớp học và Giáo trình môn học.
-              </p>
             </div>
+
 
             <button
               type="button"
@@ -426,7 +424,7 @@ export default function TeacherFilesPage() {
           </div>
 
           {/* Quick Metrics */}
-          <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-white/20 pt-4 text-xs">
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-white/20 pt-4 text-xs">
             <div className="bg-white/10 rounded-xl p-3 backdrop-blur-xs">
               <span className="text-emerald-200 block text-[11px]">Tổng số tài liệu</span>
               <span className="text-lg font-black">{files.length}</span>
@@ -438,12 +436,6 @@ export default function TeacherFilesPage() {
             <div className="bg-white/10 rounded-xl p-3 backdrop-blur-xs">
               <span className="text-emerald-200 block text-[11px]">Lớp đang theo dõi</span>
               <span className="text-lg font-black">{availableClasses.length}</span>
-            </div>
-            <div className="bg-white/10 rounded-xl p-3 backdrop-blur-xs">
-              <span className="text-emerald-200 block text-[11px]">Tổng dung lượng</span>
-              <span className="text-lg font-black">
-                {formatBytes(files.reduce((acc, f) => acc + (Number(f.sizeBytes) || 0), 0))}
-              </span>
             </div>
           </div>
         </header>
@@ -717,7 +709,6 @@ export default function TeacherFilesPage() {
                     <th className="px-4 py-3.5">Môn / Giáo trình</th>
                     <th className="px-4 py-3.5">Lớp học</th>
                     <th className="px-4 py-3.5">Ngày & Buổi học</th>
-                    <th className="px-4 py-3.5">Dung lượng</th>
                     <th className="px-4 py-3.5">Người đăng</th>
                     <th className="px-4 py-3.5 text-right">Thao tác</th>
                   </tr>
@@ -758,9 +749,6 @@ export default function TeacherFilesPage() {
                           ) : (
                             <span className="text-slate-400">Tài liệu chung</span>
                           )}
-                        </td>
-                        <td className="px-4 py-3.5 whitespace-nowrap font-mono text-[11px]">
-                          {formatBytes(file.sizeBytes)}
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-slate-500">
                           {file.uploadedBy}
@@ -925,9 +913,6 @@ export default function TeacherFilesPage() {
                       <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-xs mx-auto">
                         {selectedUploadFile.name}
                       </p>
-                      <p className="text-[11px] text-slate-400">
-                        {formatBytes(selectedUploadFile.size)}
-                      </p>
                       <button
                         type="button"
                         onClick={() => setSelectedUploadFile(null)}
@@ -1011,9 +996,6 @@ function FileCard({ file, onDelete }) {
         <div className="flex items-start justify-between gap-2">
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${config.badge}`}>
             <Icon className="h-4 w-4" />
-          </span>
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-            {formatBytes(file.sizeBytes)}
           </span>
         </div>
 

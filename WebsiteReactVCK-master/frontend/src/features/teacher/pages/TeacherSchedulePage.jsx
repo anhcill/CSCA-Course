@@ -311,10 +311,8 @@ export default function TeacherSchedulePage() {
             <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               Quản Lý Lịch Dạy & Lớp Học Live
             </h1>
-            <p className="text-slate-600 dark:text-slate-400 text-xs md:text-sm mt-1">
-              Khởi tạo buổi học Meet/Zoom, mở phòng giảng dạy trực tuyến và theo dõi học viên theo từng lớp.
-            </p>
           </div>
+
 
           <div className="flex items-center gap-3">
             <Link

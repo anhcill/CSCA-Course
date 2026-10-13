@@ -257,10 +257,8 @@ export default function StudentFilesPage() {
               <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
                 {routeClassId ? "Tài Liệu Theo Buổi Của Lớp" : routeCourseId ? "Tài Liệu Môn Học" : "Tài Liệu & Học Liệu Mỗi Ngày"}
               </h1>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
-                Tất cả slide bài giảng, đề ôn tập và tài liệu học tập được sắp xếp theo từng Ngày học và Lớp học để bạn dễ dàng ôn luyện.
-              </p>
             </div>
+
 
             {/* View Switcher */}
             <div className="flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 p-1 self-start sm:self-auto">
@@ -457,9 +455,6 @@ export default function StudentFilesPage() {
                               <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md ${config.pill}`}>
                                 {config.label}
                               </span>
-                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700">
-                                {fileSize(file.sizeBytes || file.size_bytes)}
-                              </span>
                             </div>
                           </div>
 
@@ -524,9 +519,6 @@ export default function StudentFilesPage() {
                       <div className="flex items-center gap-1.5">
                         <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${config.pill}`}>
                           {config.label}
-                        </span>
-                        <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700">
-                          {fileSize(file.sizeBytes || file.size_bytes)}
                         </span>
                       </div>
                     </div>
