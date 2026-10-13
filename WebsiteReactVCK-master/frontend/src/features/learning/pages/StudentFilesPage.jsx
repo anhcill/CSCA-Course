@@ -330,7 +330,7 @@ export default function StudentFilesPage() {
                   onClick={() => setSelectedKind(kind)}
                   className={`whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                     selectedKind === kind
-                      ? "bg-blue-600 text-white shadow-xs"
+                      ? "bg-emerald-600 text-white shadow-xs"
                       : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                   }`}
                 >
@@ -353,7 +353,7 @@ export default function StudentFilesPage() {
                   onClick={() => handleTimeFilterChange(key)}
                   className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                     selectedTimePreset === key
-                      ? "bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 shadow-xs"
+                      ? "bg-emerald-600 text-white shadow-xs"
                       : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                   }`}
                 >
@@ -384,16 +384,16 @@ export default function StudentFilesPage() {
                 className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-xs"
               >
                 {/* Header Ngày học */}
-                <div className="bg-slate-50/80 dark:bg-slate-800/40 px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div className="bg-emerald-50/50 dark:bg-emerald-950/20 px-5 py-3.5 border-b border-emerald-100 dark:border-emerald-900/30 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-sky-300 font-bold text-xs">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold text-xs">
                       <CalendarDays className="h-4 w-4" />
                     </span>
                     <div>
                       <h3 className="text-sm font-black text-slate-900 dark:text-white capitalize">
                         {dateKey === "no-date" ? "Tài liệu học tập chung" : formatDateOnly(dateKey)}
                       </h3>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold">
                         {groupFiles.length} tài liệu học tập
                       </p>
                     </div>
@@ -409,20 +409,20 @@ export default function StudentFilesPage() {
                     return (
                       <div
                         key={file.id}
-                        className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 p-4 flex flex-col justify-between space-y-3 hover:shadow-sm transition"
+                        className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-800/40 p-4 flex flex-col justify-between space-y-3 hover:border-emerald-400 hover:shadow-md transition"
                       >
                         <div className="space-y-2">
                           <div className="flex items-start justify-between gap-2">
                             <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${config.className}`}>
                               <Icon className="h-4 w-4" />
                             </span>
-                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                               {fileSize(file.sizeBytes || file.size_bytes)}
                             </span>
                           </div>
 
                           <div>
-                            <span className="text-[10px] font-bold text-blue-600 dark:text-sky-400 block truncate">
+                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block truncate">
                               {file.courseTitle || "CSCA Course"} · {file.classTitle || "Lớp học"}
                             </span>
                             <h4 className="text-xs font-bold text-slate-900 dark:text-white line-clamp-2 mt-0.5 leading-relaxed" title={file.name}>
@@ -436,14 +436,14 @@ export default function StudentFilesPage() {
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between border-t border-slate-200/60 dark:border-slate-800 pt-2.5">
+                        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2.5">
                           <span className="text-[10px] text-slate-400">
                             {file.uploadedBy || "Giảng viên"}
                           </span>
                           <button
                             type="button"
                             onClick={() => download(file)}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-600 px-3 py-1.5 text-xs font-bold shadow-2xs transition"
                           >
                             <Download className="h-3.5 w-3.5" /> Tải về
                           </button>
@@ -465,7 +465,7 @@ export default function StudentFilesPage() {
               return (
                 <article
                   key={file.id}
-                  className="flex min-h-56 flex-col justify-between rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  className="flex min-h-56 flex-col justify-between rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xs transition hover:border-emerald-400 hover:shadow-md"
                 >
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
@@ -479,7 +479,7 @@ export default function StudentFilesPage() {
 
                     <div>
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full bg-blue-50 dark:bg-blue-950/60 px-2.5 py-0.5 text-[10px] font-bold text-blue-600 dark:text-sky-400">
+                        <span className="rounded-full bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
                           {file.courseTitle || "Tài liệu chung"}
                         </span>
                         {file.classTitle && (
@@ -508,7 +508,7 @@ export default function StudentFilesPage() {
                     <button
                       type="button"
                       onClick={() => download(file)}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-600 px-3.5 py-2 text-xs font-bold shadow-2xs transition"
                     >
                       <Download className="h-3.5 w-3.5" /> Tải về
                     </button>

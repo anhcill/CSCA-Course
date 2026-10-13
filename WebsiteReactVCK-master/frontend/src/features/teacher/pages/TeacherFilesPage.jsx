@@ -802,7 +802,7 @@ export default function TeacherFilesPage() {
           <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
+                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-sm">
                   <UploadCloud className="h-5 w-5" />
                 </span>
                 <div>
@@ -836,7 +836,7 @@ export default function TeacherFilesPage() {
                     setUploadClassId(e.target.value);
                     setUploadSessionId(""); // reset session
                   }}
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500"
                 >
                   <option value="">-- Chọn lớp học --</option>
                   {classesLookup.map((cls) => (
@@ -855,7 +855,7 @@ export default function TeacherFilesPage() {
                 <select
                   value={uploadSessionId}
                   onChange={(e) => setUploadSessionId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500"
                 >
                   <option value="">Tài liệu chung của lớp (không gắn ngày cụ thể)</option>
                   {uploadClassSessions.map((session) => (
@@ -882,6 +882,7 @@ export default function TeacherFilesPage() {
                       value="CLASS_ONLY"
                       checked={uploadVisibility === "CLASS_ONLY"}
                       onChange={() => setUploadVisibility("CLASS_ONLY")}
+                      className="accent-emerald-600"
                     />
                     <div>
                       <span className="font-bold block">Chỉ lớp này</span>
@@ -895,6 +896,7 @@ export default function TeacherFilesPage() {
                       value="COURSE"
                       checked={uploadVisibility === "COURSE"}
                       onChange={() => setUploadVisibility("COURSE")}
+                      className="accent-emerald-600"
                     />
                     <div>
                       <span className="font-bold block">Toàn khóa học</span>
@@ -909,7 +911,7 @@ export default function TeacherFilesPage() {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Chọn Tệp tài liệu *
                 </label>
-                <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 p-6 text-center hover:border-blue-500 transition">
+                <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 p-6 text-center hover:border-emerald-500 transition">
                   <input
                     type="file"
                     required
@@ -937,7 +939,7 @@ export default function TeacherFilesPage() {
                   ) : (
                     <label htmlFor="fileUploadInput" className="cursor-pointer space-y-1 block">
                       <UploadCloud className="mx-auto h-7 w-7 text-slate-400" />
-                      <p className="text-xs font-bold text-blue-600 dark:text-sky-400">
+                      <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
                         Nhấp để chọn file từ máy tính
                       </p>
                       <p className="text-[10px] text-slate-400">
@@ -979,7 +981,7 @@ export default function TeacherFilesPage() {
                 <button
                   type="submit"
                   disabled={isUploading || !selectedUploadFile || uploadProgress?.status === "success"}
-                  className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
+                  className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition"
                 >
                   {isUploading
                     ? "Đang tải lên..."
@@ -1004,7 +1006,7 @@ function FileCard({ file, onDelete }) {
   const Icon = config.icon;
 
   return (
-    <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-2xs hover:shadow-md transition flex flex-col justify-between space-y-3">
+    <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-2xs hover:border-emerald-400 hover:shadow-md transition flex flex-col justify-between space-y-3">
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-2">
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${config.badge}`}>
@@ -1020,7 +1022,7 @@ function FileCard({ file, onDelete }) {
             {file.name}
           </h4>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
-            <span className="font-semibold text-blue-600 dark:text-sky-400">
+            <span className="font-semibold text-emerald-700 dark:text-emerald-400">
               {file.classTitle || "Lớp học"}
             </span>
             {file.sessionTitle && (
@@ -1044,7 +1046,7 @@ function FileCard({ file, onDelete }) {
             href={file.downloadUrl}
             target="_blank"
             rel="noreferrer"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="p-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-600 transition"
             title="Tải xuống tài liệu"
           >
             <Download className="h-4 w-4" />
@@ -1053,7 +1055,7 @@ function FileCard({ file, onDelete }) {
             <button
               type="button"
               onClick={onDelete}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
               title="Xóa tài liệu"
             >
               <Trash2 className="h-4 w-4" />
