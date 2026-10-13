@@ -312,9 +312,16 @@ const serializeAssignment = (row) => ({
   content_text: row.content_text || "",
   file_asset_id: row.file_asset_id || null,
   audio_asset_id: row.audio_asset_id || null,
-  file_url: row.file_asset_id ? assignmentAssetPath(row.file_asset_id) : null,
+  file_url: row.file_asset_id ? assignmentAssetPath(row.file_asset_id) : (Array.isArray(row.file_assets) && row.file_assets[0]?.fileUrl ? row.file_assets[0].fileUrl : null),
   audio_url: row.audio_asset_id ? assignmentAssetPath(row.audio_asset_id) : null,
-  file_name: row.file_name || null,
+  file_name: row.file_name || (Array.isArray(row.file_assets) && row.file_assets[0]?.fileName ? row.file_assets[0].fileName : null),
+  file_assets: Array.isArray(row.file_assets)
+    ? row.file_assets
+    : (row.file_asset_id ? [{
+        id: row.file_asset_id,
+        fileName: row.file_name || "tai-lieu-bai-lam",
+        fileUrl: assignmentAssetPath(row.file_asset_id),
+      }] : []),
   audio_name: row.audio_name || null,
   score: row.score ?? null,
   feedback_text: row.feedback_text || null,
@@ -1233,12 +1240,35 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
     const submission = await query(
       `SELECT s.id AS submission_id, s.status AS submission_status, s.submitted_at,
               s.revision, s.return_requested, s.return_reason, s.resubmit_until, sg.annotations,
-              s.content_text, s.file_asset_id, s.audio_asset_id,
+              s.content_text, s.file_asset_id, s.file_asset_ids, s.audio_asset_id,
               fa.original_filename AS file_name, aa.original_filename AS audio_name,
-              sg.score, sg.feedback_text, sg.rubric_scores, sg.graded_at, sg.grader_name, sg.grader_avatar
+              sg.score, sg.feedback_text, sg.rubric_scores, sg.graded_at, sg.grader_name, sg.grader_avatar,
+              s_assets.file_assets
        FROM assignment_submissions s
        LEFT JOIN submission_assets fa ON fa.id = s.file_asset_id
        LEFT JOIN submission_assets aa ON aa.id = s.audio_asset_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(
+           json_agg(
+             json_build_object(
+               'id', sa.id,
+               'fileName', sa.original_filename,
+               'fileUrl', '/api/assignments/submission-assets/' || sa.id || '/access',
+               'mimeType', sa.mime_type,
+               'sizeBytes', sa.size_bytes
+             ) ORDER BY COALESCE(array_position(s.file_asset_ids, sa.id), 1)
+           ) FILTER (WHERE sa.id IS NOT NULL),
+           '[]'::json
+         ) AS file_assets
+         FROM submission_assets sa
+         WHERE sa.id = ANY(
+           CASE
+             WHEN array_length(s.file_asset_ids, 1) > 0 THEN s.file_asset_ids
+             WHEN s.file_asset_id IS NOT NULL THEN ARRAY[s.file_asset_id]
+             ELSE ARRAY[]::bigint[]
+           END
+         )
+       ) s_assets ON true
        LEFT JOIN LATERAL (
          SELECT sg.score, sg.feedback_text, sg.rubric_scores, sg.graded_at, sg.annotations,
                 grader.username AS grader_name, grader.avatar_url AS grader_avatar
@@ -1251,6 +1281,7 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
     const row = {
       ...assignment,
       ...(submission.rows[0] || {}),
+      file_assets: parseJsonArray(submission.rows[0]?.file_assets),
       due_date: submission.rows[0]?.return_requested ? submission.rows[0].resubmit_until : effectiveAssignmentDueDate(assignment, accommodation),
       accommodation: serializeAccommodation(accommodation),
     };
@@ -1336,7 +1367,7 @@ router.get("/submission-assets/:assetId/access", protectRoute, async (req, res) 
     const result = await query(
       `SELECT sa.id, sa.user_id, sa.storage_key, sa.status, a.instructor_id, a.live_class_id
        FROM submission_assets sa
-       LEFT JOIN assignment_submissions s ON s.file_asset_id = sa.id OR s.audio_asset_id = sa.id
+       LEFT JOIN assignment_submissions s ON s.file_asset_id = sa.id OR s.audio_asset_id = sa.id OR sa.id = ANY(s.file_asset_ids)
        LEFT JOIN assignments a ON a.id = COALESCE(s.assignment_id, sa.assignment_id)
        WHERE sa.id = $1`,
       [assetId],
@@ -1398,14 +1429,15 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
     const result = await query(
       `SELECT s.id, s.assignment_id, s.user_id, s.content_text, s.status, s.submitted_at,
               s.revision, s.return_requested, s.return_reason, s.resubmit_until, sg.annotations,
-              s.file_asset_id, s.audio_asset_id, a.title AS assignment_title, a.assignment_type, a.max_score, a.due_date,
+              s.file_asset_id, s.file_asset_ids, s.audio_asset_id, a.title AS assignment_title, a.assignment_type, a.max_score, a.due_date,
               a.live_class_id, a.class_session_id, lc.title AS class_title,
               class_session.title AS session_title, class_session.start_time AS session_start,
               u.username AS student_username, u.username AS student_name, u.email AS student_email, u.avatar_url AS student_avatar,
               fa.original_filename AS file_name, aa.original_filename AS audio_name,
               CASE WHEN s.file_asset_id IS NOT NULL THEN '/api/assignments/submission-assets/' || s.file_asset_id || '/access' END AS file_url,
               CASE WHEN s.audio_asset_id IS NOT NULL THEN '/api/assignments/submission-assets/' || s.audio_asset_id || '/access' END AS audio_url,
-              sg.score, sg.feedback_text, sg.graded_at, sg.rubric_scores, rubric.criteria_json AS rubric_criteria
+              sg.score, sg.feedback_text, sg.graded_at, sg.rubric_scores, rubric.criteria_json AS rubric_criteria,
+              s_assets.file_assets
        FROM assignment_submissions s
        JOIN assignments a ON a.id = s.assignment_id
        JOIN users u ON u.id = s.user_id
@@ -1413,6 +1445,28 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
        LEFT JOIN class_sessions class_session ON class_session.id = a.class_session_id
        LEFT JOIN submission_assets fa ON fa.id = s.file_asset_id
        LEFT JOIN submission_assets aa ON aa.id = s.audio_asset_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(
+           json_agg(
+             json_build_object(
+               'id', sa.id,
+               'fileName', sa.original_filename,
+               'fileUrl', '/api/assignments/submission-assets/' || sa.id || '/access',
+               'mimeType', sa.mime_type,
+               'sizeBytes', sa.size_bytes
+             ) ORDER BY COALESCE(array_position(s.file_asset_ids, sa.id), 1)
+           ) FILTER (WHERE sa.id IS NOT NULL),
+           '[]'::json
+         ) AS file_assets
+         FROM submission_assets sa
+         WHERE sa.id = ANY(
+           CASE
+             WHEN array_length(s.file_asset_ids, 1) > 0 THEN s.file_asset_ids
+             WHEN s.file_asset_id IS NOT NULL THEN ARRAY[s.file_asset_id]
+             ELSE ARRAY[]::bigint[]
+           END
+         )
+       ) s_assets ON true
        LEFT JOIN assignment_rubrics rubric ON rubric.assignment_id = a.id
        LEFT JOIN LATERAL (
          SELECT score, feedback_text, graded_at, rubric_scores, annotations FROM submission_grades
@@ -1448,6 +1502,7 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (re
       submittedAt: row.submitted_at,
       fileName: row.file_name || null,
       fileUrl: row.file_url || null,
+      fileAssets: parseJsonArray(row.file_assets),
       audioName: row.audio_name || null,
       audioUrl: row.audio_url || null,
       score: row.score === null ? null : Number(row.score),
@@ -1626,14 +1681,37 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
     const assignment = await getAssignment(assignmentId);
     if (!assignment) return notFound(res, "Không tìm thấy bài tập");
     if (!(await ensureAssignmentVisibleToStudent(assignment, req.user.id))) return forbidden(res, "Bạn chưa được đăng ký vào khóa/lớp của bài tập này");
-    const { contentText, fileAssetId: rawFileAssetId, audioAssetId: rawAudioAssetId, fileUrl, audioUrl } = req.body;
+    const {
+      contentText,
+      fileAssetId: rawFileAssetId,
+      fileAssetIds: rawFileAssetIds,
+      audioAssetId: rawAudioAssetId,
+      fileUrl,
+      audioUrl,
+    } = req.body;
     if (fileUrl || audioUrl) return validationError(res, "Bài nộp phải dùng assetId từ API upload, không nhận URL tùy ý");
-    const fileAssetId = parseOptionalId(rawFileAssetId);
+
+    let fileAssetIds = [];
+    if (Array.isArray(rawFileAssetIds)) {
+      if (rawFileAssetIds.length > 10) return validationError(res, "Tối đa 10 tệp/ảnh bài nộp");
+      for (const rawId of rawFileAssetIds) {
+        const parsed = parsePositiveId(rawId);
+        if (!parsed) return validationError(res, "assetId không hợp lệ trong danh sách fileAssetIds");
+        if (!fileAssetIds.includes(parsed)) fileAssetIds.push(parsed);
+      }
+    } else if (rawFileAssetId !== undefined && rawFileAssetId !== null && rawFileAssetId !== "") {
+      const parsed = parsePositiveId(rawFileAssetId);
+      if (!parsed) return validationError(res, "assetId không hợp lệ");
+      fileAssetIds = [parsed];
+    }
+
+    const fileAssetId = fileAssetIds[0] || null;
     const audioAssetId = parseOptionalId(rawAudioAssetId);
-    if ((rawFileAssetId !== undefined && rawFileAssetId !== null && !fileAssetId) || (rawAudioAssetId !== undefined && rawAudioAssetId !== null && !audioAssetId)) return validationError(res, "assetId không hợp lệ");
+    if (rawAudioAssetId !== undefined && rawAudioAssetId !== null && !audioAssetId) return validationError(res, "audioAssetId không hợp lệ");
     if (contentText !== undefined && (typeof contentText !== "string" || contentText.length > 100000)) return validationError(res, "Nội dung bài nộp không hợp lệ");
-    if (!((typeof contentText === "string" && contentText.trim()) || fileAssetId || audioAssetId)) return validationError(res, "Bài nộp phải có nội dung, file hoặc audio");
-    if (fileAssetId && audioAssetId && fileAssetId === audioAssetId) return validationError(res, "File và audio phải là hai asset khác nhau");
+    if (!((typeof contentText === "string" && contentText.trim()) || fileAssetIds.length > 0 || audioAssetId)) return validationError(res, "Bài nộp phải có nội dung, file hoặc audio");
+    if (audioAssetId && fileAssetIds.includes(audioAssetId)) return validationError(res, "File và audio phải là hai asset khác nhau");
+
     await client.query("BEGIN");
     await assertGradebookOpen(client, assignment.live_class_id);
     const existing = await client.query("SELECT * FROM assignment_submissions WHERE assignment_id = $1 AND user_id = $2 FOR UPDATE", [assignmentId, req.user.id]);
@@ -1641,20 +1719,29 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
       await client.query("ROLLBACK");
       return conflict(res, existing.rows[0].status === "graded" ? "Bài đã được chấm và đã khóa" : "Bài đã được nộp, không thể nộp đè", "SUBMISSION_LOCKED");
     }
+
+    const allAssetIds = [...fileAssetIds, ...(audioAssetId ? [audioAssetId] : [])];
     const assets = await client.query(
       `SELECT id, assignment_id, asset_kind, status FROM submission_assets
        WHERE id = ANY($1::bigint[]) AND user_id = $2 FOR UPDATE`,
-      [[fileAssetId, audioAssetId].filter(Boolean), req.user.id],
+      [allAssetIds, req.user.id],
     );
     const assetById = new Map(assets.rows.map((asset) => [Number(asset.id), asset]));
-    for (const [assetId, expectedKind] of [[fileAssetId, "file"], [audioAssetId, "audio"]]) {
-      if (!assetId) continue;
-      const asset = assetById.get(assetId);
-      if (!asset || asset.status !== "ready" || (asset.assignment_id !== null && Number(asset.assignment_id) !== assignmentId) || asset.asset_kind !== expectedKind) {
+    for (const fid of fileAssetIds) {
+      const asset = assetById.get(fid);
+      if (!asset || asset.status !== "ready" || (asset.assignment_id !== null && Number(asset.assignment_id) !== assignmentId) || asset.asset_kind !== "file") {
         await client.query("ROLLBACK");
         return validationError(res, "Tệp bài nộp không hợp lệ hoặc chưa upload xong");
       }
     }
+    if (audioAssetId) {
+      const asset = assetById.get(audioAssetId);
+      if (!asset || asset.status !== "ready" || (asset.assignment_id !== null && Number(asset.assignment_id) !== assignmentId) || asset.asset_kind !== "audio") {
+        await client.query("ROLLBACK");
+        return validationError(res, "Tệp audio không hợp lệ hoặc chưa upload xong");
+      }
+    }
+
     const accommodation = await getAssessmentAccommodation({ assessmentType: "assignment", assessmentId: assignmentId, userId: req.user.id, db: client });
     const dueDate = existing.rows[0]?.return_requested ? existing.rows[0].resubmit_until : effectiveAssignmentDueDate(assignment, accommodation);
     const isLate = dueDate && Date.now() > new Date(dueDate).getTime();
@@ -1663,22 +1750,22 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
       const old = existing.rows[0];
       await client.query("INSERT INTO submission_revisions(submission_id, revision, snapshot) VALUES ($1, $2, $3::jsonb)", [old.id, old.revision, JSON.stringify(old)]);
       result = await client.query(
-        `UPDATE assignment_submissions SET content_text = $2, file_asset_id = $3, audio_asset_id = $4,
-          status = $5, submitted_at = NOW(), revision = revision + 1, return_requested = FALSE,
+        `UPDATE assignment_submissions SET content_text = $2, file_asset_id = $3, file_asset_ids = $4, audio_asset_id = $5,
+          status = $6, submitted_at = NOW(), revision = revision + 1, return_requested = FALSE,
           return_reason = NULL, returned_by = NULL, returned_at = NULL, resubmit_until = NULL
-         WHERE id = $1 RETURNING *`, [old.id, contentText?.trim() || "", fileAssetId, audioAssetId, isLate ? "late" : "submitted"],
+         WHERE id = $1 RETURNING *`, [old.id, contentText?.trim() || "", fileAssetId, fileAssetIds, audioAssetId, isLate ? "late" : "submitted"],
       );
       await client.query("DELETE FROM grading_drafts WHERE submission_id = $1", [old.id]);
       await recordAuditEvent({ db: client, actorId: req.user.id, action: "submission.resubmitted", entityType: "assignment_submission", entityId: old.id, beforeState: { revision: old.revision }, afterState: { revision: old.revision + 1 } });
       await notifyWorkflow(client, { userId: assignment.instructor_id, title: "Học viên đã nộp lại bài", message: assignment.title,
         link: `/lms/teacher/grading?assignmentId=${assignmentId}`, key: `resubmission:${old.id}:${old.revision + 1}`, actorId: req.user.id });
     } else result = await client.query(
-      `INSERT INTO assignment_submissions (assignment_id, user_id, content_text, file_asset_id, audio_asset_id, status)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, assignment_id, user_id, content_text, file_asset_id, audio_asset_id, status, submitted_at`,
-      [assignmentId, req.user.id, contentText?.trim() || "", fileAssetId, audioAssetId, isLate ? "late" : "submitted"],
+      `INSERT INTO assignment_submissions (assignment_id, user_id, content_text, file_asset_id, file_asset_ids, audio_asset_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, assignment_id, user_id, content_text, file_asset_id, file_asset_ids, audio_asset_id, status, submitted_at`,
+      [assignmentId, req.user.id, contentText?.trim() || "", fileAssetId, fileAssetIds, audioAssetId, isLate ? "late" : "submitted"],
     );
-    await client.query("UPDATE submission_assets SET assignment_id = $1, updated_at = NOW() WHERE id = ANY($2::bigint[]) AND user_id = $3", [assignmentId, [fileAssetId, audioAssetId].filter(Boolean), req.user.id]);
+    await client.query("UPDATE submission_assets SET assignment_id = $1, updated_at = NOW() WHERE id = ANY($2::bigint[]) AND user_id = $3", [assignmentId, allAssetIds, req.user.id]);
     await client.query("COMMIT");
     return res.status(201).json({ success: true, data: result.rows[0], message: "Nộp bài tập thành công! Giáo viên sẽ chấm điểm sớm." });
   } catch (error) {

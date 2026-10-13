@@ -40,6 +40,13 @@ function isImageFile(fileName) {
   return /\.(?:jpe?g|png|webp|gif)$/i.test(String(fileName || ""));
 }
 
+function formatFileSize(bytes) {
+  if (!bytes || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 import SubmissionHistory from "../components/SubmissionHistory";
 import SubmissionAnnotations from "../components/SubmissionAnnotations";
 
@@ -53,9 +60,12 @@ export default function AssignmentSubmitPage() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const MAX_FILES = 10;
+
   // Submission inputs
   const [activeTab, setActiveTab] = useState("text"); // text | file | audio
   const [contentText, setContentText] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState([]); // [{ id, assetId, name, previewUrl, size, isImage, status, progress }]
   const [fileUrl, setFileUrl] = useState("");
   const [fileAssetId, setFileAssetId] = useState("");
   const [fileName, setFileName] = useState("");
@@ -89,6 +99,31 @@ export default function AssignmentSubmitPage() {
         const currentAssignment = res.data;
         setAssignment(currentAssignment);
         setIsGraded(false); setIsAlreadySubmitted(false);
+
+        const existingFiles = Array.isArray(currentAssignment.file_assets) && currentAssignment.file_assets.length > 0
+          ? currentAssignment.file_assets.map((fa, idx) => ({
+              id: `asset-${fa.id || idx}`,
+              assetId: fa.id,
+              name: fa.fileName,
+              previewUrl: fa.fileUrl,
+              size: fa.sizeBytes || 0,
+              isImage: isImageFile(fa.fileName),
+              status: "ready",
+              progress: 100,
+            }))
+          : currentAssignment.file_url
+            ? [{
+                id: `asset-${currentAssignment.file_asset_id || 1}`,
+                assetId: currentAssignment.file_asset_id,
+                name: currentAssignment.file_name || "tai-lieu-bai-lam",
+                previewUrl: currentAssignment.file_url,
+                size: 0,
+                isImage: isImageFile(currentAssignment.file_name),
+                status: "ready",
+                progress: 100,
+              }]
+            : [];
+        setAttachedFiles(existingFiles);
 
         // Check submission state
         if (currentAssignment.can_resubmit) {
@@ -139,53 +174,171 @@ export default function AssignmentSubmitPage() {
   const chineseCount = useMemo(() => countChineseChars(contentText), [contentText]);
   const hasImageSubmission = isImageFile(fileName);
 
-  // Upload through a server-issued R2 URL; the submission API receives only the asset ID.
-  const handleFileUpload = async (file, assetKind = "file") => {
-    if (!file) return;
-
+  // Upload single file to Cloudflare R2 via presigned URL
+  const uploadSingleFile = async (file, assetKind = "file") => {
     const maxBytes = assetKind === "audio" ? 50 * 1024 * 1024 : 25 * 1024 * 1024;
     if (file.size > maxBytes) {
-      setUploadError(`Kích thước tệp quá lớn! Vui lòng chọn tệp dưới ${assetKind === "audio" ? 50 : 25}MB.`);
+      throw new Error(`Tệp "${file.name}" vượt quá ${assetKind === "audio" ? 50 : 25}MB.`);
+    }
+
+    const uploadResponse = await requestSubmissionUploadUrl({
+      filename: file.name,
+      mimeType: file.type || "application/octet-stream",
+      sizeBytes: file.size,
+      assetKind,
+    });
+    const uploadData = uploadResponse.data;
+    const uploadResult = await fetch(uploadData.uploadUrl, {
+      method: "PUT",
+      headers: uploadData.headers || { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    if (!uploadResult.ok) throw new Error(`Không thể tải "${file.name}" lên kho lưu trữ Cloudflare R2`);
+    const confirmed = await confirmSubmissionAsset({
+      assetId: uploadData.assetId,
+      mimeType: file.type || "application/octet-stream",
+      sizeBytes: file.size,
+    });
+    return {
+      assetId: confirmed.data.id,
+      previewUrl: URL.createObjectURL(file),
+      name: file.name,
+      size: file.size,
+      isImage: isImageFile(file.name) || (file.type && file.type.startsWith("image/")),
+    };
+  };
+
+  const handleBatchFileUpload = async (files) => {
+    if (!files || files.length === 0) return;
+    setUploadError("");
+
+    const availableSlots = MAX_FILES - attachedFiles.length;
+    if (availableSlots <= 0) {
+      toast.error(`Bạn đã đính kèm tối đa ${MAX_FILES} ảnh/tệp! Vui lòng xóa bớt nếu muốn thêm ảnh mới.`);
       return;
     }
 
-    setUploadError("");
+    let filesToUpload = Array.from(files);
+    if (filesToUpload.length > availableSlots) {
+      toast(`Chỉ có thể thêm tối đa ${availableSlots} ảnh/tệp nữa (tối đa ${MAX_FILES} ảnh). Hệ thống sẽ tải ${availableSlots} ảnh đầu tiên.`, { icon: "ℹ️" });
+      filesToUpload = filesToUpload.slice(0, availableSlots);
+    }
+
     setIsUploadingFile(true);
     setUploadProgress(10);
-    if (assetKind === "file") setFileName(file.name);
+    const toastId = toast.loading(`Đang tải lên ${filesToUpload.length} ảnh/tệp...`);
+
+    const uploadedResults = [];
     try {
-      const uploadResponse = await requestSubmissionUploadUrl({
-        filename: file.name,
-        mimeType: file.type,
-        sizeBytes: file.size,
-        assetKind,
-      });
-      const uploadData = uploadResponse.data;
-      const uploadResult = await fetch(uploadData.uploadUrl, {
-        method: "PUT",
-        headers: uploadData.headers || { "Content-Type": file.type },
-        body: file,
-      });
-      if (!uploadResult.ok) throw new Error("Không thể tải tệp lên kho lưu trữ");
-      setUploadProgress(90);
-      const confirmed = await confirmSubmissionAsset({ assetId: uploadData.assetId, mimeType: file.type, sizeBytes: file.size });
-      setUploadProgress(100);
-      const previewUrl = URL.createObjectURL(file);
-      if (assetKind === "audio") {
-        setAudioAssetId(confirmed.data.id);
-        setAudioUrl(previewUrl);
-      } else {
-        setFileAssetId(confirmed.data.id);
-        setFileUrl(previewUrl);
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        setUploadProgress(Math.round(((i + 0.3) / filesToUpload.length) * 100));
+        const res = await uploadSingleFile(file, "file");
+        uploadedResults.push({
+          id: `file-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          assetId: res.assetId,
+          name: res.name,
+          previewUrl: res.previewUrl,
+          size: res.size,
+          isImage: res.isImage,
+          status: "ready",
+          progress: 100,
+        });
+        setUploadProgress(Math.round(((i + 1) / filesToUpload.length) * 100));
       }
-      toast.success(`Đã tải lên tệp: ${file.name} thành công! 📎`);
+
+      setAttachedFiles((prev) => {
+        const next = [...prev, ...uploadedResults];
+        if (next.length > 0) {
+          setFileAssetId(next[0].assetId);
+          setFileUrl(next[0].previewUrl);
+          setFileName(next[0].name);
+        }
+        return next;
+      });
+      toast.success(`Đã đính kèm ${uploadedResults.length} ảnh/tệp bài làm thành công! 📎`, { id: toastId });
     } catch (err) {
-      console.error("Submission upload failed:", err);
-      setUploadError(err.message || "Không thể tải tệp lên. Vui lòng thử lại.");
+      console.error("Batch upload failed:", err);
+      setUploadError(err.message || "Tải tệp lên thất bại. Vui lòng thử lại.");
+      toast.error(err.message || "Lỗi tải tệp lên", { id: toastId });
+      if (uploadedResults.length > 0) {
+        setAttachedFiles((prev) => [...prev, ...uploadedResults]);
+      }
     } finally {
       setIsUploadingFile(false);
+      setUploadProgress(0);
     }
   };
+
+  const handleFileUpload = async (file, assetKind = "file") => {
+    if (!file) return;
+    if (assetKind === "audio") {
+      setIsUploadingFile(true);
+      try {
+        const res = await uploadSingleFile(file, "audio");
+        setAudioAssetId(res.assetId);
+        setAudioUrl(res.previewUrl);
+        toast.success("Đã tải lên bản ghi âm khẩu ngữ HSKK! 🎙️");
+      } catch (err) {
+        setUploadError(err.message);
+        toast.error(err.message);
+      } finally {
+        setIsUploadingFile(false);
+      }
+      return;
+    }
+    await handleBatchFileUpload([file]);
+  };
+
+  const handleRemoveFile = (indexToRemove) => {
+    setAttachedFiles((prev) => {
+      const next = prev.filter((_, idx) => idx !== indexToRemove);
+      if (next.length > 0) {
+        setFileAssetId(next[0].assetId);
+        setFileUrl(next[0].previewUrl);
+        setFileName(next[0].name);
+      } else {
+        setFileAssetId("");
+        setFileUrl("");
+        setFileName("");
+      }
+      return next;
+    });
+  };
+
+  // Clipboard paste listener: paste copied images or screenshots (Snipping Tool, Ctrl+V)
+  useEffect(() => {
+    const handlePaste = (e) => {
+      if (isAlreadySubmitted && !assignment?.can_resubmit) return;
+
+      const clipboardItems = e.clipboardData?.items;
+      if (!clipboardItems || clipboardItems.length === 0) return;
+
+      const imageFiles = [];
+      for (let i = 0; i < clipboardItems.length; i++) {
+        const item = clipboardItems[i];
+        if (item.type && item.type.startsWith("image/")) {
+          const blob = item.getAsFile();
+          if (blob) {
+            const ext = (item.type.split("/")[1] || "png").replace("jpeg", "jpg");
+            const timeTag = new Date().toISOString().replace(/[-:T.]/g, "").slice(8, 14);
+            const generatedName = `anh-dan-${timeTag}-${imageFiles.length + 1}.${ext}`;
+            const file = new File([blob], generatedName, { type: item.type });
+            imageFiles.push(file);
+          }
+        }
+      }
+
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        setActiveTab("file");
+        handleBatchFileUpload(imageFiles);
+      }
+    };
+
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [isAlreadySubmitted, assignment?.can_resubmit, attachedFiles.length]);
 
   // Record real microphone audio, then send it through the same validated upload flow.
   const handleToggleRecord = async () => {
@@ -229,8 +382,9 @@ export default function AssignmentSubmitPage() {
   // Submit action
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    if (!contentText.trim() && !fileAssetId && !audioAssetId) {
-      toast.error("Vui lòng nhập nội dung bài làm, đính kèm tệp hoặc ghi âm audio HSKK!");
+    const readyAssetIds = attachedFiles.filter((f) => f.status === "ready" && f.assetId).map((f) => f.assetId);
+    if (!contentText.trim() && readyAssetIds.length === 0 && !audioAssetId) {
+      toast.error("Vui lòng nhập nội dung bài làm, đính kèm ảnh/tệp hoặc ghi âm audio HSKK!");
       return;
     }
 
@@ -239,8 +393,9 @@ export default function AssignmentSubmitPage() {
       const res = await submitAssignment({
         assignmentId: id,
         contentText: contentText.trim(),
-         fileAssetId,
-         audioAssetId,
+        fileAssetId: readyAssetIds[0] || null,
+        fileAssetIds: readyAssetIds,
+        audioAssetId: audioAssetId || null,
       });
 
       if (res.success) {
@@ -468,32 +623,45 @@ export default function AssignmentSubmitPage() {
               )}
 
               {/* Attached file preview */}
-              {fileUrl && (
-                <div className="space-y-2">
-                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                    Tệp đính kèm:
-                  </span>
-                  {hasImageSubmission && (
-                    <a href={fileUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/80">
-                      <img src={fileUrl} alt="Ảnh bài làm đã nộp" className="max-h-[32rem] w-full object-contain" />
-                    </a>
-                  )}
-                  <div className="bg-slate-50 dark:bg-slate-950/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{hasImageSubmission ? '🖼️' : '📄'}</span>
-                      <div>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{fileName || "tai-lieu-bai-lam.pdf"}</p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500 font-mono">Định dạng nộp trực tuyến</p>
+              {attachedFiles.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                      Ảnh & Tệp Đã Nộp ({attachedFiles.length} tệp):
+                    </span>
+                  </div>
+
+                  {/* Grid gallery of submitted images */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {attachedFiles.map((item, idx) => (
+                      <div key={item.id || idx} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/80 space-y-2">
+                        {item.isImage ? (
+                          <a href={item.previewUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-slate-200 bg-black/5 dark:border-slate-800 dark:bg-black/30">
+                            <img src={item.previewUrl} alt={item.name} className="h-48 w-full object-contain" />
+                          </a>
+                        ) : (
+                          <div className="h-28 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-900 text-3xl">
+                            📄
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between text-xs pt-1">
+                          <div className="truncate mr-2">
+                            <p className="font-bold text-slate-900 dark:text-white truncate" title={item.name}>
+                              {idx + 1}. {item.name}
+                            </p>
+                            {item.size > 0 && <p className="text-[10px] text-slate-400">{formatFileSize(item.size)}</p>}
+                          </div>
+                          <a
+                            href={item.previewUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold text-rose-600 dark:text-rose-400 text-xs hover:bg-slate-50"
+                          >
+                            Xem Ảnh ↗
+                          </a>
+                        </div>
                       </div>
-                    </div>
-                    <a
-                      href={fileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition"
-                    >
-                      Tải / Xem Lại
-                    </a>
+                    ))}
                   </div>
                 </div>
               )}
@@ -594,51 +762,76 @@ export default function AssignmentSubmitPage() {
               </div>
             )}
 
-            {/* TAB 2: FILE ATTACHMENT WITH PROGRESS */}
+            {/* TAB 2: FILE ATTACHMENT WITH PROGRESS, PASTE SUPPORT & UP TO 10 PHOTOS */}
             {activeTab === "file" && (
               <div className="space-y-4">
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOver(true);
-                  }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDragOver(false);
-                    if (e.dataTransfer.files?.[0]) {
-                      handleFileUpload(e.dataTransfer.files[0]);
-                    }
-                  }}
-                  className={`border-2 border-dashed rounded-3xl p-8 text-center transition space-y-3 ${
-                    dragOver ? "border-rose-500 bg-rose-500/10" : "border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 hover:border-slate-300 dark:hover:border-slate-700"
-                  }`}
-                >
-                  <div className="text-slate-400 dark:text-slate-500 flex justify-center">
-                    <IconUpload />
+                {/* Paste & Count Hint Banner */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50">
+                  <div className="flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300">
+                    <span className="text-lg">📋</span>
+                    <span>
+                      <strong className="text-rose-600 dark:text-rose-400">Dán ảnh cực nhanh:</strong> Bạn có thể nhấn phím <kbd className="px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-800 font-mono font-bold text-[11px] shadow-sm text-rose-600 dark:text-rose-400">Ctrl + V</kbd> để dán ảnh copy từ clipboard hoặc ảnh chụp màn hình (Snipping Tool).
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-900 dark:text-white">Kéo và thả ảnh bài làm hoặc tệp vào đây</p>
-                    <p className="text-xs text-slate-500 mt-1">Ưu tiên ảnh JPG, PNG, WEBP để giáo viên xem trực tiếp; cũng hỗ trợ PDF, DOCX, ZIP (tối đa 25MB)</p>
-                  </div>
-                  <div>
-                    <label className="cursor-pointer inline-flex px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-800 dark:text-white transition">
-                      <span>Chọn tệp từ máy tính</span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/zip"
-                        className="hidden"
-                        onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
-                      />
-                    </label>
-                  </div>
+                  <span className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 shrink-0 font-mono shadow-sm">
+                    {attachedFiles.length} / {MAX_FILES} ảnh hoặc tệp
+                  </span>
                 </div>
+
+                {/* Dropzone (shown when under limit) */}
+                {attachedFiles.length < MAX_FILES && (
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragOver(true);
+                    }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOver(false);
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        handleBatchFileUpload(Array.from(e.dataTransfer.files));
+                      }
+                    }}
+                    className={`border-2 border-dashed rounded-3xl p-6 md:p-8 text-center transition space-y-3 ${
+                      dragOver ? "border-rose-500 bg-rose-500/10" : "border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 hover:border-slate-300 dark:hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="text-slate-400 dark:text-slate-500 flex justify-center">
+                      <IconUpload />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">Kéo & thả ảnh bài làm hoặc tệp vào đây</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Hỗ trợ tối đa <strong>10 ảnh</strong> (JPG, PNG, WEBP) hoặc tệp PDF, Word (tối đa 25MB/tệp) • Lưu trữ an toàn trên Cloudflare R2
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                      <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-800 dark:text-white transition">
+                        <span>📁 Chọn tệp từ máy tính</span>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/zip"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              handleBatchFileUpload(Array.from(e.target.files));
+                              e.target.value = "";
+                            }
+                          }}
+                        />
+                      </label>
+                      <span className="text-xs text-slate-400 font-mono">hoặc nhấn Ctrl+V để dán</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Upload Progress Bar */}
                 {isUploadingFile && (
                   <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
                     <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span>Đang tải lên: {fileName}</span>
+                      <span>Đang tải lên bài làm...</span>
                       <span className="font-mono text-rose-600 dark:text-rose-400 font-bold">{uploadProgress}%</span>
                     </div>
                     <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
@@ -663,28 +856,76 @@ export default function AssignmentSubmitPage() {
                   </div>
                 )}
 
-                {/* Attached File Ready */}
-                {fileUrl && !isUploadingFile && (
-                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-                    {hasImageSubmission && <img src={fileUrl} alt="Xem trước ảnh bài làm" className="max-h-72 w-full rounded-xl border border-slate-200 object-contain dark:border-slate-800" />}
-                    <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{hasImageSubmission ? '🖼️' : '📄'}</span>
-                      <div>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{fileName || "Tệp bài làm đính kèm"}</p>
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono">✓ Đã sẵn sàng nộp</p>
-                      </div>
+                {/* Attached Files Gallery Grid */}
+                {attachedFiles.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                      <span className="font-semibold uppercase tracking-wider">Danh sách ảnh/tệp đã tải lên ({attachedFiles.length}/{MAX_FILES}):</span>
+                      <button
+                        type="button"
+                        onClick={() => setAttachedFiles([])}
+                        className="text-rose-600 hover:underline text-[11px]"
+                      >
+                        Xóa tất cả
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        setFileUrl("");
-                        setFileName("");
-                        setFileAssetId("");
-                      }}
-                      className="text-xs text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 transition"
-                    >
-                      Xóa tệp
-                    </button>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {attachedFiles.map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          className="relative rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-3 flex flex-col justify-between group hover:border-rose-400 dark:hover:border-rose-500/50 transition shadow-sm"
+                        >
+                          <div className="space-y-2">
+                            {item.isImage ? (
+                              <div className="aspect-video w-full rounded-xl overflow-hidden bg-black/5 dark:bg-black/30 border border-slate-200/60 dark:border-slate-800 relative">
+                                <img
+                                  src={item.previewUrl}
+                                  alt={item.name}
+                                  className="w-full h-full object-contain"
+                                />
+                                <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-bold">
+                                  #{idx + 1}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="aspect-video w-full rounded-xl bg-slate-200/50 dark:bg-slate-900 flex items-center justify-center text-3xl">
+                                📄
+                              </div>
+                            )}
+
+                            <div className="space-y-0.5">
+                              <p className="text-xs font-bold text-slate-900 dark:text-white truncate" title={item.name}>
+                                {item.name}
+                              </p>
+                              <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                                <span>{item.size > 0 ? formatFileSize(item.size) : "Tệp bài làm"}</span>
+                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Sẵn sàng</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 mt-2 border-t border-slate-200 dark:border-slate-800/80">
+                            {item.previewUrl && (
+                              <a
+                                href={item.previewUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline"
+                              >
+                                Xem ảnh ↗
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFile(idx)}
+                              className="text-[11px] text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 font-medium transition ml-auto"
+                            >
+                              Xóa ảnh ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -761,7 +1002,7 @@ export default function AssignmentSubmitPage() {
                 <button
                   type="button"
                   onClick={() => setShowConfirm(true)}
-                  disabled={submitting || isUploadingFile || (!contentText.trim() && !fileAssetId && !audioAssetId)}
+                  disabled={submitting || isUploadingFile || (!contentText.trim() && attachedFiles.length === 0 && !audioAssetId)}
                   className="flex-1 sm:flex-none px-7 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-rose-600/30"
                 >
                   Xác Nhận Nộp Bài →
@@ -793,8 +1034,8 @@ export default function AssignmentSubmitPage() {
                 <span className="text-slate-900 dark:text-white font-bold">{contentText ? `${chineseCount} chữ Hán` : "Không có"}</span>
               </div>
               <div className="flex justify-between">
-                <span>Tệp đính kèm:</span>
-                <span className="text-slate-900 dark:text-white font-bold">{fileAssetId ? fileName || "1 tệp" : "Không có"}</span>
+                <span>Ảnh / Tệp đính kèm:</span>
+                <span className="text-slate-900 dark:text-white font-bold">{attachedFiles.length > 0 ? `${attachedFiles.length} ảnh/tệp` : "Không có"}</span>
               </div>
               <div className="flex justify-between">
                 <span>Khẩu ngữ HSKK:</span>

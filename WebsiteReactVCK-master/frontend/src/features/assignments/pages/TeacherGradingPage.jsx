@@ -87,6 +87,24 @@ export default function TeacherGradingPage() {
 
   // Audio player playback rate (0.75, 1, 1.25, 1.5)
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [activeFileIndex, setActiveGradingFileIndex] = useState(0);
+
+  const subFiles = useMemo(() => {
+    if (!selectedSub) return [];
+    if (Array.isArray(selectedSub.fileAssets) && selectedSub.fileAssets.length > 0) {
+      return selectedSub.fileAssets;
+    }
+    if (selectedSub.fileUrl) {
+      return [{
+        id: "default",
+        fileName: selectedSub.fileName || "Tệp bài làm",
+        fileUrl: selectedSub.fileUrl,
+      }];
+    }
+    return [];
+  }, [selectedSub]);
+
+  const currentFile = subFiles[activeFileIndex] || subFiles[0] || null;
 
   const loadSubmissions = useCallback(async () => {
     setLoading(true);
@@ -125,6 +143,7 @@ export default function TeacherGradingPage() {
   // Handle selecting a submission from queue
   const handleSelectSub = useCallback((sub) => {
     setSelectedSub(sub);
+    setActiveGradingFileIndex(0);
     setAnnotations(sub.annotations || []); setChangeReason("");
     setScore(sub.score !== null && sub.score !== undefined ? sub.score : 8.5);
     setFeedback(sub.feedbackText || "");
@@ -448,25 +467,86 @@ export default function TeacherGradingPage() {
                         </div>
                       )}
 
-                      {selectedSub.fileUrl && (
-                        <div>
-                          <div className="mb-2 flex items-center justify-between gap-3">
-                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Tệp đính kèm</p>
-                            <a href={selectedSub.fileUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-300">Mở toàn màn hình</a>
+                      {subFiles.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                              Ảnh & Tệp bài làm ({subFiles.length} tệp)
+                            </p>
+                            {currentFile?.fileUrl && (
+                              <a
+                                href={currentFile.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-300"
+                              >
+                                Mở ảnh đang chọn toàn màn hình ↗
+                              </a>
+                            )}
                           </div>
-                          {isImageSubmission(selectedSub.fileName) ? (
-                            <a href={selectedSub.fileUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
-                              <img src={selectedSub.fileUrl} alt={`Bài làm ảnh của ${selectedSub.studentName}`} className="max-h-[44rem] w-full object-contain" />
-                            </a>
-                          ) : (
-                            <a href={selectedSub.fileUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-                              <IconFile /> <span className="truncate">{selectedSub.fileName || "Mở tệp bài làm"}</span>
-                            </a>
+
+                          {/* Switcher tabs if student submitted multiple photos */}
+                          {subFiles.length > 1 && (
+                            <div className="flex flex-wrap gap-1.5 pb-1">
+                              {subFiles.map((file, idx) => (
+                                <button
+                                  key={file.id || idx}
+                                  type="button"
+                                  onClick={() => setActiveGradingFileIndex(idx)}
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                                    (activeFileIndex === idx || (!subFiles[activeFileIndex] && idx === 0))
+                                      ? "bg-rose-600 text-white shadow-sm"
+                                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                                  }`}
+                                >
+                                  <span>{isImageSubmission(file.fileName) ? "🖼️" : "📄"}</span>
+                                  <span>Ảnh #{idx + 1}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {currentFile && (
+                            <div>
+                              {isImageSubmission(currentFile.fileName) ? (
+                                <a
+                                  href={currentFile.fileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950"
+                                >
+                                  <img
+                                    src={currentFile.fileUrl}
+                                    alt={`Bài làm của ${selectedSub.studentName} - Ảnh ${activeFileIndex + 1}`}
+                                    className="max-h-[44rem] w-full object-contain"
+                                  />
+                                </a>
+                              ) : (
+                                <a
+                                  href={currentFile.fileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                >
+                                  <IconFile /> <span className="truncate">{currentFile.fileName || "Mở tệp bài làm"}</span>
+                                </a>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
 
-                      <details className="rounded-xl border border-slate-200 p-3 dark:border-slate-700"><summary className="cursor-pointer text-sm font-semibold">Chú thích bài làm ({annotations.length})</summary><div className="mt-3"><SubmissionAnnotations items={annotations} onChange={setAnnotations} fileUrl={selectedSub.fileUrl} fileName={selectedSub.fileName}/></div></details>
+                      <details className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                        <summary className="cursor-pointer text-sm font-semibold">Chú thích bài làm ({annotations.length})</summary>
+                        <div className="mt-3">
+                          <SubmissionAnnotations
+                            items={annotations}
+                            onChange={setAnnotations}
+                            fileUrl={currentFile?.fileUrl || selectedSub.fileUrl}
+                            fileName={currentFile?.fileName || selectedSub.fileName}
+                          />
+                        </div>
+                      </details>
                       {selectedSub.audioUrl && (
                         <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-950">
                           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

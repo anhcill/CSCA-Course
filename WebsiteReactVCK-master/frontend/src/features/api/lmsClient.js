@@ -498,10 +498,15 @@ export const confirmSubmissionAsset = async ({ assetId, mimeType, sizeBytes }) =
   })
 );
 
-export const submitAssignment = async ({ assignmentId, contentText, fileAssetId, audioAssetId }) => (
+export const submitAssignment = async ({ assignmentId, contentText, fileAssetId, fileAssetIds, audioAssetId }) => (
   request(`/assignments/${encodeURIComponent(assignmentId)}/submit`, {
     method: "POST",
-    body: JSON.stringify({ contentText, fileAssetId: fileAssetId || null, audioAssetId: audioAssetId || null }),
+    body: JSON.stringify({
+      contentText,
+      fileAssetId: fileAssetId || null,
+      fileAssetIds: Array.isArray(fileAssetIds) ? fileAssetIds : (fileAssetId ? [fileAssetId] : []),
+      audioAssetId: audioAssetId || null,
+    }),
   })
 );
 
