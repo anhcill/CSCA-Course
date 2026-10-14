@@ -113,6 +113,8 @@ export default function StudentLmsLayout({ children }) {
     const saved = window.localStorage.getItem('student-lms-sidebar-collapsed');
     return saved !== null ? saved === 'true' : true; // Mặc định thu gọn
   });
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const profileMenuRef = useRef(null);
   const workspaceLink = getLmsWorkspaceLink(authUser);
