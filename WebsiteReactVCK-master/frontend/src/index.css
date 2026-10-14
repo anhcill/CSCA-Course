@@ -220,27 +220,196 @@ html:not(.dark) aside {
   border-color: rgba(148, 196, 228, 0.75) !important;
 }
 
-/* 5. Thẻ nội dung (Cards, Lịch học, Bảng điểm) mang sắc thái xanh nước biển nhạt êm mắt */
-html:not(.dark) .student-lms [class~="bg-white"],
-html:not(.dark) .student-lms [class*="bg-white/"],
-html:not(.dark) main [class~="bg-white"],
-html:not(.dark) main [class*="bg-white/"],
+/* 5. Thẻ nội dung & Containers (Cards, Bảng biểu, Khung bài giảng) - Nền xanh nước biển nhạt êm mắt */
+/* Lưu ý: Chỉ áp dụng cho thẻ chứa (containers), KHÔNG áp dụng cho buttons, links hoặc pills để tránh mất độ tương phản */
+html:not(.dark) section.bg-white,
+html:not(.dark) article.bg-white,
 html:not(.dark) footer,
-html:not(.dark) .bg-white {
-  background-color: rgba(234, 245, 253, 0.92) !important;
+html:not(.dark) .student-lms [class~="bg-white"]:not(button):not(a):not(input):not(select):not(textarea):not([class*="bg-gradient-"] *),
+html:not(.dark) main [class~="bg-white"]:not(button):not(a):not(input):not(select):not(textarea):not([class*="bg-gradient-"] *),
+html:not(.dark) div.bg-white:not(button):not(a):not(input):not(select):not(textarea):not([class*="bg-gradient-"] *) {
+  background-color: rgba(232, 244, 252, 0.92) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
-  border-color: rgba(162, 204, 232, 0.65) !important;
+  border-color: rgba(158, 202, 230, 0.7) !important;
 }
 
-/* 6. Các ô tiêu đề cột, ngày trong tuần, header bảng theo sắc xanh biển nhạt */
-html:not(.dark) [class*="bg-slate-50"],
-html:not(.dark) [class*="bg-gray-50"],
-html:not(.dark) [class*="bg-slate-100"] {
+/* 6. Hero Banners & Hộp thông tin Gradient (Admin, Giáo viên, Học viên) */
+/* Hòa âm với bức tranh Claude Monet (Impression, Sunrise): sắc xanh biển sâu (Maritime Navy) dịu mắt */
+html:not(.dark) [class*="bg-gradient-to-"][class*="from-blue-600"],
+html:not(.dark) [class*="bg-gradient-to-"][class*="from-indigo-"],
+html:not(.dark) [class*="bg-gradient-to-"][class*="from-slate-900"],
+html:not(.dark) [class*="bg-gradient-to-"][class*="from-slate-950"],
+html:not(.dark) [class*="from-blue-600"][class*="to-indigo-800"],
+html:not(.dark) [class*="from-blue-600"][class*="to-violet-600"] {
+  background-image: linear-gradient(135deg, #163e59 0%, #1e5277 50%, #296d96 100%) !important;
+  border-color: rgba(148, 196, 228, 0.6) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 30px rgba(22, 62, 89, 0.2) !important;
+}
+
+/* Chữ trong Hero Banner: trắng sáng rõ ràng */
+html:not(.dark) [class*="bg-gradient-"] h1,
+html:not(.dark) [class*="bg-gradient-"] h2,
+html:not(.dark) [class*="bg-gradient-"] h3,
+html:not(.dark) [class*="bg-gradient-"] .text-white {
+  color: #ffffff !important;
+}
+
+html:not(.dark) [class*="bg-gradient-"] p,
+html:not(.dark) [class*="bg-gradient-"] .text-blue-100,
+html:not(.dark) [class*="bg-gradient-"] .text-blue-200,
+html:not(.dark) [class*="bg-gradient-"] .text-indigo-200 {
+  color: #d1e7f6 !important;
+}
+
+/* 7. Nút bấm & Huy hiệu BÊN TRONG Hero Banners (Giải quyết triệt để lỗi nút sáng chói khó nhìn) */
+/* 7.1. Nút hành động chính màu trắng (Solid White CTA): Vào lớp học, Vào phòng dạy, Tạo lịch... */
+html:not(.dark) [class*="bg-gradient-"] button.bg-white,
+html:not(.dark) [class*="bg-gradient-"] a.bg-white,
+html:not(.dark) [class*="bg-gradient-"] [class~="bg-white"]:is(button, a) {
+  background-color: #ffffff !important;
+  color: #142f42 !important;
+  font-weight: 800 !important;
+  border: 1px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 4px 14px rgba(10, 30, 50, 0.25) !important;
+}
+html:not(.dark) [class*="bg-gradient-"] button.bg-white:hover,
+html:not(.dark) [class*="bg-gradient-"] a.bg-white:hover,
+html:not(.dark) [class*="bg-gradient-"] [class~="bg-white"]:is(button, a):hover {
+  background-color: #edf6fd !important;
+  color: #0f2636 !important;
+}
+
+/* 7.2. Nút CTA màu vàng/amber trong banner ("Xem chi tiết buổi học") */
+html:not(.dark) [class*="bg-gradient-"] a[class*="bg-amber-"],
+html:not(.dark) [class*="bg-gradient-"] button[class*="bg-amber-"] {
+  background-color: #f59e0b !important;
+  color: #142f42 !important;
+  font-weight: 800 !important;
+  border: 1px solid rgba(245, 158, 11, 0.5) !important;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.28) !important;
+}
+html:not(.dark) [class*="bg-gradient-"] a[class*="bg-amber-"]:hover,
+html:not(.dark) [class*="bg-gradient-"] button[class*="bg-amber-"]:hover {
+  background-color: #fbbf24 !important;
+  color: #0d2130 !important;
+}
+
+/* 7.3. Nút bấm kính mờ bán trong suốt (Google Calendar, Tải .ics, Điểm danh, Lịch lớp, Ma Trận Quyền...) */
+/* Sử dụng Dark-Glass nền xanh đậm mờ + viền sáng + chữ trắng tương phản hoàn hảo */
+html:not(.dark) [class*="bg-gradient-"] [class*="bg-white/"]:is(button, a),
+html:not(.dark) [class*="bg-gradient-"] button[class*="bg-white/"],
+html:not(.dark) [class*="bg-gradient-"] a[class*="bg-white/"] {
+  background-color: rgba(10, 32, 54, 0.55) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  font-weight: 600 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+html:not(.dark) [class*="bg-gradient-"] [class*="bg-white/"]:is(button, a):hover,
+html:not(.dark) [class*="bg-gradient-"] button[class*="bg-white/"]:hover,
+html:not(.dark) [class*="bg-gradient-"] a[class*="bg-white/"]:hover {
+  background-color: rgba(10, 32, 54, 0.8) !important;
+  border-color: rgba(255, 255, 255, 0.75) !important;
+  color: #ffffff !important;
+}
+html:not(.dark) [class*="bg-gradient-"] [class*="bg-white/"]:is(button, a) svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* 7.4. Huy hiệu thông tin (Pills / Badges) trong Banner: "Không gian buổi học", "Phòng mở trước 15 phút", "Buổi dạy tiếp theo"... */
+html:not(.dark) [class*="bg-gradient-"] span[class*="bg-white/"],
+html:not(.dark) [class*="bg-gradient-"] div[class*="bg-white/"]:not(:is(button, a)) {
+  background-color: rgba(10, 32, 54, 0.5) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+html:not(.dark) [class*="bg-gradient-"] span[class*="bg-white/"] svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* 8. Nút bấm trên các thẻ nội dung thông thường (Admin, Giáo viên, Học viên) */
+/* 8.1. Nút màu trắng nổi trên nền thẻ xanh biển: viền biển đậm, chữ navy rõ nét */
+html:not(.dark) button.bg-white:not([class*="bg-gradient-"] *),
+html:not(.dark) a.bg-white:not([class*="bg-gradient-"] *),
+html:not(.dark) [class~="bg-white"]:is(button, a):not([class*="bg-gradient-"] *) {
+  background-color: #ffffff !important;
+  color: #142f42 !important;
+  border: 1px solid rgba(148, 196, 228, 0.8) !important;
+  box-shadow: 0 2px 6px rgba(20, 47, 66, 0.06) !important;
+}
+html:not(.dark) button.bg-white:not([class*="bg-gradient-"] *):hover,
+html:not(.dark) a.bg-white:not([class*="bg-gradient-"] *):hover,
+html:not(.dark) [class~="bg-white"]:is(button, a):not([class*="bg-gradient-"] *):hover {
+  background-color: #edf6fd !important;
+  border-color: #2b76a4 !important;
+  color: #205b80 !important;
+}
+
+/* 8.2. Nút bấm phụ (Secondary / Gray / Slate-100): Làm mới, Hủy, Xem thêm... */
+html:not(.dark) button[class*="bg-slate-100"],
+html:not(.dark) button[class*="bg-gray-100"],
+html:not(.dark) a[class*="bg-slate-100"],
+html:not(.dark) a[class*="bg-gray-100"],
+html:not(.dark) .btn-secondary {
+  background-color: rgba(214, 235, 250, 0.9) !important;
+  color: #142f42 !important;
+  border: 1px solid rgba(158, 202, 230, 0.7) !important;
+}
+html:not(.dark) button[class*="bg-slate-100"]:hover,
+html:not(.dark) button[class*="bg-gray-100"]:hover,
+html:not(.dark) a[class*="bg-slate-100"]:hover,
+html:not(.dark) a[class*="bg-gray-100"]:hover,
+html:not(.dark) .btn-secondary:hover {
+  background-color: rgba(188, 222, 245, 0.95) !important;
+  border-color: #2b76a4 !important;
+  color: #0f2738 !important;
+}
+
+/* 8.3. Nút bấm đen/slate-900 trong Admin (Làm mới danh sách, Filter "ALL"...) -> Xanh Navy Monet đồng bộ */
+html:not(.dark) button[class*="bg-slate-900"],
+html:not(.dark) a[class*="bg-slate-900"] {
+  background-color: #1b4965 !important;
+  color: #ffffff !important;
+  border-color: #163e59 !important;
+  box-shadow: 0 4px 12px rgba(27, 73, 101, 0.25) !important;
+}
+html:not(.dark) button[class*="bg-slate-900"]:hover,
+html:not(.dark) a[class*="bg-slate-900"]:hover {
+  background-color: #14384d !important;
+}
+
+/* 8.4. Badge số lượng bên trong Tab đang Active (SessionDetailPage, Workspace...) */
+html:not(.dark) button[class*="bg-blue-600"] span[class*="bg-white/"],
+html:not(.dark) button[class*="bg-emerald-600"] span[class*="bg-white/"] {
+  background-color: rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+/* 8.5. Icon bên trong Sidebar active link (Admin, Teacher, Student) */
+html:not(.dark) aside a[class*="bg-blue-600"] [class*="bg-white/"],
+html:not(.dark) aside a[class*="bg-emerald-600"] [class*="bg-white/"] {
+  background-color: rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+/* 9. Các ô tiêu đề cột, ngày trong tuần, header bảng theo sắc xanh biển nhạt */
+html:not(.dark) [class*="bg-slate-50"]:not(button):not(a),
+html:not(.dark) [class*="bg-gray-50"]:not(button):not(a),
+html:not(.dark) [class*="bg-slate-100"]:not(button):not(a) {
   background-color: rgba(214, 235, 250, 0.85) !important;
 }
 
-/* 7. Viền các thẻ và đường kẻ phân cách sắc xanh biển */
+/* 10. Viền các thẻ và đường kẻ phân cách sắc xanh biển */
 html:not(.dark) .border-slate-100,
 html:not(.dark) .border-slate-200,
 html:not(.dark) .border-slate-200\/80,
@@ -249,7 +418,7 @@ html:not(.dark) .border-gray-200 {
   border-color: rgba(158, 202, 230, 0.7) !important;
 }
 
-/* 8. Màu chữ tương phản sắc nét trên nền xanh biển nhạt - Xanh Navy Monet (#142f42) */
+/* 11. Màu chữ tương phản sắc nét trên nền xanh biển nhạt - Xanh Navy Monet (#142f42) */
 html:not(.dark) .text-slate-900,
 html:not(.dark) .text-slate-950,
 html:not(.dark) .text-gray-900,
@@ -269,7 +438,7 @@ html:not(.dark) .text-gray-500 {
   color: #487291 !important;
 }
 
-/* 9. Màu xanh biển thương hiệu (Primary Blue) trong Light mode */
+/* 12. Màu xanh biển thương hiệu (Primary Blue) trong Light mode */
 html:not(.dark) .bg-blue-600 {
   background-color: #2b76a4 !important;
 }
@@ -290,7 +459,7 @@ html:not(.dark) .border-blue-200\/60 {
   border-color: rgba(148, 196, 228, 0.85) !important;
 }
 
-/* 10. Input & Form trong Light mode */
+/* 13. Input & Form trong Light mode */
 html:not(.dark) input,
 html:not(.dark) select,
 html:not(.dark) textarea {
