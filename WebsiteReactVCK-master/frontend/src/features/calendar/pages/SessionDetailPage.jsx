@@ -1,10 +1,10 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Bell, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
-  Download, ExternalLink, FileSpreadsheet, FileText, Files, FolderOpen, Lock, Play, Trophy, Users, Video, Search,
+  Download, FileSpreadsheet, FileText, Files, FolderOpen, Lock, Play, Trophy, Users, Video, Search,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { isTeacherRole } from "../../../constants/roles";
@@ -99,6 +99,7 @@ const taskHref = (basePath, task) => task.type === "quiz"
 
 export default function SessionDetailPage() {
   const { courseId, classId, sessionId } = useParams();
+  const navigate = useNavigate();
   const { authUser } = useAuthContext();
   const isTeacher = isTeacherRole(authUser?.role);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -183,7 +184,11 @@ export default function SessionDetailPage() {
     try {
       const result = await getLiveSessionAccess(session.id);
       if (!result?.success || !result?.data?.meetUrl) throw new Error(result?.message || "Phòng học chưa sẵn sàng");
-      openReservedMeeting(meetingWindow, result.data.meetUrl);
+      openReservedMeeting(meetingWindow, result.data.meetUrl, {
+        sessionId: session.id,
+        provider: result.data.provider,
+        navigate,
+      });
       toast.success(`Đang mở phòng học ${result.data.provider || "trực tuyến"}...`);
     } catch (requestError) {
       closeReservedMeeting(meetingWindow);

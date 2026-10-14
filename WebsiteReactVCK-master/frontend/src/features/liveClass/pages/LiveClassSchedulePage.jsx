@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { CalendarDays, CheckCircle2, Clock3, LockKeyhole, Radio, RotateCcw, Users, Video } from "lucide-react";
 import { fetchMyLiveSchedule, getLiveSessionAccess } from "../../api/lmsClient";
@@ -28,6 +28,7 @@ const stateStyle = {
 
 export default function LiveClassSchedulePage() {
   const { courseId, classId } = useParams();
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -79,7 +80,11 @@ export default function LiveClassSchedulePage() {
     try {
       const result = await getLiveSessionAccess(session.id);
       if (!result?.success || !result?.data?.meetUrl) throw new Error("Phòng học chưa sẵn sàng");
-      openReservedMeeting(meetingWindow, result.data.meetUrl);
+      openReservedMeeting(meetingWindow, result.data.meetUrl, {
+        sessionId: session.id,
+        provider: result.data.provider,
+        navigate,
+      });
       toast.success(`Đang mở phòng ${result.data.provider || "trực tuyến"}.`);
     } catch (error) {
       closeReservedMeeting(meetingWindow);

@@ -1,6 +1,29 @@
 import { query } from "../db/connect.js";
 
-const MEETING_HOSTS = ["meet.google.com", "zoom.us"];
+const DEFAULT_JITSI_HOST = "meet.jit.si";
+
+const normalizeMeetingHost = (value) => {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const candidate = value.trim().toLowerCase();
+  try {
+    const parsed = new URL(candidate.includes("://") ? candidate : `https://${candidate}`);
+    return parsed.hostname || null;
+  } catch {
+    return null;
+  }
+};
+
+const getJitsiHosts = () => {
+  const configuredHosts = [process.env.JITSI_HOST, process.env.JITSI_ALLOWED_HOSTS]
+    .filter(Boolean)
+    .flatMap((value) => value.split(","))
+    .map(normalizeMeetingHost)
+    .filter(Boolean);
+  return new Set([DEFAULT_JITSI_HOST, ...configuredHosts]);
+};
+
+const isZoomHost = (hostname) => hostname === "zoom.us" || hostname.endsWith(".zoom.us");
+const isJitsiHost = (hostname) => getJitsiHosts().has(hostname);
 
 export const getMeetingProvider = (meetingUrl) => {
   if (!meetingUrl) return null;
@@ -11,7 +34,8 @@ export const getMeetingProvider = (meetingUrl) => {
     return null;
   }
   if (hostname === "meet.google.com") return "Google Meet";
-  if (hostname === "zoom.us" || hostname.endsWith(".zoom.us")) return "Zoom";
+  if (isZoomHost(hostname)) return "Zoom";
+  if (isJitsiHost(hostname)) return "Jitsi";
   return null;
 };
 
@@ -23,9 +47,10 @@ export const validateMeetingUrl = (meetingUrl) => {
     const parsed = new URL(meetingUrl);
     const hostname = parsed.hostname.toLowerCase();
     const isGoogleMeet = hostname === "meet.google.com";
-    const isZoom = hostname === "zoom.us" || hostname.endsWith(".zoom.us");
-    if (parsed.protocol !== "https:" || (!isGoogleMeet && !isZoom)) {
-      return "meetUrl phải là đường dẫn HTTPS của Google Meet hoặc Zoom";
+    const isZoom = isZoomHost(hostname);
+    const isJitsi = isJitsiHost(hostname);
+    if (parsed.protocol !== "https:" || (!isGoogleMeet && !isZoom && !isJitsi)) {
+      return "meetUrl phải là đường dẫn HTTPS của Google Meet, Zoom hoặc Jitsi";
     }
   } catch {
     return "meetUrl không hợp lệ";
@@ -44,7 +69,7 @@ const formatSessionNotification = (session, mode) => {
   if (mode === "link-changed") {
     return {
       title: "Link phòng học đã được cập nhật",
-      message: `Buổi học “${session.title}” lúc ${start} đã có link Meet/Zoom mới.`,
+      message: `Buổi học “${session.title}” lúc ${start} đã có link phòng học mới.`,
       dedupeKey: `live-session:${session.id}:link:${new Date(session.updated_at).getTime()}`,
     };
   }
@@ -96,8 +121,10 @@ export const notifyUpcomingSessions = async (sessions) => {
 export const isSupportedMeetingHost = (meetingUrl) => {
   if (!meetingUrl) return false;
   try {
-    const hostname = new URL(meetingUrl).hostname.toLowerCase();
-    return MEETING_HOSTS.includes(hostname) || hostname.endsWith(".zoom.us");
+    const parsed = new URL(meetingUrl);
+    const hostname = parsed.hostname.toLowerCase();
+    return parsed.protocol === "https:"
+      && (hostname === "meet.google.com" || isZoomHost(hostname) || isJitsiHost(hostname));
   } catch {
     return false;
   }

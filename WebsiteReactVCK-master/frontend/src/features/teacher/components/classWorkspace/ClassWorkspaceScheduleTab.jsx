@@ -76,6 +76,7 @@ export default function ClassWorkspaceScheduleTab({
           {sessions.map((s) => {
             const isLive = s.status === "LIVE" || s.status === "live";
             const hasMeetingLink = Boolean(s.has_meeting_link);
+            const meetingManagedExternally = Boolean(s.meeting_managed_externally);
             return (
               <div
                 key={s.id}
@@ -114,7 +115,8 @@ export default function ClassWorkspaceScheduleTab({
                       </span>
                       {hasMeetingLink
                         ? <span>Phòng {s.provider || "trực tuyến"} đã sẵn sàng</span>
-                        : <span>Chưa gán link Zoom/Google Meet</span>}
+                        : <span>Chưa gán link phòng học</span>}
+                      {meetingManagedExternally && <span>Link được quản lý tại InternalManagement</span>}
                     </div>
                   </div>
                 </div>
@@ -132,13 +134,19 @@ export default function ClassWorkspaceScheduleTab({
                   >
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Điểm danh
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() => onConfigureMeeting?.(s)}
-                    className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70 transition"
-                  >
-                    <Link2 className="h-3.5 w-3.5" /> {hasMeetingLink ? "Đổi link" : "Gán Zoom/Meet"}
-                  </button>
+                  {meetingManagedExternally ? (
+                    <span className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                      <Link2 className="h-3.5 w-3.5" /> Quản lý tại hệ thống nội bộ
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onConfigureMeeting?.(s)}
+                      className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70 transition"
+                    >
+                      <Link2 className="h-3.5 w-3.5" /> {hasMeetingLink ? "Đổi link" : "Gán link phòng"}
+                    </button>
+                  )}
                 </div>
               </div>
             );

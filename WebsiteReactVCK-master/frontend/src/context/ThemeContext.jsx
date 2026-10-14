@@ -7,7 +7,7 @@ const ThemeContext = createContext();
 const getInitialTheme = () => {
     const storedTheme = localStorage.getItem('darkMode');
     if (storedTheme !== null) return storedTheme === 'true';
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+    return false; // Mặc định là giao diện sáng cho toàn hệ thống
 };
 
 export const ThemeProvider = ({ children }) => {

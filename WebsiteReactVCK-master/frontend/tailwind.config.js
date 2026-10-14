@@ -9,16 +9,35 @@ export default {
     extend: {
       colors: {
         primary: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
+          50: '#f0f7fb',
+          100: '#e1eff8',
+          200: '#c5e2f3',
+          300: '#9ecde9',
+          400: '#6eaed5',
+          500: '#4592bf',
+          600: '#2b76a4', // Deep Sea Blue - Primary Button & Active
+          700: '#205b80', // Hover
+          800: '#1a4560',
+          900: '#142f42', // Maritime Navy - Main Text
+          950: '#0d1f2d',
+        },
+        ocean: {
+          50: '#f0f7fb',
+          100: '#e1eff8',
+          200: '#c5e2f3',
+          300: '#9ecde9',
+          400: '#6eaed5',
+          500: '#4592bf',
+          600: '#2b76a4',
+          700: '#205b80',
+          800: '#1a4560',
+          900: '#142f42',
+        },
+        sunrise: {
+          50: '#fff5f2',
+          100: '#fce8df',
+          500: '#f05d3b', // Cam mặt trời mọc Monet
+          600: '#d84827',
         },
         dark: {
           bg: '#1a1a1a',

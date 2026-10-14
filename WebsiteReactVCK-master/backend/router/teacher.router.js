@@ -3,6 +3,7 @@ import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
 import { query } from "../db/connect.js";
+import { getMeetingProvider } from "../services/liveClass.service.js";
 
 const router = express.Router();
 
@@ -108,7 +109,8 @@ const serializeClass = (row) => ({
   nextSession: row.next_session_start || null,
   nextSessionTitle: row.next_session_title || null,
   isLiveNow: row.next_session_status === "live",
-  meetUrl: row.next_meet_url || null,
+  hasMeetingLink: Boolean(row.next_meet_url),
+  provider: getMeetingProvider(row.next_meet_url),
 });
 
 const serializeRisk = (row) => ({
@@ -412,7 +414,8 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("
           startTime: row.start_time,
           endTime: row.end_time,
           status: row.status,
-          meetUrl: row.meet_url || null,
+          hasMeetingLink: Boolean(row.meet_url),
+          provider: getMeetingProvider(row.meet_url),
         })),
         atRiskStudents: riskResult.rows.map(serializeRisk),
         pendingSubmissions: pendingResult.rows.map(serializeSubmission),
@@ -723,7 +726,8 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, requirePerm
       progressPct: summary.progress_pct === null ? 0 : Number(summary.progress_pct),
       avgAttendance: `${Number(summary.attendance_rate || 0)}%`,
       avgGpa: summary.avg_gpa === null ? null : Number(summary.avg_gpa),
-      meetUrl: summary.next_meet_url || null,
+      hasMeetingLink: Boolean(summary.next_meet_url),
+      provider: getMeetingProvider(summary.next_meet_url),
       nextSession: summary.next_session_start || null,
       schedule: null,
       students,

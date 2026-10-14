@@ -7,21 +7,21 @@
 
 export const DESIGN_TOKENS = {
   colors: {
-    // Brand Primary - Sắc đỏ học thuật CSCA
+    // Brand Primary - Sắc xanh nước biển nhạt Monet (Light Sea Blue)
     primary: {
-      DEFAULT: '#e11d48', // rose-600
-      hover: '#be123c',   // rose-700
-      light: 'rgba(225, 29, 72, 0.1)',
-      border: 'rgba(225, 29, 72, 0.25)',
-      glow: 'rgba(225, 29, 72, 0.35)',
+      DEFAULT: '#2b76a4', // Deep sea blue
+      hover: '#205b80',   // Hover
+      light: 'rgba(43, 118, 164, 0.1)',
+      border: 'rgba(197, 226, 243, 0.6)',
+      glow: 'rgba(43, 118, 164, 0.25)',
     },
-    // Accent Gold / Amber - Gamification & Điểm thưởng, Chứng chỉ
+    // Accent Sunrise Coral - Lấy từ mặt trời mọc trong tranh Monet
     accent: {
-      DEFAULT: '#f59e0b', // amber-500
-      hover: '#d97706',   // amber-600
-      light: 'rgba(245, 158, 11, 0.12)',
-      border: 'rgba(245, 158, 11, 0.25)',
-      text: '#fbbf24',    // amber-400
+      DEFAULT: '#f05d3b', // sunrise coral
+      hover: '#d84827',   // dark sunrise coral
+      light: 'rgba(240, 93, 59, 0.12)',
+      border: 'rgba(240, 93, 59, 0.25)',
+      text: '#f05d3b',    // sunrise text
     },
     // Semantic States
     success: {
@@ -91,7 +91,7 @@ export const UI_CLASSES = {
   cardGlowAmber: 'border-amber-400/20 hover:border-amber-400/40 bg-gradient-to-br from-amber-400/5 via-slate-900/90 to-slate-900',
 
   // Buttons
-  btnPrimary: 'inline-flex items-center justify-center gap-2 font-bold px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm shadow-md shadow-rose-600/30 transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed',
+  btnPrimary: 'inline-flex items-center justify-center gap-2 font-bold px-4 py-2.5 rounded-xl bg-[#2b76a4] hover:bg-[#205b80] text-white text-sm shadow-md shadow-[#2b76a4]/30 transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed',
   btnAccent: 'inline-flex items-center justify-center gap-2 font-bold px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-sm shadow-md shadow-amber-400/20 transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed',
   btnSecondary: 'inline-flex items-center justify-center gap-2 font-bold px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm border border-white/10 transition active:scale-[0.98]',
   btnGhost: 'inline-flex items-center justify-center gap-2 font-semibold px-3 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 text-sm transition',

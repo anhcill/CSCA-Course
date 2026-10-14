@@ -166,9 +166,10 @@ const schedulePayload = (schedule) => ({
   version: Number(schedule.version || 1),
 });
 
-const sessionPayload = (session) => ({
+const sessionPayload = (session, managementScheduleSourceId = null) => ({
   id: String(session.id),
   managementSessionSourceId: session.management_session_source_id || null,
+  managementScheduleSourceId: managementScheduleSourceId || null,
   liveClassId: String(session.live_class_id),
   scheduleId: session.schedule_id === null || session.schedule_id === undefined ? null : String(session.schedule_id),
   title: session.title || null,
@@ -190,6 +191,17 @@ export const enqueueManagementCalendarDelivery = async (client, {
   if (!SUPPORTED_EVENT_TYPES.has(eventType)) throw new Error("Unsupported Management calendar event type");
   if (!managementClassId) return null;
 
+  let managementScheduleSourceId = lmsSession?.management_schedule_source_id || null;
+  if (!managementScheduleSourceId && lmsSession?.schedule_id !== null && lmsSession?.schedule_id !== undefined) {
+    const scheduleResult = await client.query(
+      `SELECT management_schedule_source_id
+       FROM class_schedules
+       WHERE id = $1 AND live_class_id = $2`,
+      [lmsSession.schedule_id, lmsSession.live_class_id],
+    );
+    managementScheduleSourceId = scheduleResult.rows[0]?.management_schedule_source_id || null;
+  }
+
   const eventId = crypto.randomUUID();
   const payload = {
     schemaVersion: 1,
@@ -198,7 +210,7 @@ export const enqueueManagementCalendarDelivery = async (client, {
     correlationId,
     managementClassId: String(managementClassId),
     lmsSchedule: lmsSchedule ? schedulePayload(lmsSchedule) : null,
-    lmsSession: lmsSession ? sessionPayload(lmsSession) : null,
+    lmsSession: lmsSession ? sessionPayload(lmsSession, managementScheduleSourceId) : null,
   };
   const payloadJson = JSON.stringify(payload);
   const entity = lmsSession || lmsSchedule;

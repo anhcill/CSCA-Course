@@ -361,7 +361,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Link Meet / Zoom (tùy chọn)</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Link phòng học trực tuyến (tùy chọn)</label>
                 <input
                   type="url"
                   placeholder="https://meet.google.com/..."

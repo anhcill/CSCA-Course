@@ -6,8 +6,8 @@
 
 :root {
   font-family: 'Be Vietnam Pro', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #111827;
-  background: #ffffff;
+  color: #142f42;
+  background: #f0f7fb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -19,15 +19,30 @@ html.dark {
   color-scheme: dark;
 }
 
+/* ==========================================================================
+   MOLYCOURSE - MONET IMPRESSION SUNRISE LIGHT THEME (PALE SEA-BLUE)
+   Mặc định hệ thống: Giao diện sáng với hình nền kiệt tác Monet Impression Sunrise
+   Khi chuyển Dark mode (.dark), giữ nguyên 100% giao diện nền tối ban đầu.
+   ========================================================================== */
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #ffffff;
+  background-color: #f0f7fb;
+  background-image: linear-gradient(rgba(240, 247, 252, 0.74), rgba(240, 247, 252, 0.74)), url('/monet-sunrise.jpg');
+  background-size: cover;
+  background-position: center top;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  color: #142f42;
 }
 
+html.dark body,
 .dark body {
-  background: #030712;
+  background-color: #030712 !important;
+  background-image: none !important;
+  color: #f8fafc !important;
 }
 
 button,
@@ -48,7 +63,7 @@ a {
   }
 
   ::selection {
-    @apply bg-red-200 text-red-950;
+    @apply bg-sky-200 text-sky-950;
   }
 
   ::-webkit-scrollbar {
@@ -56,29 +71,29 @@ a {
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-gray-100 dark:bg-gray-800;
+    @apply bg-[#e1eff8] dark:bg-gray-800;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-gray-300 dark:bg-gray-600;
+    @apply rounded-full bg-[#9ecde9] dark:bg-gray-600;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400 dark:bg-gray-500;
+    @apply bg-[#6eaed5] dark:bg-gray-500;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply rounded-xl bg-red-600 px-4 py-2 font-bold text-white transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-red-200;
+    @apply rounded-xl bg-[#2b76a4] px-4 py-2 font-bold text-white shadow-md shadow-[#2b76a4]/25 transition-all hover:bg-[#205b80] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#c5e2f3];
   }
 
   .btn-secondary {
-    @apply rounded-xl bg-gray-200 px-4 py-2 text-gray-800 transition-colors hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600;
+    @apply rounded-xl bg-[#e1eff8] px-4 py-2 text-[#142f42] font-semibold transition-colors hover:bg-[#c5e2f3] dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600;
   }
 
   .input-primary {
-    @apply rounded-xl border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white;
+    @apply rounded-xl border border-[#c5e2f3] px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-[#2b76a4] dark:border-gray-600 dark:bg-gray-700 dark:text-white;
   }
 }
 
@@ -103,12 +118,12 @@ a {
 
 .feedback-marquee-mask::before {
   top: 0;
-  background: linear-gradient(to bottom, #fff8f3, transparent);
+  background: linear-gradient(to bottom, #f0f7fb, transparent);
 }
 
 .feedback-marquee-mask::after {
   bottom: 0;
-  background: linear-gradient(to top, #fff1f2, transparent);
+  background: linear-gradient(to top, #e1eff8, transparent);
 }
 
 .dark .feedback-marquee-mask::before {
@@ -164,9 +179,117 @@ a {
   }
 }
 
-/* Student LMS uses a bright operational surface by default.  These scoped
-   tokens let every student workspace (including loading and empty states)
-   switch together without changing the public site or the admin console. */
+/* ==========================================================================
+   TOÀN BỘ HỆ THỐNG LMS: STUDENT, TEACHER, ADMIN & PUBLIC TRONG LIGHT MODE
+   Glassmorphism xanh nước biển nhạt, tôn vinh hình nền Claude Monet.
+   ========================================================================== */
+
+/* 1. Nền trong suốt mềm mại để hình nền Monet hiển thị xuyên suốt */
+html:not(.dark) .student-lms,
+html:not(.dark) [class*="bg-[#f6f9fd]"],
+html:not(.dark) .bg-slate-50,
+html:not(.dark) .bg-gray-50,
+html:not(.dark) main {
+  background-color: transparent !important;
+}
+
+/* 2. Header & Navbar toàn hệ thống (Kính mờ xanh nước biển nhạt) */
+html:not(.dark) header,
+html:not(.dark) nav {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border-color: rgba(197, 226, 243, 0.65) !important;
+  box-shadow: 0 4px 20px rgba(20, 47, 66, 0.04) !important;
+}
+
+/* 3. Aside & Sidebars toàn hệ thống (Student, Teacher, Admin) */
+html:not(.dark) aside {
+  background-color: rgba(255, 255, 255, 0.90) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border-color: rgba(197, 226, 243, 0.65) !important;
+}
+
+/* 4. Thẻ nội dung (Cards) - Kính mờ mềm mại chuẩn Glassmorphism */
+html:not(.dark) .student-lms [class~="bg-white"],
+html:not(.dark) .student-lms [class*="bg-white/"],
+html:not(.dark) main [class~="bg-white"],
+html:not(.dark) main [class*="bg-white/"],
+html:not(.dark) footer,
+html:not(.dark) .bg-white {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-color: rgba(197, 226, 243, 0.6) !important;
+}
+
+/* 5. Viền các thẻ và đường kẻ phân cách */
+html:not(.dark) .border-slate-100,
+html:not(.dark) .border-slate-200,
+html:not(.dark) .border-slate-200\/80,
+html:not(.dark) .border-gray-100,
+html:not(.dark) .border-gray-200 {
+  border-color: rgba(197, 226, 243, 0.6) !important;
+}
+
+/* 6. Màu chữ sắc nét tương phản cao - Xanh Navy Monet (#142f42) */
+html:not(.dark) .text-slate-900,
+html:not(.dark) .text-slate-950,
+html:not(.dark) .text-gray-900,
+html:not(.dark) .text-gray-950 {
+  color: #142f42 !important;
+}
+
+html:not(.dark) .text-slate-600,
+html:not(.dark) .text-slate-700,
+html:not(.dark) .text-gray-600,
+html:not(.dark) .text-gray-700 {
+  color: #2b4c68 !important;
+}
+
+html:not(.dark) .text-slate-500,
+html:not(.dark) .text-gray-500 {
+  color: #557996 !important;
+}
+
+/* 7. Màu xanh biển thương hiệu (Primary Blue) trong Light mode */
+html:not(.dark) .bg-blue-600 {
+  background-color: #2b76a4 !important;
+}
+html:not(.dark) .hover\:bg-blue-700:hover {
+  background-color: #205b80 !important;
+}
+html:not(.dark) .text-blue-600,
+html:not(.dark) .text-blue-700 {
+  color: #2b76a4 !important;
+}
+html:not(.dark) .bg-blue-50,
+html:not(.dark) .bg-blue-50\/70,
+html:not(.dark) .bg-blue-50\/80 {
+  background-color: rgba(225, 239, 248, 0.8) !important;
+}
+html:not(.dark) .border-blue-200,
+html:not(.dark) .border-blue-200\/60 {
+  border-color: rgba(197, 226, 243, 0.8) !important;
+}
+
+/* 8. Input & Form trong Light mode */
+html:not(.dark) input,
+html:not(.dark) select,
+html:not(.dark) textarea {
+  border-color: rgba(197, 226, 243, 0.8);
+}
+html:not(.dark) input:focus,
+html:not(.dark) select:focus,
+html:not(.dark) textarea:focus {
+  border-color: #2b76a4;
+  box-shadow: 0 0 0 3px rgba(43, 118, 164, 0.15);
+}
+
+/* ==========================================================================
+   DARK MODE SCOPED TOKENS (GIỮ NGUYÊN 100% CẤU HÌNH BAN ĐẦU)
+   ========================================================================== */
 .dark .student-lms,
 .dark .student-lms [class~="bg-[#f6f9fd]"] {
   background-color: #0b1220;

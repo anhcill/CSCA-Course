@@ -858,15 +858,18 @@ router.post("/amendments/:amendmentId/review", protectRoute, requireTeacher, req
     });
     if (decision === "approved" && amendment.management_class_source_id) {
       const snapshot = await client.query(
-        `SELECT u.external_student_id, ca.status, COALESCE(ca.note, '') AS note, ca.checked_at
-         FROM class_attendance ca JOIN users u ON u.id = ca.user_id
-         WHERE ca.session_id = $1 ORDER BY ca.user_id`, [amendment.session_id],
+        `SELECT ce.management_membership_source_id, ca.status,
+                COALESCE(ca.note, '') AS note, ca.checked_at
+         FROM class_attendance ca
+         JOIN class_enrollments ce
+           ON ce.user_id = ca.user_id AND ce.live_class_id = $2
+         WHERE ca.session_id = $1 ORDER BY ca.user_id`, [amendment.session_id, amendment.live_class_id],
       );
-      if (snapshot.rows.every((row) => row.external_student_id)) {
+      if (snapshot.rows.every((row) => row.management_membership_source_id)) {
         const outbox = await enqueueManagementAttendanceDelivery(client, {
           managementClassId: amendment.management_class_source_id,
           lmsSession: { id: amendment.session_id, title: amendment.session_title, start_time: amendment.start_time, end_time: amendment.end_time, status: amendment.session_status },
-          attendance: snapshot.rows.map((row) => ({ managementStudentId: String(row.external_student_id), status: row.status, checkedAt: row.checked_at, note: row.note || null })),
+          attendance: snapshot.rows.map((row) => ({ managementStudentId: String(row.management_membership_source_id), status: row.status, checkedAt: row.checked_at, note: row.note || null })),
           correlationId: `attendance-amendment:${amendment.session_id}:${amendmentId}:${crypto.randomUUID()}`,
         });
         managementOutboxId = outbox.id;
@@ -971,9 +974,8 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
     }
 
     const enrolledResult = await client.query(
-      `SELECT ce.user_id, u.external_student_id
+      `SELECT ce.user_id, ce.management_membership_source_id
        FROM class_enrollments ce
-       JOIN users u ON u.id = ce.user_id
        WHERE ce.live_class_id = $1 AND ce.status = 'active'`,
       [session.live_class_id],
     );
@@ -1034,7 +1036,7 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
     let managementOutboxId = null;
     if (session.management_class_source_id) {
       const managementStudentIds = new Map(
-        enrolledResult.rows.map((row) => [String(row.user_id), row.external_student_id]),
+        enrolledResult.rows.map((row) => [String(row.user_id), row.management_membership_source_id]),
       );
       const missingMappings = normalized
         .filter((item) => !managementStudentIds.get(String(item.userId)))

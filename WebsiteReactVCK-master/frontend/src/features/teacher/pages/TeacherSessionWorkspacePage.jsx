@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Bell, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
-  Download, ExternalLink, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Play, Trash2, Trophy, UploadCloud, Users, Video,
+  Download, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Play, Trash2, Trophy, UploadCloud, Users, Video,
 } from "lucide-react";
 import {
   createClassAnnouncement, deleteClassFile, fetchClassAnnouncements, fetchClassDetails, fetchClassFiles, fetchLiveClassSessions,
@@ -113,7 +113,11 @@ export default function TeacherSessionWorkspacePage() {
     try {
       const result = await getLiveSessionAccess(session.id);
       if (!result?.success || !result?.data?.meetUrl) throw new Error(result?.message || "Phòng dạy chưa sẵn sàng");
-      openReservedMeeting(meetingWindow, result.data.meetUrl);
+      openReservedMeeting(meetingWindow, result.data.meetUrl, {
+        sessionId: session.id,
+        provider: result.data.provider,
+        navigate,
+      });
       toast.success(`Đang mở phòng dạy ${result.data.provider || "trực tuyến"}...`);
     } catch (requestError) {
       closeReservedMeeting(meetingWindow);

@@ -237,7 +237,13 @@ const safeClass = (row) => {
 };
 
 const safeSession = (row) => {
-  const { meet_url: meetingUrl, passcode: _passcode, ...data } = row;
+  const {
+    meet_url: meetingUrl,
+    passcode: _passcode,
+    management_session_source_id: managementSessionSourceId,
+    management_schedule_owner_id: managementScheduleOwnerId,
+    ...data
+  } = row;
   return {
     ...data,
     // A generated recurring session belongs to the fixed timetable. A NULL
@@ -247,8 +253,18 @@ const safeSession = (row) => {
     // verified access endpoint immediately before opening the provider page.
     has_meeting_link: Boolean(meetingUrl),
     provider: getMeetingProvider(meetingUrl),
+    meeting_managed_externally: Boolean(managementSessionSourceId || managementScheduleOwnerId),
   };
 };
+
+const isManagementOwnedSession = (session) => Boolean(
+  session.management_session_source_id || session.management_schedule_owner_id,
+);
+
+const includesMeetingConfiguration = (body = {}) => (
+  Object.prototype.hasOwnProperty.call(body, "meetUrl")
+  || Object.prototype.hasOwnProperty.call(body, "passcode")
+);
 
 const getClassById = async (classId) => {
   const result = await query(
@@ -606,9 +622,12 @@ router.get("/my-schedule", protectRoute, requireManagedLearner, async (req, res)
               lc.title AS class_title, lc.course_id, lc.instructor_id, lc.max_students,
               COALESCE(c.title, c.name) AS course_title,
               COUNT(ce2.id) FILTER (WHERE ce2.status = 'active')::int AS enrolled_count,
-              CASE WHEN LOWER(cs.meet_url) LIKE '%zoom.us%' THEN 'Zoom'
-                   WHEN cs.meet_url IS NOT NULL THEN 'Google Meet'
-                   ELSE NULL END AS provider
+              cs.meet_url, cs.management_session_source_id,
+              EXISTS (
+                SELECT 1 FROM class_schedules managed_schedule
+                WHERE managed_schedule.id = cs.schedule_id
+                  AND managed_schedule.management_schedule_source_id IS NOT NULL
+              ) AS management_schedule_owner_id
        FROM class_sessions cs
        JOIN live_classes lc ON cs.live_class_id = lc.id
        LEFT JOIN courses c ON c.id = lc.course_id
@@ -636,10 +655,7 @@ router.get("/my-schedule", protectRoute, requireManagedLearner, async (req, res)
     res.set("Cache-Control", "no-store, private, max-age=0");
     return res.json({
       success: true,
-      data: result.rows.map((session) => ({
-        ...session,
-        session_type: session.schedule_id ? "recurring" : "supplemental",
-      })),
+      data: result.rows.map(safeSession),
     });
   } catch (error) {
     console.error("Error fetching my live schedule:", error);
@@ -1178,7 +1194,7 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireRole("admi
 // Specific session CRUD. Sessions created here have no schedule_id and are
 // explicit supplemental lessons for an already course-bound class.
 // GET /api/live-classes/:classId/calendar.ics — authenticated full-class export.
-// A feed deliberately contains LMS workspace URLs, never Meet/Zoom secrets.
+// A feed deliberately contains LMS workspace URLs, never meeting-room secrets.
 router.get("/:classId/calendar.ics", protectRoute, requireManagedLearner, async (req, res) => {
   try {
     const classId = parsePositiveId(req.params.classId);
@@ -1373,8 +1389,11 @@ router.get("/:classId/sessions", protectRoute, requireManagedLearner, async (req
     const result = await query(
       `SELECT cs.id, cs.live_class_id, cs.chapter_id, cs.schedule_id, cs.title, cs.start_time, cs.end_time, cs.status, cs.version,
               cs.original_start_at, cs.original_end_at, cs.change_reason, cs.changed_at,
-              cs.meet_url, cs.created_at, cs.updated_at
+              cs.meet_url, cs.management_session_source_id,
+              recurring_schedule.management_schedule_source_id AS management_schedule_owner_id,
+              cs.created_at, cs.updated_at
        FROM class_sessions cs
+       LEFT JOIN class_schedules recurring_schedule ON recurring_schedule.id = cs.schedule_id
        WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
        ORDER BY cs.start_time ASC`,
       [classId],
@@ -1486,9 +1505,8 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
 });
 
 // PATCH /api/live-classes/sessions/:sessionId/meeting-link
-// A teaching link is operational session metadata, not a change to the fixed
-// timetable. Teachers may set it for their own classes; only admins can still
-// change a recurring schedule's date/time/pattern in the generic PATCH below.
+// Locally-authored sessions can be configured here. Management-owned sessions
+// remain read-only so the two systems never disagree about the room URL.
 router.patch("/sessions/:sessionId/meeting-link", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
   let client;
   try {
@@ -1526,6 +1544,10 @@ router.patch("/sessions/:sessionId/meeting-link", protectRoute, requireTeacher, 
     if (!current) {
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy buổi học");
+    }
+    if (isManagementOwnedSession(current)) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Link phòng học của buổi đồng bộ chỉ được thay đổi trong InternalManagement");
     }
     if (current.status === "cancelled") {
       await client.query("ROLLBACK");
@@ -1626,7 +1648,12 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy buổi học");
     }
-    if ((current.management_session_source_id || current.management_schedule_owner_id) && req.user.role !== "admin") {
+    const body = req.body || {};
+    if (isManagementOwnedSession(current) && includesMeetingConfiguration(body)) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Link phòng học của buổi đồng bộ chỉ được thay đổi trong InternalManagement");
+    }
+    if (isManagementOwnedSession(current) && req.user.role !== "admin") {
       await client.query("ROLLBACK");
       return res.status(403).json({ success: false, errorCode: "FORBIDDEN", message: "Chỉ quản trị viên được đổi lịch buổi học đồng bộ từ hệ thống nội bộ." });
     }
@@ -1648,7 +1675,6 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
       return forbidden(res, "Lịch cố định chỉ do quản trị viên chỉnh sửa. Giáo viên chỉ được bổ sung buổi học riêng.");
     }
 
-    const body = req.body || {};
     if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== Number(current.version)) {
       await client.query("ROLLBACK");
       return res.status(409).json({ success: false, errorCode: "SESSION_VERSION_CONFLICT", message: "Buổi học đã được sửa ở nơi khác. Hãy tải lại lịch trước khi lưu." });

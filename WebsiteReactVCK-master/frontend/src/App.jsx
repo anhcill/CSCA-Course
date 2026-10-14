@@ -53,6 +53,7 @@ const StudentAnalyticsPage = lazy(() => import("./features/learning/pages/Studen
 const AdminCurriculumPage = lazy(() => import("./features/admin/pages/AdminCurriculumPage.jsx"));
 const ClassCalendarPage = lazy(() => import("./features/calendar/pages/ClassCalendarPage.jsx"));
 const SessionDetailPage = lazy(() => import("./features/calendar/pages/SessionDetailPage.jsx"));
+const LiveClassRoomPage = lazy(() => import("./features/liveClass/pages/LiveClassRoomPage.jsx"));
 const AssignmentListPage = lazy(() => import("./features/assignments/pages/AssignmentListPage.jsx"));
 const AssignmentSubmitPage = lazy(() => import("./features/assignments/pages/AssignmentSubmitPage.jsx"));
 const QuizPlayerPage = lazy(() => import("./features/assignments/pages/QuizPlayerPage.jsx"));
@@ -80,7 +81,8 @@ const isTeacherLmsPath = (p) => (
 );
 
 const isSharedTeacherPath = (pathname, authUser) => (
-  pathname === "/lms/live-schedule" && isTeacherRole(authUser?.role)
+  (pathname === "/lms/live-schedule" || pathname.startsWith("/lms/live-room/"))
+  && isTeacherRole(authUser?.role)
 );
 
 function CourseClassRedirect() {
@@ -115,6 +117,7 @@ function AppRoutes() {
       <Route path="/lms/dashboard" element={<Navigate to="/lms/my-learning" replace />} />
       <Route path="/lms/analytics" element={<StudentAnalyticsPage />} />
       <Route path="/lms/live-schedule" element={<ClassCalendarPage />} />
+      <Route path="/lms/live-room/:sessionId" element={<LiveClassRoomPage />} />
       <Route path="/lms/calendar" element={<ClassCalendarPage />} />
       <Route path="/lms/live-classes" element={<Navigate to="/lms/live-schedule" replace />} />
       <Route path="/lms/assignments" element={<AssignmentListPage />} />

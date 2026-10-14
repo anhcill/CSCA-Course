@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ArrowRight,
@@ -79,6 +79,7 @@ const formatDateTime = (value, fallback = "Chưa có lịch") => {
 };
 
 export default function TeacherHubPage() {
+  const navigate = useNavigate();
   const { authUser } = useAuthContext();
   const isTeacher = authUser?.role === "creator" || authUser?.role === "admin";
   const [data, setData] = useState(EMPTY_DATA);
@@ -113,7 +114,11 @@ export default function TeacherHubPage() {
     try {
       const result = await getLiveSessionAccess(session.id);
       if (!result?.success || !result?.data?.meetUrl) throw new Error("Chưa có link phòng trực tuyến");
-      openReservedMeeting(meetingWindow, result.data.meetUrl);
+      openReservedMeeting(meetingWindow, result.data.meetUrl, {
+        sessionId: session.id,
+        provider: result.data.provider,
+        navigate,
+      });
       toast.success("Đang mở phòng học");
     } catch (openError) {
       closeReservedMeeting(meetingWindow);

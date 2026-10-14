@@ -273,7 +273,7 @@ export const deleteAdminLesson = async (lessonId) => request(
   { method: "DELETE" },
 );
 
-// Live Classes & Google Meet/Zoom Helpers
+// Live classes and online meeting helpers
 export const fetchLiveClasses = async () => request("/live-classes");
 
 export const createLiveClass = async ({ title, courseId, description, maxStudents }) => (
@@ -339,7 +339,7 @@ export const updateLiveSession = async ({ sessionId, title, startTime, endTime, 
 );
 
 // The teaching link is deliberately separate from timetable edits: class
-// teachers can set Zoom/Google Meet for a fixed occurrence without gaining
+// teachers can set the meeting room for a fixed occurrence without gaining
 // permission to alter the admin-owned recurring schedule.
 export const updateLiveSessionMeeting = async ({ sessionId, meetUrl, passcode }) => {
   const body = { meetUrl };

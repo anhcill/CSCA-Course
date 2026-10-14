@@ -179,7 +179,11 @@ export default function TeacherSchedulePage() {
       const r = await getLiveSessionAccess(session.id);
       if (r.success && r.data?.meetUrl) {
         toast.success(`Đang mở phòng giảng dạy ${r.data.provider || "Google Meet"}... 👨‍🏫`);
-        openReservedMeeting(meetingWindow, r.data.meetUrl);
+        openReservedMeeting(meetingWindow, r.data.meetUrl, {
+          sessionId: session.id,
+          provider: r.data.provider,
+          navigate,
+        });
       } else {
         closeReservedMeeting(meetingWindow);
         toast.error("Chưa cấu hình link phòng học cho buổi học này!");
@@ -467,7 +471,7 @@ export default function TeacherSchedulePage() {
 
                     {/* Teacher Action Controls */}
                     <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-                      {/* Host Meet/Zoom Controller Button */}
+                      {/* Host online classroom controller */}
                       <button
                         onClick={() => handleHostMeeting(s)}
                         className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center gap-2 ${
@@ -631,7 +635,7 @@ export default function TeacherSchedulePage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Link Phòng Học (Meet / Zoom URL)</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Link phòng học trực tuyến</label>
                 <input
                   type="url"
                   placeholder="https://meet.google.com/abc-defg-hij"

@@ -423,7 +423,7 @@ export default function Dashboard() {
                     <p className="text-xs font-bold text-gray-900 dark:text-white group-hover:text-amber-500">
                       Lịch Lớp Học Trực Tuyến
                     </p>
-                    <p className="text-[10px] text-gray-500">Thời khóa biểu Meet/Zoom</p>
+                    <p className="text-[10px] text-gray-500">Thời khóa biểu trực tuyến</p>
                   </div>
                 </div>
                 <FiArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-amber-500 transition" />

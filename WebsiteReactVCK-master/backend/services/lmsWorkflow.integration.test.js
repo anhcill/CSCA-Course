@@ -52,12 +52,12 @@ test("LMS workflows execute against isolated PostgreSQL migrations", async (t) =
   const teacher=await one("INSERT INTO users(username,email,role) VALUES ('teacher-test','teacher@example.test','creator') RETURNING *");
   const admin=await one("INSERT INTO users(username,email,role) VALUES ('admin-test','admin@example.test','admin') RETURNING *");
   const stranger=await one("INSERT INTO users(username,email,role) VALUES ('other-test','other@example.test','creator') RETURNING *");
-  const student=await one("INSERT INTO users(username,email,role,is_management_managed,lms_account_status) VALUES ('student-test','student@example.test','user',TRUE,'active') RETURNING *");
+  const student=await one("INSERT INTO users(username,email,role,is_management_managed,lms_account_status,external_student_id) VALUES ('student-test','student@example.test','user',TRUE,'active','party-source-1') RETURNING *");
   const course=await one("INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Test Course','workflow-test',$1,TRUE) RETURNING *",[teacher.id]);
-  const cls=await one("INSERT INTO live_classes(title,course_id,instructor_id) VALUES ('Test Class',$1,$2) RETURNING *",[course.id,teacher.id]);
+  const cls=await one("INSERT INTO live_classes(title,course_id,instructor_id,management_class_source_id) VALUES ('Test Class',$1,$2,'class-source-1') RETURNING *",[course.id,teacher.id]);
   const session=await one("INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status) VALUES ($1,'Session 1',NOW()-INTERVAL '2 hours',NOW()-INTERVAL '1 hour','ended') RETURNING *",[cls.id]);
   const session2=await one("INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status) VALUES ($1,'Session 2',NOW()-INTERVAL '4 hours',NOW()-INTERVAL '3 hours','ended') RETURNING *",[cls.id]);
-  await db.query("INSERT INTO class_enrollments(user_id,live_class_id) VALUES ($1,$2)",[student.id,cls.id]);
+  await db.query("INSERT INTO class_enrollments(user_id,live_class_id,management_membership_source_id) VALUES ($1,$2,'membership-source-1')",[student.id,cls.id]);
   await db.query("INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at) VALUES ($1,$2,'active',NOW()-INTERVAL '1 day',NOW())",[student.id,course.id]);
   await t.test("student self check-in remains visible until teacher finalizes or overrides the sheet",async()=>{
     const liveSession=await one("INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status) VALUES ($1,'Live check-in',NOW()-INTERVAL '1 minute',NOW()+INTERVAL '30 minutes','live') RETURNING *",[cls.id]);
@@ -75,6 +75,8 @@ test("LMS workflows execute against isolated PostgreSQL migrations", async (t) =
     r=await invoke(attendance,"post","/check",{user:teacher,body:{sessionId:liveSession.id,attendanceList:[{userId:student.id,status:"absent",note:"Giáo viên xác minh học viên không tham gia"}]}});
     assert.equal(r.statusCode,200,JSON.stringify(r.body));
     assert.equal((await one("SELECT status FROM class_attendance WHERE session_id=$1 AND user_id=$2",[liveSession.id,student.id])).status,"absent");
+    const managementAttendance=await one("SELECT payload FROM lms_management_attendance_outbox WHERE payload->'lmsSession'->>'id'=$1 ORDER BY id DESC LIMIT 1",[String(liveSession.id)]);
+    assert.equal(managementAttendance.payload.attendance[0].managementStudentId,"membership-source-1");
     assert.ok(await one("SELECT 1 FROM class_attendance_sheets WHERE session_id=$1",[liveSession.id]));
     const queueRoute=attendance.stack.find((layer)=>layer.route?.path==="/finalized-sheets"&&layer.route.methods.get).route;
     const denied={statusCode:200,status(code){this.statusCode=code;return this;},json(value){this.body=value;return this;}};

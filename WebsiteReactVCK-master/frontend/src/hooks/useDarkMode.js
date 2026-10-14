@@ -7,8 +7,8 @@ export const useDarkMode = () => {
     if (savedMode !== null) {
       return savedMode === 'true';
     }
-    // Kiểm tra system preference
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    // Mặc định là giao diện sáng cho toàn hệ thống
+    return false;
   });
 
   useEffect(() => {

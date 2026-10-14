@@ -106,7 +106,7 @@ export default function SessionDetailModal({
             <div>
               <p className="font-semibold text-slate-500 dark:text-slate-400">Hình thức học</p>
               <p className="mt-1 font-bold text-slate-900 dark:text-white">
-                {session.provider || "Trực tuyến (Meet/Zoom)"}
+                {session.provider || "Phòng học trực tuyến"}
               </p>
             </div>
           </div>

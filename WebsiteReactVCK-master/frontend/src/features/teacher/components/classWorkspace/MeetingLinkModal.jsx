@@ -3,12 +3,14 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Link2, ShieldCheck, Video, X } from "lucide-react";
 import { updateLiveSessionMeeting } from "../../../api/lmsClient";
+import { isJitsiMeeting } from "../../../liveClass/utils/meetingLaunch";
 
 const getProviderName = (url) => {
   try {
     const hostname = new URL(url).hostname.toLowerCase();
     if (hostname === "meet.google.com") return "Google Meet";
     if (hostname === "zoom.us" || hostname.endsWith(".zoom.us")) return "Zoom";
+    if (isJitsiMeeting(url)) return "Jitsi Meet";
   } catch {
     // The server returns the authoritative validation message on submit.
   }
@@ -32,7 +34,7 @@ export default function MeetingLinkModal({ session, onClose, onSaved }) {
     event.preventDefault();
     const normalizedUrl = meetUrl.trim();
     if (!normalizedUrl) {
-      toast.error("Dán link Zoom hoặc Google Meet để tiếp tục.");
+      toast.error("Dán link Jitsi, Zoom hoặc Google Meet để tiếp tục.");
       return;
     }
 
@@ -61,7 +63,7 @@ export default function MeetingLinkModal({ session, onClose, onSaved }) {
             <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-black text-blue-700 dark:bg-blue-950/70 dark:text-blue-300">
               <Video className="h-3.5 w-3.5" /> Phòng học trực tuyến
             </span>
-            <h2 id="meeting-link-title" className="mt-2 text-lg font-black text-slate-900 dark:text-white">Gán Zoom hoặc Google Meet</h2>
+            <h2 id="meeting-link-title" className="mt-2 text-lg font-black text-slate-900 dark:text-white">Gán link phòng học</h2>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{session.title}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Đóng" className="rounded-full p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200">
@@ -88,12 +90,12 @@ export default function MeetingLinkModal({ session, onClose, onSaved }) {
                 autoFocus
                 value={meetUrl}
                 onChange={(event) => setMeetUrl(event.target.value)}
-                placeholder="https://meet.google.com/... hoặc https://...zoom.us/..."
+                placeholder="https://meet.jit.si/ten-phong"
                 className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-xs text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
               />
             </div>
             <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-              {provider ? `Đã nhận diện: ${provider}.` : "Chỉ chấp nhận link HTTPS của Google Meet hoặc Zoom."}
+              {provider ? `Đã nhận diện: ${provider}.` : "Chấp nhận link HTTPS của Jitsi Meet, Google Meet hoặc Zoom."}
             </p>
           </div>
 

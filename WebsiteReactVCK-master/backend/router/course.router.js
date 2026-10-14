@@ -5,6 +5,7 @@ import requireTeacher from "../middleware/requireTeacher.js";
 import requireRole from "../middleware/requireRole.js";
 import requirePermission from "../middleware/requirePermission.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
+import { getMeetingProvider } from "../services/liveClass.service.js";
 
 const router = express.Router();
 
@@ -684,9 +685,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       ),
       query(
         `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
-                lc.title AS class_title,
-                CASE WHEN LOWER(cs.meet_url) LIKE '%zoom.us%' THEN 'Zoom'
-                     WHEN cs.meet_url IS NOT NULL THEN 'Google Meet' ELSE NULL END AS provider
+                lc.title AS class_title, cs.meet_url
          FROM class_sessions cs
          JOIN live_classes lc ON lc.id = cs.live_class_id
          WHERE lc.course_id = $1 AND lc.status = 'active' AND cs.status <> 'cancelled'
@@ -793,7 +792,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         lessons: lessonsResult.rows,
         selectedClass,
         classes: classesResult.rows,
-        upcomingSessions: sessionsResult.rows,
+        upcomingSessions: sessionsResult.rows.map(({ meet_url: meetingUrl, ...session }) => ({
+          ...session,
+          provider: getMeetingProvider(meetingUrl),
+        })),
         assignments: taskRows,
         quizCount: Number(quizCountResult.rows[0]?.count) || 0,
         files: filesResult.rows.map((file) => ({

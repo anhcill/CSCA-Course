@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useOutletContext } from "react-router-dom";
+import { useNavigate, useParams, useOutletContext } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuthContext } from "../../../context/AuthContext";
 import { isTeacherRole } from "../../../constants/roles";
@@ -28,6 +28,7 @@ function getSessionUiState(session) {
 }
 
 export default function ClassCalendarPage() {
+  const navigate = useNavigate();
   const { courseId, classId } = useParams();
   const outletContext = useOutletContext();
   const { authUser } = useAuthContext();
@@ -145,7 +146,11 @@ export default function ClassCalendarPage() {
       if (!result?.success || !result?.data?.meetUrl) {
         throw new Error(result?.message || "Phòng học chưa sẵn sàng");
       }
-      openReservedMeeting(meetingWindow, result.data.meetUrl);
+      openReservedMeeting(meetingWindow, result.data.meetUrl, {
+        sessionId: session.id,
+        provider: result.data.provider,
+        navigate,
+      });
       toast.success(`Đang mở phòng học ${result.data.provider || "trực tuyến"}...`);
     } catch (err) {
       closeReservedMeeting(meetingWindow);
