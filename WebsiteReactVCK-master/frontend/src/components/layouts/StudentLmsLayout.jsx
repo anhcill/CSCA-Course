@@ -109,9 +109,10 @@ export default function StudentLmsLayout({ children }) {
   const { authUser } = useAuthContext();
   const { isDarkMode, toggleTheme } = useTheme();
   const { logout } = useLogout();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem('student-lms-sidebar-collapsed') === 'true');
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = window.localStorage.getItem('student-lms-sidebar-collapsed');
+    return saved !== null ? saved === 'true' : true; // Mặc định thu gọn
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const profileMenuRef = useRef(null);
   const workspaceLink = getLmsWorkspaceLink(authUser);

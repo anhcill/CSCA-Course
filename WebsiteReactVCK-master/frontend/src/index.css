@@ -7,7 +7,7 @@
 :root {
   font-family: 'Be Vietnam Pro', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #142f42;
-  background: #f0f7fb;
+  background: #cce4f7;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -21,7 +21,7 @@ html.dark {
 
 /* ==========================================================================
    MOLYCOURSE - MONET IMPRESSION SUNRISE LIGHT THEME (PALE SEA-BLUE)
-   Mặc định hệ thống: Giao diện sáng với hình nền kiệt tác Monet Impression Sunrise
+   Giao diện sáng: Xanh nước biển nhạt dịu mát, không bị chói trắng
    Khi chuyển Dark mode (.dark), giữ nguyên 100% giao diện nền tối ban đầu.
    ========================================================================== */
 
@@ -29,8 +29,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #f0f7fb;
-  background-image: linear-gradient(rgba(240, 247, 252, 0.74), rgba(240, 247, 252, 0.74)), url('/monet-sunrise.jpg');
+  background-color: #cce4f7;
+  background-image: linear-gradient(rgba(182, 218, 242, 0.68), rgba(204, 230, 248, 0.76)), url('/monet-sunrise.jpg');
   background-size: cover;
   background-position: center top;
   background-attachment: fixed;
@@ -71,15 +71,15 @@ a {
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-[#e1eff8] dark:bg-gray-800;
+    @apply bg-[#d3e8f8] dark:bg-gray-800;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-[#9ecde9] dark:bg-gray-600;
+    @apply rounded-full bg-[#8bc4e8] dark:bg-gray-600;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-[#6eaed5] dark:bg-gray-500;
+    @apply bg-[#5a9ec9] dark:bg-gray-500;
   }
 }
 
@@ -89,11 +89,11 @@ a {
   }
 
   .btn-secondary {
-    @apply rounded-xl bg-[#e1eff8] px-4 py-2 text-[#142f42] font-semibold transition-colors hover:bg-[#c5e2f3] dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600;
+    @apply rounded-xl bg-[#d8ecf9] px-4 py-2 text-[#142f42] font-semibold transition-colors hover:bg-[#bfe0f5] dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600;
   }
 
   .input-primary {
-    @apply rounded-xl border border-[#c5e2f3] px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-[#2b76a4] dark:border-gray-600 dark:bg-gray-700 dark:text-white;
+    @apply rounded-xl border border-[#9ecde9] px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-[#2b76a4] dark:border-gray-600 dark:bg-gray-700 dark:text-white;
   }
 }
 
@@ -118,12 +118,12 @@ a {
 
 .feedback-marquee-mask::before {
   top: 0;
-  background: linear-gradient(to bottom, #f0f7fb, transparent);
+  background: linear-gradient(to bottom, #d8ecf9, transparent);
 }
 
 .feedback-marquee-mask::after {
   bottom: 0;
-  background: linear-gradient(to top, #e1eff8, transparent);
+  background: linear-gradient(to top, #cde5f7, transparent);
 }
 
 .dark .feedback-marquee-mask::before {
@@ -181,59 +181,75 @@ a {
 
 /* ==========================================================================
    TOÀN BỘ HỆ THỐNG LMS: STUDENT, TEACHER, ADMIN & PUBLIC TRONG LIGHT MODE
-   Glassmorphism xanh nước biển nhạt, tôn vinh hình nền Claude Monet.
+   Tông xanh nước biển nhạt (Pale Sea-Blue Glassmorphism), loại bỏ hoàn toàn màu trắng chói
    ========================================================================== */
 
-/* 1. Nền trong suốt mềm mại để hình nền Monet hiển thị xuyên suốt */
+/* 1. Nền trong suốt để lộ lớp nền xanh biển dịu mắt */
 html:not(.dark) .student-lms,
 html:not(.dark) [class*="bg-[#f6f9fd]"],
-html:not(.dark) .bg-slate-50,
-html:not(.dark) .bg-gray-50,
 html:not(.dark) main {
   background-color: transparent !important;
 }
 
 /* 2. Header & Navbar toàn hệ thống (Kính mờ xanh nước biển nhạt) */
 html:not(.dark) header,
-html:not(.dark) nav {
-  background-color: rgba(255, 255, 255, 0.88) !important;
+html:not(.dark) nav:not([aria-label="Breadcrumb"]) {
+  background-color: rgba(222, 239, 251, 0.92) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
-  border-color: rgba(197, 226, 243, 0.65) !important;
-  box-shadow: 0 4px 20px rgba(20, 47, 66, 0.04) !important;
+  border-color: rgba(148, 196, 228, 0.75) !important;
+  box-shadow: 0 4px 20px rgba(20, 47, 66, 0.06) !important;
 }
 
-/* 3. Aside & Sidebars toàn hệ thống (Student, Teacher, Admin) */
+/* 3. Khắc phục triệt để lỗi "khấc ở navba": Breadcrumbs luôn trong suốt, không có viền hộp navbar */
+html:not(.dark) nav[aria-label="Breadcrumb"],
+nav[aria-label="Breadcrumb"] {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 4. Sidebar toàn hệ thống (Student, Teacher, Admin) */
 html:not(.dark) aside {
-  background-color: rgba(255, 255, 255, 0.90) !important;
+  background-color: rgba(226, 242, 252, 0.94) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
-  border-color: rgba(197, 226, 243, 0.65) !important;
+  border-color: rgba(148, 196, 228, 0.75) !important;
 }
 
-/* 4. Thẻ nội dung (Cards) - Kính mờ mềm mại chuẩn Glassmorphism */
+/* 5. Thẻ nội dung (Cards, Lịch học, Bảng điểm) mang sắc thái xanh nước biển nhạt êm mắt */
 html:not(.dark) .student-lms [class~="bg-white"],
 html:not(.dark) .student-lms [class*="bg-white/"],
 html:not(.dark) main [class~="bg-white"],
 html:not(.dark) main [class*="bg-white/"],
 html:not(.dark) footer,
 html:not(.dark) .bg-white {
-  background-color: rgba(255, 255, 255, 0.88) !important;
+  background-color: rgba(234, 245, 253, 0.92) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
-  border-color: rgba(197, 226, 243, 0.6) !important;
+  border-color: rgba(162, 204, 232, 0.65) !important;
 }
 
-/* 5. Viền các thẻ và đường kẻ phân cách */
+/* 6. Các ô tiêu đề cột, ngày trong tuần, header bảng theo sắc xanh biển nhạt */
+html:not(.dark) [class*="bg-slate-50"],
+html:not(.dark) [class*="bg-gray-50"],
+html:not(.dark) [class*="bg-slate-100"] {
+  background-color: rgba(214, 235, 250, 0.85) !important;
+}
+
+/* 7. Viền các thẻ và đường kẻ phân cách sắc xanh biển */
 html:not(.dark) .border-slate-100,
 html:not(.dark) .border-slate-200,
 html:not(.dark) .border-slate-200\/80,
 html:not(.dark) .border-gray-100,
 html:not(.dark) .border-gray-200 {
-  border-color: rgba(197, 226, 243, 0.6) !important;
+  border-color: rgba(158, 202, 230, 0.7) !important;
 }
 
-/* 6. Màu chữ sắc nét tương phản cao - Xanh Navy Monet (#142f42) */
+/* 8. Màu chữ tương phản sắc nét trên nền xanh biển nhạt - Xanh Navy Monet (#142f42) */
 html:not(.dark) .text-slate-900,
 html:not(.dark) .text-slate-950,
 html:not(.dark) .text-gray-900,
@@ -245,15 +261,15 @@ html:not(.dark) .text-slate-600,
 html:not(.dark) .text-slate-700,
 html:not(.dark) .text-gray-600,
 html:not(.dark) .text-gray-700 {
-  color: #2b4c68 !important;
+  color: #244866 !important;
 }
 
 html:not(.dark) .text-slate-500,
 html:not(.dark) .text-gray-500 {
-  color: #557996 !important;
+  color: #487291 !important;
 }
 
-/* 7. Màu xanh biển thương hiệu (Primary Blue) trong Light mode */
+/* 9. Màu xanh biển thương hiệu (Primary Blue) trong Light mode */
 html:not(.dark) .bg-blue-600 {
   background-color: #2b76a4 !important;
 }
@@ -267,24 +283,26 @@ html:not(.dark) .text-blue-700 {
 html:not(.dark) .bg-blue-50,
 html:not(.dark) .bg-blue-50\/70,
 html:not(.dark) .bg-blue-50\/80 {
-  background-color: rgba(225, 239, 248, 0.8) !important;
+  background-color: rgba(206, 233, 250, 0.85) !important;
 }
 html:not(.dark) .border-blue-200,
 html:not(.dark) .border-blue-200\/60 {
-  border-color: rgba(197, 226, 243, 0.8) !important;
+  border-color: rgba(148, 196, 228, 0.85) !important;
 }
 
-/* 8. Input & Form trong Light mode */
+/* 10. Input & Form trong Light mode */
 html:not(.dark) input,
 html:not(.dark) select,
 html:not(.dark) textarea {
-  border-color: rgba(197, 226, 243, 0.8);
+  background-color: rgba(240, 248, 255, 0.92) !important;
+  border-color: rgba(148, 196, 228, 0.8) !important;
+  color: #142f42 !important;
 }
 html:not(.dark) input:focus,
 html:not(.dark) select:focus,
 html:not(.dark) textarea:focus {
-  border-color: #2b76a4;
-  box-shadow: 0 0 0 3px rgba(43, 118, 164, 0.15);
+  border-color: #2b76a4 !important;
+  box-shadow: 0 0 0 3px rgba(43, 118, 164, 0.2) !important;
 }
 
 /* ==========================================================================

@@ -11,7 +11,7 @@ import VNFlag from '../../assets/VN.png';
 import UKFlag from '../../assets/UK.png';
 import { getAvatarUrl, handleAvatarError } from '../../utils/avatar';
 
-const AdminNavbar = ({ toggleSidebar }) => {
+const AdminNavbar = ({ toggleSidebar, collapsed = false }) => {
   const { t, i18n } = useTranslation();
   const { isDarkMode, toggleTheme } = useTheme();
   const { authUser } = useAuthContext();
@@ -42,9 +42,9 @@ const AdminNavbar = ({ toggleSidebar }) => {
 
   return (
     <nav className="fixed top-0 left-0 w-full h-16 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-gray-200 dark:border-slate-800 shadow-sm transition-colors">
-      <div className="w-full h-full px-4 sm:px-6 flex items-center justify-between">
-        {/* Left: Sidebar toggle + Logo */}
-        <div className="flex items-center gap-3 sm:gap-4">
+      <div className="w-full h-full flex items-center justify-between">
+        {/* Left: Sidebar toggle + Logo - Khớp chiều rộng với Sidebar bên dưới */}
+        <div className={`flex h-full items-center gap-3 px-3 transition-[width] duration-300 ease-in-out lg:border-r border-gray-200 dark:border-slate-800 ${collapsed ? 'lg:w-20 lg:justify-center' : 'lg:w-64'}`}>
           <button
             type="button"
             onClick={toggleSidebar}
@@ -55,17 +55,19 @@ const AdminNavbar = ({ toggleSidebar }) => {
             <FiMenu className="h-5 w-5" />
           </button>
 
-          <Link to="/admin/dashboard" className="flex items-center gap-2.5">
-            <Logo className="h-8" />
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              Admin Console
-            </span>
-          </Link>
+          {!collapsed && (
+            <Link to="/admin/dashboard" className="flex items-center gap-2.5 truncate">
+              <Logo className="h-8" />
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                Admin
+              </span>
+            </Link>
+          )}
         </div>
 
         {/* Right: Theme Toggle, Language Selector, User Profile */}
-        <div className="flex items-center space-x-2 sm:space-x-3">
+        <div className="flex items-center space-x-2 sm:space-x-3 px-4 sm:px-6">
           {/* Dark Mode Toggle */}
           <button
             type="button"

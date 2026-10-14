@@ -5,7 +5,10 @@ import Sidebar from '../../components/admin/Sidebar';
 
 const AdminLayout = () => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.localStorage.getItem('admin-sidebar-collapsed') === 'true');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    const saved = window.localStorage.getItem('admin-sidebar-collapsed');
+    return saved !== null ? saved === 'true' : true; // Mặc định thu gọn
+  });
 
   const toggleSidebar = () => {
     if (window.innerWidth < 1024) {
@@ -23,7 +26,7 @@ const AdminLayout = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      <AdminNavbar toggleSidebar={toggleSidebar} />
+      <AdminNavbar toggleSidebar={toggleSidebar} collapsed={isSidebarCollapsed} />
       
       {/* Mobile backdrop overlay when sidebar is open */}
       {isMobileSidebarOpen && (

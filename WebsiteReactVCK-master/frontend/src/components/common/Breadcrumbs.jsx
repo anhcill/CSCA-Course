@@ -56,8 +56,8 @@ export default function Breadcrumbs({ customCrumbs, className = '' }) {
   if (segments.length === 0) return null;
 
   return (
-    <nav aria-label="Breadcrumb" className={`flex items-center gap-1.5 text-xs text-slate-400 overflow-x-auto py-1 ${className}`}>
-      <Link to="/" className="flex items-center gap-1 hover:text-white transition shrink-0">
+    <nav aria-label="Breadcrumb" className={`flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 overflow-x-auto py-1 ${className}`}>
+      <Link to="/" className="flex items-center gap-1 text-slate-500 hover:text-blue-700 dark:hover:text-white transition shrink-0">
         <Home className="h-3.5 w-3.5" />
       </Link>
 
@@ -68,13 +68,13 @@ export default function Breadcrumbs({ customCrumbs, className = '' }) {
 
         return (
           <div key={path} className="flex items-center gap-1.5 shrink-0">
-            <ChevronRight className="h-3 w-3 text-slate-600 shrink-0" />
+            <ChevronRight className="h-3 w-3 text-slate-400 dark:text-slate-600 shrink-0" />
             {isLast ? (
-              <span className="text-rose-300 font-bold truncate max-w-[180px]">
+              <span className="text-[#2b76a4] dark:text-sky-300 font-bold truncate max-w-[180px]">
                 {label}
               </span>
             ) : (
-              <Link to={path} className="hover:text-white transition truncate max-w-[150px]">
+              <Link to={path} className="text-slate-600 hover:text-[#2b76a4] dark:text-slate-400 dark:hover:text-white transition truncate max-w-[150px]">
                 {label}
               </Link>
             )}

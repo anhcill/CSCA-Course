@@ -103,7 +103,10 @@ export default function TeacherLmsLayout({ children }) {
   const { i18n } = useTranslation();
   const { logout } = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem('teacher-lms-sidebar-collapsed') === 'true');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = window.localStorage.getItem('teacher-lms-sidebar-collapsed');
+    return saved !== null ? saved === 'true' : true; // Mặc định thu gọn
+  });
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
 
@@ -133,23 +136,30 @@ export default function TeacherLmsLayout({ children }) {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       <header className="fixed inset-x-0 top-0 z-50 h-16 border-b border-slate-200 dark:border-emerald-500/20 bg-white/95 dark:bg-slate-950/95 shadow-sm backdrop-blur-xl">
-        <div className="flex h-full items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+        <div className="flex h-full items-center justify-between">
+          {/* Khối bên trái: Khớp chiều rộng với Sidebar bên dưới để tạo đường viền dọc liền mạch, không có khấc */}
+          <div className={`flex h-full items-center gap-3 px-3 transition-[width] duration-200 lg:border-r border-slate-200/80 dark:border-slate-800 ${sidebarCollapsed ? 'lg:w-20 lg:justify-center' : 'lg:w-64'}`}>
             <button type="button" onClick={() => setMobileOpen((o) => !o)} className="rounded-xl p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden">
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
             <button type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} className="hidden rounded-xl p-2 text-slate-700 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 lg:inline-flex" title={sidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'} aria-label={sidebarCollapsed ? 'Mở rộng menu giảng viên' : 'Thu gọn menu giảng viên'}>
               {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
             </button>
-            <Logo isTransparent />
-            <div className="hidden h-8 w-px bg-slate-200 dark:bg-slate-800 sm:block" />
-            <div className="hidden sm:block">
+            {!sidebarCollapsed && (
+              <div className="flex items-center gap-2 truncate">
+                <Logo isTransparent />
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-1 h-full items-center justify-between gap-3 px-4 sm:px-6">
+            <div className="hidden sm:flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Giảng viên
               </span>
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Cổng giảng dạy</p>
+              <span className="text-slate-300 dark:text-slate-700">·</span>
+              <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">Cổng giảng dạy</p>
             </div>
-          </div>
 
           <div className="flex items-center gap-2">
             <NotificationBell />
@@ -188,7 +198,8 @@ export default function TeacherLmsLayout({ children }) {
             )}
           </div>
         </div>
-      </header>
+      </div>
+    </header>
 
       <aside className={`fixed inset-y-16 left-0 z-40 hidden border-r border-slate-200 bg-white text-slate-800 transition-[width] duration-200 dark:border-slate-800 dark:bg-slate-950 dark:text-white lg:flex lg:flex-col ${sidebarCollapsed ? 'w-20' : 'w-64'}`}>
         <TeacherSidebarContent collapsed={sidebarCollapsed} onNavigate={closeMobile} />
