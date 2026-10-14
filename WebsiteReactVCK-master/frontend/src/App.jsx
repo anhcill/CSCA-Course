@@ -219,8 +219,28 @@ function AppContent() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isLiveRoomPage = pathname.startsWith("/lms/live-room/");
   const isLmsPage = pathname === "/lms" || pathname.startsWith("/lms/");
   const isTeacherPage = isTeacherLmsPath(pathname) || isSharedTeacherPath(pathname, authUser);
+
+  if (isLiveRoomPage) {
+    return (
+      <div className="fixed inset-0 z-50 h-screen w-screen overflow-hidden bg-slate-950">
+        <Toaster position="top-center" reverseOrder={false} />
+        <LmsRouteGuard allowedRoles={[...TEACHER_ROLES, USER_ROLES.STUDENT]}>
+          <AppRoutes />
+        </LmsRouteGuard>
+        <SessionExpiredModal
+          isOpen={sessionExpired}
+          onClose={dismissSessionExpired}
+          onLoginAgain={() => {
+            dismissSessionExpired();
+            navigate("/", { replace: true, state: { openAuthModal: "login" } });
+          }}
+        />
+      </div>
+    );
+  }
 
   if (isLmsPage) {
     const Layout = isTeacherPage ? TeacherLmsLayout : StudentLmsLayout;

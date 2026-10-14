@@ -1808,8 +1808,8 @@ router.get("/sessions/:sessionId/access", protectRoute, requireManagedLearner, a
     const sessionId = parsePositiveId(req.params.sessionId);
     if (!sessionId) return validationError(res, "sessionId không hợp lệ");
     const result = await query(
-      `SELECT cs.id, cs.live_class_id, cs.meet_url, cs.status, cs.start_time, cs.end_time,
-              lc.status AS class_status, lc.instructor_id,
+      `SELECT cs.id, cs.title AS session_title, cs.live_class_id, cs.meet_url, cs.status, cs.start_time, cs.end_time,
+              lc.title AS class_title, lc.status AS class_status, lc.instructor_id,
               COALESCE(c.is_published, true) AS course_is_published,
               COALESCE(c.is_management_managed, false) AS course_is_management_managed,
               EXISTS (
@@ -1859,6 +1859,8 @@ router.get("/sessions/:sessionId/access", protectRoute, requireManagedLearner, a
       success: true,
       data: {
         sessionId: session.id,
+        sessionTitle: session.session_title,
+        classTitle: session.class_title,
         meetUrl: session.meet_url,
         provider: getMeetingProvider(session.meet_url),
         status: session.status,
