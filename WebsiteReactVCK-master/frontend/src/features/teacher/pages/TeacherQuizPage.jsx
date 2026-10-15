@@ -45,6 +45,7 @@ import {
   fetchTeacherQuizzes,
   fetchTeacherQuizReport,
   uploadCourseQuizPaper,
+  deleteTeacherFile,
 } from "../../api/lmsClient";
 import {
   optionIndexForQuizKey,
@@ -767,6 +768,10 @@ export default function TeacherQuizPage() {
   const [solutionFile, setSolutionFile] = useState(null);
   const [solutionProgress, setSolutionProgress] = useState(null);
   const [uploadingSolution, setUploadingSolution] = useState(false);
+  const [deletingPaper, setDeletingPaper] = useState(false);
+  const [deletingSolution, setDeletingSolution] = useState(false);
+  const paperFileInputRef = useRef(null);
+  const solutionFileInputRef = useRef(null);
   const [questionBank, setQuestionBank] = useState([]);
   const [questionBankLoading, setQuestionBankLoading] = useState(false);
 
@@ -1134,6 +1139,76 @@ export default function TeacherQuizPage() {
     toast.success(`Đã gán tất cả ${questions.length} câu thành đáp án ${QUIZ_OPTION_KEYS[optionIndex]}.`);
   };
 
+  const handleDeletePaperFile = async () => {
+    if (!paperFile) return;
+    const fileId = paperFile.id;
+    const fileName = paperFile.name || "file đề PDF";
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${fileName}"? File sẽ bị xóa vĩnh viễn khỏi Cloudflare R2.`)) {
+      return;
+    }
+
+    if (fileId) {
+      setDeletingPaper(true);
+      try {
+        await deleteTeacherFile(fileId);
+        toast.success(`Đã xóa "${fileName}" khỏi Cloudflare R2.`);
+      } catch (err) {
+        console.error("Lỗi xóa file đề trên R2:", err);
+        toast.error(err?.message || "Không thể xóa file đề trên R2.");
+        setDeletingPaper(false);
+        return;
+      } finally {
+        setDeletingPaper(false);
+      }
+    }
+
+    setPaperFile(null);
+    setPaperProgress(null);
+    if (paperFileInputRef.current) {
+      paperFileInputRef.current.value = "";
+    }
+  };
+
+  const handleReplacePaperFile = () => {
+    paperFileInputRef.current?.click();
+  };
+
+  const handleDeleteSolutionFile = async () => {
+    if (!solutionFile) return;
+    const fileId = solutionFile.id;
+    const fileName = solutionFile.name || "file lời giải PDF";
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${fileName}"? File sẽ bị xóa vĩnh viễn khỏi Cloudflare R2.`)) {
+      return;
+    }
+
+    if (fileId) {
+      setDeletingSolution(true);
+      try {
+        await deleteTeacherFile(fileId);
+        toast.success(`Đã xóa "${fileName}" khỏi Cloudflare R2.`);
+      } catch (err) {
+        console.error("Lỗi xóa file lời giải trên R2:", err);
+        toast.error(err?.message || "Không thể xóa file lời giải trên R2.");
+        setDeletingSolution(false);
+        return;
+      } finally {
+        setDeletingSolution(false);
+      }
+    }
+
+    setSolutionFile(null);
+    setSolutionProgress(null);
+    if (solutionFileInputRef.current) {
+      solutionFileInputRef.current.value = "";
+    }
+  };
+
+  const handleReplaceSolutionFile = () => {
+    solutionFileInputRef.current?.click();
+  };
+
   const handlePaperSelect = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -1165,6 +1240,14 @@ export default function TeacherQuizPage() {
         errorMessage: "File đề PDF không được vượt quá 100MB.",
       });
       return;
+    }
+
+    // Nếu đã có file đề cũ trên R2, dọn dẹp file cũ
+    const oldPaperId = paperFile?.id;
+    if (oldPaperId) {
+      deleteTeacherFile(oldPaperId).catch((err) => {
+        console.warn("Không thể xóa file đề cũ trên R2:", err);
+      });
     }
 
     setPaperFile(file);
@@ -1251,6 +1334,14 @@ export default function TeacherQuizPage() {
         errorMessage: "File lời giải PDF không được vượt quá 100MB.",
       });
       return;
+    }
+
+    // Nếu đã có file lời giải cũ trên R2, dọn dẹp file cũ
+    const oldSolutionId = solutionFile?.id;
+    if (oldSolutionId) {
+      deleteTeacherFile(oldSolutionId).catch((err) => {
+        console.warn("Không thể xóa file lời giải cũ trên R2:", err);
+      });
     }
 
     setSolutionFile(file);
@@ -1956,78 +2047,148 @@ export default function TeacherQuizPage() {
 
                   {/* Upload file đề PDF nếu mode === paper */}
                   {quizMode === "paper" && (
-                    <div className="space-y-2 pt-1">
-                      <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/60 p-3 dark:border-violet-800 dark:bg-violet-950/20">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-3 pt-1">
+                      {/* Box 1: File đề PDF */}
+                      <div className="rounded-2xl border border-violet-200/90 bg-gradient-to-br from-violet-50/80 via-white to-purple-50/40 p-4 dark:border-violet-900/60 dark:from-violet-950/20 dark:via-slate-900 dark:to-purple-950/20 shadow-2xs">
+                        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
-                            <p className="truncate text-xs font-bold text-violet-950 dark:text-violet-100">
-                              {paperFile ? `📄 ${paperFile.name}` : "Tải file PDF đề kiểm tra"}
-                            </p>
-                            <p className="text-[10px] text-violet-700 dark:text-violet-300">
-                              Học viên sẽ đọc PDF ở khung bên trái khi làm bài.
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-600 text-white text-xs font-black">
+                                1
+                              </span>
+                              <p className="truncate text-xs font-black text-slate-900 dark:text-white">
+                                {paperFile ? `Đề PDF: ${paperFile.name}` : "Tải file PDF đề kiểm tra (Bắt buộc)"}
+                              </p>
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                              Học viên sẽ mở và đọc trực tiếp file PDF này ở khung đề bài bên trái khi làm bài.
                             </p>
                           </div>
-                          <input
-                            type="file"
-                            accept="application/pdf,.pdf"
-                            disabled={!courseId || uploadingPaper}
-                            onChange={handlePaperSelect}
-                            className="text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-violet-600 file:px-2.5 file:py-1.5 file:text-xs file:font-black file:text-white hover:file:bg-violet-500 disabled:opacity-50"
-                          />
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <input
+                              ref={paperFileInputRef}
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              disabled={!courseId || uploadingPaper || deletingPaper}
+                              onChange={handlePaperSelect}
+                              className="hidden"
+                            />
+                            {!paperFile ? (
+                              <button
+                                type="button"
+                                disabled={!courseId || uploadingPaper}
+                                onClick={() => paperFileInputRef.current?.click()}
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition disabled:opacity-50 cursor-pointer"
+                              >
+                                <FiPlus className="h-3.5 w-3.5" />
+                                <span>{uploadingPaper ? "Đang tải lên..." : "Chọn file PDF đề"}</span>
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={uploadingPaper || deletingPaper}
+                                  onClick={handleReplacePaperFile}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                                >
+                                  <FiRefreshCw className="h-3 w-3" /> Thay file
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={uploadingPaper || deletingPaper}
+                                  onClick={handleDeletePaperFile}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition disabled:opacity-50"
+                                >
+                                  <FiTrash2 className="h-3 w-3" /> {deletingPaper ? "Đang xóa..." : "Xóa"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
+
                         {paperProgress && (
-                          <div className="mt-2">
+                          <div className="mt-3">
                             <FileUploadProgressBox
                               file={paperFile}
                               progress={paperProgress}
-                              onCancel={() => {
-                                setPaperProgress(null);
-                                setPaperFile(null);
-                              }}
+                              isDeleting={deletingPaper}
+                              onReplace={handleReplacePaperFile}
+                              onRemove={handleDeletePaperFile}
+                              onCancel={handleDeletePaperFile}
                             />
                           </div>
                         )}
                       </div>
 
-                      {/* File lời giải PDF */}
-                      <div className="rounded-xl border border-dashed border-sky-300 bg-sky-50/60 p-3 dark:border-sky-800 dark:bg-sky-950/20">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      {/* Box 2: File lời giải PDF */}
+                      <div className="rounded-2xl border border-sky-200/90 bg-gradient-to-br from-sky-50/80 via-white to-blue-50/40 p-4 dark:border-sky-900/60 dark:from-sky-950/20 dark:via-slate-900 dark:to-blue-950/20 shadow-2xs">
+                        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
-                            <p className="truncate text-xs font-bold text-sky-950 dark:text-sky-100">
-                              {solutionFile ? `💡 ${solutionFile.name}` : "File lời giải chi tiết (PDF tùy chọn)"}
-                            </p>
-                            <p className="text-[10px] text-sky-700 dark:text-sky-300">
-                              Học viên có thể xem lời giải sau khi nộp bài.
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-sky-600 text-white text-xs font-black">
+                                2
+                              </span>
+                              <p className="truncate text-xs font-black text-slate-900 dark:text-white">
+                                {solutionFile ? `Lời giải: ${solutionFile.name}` : "File lời giải chi tiết PDF (Tùy chọn)"}
+                              </p>
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                              Học viên có thể xem lời giải chi tiết sau khi nộp bài hoặc khi kết thúc thời gian quiz.
                             </p>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {solutionFile && (
-                              <button
-                                type="button"
-                                onClick={() => { setSolutionFile(null); setSolutionProgress(null); }}
-                                className="text-[11px] font-bold text-rose-500 hover:underline"
-                              >
-                                Xóa
-                              </button>
-                            )}
+
+                          <div className="flex items-center gap-2 shrink-0">
                             <input
+                              ref={solutionFileInputRef}
                               type="file"
                               accept="application/pdf,.pdf"
-                              disabled={!courseId || uploadingSolution}
+                              disabled={!courseId || uploadingSolution || deletingSolution}
                               onChange={handleSolutionSelect}
-                              className="text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-sky-600 file:px-2.5 file:py-1.5 file:text-xs file:font-black file:text-white hover:file:bg-sky-500 disabled:opacity-50"
+                              className="hidden"
                             />
+                            {!solutionFile ? (
+                              <button
+                                type="button"
+                                disabled={!courseId || uploadingSolution}
+                                onClick={() => solutionFileInputRef.current?.click()}
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition disabled:opacity-50 cursor-pointer"
+                              >
+                                <FiPlus className="h-3.5 w-3.5" />
+                                <span>{uploadingSolution ? "Đang tải lên..." : "Chọn file lời giải PDF"}</span>
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={uploadingSolution || deletingSolution}
+                                  onClick={handleReplaceSolutionFile}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                                >
+                                  <FiRefreshCw className="h-3 w-3" /> Thay file
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={uploadingSolution || deletingSolution}
+                                  onClick={handleDeleteSolutionFile}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition disabled:opacity-50"
+                                >
+                                  <FiTrash2 className="h-3 w-3" /> {deletingSolution ? "Đang xóa..." : "Xóa"}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
+
                         {solutionProgress && (
-                          <div className="mt-2">
+                          <div className="mt-3">
                             <FileUploadProgressBox
                               file={solutionFile}
                               progress={solutionProgress}
-                              onCancel={() => {
-                                setSolutionProgress(null);
-                                setSolutionFile(null);
-                              }}
+                              isDeleting={deletingSolution}
+                              onReplace={handleReplaceSolutionFile}
+                              onRemove={handleDeleteSolutionFile}
+                              onCancel={handleDeleteSolutionFile}
                             />
                           </div>
                         )}

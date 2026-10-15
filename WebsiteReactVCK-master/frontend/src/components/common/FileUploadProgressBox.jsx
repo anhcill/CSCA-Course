@@ -7,6 +7,7 @@ import {
   Files,
   Loader2,
   RefreshCw,
+  Trash2,
   X,
   XCircle,
 } from "lucide-react";
@@ -37,6 +38,9 @@ export default function FileUploadProgressBox({
   progress = {},
   onRetry,
   onCancel,
+  onRemove,
+  onReplace,
+  isDeleting = false,
   className = "",
 }) {
   const {
@@ -147,6 +151,43 @@ export default function FileUploadProgressBox({
               3. Lưu dữ liệu
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Success Actions Bar: Thay file khác / Xóa file khỏi R2 */}
+      {isSuccess && (onReplace || onRemove) && (
+        <div className="mt-3.5 pt-3 border-t border-emerald-200/80 dark:border-emerald-900/60 flex flex-wrap items-center justify-end gap-2">
+          {onReplace && (
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={onReplace}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50 shadow-2xs cursor-pointer"
+            >
+              <RefreshCw className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+              <span>Thay file khác</span>
+            </button>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={onRemove}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition disabled:opacity-50 shadow-2xs cursor-pointer"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-500" />
+                  <span>Đang xóa trên R2...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                  <span>Xóa file (Xóa khỏi R2)</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 

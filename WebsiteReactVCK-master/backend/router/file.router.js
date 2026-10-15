@@ -545,6 +545,7 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
     await query("UPDATE lms_learning_files SET status = 'deleted', updated_at = NOW() WHERE id = $1", [fileId]);
     await query("UPDATE quizzes SET paper_file_id = NULL WHERE paper_file_id = $1", [fileId]).catch(() => {});
     await query("UPDATE quizzes SET solution_file_id = NULL WHERE solution_file_id = $1", [fileId]).catch(() => {});
+    await query("UPDATE assignments SET attachment_url = NULL WHERE attachment_url LIKE $1", [`%/files/${fileId}/download%`]).catch(() => {});
     await recordAuditEvent({
       actorId: req.user.id,
       action: "learning_file.deleted",

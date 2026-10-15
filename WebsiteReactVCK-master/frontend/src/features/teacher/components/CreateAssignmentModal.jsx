@@ -9,7 +9,7 @@ import {
   FiCheckCircle,
   FiList,
 } from "react-icons/fi";
-import { createAssignment, uploadClassFile } from "../../api/lmsClient";
+import { createAssignment, uploadClassFile, deleteClassFile } from "../../api/lmsClient";
 import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
 
 const MAX_ASSIGNMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -27,6 +27,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
   const [attachmentUrl, setAttachmentUrl] = useState("");
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [isDeletingFile, setIsDeletingFile] = useState(false);
   const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
@@ -38,8 +39,44 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
     navigate(`/lms/teacher/quizzes?${params.toString()}`);
   };
 
+  const handleDeleteAttachment = async () => {
+    if (!selectedFile) return;
+    const fileId = selectedFile.id;
+    const fileName = selectedFile.name || "tệp đính kèm";
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${fileName}"? Tệp sẽ bị xóa vĩnh viễn khỏi Cloudflare R2.`)) {
+      return;
+    }
+
+    if (fileId) {
+      setIsDeletingFile(true);
+      try {
+        await deleteClassFile(fileId);
+        toast.success(`Đã xóa "${fileName}" khỏi Cloudflare R2.`);
+      } catch (err) {
+        console.error("Lỗi xóa file trên R2:", err);
+        toast.error(err?.message || "Không thể xóa file trên R2.");
+        setIsDeletingFile(false);
+        return;
+      } finally {
+        setIsDeletingFile(false);
+      }
+    }
+
+    setSelectedFile(null);
+    setAttachmentUrl("");
+    setUploadProgress(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleReplaceAttachment = () => {
+    fileInputRef.current?.click();
+  };
+
   const uploadAttachment = async (file) => {
-    if (!file || uploadingFile || submitting) return;
+    if (!file || uploadingFile || submitting || isDeletingFile) return;
     if (file.size > MAX_ASSIGNMENT_ATTACHMENT_BYTES) {
       setSelectedFile(file);
       setUploadProgress({
@@ -50,6 +87,14 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
         errorMessage: "Tệp đính kèm phải nhỏ hơn hoặc bằng 25MB.",
       });
       return;
+    }
+
+    // Tự động xóa file cũ trên Cloudflare R2 nếu đã từng upload trước đó
+    const oldFileId = selectedFile?.id;
+    if (oldFileId) {
+      deleteClassFile(oldFileId).catch((err) => {
+        console.warn("Không thể xóa file cũ trên R2:", err);
+      });
     }
 
     setSelectedFile(file);
@@ -81,10 +126,11 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
       });
 
       const uploadedUrl = response?.data?.downloadUrl;
+      const fileId = response?.data?.id;
       if (!response?.success || !uploadedUrl) {
         throw new Error(response?.message || "Không thể xác nhận tệp đính kèm");
       }
-      setSelectedFile({ name: file.name, size: file.size });
+      setSelectedFile({ id: fileId, name: file.name, size: file.size });
       setAttachmentUrl(uploadedUrl);
       setUploadProgress({
         status: "success",
@@ -357,12 +403,11 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
                 <FileUploadProgressBox
                   file={selectedFile}
                   progress={uploadProgress}
+                  isDeleting={isDeletingFile}
+                  onReplace={handleReplaceAttachment}
+                  onRemove={handleDeleteAttachment}
                   onRetry={() => uploadAttachment(selectedFile)}
-                  onCancel={() => {
-                    setUploadProgress(null);
-                    setSelectedFile(null);
-                    setAttachmentUrl("");
-                  }}
+                  onCancel={handleDeleteAttachment}
                 />
               </div>
             )}
