@@ -137,11 +137,26 @@ if (process.env.NODE_ENV === "production") {
   const distPath = path.join(__dirname, "frontend", "dist");
   const indexPath = path.resolve(distPath, "index.html");
 
-  app.use(express.static(distPath));
+  // Aggressive edge and browser caching to minimize Railway egress data transfer
+  app.use(express.static(distPath, {
+    maxAge: "7d",
+    setHeaders: (res, filePath) => {
+      // Content-hashed Vite bundle assets (/assets/*) are immutable
+      if (filePath.includes(`${path.sep}assets${path.sep}`) || /\.[a-f0-9]{8,}\.(js|css|png|jpg|jpeg|webp|svg)$/i.test(filePath)) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (filePath.endsWith("index.html") || filePath.endsWith("site.webmanifest") || filePath.endsWith("sw.js")) {
+        res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
+      } else {
+        // Avatars (/avatar/*), static icons, logos, and banners
+        res.setHeader("Cache-Control", "public, max-age=604800, s-maxage=2592000");
+      }
+    },
+  }));
 
   app.get("*", (req, res) => {
     const renderedHtml = renderHtmlWithSeo(indexPath, req.originalUrl || req.url);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
     res.send(renderedHtml);
   });
 }

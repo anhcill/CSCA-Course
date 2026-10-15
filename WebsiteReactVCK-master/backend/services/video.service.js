@@ -63,6 +63,24 @@ export const ALLOWED_LEARNING_FILE_MIME_TYPES = new Set([
 
 export const MAX_LEARNING_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
+export const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/svg+xml",
+]);
+
+export const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+export const ALLOWED_IMAGE_FOLDERS = new Set([
+  "avatars",
+  "courses",
+  "posts",
+  "banners",
+  "general",
+]);
+
 const getR2Config = () => {
   const accountId = process.env.R2_ACCOUNT_ID;
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
@@ -98,7 +116,7 @@ const buildCanonicalQuery = (params) => Object.entries(params)
 
 const hmac = (key, value, encoding) => crypto.createHmac("sha256", key).update(value).digest(encoding);
 
-const createPresignedUrl = ({ method, key, expiresInSeconds }) => {
+const createPresignedUrl = ({ method, key, expiresInSeconds, extraParams = {} }) => {
   const { accessKeyId, secretAccessKey, bucketName, endpoint } = getR2Config();
   const endpointUrl = new URL(endpoint);
   const now = new Date();
@@ -114,6 +132,7 @@ const createPresignedUrl = ({ method, key, expiresInSeconds }) => {
     "X-Amz-Date": amzDate,
     "X-Amz-Expires": expiresInSeconds,
     "X-Amz-SignedHeaders": "host",
+    ...extraParams,
   };
   const canonicalQuery = buildCanonicalQuery(queryParams);
   const canonicalHeaders = `host:${endpointUrl.host}\n`;
@@ -170,6 +189,22 @@ const validateLearningFileKey = (r2Key) => (
   && !r2Key.includes("..")
   && !/[\\\s]/.test(r2Key)
 );
+
+export const validateImageR2Key = (r2Key) => (
+  typeof r2Key === "string"
+  && r2Key.length <= 500
+  && r2Key.startsWith("images/")
+  && !r2Key.includes("..")
+  && !/[\\\s]/.test(r2Key)
+);
+
+export const getR2PublicUrl = (fileKey) => {
+  const publicDomain = (process.env.R2_PUBLIC_DOMAIN || "").trim();
+  if (publicDomain) {
+    return `${publicDomain.replace(/\/$/, "")}/${fileKey}`;
+  }
+  return `/api/images/${fileKey}`;
+};
 
 /** Generate a real AWS SigV4 presigned PUT URL for a private R2 bucket. */
 export const generateUploadPresignedUrl = async ({ filename, mimeType, sizeBytes }) => {
@@ -289,12 +324,59 @@ export const generateLearningFileUploadPresignedUrl = async ({ userId, filename,
   };
 };
 
-export const generateLearningFilePlaybackSignedUrl = async ({ r2Key }) => {
+export const generateLearningFilePlaybackSignedUrl = async ({ r2Key, filename }) => {
   getR2Config();
   if (!validateLearningFileKey(r2Key)) throw new Error("storageKey tài liệu không hợp lệ");
   const expiresInSeconds = getTtl("R2_FILE_PLAYBACK_URL_TTL_SECONDS", 600, 900);
-  const downloadUrl = createPresignedUrl({ method: "GET", key: r2Key, expiresInSeconds });
+  const extraParams = {};
+  if (typeof filename === "string" && filename.trim()) {
+    const cleanFilename = path.basename(filename.trim()).replace(/["\r\n]/g, "");
+    extraParams["response-content-disposition"] = `attachment; filename="${encodePathSegment(cleanFilename)}"`;
+  }
+  const downloadUrl = createPresignedUrl({ method: "GET", key: r2Key, expiresInSeconds, extraParams });
   return { downloadUrl, expiresAt: Math.floor(Date.now() / 1000) + expiresInSeconds, expiresInSeconds };
+};
+
+/** Generate a presigned PUT URL for Cloudflare R2 image upload. */
+export const generateImageUploadPresignedUrl = async ({ userId, filename, mimeType, sizeBytes, folder = "general" }) => {
+  getR2Config();
+  if (!Number.isSafeInteger(Number(userId)) || Number(userId) <= 0) throw new Error("userId không hợp lệ");
+  if (typeof filename !== "string" || !filename.trim()) throw new Error("filename không hợp lệ");
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) throw new Error("Định dạng ảnh không được hỗ trợ (chỉ nhận JPG, PNG, WEBP, GIF, SVG)");
+  if (!Number.isSafeInteger(Number(sizeBytes)) || Number(sizeBytes) <= 0 || Number(sizeBytes) > MAX_IMAGE_SIZE_BYTES) {
+    throw new Error("Kích thước ảnh không hợp lệ hoặc vượt quá 10MB");
+  }
+  const cleanFolder = ALLOWED_IMAGE_FOLDERS.has(folder) ? folder : "general";
+  const safeFilename = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 150);
+  const fileKey = `images/${cleanFolder}/${Date.now()}_${crypto.randomBytes(8).toString("hex")}_${safeFilename}`;
+  const expiresInSeconds = getTtl("R2_IMAGE_UPLOAD_URL_TTL_SECONDS", 900, 3600);
+  const uploadUrl = createPresignedUrl({ method: "PUT", key: fileKey, expiresInSeconds });
+  const publicUrl = getR2PublicUrl(fileKey);
+
+  return {
+    uploadUrl,
+    fileKey,
+    publicUrl,
+    mimeType,
+    sizeBytes: Number(sizeBytes),
+    expiresInSeconds,
+    headers: { "Content-Type": mimeType },
+  };
+};
+
+export const generateImagePlaybackSignedUrl = async ({ r2Key, expiresInSeconds = 86400 }) => {
+  getR2Config();
+  if (!validateImageR2Key(r2Key) && !isSafeR2StorageKey(r2Key)) throw new Error("storageKey ảnh không hợp lệ");
+  const ttl = Math.min(Math.max(expiresInSeconds, 300), 7 * 86400);
+  const downloadUrl = createPresignedUrl({ method: "GET", key: r2Key, expiresInSeconds: ttl });
+  return { downloadUrl, expiresAt: Math.floor(Date.now() / 1000) + ttl, expiresInSeconds: ttl };
+};
+
+export const generateImageHeadSignedUrl = async ({ r2Key }) => {
+  getR2Config();
+  if (!validateImageR2Key(r2Key) && !isSafeR2StorageKey(r2Key)) throw new Error("storageKey ảnh không hợp lệ");
+  const expiresInSeconds = getTtl("R2_FILE_UPLOAD_URL_TTL_SECONDS", 900, 3600);
+  return { headUrl: createPresignedUrl({ method: "HEAD", key: r2Key, expiresInSeconds }), expiresInSeconds };
 };
 
 export const generateLearningFileHeadSignedUrl = async ({ r2Key }) => {

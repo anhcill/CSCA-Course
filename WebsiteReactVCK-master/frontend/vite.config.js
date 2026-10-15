@@ -9,8 +9,10 @@ export default defineConfig({
         react(),
         compression(),
         VitePWA({
-            registerType: 'autoUpdate',
-            injectRegister: 'auto',
+            // Let an update wait until open tabs close, so a deploy never
+            // interrupts a lesson or an in-progress quiz.
+            registerType: 'prompt',
+            injectRegister: 'script',
             manifestFilename: 'site.webmanifest',
             includeAssets: [
                 'favicon.ico',
@@ -56,6 +58,8 @@ export default defineConfig({
                 ]
             },
             workbox: {
+                skipWaiting: false,
+                clientsClaim: false,
                 // Cache the app shell at install time. Route assets are cached
                 // on first use so installing an update does not download every
                 // course, teacher and admin bundle at once.

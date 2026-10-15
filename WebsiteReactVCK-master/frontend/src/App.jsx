@@ -1,6 +1,8 @@
 import { Suspense, lazy } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
+import Unauthorized from "./pages/client/Unauthorized.jsx";
+import Forbidden from "./pages/client/Forbidden.jsx";
 
 // Public website pages
 const Home = lazy(() => import("./pages/client/Home.jsx"));
@@ -15,8 +17,6 @@ const Schedule = lazy(() => import("./pages/client/Schedule.jsx"));
 const SelectCourse = lazy(() => import("./pages/client/SelectCourse.jsx"));
 const SelectLevel = lazy(() => import("./pages/client/SelectLevel.jsx"));
 const PoliceAndLegal = lazy(() => import("./pages/client/PoliceAndLegal.jsx"));
-const Unauthorized = lazy(() => import("./pages/client/Unauthorized.jsx"));
-const Forbidden = lazy(() => import("./pages/client/Forbidden.jsx"));
 
 // Admin pages
 

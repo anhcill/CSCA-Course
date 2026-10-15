@@ -5,7 +5,8 @@ import React, {
   useState,
   useContext,
 } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
+import { Lock } from "lucide-react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import useGetLesson from "../../hooks/useGetLesson.js";
@@ -292,6 +293,22 @@ const DetailCourse = () => {
         <Loading loading={true} text="Đang tải thông tin bài học..." fullScreen={false} className="min-h-[60vh] py-16" />
       ) : (
         <div className="pt-2">
+          {/* Coming Soon notice banner */}
+          <div className="mx-4 mb-3 mt-1 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
+            <div className="flex items-center gap-2">
+              <Lock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>
+                <strong>Khóa học đang trong giai đoạn hoàn thiện (Coming Soon):</strong> Hệ thống bài giảng và học liệu chính thức đang được chuẩn bị.
+              </span>
+            </div>
+            <Link
+              to="/courses"
+              className="inline-flex items-center gap-1 font-bold text-amber-700 underline hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100"
+            >
+              ← Quay lại danh mục khóa học
+            </Link>
+          </div>
+
           <div className="relative">
             {/* Mobile Menu Button */}
             <button

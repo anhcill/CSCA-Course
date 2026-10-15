@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { HiOutlineStar, HiMiniStar, HiStar } from "react-icons/hi2";
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import { GraduationCap, BookOpen, Sparkles, Trophy, ArrowRight } from 'lucide-react';
+import { GraduationCap, BookOpen, Sparkles, Trophy, ArrowRight, Lock } from 'lucide-react';
 import useGetCourse from '../../hooks/useGetCourse';
 import useGetProgress from '../../hooks/useGetProgress';
 import { useTheme } from '../../context/ThemeContext';
@@ -180,7 +180,7 @@ const Courses = () => {
     return { cscaCourses: csca, chineseCourses: chinese, otherCourses: other };
   }, [courses]);
 
-  // Render một thẻ khóa học đơn lẻ
+  // Render một thẻ khóa học đơn lẻ (Chế độ Coming Soon: khóa lại)
   const renderCourseCard = (course) => {
     const courseId = course._id || course.id;
     const courseRatingData = courseRatings[courseId] || {};
@@ -189,31 +189,38 @@ const Courses = () => {
     const name = course.nameCourse || course.title || course.name;
     const isCsca = (course.category || '').toUpperCase().includes('CSCA') || (name || '').toUpperCase().includes('CSCA');
 
+    const handleLockedClick = (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      toast('Khóa học đang được chuẩn bị và sẽ sớm ra mắt (Coming Soon)! Vui lòng đón chờ nhé! 🚀', {
+        icon: '🔒',
+        duration: 4000,
+      });
+    };
+
     return (
       <div
         key={courseId}
         className={`group rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transform hover:-translate-y-1.5 transition-all duration-300 flex flex-col justify-between border ${
-          isDarkMode ? 'bg-gray-800/90 border-gray-700/80 hover:border-red-500/40' : 'bg-white border-gray-100 hover:border-red-300'
+          isDarkMode ? 'bg-gray-800/90 border-gray-700/80 hover:border-amber-500/50' : 'bg-white border-gray-100 hover:border-amber-300'
         }`}
       >
-        <Link
-          to={`/detail-course/${courseId}`}
-          onClick={(event) => {
-            if (!authUser && !course.isDemo) {
-              event.preventDefault();
-              toast.error(t('loginRequired') || 'Vui lòng đăng nhập để xem nội dung khóa học!');
-            }
-          }}
-          className="block flex-1"
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={handleLockedClick}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleLockedClick(e); }}
+          className="block flex-1 cursor-pointer text-left focus:outline-none"
         >
           <div>
             <div className="relative pb-[56.25%] overflow-hidden bg-slate-900">
               <img
                 src={course.imageCourse || course.thumbnail_url || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80'}
                 alt={name}
-                className="absolute inset-0 w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+                className="absolute inset-0 w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent"></div>
+
               {/* Category Badge on image */}
               <div className="absolute top-3 left-3 flex gap-1.5">
                 <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-sm border ${
@@ -227,10 +234,23 @@ const Courses = () => {
                   </span>
                 )}
               </div>
+
+              {/* Locked Coming Soon Pill on Top Right */}
+              <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-lg bg-amber-500/95 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-950 backdrop-blur-md shadow-lg border border-amber-300/50">
+                <Lock className="h-3 w-3" />
+                <span>Coming Soon</span>
+              </div>
+
+              {/* Hover lock overlay */}
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/40 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/90 px-3.5 py-1.5 text-xs font-black text-amber-400 shadow-xl border border-amber-500/40">
+                  <Lock className="h-3.5 w-3.5" /> Khóa học sắp ra mắt
+                </span>
+              </div>
             </div>
 
             <div className="p-5 space-y-3">
-              <h2 className={`font-bold text-base sm:text-lg line-clamp-2 leading-snug group-hover:text-red-500 transition-colors ${
+              <h2 className={`font-bold text-base sm:text-lg line-clamp-2 leading-snug group-hover:text-amber-500 transition-colors ${
                 isDarkMode ? 'text-gray-100' : 'text-gray-900'
               }`}>
                 {name}
@@ -282,7 +302,7 @@ const Courses = () => {
               )}
             </div>
           </div>
-        </Link>
+        </div>
 
         {/* Card Footer */}
         <div className={`p-4 border-t ${isDarkMode ? 'border-gray-700/60' : 'border-gray-100'} flex items-center justify-between gap-2`}>
@@ -291,11 +311,7 @@ const Courses = () => {
               type="button"
               className="flex items-center gap-1 text-xs text-amber-500 font-semibold"
               onClick={() => {
-                if (course.isDemo) {
-                  toast('Đánh giá được tắt trong chế độ xem trước.');
-                } else {
-                  openRatingForm(course);
-                }
+                toast('Đánh giá sẽ mở khi khóa học chính thức phát hành.', { icon: 'ℹ️' });
               }}
             >
               <HiStar className="text-amber-400 text-base" />
@@ -304,13 +320,14 @@ const Courses = () => {
             </button>
           </div>
 
-          <Link
-            to={`/detail-course/${courseId}`}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition shadow-sm"
+          <button
+            type="button"
+            onClick={handleLockedClick}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-black transition shadow-sm border border-amber-500/30 dark:bg-slate-800 dark:hover:bg-slate-700"
           >
-            <span>Vào học</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+            <Lock className="w-3.5 h-3.5" />
+            <span>Coming Soon</span>
+          </button>
         </div>
       </div>
     );
@@ -334,10 +351,14 @@ const Courses = () => {
           <div className="overflow-hidden rounded-3xl bg-gradient-to-r from-red-700 via-red-600 to-amber-500 px-6 py-10 text-white shadow-xl sm:px-10 relative">
             <div className="absolute right-0 top-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
             <div className="relative z-10">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-white/20 backdrop-blur-md">
                   <Sparkles className="w-3.5 h-3.5" />
                   Moly Course • Lộ Trình Học Tập
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-400 text-slate-950 shadow-md">
+                  <Lock className="w-3.5 h-3.5" />
+                  Coming Soon · Đang Hoàn Thiện
                 </span>
               </div>
               <h1 className="mt-3 max-w-3xl text-2xl sm:text-4xl font-black tracking-tight leading-tight">

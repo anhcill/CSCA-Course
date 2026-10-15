@@ -6,6 +6,7 @@ import {
   FiAlertCircle,
   FiArrowLeft,
   FiBookOpen,
+  FiCamera,
   FiCheck,
   FiCheckCircle,
   FiDownload,
@@ -13,14 +14,38 @@ import {
   FiEye,
   FiFileText,
   FiFlag,
+  FiImage,
   FiMaximize2,
   FiMinimize2,
   FiRotateCcw,
   FiSend,
   FiTarget,
+  FiTrash2,
+  FiUploadCloud,
+  FiX,
+  FiZoomIn,
 } from "react-icons/fi";
-import { fetchQuiz, saveQuizAnswers, submitQuiz } from "../../api/lmsClient";
+import {
+  confirmSubmissionAsset,
+  fetchQuiz,
+  requestSubmissionUploadUrl,
+  saveQuizAnswers,
+  submitQuiz,
+} from "../../api/lmsClient";
 import { ErrorState, LoadingState } from "../../../components/common/StateView";
+import { parseQuizDescription, compressImageFile } from "../../teacher/utils/quizAnswerKey";
+
+function dataURLtoBlob(dataUrl) {
+  const parts = dataUrl.split(";base64,");
+  const contentType = parts[0].split(":")[1] || "image/jpeg";
+  const raw = window.atob(parts[1]);
+  const rawLength = raw.length;
+  const uInt8Array = new Uint8Array(rawLength);
+  for (let i = 0; i < rawLength; ++i) {
+    uInt8Array[i] = raw.charCodeAt(i);
+  }
+  return new Blob([uInt8Array], { type: contentType });
+}
 
 function ScoreRing({ score, total }) {
   const radius = 50;
@@ -74,10 +99,21 @@ export default function QuizPlayerPage() {
   const [mobileTab, setMobileTab] = useState("paper"); // "paper" | "sheet"
   const [saveStatus, setSaveStatus] = useState("saved");
 
+  // Essay / Handwritten response states
+  const [answerPanelTab, setAnswerPanelTab] = useState("mc"); // "mc" | "essay"
+  const [essayAttachments, setEssayAttachments] = useState([]); // [{ id, name, size, url, uploadedAt }]
+  const [essayNotes, setEssayNotes] = useState("");
+  const [uploadingEssay, setUploadingEssay] = useState(false);
+  const [lightboxImg, setLightboxImg] = useState(null);
+  const [lightboxRotation, setLightboxRotation] = useState(0);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
   const containerRef = useRef(null);
 
   const questions = useMemo(() => quizData?.questions || [], [quizData]);
   const isTimed = useMemo(() => Number(quizData?.durationMinutes || 0) > 0, [quizData]);
+  const essayConfig = useMemo(() => parseQuizDescription(quizData?.description)?.essayConfig || null, [quizData?.description]);
+  const hasEssay = Boolean(essayConfig?.enabled);
 
   const answerKeys = useMemo(() => {
     const keys = [...new Set(questions.flatMap((question) => (question.options || []).map((option) => option.key)))].sort();
@@ -123,23 +159,57 @@ export default function QuizPlayerPage() {
     setLoadError("");
     try {
       const response = await fetchQuiz(quizId);
-      if (!response.success || !response.data || response.data.questions?.length === 0) {
+      if (!response.success || !response.data) {
         throw new Error("Đề thi chưa sẵn sàng hoặc không tồn tại");
       }
       const data = response.data;
+      const parsedDesc = parseQuizDescription(data.description);
+      const isEssayEnabled = Boolean(parsedDesc?.essayConfig?.enabled);
+
+      if ((!data.questions || data.questions.length === 0) && !isEssayEnabled) {
+        throw new Error("Đề thi chưa có câu hỏi nào");
+      }
+
       const isSubmitted = Boolean(data.result);
       const serverAnswers = data.attempt?.answers || {};
+      let loadedEssay = serverAnswers._essay || data.result?.essay || null;
       let savedAnswers = {};
+      let savedEssay = null;
+
       if (!isSubmitted && !data.attempt && Object.keys(serverAnswers).length === 0) {
         try {
-          savedAnswers = JSON.parse(localStorage.getItem(`csca_quiz_${quizId}`) || "{}");
+          const local = JSON.parse(localStorage.getItem(`csca_quiz_${quizId}`) || "{}");
+          if (local && typeof local === "object") {
+            if (local._essay) {
+              savedEssay = local._essay;
+              delete local._essay;
+            }
+            savedAnswers = local;
+          }
         } catch {
           savedAnswers = {};
         }
       }
+
+      const mcAnswers = { ...serverAnswers };
+      if (mcAnswers._essay) {
+        if (!loadedEssay) loadedEssay = mcAnswers._essay;
+        delete mcAnswers._essay;
+      }
+
       setQuizData(data);
       setResult(data.result || null);
-      setAnswers(Object.keys(serverAnswers).length ? serverAnswers : savedAnswers);
+      setAnswers(Object.keys(mcAnswers).length ? mcAnswers : savedAnswers);
+
+      const initialAttachments = loadedEssay?.attachments || savedEssay?.attachments || [];
+      const initialNotes = loadedEssay?.notes || savedEssay?.notes || "";
+      setEssayAttachments(Array.isArray(initialAttachments) ? initialAttachments : []);
+      setEssayNotes(typeof initialNotes === "string" ? initialNotes : "");
+
+      // If quiz is exclusively essay (0 MC questions), switch to essay panel
+      if ((!data.questions || data.questions.length === 0) && isEssayEnabled) {
+        setAnswerPanelTab("essay");
+      }
 
       const limit = Number(data.timeLimitSeconds) || Number(data.durationMinutes || 60) * 60;
       setTotalTime(limit);
@@ -162,17 +232,140 @@ export default function QuizPlayerPage() {
     loadQuiz();
   }, [loadQuiz]);
 
-  // Autosave answers
+  // Handle adding image files (from file dialog, drag & drop, or clipboard paste)
+  // Compresses via HTML5 Canvas and uploads directly to Cloudflare R2
+  const handleAddImages = useCallback(async (files) => {
+    if (result || reviewMode) return;
+    const validFiles = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (validFiles.length === 0) {
+      toast.error("Vui lòng chọn file hình ảnh (JPG, PNG, WEBP...)");
+      return;
+    }
+    setUploadingEssay(true);
+    const toastId = toast.loading(`Đang xử lý & lưu ${validFiles.length} ảnh vào Cloudflare R2...`);
+    try {
+      const newItems = [];
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
+        // 1. Client-side compression (1600px max dimension, 0.82 JPEG quality for crystal-clear handwriting)
+        const dataUrl = await compressImageFile(file, 1600, 0.82);
+        const blob = dataURLtoBlob(dataUrl);
+
+        // 2. Format a clean filename for Cloudflare R2
+        const rawName = file.name || `photo_${Date.now()}_${i + 1}.jpg`;
+        const cleanBase = rawName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100) || `photo_${Date.now()}`;
+        const filename = `${cleanBase}.jpg`;
+
+        let cloudflareAssetId = null;
+        let cloudflareUrl = null;
+
+        try {
+          // 3. Request presigned upload URL from backend
+          const uploadRes = await requestSubmissionUploadUrl({
+            filename,
+            mimeType: "image/jpeg",
+            sizeBytes: blob.size,
+            assetKind: "file",
+          });
+
+          const uploadData = uploadRes?.data;
+          if (uploadData?.uploadUrl && uploadData?.assetId) {
+            // 4. Direct upload PUT to Cloudflare R2
+            const r2Put = await fetch(uploadData.uploadUrl, {
+              method: "PUT",
+              headers: uploadData.headers || { "Content-Type": "image/jpeg" },
+              body: blob,
+            });
+
+            if (r2Put.ok) {
+              // 5. Confirm asset status in backend
+              const confirmed = await confirmSubmissionAsset({
+                assetId: uploadData.assetId,
+                mimeType: "image/jpeg",
+                sizeBytes: blob.size,
+              });
+              cloudflareAssetId = confirmed?.data?.id || uploadData.assetId;
+              cloudflareUrl = `/api/assignments/submission-assets/${cloudflareAssetId}/access`;
+            }
+          }
+        } catch (r2Err) {
+          console.warn("Cloudflare R2 direct upload failed, fallback to local preview:", r2Err);
+        }
+
+        newItems.push({
+          id: cloudflareAssetId ? `asset-${cloudflareAssetId}` : `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          assetId: cloudflareAssetId || null,
+          name: filename,
+          size: blob.size,
+          url: cloudflareUrl || dataUrl, // Permanent Cloudflare R2 access URL
+          previewUrl: dataUrl,           // Instant local preview
+          isCloudflare: Boolean(cloudflareUrl),
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+
+      setEssayAttachments((prev) => [...prev, ...newItems]);
+      const cloudflareCount = newItems.filter((item) => item.isCloudflare).length;
+      if (cloudflareCount > 0) {
+        toast.success(`Đã lưu ${cloudflareCount} ảnh vào kho Cloudflare R2 an toàn! ☁️`, { id: toastId });
+      } else {
+        toast.success(`Đã thêm ${newItems.length} ảnh bài làm!`, { id: toastId });
+      }
+    } catch (err) {
+      console.error("Lỗi nén/tải ảnh tự luận:", err);
+      toast.error(err?.message || "Không thể xử lý ảnh, vui lòng thử lại!", { id: toastId });
+    } finally {
+      setUploadingEssay(false);
+    }
+  }, [result, reviewMode]);
+
+  const handleRemoveImage = useCallback((imgId) => {
+    if (result || reviewMode) return;
+    setEssayAttachments((prev) => prev.filter((img) => img.id !== imgId));
+    toast.success("Đã xóa ảnh bài làm");
+  }, [result, reviewMode]);
+
+  // Listen for Ctrl+V clipboard paste to easily attach screenshots
   useEffect(() => {
-    if (result || Object.keys(answers).length === 0) return undefined;
+    const handlePaste = async (e) => {
+      if (result || reviewMode) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageFiles = [];
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) imageFiles.push(file);
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        await handleAddImages(imageFiles);
+      }
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [handleAddImages, result, reviewMode]);
+
+  // Autosave answers & essay attachments
+  useEffect(() => {
+    const hasWork = Object.keys(answers).length > 0 || essayAttachments.length > 0 || essayNotes.trim().length > 0;
+    if (result || !hasWork) return undefined;
     setSaveStatus("saving");
     const timeout = setTimeout(() => {
+      const payloadAnswers = {
+        ...answers,
+        _essay: {
+          attachments: essayAttachments,
+          notes: essayNotes.trim(),
+        },
+      };
       try {
-        localStorage.setItem(`csca_quiz_${quizId || "quiz"}`, JSON.stringify(answers));
+        localStorage.setItem(`csca_quiz_${quizId || "quiz"}`, JSON.stringify(payloadAnswers));
       } catch {
         /* Offline convenience */
       }
-      saveQuizAnswers({ quizId, answers })
+      saveQuizAnswers({ quizId, answers: payloadAnswers })
         .then(() => setSaveStatus("saved"))
         .catch(async (error) => {
           setSaveStatus("error");
@@ -183,7 +376,7 @@ export default function QuizPlayerPage() {
         });
     }, 650);
     return () => clearTimeout(timeout);
-  }, [answers, quizId, result, loadQuiz]);
+  }, [answers, essayAttachments, essayNotes, quizId, result, loadQuiz]);
 
   const handleSelect = useCallback((question, optionKey) => {
     if (result && !reviewMode) return;
@@ -219,7 +412,14 @@ export default function QuizPlayerPage() {
     if (submitting || result) return;
     setSubmitting(true);
     try {
-      const response = await submitQuiz({ quizId, answers });
+      const payloadAnswers = {
+        ...answers,
+        _essay: {
+          attachments: essayAttachments,
+          notes: essayNotes.trim(),
+        },
+      };
+      const response = await submitQuiz({ quizId, answers: payloadAnswers });
       if (!response.success || !response.data) throw new Error("Máy chủ chưa ghi nhận được bài thi");
       setResult(response.data);
       if (response.data.solutionUrl) {
@@ -230,7 +430,11 @@ export default function QuizPlayerPage() {
       } catch {
         /* no-op */
       }
-      toast.success(`Nộp bài thành công: ${response.data.score}/${response.data.maxScore} điểm.`);
+      if (hasEssay) {
+        toast.success("Nộp bài thành công! Bài tự luận đã được chuyển đến giáo viên để chấm điểm.");
+      } else {
+        toast.success(`Nộp bài thành công: ${response.data.score}/${response.data.maxScore} điểm.`);
+      }
       setReviewMode(true);
     } catch (error) {
       console.error("Quiz submission failed:", error);
@@ -239,7 +443,7 @@ export default function QuizPlayerPage() {
       setSubmitting(false);
       setShowConfirm(false);
     }
-  }, [answers, quizId, result, submitting]);
+  }, [answers, essayAttachments, essayNotes, hasEssay, quizId, result, submitting]);
 
   // Timer countdown
   useEffect(() => {
@@ -357,9 +561,10 @@ export default function QuizPlayerPage() {
               ✓
             </span>
             <div className="leading-tight">
-              <span className="block text-[9px] font-bold text-slate-400 uppercase">Đã làm</span>
+              <span className="block text-[9px] font-bold text-slate-400 uppercase">Tiến độ</span>
               <span className="block text-xs font-mono font-black text-white">
-                {answeredCount}/{questions.length} câu
+                TN: {answeredCount}/{questions.length}
+                {hasEssay ? ` • TL: ${essayAttachments.length} ảnh` : ""}
               </span>
             </div>
           </div>
@@ -372,14 +577,20 @@ export default function QuizPlayerPage() {
             <div className="leading-tight text-left">
               <span className="block text-xs font-black tracking-tight">
                 {result
-                  ? `Đã nộp bài: ${result.score}/${result.maxScore} đ`
+                  ? hasEssay
+                    ? result.essayGrade
+                      ? `Điểm: ${result.score}/${result.maxScore} đ`
+                      : `TN: ${result.mcScore ?? result.score} đ`
+                    : `Đã nộp bài: ${result.score}/${result.maxScore} đ`
                   : isTimed
                   ? `Còn lại: ${formatTimer(timeLeft)}`
                   : "Không giới hạn thời gian"}
               </span>
               <span className="block text-[10px] text-red-100 font-semibold">
                 {result
-                  ? `${result.percentage}% chính xác`
+                  ? hasEssay && !result.essayGrade
+                    ? "⏳ Đang chờ chấm tự luận"
+                    : `${result.percentage}% chính xác`
                   : isTimed
                   ? `Thời gian: ${quizData.durationMinutes} phút`
                   : "Làm theo nhịp của bạn"}
@@ -417,7 +628,7 @@ export default function QuizPlayerPage() {
             mobileTab === "sheet" ? "bg-rose-600 text-white" : "bg-slate-800/60 text-slate-400"
           }`}
         >
-          📋 Bảng làm bài ({answeredCount}/{questions.length})
+          📋 Làm bài {hasEssay ? `(TN: ${answeredCount}/${questions.length} • TL: ${essayAttachments.length} ảnh)` : `(${answeredCount}/${questions.length})`}
         </button>
       </div>
 
@@ -678,139 +889,384 @@ export default function QuizPlayerPage() {
           </div>
         </section>
 
-        {/* RIGHT COLUMN: OMR BUBBLE ANSWER SHEET (~32% width, exact match screenshot) */}
+        {/* RIGHT COLUMN: OMR BUBBLE ANSWER SHEET + ESSAY HANDWRITING PANEL */}
         <section
           className={`flex-[3] min-w-[320px] max-w-[440px] flex flex-col rounded-2xl border border-slate-800/80 bg-[#0b1323] overflow-hidden shadow-2xl ${
             mobileTab === "paper" ? "hidden lg:flex" : "flex"
           }`}
         >
-          {/* OMR Header */}
-          <div className="flex shrink-0 items-start justify-between border-b border-slate-800/90 px-4 py-3.5 bg-[#091120]">
-            <div>
-              <h2 className="text-sm font-black tracking-wider text-white">BẢNG LÀM BÀI</h2>
-              <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
-                {quizData.paperUrl ? "Chọn đáp án theo nội dung trong PDF" : "Chọn đáp án cho từng câu"}
-              </p>
-            </div>
-
-            {/* Legend matching screenshot */}
-            <div className="flex items-center gap-2 pt-1 text-[10px] font-bold text-slate-400">
-              <span className="inline-flex items-center gap-1 text-slate-300">
-                <i className="h-2 w-2 rounded-full bg-red-600 shadow-xs shadow-red-600/50" /> Đã làm
-              </span>
-              <span className="inline-flex items-center gap-1 text-slate-400">
-                <i className="h-2 w-2 rounded-full border border-slate-500" /> Chưa làm
-              </span>
-            </div>
-          </div>
-
-          {/* OMR Table Body */}
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2 scrollbar-thin">
-            <div className="w-full">
-              {/* Table Column Headers */}
-              <div className="grid grid-cols-[64px_repeat(4,1fr)_34px] items-center gap-1 border-b border-slate-800/60 pb-2 text-center text-xs font-black text-slate-400">
-                <span className="text-left pl-1 text-[11px] uppercase tracking-wider text-slate-500">Câu</span>
-                {answerKeys.slice(0, 4).map((key) => (
-                  <span key={key} className="text-slate-300 font-black">
-                    {key}
-                  </span>
-                ))}
-                <span className="flex justify-center text-slate-500" title="Đánh dấu câu hỏi cần xem lại">
-                  <FiFlag className="h-3 w-3" />
+          {/* Top Panel Tab Switcher if Quiz has both MC and Essay */}
+          {hasEssay && (
+            <div className="flex shrink-0 border-b border-slate-800 bg-[#080e1b] p-1.5 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setAnswerPanelTab("mc")}
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-black transition ${
+                  answerPanelTab === "mc"
+                    ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-rose-950/40"
+                    : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <span>🔘 Trắc nghiệm</span>
+                <span className="rounded-md bg-black/30 px-1.5 py-0.5 text-[10px] font-mono">
+                  {answeredCount}/{questions.length}
                 </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAnswerPanelTab("essay")}
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-black transition ${
+                  answerPanelTab === "essay"
+                    ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-950/40"
+                    : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <span>✍️ Tự luận</span>
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-mono ${
+                    essayAttachments.length > 0 ? "bg-amber-400/20 text-amber-300 font-bold" : "bg-black/30"
+                  }`}
+                >
+                  {essayAttachments.length} ảnh
+                </span>
+              </button>
+            </div>
+          )}
+
+          {(!hasEssay || answerPanelTab === "mc") ? (
+            /* OMR Bubble Sheet Mode */
+            <>
+              {/* OMR Header */}
+              <div className="flex shrink-0 items-start justify-between border-b border-slate-800/90 px-4 py-3.5 bg-[#091120]">
+                <div>
+                  <h2 className="text-sm font-black tracking-wider text-white">BẢNG LÀM BÀI TRẮC NGHIỆM</h2>
+                  <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+                    {quizData.paperUrl ? "Chọn đáp án theo nội dung trong PDF" : "Chọn đáp án cho từng câu"}
+                  </p>
+                </div>
+
+                {/* Legend matching screenshot */}
+                <div className="flex items-center gap-2 pt-1 text-[10px] font-bold text-slate-400">
+                  <span className="inline-flex items-center gap-1 text-slate-300">
+                    <i className="h-2 w-2 rounded-full bg-red-600 shadow-xs shadow-red-600/50" /> Đã làm
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-slate-400">
+                    <i className="h-2 w-2 rounded-full border border-slate-500" /> Chưa làm
+                  </span>
+                </div>
               </div>
 
-              {/* Rows */}
-              <div className="divide-y divide-slate-800/40">
-                {questions.map((question, index) => {
-                  const review = reviewByQuestion.get(String(question.id));
-                  const selected = answers[question.id];
-                  const selectedKeys = Array.isArray(selected) ? selected : [selected];
-                  const isFlagged = flaggedQuestions.has(question.id);
-
-                  return (
-                    <div
-                      key={question.id}
-                      className="grid grid-cols-[64px_repeat(4,1fr)_34px] items-center gap-1 py-1.5 text-center transition hover:bg-slate-800/20"
-                    >
-                      {/* Row Label */}
-                      <span className="text-left pl-1 text-xs font-black text-slate-300">
-                        Câu {index + 1}
+              {/* OMR Table Body */}
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2 scrollbar-thin">
+                <div className="w-full">
+                  {/* Table Column Headers */}
+                  <div className="grid grid-cols-[64px_repeat(4,1fr)_34px] items-center gap-1 border-b border-slate-800/60 pb-2 text-center text-xs font-black text-slate-400">
+                    <span className="text-left pl-1 text-[11px] uppercase tracking-wider text-slate-500">Câu</span>
+                    {answerKeys.slice(0, 4).map((key) => (
+                      <span key={key} className="text-slate-300 font-black">
+                        {key}
                       </span>
+                    ))}
+                    <span className="flex justify-center text-slate-500" title="Đánh dấu câu hỏi cần xem lại">
+                      <FiFlag className="h-3 w-3" />
+                    </span>
+                  </div>
 
-                      {/* Bubble Buttons A, B, C, D */}
-                      {answerKeys.slice(0, 4).map((key) => {
-                        const option = (question.options || []).find((item) => item.key === key);
-                        const isChosen = Boolean(selectedKeys.includes(key));
+                  {/* Rows */}
+                  <div className="divide-y divide-slate-800/40">
+                    {questions.map((question, index) => {
+                      const review = reviewByQuestion.get(String(question.id));
+                      const selected = answers[question.id];
+                      const selectedKeys = Array.isArray(selected) ? selected : [selected];
+                      const isFlagged = flaggedQuestions.has(question.id);
 
-                        // Review state colors
-                        const correctAnswer = review?.correctAnswer;
-                        const isCorrectOption =
-                          Boolean(review) &&
-                          (Array.isArray(correctAnswer)
-                            ? correctAnswer.includes(key)
-                            : correctAnswer === key);
-                        const isWrongChoice = Boolean(review) && isChosen && !isCorrectOption;
+                      return (
+                        <div
+                          key={question.id}
+                          className="grid grid-cols-[64px_repeat(4,1fr)_34px] items-center gap-1 py-1.5 text-center transition hover:bg-slate-800/20"
+                        >
+                          {/* Row Label */}
+                          <span className="text-left pl-1 text-xs font-black text-slate-300">
+                            Câu {index + 1}
+                          </span>
 
-                        let bubbleStyle =
-                          "border-2 border-slate-600/90 text-slate-400 bg-transparent hover:border-rose-400 hover:text-white";
+                          {/* Bubble Buttons A, B, C, D */}
+                          {answerKeys.slice(0, 4).map((key) => {
+                            const isChosen = Boolean(selectedKeys.includes(key));
 
-                        if (reviewMode && review) {
-                          if (isCorrectOption) {
-                            bubbleStyle = "border-2 border-emerald-500 bg-emerald-600 text-white font-black shadow-sm";
-                          } else if (isWrongChoice) {
-                            bubbleStyle = "border-2 border-rose-500 bg-rose-600 text-white font-black shadow-sm";
-                          } else {
-                            bubbleStyle = "border border-slate-700/60 text-slate-600 bg-transparent opacity-40";
-                          }
-                        } else if (isChosen) {
-                          // Vibrant Red Circle matching screenshot exactly
-                          bubbleStyle =
-                            "border-2 border-red-600 bg-red-600 text-white font-black shadow-md shadow-red-600/40 scale-105";
-                        }
+                            // Review state colors
+                            const correctAnswer = review?.correctAnswer;
+                            const isCorrectOption =
+                              Boolean(review) &&
+                              (Array.isArray(correctAnswer)
+                                ? correctAnswer.includes(key)
+                                : correctAnswer === key);
+                            const isWrongChoice = Boolean(review) && isChosen && !isCorrectOption;
 
-                        return (
-                          <div key={key} className="flex justify-center">
+                            let bubbleStyle =
+                              "border-2 border-slate-600/90 text-slate-400 bg-transparent hover:border-rose-400 hover:text-white";
+
+                            if (reviewMode && review) {
+                              if (isCorrectOption) {
+                                bubbleStyle = "border-2 border-emerald-500 bg-emerald-600 text-white font-black shadow-sm";
+                              } else if (isWrongChoice) {
+                                bubbleStyle = "border-2 border-rose-500 bg-rose-600 text-white font-black shadow-sm";
+                              } else {
+                                bubbleStyle = "border border-slate-700/60 text-slate-600 bg-transparent opacity-40";
+                              }
+                            } else if (isChosen) {
+                              // Vibrant Red Circle matching screenshot exactly
+                              bubbleStyle =
+                                "border-2 border-red-600 bg-red-600 text-white font-black shadow-md shadow-red-600/40 scale-105";
+                            }
+
+                            return (
+                              <div key={key} className="flex justify-center">
+                                <button
+                                  type="button"
+                                  disabled={reviewMode || Boolean(result)}
+                                  onClick={() => handleSelect(question, key)}
+                                  aria-label={`Câu ${index + 1}, đáp án ${key}`}
+                                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-transform active:scale-95 disabled:cursor-default ${bubbleStyle}`}
+                                >
+                                  {isChosen || (reviewMode && (isCorrectOption || isWrongChoice)) ? (
+                                    <span>{key}</span>
+                                  ) : (
+                                    <span className="opacity-0 hover:opacity-100 text-[10px]">{key}</span>
+                                  )}
+                                </button>
+                              </div>
+                            );
+                          })}
+
+                          {/* Flag / Bookmark Button */}
+                          <div className="flex justify-center">
                             <button
                               type="button"
-                              disabled={reviewMode || Boolean(result)}
-                              onClick={() => handleSelect(question, key)}
-                              aria-label={`Câu ${index + 1}, đáp án ${key}`}
-                              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-transform active:scale-95 disabled:cursor-default ${bubbleStyle}`}
+                              onClick={() => toggleFlag(question.id)}
+                              aria-label={`Đánh dấu câu ${index + 1}`}
+                              className={`rounded-lg p-1 transition ${
+                                isFlagged
+                                  ? "text-amber-400 fill-amber-400 hover:text-amber-300"
+                                  : "text-slate-600 hover:text-slate-400"
+                              }`}
+                              title={isFlagged ? "Bỏ đánh dấu" : "Đánh dấu xem lại"}
                             >
-                              {/* In screenshot, bubbles are circular rings or filled */}
-                              {isChosen || (reviewMode && (isCorrectOption || isWrongChoice)) ? (
-                                <span>{key}</span>
-                              ) : (
-                                <span className="opacity-0 hover:opacity-100 text-[10px]">{key}</span>
-                              )}
+                              <FiFlag className={`h-3.5 w-3.5 ${isFlagged ? "fill-amber-400" : ""}`} />
                             </button>
                           </div>
-                        );
-                      })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Essay Handwriting Solution Mode */
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4 scrollbar-thin">
+              {/* Essay Header Info */}
+              <div className="rounded-2xl border border-amber-900/40 bg-gradient-to-br from-amber-950/30 to-[#0e1728] p-3.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 text-sm">
+                      ✍️
+                    </span>
+                    <div>
+                      <h3 className="text-xs font-black text-white uppercase tracking-wider">PHẦN BÀI LÀM TỰ LUẬN</h3>
+                      <p className="text-[10px] text-slate-400">Làm trên giấy, chụp ảnh và đính kèm</p>
+                    </div>
+                  </div>
+                  <span className="rounded-lg bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-mono font-bold text-amber-300">
+                    {essayConfig?.maxScore ? `${essayConfig.maxScore} đ` : "Chấm điểm"}
+                  </span>
+                </div>
+              </div>
 
-                      {/* Flag / Bookmark Button */}
-                      <div className="flex justify-center">
-                        <button
-                          type="button"
-                          onClick={() => toggleFlag(question.id)}
-                          aria-label={`Đánh dấu câu ${index + 1}`}
-                          className={`rounded-lg p-1 transition ${
-                            isFlagged
-                              ? "text-amber-400 fill-amber-400 hover:text-amber-300"
-                              : "text-slate-600 hover:text-slate-400"
-                          }`}
-                          title={isFlagged ? "Bỏ đánh dấu" : "Đánh dấu xem lại"}
-                        >
-                          <FiFlag className={`h-3.5 w-3.5 ${isFlagged ? "fill-amber-400" : ""}`} />
-                        </button>
+              {/* Teacher Feedback Banner (if in review mode) */}
+              {reviewMode && result && (
+                <div
+                  className={`rounded-2xl border p-3.5 text-xs ${
+                    result.essayGrade
+                      ? "border-emerald-500/40 bg-emerald-950/30 text-emerald-200"
+                      : "border-sky-500/40 bg-sky-950/30 text-sky-200"
+                  }`}
+                >
+                  {result.essayGrade ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-black text-emerald-300 flex items-center gap-1.5">
+                          <FiCheckCircle className="h-4 w-4 text-emerald-400" /> KẾT QUẢ CHẤM TỰ LUẬN
+                        </span>
+                        <span className="rounded-lg bg-emerald-600 px-2.5 py-0.5 text-xs font-black text-white font-mono">
+                          {result.essayGrade.score} / {essayConfig?.maxScore || 10} đ
+                        </span>
+                      </div>
+                      {result.essayGrade.feedback ? (
+                        <div className="mt-2 rounded-xl bg-black/30 p-2.5 text-[11px] text-slate-200">
+                          <b className="text-emerald-300">Nhận xét của giáo viên: </b>
+                          {result.essayGrade.feedback}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-300 italic">Không có nhận xét thêm từ giáo viên.</p>
+                      )}
+                      {result.essayGrade.gradedAt && (
+                        <div className="mt-1 text-[10px] text-emerald-400/80 text-right">
+                          Đã chấm: {new Date(result.essayGrade.gradedAt).toLocaleString("vi-VN")}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2.5">
+                      <span className="text-lg">⏳</span>
+                      <div>
+                        <b className="font-black text-sky-300 block">Đang chờ giáo viên chấm tự luận</b>
+                        <p className="text-[11px] text-slate-300 mt-0.5">
+                          Phần trắc nghiệm bạn đạt <b className="text-white">{result.mcScore ?? result.score} điểm</b>. Điểm tự luận sẽ được cập nhật sau khi giáo viên hoàn tất việc chấm bài.
+                        </p>
                       </div>
                     </div>
-                  );
-                })}
+                  )}
+                </div>
+              )}
+
+              {/* Teacher Prompt / Instructions */}
+              {essayConfig?.prompt && (
+                <div className="rounded-xl border border-slate-800 bg-[#091120] p-3 text-xs text-slate-300">
+                  <span className="text-[11px] font-black uppercase text-amber-400 block mb-1">
+                    📌 Yêu cầu phần tự luận:
+                  </span>
+                  <p className="whitespace-pre-wrap leading-relaxed text-slate-200 text-[11px]">{essayConfig.prompt}</p>
+                </div>
+              )}
+
+              {/* Drag & Drop Upload Zone (hidden in review mode) */}
+              {!reviewMode && !result && (
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingOver(true);
+                  }}
+                  onDragLeave={() => setIsDraggingOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDraggingOver(false);
+                    if (e.dataTransfer.files) handleAddImages(e.dataTransfer.files);
+                  }}
+                  className={`relative rounded-2xl border-2 border-dashed p-4 text-center transition ${
+                    isDraggingOver
+                      ? "border-amber-400 bg-amber-500/10"
+                      : "border-slate-700 bg-slate-900/50 hover:border-slate-600"
+                  }`}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={uploadingEssay}
+                    onChange={(e) => {
+                      if (e.target.files) handleAddImages(e.target.files);
+                      e.target.value = "";
+                    }}
+                    id="student-essay-file-input"
+                    className="hidden"
+                  />
+                  <label htmlFor="student-essay-file-input" className="cursor-pointer flex flex-col items-center gap-2">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 text-amber-400">
+                      <FiCamera className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-black text-white hover:underline">
+                        {uploadingEssay ? "Đang xử lý & nén ảnh..." : "Bấm chọn ảnh hoặc Kéo thả ảnh vào đây"}
+                      </span>
+                      <p className="mt-0.5 text-[10px] text-slate-400">
+                        Hỗ trợ JPG, PNG, WEBP hoặc dán trực tiếp <kbd className="rounded bg-slate-800 px-1 py-0.5 font-mono text-[9px] text-slate-300">Ctrl+V</kbd>
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {/* Uploaded Photos Gallery */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                  <span>Ảnh bài làm đã tải ({essayAttachments.length})</span>
+                  {essayAttachments.length > 0 && (
+                    <span className="text-[10px] text-slate-400">Nhấp để xem to / xoay</span>
+                  )}
+                </div>
+
+                {essayAttachments.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-800 bg-[#09101d] p-5 text-center text-xs text-slate-500">
+                    Chưa có ảnh bài làm tự luận nào được tải lên.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {essayAttachments.map((img, idx) => (
+                      <div
+                        key={img.id || idx}
+                        className="group relative rounded-xl border border-slate-700/80 bg-slate-900 overflow-hidden shadow-sm aspect-[4/3]"
+                      >
+                        <img
+                          src={img.previewUrl || img.url}
+                          alt={img.name || `Trang ${idx + 1}`}
+                          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                        />
+                        <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-mono font-bold text-white backdrop-blur-xs">
+                          Trang {idx + 1}
+                        </span>
+                        {img.isCloudflare && (
+                          <span className="absolute top-1 left-1 rounded-md bg-emerald-950/80 border border-emerald-500/40 px-1.5 py-0.5 text-[8px] font-black text-emerald-300 backdrop-blur-xs flex items-center gap-1">
+                            ☁️ R2
+                          </span>
+                        )}
+                        {/* Overlay Actions */}
+                        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition group-hover:opacity-100 backdrop-blur-xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLightboxImg(img.url);
+                              setLightboxRotation(0);
+                            }}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white shadow hover:bg-blue-500"
+                            title="Xem toàn màn hình"
+                          >
+                            <FiZoomIn className="h-3.5 w-3.5" />
+                          </button>
+                          {!reviewMode && !result && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(img.id)}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-600 text-white shadow hover:bg-rose-500"
+                              title="Xóa ảnh này"
+                            >
+                              <FiTrash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Student Notes / Text remarks */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-300">
+                  Ghi chú hoặc lời giải vắn tắt (tùy chọn):
+                </label>
+                <textarea
+                  value={essayNotes}
+                  onChange={(e) => setEssayNotes(e.target.value)}
+                  disabled={Boolean(result) || reviewMode}
+                  placeholder="Ghi chú thêm cho giáo viên nếu cần..."
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-75 disabled:cursor-not-allowed"
+                />
               </div>
             </div>
-          </div>
+          )}
 
           {/* OMR Footer matching screenshot */}
           <div className="shrink-0 border-t border-slate-800/90 bg-[#091120] p-3 sm:p-4">
@@ -879,23 +1335,31 @@ export default function QuizPlayerPage() {
               </span>
               <h3 className="mt-3 text-lg font-black text-white">Xác nhận nộp bài?</h3>
               <p className="mt-1 text-xs text-slate-400 leading-relaxed">
-                Sau khi nộp, hệ thống sẽ tự động chấm điểm và khóa bài làm. Bạn có thể xem lời giải chi tiết ngay sau đó.
+                Sau khi nộp, hệ thống sẽ ghi nhận và khóa bài thi. Bạn có thể xem lời giải chi tiết ngay sau đó.
               </p>
             </div>
 
             <div className="mt-5 space-y-2 rounded-2xl border border-slate-800 bg-[#09101d] p-3.5 text-xs">
               <div className="flex justify-between">
-                <span className="text-slate-400">Đã trả lời:</span>
+                <span className="text-slate-400">Trắc nghiệm đã làm:</span>
                 <b className="font-mono font-black text-emerald-400">
                   {answeredCount}/{questions.length} câu
                 </b>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Chưa trả lời:</span>
+                <span className="text-slate-400">Trắc nghiệm chưa làm:</span>
                 <b className={`font-mono font-black ${unansweredCount > 0 ? "text-rose-400" : "text-slate-400"}`}>
                   {unansweredCount} câu
                 </b>
               </div>
+              {hasEssay && (
+                <div className="flex justify-between border-t border-slate-800/80 pt-1.5 mt-1.5">
+                  <span className="text-slate-400">Ảnh bài làm tự luận:</span>
+                  <b className={`font-mono font-black ${essayAttachments.length > 0 ? "text-amber-400" : "text-rose-400"}`}>
+                    {essayAttachments.length} ảnh
+                  </b>
+                </div>
+              )}
               {flaggedQuestions.size > 0 && (
                 <div className="flex justify-between">
                   <span className="text-slate-400">Đã đánh dấu:</span>
@@ -905,8 +1369,14 @@ export default function QuizPlayerPage() {
             </div>
 
             {unansweredCount > 0 && (
-              <div className="mt-3.5 rounded-xl border border-amber-900/60 bg-amber-950/30 p-2.5 text-[11px] font-semibold text-amber-300">
-                ⚠ Bạn vẫn còn {unansweredCount} câu chưa chọn đáp án. Các câu này sẽ nhận 0 điểm.
+              <div className="mt-3 rounded-xl border border-amber-900/60 bg-amber-950/30 p-2.5 text-[11px] font-semibold text-amber-300">
+                ⚠ Bạn vẫn còn {unansweredCount} câu trắc nghiệm chưa chọn đáp án.
+              </div>
+            )}
+
+            {hasEssay && essayAttachments.length === 0 && (
+              <div className="mt-2.5 rounded-xl border border-rose-900/60 bg-rose-950/30 p-2.5 text-[11px] font-semibold text-rose-300">
+                ⚠ Đề thi có phần tự luận nhưng bạn chưa đính kèm ảnh bài làm nào! Hãy kiểm tra kỹ trước khi nộp.
               </div>
             )}
 
@@ -928,6 +1398,53 @@ export default function QuizPlayerPage() {
                 {submitting ? "Đang nộp..." : "Xác nhận nộp"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* FULLSCREEN LIGHTBOX MODAL FOR ESSAY PHOTOS */}
+      {lightboxImg && (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-black/95 p-4 backdrop-blur-md">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-black text-white">Xem ảnh bài làm tự luận</span>
+              <span className="text-xs text-slate-400">({lightboxRotation}° xoay)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setLightboxRotation((r) => (r + 90) % 360)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
+              >
+                <FiRotateCcw className="h-3.5 w-3.5" /> Xoay 90°
+              </button>
+              <a
+                href={lightboxImg}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
+              >
+                <FiExternalLink className="h-3.5 w-3.5" /> Mở tab mới
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setLightboxImg(null);
+                  setLightboxRotation(0);
+                }}
+                className="rounded-xl bg-slate-800 p-2 text-slate-300 hover:bg-slate-700 hover:text-white"
+              >
+                <FiX className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 flex items-center justify-center overflow-auto p-4">
+            <img
+              src={lightboxImg}
+              alt="Ảnh tự luận phóng to"
+              style={{ transform: `rotate(${lightboxRotation}deg)` }}
+              className="max-h-full max-w-full object-contain transition-transform duration-200 shadow-2xl rounded-lg"
+            />
           </div>
         </div>
       )}

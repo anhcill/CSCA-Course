@@ -25,7 +25,7 @@ const VALID_INTAKE_TERMS = new Set(["spring", "fall"]);
 const VALID_HSKK_LEVELS = new Set(["beginner", "intermediate", "advanced"]);
 
 const isValidAvatarUrl = (value) => {
-  if (PRESET_AVATAR_PATTERN.test(value)) return true;
+  if (PRESET_AVATAR_PATTERN.test(value) || /^\/(?:api\/)?images\/.+$/.test(value)) return true;
   try {
     return new URL(value).protocol === "https:";
   } catch {

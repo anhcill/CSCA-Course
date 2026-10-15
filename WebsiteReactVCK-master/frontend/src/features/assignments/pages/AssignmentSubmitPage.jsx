@@ -321,7 +321,7 @@ export default function AssignmentSubmitPage() {
           const blob = item.getAsFile();
           if (blob) {
             const ext = (item.type.split("/")[1] || "png").replace("jpeg", "jpg");
-            const timeTag = new Date().toISOString().replace(/[-:T.]/g, "").slice(8, 14);
+            const timeTag = new Date().toISOString().replace(/\D/g, "").slice(8, 14);
             const generatedName = `anh-dan-${timeTag}-${imageFiles.length + 1}.${ext}`;
             const file = new File([blob], generatedName, { type: item.type });
             imageFiles.push(file);

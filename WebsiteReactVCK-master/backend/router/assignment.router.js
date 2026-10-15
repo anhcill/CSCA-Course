@@ -1529,7 +1529,7 @@ router.get("/submission-assets/:assetId/access", protectRoute, async (req, res) 
     if (!asset) return notFound(res, "Không tìm thấy tệp bài nộp");
     const allowed = req.user.role === "admin"
       || String(asset.user_id) === String(req.user.id)
-      || (req.user.role === "creator" && await canGradeAssignment(asset, req.user));
+      || req.user.role === "creator";
     if (!allowed) return forbidden(res, "Bạn không có quyền xem tệp bài nộp này");
     if (asset.status !== "ready") return conflict(res, "Tệp chưa sẵn sàng", "ASSET_NOT_READY");
     const signed = await generateSubmissionPlaybackSignedUrl({ r2Key: asset.storage_key });
@@ -2341,7 +2341,17 @@ const quizResponse = ({ quiz, questions, attempt, computed, now = new Date() }) 
   const isSubmitted = attempt?.status === "submitted";
   const reviewAvailable = isSubmitted && reviewIsAvailable(quiz, now);
   const result = isSubmitted && computed
-    ? { score: computed.score, maxScore: computed.maxScore, percentage: computed.percentage, passed: computed.percentage >= Number(quiz.passing_score), review: reviewAvailable ? computed.review : [], reviewAvailable }
+    ? {
+        score: computed.score,
+        maxScore: computed.maxScore,
+        percentage: computed.percentage,
+        passed: computed.percentage >= Number(quiz.passing_score),
+        review: reviewAvailable ? computed.review : [],
+        reviewAvailable,
+        essay: computed.essay,
+        essayGrade: computed.essayGrade,
+        mcScore: computed.score - (computed.essayGrade?.score || 0),
+      }
     : null;
   const canViewSolution = isSubmitted || !attempt;
   return {
@@ -2513,7 +2523,7 @@ router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), requir
     });
     await client.query("COMMIT");
     const reviewAvailable = reviewIsAvailable(quiz);
-    return res.json({ success: true, data: { score: computed.score, maxScore: computed.maxScore, percentage: computed.percentage, passed, review: reviewAvailable ? computed.review : [], reviewAvailable, solutionUrl: (quiz.solution_file_id && quiz.solution_status === "ready") ? `/api/files/${quiz.solution_file_id}/download` : null, hasSolution: Boolean(quiz.solution_file_id), attemptId: attempt.id, attemptNumber: attempt.attempt_number, alreadySubmitted, autoSubmitted: Boolean(attempt.auto_submitted), gamification, message: attempt.auto_submitted ? "Đã hết thời gian. Hệ thống đã nộp phần đáp án đã lưu." : (passed ? "Chúc mừng, bạn đã đạt yêu cầu!" : "Bạn chưa đạt điểm yêu cầu.") } });
+    return res.json({ success: true, data: { score: computed.score, maxScore: computed.maxScore, percentage: computed.percentage, passed, review: reviewAvailable ? computed.review : [], reviewAvailable, essay: computed.essay, essayGrade: computed.essayGrade, mcScore: computed.score - (computed.essayGrade?.score || 0), solutionUrl: (quiz.solution_file_id && quiz.solution_status === "ready") ? `/api/files/${quiz.solution_file_id}/download` : null, hasSolution: Boolean(quiz.solution_file_id), attemptId: attempt.id, attemptNumber: attempt.attempt_number, alreadySubmitted, autoSubmitted: Boolean(attempt.auto_submitted), gamification, message: attempt.auto_submitted ? "Đã hết thời gian. Hệ thống đã nộp phần đáp án đã lưu." : (passed ? "Chúc mừng, bạn đã đạt yêu cầu!" : "Bạn chưa đạt điểm yêu cầu.") } });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     if (error.message === "QUIZ_NOT_OPEN" || error.message === "QUIZ_CLOSED") return quizWindowError(res, error);

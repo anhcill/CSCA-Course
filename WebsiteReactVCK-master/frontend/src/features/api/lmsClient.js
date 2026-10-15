@@ -1033,3 +1033,93 @@ export const uploadCourseQuizPaper = async (courseId, file, { onProgress } = {})
 
 export const deleteClassFile = async (fileId) => request(`/teacher/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
 export const deleteTeacherFile = deleteClassFile;
+
+export const uploadImageToR2 = async (file, { folder = "general", onProgress } = {}) => {
+  onProgress?.({
+    stage: "init",
+    percent: 5,
+    message: "Khởi tạo tải ảnh lên Cloudflare...",
+    loaded: 0,
+    total: file.size,
+  });
+
+  const uploadResponse = await request("/files/images/upload-url", {
+    method: "POST",
+    body: JSON.stringify({ filename: file.name, mimeType: file.type, sizeBytes: file.size, folder }),
+  });
+  const upload = uploadResponse?.data;
+  if (!upload?.uploadUrl || !upload?.fileKey) throw new LmsApiError("Máy chủ không trả về mục tiêu tải ảnh");
+
+  onProgress?.({
+    stage: "uploading",
+    percent: 20,
+    message: "Đang tải ảnh lên Cloudflare...",
+    loaded: 0,
+    total: file.size,
+  });
+
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", upload.uploadUrl, true);
+    if (upload.headers && typeof upload.headers === "object") {
+      Object.entries(upload.headers).forEach(([k, v]) => {
+        try { xhr.setRequestHeader(k, v); } catch { /* ignore header error */ }
+      });
+    } else {
+      xhr.setRequestHeader("Content-Type", file.type || "image/jpeg");
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        const rawPercent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        const mappedPercent = Math.min(90, Math.round(20 + (event.loaded / event.total) * 70));
+        onProgress?.({
+          stage: "uploading",
+          percent: mappedPercent,
+          rawPercent,
+          loaded: event.loaded,
+          total: event.total,
+          message: `Đang tải ảnh (${rawPercent}%)...`,
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new LmsApiError(`Tải ảnh thất bại (Mã: ${xhr.status})`, { status: xhr.status }));
+      }
+    };
+
+    xhr.onerror = () => reject(new LmsApiError("Lỗi kết nối mạng khi tải ảnh"));
+    xhr.ontimeout = () => reject(new LmsApiError("Hết thời gian chờ khi tải ảnh"));
+    xhr.send(file);
+  });
+
+  onProgress?.({
+    stage: "confirming",
+    percent: 92,
+    message: "Đang xác thực ảnh trên Cloudflare...",
+    loaded: file.size,
+    total: file.size,
+  });
+
+  const confirmRes = await request("/files/images/confirm", {
+    method: "POST",
+    body: JSON.stringify({ fileKey: upload.fileKey }),
+  });
+
+  onProgress?.({
+    stage: "done",
+    percent: 100,
+    message: "Tải ảnh lên Cloudflare thành công!",
+    loaded: file.size,
+    total: file.size,
+  });
+
+  return {
+    fileKey: upload.fileKey,
+    publicUrl: confirmRes?.data?.publicUrl || upload.publicUrl,
+  };
+};

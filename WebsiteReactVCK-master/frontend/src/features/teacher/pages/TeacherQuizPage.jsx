@@ -980,6 +980,9 @@ export default function TeacherQuizPage() {
     setSolutionFile(null);
     setSolutionProgress(null);
     setUploadingSolution(false);
+    setHasEssaySection(false);
+    setEssayMaxScore(3);
+    setEssayPrompt("Học sinh trình bày bài làm tự luận ra giấy thi, chụp ảnh các trang bài làm rõ nét và tải lên trước khi bấm nộp bài.");
   };
 
   const updateQuestion = (index, patch) => {
@@ -1524,7 +1527,14 @@ export default function TeacherQuizPage() {
       setSaving(true);
       const response = await createTeacherQuiz({
         title: quizTitle.trim(),
-        description: quizDesc.trim(),
+        description: formatQuizDescription({
+          text: quizDesc.trim(),
+          essayConfig: {
+            enabled: hasEssaySection,
+            maxScore: Number(essayMaxScore) || 3,
+            prompt: essayPrompt.trim(),
+          },
+        }),
         courseId: Number(courseId),
         liveClassId: Number(liveClassId),
         classSessionId: Number(classSessionId),
@@ -2067,6 +2077,72 @@ export default function TeacherQuizPage() {
                       className="w-full resize-none rounded-xl border border-slate-300 bg-white p-2.5 text-xs outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                     />
                   </div>
+                </div>
+
+                {/* Khối 3.5: Cấu hình phần Tự luận (Học sinh nộp ảnh bài làm) */}
+                <div className="rounded-2xl border border-violet-200/80 bg-violet-50/40 p-4 dark:border-violet-900/50 dark:bg-violet-950/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-600/10 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 font-bold text-sm">
+                        ✍️
+                      </span>
+                      <div>
+                        <b className="block text-xs font-black text-slate-900 dark:text-white">
+                          Phần Tự luận (Học sinh chụp ảnh nộp bài làm)
+                        </b>
+                        <span className="block text-[10px] text-slate-500">
+                          Áp dụng cho đề có phần giải toán, tự luận, chứng minh...
+                        </span>
+                      </div>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasEssaySection}
+                        onChange={(e) => setHasEssaySection(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-violet-600" />
+                    </label>
+                  </div>
+
+                  {hasEssaySection && (
+                    <div className="pt-3 border-t border-violet-200/60 dark:border-violet-900/40 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1 block text-[11px] font-black text-slate-700 dark:text-slate-200">
+                            Điểm tối đa phần tự luận
+                          </label>
+                          <input
+                            type="number"
+                            min="0.5"
+                            max="50"
+                            step="0.5"
+                            value={essayMaxScore}
+                            onChange={(e) => setEssayMaxScore(e.target.value)}
+                            className="w-full rounded-xl border border-violet-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 outline-none transition focus:border-violet-500 dark:border-violet-800 dark:bg-slate-900 dark:text-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-[11px] font-black text-slate-700 dark:text-slate-200">
+                            Hướng dẫn làm tự luận
+                          </label>
+                          <input
+                            type="text"
+                            value={essayPrompt}
+                            onChange={(e) => setEssayPrompt(e.target.value)}
+                            placeholder="Ví dụ: Học sinh làm ra giấy thi, chụp ảnh rõ nét và tải lên."
+                            className="w-full rounded-xl border border-violet-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 outline-none transition focus:border-violet-500 dark:border-violet-800 dark:bg-slate-900 dark:text-white"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-violet-700/80 dark:text-violet-400/80">
+                        💡 <b>Quy trình:</b> Học sinh xem đề PDF, khoanh trắc nghiệm bên phải và chụp ảnh bài tự luận tải lên. Phần trắc nghiệm tự động chấm ngay, phần tự luận giáo viên sẽ vào xem ảnh bài làm và cho điểm sau.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Khối 4: Chế độ tạo đề */}

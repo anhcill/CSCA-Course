@@ -12,6 +12,14 @@ import {
   generateLearningFilePlaybackSignedUrl,
   generateLearningFileHeadSignedUrl,
   deleteLearningFileObject,
+  ALLOWED_IMAGE_MIME_TYPES,
+  MAX_IMAGE_SIZE_BYTES,
+  ALLOWED_IMAGE_FOLDERS,
+  generateImageUploadPresignedUrl,
+  generateImagePlaybackSignedUrl,
+  generateImageHeadSignedUrl,
+  validateImageR2Key,
+  getR2PublicUrl,
 } from "../services/video.service.js";
 import { createCloudinaryUploadSignature } from "../services/cloudinary.service.js";
 
@@ -509,11 +517,11 @@ const canDeleteFile = async (fileId, user) => {
   if (file.status === "deleted") return { error: "not_found" };
   if (user.role === "admin") return { file };
   if (user.role === "creator") {
-    if (String(file.uploaded_by) === String(user.id)) return { file };
     const access = file.live_class_id
       ? await classAccess(file.live_class_id, user)
       : await courseAccess(file.course_id, user);
-    if (!access.error && access.canManage) return { file };
+    if (access.error || !access.canManage) return { error: "forbidden" };
+    return { file };
   }
   return { error: "forbidden" };
 };
@@ -567,12 +575,98 @@ router.get("/files/:fileId/download", protectRoute, requireManagedLearner, async
     const access = await fileAccess(fileId, req.user);
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
     if (access.error) return errorResponse(res, 403, "Bạn chưa được cấp quyền tải tài liệu", "FORBIDDEN");
-    const { downloadUrl } = await generateLearningFilePlaybackSignedUrl({ r2Key: access.file.storage_key });
+    const { downloadUrl } = await generateLearningFilePlaybackSignedUrl({
+      r2Key: access.file.storage_key,
+      filename: access.file.original_name,
+    });
+    if (typeof res.set === "function") {
+      res.set({
+        "Cache-Control": "private, no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      });
+    }
     return res.redirect(302, downloadUrl);
   } catch (error) {
     if (error.code === "R2_NOT_CONFIGURED") return errorResponse(res, 503, "Kho R2 chưa được cấu hình", error.code);
     console.error("Error opening learning file:", error);
     return errorResponse(res, 500, "Không thể mở tài liệu", "INTERNAL_ERROR");
+  }
+});
+
+// POST /api/files/images/upload-url — Upload image directly to Cloudflare R2
+router.post("/files/images/upload-url", protectRoute, async (req, res) => {
+  const { filename, mimeType, sizeBytes, folder = "general" } = req.body || {};
+  if (!safeFilename(filename) || !ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+    return errorResponse(res, 422, "Tệp ảnh không hợp lệ (hỗ trợ JPG, PNG, WEBP, GIF, SVG)", "VALIDATION_ERROR");
+  }
+  const cleanFolder = ALLOWED_IMAGE_FOLDERS.has(folder) ? folder : "general";
+  if (cleanFolder !== "avatars" && req.user.role !== "admin" && req.user.role !== "creator") {
+    return errorResponse(res, 403, "Chỉ quản trị viên hoặc giáo viên mới có quyền tải ảnh thư mục này", "FORBIDDEN");
+  }
+  if (!Number.isSafeInteger(Number(sizeBytes)) || Number(sizeBytes) <= 0 || Number(sizeBytes) > MAX_IMAGE_SIZE_BYTES) {
+    return errorResponse(res, 422, "Kích thước ảnh tối đa 10MB", "VALIDATION_ERROR");
+  }
+  try {
+    const upload = await generateImageUploadPresignedUrl({
+      userId: req.user.id,
+      filename,
+      mimeType,
+      sizeBytes,
+      folder: cleanFolder,
+    });
+    return res.status(201).json({ success: true, data: upload });
+  } catch (error) {
+    if (error.code === "R2_NOT_CONFIGURED") return errorResponse(res, 503, "Kho R2 chưa được cấu hình", error.code);
+    console.error("Error generating image upload URL:", error);
+    return errorResponse(res, 500, "Không thể tạo liên kết tải ảnh", "INTERNAL_ERROR");
+  }
+});
+
+// POST /api/files/images/confirm — Verify image was successfully uploaded to Cloudflare R2
+router.post("/files/images/confirm", protectRoute, async (req, res) => {
+  const { fileKey } = req.body || {};
+  if (!validateImageR2Key(fileKey)) {
+    return errorResponse(res, 422, "fileKey ảnh không hợp lệ", "VALIDATION_ERROR");
+  }
+  try {
+    const { headUrl } = await generateImageHeadSignedUrl({ r2Key: fileKey });
+    const headRes = await fetch(headUrl, { method: "HEAD" });
+    if (!headRes.ok) {
+      return errorResponse(res, 422, "Không tìm thấy ảnh trên Cloudflare R2", "UPLOAD_NOT_FOUND");
+    }
+    const publicUrl = getR2PublicUrl(fileKey);
+    return res.json({ success: true, data: { fileKey, publicUrl } });
+  } catch (error) {
+    if (error.code === "R2_NOT_CONFIGURED") return errorResponse(res, 503, "Kho R2 chưa được cấu hình", error.code);
+    console.error("Error confirming image upload:", error);
+    return errorResponse(res, 500, "Không thể xác nhận ảnh", "INTERNAL_ERROR");
+  }
+});
+
+// GET /api/images/* — Public route to serve/redirect Cloudflare R2 images with 24h CDN caching
+router.get("/images/*", async (req, res) => {
+  const r2Key = req.params[0];
+  if (!validateImageR2Key(r2Key)) {
+    return errorResponse(res, 404, "Không tìm thấy ảnh", "NOT_FOUND");
+  }
+  try {
+    const publicDomain = (process.env.R2_PUBLIC_DOMAIN || "").trim();
+    if (publicDomain) {
+      if (typeof res.set === "function") res.set("Cache-Control", "public, max-age=604800, s-maxage=2592000, immutable");
+      return res.redirect(301, `${publicDomain.replace(/\/$/, "")}/${r2Key}`);
+    }
+    const { downloadUrl } = await generateImagePlaybackSignedUrl({ r2Key, expiresInSeconds: 86400 });
+    if (typeof res.set === "function") {
+      res.set({
+        "Cache-Control": "public, max-age=86400, s-maxage=604800",
+      });
+    }
+    return res.redirect(302, downloadUrl);
+  } catch (error) {
+    if (error.code === "R2_NOT_CONFIGURED") return errorResponse(res, 503, "Kho R2 chưa được cấu hình", error.code);
+    console.error("Error serving image:", error);
+    return errorResponse(res, 500, "Không thể mở ảnh", "INTERNAL_ERROR");
   }
 });
 

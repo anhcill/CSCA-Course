@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { FolderOpen } from "lucide-react";
 import toast from "react-hot-toast";
@@ -21,6 +21,7 @@ import {
   updateAdminSection,
   updateCourseStatus,
   updateLessonLearningLink,
+  uploadImageToR2,
 } from "../../api/lmsClient";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
 import { useAuthContext } from "../../../context/AuthContext";
@@ -61,6 +62,33 @@ export default function AdminCurriculumPage() {
     status: "published",
   });
   const [submittingCourse, setSubmittingCourse] = useState(false);
+  const thumbnailInputRef = useRef(null);
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+
+  const handleThumbnailUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Vui lòng chọn tệp hình ảnh (JPG, PNG, WEBP, GIF, SVG)");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Kích thước ảnh không vượt quá 10MB");
+      return;
+    }
+    try {
+      setUploadingThumbnail(true);
+      const res = await uploadImageToR2(file, { folder: "courses" });
+      setCourseForm((prev) => ({ ...prev, thumbnailUrl: res.publicUrl }));
+      toast.success("Tải ảnh bìa lên Cloudflare R2 thành công!");
+    } catch (err) {
+      console.error("Lỗi tải ảnh khóa học lên Cloudflare:", err);
+      toast.error(err.message || "Không thể tải ảnh bìa lên Cloudflare");
+    } finally {
+      setUploadingThumbnail(false);
+      if (thumbnailInputRef.current) thumbnailInputRef.current.value = "";
+    }
+  };
 
   // Section Form State
   const [sectionTitle, setSectionTitle] = useState("");
@@ -853,14 +881,38 @@ export default function AdminCurriculumPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Ảnh đại diện khóa học (URL HTTPS, không bắt buộc)</label>
-                <input
-                  type="url"
-                  placeholder="https://..."
-                  value={courseForm.thumbnailUrl}
-                  onChange={(e) => setCourseForm({ ...courseForm, thumbnailUrl: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
-                />
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Ảnh đại diện khóa học (Cloudflare R2 / URL)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="https://... hoặc tải ảnh lên"
+                    value={courseForm.thumbnailUrl}
+                    onChange={(e) => setCourseForm({ ...courseForm, thumbnailUrl: e.target.value })}
+                    className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
+                  />
+                  <input
+                    ref={thumbnailInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleThumbnailUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => thumbnailInputRef.current?.click()}
+                    disabled={uploadingThumbnail}
+                    className="px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 disabled:opacity-60"
+                  >
+                    <span>☁️</span>
+                    <span>{uploadingThumbnail ? "Đang tải…" : "Tải ảnh lên R2"}</span>
+                  </button>
+                </div>
+                {courseForm.thumbnailUrl && (
+                  <div className="mt-2 flex items-center gap-3">
+                    <img src={courseForm.thumbnailUrl} alt="Preview" className="h-10 w-16 object-cover rounded-lg border border-slate-200 dark:border-slate-800" />
+                    <span className="text-xs text-slate-500 truncate max-w-xs">{courseForm.thumbnailUrl}</span>
+                  </div>
+                )}
               </div>
 
               <div>

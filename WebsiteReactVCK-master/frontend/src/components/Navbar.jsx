@@ -41,7 +41,7 @@ import { hasStudentLmsAccess } from '../utils/lmsAccess';
 // Ai cung thay (ke ca guest)
 const PUBLIC_LINKS = [
   { label: 'Trang chủ', path: '/', icon: HomeIcon },
-  { label: 'Khóa học', path: '/courses', icon: GraduationCap },
+  { label: 'Khóa học', path: '/courses', icon: GraduationCap, badge: 'Coming Soon' },
   { label: 'Cộng đồng', path: '/post', icon: UsersRound },
 ];
 
@@ -310,9 +310,15 @@ const Navbar = () => {
             {/* ═══ BOTTOM ROW: Desktop Navigation ═══ */}
             <div className="hidden xl:flex h-11 items-center justify-center gap-1 overflow-visible">
               {/* Public + student main links */}
-              {mainNavLinks.map(({ label, path, icon: Icon }) => (
+              {mainNavLinks.map(({ label, path, icon: Icon, badge }) => (
                 <Link key={path} to={path} className={navItemClass(location.pathname === path)}>
-                  <Icon className="h-3.5 w-3.5" /> {label}
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{label}</span>
+                  {badge && (
+                    <span className="ml-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-amber-600 dark:bg-amber-400/20 dark:text-amber-300 border border-amber-500/30">
+                      {badge}
+                    </span>
+                  )}
                 </Link>
               ))}
 
@@ -363,9 +369,14 @@ const Navbar = () => {
 
                 {/* Public links */}
                 <p className="px-4 pb-1 pt-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Trang Chính</p>
-                {PUBLIC_LINKS.map(({ label, path, icon: Icon }) => (
-                  <Link key={path} to={path} className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-red-50 hover:text-red-700 dark:hover:bg-white/10">
-                    <Icon className="h-4 w-4" /> {label}
+                {PUBLIC_LINKS.map(({ label, path, icon: Icon, badge }) => (
+                  <Link key={path} to={path} className="flex items-center justify-between rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-red-50 hover:text-red-700 dark:hover:bg-white/10">
+                    <span className="flex items-center gap-3"><Icon className="h-4 w-4" /> {label}</span>
+                    {badge && (
+                      <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-black uppercase text-amber-600 dark:bg-amber-400/20 dark:text-amber-300 border border-amber-500/30">
+                        {badge}
+                      </span>
+                    )}
                   </Link>
                 ))}
 
