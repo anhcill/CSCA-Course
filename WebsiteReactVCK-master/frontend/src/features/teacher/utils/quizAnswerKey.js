@@ -84,3 +84,73 @@ export const parseQuizAnswerKey = (value) => {
 
 export const optionIndexForQuizKey = (key) => QUIZ_OPTION_KEYS.indexOf(String(key || "").toUpperCase());
 
+export const parseQuizDescription = (rawDesc) => {
+  if (!rawDesc) return { text: "", essayConfig: null };
+  if (typeof rawDesc !== "string") return { text: "", essayConfig: null };
+  const trimmed = rawDesc.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return {
+        text: parsed.text || "",
+        essayConfig: parsed.essayConfig || null,
+      };
+    } catch {
+      // not JSON
+    }
+  }
+  return { text: rawDesc, essayConfig: null };
+};
+
+export const formatQuizDescription = ({ text = "", essayConfig = null }) => {
+  if (!essayConfig || !essayConfig.enabled) {
+    return text.trim();
+  }
+  return JSON.stringify({
+    text: text.trim(),
+    essayConfig: {
+      enabled: true,
+      maxScore: Number(essayConfig.maxScore) || 3,
+      prompt: essayConfig.prompt || "Học sinh làm bài ra giấy thi, chụp ảnh rõ nét các trang bài làm và tải lên trước khi bấm nộp bài.",
+    },
+  });
+};
+
+export const compressImageFile = async (file, maxDimension = 1600, quality = 0.8) => {
+  if (!file || !file.type.startsWith("image/")) return null;
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve({
+          name: file.name,
+          size: Math.round((dataUrl.length * 3) / 4),
+          dataUrl,
+        });
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+

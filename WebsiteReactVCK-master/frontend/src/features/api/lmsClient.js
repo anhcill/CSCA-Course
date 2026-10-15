@@ -564,6 +564,17 @@ export const fetchTeacherQuizReport = async (quizId) => (
   request(`/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/report`)
 );
 
+export const fetchTeacherQuizAttempt = async (quizId, attemptId) => (
+  request(`/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/attempts/${encodeURIComponent(attemptId)}`)
+);
+
+export const gradeTeacherQuizEssay = async (quizId, attemptId, { essayScore, essayFeedback }) => (
+  request(`/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/attempts/${encodeURIComponent(attemptId)}/grade-essay`, {
+    method: "POST",
+    body: JSON.stringify({ essayScore, essayFeedback }),
+  })
+);
+
 export const fetchQuestionBank = async ({ courseId, search, difficulty, page } = {}) => {
   const params = new URLSearchParams({ courseId: String(courseId || "") });
   if (search) params.set("search", search);
@@ -856,7 +867,7 @@ export const uploadClassFile = async (classId, file, { visibility = "CLASS_ONLY"
   onProgress?.({
     stage: "uploading",
     percent: 10,
-    message: "Đang tải dữ liệu tệp lên đám mây (Cloudflare R2)...",
+    message: "Đang tải tệp lên...",
     loaded: 0,
     total: file.size,
   });
@@ -882,7 +893,7 @@ export const uploadClassFile = async (classId, file, { visibility = "CLASS_ONLY"
           rawPercent,
           loaded: event.loaded,
           total: event.total,
-          message: `Đang tải lên Cloudflare R2 (${rawPercent}%)...`,
+          message: `Đang tải tệp lên (${rawPercent}%)...`,
         });
       }
     };
@@ -891,7 +902,7 @@ export const uploadClassFile = async (classId, file, { visibility = "CLASS_ONLY"
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new LmsApiError(`Tải lên Cloudflare R2 thất bại (Mã phản hồi: ${xhr.status})`, { status: xhr.status }));
+        reject(new LmsApiError(`Tải tệp lên thất bại (Mã phản hồi: ${xhr.status})`, { status: xhr.status }));
       }
     };
 
@@ -949,7 +960,7 @@ export const uploadCourseQuizPaper = async (courseId, file, { onProgress } = {})
   onProgress?.({
     stage: "uploading",
     percent: 10,
-    message: "Đang tải đề thi PDF lên Cloudflare R2...",
+    message: "Đang tải đề thi PDF lên...",
     loaded: 0,
     total: file.size,
   });
@@ -975,7 +986,7 @@ export const uploadCourseQuizPaper = async (courseId, file, { onProgress } = {})
           rawPercent,
           loaded: event.loaded,
           total: event.total,
-          message: `Đang tải đề PDF lên Cloudflare R2 (${rawPercent}%)...`,
+          message: `Đang tải đề PDF lên (${rawPercent}%)...`,
         });
       }
     };
@@ -984,12 +995,12 @@ export const uploadCourseQuizPaper = async (courseId, file, { onProgress } = {})
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new LmsApiError(`Tải đề PDF lên R2 thất bại (Mã lỗi ${xhr.status})`, { status: xhr.status }));
+        reject(new LmsApiError(`Tải đề PDF lên thất bại (Mã lỗi ${xhr.status})`, { status: xhr.status }));
       }
     };
 
     xhr.onerror = () => {
-      reject(new LmsApiError("Lỗi mạng khi tải đề PDF lên R2"));
+      reject(new LmsApiError("Lỗi mạng khi tải đề PDF lên"));
     };
 
     xhr.ontimeout = () => {

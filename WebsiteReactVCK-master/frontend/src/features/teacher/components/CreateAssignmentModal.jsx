@@ -44,7 +44,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
     const fileId = selectedFile.id;
     const fileName = selectedFile.name || "tệp đính kèm";
 
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${fileName}"? Tệp sẽ bị xóa vĩnh viễn khỏi Cloudflare R2.`)) {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${fileName}"?`)) {
       return;
     }
 
@@ -52,10 +52,10 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
       setIsDeletingFile(true);
       try {
         await deleteClassFile(fileId);
-        toast.success(`Đã xóa "${fileName}" khỏi Cloudflare R2.`);
+        toast.success(`Đã xóa "${fileName}" thành công.`);
       } catch (err) {
-        console.error("Lỗi xóa file trên R2:", err);
-        toast.error(err?.message || "Không thể xóa file trên R2.");
+        console.error("Lỗi xóa file:", err);
+        toast.error(err?.message || "Không thể xóa file.");
         setIsDeletingFile(false);
         return;
       } finally {

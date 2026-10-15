@@ -145,7 +145,7 @@ export default function FileUploadProgressBox({
               1. Khởi tạo liên kết
             </div>
             <div className={`transition ${stage === "uploading" ? "font-bold text-blue-600 dark:text-sky-400" : stage === "confirming" || stage === "done" ? "text-emerald-600 dark:text-emerald-400" : ""}`}>
-              2. Đẩy file lên R2
+              2. Đang tải file lên
             </div>
             <div className={`transition ${stage === "confirming" ? "font-bold text-blue-600 dark:text-sky-400" : stage === "done" ? "text-emerald-600 dark:text-emerald-400" : ""}`}>
               3. Lưu dữ liệu
@@ -154,7 +154,7 @@ export default function FileUploadProgressBox({
         </div>
       )}
 
-      {/* Success Actions Bar: Thay file khác / Xóa file khỏi R2 */}
+      {/* Success Actions Bar: Thay file khác / Xóa file */}
       {isSuccess && (onReplace || onRemove) && (
         <div className="mt-3.5 pt-3 border-t border-emerald-200/80 dark:border-emerald-900/60 flex flex-wrap items-center justify-end gap-2">
           {onReplace && (
@@ -178,12 +178,12 @@ export default function FileUploadProgressBox({
               {isDeleting ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-500" />
-                  <span>Đang xóa trên R2...</span>
+                  <span>Đang xóa file...</span>
                 </>
               ) : (
                 <>
                   <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                  <span>Xóa file (Xóa khỏi R2)</span>
+                  <span>Xóa file</span>
                 </>
               )}
             </button>

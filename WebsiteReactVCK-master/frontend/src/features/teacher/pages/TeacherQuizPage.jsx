@@ -34,6 +34,7 @@ import { EmptyState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import QuestionBankSampler from "../components/QuestionBankSampler";
 import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
+import TeacherQuizGradingModal from "../components/TeacherQuizGradingModal";
 import {
   createTeacherQuiz,
   createQuestionBankItem,
@@ -50,6 +51,8 @@ import {
 import {
   optionIndexForQuizKey,
   parseQuizAnswerKey,
+  parseQuizDescription,
+  formatQuizDescription,
   QUIZ_OPTION_KEYS,
 } from "../utils/quizAnswerKey";
 
@@ -168,6 +171,9 @@ function QuizStatsModal({ quiz, onClose }) {
   const [data, setData] = useState(null);
   const [tabFilter, setTabFilter] = useState("all"); // "all" | "submitted" | "not_started"
   const [search, setSearch] = useState("");
+  const [selectedAttemptForGrading, setSelectedAttemptForGrading] = useState(null);
+
+  const essayConfig = useMemo(() => parseQuizDescription(quiz?.description)?.essayConfig, [quiz]);
 
   const loadReport = useCallback(async () => {
     if (!quiz?.id) return;
@@ -583,6 +589,7 @@ function QuizStatsModal({ quiz, onClose }) {
                           <th className="py-3 px-3.5 text-center">Số lượt</th>
                           <th className="py-3 px-3.5">Thời gian nộp</th>
                           <th className="py-3 px-3.5 text-center">Đánh giá</th>
+                          <th className="py-3 px-3.5 text-center">Thao tác</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -685,6 +692,31 @@ function QuizStatsModal({ quiz, onClose }) {
                                   {perfLevel}
                                 </span>
                               </td>
+                              <td className="py-3 px-3.5 text-center">
+                                {isSubmitted && student.attemptId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedAttemptForGrading(student)}
+                                    className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-[11px] font-bold shadow-xs transition ${
+                                      student.hasEssay && !student.essayGrade
+                                        ? "bg-amber-600 text-white hover:bg-amber-500 animate-pulse"
+                                        : student.essayGrade
+                                        ? "bg-emerald-600 text-white hover:bg-emerald-500"
+                                        : "bg-violet-600 text-white hover:bg-violet-500"
+                                    }`}
+                                    title="Xem chi tiết bài làm & chấm điểm tự luận"
+                                  >
+                                    <FiEdit3 className="h-3 w-3" />
+                                    {student.hasEssay
+                                      ? student.essayGrade
+                                        ? `Tự luận: +${student.essayGrade.score}đ`
+                                        : "Chấm tự luận"
+                                      : "Xem bài làm"}
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
                             </tr>
                           );
                         })}
@@ -711,6 +743,27 @@ function QuizStatsModal({ quiz, onClose }) {
           </button>
         </div>
       </div>
+
+      {/* TEACHER ESSAY & QUIZ ATTEMPT GRADING MODAL */}
+      {selectedAttemptForGrading && (
+        <TeacherQuizGradingModal
+          isOpen={Boolean(selectedAttemptForGrading)}
+          onClose={() => setSelectedAttemptForGrading(null)}
+          quizId={quiz.id}
+          student={selectedAttemptForGrading}
+          essayMaxScore={essayConfig?.maxScore || 3}
+          onGraded={(updatedStudent) => {
+            setData((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                students: prev.students.map((s) => (s.userId === updatedStudent.userId ? { ...s, ...updatedStudent } : s)),
+              };
+            });
+            loadReport();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -770,6 +823,9 @@ export default function TeacherQuizPage() {
   const [uploadingSolution, setUploadingSolution] = useState(false);
   const [deletingPaper, setDeletingPaper] = useState(false);
   const [deletingSolution, setDeletingSolution] = useState(false);
+  const [hasEssaySection, setHasEssaySection] = useState(false);
+  const [essayMaxScore, setEssayMaxScore] = useState(3);
+  const [essayPrompt, setEssayPrompt] = useState("Học sinh trình bày bài làm tự luận ra giấy thi, chụp ảnh các trang bài làm rõ nét và tải lên trước khi bấm nộp bài.");
   const paperFileInputRef = useRef(null);
   const solutionFileInputRef = useRef(null);
   const [questionBank, setQuestionBank] = useState([]);
@@ -1144,7 +1200,7 @@ export default function TeacherQuizPage() {
     const fileId = paperFile.id;
     const fileName = paperFile.name || "file đề PDF";
 
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${fileName}"? File sẽ bị xóa vĩnh viễn khỏi Cloudflare R2.`)) {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${fileName}"?`)) {
       return;
     }
 
@@ -1152,10 +1208,10 @@ export default function TeacherQuizPage() {
       setDeletingPaper(true);
       try {
         await deleteTeacherFile(fileId);
-        toast.success(`Đã xóa "${fileName}" khỏi Cloudflare R2.`);
+        toast.success(`Đã xóa "${fileName}" thành công.`);
       } catch (err) {
-        console.error("Lỗi xóa file đề trên R2:", err);
-        toast.error(err?.message || "Không thể xóa file đề trên R2.");
+        console.error("Lỗi xóa file đề:", err);
+        toast.error(err?.message || "Không thể xóa file đề.");
         setDeletingPaper(false);
         return;
       } finally {
@@ -1179,7 +1235,7 @@ export default function TeacherQuizPage() {
     const fileId = solutionFile.id;
     const fileName = solutionFile.name || "file lời giải PDF";
 
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${fileName}"? File sẽ bị xóa vĩnh viễn khỏi Cloudflare R2.`)) {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa "${fileName}"?`)) {
       return;
     }
 
@@ -1187,10 +1243,10 @@ export default function TeacherQuizPage() {
       setDeletingSolution(true);
       try {
         await deleteTeacherFile(fileId);
-        toast.success(`Đã xóa "${fileName}" khỏi Cloudflare R2.`);
+        toast.success(`Đã xóa "${fileName}" thành công.`);
       } catch (err) {
-        console.error("Lỗi xóa file lời giải trên R2:", err);
-        toast.error(err?.message || "Không thể xóa file lời giải trên R2.");
+        console.error("Lỗi xóa file lời giải:", err);
+        toast.error(err?.message || "Không thể xóa file lời giải.");
         setDeletingSolution(false);
         return;
       } finally {

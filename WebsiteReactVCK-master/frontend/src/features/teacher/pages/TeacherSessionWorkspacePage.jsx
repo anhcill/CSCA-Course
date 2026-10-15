@@ -272,7 +272,22 @@ export default function TeacherSessionWorkspacePage() {
             })}
           </nav>
         </section>
-        {activeTab === "overview" && <div className="grid gap-4 sm:grid-cols-5"><Stat label="Học viên" value={students.length} /><Stat label="Bài tập & Quiz" value={tasks.length} /><Stat label="Tài liệu" value={files.length} /><Stat label="Thông báo" value={announcements.length} /><Stat label="Cần chấm" value={tasks.reduce((sum, task) => sum + Number(task.pendingGradingCount || 0), 0)} /></div>}
+        {activeTab === "overview" && (
+          <TeacherOverviewTab
+            session={session}
+            students={students}
+            tasks={tasks}
+            files={files}
+            announcements={announcements}
+            classId={classId}
+            sessionId={sessionId}
+            classBasePath={classBasePath}
+            assessmentBasePath={assessmentBasePath}
+            setSearchParams={setSearchParams}
+            navigate={navigate}
+            setIsCreateHomeworkOpen={setIsCreateHomeworkOpen}
+          />
+        )}
         {activeTab === "students" && <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800"><div><h2 className="font-black">Học viên của buổi học</h2><p className="mt-1 text-xs text-slate-500">Điểm danh và theo dõi chuyên cần theo đúng buổi này.</p></div><button type="button" onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)} className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white">Mở điểm danh</button></div><div className="divide-y divide-slate-100 dark:divide-slate-800">{students.map((student) => <div key={student.id} className="flex items-center justify-between p-4 text-sm"><span className="font-bold">{student.name || student.email}</span><span className="text-xs text-slate-500">{student.email}</span></div>)}</div></section>}
         {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black">Nội dung buổi dạy</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Chuẩn bị nội dung, slide và hoạt động học tập cho buổi này tại đây."}</p><Link to={`${classBasePath}/curriculum`} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white"><BookOpen className="h-4 w-4" /> Xem giáo trình khóa học</Link></section>}
         {activeTab === "tasks" && <TeacherSessionTasks tasks={tasks} classId={classId} sessionId={sessionId} onCreateHomework={() => setIsCreateHomeworkOpen(true)} onCreateSessionQuiz={() => navigate(`${assessmentBasePath}/quizzes?classId=${classId}&sessionId=${sessionId}&scope=session&new=1`)} onOpenGrading={(assignmentId) => navigate(`${assessmentBasePath}/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${assignmentId}`)} />}
@@ -299,7 +314,293 @@ export default function TeacherSessionWorkspacePage() {
   );
 }
 
-function Stat({ label, value }) { return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><p className="text-2xl font-black">{value}</p><p className="mt-1 text-xs font-bold text-slate-500">{label}</p></section>; }
+function TeacherOverviewTab({
+  session,
+  students,
+  tasks,
+  files,
+  announcements,
+  classId,
+  sessionId,
+  assessmentBasePath,
+  setSearchParams,
+  navigate,
+  setIsCreateHomeworkOpen,
+}) {
+  const pendingCount = tasks.reduce((sum, task) => sum + Number(task.pendingGradingCount || 0), 0);
+
+  return (
+    <div className="space-y-4">
+      {/* 1. Unified Metric Ribbon */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="grid grid-cols-2 divide-y divide-slate-100 sm:grid-cols-5 sm:divide-y-0 sm:divide-x dark:divide-slate-800">
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: "students" })}
+            className="group flex items-center gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:scale-105 dark:bg-blue-950/60 dark:text-sky-400">
+              <Users className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-lg font-black leading-tight text-slate-950 dark:text-white sm:text-xl">{students.length}</p>
+              <p className="truncate text-xs font-semibold text-slate-500 transition group-hover:text-blue-600 dark:text-slate-400 dark:group-hover:text-sky-400">Học viên</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: "tasks" })}
+            className="group flex items-center gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 transition group-hover:scale-105 dark:bg-violet-950/60 dark:text-violet-400">
+              <ClipboardList className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-lg font-black leading-tight text-slate-950 dark:text-white sm:text-xl">{tasks.length}</p>
+              <p className="truncate text-xs font-semibold text-slate-500 transition group-hover:text-violet-600 dark:text-slate-400 dark:group-hover:text-violet-400">Bài tập & Quiz</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: "files" })}
+            className="group flex items-center gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 transition group-hover:scale-105 dark:bg-emerald-950/60 dark:text-emerald-400">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-lg font-black leading-tight text-slate-950 dark:text-white sm:text-xl">{files.length}</p>
+              <p className="truncate text-xs font-semibold text-slate-500 transition group-hover:text-emerald-600 dark:text-slate-400 dark:group-hover:text-emerald-400">Tài liệu</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: "announcements" })}
+            className="group flex items-center gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 transition group-hover:scale-105 dark:bg-amber-950/60 dark:text-amber-400">
+              <Bell className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-lg font-black leading-tight text-slate-950 dark:text-white sm:text-xl">{announcements.length}</p>
+              <p className="truncate text-xs font-semibold text-slate-500 transition group-hover:text-amber-600 dark:text-slate-400 dark:group-hover:text-amber-400">Thông báo</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const pendingTask = tasks.find((t) => Number(t.pendingGradingCount) > 0);
+              if (pendingTask) {
+                navigate(`${assessmentBasePath}/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${pendingTask.id}`);
+              } else {
+                setSearchParams({ tab: "tasks" });
+              }
+            }}
+            className="group flex items-center gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
+          >
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition group-hover:scale-105 ${
+              pendingCount > 0 ? "bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+            }`}>
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className={`text-lg font-black leading-tight sm:text-xl ${pendingCount > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-950 dark:text-white"}`}>{pendingCount}</p>
+              <p className="truncate text-xs font-semibold text-slate-500 transition group-hover:text-rose-600 dark:text-slate-400 dark:group-hover:text-rose-400">Cần chấm</p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Main content grid */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Left column (2 cols): Tasks + Content */}
+        <div className="space-y-4 lg:col-span-2">
+          {/* Card: Bài tập & Quiz của buổi */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+              <div>
+                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Bài tập & Quiz của buổi</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Theo dõi nộp bài và chấm điểm của học viên</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateHomeworkOpen(true)}
+                  className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-blue-500"
+                >
+                  + Giao bài tập
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchParams({ tab: "tasks" })}
+                  className="text-xs font-bold text-blue-600 hover:underline dark:text-sky-400"
+                >
+                  Tất cả ({tasks.length}) →
+                </button>
+              </div>
+            </div>
+
+            {tasks.length === 0 ? (
+              <p className="py-6 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
+                Chưa có bài tập hoặc quiz nào cho buổi học này. Bấm &quot;+ Giao bài tập&quot; để tạo bài mới.
+              </p>
+            ) : (
+              <div className="mt-3.5 space-y-2.5">
+                {tasks.slice(0, 4).map((task) => (
+                  <article
+                    key={`${task.type}-${task.id}`}
+                    className="flex flex-col justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3.5 transition hover:bg-slate-100/70 dark:border-slate-800 dark:bg-slate-950/40 dark:hover:bg-slate-800/40 sm:flex-row sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+                          task.type === "quiz"
+                            ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
+                            : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                        }`}>
+                          {task.type === "quiz" ? "QUIZ" : "BÀI TẬP"}
+                        </span>
+                        <h3 className="truncate text-xs font-bold text-slate-900 dark:text-white">{task.title}</h3>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        Đã nộp: {task.submittedCount || 0}/{task.totalCount || 0}
+                        {Number(task.pendingGradingCount) > 0 && (
+                          <span className="ml-2 font-bold text-rose-600 dark:text-rose-400">
+                            · Cần chấm: {task.pendingGradingCount}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
+                    {task.type === "quiz" ? (
+                      <span className="shrink-0 text-xs font-bold text-violet-600 dark:text-violet-400">Tự động chấm</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`${assessmentBasePath}/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${task.id}`)}
+                        className="shrink-0 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300"
+                      >
+                        Chấm bài
+                      </button>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Card: Nội dung buổi học */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-blue-600 dark:text-sky-400" />
+                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Nội dung buổi dạy</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSearchParams({ tab: "content" })}
+                className="text-xs font-bold text-blue-600 hover:underline dark:text-sky-400"
+              >
+                Chỉnh sửa →
+              </button>
+            </div>
+            <p className="mt-2.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+              {session.description || "Chưa có ghi chú nội dung cho buổi học này. Giáo viên có thể thêm mô tả và tài liệu bài giảng."}
+            </p>
+          </div>
+        </div>
+
+        {/* Right column (1 col): Announcements + Files */}
+        <div className="space-y-4">
+          {/* Card: Thông báo */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
+              <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Thông báo ({announcements.length})</h2>
+              <button
+                type="button"
+                onClick={() => setSearchParams({ tab: "announcements" })}
+                className="text-xs font-bold text-blue-600 hover:underline dark:text-sky-400"
+              >
+                Gửi mới →
+              </button>
+            </div>
+            {announcements.length === 0 ? (
+              <p className="py-5 text-center text-xs text-slate-400">Chưa có thông báo nào trong buổi này.</p>
+            ) : (
+              <div className="mt-3 space-y-2.5">
+                {announcements.slice(0, 3).map((item) => (
+                  <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="truncate text-xs font-bold text-slate-900 dark:text-white">{item.title}</h3>
+                      <span className="shrink-0 text-[10px] text-slate-400">
+                        {item.status === "scheduled" ? "Hẹn giờ" : item.created_at ? new Date(item.created_at).toLocaleDateString("vi-VN") : ""}
+                      </span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[11px] text-slate-600 dark:text-slate-300">{item.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Card: Tài liệu */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
+              <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Tài liệu học tập ({files.length})</h2>
+              <button
+                type="button"
+                onClick={() => setSearchParams({ tab: "files" })}
+                className="text-xs font-bold text-blue-600 hover:underline dark:text-sky-400"
+              >
+                Tải lên →
+              </button>
+            </div>
+            {files.length === 0 ? (
+              <p className="py-5 text-center text-xs text-slate-400">Chưa có tài liệu nào được đính kèm.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {files.slice(0, 3).map((file) => {
+                  const k = kindForFile(file.mimeType || file.mime_type, file.name);
+                  const cfg = kindConfig[k] || kindConfig.other;
+                  const Icon = cfg.icon;
+                  return (
+                    <div key={file.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/70 p-2.5 dark:border-slate-800 dark:bg-slate-950/40">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-[11px] font-bold ${cfg.badge}`}>
+                          <Icon className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-bold text-slate-900 dark:text-white">{file.name}</p>
+                          <p className="text-[10px] text-slate-400">{formatBytes(file.size_bytes)}</p>
+                        </div>
+                      </div>
+                      {file.file_url && (
+                        <a
+                          href={file.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          download
+                          className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                          title="Tải về"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function TeacherSessionTasks({ tasks, onCreateHomework, onCreateSessionQuiz, onOpenGrading }) {
   const inSessionQuizzes = tasks.filter((task) => task.type === "quiz" && task.activityScope !== "homework");

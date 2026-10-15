@@ -808,7 +808,7 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
          JOIN users u ON u.id = ce.user_id
          LEFT JOIN student_profiles sp ON sp.user_id = u.id
          LEFT JOIN LATERAL (
-           SELECT qa0.id, qa0.status, qa0.score, qa0.max_score, qa0.attempt_number, qa0.started_at, qa0.submitted_at
+           SELECT qa0.id, qa0.status, qa0.score, qa0.max_score, qa0.attempt_number, qa0.started_at, qa0.submitted_at, qa0.answers_json
            FROM quiz_attempts qa0
            WHERE qa0.quiz_id = $1 AND qa0.user_id = u.id
            ORDER BY CASE WHEN qa0.status = 'submitted' THEN 1 ELSE 2 END,
@@ -843,7 +843,7 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
          JOIN (SELECT DISTINCT user_id FROM quiz_attempts WHERE quiz_id = $1) qa_users ON qa_users.user_id = u.id
          LEFT JOIN student_profiles sp ON sp.user_id = u.id
          LEFT JOIN LATERAL (
-           SELECT qa0.id, qa0.status, qa0.score, qa0.max_score, qa0.attempt_number, qa0.started_at, qa0.submitted_at
+           SELECT qa0.id, qa0.status, qa0.score, qa0.max_score, qa0.attempt_number, qa0.started_at, qa0.submitted_at, qa0.answers_json
            FROM quiz_attempts qa0
            WHERE qa0.quiz_id = $1 AND qa0.user_id = u.id
            ORDER BY CASE WHEN qa0.status = 'submitted' THEN 1 ELSE 2 END,
@@ -869,6 +869,9 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
       const status = isSubmitted ? "submitted" : (isInProgress ? "in_progress" : "not_started");
       const scorePct = row.score_percentage !== null ? Number(row.score_percentage) : null;
       const passed = isSubmitted && scorePct !== null ? scorePct >= passingScore : false;
+      const answersJson = row.answers_json || {};
+      const essay = answersJson._essay || answersJson.essay || null;
+      const essayGrade = answersJson._essayGrade || answersJson.essayGrade || null;
 
       return {
         userId: String(row.user_id),
@@ -877,6 +880,7 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
         avatarUrl: row.avatar_url,
         fullName: row.full_name || row.username,
         status,
+        attemptId: row.attempt_id ? String(row.attempt_id) : null,
         score: row.score !== null ? Number(row.score) : null,
         maxScore: row.max_score !== null ? Number(row.max_score) : null,
         scorePercentage: scorePct,
@@ -885,6 +889,9 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
         totalAttempts: Number(row.total_attempts || 0),
         startedAt: row.started_at,
         submittedAt: row.submitted_at,
+        hasEssay: Boolean(essay && ((Array.isArray(essay.attachments) && essay.attachments.length > 0) || essay.notes)),
+        essay,
+        essayGrade,
       };
     });
 
@@ -951,6 +958,152 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
   } catch (error) {
     console.error("Error fetching teacher quiz report:", error);
     return internalError(res, "Lỗi khi lấy báo cáo kết quả đề kiểm tra");
+  }
+});
+
+// GET /api/assignments/teacher/quizzes/:quizId/attempts/:attemptId — detailed attempt data for teacher grading
+router.get("/teacher/quizzes/:quizId/attempts/:attemptId", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  try {
+    const quizId = parsePositiveId(req.params.quizId);
+    const attemptId = parsePositiveId(req.params.attemptId);
+    if (!quizId || !attemptId) return validationError(res, "Thông số không hợp lệ");
+
+    const quiz = await getQuiz(quizId);
+    if (!quiz) return notFound(res, "Không tìm thấy đề thi");
+
+    const attemptRes = await query(
+      `SELECT qa.id, qa.quiz_id, qa.user_id, qa.answers_json, qa.score, qa.max_score, qa.status,
+              qa.started_at, qa.submitted_at, qa.attempt_number, qa.auto_submitted, qa.question_snapshot,
+              u.username, u.email, u.avatar_url,
+              COALESCE(sp.full_name, u.username) AS full_name
+       FROM quiz_attempts qa
+       JOIN users u ON u.id = qa.user_id
+       LEFT JOIN student_profiles sp ON sp.user_id = u.id
+       WHERE qa.id = $1 AND qa.quiz_id = $2`,
+      [attemptId, quizId]
+    );
+    const attempt = attemptRes.rows[0];
+    if (!attempt) return notFound(res, "Không tìm thấy lượt làm bài");
+
+    const questions = await getQuizQuestions(quizId);
+    const effectiveQuestions = attemptQuestions(attempt, questions);
+    const answers = attempt.answers_json || {};
+    const computed = buildQuizResult(effectiveQuestions, answers);
+
+    return res.json({
+      success: true,
+      data: {
+        attempt: {
+          id: attempt.id,
+          quizId: attempt.quiz_id,
+          userId: attempt.user_id,
+          username: attempt.username,
+          fullName: attempt.full_name,
+          email: attempt.email,
+          avatarUrl: attempt.avatar_url,
+          score: attempt.score !== null ? Number(attempt.score) : null,
+          maxScore: attempt.max_score !== null ? Number(attempt.max_score) : null,
+          status: attempt.status,
+          startedAt: attempt.started_at,
+          submittedAt: attempt.submitted_at,
+          attemptNumber: attempt.attempt_number,
+          autoSubmitted: attempt.auto_submitted,
+          answers,
+          essay: answers._essay || answers.essay || null,
+          essayGrade: answers._essayGrade || answers.essayGrade || null,
+        },
+        quiz: {
+          id: quiz.id,
+          title: quiz.title,
+          description: quiz.description,
+          paperFileId: quiz.paper_file_id,
+          paperStatus: quiz.paper_status,
+          paperUrl: (quiz.paper_file_id && quiz.paper_status === "ready") ? `/api/files/${quiz.paper_file_id}/download` : null,
+          solutionFileId: quiz.solution_file_id,
+          solutionUrl: (quiz.solution_file_id && quiz.solution_status === "ready") ? `/api/files/${quiz.solution_file_id}/download` : null,
+        },
+        computed,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching quiz attempt detail:", error);
+    return internalError(res, "Lỗi khi tải chi tiết bài làm");
+  }
+});
+
+// POST /api/assignments/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay — grade essay portion
+router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
+  const client = await getClient();
+  try {
+    const quizId = parsePositiveId(req.params.quizId);
+    const attemptId = parsePositiveId(req.params.attemptId);
+    if (!quizId || !attemptId) return validationError(res, "Thông số không hợp lệ");
+
+    const essayScore = Number(req.body.essayScore);
+    const essayFeedback = typeof req.body.essayFeedback === "string" ? req.body.essayFeedback.trim() : "";
+    if (isNaN(essayScore) || essayScore < 0) {
+      return validationError(res, "Điểm tự luận phải là số lớn hơn hoặc bằng 0");
+    }
+
+    await client.query("BEGIN");
+    const attemptRes = await client.query(
+      `SELECT qa.id, qa.quiz_id, qa.user_id, qa.answers_json, qa.score, qa.max_score, qa.status, qa.question_snapshot
+       FROM quiz_attempts qa
+       WHERE qa.id = $1 AND qa.quiz_id = $2 FOR UPDATE`,
+      [attemptId, quizId]
+    );
+    const attempt = attemptRes.rows[0];
+    if (!attempt) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy lượt làm bài");
+    }
+
+    const questions = await getQuizQuestions(quizId);
+    const effectiveQuestions = attemptQuestions(attempt, questions);
+    const currentAnswers = attempt.answers_json || {};
+
+    const updatedAnswers = {
+      ...currentAnswers,
+      _essayGrade: {
+        score: essayScore,
+        feedback: essayFeedback,
+        gradedAt: new Date().toISOString(),
+        graderId: req.user.id,
+        graderName: req.user.username || "Giáo viên",
+      },
+    };
+
+    // Calculate MC score + essay score
+    const computed = buildQuizResult(effectiveQuestions, updatedAnswers);
+    const newTotalScore = computed.score;
+
+    const updateRes = await client.query(
+      `UPDATE quiz_attempts
+       SET answers_json = $1::jsonb,
+           score = $2,
+           updated_at = NOW()
+       WHERE id = $3
+       RETURNING id, score, max_score, answers_json, updated_at`,
+      [JSON.stringify(updatedAnswers), newTotalScore, attempt.id]
+    );
+
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      data: {
+        attemptId: attempt.id,
+        score: Number(updateRes.rows[0].score),
+        maxScore: Number(updateRes.rows[0].max_score),
+        essayGrade: updatedAnswers._essayGrade,
+        message: "Đã lưu điểm phần tự luận thành công",
+      },
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Error grading quiz essay:", error);
+    return internalError(res, "Lỗi khi chấm điểm phần tự luận");
+  } finally {
+    client.release();
   }
 });
 
@@ -2024,20 +2177,34 @@ const publicQuestion = (question) => ({
 });
 
 const buildQuizResult = (questions, answers) => {
+  const essayGrade = answers?._essayGrade || answers?.essayGrade || null;
   const review = questions.map((question) => {
     const studentAnswer = answers?.[String(question.id)] ?? answers?.[question.id] ?? null;
     const isCorrect = answersMatch(question, studentAnswer);
     const points = Number(question.points) || 0;
     return { questionId: question.id, studentAnswer, correctAnswer: parseStoredAnswer(question.correct_answer), explanation: question.explanation || "", points, earnedPoints: isCorrect ? points : 0, isCorrect };
   });
-  const score = review.reduce((sum, item) => sum + item.earnedPoints, 0);
+  let score = review.reduce((sum, item) => sum + item.earnedPoints, 0);
+  if (essayGrade && typeof essayGrade.score === "number") {
+    score += Number(essayGrade.score) || 0;
+  }
   const maxScore = review.reduce((sum, item) => sum + item.points, 0);
-  return { score: Number(score.toFixed(2)), maxScore: Number(maxScore.toFixed(2)), percentage: maxScore > 0 ? Number(((score / maxScore) * 100).toFixed(2)) : 0, review };
+  return {
+    score: Number(score.toFixed(2)),
+    maxScore: Number(maxScore.toFixed(2)),
+    percentage: maxScore > 0 ? Number(((score / maxScore) * 100).toFixed(2)) : 0,
+    review,
+    essayGrade,
+    essay: answers?._essay || answers?.essay || null,
+  };
 };
 
 const validateQuizAnswers = (questions, answers) => {
   const questionIds = new Set(questions.map((question) => String(question.id)));
-  for (const key of Object.keys(answers)) if (!questionIds.has(String(key))) return "Bài làm chứa câu hỏi không thuộc đề thi";
+  for (const key of Object.keys(answers)) {
+    if (key.startsWith("_") || key === "essay" || key === "essayAttachments" || key === "essayNotes") continue;
+    if (!questionIds.has(String(key))) return "Bài làm chứa câu hỏi không thuộc đề thi";
+  }
   for (const question of questions) {
     const value = answers[String(question.id)];
     if (value === undefined || value === null || value === "") continue;
@@ -2046,6 +2213,8 @@ const validateQuizAnswers = (questions, answers) => {
       if (!Array.isArray(value) || value.length > options.length || value.some((item) => !options.includes(String(item)))) return "Đáp án nhiều lựa chọn không hợp lệ";
     } else if (question.question_type === "single_choice") {
       if (typeof value !== "string" || !options.includes(value)) return "Đáp án lựa chọn không hợp lệ";
+    } else if (question.question_type === "essay") {
+      continue;
     } else if (typeof value !== "string" || value.length > 1000) return "Đáp án điền vào không hợp lệ";
   }
   return null;
