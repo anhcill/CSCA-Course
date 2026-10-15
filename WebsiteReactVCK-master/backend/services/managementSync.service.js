@@ -548,8 +548,11 @@ const syncCalendarSchedule = async (client, event) => {
          ((lesson_date + $7::time) AT TIME ZONE $8)
        FROM occurrences
        WHERE NOT EXISTS (
-         SELECT 1 FROM class_sessions cs WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
-           AND cs.start_time = ((lesson_date + $6::time) AT TIME ZONE $8))`,
+         SELECT 1 FROM class_sessions cs WHERE cs.live_class_id = $1 AND (
+           (cs.status <> 'cancelled' AND cs.start_time = ((lesson_date + $6::time) AT TIME ZONE $8))
+           OR (cs.management_session_source_id IS NOT NULL
+             AND COALESCE(cs.original_start_at, cs.start_time) = ((lesson_date + $6::time) AT TIME ZONE $8))
+         ))`,
       [liveClass.id, schedule.id, input.startDate, input.endDate, input.dayOfWeek,
         input.startTime, input.endTime, input.timezone, title, input.meetingUrl],
     );
@@ -564,8 +567,13 @@ const syncCalendarSchedule = async (client, event) => {
   return { action: archived ? "class.schedule.archived" : "class.schedule.synced", entityType: "class_schedule", entityId: Number(schedule.id), data: { scheduleSourceId: input.scheduleSourceId } };
 };
 
-const syncCalendarSession = async (client, event) => {
+export const syncCalendarSession = async (client, event) => {
   const payload = event.payload;
+  const previousTimingValues = [payload.previousLessonDate, payload.previousStartTime, payload.previousEndTime];
+  const hasPreviousTiming = previousTimingValues.some((value) => value !== undefined && value !== null && value !== "");
+  if (hasPreviousTiming && !previousTimingValues.every((value) => value !== undefined && value !== null && value !== "")) {
+    throw new SyncValidationError("Ngày và giờ cũ của buổi học phải được gửi đầy đủ");
+  }
   const input = {
     classSourceId: sourceId(payload.classSourceId, "classSourceId"),
     sessionSourceId: sourceId(payload.sessionSourceId, "sessionSourceId"),
@@ -576,6 +584,9 @@ const syncCalendarSession = async (client, event) => {
     lessonDate: calendarDate(payload.lessonDate, "lessonDate"),
     startTime: calendarTime(payload.startTime, "startTime"),
     endTime: calendarTime(payload.endTime, "endTime"),
+    previousLessonDate: hasPreviousTiming ? calendarDate(payload.previousLessonDate, "previousLessonDate") : null,
+    previousStartTime: hasPreviousTiming ? calendarTime(payload.previousStartTime, "previousStartTime") : null,
+    previousEndTime: hasPreviousTiming ? calendarTime(payload.previousEndTime, "previousEndTime") : null,
     timezone: calendarTimezone(payload.timezone),
     title: optionalText(payload.title, 255, "title"),
     meetingUrl: optionalText(payload.meetingUrl, 1000, "meetingUrl"),
@@ -583,6 +594,9 @@ const syncCalendarSession = async (client, event) => {
     sourceUpdatedAt: sourceDate(payload, event.occurredAt),
   };
   if (input.endTime <= input.startTime) throw new SyncValidationError("endTime phải sau startTime");
+  if (input.previousEndTime && input.previousEndTime <= input.previousStartTime) {
+    throw new SyncValidationError("previousEndTime phải sau previousStartTime");
+  }
   if (input.expectedLmsVersion !== null && (!Number.isSafeInteger(input.expectedLmsVersion) || input.expectedLmsVersion < 1)) {
     throw new SyncValidationError("expectedLmsVersion không hợp lệ");
   }
@@ -617,6 +631,17 @@ const syncCalendarSession = async (client, event) => {
   );
   const startsAt = timing.rows[0].starts_at;
   const endsAt = timing.rows[0].ends_at;
+  let previousStartsAt = null;
+  let previousEndsAt = null;
+  if (input.previousLessonDate) {
+    const previousTiming = await client.query(
+      `SELECT (($1::date + $2::time) AT TIME ZONE $4) AS starts_at,
+              (($1::date + $3::time) AT TIME ZONE $4) AS ends_at`,
+      [input.previousLessonDate, input.previousStartTime, input.previousEndTime, input.timezone],
+    );
+    previousStartsAt = previousTiming.rows[0].starts_at;
+    previousEndsAt = previousTiming.rows[0].ends_at;
+  }
   const existingResult = await client.query(
     `SELECT * FROM class_sessions WHERE LOWER(management_session_source_id) = LOWER($1) FOR UPDATE`,
     [input.sessionSourceId],
@@ -629,6 +654,18 @@ const syncCalendarSession = async (client, event) => {
       [input.lmsSessionId, liveClass.id],
     );
     existing = adoption.rows[0];
+  }
+  if (!existing && schedule && previousStartsAt) {
+    // Adopt the generated occurrence at its old time so moving 17 -> 16
+    // updates one row instead of leaving the 17th behind and inserting another.
+    const previousOccurrence = await client.query(
+      `SELECT * FROM class_sessions WHERE live_class_id = $1 AND schedule_id = $2
+         AND (start_time = $3 OR original_start_at = $3)
+         AND management_session_source_id IS NULL
+       ORDER BY CASE WHEN status = 'scheduled' THEN 0 ELSE 1 END, id LIMIT 1 FOR UPDATE`,
+      [liveClass.id, schedule.id, previousStartsAt],
+    );
+    existing = previousOccurrence.rows[0];
   }
   if (!existing && schedule) {
     // A schedule event already generated this occurrence; attach its source identity.
@@ -661,6 +698,20 @@ const syncCalendarSession = async (client, event) => {
     : enumValue(payload.status, new Set(["scheduled", "live", "ended", "cancelled", "rescheduled"]), "scheduled", "status");
   const title = input.title || existing?.title || `${liveClass.title} — Buổi học`;
   const scheduleId = schedule?.id || existing?.schedule_id || null;
+  if (schedule && previousStartsAt && new Date(previousStartsAt).getTime() !== new Date(startsAt).getTime()) {
+    // Retire any untouched duplicate at the old slot. The moved Management row
+    // keeps original_start_at so recurring materialization cannot revive it.
+    await client.query(
+      `UPDATE class_sessions cs SET status = 'cancelled', version = version + 1,
+         change_reason = COALESCE($5, 'Buổi học Management đã được đổi lịch'), changed_at = NOW()
+       WHERE cs.live_class_id = $1 AND cs.schedule_id = $2
+         AND (cs.start_time = $3 OR cs.original_start_at = $3)
+         AND ($4::bigint IS NULL OR cs.id <> $4)
+         AND cs.management_session_source_id IS NULL AND cs.status = 'scheduled'
+         AND NOT EXISTS (SELECT 1 FROM class_attendance ca WHERE ca.session_id = cs.id)`,
+      [liveClass.id, schedule.id, previousStartsAt, existing?.id || null, input.changeReason],
+    );
+  }
   if (existing && schedule && status !== "cancelled") {
     // A changed recurring pattern can pre-generate the new occurrence before
     // its explicit Management session arrives. Retire that placeholder.
@@ -673,24 +724,32 @@ const syncCalendarSession = async (client, event) => {
       [liveClass.id, schedule.id, startsAt, existing.id],
     );
   }
+  const originalStartsAt = existing?.management_session_source_id
+    ? (existing.original_start_at || previousStartsAt || startsAt)
+    : (previousStartsAt || existing?.original_start_at || startsAt);
+  const originalEndsAt = existing?.management_session_source_id
+    ? (existing.original_end_at || previousEndsAt || endsAt)
+    : (previousEndsAt || existing?.original_end_at || endsAt);
   const result = existing
     ? await client.query(
       `UPDATE class_sessions SET schedule_id = $1, title = $2, meet_url = $3,
          start_time = $4, end_time = $5, status = $6,
          management_session_source_id = $7, management_source_updated_at = $8,
          change_reason = COALESCE($10, change_reason), changed_at = NOW(),
+         original_start_at = $11, original_end_at = $12,
          version = version + 1, updated_at = NOW()
        WHERE id = $9 RETURNING *`,
       [scheduleId, title, input.meetingUrl, startsAt, endsAt, status,
-        input.sessionSourceId, input.sourceUpdatedAt, existing.id, input.changeReason],
+        input.sessionSourceId, input.sourceUpdatedAt, existing.id, input.changeReason,
+        originalStartsAt, originalEndsAt],
     )
     : await client.query(
       `INSERT INTO class_sessions
          (live_class_id, schedule_id, title, meet_url, start_time, end_time, status,
           original_start_at, original_end_at, management_session_source_id, management_source_updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$5,$6,$8,$9) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$10,$11,$8,$9) RETURNING *`,
       [liveClass.id, scheduleId, title, input.meetingUrl, startsAt, endsAt, status,
-        input.sessionSourceId, input.sourceUpdatedAt],
+        input.sessionSourceId, input.sourceUpdatedAt, originalStartsAt, originalEndsAt],
     );
   const session = result.rows[0];
   const scheduleChanged = existing && (new Date(existing.start_time).getTime() !== new Date(startsAt).getTime()

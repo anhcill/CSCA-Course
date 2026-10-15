@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { CalendarDays, Clock, FileQuestion, Video, ClipboardList } from "lucide-react";
+import { isSessionRescheduled, sessionChangeReason } from "../sessionScheduleChange.js";
 
 const formatDateTime = (isoString) => {
   if (!isoString) return "";
@@ -39,7 +40,7 @@ export default function CalendarListView({
       {sortedEvents.map((ev) => {
         const isSession = ev.eventType === "SESSION";
         const isQuiz = ev.eventType === "QUIZ_DUE";
-        const isRescheduled = ev.status === "rescheduled";
+        const isRescheduled = isSessionRescheduled(ev);
         const isLive = ev.uiState === "live";
         const isJoinable = isLive || ev.uiState === "open";
 
@@ -98,9 +99,9 @@ export default function CalendarListView({
                     {ev.provider && <span>Hình thức: {ev.provider}</span>}
                   </div>
 
-                  {isRescheduled && ev.change_reason && (
+                  {isRescheduled && (
                     <p className="mt-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg">
-                      Lý do đổi lịch: {ev.change_reason}
+                      Lý do đổi lịch: {sessionChangeReason(ev)}
                     </p>
                   )}
                 </div>

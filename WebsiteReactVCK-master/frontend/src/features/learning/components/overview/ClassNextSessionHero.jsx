@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
 import { Link } from "react-router-dom";
 import { CalendarDays, Clock, Play, Video } from "lucide-react";
+import { isSessionRescheduled } from "../../../calendar/sessionScheduleChange.js";
 
 const formatDateTime = (value) => {
   if (!value) return "Chưa có thời hạn";
@@ -38,7 +39,7 @@ export default function ClassNextSessionHero({
               <CalendarDays className="h-3.5 w-3.5" />
               {isTodaySession ? "Hôm nay có buổi học" : "Buổi học tiếp theo"}
             </span>
-            {nextSession?.status === "rescheduled" && (
+            {nextSession && isSessionRescheduled(nextSession) && (
               <span className="rounded-full bg-rose-500/90 px-2.5 py-0.5 text-xs font-bold text-white">
                 Đã đổi lịch
               </span>

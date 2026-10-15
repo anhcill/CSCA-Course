@@ -173,8 +173,13 @@ const materializeScheduleSessions = async (client, schedule, liveClass) => {
        SELECT 1
        FROM class_sessions existing
        WHERE existing.live_class_id = $1
-         AND existing.status <> 'cancelled'
-         AND existing.start_time = ((o.session_date + $6::time) AT TIME ZONE $8)
+         AND (
+           (existing.status <> 'cancelled'
+             AND existing.start_time = ((o.session_date + $6::time) AT TIME ZONE $8))
+           OR (existing.management_session_source_id IS NOT NULL
+             AND COALESCE(existing.original_start_at, existing.start_time)
+               = ((o.session_date + $6::time) AT TIME ZONE $8))
+         )
      )
      RETURNING id, live_class_id, schedule_id, title, start_time, end_time,
                status, original_start_at, original_end_at, created_at, updated_at`,

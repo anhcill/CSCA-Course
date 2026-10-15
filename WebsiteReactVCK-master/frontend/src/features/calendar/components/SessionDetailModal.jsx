@@ -14,6 +14,7 @@ import {
   X
 } from "lucide-react";
 import SessionChangeHistoryModal from "./SessionChangeHistoryModal";
+import { isSessionRescheduled, sessionChangeReason } from "../sessionScheduleChange.js";
 
 const formatDateTime = (value) => {
   if (!value) return "Chưa xác định";
@@ -42,7 +43,7 @@ export default function SessionDetailModal({
   // normal 15-minute opening rule enforced again by the server.
   const isJoinable = isTeacher || isLive || session.uiState === "open";
   const isCompleted = session.uiState === "completed";
-  const isRescheduled = session.status === "rescheduled";
+  const isRescheduled = isSessionRescheduled(session);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
@@ -112,7 +113,7 @@ export default function SessionDetailModal({
           </div>
 
           {/* Cảnh báo đổi lịch nếu có */}
-          {(isRescheduled || Boolean(session.change_reason)) && (
+          {isRescheduled && (
             <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-bold">Lưu ý thay đổi lịch học:</p>
@@ -124,7 +125,7 @@ export default function SessionDetailModal({
                   <History className="h-3.5 w-3.5" /> Xem lịch sử
                 </button>
               </div>
-              <p className="mt-0.5">{session.change_reason || "Giảng viên đã điều chỉnh thời gian của buổi học này."}</p>
+              <p className="mt-0.5">{sessionChangeReason(session)}</p>
             </div>
           )}
 

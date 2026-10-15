@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import PropTypes from "prop-types";
 import { ClipboardList, Clock, FileQuestion, Video } from "lucide-react";
+import { isSessionRescheduled } from "../sessionScheduleChange.js";
 
 const getWeekDates = (date) => {
   const d = new Date(date);
@@ -70,7 +71,7 @@ export default function CalendarWeekView({
                     const isSession = ev.eventType === "SESSION";
                     const isAssignment = ev.eventType === "ASSIGNMENT_DUE";
                     const isQuiz = ev.eventType === "QUIZ_DUE";
-                    const isRescheduled = ev.status === "rescheduled";
+                    const isRescheduled = isSessionRescheduled(ev);
                     const isLive = ev.uiState === "live";
 
                     return (
