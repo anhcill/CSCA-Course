@@ -31,7 +31,7 @@ test("student provisioning preserves login locks and separates student from teac
     }, response);
     return response;
   };
-  const payload = (source, email, accountStatus = "Revoked") => ({
+  const payload = (source, email, accountStatus = "Revoked", sourceUpdatedAt = "2026-10-09T09:00:00.000Z") => ({
     externalStudentId: source,
     externalPartyId: source,
     fullName: "Test Student",
@@ -41,13 +41,33 @@ test("student provisioning preserves login locks and separates student from teac
     paymentStatus: "Cancelled",
     courseSourceIds: [],
     classSourceId: "class-1",
-    sourceUpdatedAt: "2026-10-09T09:00:00.000Z",
+    sourceUpdatedAt,
   });
 
   let response = await invoke(payload("fresh-party", "fresh@example.test"), "fresh-provision");
   assert.equal(response.statusCode, 201, JSON.stringify(response.body));
   assert.deepEqual((await db.query("SELECT is_locked, lms_account_status FROM users WHERE email='fresh@example.test'")).rows[0],
     { is_locked: false, lms_account_status: "revoked" });
+  const freshId = (await db.query("SELECT id FROM users WHERE email='fresh@example.test'")).rows[0].id;
+  await db.query(
+    "UPDATE users SET google_id='fresh-old-google', oauth_provider='google', email_verified=TRUE, is_management_managed=FALSE WHERE id=$1",
+    [freshId],
+  );
+  response = await invoke(
+    payload("fresh-party", "fresh-new@example.test", "Active", "2026-10-09T09:30:00.000Z"),
+    "fresh-email-change",
+  );
+  assert.equal(response.statusCode, 200, JSON.stringify(response.body));
+  assert.deepEqual((await db.query(
+    "SELECT id, email, google_id, oauth_provider, email_verified, is_management_managed FROM users WHERE external_student_id='fresh-party'",
+  )).rows[0], {
+    id: freshId,
+    email: "fresh-new@example.test",
+    google_id: null,
+    oauth_provider: "local",
+    email_verified: false,
+    is_management_managed: true,
+  });
 
   await db.query("INSERT INTO users(username,email,role,is_locked,is_management_managed,lms_account_status,external_student_id,management_party_id) VALUES ('legacy-student','legacy@example.test','user',TRUE,TRUE,'revoked','legacy-id','legacy-party')");
   response = await invoke(payload("legacy-party", "legacy@example.test"), "legacy-provision");
@@ -83,7 +103,7 @@ test("student provisioning preserves login locks and separates student from teac
     managementIntegration: { idempotencyKey: "fresh-access", correlationId: "fresh-access" },
   }, accessRes);
   assert.equal(accessRes.statusCode, 200, JSON.stringify(accessRes.body));
-  assert.deepEqual((await db.query("SELECT access_status, course_id FROM lms_access_grants WHERE user_id=(SELECT id FROM users WHERE email='fresh@example.test')")).rows[0],
+  assert.deepEqual((await db.query("SELECT access_status, course_id FROM lms_access_grants WHERE user_id=(SELECT id FROM users WHERE email='fresh-new@example.test')")).rows[0],
     { access_status: "active", course_id: course.id });
 
   const revokedBody = { ...accessBody, accessStatus: "Revoked", reason: "PAYMENT_CANCELLED", validFrom: "2026-10-09T11:00:00.000Z" };
@@ -94,5 +114,5 @@ test("student provisioning preserves login locks and separates student from teac
     managementIntegration: { idempotencyKey: "fresh-revoke", correlationId: "fresh-revoke" },
   }, accessRes);
   assert.equal(accessRes.statusCode, 200, JSON.stringify(accessRes.body));
-  assert.equal((await db.query("SELECT access_status FROM lms_access_grants WHERE user_id=(SELECT id FROM users WHERE email='fresh@example.test')")).rows[0].access_status, "revoked");
+  assert.equal((await db.query("SELECT access_status FROM lms_access_grants WHERE user_id=(SELECT id FROM users WHERE email='fresh-new@example.test')")).rows[0].access_status, "revoked");
 });

@@ -283,14 +283,14 @@ router.post("/students/provision", requireManagementIntegration, async (req, res
 
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [payload.externalStudentId]);
     let user = (await client.query(
-      `SELECT id, role, external_student_id, management_party_id,
+      `SELECT id, role, email, external_student_id, management_party_id,
               is_management_managed, lms_account_status, management_source_updated_at
        FROM users WHERE external_student_id = $1 FOR UPDATE`,
       [payload.externalStudentId],
     )).rows[0];
     if (!user && payload.externalPartyId) {
       user = (await client.query(
-        `SELECT id, role, external_student_id, management_party_id,
+        `SELECT id, role, email, external_student_id, management_party_id,
                 is_management_managed, lms_account_status, management_source_updated_at
          FROM users WHERE management_party_id = $1 FOR UPDATE`,
         [payload.externalPartyId],
@@ -299,7 +299,7 @@ router.post("/students/provision", requireManagementIntegration, async (req, res
 
     if (!user) {
       const sameEmail = (await client.query(
-        `SELECT id, role, external_student_id, management_party_id,
+        `SELECT id, role, email, external_student_id, management_party_id,
                 is_management_managed, lms_account_status, management_source_updated_at
          FROM users WHERE LOWER(email) = $1 FOR UPDATE`,
         [payload.email],
@@ -330,11 +330,15 @@ router.post("/students/provision", requireManagementIntegration, async (req, res
       if (shouldApplySourceUpdate(user.management_source_updated_at, payload.sourceUpdatedAt)) {
         const updated = await client.query(
           `UPDATE users
-           SET email = $1,
+           SET google_id = CASE WHEN LOWER(email) <> $1 THEN NULL ELSE google_id END,
+               oauth_provider = CASE WHEN LOWER(email) <> $1 THEN 'local'::oauth_provider ELSE oauth_provider END,
+               email_verified = CASE WHEN LOWER(email) <> $1 THEN FALSE ELSE email_verified END,
+               email = $1,
                external_student_id = $2,
                management_party_id = $3,
                management_phone = $4,
                management_class_source_id = $5,
+               is_management_managed = TRUE,
                lms_account_status = $6,
                lms_last_payment_status = $7,
                management_source_updated_at = $8,

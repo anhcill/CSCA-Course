@@ -235,6 +235,14 @@ const findClass = async (client, classSourceId) => {
   return liveClass;
 };
 
+const assertEmailAvailableForUser = async (client, nextEmail, userId, identityLabel) => {
+  const conflict = await client.query(
+    "SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2 FOR UPDATE",
+    [nextEmail, userId],
+  );
+  if (conflict.rows[0]) throw new SyncValidationError(`${identityLabel} đang thuộc tài khoản LMS khác`);
+};
+
 const parseTeacher = (payload, occurredAt) => ({
   teacherSourceId: sourceId(payload.teacherSourceId || payload.externalTeacherId, "teacherSourceId"),
   fullName: text(payload.fullName, 160, "fullName"),
@@ -246,7 +254,7 @@ const parseTeacher = (payload, occurredAt) => ({
 const syncTeacher = async (client, event) => {
   const input = parseTeacher(event.payload, event.occurredAt);
   const bySource = await client.query(
-    `SELECT id, role, management_source_updated_at
+    `SELECT id, role, email, management_source_updated_at
      FROM users WHERE LOWER(management_staff_source_id) = LOWER($1) FOR UPDATE`,
     [input.teacherSourceId],
   );
@@ -269,9 +277,13 @@ const syncTeacher = async (client, event) => {
 
   const locked = input.status !== "active";
   if (user) {
+    await assertEmailAvailableForUser(client, input.email, user.id, "Email giáo viên");
     const updated = await client.query(
       `UPDATE users
-       SET email = $1, management_staff_source_id = $2, management_display_name = $3,
+       SET google_id = CASE WHEN LOWER(email) <> LOWER($1) THEN NULL ELSE google_id END,
+           oauth_provider = CASE WHEN LOWER(email) <> LOWER($1) THEN 'local'::oauth_provider ELSE oauth_provider END,
+           email_verified = CASE WHEN LOWER(email) <> LOWER($1) THEN FALSE ELSE email_verified END,
+           email = $1, management_staff_source_id = $2, management_display_name = $3,
            is_management_managed = TRUE, lms_account_status = $4,
            management_source_updated_at = $5, is_locked = $6,
            role = (CASE WHEN role = 'admin' THEN 'admin' ELSE 'creator' END)::user_role
@@ -356,6 +368,16 @@ const parseClass = (payload, occurredAt) => ({
 });
 
 const setClassTeacher = async (client, { liveClassId, teacher, teacherSourceId, teachingRole, status, sourceUpdatedAt }) => {
+  if (status === "active" && teachingRole === "lead") {
+    const newerLead = await client.query(
+      `SELECT id FROM class_teachers
+       WHERE live_class_id = $1 AND teacher_id <> $2 AND teaching_role = 'lead' AND status = 'active'
+         AND management_source_updated_at > $3
+       ORDER BY management_source_updated_at DESC LIMIT 1 FOR UPDATE`,
+      [liveClassId, teacher.id, sourceUpdatedAt],
+    );
+    if (newerLead.rows[0]) return null;
+  }
   const result = await client.query(
     `INSERT INTO class_teachers
        (live_class_id, teacher_id, management_teacher_source_id, teaching_role, status, management_source_updated_at)
@@ -373,6 +395,14 @@ const setClassTeacher = async (client, { liveClassId, teacher, teacherSourceId, 
   if (!mapping) return null;
 
   if (status === "active" && teachingRole === "lead") {
+    await client.query(
+      `UPDATE class_teachers
+       SET status = 'revoked', management_source_updated_at = $3
+       WHERE live_class_id = $1 AND teacher_id <> $2
+         AND teaching_role = 'lead' AND status = 'active'
+         AND (management_source_updated_at IS NULL OR management_source_updated_at <= $3)`,
+      [liveClassId, teacher.id, sourceUpdatedAt],
+    );
     await client.query("UPDATE live_classes SET instructor_id = $1 WHERE id = $2", [teacher.id, liveClassId]);
   } else {
     const current = await client.query("SELECT instructor_id FROM live_classes WHERE id = $1 FOR UPDATE", [liveClassId]);
@@ -412,14 +442,13 @@ const syncClass = async (client, event) => {
       : liveClass.management_approval_status === "rejected" ? "cancelled" : input.status;
     const updated = await client.query(
       `UPDATE live_classes
-       SET title = $1, course_id = $2, instructor_id = COALESCE($3, instructor_id),
-           description = $4, max_students = $5, status = $6,
-           management_course_source_id = $7, management_source_updated_at = $8,
-           management_requested_status = $10
-       WHERE id = $9
+       SET title = $1, course_id = $2, description = $3, max_students = $4, status = $5,
+           management_course_source_id = $6, management_source_updated_at = $7,
+           management_requested_status = $9
+       WHERE id = $8
        RETURNING id, title, course_id, management_class_source_id, management_course_source_id, status`,
-      [input.title, course.id, leadTeacher?.id || null, input.description, input.maxStudents,
-        effectiveStatus, input.courseSourceId, input.sourceUpdatedAt, liveClass.id, input.status],
+      [input.title, course.id, input.description, input.maxStudents, effectiveStatus,
+        input.courseSourceId, input.sourceUpdatedAt, liveClass.id, input.status],
     );
     row = updated.rows[0];
   } else {
@@ -808,10 +837,13 @@ const parseStudent = (payload, occurredAt) => {
 
 const syncStudent = async (client, event) => {
   const input = parseStudent(event.payload, event.occurredAt);
+  const sourceIds = [input.studentSourceId, ...input.legacyStudentSourceIds].map(lower);
   const bySource = await client.query(
-    `SELECT id, role, management_source_updated_at
-     FROM users WHERE LOWER(external_student_id) = LOWER($1) FOR UPDATE`,
-    [input.studentSourceId],
+    `SELECT id, role, email, external_student_id, management_source_updated_at
+     FROM users WHERE LOWER(external_student_id) = ANY($1::text[])
+     ORDER BY CASE WHEN LOWER(external_student_id) = LOWER($2) THEN 0 ELSE 1 END, id
+     LIMIT 1 FOR UPDATE`,
+    [sourceIds, input.studentSourceId],
   );
   let user = bySource.rows[0];
   if (!user) {
@@ -834,9 +866,13 @@ const syncStudent = async (client, event) => {
   }
   let row;
   if (user) {
+    await assertEmailAvailableForUser(client, input.email, user.id, "Email học viên");
     const updated = await client.query(
       `UPDATE users
-       SET email = $1, external_student_id = $2, management_phone = $3,
+       SET google_id = CASE WHEN LOWER(email) <> LOWER($1) THEN NULL ELSE google_id END,
+           oauth_provider = CASE WHEN LOWER(email) <> LOWER($1) THEN 'local'::oauth_provider ELSE oauth_provider END,
+           email_verified = CASE WHEN LOWER(email) <> LOWER($1) THEN FALSE ELSE email_verified END,
+           email = $1, external_student_id = $2, management_phone = $3,
            is_management_managed = TRUE,
            lms_account_status = CASE WHEN role IN ('creator', 'admin') THEN lms_account_status ELSE $4 END,
            management_source_updated_at = $5, lms_provisioned_at = COALESCE(lms_provisioned_at, NOW())
@@ -1033,7 +1069,7 @@ const syncEntitlement = async (client, event, forceRevoked = false) => {
   return { action: forceRevoked ? "payment.refunded" : "entitlement.synced", entityType: "user", entityId: Number(user.id), data: { accountStatus, grants } };
 };
 
-const applyManagementEvent = async (client, event) => {
+export const applyManagementEvent = async (client, event) => {
   switch (event.eventType) {
     case "teacher.upserted": return syncTeacher(client, event);
     case "course.upserted": return syncCourse(client, event);

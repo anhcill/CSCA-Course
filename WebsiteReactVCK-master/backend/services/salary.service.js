@@ -54,10 +54,12 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
             ct.teaching_role
      FROM live_classes lc
      LEFT JOIN courses c ON c.id = lc.course_id
-     LEFT JOIN class_teachers ct ON ct.live_class_id = lc.id AND ct.teacher_id = $1 AND ct.status = 'active'
+     LEFT JOIN class_teachers ct ON ct.live_class_id = lc.id AND ct.teacher_id = $1
+       AND ct.status = 'active' AND ct.teaching_role IN ('lead', 'co_teacher')
      WHERE lc.status <> 'cancelled'
        AND ((lc.instructor_id = $1 AND NOT EXISTS (
-         SELECT 1 FROM class_teachers former WHERE former.live_class_id = lc.id AND former.teacher_id = $1 AND former.status = 'revoked'
+         SELECT 1 FROM class_teachers mapping
+         WHERE mapping.live_class_id = lc.id AND mapping.teacher_id = $1
        )) OR ct.id IS NOT NULL)
      ORDER BY lc.created_at DESC`,
     [teacherId],
@@ -245,14 +247,19 @@ export const getAllTeachersSalaryOverview = async (db = { query: defaultQuery },
       FROM live_classes lc
       LEFT JOIN class_sessions cs ON cs.live_class_id = lc.id
       WHERE (lc.instructor_id = u.id AND NOT EXISTS (
-        SELECT 1 FROM class_teachers former WHERE former.live_class_id = lc.id AND former.teacher_id = u.id AND former.status = 'revoked'
+        SELECT 1 FROM class_teachers mapping
+        WHERE mapping.live_class_id = lc.id AND mapping.teacher_id = u.id
       )) OR EXISTS (
-        SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = u.id AND ct.status = 'active'
+        SELECT 1 FROM class_teachers ct
+        WHERE ct.live_class_id = lc.id AND ct.teacher_id = u.id
+          AND ct.status = 'active' AND ct.teaching_role IN ('lead', 'co_teacher')
       )
     ) stats ON true
     WHERE (u.role IN ('creator', 'admin')
        OR EXISTS (SELECT 1 FROM live_classes lc2 WHERE lc2.instructor_id = u.id)
-       OR EXISTS (SELECT 1 FROM class_teachers ct2 WHERE ct2.teacher_id = u.id AND ct2.status = 'active'))
+       OR EXISTS (SELECT 1 FROM class_teachers ct2
+                  WHERE ct2.teacher_id = u.id AND ct2.status = 'active'
+                    AND ct2.teaching_role IN ('lead', 'co_teacher')))
        ${whereClause}
     ORDER BY stats.completed_sessions DESC, u.created_at DESC
   `;
