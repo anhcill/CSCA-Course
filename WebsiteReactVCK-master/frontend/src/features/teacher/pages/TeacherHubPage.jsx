@@ -5,7 +5,10 @@ import {
   ArrowRight,
   BookOpen,
   CalendarDays,
+  CheckCircle2,
+  ClipboardCheck,
   Clock,
+  Users,
   Video,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
@@ -13,7 +16,6 @@ import { fetchTeacherDashboardStats, getLiveSessionAccess } from "../../api/lmsC
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState, PermissionDeniedState } from "../../../components/common/StateView";
 import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
-import TeacherSalarySection from "../components/TeacherSalarySection.jsx";
 
 const EMPTY_DATA = {
   stats: {
@@ -130,15 +132,48 @@ export default function TeacherHubPage() {
 
   return (
     <div className="min-h-full bg-slate-50 dark:bg-slate-950 px-4 py-5 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      <div className="mx-auto max-w-7xl space-y-4">
+      <div className="mx-auto max-w-7xl space-y-3.5">
+        {/* Header & KPI Thống kê gộp chung, nhỏ gọn */}
+        <section className="overflow-hidden rounded-2xl border border-blue-100 dark:border-slate-800 bg-gradient-to-r from-[#eaf4ff] via-white to-[#f3f8ff] dark:from-slate-900 dark:via-slate-900/95 dark:to-blue-950/30 p-3 sm:p-4 shadow-xs">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 items-center">
+            {/* Cột trái: Tiêu đề & mô tả */}
+            <div className="lg:col-span-5 space-y-1">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-800 px-2.5 py-0.5 text-[11px] font-semibold text-blue-600 dark:text-sky-300 shadow-xs ring-1 ring-blue-100 dark:ring-slate-700">
+                <Users className="h-3 w-3" /> Bàn làm việc giảng viên
+              </span>
+              <h1 className="text-lg font-black tracking-tight text-slate-950 dark:text-white sm:text-xl">
+                Tổng quan giảng dạy
+              </h1>
+            </div>
+
+            {/* Cột phải: 4 ô thống kê nhỏ gọn */}
+            <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                ["Lớp đang phụ trách", loading ? "..." : data.stats.activeClassesCount, Users, "text-blue-600 dark:text-sky-400 bg-blue-50 dark:bg-blue-950/60"],
+                ["Tổng học viên", loading ? "..." : data.stats.totalStudentsCount, BookOpen, "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/60"],
+                ["Bài chờ chấm", loading ? "..." : data.stats.pendingGradingCount, ClipboardCheck, "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60"],
+                ["Chuyên cần TB", loading ? "..." : `${data.stats.attendanceRate}%`, CheckCircle2, "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60"],
+              ].map(([label, value, Icon, iconStyle]) => (
+                <div key={label} className="flex items-center gap-2 rounded-xl bg-white/90 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700/60 p-2 sm:p-2.5 shadow-xs">
+                  <div className={`flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg ${iconStyle}`}>
+                    <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-tight">{value}</p>
+                    <p className="text-[10px] sm:text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">{label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {loading ? (
           <Loading loading={true} text="Đang đồng bộ dữ liệu giảng dạy..." fullScreen={false} className="py-12" />
         ) : error ? (
           <ErrorState title="Chưa thể tải dữ liệu" message={error} onRetry={loadDashboard} />
         ) : (
           <>
-            {/* Bảng Lương & Thù Lao Giảng Dạy Đặt Ngay Trên Đầu */}
-            <TeacherSalarySection salaryData={data.salary} onRefresh={loadDashboard} refreshing={loading} />
 
             {/* Danh sách lớp phụ trách */}
             <section className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-4 sm:p-5 space-y-3 shadow-sm">
