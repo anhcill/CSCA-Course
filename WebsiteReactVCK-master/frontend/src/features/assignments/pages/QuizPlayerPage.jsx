@@ -6,6 +6,7 @@ import {
   FiBookOpen,
   FiCamera,
   FiCheckCircle,
+  FiClipboard,
   FiExternalLink,
   FiEye,
   FiFileText,
@@ -16,6 +17,7 @@ import {
   FiSend,
   FiTarget,
   FiTrash2,
+  FiUploadCloud,
   FiX,
   FiZoomIn,
 } from "react-icons/fi";
@@ -61,12 +63,17 @@ export default function QuizPlayerPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [mobileTab, setMobileTab] = useState("paper"); // "paper" | "sheet"
+  const [mobileTab, setMobileTab] = useState("paper"); // "paper" | "mc" | "essay" | "sheet"
   const [saveStatus, setSaveStatus] = useState("saved");
+
+  // Layout mode: "split" (Trắc nghiệm 1 bên, Tự luận 1 bên) or "tabs"
+  const [desktopLayout, setDesktopLayout] = useState("split");
+  const [selectedEssayQuestionId, setSelectedEssayQuestionId] = useState(null);
+  const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
 
   // Essay / Handwritten response states
   const [answerPanelTab, setAnswerPanelTab] = useState("mc"); // "mc" | "essay"
-  const [essayAttachments, setEssayAttachments] = useState([]); // [{ id, name, size, url, uploadedAt }]
+  const [essayAttachments, setEssayAttachments] = useState([]); // [{ id, name, size, url, uploadedAt, isPdf }]
   const [essayNotes, setEssayNotes] = useState("");
   const [essayNotesByQuestion, setEssayNotesByQuestion] = useState({});
   const [uploadingEssay, setUploadingEssay] = useState(false);
@@ -85,6 +92,7 @@ export default function QuizPlayerPage() {
     [quizData?.description, quizData?.essayConfig],
   );
   const hasEssay = Boolean(essayConfig?.enabled) || essayQuestions.length > 0;
+  const hasBoth = multipleChoiceQuestions.length > 0 && hasEssay;
 
   const answerKeys = useMemo(() => {
     const keys = [...new Set(questions.flatMap((question) => (question.options || []).map((option) => option.key)))].sort();
@@ -210,26 +218,36 @@ export default function QuizPlayerPage() {
     loadQuiz();
   }, [loadQuiz]);
 
-  // Upload the original file bytes so handwriting and metadata are not degraded.
+  // Upload the original file bytes (image or PDF) so handwriting and metadata are preserved.
   const handleAddImages = useCallback(async (files, question = null) => {
     if (result || reviewMode) return;
-    const validFiles = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    const fileList = Array.from(files);
+    const validFiles = fileList.filter((file) => {
+      const isImage = file.type.startsWith("image/");
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      return isImage || isPdf;
+    });
+
     if (validFiles.length === 0) {
-      toast.error("Vui lòng chọn file hình ảnh (JPG, PNG, WEBP...)");
+      toast.error("Vui lòng chọn file hình ảnh (JPG, PNG, WEBP...) hoặc file PDF bài làm.");
       return;
     }
     setUploadingEssay(true);
-    const toastId = toast.loading(`Đang xử lý & lưu ${validFiles.length} ảnh vào Cloudflare R2...`);
+    const toastId = toast.loading(`Đang xử lý & lưu ${validFiles.length} file vào kho Cloudflare R2...`);
     try {
       const newItems = [];
       for (let i = 0; i < validFiles.length; i++) {
         const file = validFiles[i];
-        const previewUrl = await readFileAsDataUrl(file);
-        const rawName = file.name || `photo_${Date.now()}_${i + 1}.jpg`;
-        const extension = rawName.match(/\.[a-zA-Z0-9]+$/)?.[0] || "";
-        const cleanBase = rawName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100) || `photo_${Date.now()}`;
+        const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+        let previewUrl = null;
+        if (!isPdf) {
+          previewUrl = await readFileAsDataUrl(file);
+        }
+        const rawName = file.name || (isPdf ? `document_${Date.now()}_${i + 1}.pdf` : `photo_${Date.now()}_${i + 1}.jpg`);
+        const extension = rawName.match(/\.[a-zA-Z0-9]+$/)?.[0] || (isPdf ? ".pdf" : ".jpg");
+        const cleanBase = rawName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100) || `file_${Date.now()}`;
         const filename = `${cleanBase}${extension}`;
-        const mimeType = file.type || "application/octet-stream";
+        const mimeType = file.type || (isPdf ? "application/pdf" : "application/octet-stream");
 
         let cloudflareAssetId = null;
         let cloudflareUrl = null;
@@ -273,6 +291,7 @@ export default function QuizPlayerPage() {
           name: filename,
           size: file.size,
           mimeType,
+          isPdf,
           url: cloudflareUrl,
           previewUrl,
           isCloudflare: true,
@@ -285,13 +304,18 @@ export default function QuizPlayerPage() {
       setEssayAttachments((prev) => [...prev, ...newItems]);
       const cloudflareCount = newItems.filter((item) => item.isCloudflare).length;
       if (cloudflareCount > 0) {
-        toast.success(`Đã lưu ${cloudflareCount} ảnh vào kho Cloudflare R2 an toàn! ☁️`, { id: toastId });
+        toast.success(
+          question
+            ? `Đã lưu ${cloudflareCount} file cho Câu ${question.displayNumber} vào Cloudflare R2! ☁️`
+            : `Đã lưu ${cloudflareCount} file bài làm vào Cloudflare R2! ☁️`,
+          { id: toastId }
+        );
       } else {
-        toast.success(`Đã thêm ${newItems.length} ảnh bài làm!`, { id: toastId });
+        toast.success(`Đã thêm ${newItems.length} file bài làm!`, { id: toastId });
       }
     } catch (err) {
-      console.error("Lỗi tải ảnh tự luận:", err);
-      toast.error(err?.message || "Không thể xử lý ảnh, vui lòng thử lại!", { id: toastId });
+      console.error("Lỗi tải file tự luận:", err);
+      toast.error(err?.message || "Không thể xử lý file, vui lòng thử lại!", { id: toastId });
     } finally {
       setUploadingEssay(false);
     }
@@ -300,7 +324,7 @@ export default function QuizPlayerPage() {
   const handleRemoveImage = useCallback((imgId) => {
     if (result || reviewMode) return;
     setEssayAttachments((prev) => prev.filter((img) => img.id !== imgId));
-    toast.success("Đã xóa ảnh bài làm");
+    toast.success("Đã xóa file bài làm");
   }, [result, reviewMode]);
 
   // Listen for Ctrl+V clipboard paste to easily attach screenshots
@@ -318,16 +342,55 @@ export default function QuizPlayerPage() {
       }
       if (imageFiles.length > 0) {
         e.preventDefault();
-        if (essayQuestions.length > 1) {
-          toast.error("Đề có nhiều câu tự luận. Hãy dán hoặc tải ảnh tại đúng câu.");
+        // 1. Check focused element inside a question card
+        const activeEl = document.activeElement;
+        const cardEl = activeEl?.closest("[data-essay-question-id]");
+        const qId = cardEl?.getAttribute("data-essay-question-id") || selectedEssayQuestionId;
+        const targetQ = essayQuestions.find((q) => String(q.id) === String(qId)) || null;
+
+        if (targetQ) {
+          await handleAddImages(imageFiles, targetQ);
           return;
         }
-        await handleAddImages(imageFiles, essayQuestions[0] || null);
+
+        // 2. If only 1 essay question
+        if (essayQuestions.length === 1) {
+          await handleAddImages(imageFiles, essayQuestions[0]);
+          return;
+        }
+
+        // 3. Target the first essay question that has no images yet, or essayQuestions[0]
+        if (essayQuestions.length > 1) {
+          const firstUnanswered = essayQuestions.find((q) => attachmentsForQuestion(essayAttachments, q.id).length === 0) || essayQuestions[0];
+          await handleAddImages(imageFiles, firstUnanswered);
+          return;
+        }
+
+        await handleAddImages(imageFiles, null);
       }
     };
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
-  }, [essayQuestions, handleAddImages, result, reviewMode]);
+  }, [essayQuestions, essayAttachments, selectedEssayQuestionId, handleAddImages, result, reviewMode]);
+
+  // Auto request browser fullscreen on first user interaction if not already fullscreen
+  useEffect(() => {
+    const triggerFullscreen = () => {
+      if (!document.fullscreenElement) {
+        const el = containerRef.current || document.documentElement;
+        if (el?.requestFullscreen) {
+          el.requestFullscreen().catch(() => {});
+        }
+      }
+    };
+    triggerFullscreen();
+    window.addEventListener("click", triggerFullscreen, { once: true });
+    window.addEventListener("keydown", triggerFullscreen, { once: true });
+    return () => {
+      window.removeEventListener("click", triggerFullscreen);
+      window.removeEventListener("keydown", triggerFullscreen);
+    };
+  }, []);
 
   // Autosave answers & essay attachments
   useEffect(() => {
@@ -484,6 +547,596 @@ export default function QuizPlayerPage() {
   // Active paper/solution URL
   const currentViewUrl = activeViewerTab === "solution" && quizData.solutionUrl ? quizData.solutionUrl : quizData.paperUrl;
 
+  const renderSubmitActions = () => (
+    <>
+      <div className="flex items-center gap-2">
+        {/* Fullscreen Button */}
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/90 py-2.5 px-3 text-xs font-bold text-slate-200 transition hover:bg-slate-700 hover:text-white"
+        >
+          {isFullscreen ? (
+            <>
+              <FiMinimize2 className="h-3.5 w-3.5 text-slate-400" />
+              <span>Thu nhỏ</span>
+            </>
+          ) : (
+            <>
+              <FiMaximize2 className="h-3.5 w-3.5 text-slate-400" />
+              <span>Toàn màn hình</span>
+            </>
+          )}
+        </button>
+
+        {/* Submit / Finish Button */}
+        {!reviewMode && !result ? (
+          <button
+            type="button"
+            onClick={() => setShowConfirm(true)}
+            disabled={submitting}
+            className="flex-[1.3] inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 py-2.5 px-4 text-xs font-black text-white shadow-lg shadow-rose-950/50 transition hover:from-red-500 hover:to-rose-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <FiSend className="h-3.5 w-3.5" />
+            <span>{submitting ? "Đang nộp..." : "Nộp bài"}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => navigate(assignmentListPath)}
+            className="flex-[1.3] inline-flex items-center justify-center gap-2 rounded-xl bg-slate-800 py-2.5 px-4 text-xs font-black text-slate-200 hover:bg-slate-700 transition"
+          >
+            <FiArrowLeft className="h-3.5 w-3.5" />
+            <span>Thoát ra LMS</span>
+          </button>
+        )}
+      </div>
+
+      {/* Save status badge */}
+      {!reviewMode && !result && (
+        <div className="mt-2 text-center text-[10px] text-slate-500">
+          {saveStatus === "saving" && "Đang lưu nháp tự động..."}
+          {saveStatus === "saved" && "✓ Tiến độ bài làm đã được lưu an toàn"}
+          {saveStatus === "error" && "⚠ Lỗi lưu nháp - Đang kết nối lại"}
+        </div>
+      )}
+    </>
+  );
+
+  const renderOmrPanel = ({ isSplitView = false } = {}) => (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* OMR Header */}
+      <div className="flex shrink-0 items-start justify-between border-b border-slate-800/90 px-3.5 py-3 bg-[#091120]">
+        <div>
+          <h2 className="text-xs font-black tracking-wider text-white flex items-center gap-1.5">
+            <span>🔘</span> BẢNG TRẮC NGHIỆM
+          </h2>
+          <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+            {quizData.paperUrl ? "Chọn đáp án theo file PDF" : "Chọn đáp án cho từng câu"}
+          </p>
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
+          <span className="inline-flex items-center gap-1 text-slate-300">
+            <i className="h-2 w-2 rounded-full bg-red-600 shadow-xs shadow-red-600/50" /> Đã làm
+          </span>
+          <span className="inline-flex items-center gap-1 text-slate-400">
+            <i className="h-2 w-2 rounded-full border border-slate-500" /> Chưa làm
+          </span>
+        </div>
+      </div>
+
+      {/* OMR Table Body */}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2.5 py-2 scrollbar-thin">
+        <div className="w-full">
+          {/* Table Column Headers */}
+          <div className="grid grid-cols-[56px_repeat(4,1fr)_30px] items-center gap-1 border-b border-slate-800/60 pb-2 text-center text-xs font-black text-slate-400">
+            <span className="text-left pl-1 text-[10px] uppercase tracking-wider text-slate-500">Câu</span>
+            {answerKeys.slice(0, 4).map((key) => (
+              <span key={key} className="text-slate-300 font-black">
+                {key}
+              </span>
+            ))}
+            <span className="flex justify-center text-slate-500" title="Đánh dấu câu hỏi cần xem lại">
+              <FiFlag className="h-3 w-3" />
+            </span>
+          </div>
+
+          {/* Rows */}
+          <div className="divide-y divide-slate-800/40">
+            {questions.map((question, index) => {
+              const review = reviewByQuestion.get(String(question.id));
+              const selected = answers[question.id];
+              const selectedKeys = Array.isArray(selected) ? selected : [selected];
+              const isFlagged = flaggedQuestions.has(question.id);
+              const questionAttachments = attachmentsForQuestion(essayAttachments, question.id);
+
+              return (
+                <div
+                  key={question.id}
+                  className="grid grid-cols-[56px_repeat(4,1fr)_30px] items-center gap-1 py-1.5 text-center transition hover:bg-slate-800/20"
+                >
+                  {/* Row Label */}
+                  <span className="text-left pl-1 text-xs font-black text-slate-300">
+                    Câu {index + 1}
+                  </span>
+
+                  {isEssayQuestion(question) ? (
+                    <div className="col-span-4 flex items-center justify-center px-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedEssayQuestionId(question.id);
+                          if (!isSplitView) {
+                            setAnswerPanelTab("essay");
+                          }
+                          const el = document.getElementById(`essay-card-${question.id}`);
+                          if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }}
+                        className="w-full flex items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/20 transition active:scale-95"
+                        title={`Xem & nộp bài tự luận câu ${question.displayNumber}`}
+                      >
+                        <span className="flex items-center gap-1">
+                          <span>✍️ Tự luận</span>
+                          <span className="font-mono text-[10px] text-amber-400/90">({question.points || 2}đ)</span>
+                        </span>
+                        <span className="text-[10px] font-bold text-amber-400 underline">{questionAttachments.length} file</span>
+                      </button>
+                    </div>
+                  ) : (
+                    /* Bubble Buttons A, B, C, D */
+                    answerKeys.slice(0, 4).map((key) => {
+                      const isChosen = Boolean(selectedKeys.includes(key));
+                      const correctAnswer = review?.correctAnswer;
+                      const isCorrectOption =
+                        Boolean(review) &&
+                        (Array.isArray(correctAnswer)
+                          ? correctAnswer.includes(key)
+                          : correctAnswer === key);
+                      const isWrongChosen = Boolean(review) && isChosen && !isCorrectOption;
+
+                      return (
+                        <div key={key} className="flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => handleSelect(question, key)}
+                            disabled={Boolean(result) || reviewMode}
+                            className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black transition-all ${
+                              review
+                                ? isCorrectOption
+                                  ? "bg-emerald-600 text-white ring-2 ring-emerald-400/50"
+                                  : isWrongChosen
+                                  ? "bg-rose-600 text-white"
+                                  : "border border-slate-700 bg-slate-900/60 text-slate-500"
+                                : isChosen
+                                ? "bg-red-600 text-white shadow-md shadow-red-900/50 scale-105"
+                                : "border border-slate-700/80 bg-slate-900/40 text-slate-400 hover:border-slate-500 hover:bg-slate-800/80 hover:text-slate-200"
+                            } disabled:cursor-default`}
+                          >
+                            {isChosen || review ? (
+                              <span>{key}</span>
+                            ) : (
+                              <span className="opacity-0 hover:opacity-100 text-[10px]">{key}</span>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+
+                  {/* Flag Button */}
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => toggleFlag(question.id)}
+                      aria-label={`Đánh dấu câu ${index + 1}`}
+                      className={`rounded-lg p-1 transition ${
+                        isFlagged
+                          ? "text-amber-400 fill-amber-400 hover:text-amber-300"
+                          : "text-slate-600 hover:text-slate-400"
+                      }`}
+                      title={isFlagged ? "Bỏ đánh dấu" : "Đánh dấu xem lại"}
+                    >
+                      <FiFlag className={`h-3.5 w-3.5 ${isFlagged ? "fill-amber-400" : ""}`} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="shrink-0 border-t border-slate-800/90 bg-[#091120] p-3">
+        {isSplitView ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-400 font-medium text-[11px]">
+                Đã làm: <b className="text-emerald-400 font-mono">{answeredCount}/{multipleChoiceQuestions.length}</b> câu
+              </span>
+              {flaggedQuestions.size > 0 && (
+                <span className="text-amber-400 text-[11px] font-bold">
+                  ⚑ {flaggedQuestions.size} câu lưu ý
+                </span>
+              )}
+            </div>
+            {/* On mobile, when viewing MC tab in split view mode, provide submit actions */}
+            <div className="lg:hidden pt-2 border-t border-slate-800/60">
+              {renderSubmitActions()}
+            </div>
+          </div>
+        ) : (
+          renderSubmitActions()
+        )}
+      </div>
+    </div>
+  );
+
+  const renderEssayPanel = () => (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Essay Header */}
+      <div className="flex shrink-0 items-start justify-between border-b border-slate-800/90 px-3.5 py-3 bg-[#091120]">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 text-sm">
+            ✍️
+          </span>
+          <div>
+            <h3 className="text-xs font-black text-white uppercase tracking-wider">PHẦN BÀI LÀM TỰ LUẬN</h3>
+            <p className="text-[10px] text-slate-400">Up ảnh, gửi file PDF hoặc dán ảnh (Ctrl+V)</p>
+          </div>
+        </div>
+        <span className="rounded-lg bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-mono font-bold text-amber-300">
+          {essayConfig?.maxScore ? `${essayConfig.maxScore} đ` : "Chấm điểm"}
+        </span>
+      </div>
+
+      {/* Essay Scrollable Body */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-3.5 py-3.5 space-y-3.5 scrollbar-thin">
+        {/* Review feedback if graded */}
+        {reviewMode && result && (
+          <div
+            className={`rounded-2xl border p-3.5 text-xs ${
+              result.essayGrade
+                ? "border-emerald-500/40 bg-emerald-950/30 text-emerald-200"
+                : "border-sky-500/40 bg-sky-950/30 text-sky-200"
+            }`}
+          >
+            {result.essayGrade ? (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-black text-emerald-300 flex items-center gap-1.5">
+                    <FiCheckCircle className="h-4 w-4 text-emerald-400" /> KẾT QUẢ CHẤM TỰ LUẬN
+                  </span>
+                  <span className="rounded-lg bg-emerald-600 px-2.5 py-0.5 text-xs font-black text-white font-mono">
+                    {result.essayGrade.score} / {essayConfig?.maxScore || 10} đ
+                  </span>
+                </div>
+                {result.essayGrade.feedback ? (
+                  <div className="mt-2 rounded-xl bg-black/30 p-2.5 text-[11px] text-slate-200">
+                    <b className="text-emerald-300">Nhận xét của giáo viên: </b>
+                    {result.essayGrade.feedback}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-300 italic">Không có nhận xét thêm từ giáo viên.</p>
+                )}
+                {result.essayGrade.gradedAt && (
+                  <div className="mt-1 text-[10px] text-emerald-400/80 text-right">
+                    Đã chấm: {new Date(result.essayGrade.gradedAt).toLocaleString("vi-VN")}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-start gap-2.5">
+                <span className="text-lg">⏳</span>
+                <div>
+                  <b className="font-black text-sky-300 block">Đang chờ giáo viên chấm tự luận</b>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    Phần trắc nghiệm bạn đạt <b className="text-white">{result.mcScore ?? result.score} điểm</b>. Điểm tự luận sẽ được cập nhật sau khi giáo viên hoàn tất việc chấm bài.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Prompt */}
+        {essayConfig?.prompt && (
+          <div className="rounded-xl border border-slate-800 bg-[#091120] p-3 text-xs text-slate-300">
+            <span className="text-[10px] font-black uppercase text-amber-400 block mb-1">
+              📌 Yêu cầu phần tự luận:
+            </span>
+            <p className="whitespace-pre-wrap leading-relaxed text-slate-200 text-[11px]">{essayConfig.prompt}</p>
+          </div>
+        )}
+
+        {/* Essay Questions List */}
+        {essayQuestions.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="block text-[11px] font-black uppercase text-amber-400 tracking-wider">
+                BÀI NỘP THEO TỪNG CÂU ({essayQuestions.length} CÂU)
+              </span>
+              <span className="text-[10px] text-slate-400 font-semibold">
+                Đã nộp: {essayAttachments.length} file
+              </span>
+            </div>
+
+            {essayQuestions.map((question) => {
+              const questionAttachments = attachmentsForQuestion(essayAttachments, question.id);
+              const isSelected = selectedEssayQuestionId === question.id;
+              const isDragOver = dragOverQuestionId === question.id;
+
+              return (
+                <div
+                  key={question.id}
+                  id={`essay-card-${question.id}`}
+                  data-essay-question-id={question.id}
+                  onClick={() => setSelectedEssayQuestionId(question.id)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverQuestionId(question.id);
+                  }}
+                  onDragLeave={() => setDragOverQuestionId(null)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverQuestionId(null);
+                    if (e.dataTransfer.files) handleAddImages(e.dataTransfer.files, question);
+                  }}
+                  className={`rounded-2xl border p-3.5 space-y-2.5 transition-all ${
+                    isSelected
+                      ? "border-amber-500/80 bg-[#0d182b] shadow-lg shadow-amber-950/20"
+                      : "border-slate-800 bg-[#091120] hover:border-slate-700"
+                  } ${isDragOver ? "ring-2 ring-amber-400 bg-amber-950/20" : ""}`}
+                >
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-500/20 text-amber-300 font-mono text-[11px] font-black">
+                        {question.displayNumber}
+                      </span>
+                      <span className="font-black text-white">Câu {question.displayNumber}</span>
+                      <span className="rounded bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.2 text-[10px] font-bold text-amber-400">
+                        {question.points || 2}đ
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-bold">
+                      {questionAttachments.length > 0 ? (
+                        <span className="text-emerald-400">✓ {questionAttachments.length} file</span>
+                      ) : (
+                        <span className="text-slate-500">Chưa nộp file</span>
+                      )}
+                    </span>
+                  </div>
+
+                  {question.question_text && (
+                    <p className="line-clamp-2 text-[11px] leading-4 text-slate-400 font-medium">{question.question_text}</p>
+                  )}
+
+                  {/* Action Buttons for this question: Up ảnh, Gửi file, Dán ảnh */}
+                  {!reviewMode && !result && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <input
+                        id={`essay-card-upload-${question.id}`}
+                        type="file"
+                        accept="image/*,application/pdf"
+                        multiple
+                        disabled={uploadingEssay}
+                        onChange={(e) => {
+                          if (e.target.files) handleAddImages(e.target.files, question);
+                          e.target.value = "";
+                        }}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor={`essay-card-upload-${question.id}`}
+                        className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-amber-600/90 hover:bg-amber-500 px-2.5 py-1.5 text-[11px] font-bold text-white transition active:scale-95 shadow-xs"
+                      >
+                        <FiCamera className="h-3 w-3" />
+                        <span>Up ảnh</span>
+                      </label>
+
+                      <label
+                        htmlFor={`essay-card-upload-${question.id}`}
+                        className="cursor-pointer inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/90 hover:bg-slate-700 px-2.5 py-1.5 text-[11px] font-bold text-slate-200 transition active:scale-95"
+                      >
+                        <FiFileText className="h-3 w-3 text-sky-400" />
+                        <span>Gửi file PDF</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setSelectedEssayQuestionId(question.id);
+                          try {
+                            const clipboardItems = await navigator.clipboard?.read?.();
+                            if (clipboardItems) {
+                              const imageFiles = [];
+                              for (const item of clipboardItems) {
+                                for (const type of item.types) {
+                                  if (type.startsWith("image/")) {
+                                    const blob = await item.getType(type);
+                                    imageFiles.push(new File([blob], `pasted_${Date.now()}.png`, { type }));
+                                  }
+                                }
+                              }
+                              if (imageFiles.length > 0) {
+                                await handleAddImages(imageFiles, question);
+                                return;
+                              }
+                            }
+                          } catch {
+                            /* fallback */
+                          }
+                          toast(`Bấm vào Câu ${question.displayNumber} rồi nhấn phím Ctrl+V để dán ảnh bài làm!`, { icon: "📋" });
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1.5 text-[11px] font-bold text-amber-300 transition"
+                        title="Dán ảnh bài làm từ clipboard hoặc nhấn phím Ctrl+V"
+                      >
+                        <FiClipboard className="h-3 w-3" />
+                        <span>Dán ảnh (Ctrl+V)</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Empty state prompt for question */}
+                  {!reviewMode && !result && questionAttachments.length === 0 && (
+                    <div
+                      className={`rounded-xl border border-dashed p-2 text-center transition ${
+                        isDragOver ? "border-amber-400 bg-amber-500/15" : "border-slate-800/80 bg-slate-900/40"
+                      }`}
+                    >
+                      <span className="text-[10px] text-slate-400">
+                        Kéo thả ảnh/PDF hoặc nhấn <kbd className="rounded bg-slate-800 px-1 py-0.5 font-mono text-[9px] text-amber-300">Ctrl+V</kbd> để dán ảnh vào câu này
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Thumbnails of attachments for this question */}
+                  {questionAttachments.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      {questionAttachments.map((att, idx) => (
+                        <div
+                          key={att.id || idx}
+                          className="group relative rounded-xl border border-slate-700 bg-slate-900 overflow-hidden shadow-xs aspect-[4/3]"
+                        >
+                          {att.isPdf || att.name?.toLowerCase().endsWith(".pdf") ? (
+                            <div className="h-full w-full flex flex-col items-center justify-center p-2 bg-[#09101d] text-center">
+                              <FiFileText className="h-7 w-7 text-rose-400 mb-1" />
+                              <span className="text-[10px] font-bold text-slate-200 line-clamp-1 w-full px-1">{att.name}</span>
+                              <span className="text-[8px] text-slate-400 uppercase font-mono">PDF</span>
+                            </div>
+                          ) : (
+                            <img
+                              src={att.previewUrl || att.url}
+                              alt={att.name || `Trang ${idx + 1}`}
+                              className="h-full w-full object-cover transition duration-200 group-hover:scale-105"
+                            />
+                          )}
+                          <span className="absolute bottom-1 left-1 rounded-md bg-black/80 px-1.5 py-0.5 text-[8px] font-mono font-bold text-white">
+                            Trang {idx + 1}
+                          </span>
+                          {/* Actions Overlay */}
+                          <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/70 opacity-0 group-hover:opacity-100 transition backdrop-blur-xs">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (att.isPdf || att.name?.toLowerCase().endsWith(".pdf")) {
+                                  window.open(att.url, "_blank");
+                                } else {
+                                  setLightboxImg(att.url);
+                                  setLightboxRotation(0);
+                                }
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white shadow hover:bg-blue-500"
+                              title="Xem phóng to"
+                            >
+                              <FiZoomIn className="h-3.5 w-3.5" />
+                            </button>
+                            {!reviewMode && !result && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveImage(att.id);
+                                }}
+                                className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-600 text-white shadow hover:bg-rose-500"
+                                title="Xóa file này"
+                              >
+                                <FiTrash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Textarea for this question */}
+                  <textarea
+                    value={essayNotesByQuestion[String(question.id)] || ""}
+                    onChange={(event) => setEssayNotesByQuestion((current) => ({ ...current, [String(question.id)]: event.target.value }))}
+                    onFocus={() => setSelectedEssayQuestionId(question.id)}
+                    disabled={Boolean(result) || reviewMode}
+                    placeholder={`Ghi chú, đáp số hoặc lời giải tóm tắt cho câu ${question.displayNumber}...`}
+                    rows={2}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-xs text-white outline-none placeholder:text-slate-500 focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-75 transition"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Global Multi-page / General Dropzone */}
+        {!reviewMode && !result && (
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDraggingOver(true);
+            }}
+            onDragLeave={() => setIsDraggingOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDraggingOver(false);
+              if (e.dataTransfer.files) handleAddImages(e.dataTransfer.files, null);
+            }}
+            className={`rounded-2xl border-2 border-dashed p-3 text-center transition ${
+              isDraggingOver ? "border-amber-400 bg-amber-500/10" : "border-slate-800 bg-[#070e1b] hover:border-slate-700"
+            }`}
+          >
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              multiple
+              disabled={uploadingEssay}
+              onChange={(e) => {
+                if (e.target.files) handleAddImages(e.target.files, null);
+                e.target.value = "";
+              }}
+              id="student-general-essay-file-input"
+              className="hidden"
+            />
+            <label htmlFor="student-general-essay-file-input" className="cursor-pointer flex flex-col items-center gap-1.5 py-1">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
+                <FiUploadCloud className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-white hover:underline">
+                  {uploadingEssay ? "Đang tải file bài làm..." : "Tải toàn bộ bài tự luận (nhiều trang gộp)"}
+                </span>
+                <p className="mt-0.5 text-[10px] text-slate-400">
+                  Dành cho bài thi làm trên nhiều trang giấy • Hỗ trợ ảnh JPG, PNG hoặc PDF
+                </p>
+              </div>
+            </label>
+          </div>
+        )}
+
+        {/* General Notes */}
+        <div>
+          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+            Ghi chú chung cho giáo viên:
+          </label>
+          <textarea
+            value={essayNotes}
+            onChange={(e) => setEssayNotes(e.target.value)}
+            disabled={Boolean(result) || reviewMode}
+            placeholder="Lời nhắn hoặc ghi chú thêm cho bài thi tự luận..."
+            rows={2}
+            className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 focus:outline-none transition disabled:opacity-75 disabled:cursor-not-allowed"
+          />
+        </div>
+      </div>
+
+      {/* Footer with Submit and Fullscreen */}
+      <div className="shrink-0 border-t border-slate-800/90 bg-[#091120] p-3 sm:p-4">
+        {renderSubmitActions()}
+      </div>
+    </div>
+  );
+
   return (
     <div
       ref={containerRef}
@@ -574,6 +1227,38 @@ export default function QuizPlayerPage() {
             </div>
           </div>
 
+          {/* Layout switcher if has both MC and Essay */}
+          {hasBoth && (
+            <button
+              type="button"
+              onClick={() => setDesktopLayout((prev) => (prev === "split" ? "tabs" : "split"))}
+              className="hidden xl:inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-slate-700 hover:text-white"
+              title={desktopLayout === "split" ? "Gộp Trắc nghiệm & Tự luận dùng Tab" : "Tách Trắc nghiệm 1 bên, Tự luận 1 bên"}
+            >
+              <span>{desktopLayout === "split" ? "⊞ Tách 2 bên" : "⊟ Dùng Tab"}</span>
+            </button>
+          )}
+
+          {/* Fullscreen Button in Header */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-slate-700 hover:text-white"
+            title="Chế độ toàn màn hình"
+          >
+            {isFullscreen ? (
+              <>
+                <FiMinimize2 className="h-3.5 w-3.5 text-slate-400" />
+                <span>Thu nhỏ</span>
+              </>
+            ) : (
+              <>
+                <FiMaximize2 className="h-3.5 w-3.5 text-slate-400" />
+                <span>Toàn màn hình</span>
+              </>
+            )}
+          </button>
+
           {/* Mobile exit button */}
           <button
             type="button"
@@ -587,33 +1272,61 @@ export default function QuizPlayerPage() {
       </header>
 
       {/* MOBILE SWITCHER TABS */}
-      <div className="flex lg:hidden shrink-0 border-b border-slate-800 bg-[#0a1222] px-3 py-1.5 gap-2">
+      <div className="flex lg:hidden shrink-0 border-b border-slate-800 bg-[#0a1222] px-2 py-1.5 gap-1.5 overflow-x-auto">
         <button
           type="button"
           onClick={() => setMobileTab("paper")}
-          className={`flex-1 rounded-lg py-1.5 text-xs font-black transition ${
+          className={`flex-1 min-w-[90px] rounded-lg py-1.5 text-xs font-black transition ${
             mobileTab === "paper" ? "bg-rose-600 text-white" : "bg-slate-800/60 text-slate-400"
           }`}
         >
           📄 Đề thi {quizData.solutionUrl && reviewMode ? "/ Lời giải" : ""}
         </button>
-        <button
-          type="button"
-          onClick={() => setMobileTab("sheet")}
-          className={`flex-1 rounded-lg py-1.5 text-xs font-black transition ${
-            mobileTab === "sheet" ? "bg-rose-600 text-white" : "bg-slate-800/60 text-slate-400"
-          }`}
-        >
-          📋 Làm bài {hasEssay ? `(TN: ${answeredCount}/${multipleChoiceQuestions.length} • TL: ${essayAttachments.length} ảnh)` : `(${answeredCount}/${multipleChoiceQuestions.length})`}
-        </button>
+
+        {hasBoth ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setMobileTab("mc")}
+              className={`flex-1 min-w-[110px] rounded-lg py-1.5 text-xs font-black transition ${
+                mobileTab === "mc" ? "bg-red-600 text-white" : "bg-slate-800/60 text-slate-400"
+              }`}
+            >
+              🔘 Trắc nghiệm ({answeredCount}/{multipleChoiceQuestions.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab("essay")}
+              className={`flex-1 min-w-[110px] rounded-lg py-1.5 text-xs font-black transition ${
+                mobileTab === "essay" ? "bg-amber-600 text-white" : "bg-slate-800/60 text-slate-400"
+              }`}
+            >
+              ✍️ Tự luận ({essayAttachments.length} file)
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setMobileTab("sheet")}
+            className={`flex-1 min-w-[110px] rounded-lg py-1.5 text-xs font-black transition ${
+              mobileTab === "sheet" ? "bg-rose-600 text-white" : "bg-slate-800/60 text-slate-400"
+            }`}
+          >
+            📋 Làm bài {hasEssay ? `(TL: ${essayAttachments.length} file)` : `(TN: ${answeredCount}/${multipleChoiceQuestions.length})`}
+          </button>
+        )}
       </div>
 
       {/* MAIN SPLIT VIEW */}
-      <main className="flex flex-1 min-h-0 overflow-hidden p-2 sm:p-3.5 gap-2 sm:gap-3.5">
-        {/* LEFT COLUMN: PDF VIEWER / QUESTION CARDS (~68% width) */}
+      <main className="flex flex-1 min-h-0 overflow-hidden p-2 sm:p-3 gap-2 sm:gap-3">
+        {/* LEFT COLUMN: PDF VIEWER / QUESTION CARDS */}
         <section
-          className={`flex-[7] min-w-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0a1222] overflow-hidden shadow-2xl ${
-            mobileTab === "sheet" ? "hidden lg:flex" : "flex"
+          className={`min-w-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0a1222] overflow-hidden shadow-2xl ${
+            hasBoth && desktopLayout === "split"
+              ? "flex-1 min-w-[360px] xl:min-w-[440px]"
+              : "flex-[7]"
+          } ${
+            mobileTab === "paper" ? "flex" : "hidden lg:flex"
           }`}
         >
           {/* Top Viewer Subheader (Tabs for Review Mode & Solution File) */}
@@ -907,507 +1620,81 @@ export default function QuizPlayerPage() {
           </div>
         </section>
 
-        {/* RIGHT COLUMN: OMR BUBBLE ANSWER SHEET + ESSAY HANDWRITING PANEL */}
-        <section
-          className={`flex-[3] min-w-[320px] max-w-[440px] flex flex-col rounded-2xl border border-slate-800/80 bg-[#0b1323] overflow-hidden shadow-2xl ${
-            mobileTab === "paper" ? "hidden lg:flex" : "flex"
-          }`}
-        >
-          {/* Top Panel Tab Switcher if Quiz has both MC and Essay */}
-          {hasEssay && (
-            <div className="flex shrink-0 border-b border-slate-800 bg-[#080e1b] p-1.5 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setAnswerPanelTab("mc")}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-black transition ${
-                  answerPanelTab === "mc"
-                    ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-rose-950/40"
-                    : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                <span>🔘 Trắc nghiệm</span>
-                <span className="rounded-md bg-black/30 px-1.5 py-0.5 text-[10px] font-mono">
-                  {answeredCount}/{multipleChoiceQuestions.length}
-                </span>
-              </button>
+        {/* When quiz has BOTH MC and Essay in SPLIT layout: Trắc nghiệm 1 bên, Tự luận 1 bên */}
+        {hasBoth && desktopLayout === "split" ? (
+          <>
+            {/* MIDDLE COLUMN: OMR ANSWER SHEET */}
+            <section
+              className={`w-full lg:w-[280px] xl:w-[320px] shrink-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0b1323] overflow-hidden shadow-2xl ${
+                mobileTab === "mc" ? "flex" : "hidden lg:flex"
+              }`}
+            >
+              {renderOmrPanel({ isSplitView: true })}
+            </section>
 
-              <button
-                type="button"
-                onClick={() => setAnswerPanelTab("essay")}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-black transition ${
-                  answerPanelTab === "essay"
-                    ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-950/40"
-                    : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                <span>✍️ Tự luận</span>
-                <span
-                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-mono ${
-                    essayAttachments.length > 0 ? "bg-amber-400/20 text-amber-300 font-bold" : "bg-black/30"
-                  }`}
-                >
-                  {essayAttachments.length} ảnh
-                </span>
-              </button>
-            </div>
-          )}
-
-          {(!hasEssay || answerPanelTab === "mc") ? (
-            /* OMR Bubble Sheet Mode */
-            <>
-              {/* OMR Header */}
-              <div className="flex shrink-0 items-start justify-between border-b border-slate-800/90 px-4 py-3.5 bg-[#091120]">
-                <div>
-                  <h2 className="text-sm font-black tracking-wider text-white">BẢNG LÀM BÀI TRẮC NGHIỆM</h2>
-                  <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
-                    {quizData.paperUrl ? "Chọn đáp án theo nội dung trong PDF" : "Chọn đáp án cho từng câu"}
-                  </p>
-                </div>
-
-                {/* Legend matching screenshot */}
-                <div className="flex items-center gap-2 pt-1 text-[10px] font-bold text-slate-400">
-                  <span className="inline-flex items-center gap-1 text-slate-300">
-                    <i className="h-2 w-2 rounded-full bg-red-600 shadow-xs shadow-red-600/50" /> Đã làm
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-slate-400">
-                    <i className="h-2 w-2 rounded-full border border-slate-500" /> Chưa làm
-                  </span>
-                </div>
-              </div>
-
-              {/* OMR Table Body */}
-              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2 scrollbar-thin">
-                <div className="w-full">
-                  {/* Table Column Headers */}
-                  <div className="grid grid-cols-[64px_repeat(4,1fr)_34px] items-center gap-1 border-b border-slate-800/60 pb-2 text-center text-xs font-black text-slate-400">
-                    <span className="text-left pl-1 text-[11px] uppercase tracking-wider text-slate-500">Câu</span>
-                    {answerKeys.slice(0, 4).map((key) => (
-                      <span key={key} className="text-slate-300 font-black">
-                        {key}
-                      </span>
-                    ))}
-                    <span className="flex justify-center text-slate-500" title="Đánh dấu câu hỏi cần xem lại">
-                      <FiFlag className="h-3 w-3" />
-                    </span>
-                  </div>
-
-                  {/* Rows */}
-                  <div className="divide-y divide-slate-800/40">
-                    {questions.map((question, index) => {
-                      const review = reviewByQuestion.get(String(question.id));
-                      const selected = answers[question.id];
-                      const selectedKeys = Array.isArray(selected) ? selected : [selected];
-                      const isFlagged = flaggedQuestions.has(question.id);
-                      const questionAttachments = attachmentsForQuestion(essayAttachments, question.id);
-
-                      return (
-                        <div
-                          key={question.id}
-                          className="grid grid-cols-[64px_repeat(4,1fr)_34px] items-center gap-1 py-1.5 text-center transition hover:bg-slate-800/20"
-                        >
-                          {/* Row Label */}
-                          <span className="text-left pl-1 text-xs font-black text-slate-300">
-                            Câu {index + 1}
-                          </span>
-
-                          {isEssayQuestion(question) ? (
-                            <div className="col-span-4 flex items-center justify-center px-1">
-                              <input
-                                id={`essay-omr-upload-${question.id}`}
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                disabled={uploadingEssay || reviewMode || Boolean(result)}
-                                onChange={(event) => {
-                                  if (event.target.files) handleAddImages(event.target.files, question);
-                                  event.target.value = "";
-                                }}
-                                className="hidden"
-                              />
-                              <label
-                                htmlFor={`essay-omr-upload-${question.id}`}
-                                className="w-full flex cursor-pointer items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/20 transition active:scale-95"
-                                title={`Tải ảnh bài làm cho câu ${question.displayNumber}`}
-                              >
-                                <span className="flex items-center gap-1">
-                                  <span>✍️ Tự luận</span>
-                                  <span className="font-mono text-[10px] text-amber-400/90">({question.points}đ)</span>
-                                </span>
-                                <span className="text-[10px] font-bold text-amber-400 underline">{questionAttachments.length} ảnh</span>
-                              </label>
-                            </div>
-                          ) : (
-                            /* Bubble Buttons A, B, C, D */
-                            answerKeys.slice(0, 4).map((key) => {
-                              const isChosen = Boolean(selectedKeys.includes(key));
-
-                              // Review state colors
-                              const correctAnswer = review?.correctAnswer;
-                              const isCorrectOption =
-                                Boolean(review) &&
-                                (Array.isArray(correctAnswer)
-                                  ? correctAnswer.includes(key)
-                                  : correctAnswer === key);
-                              const isWrongChoice = Boolean(review) && isChosen && !isCorrectOption;
-
-                              let bubbleStyle =
-                                "border-2 border-slate-600/90 text-slate-400 bg-transparent hover:border-rose-400 hover:text-white";
-
-                              if (reviewMode && review) {
-                                if (isCorrectOption) {
-                                  bubbleStyle = "border-2 border-emerald-500 bg-emerald-600 text-white font-black shadow-sm";
-                                } else if (isWrongChoice) {
-                                  bubbleStyle = "border-2 border-rose-500 bg-rose-600 text-white font-black shadow-sm";
-                                } else {
-                                  bubbleStyle = "border border-slate-700/60 text-slate-600 bg-transparent opacity-40";
-                                }
-                              } else if (isChosen) {
-                                // Vibrant Red Circle matching screenshot exactly
-                                bubbleStyle =
-                                  "border-2 border-red-600 bg-red-600 text-white font-black shadow-md shadow-red-600/40 scale-105";
-                              }
-
-                              return (
-                                <div key={key} className="flex justify-center">
-                                  <button
-                                    type="button"
-                                    disabled={reviewMode || Boolean(result)}
-                                    onClick={() => handleSelect(question, key)}
-                                    aria-label={`Câu ${index + 1}, đáp án ${key}`}
-                                    className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-transform active:scale-95 disabled:cursor-default ${bubbleStyle}`}
-                                  >
-                                    {isChosen || (reviewMode && (isCorrectOption || isWrongChoice)) ? (
-                                      <span>{key}</span>
-                                    ) : (
-                                      <span className="opacity-0 hover:opacity-100 text-[10px]">{key}</span>
-                                    )}
-                                  </button>
-                                </div>
-                              );
-                            })
-                          )}
-
-                          {/* Flag / Bookmark Button */}
-                          <div className="flex justify-center">
-                            <button
-                              type="button"
-                              onClick={() => toggleFlag(question.id)}
-                              aria-label={`Đánh dấu câu ${index + 1}`}
-                              className={`rounded-lg p-1 transition ${
-                                isFlagged
-                                  ? "text-amber-400 fill-amber-400 hover:text-amber-300"
-                                  : "text-slate-600 hover:text-slate-400"
-                              }`}
-                              title={isFlagged ? "Bỏ đánh dấu" : "Đánh dấu xem lại"}
-                            >
-                              <FiFlag className={`h-3.5 w-3.5 ${isFlagged ? "fill-amber-400" : ""}`} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </>
-          ) : (
-            /* Essay Handwriting Solution Mode */
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4 scrollbar-thin">
-              {/* Essay Header Info */}
-              <div className="rounded-2xl border border-amber-900/40 bg-gradient-to-br from-amber-950/30 to-[#0e1728] p-3.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 text-sm">
-                      ✍️
-                    </span>
-                    <div>
-                      <h3 className="text-xs font-black text-white uppercase tracking-wider">PHẦN BÀI LÀM TỰ LUẬN</h3>
-                      <p className="text-[10px] text-slate-400">Làm trên giấy, chụp ảnh và đính kèm</p>
-                    </div>
-                  </div>
-                  <span className="rounded-lg bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-mono font-bold text-amber-300">
-                    {essayConfig?.maxScore ? `${essayConfig.maxScore} đ` : "Chấm điểm"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Teacher Feedback Banner (if in review mode) */}
-              {reviewMode && result && (
-                <div
-                  className={`rounded-2xl border p-3.5 text-xs ${
-                    result.essayGrade
-                      ? "border-emerald-500/40 bg-emerald-950/30 text-emerald-200"
-                      : "border-sky-500/40 bg-sky-950/30 text-sky-200"
-                  }`}
-                >
-                  {result.essayGrade ? (
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="font-black text-emerald-300 flex items-center gap-1.5">
-                          <FiCheckCircle className="h-4 w-4 text-emerald-400" /> KẾT QUẢ CHẤM TỰ LUẬN
-                        </span>
-                        <span className="rounded-lg bg-emerald-600 px-2.5 py-0.5 text-xs font-black text-white font-mono">
-                          {result.essayGrade.score} / {essayConfig?.maxScore || 10} đ
-                        </span>
-                      </div>
-                      {result.essayGrade.feedback ? (
-                        <div className="mt-2 rounded-xl bg-black/30 p-2.5 text-[11px] text-slate-200">
-                          <b className="text-emerald-300">Nhận xét của giáo viên: </b>
-                          {result.essayGrade.feedback}
-                        </div>
-                      ) : (
-                        <p className="text-[11px] text-slate-300 italic">Không có nhận xét thêm từ giáo viên.</p>
-                      )}
-                      {result.essayGrade.gradedAt && (
-                        <div className="mt-1 text-[10px] text-emerald-400/80 text-right">
-                          Đã chấm: {new Date(result.essayGrade.gradedAt).toLocaleString("vi-VN")}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex items-start gap-2.5">
-                      <span className="text-lg">⏳</span>
-                      <div>
-                        <b className="font-black text-sky-300 block">Đang chờ giáo viên chấm tự luận</b>
-                        <p className="text-[11px] text-slate-300 mt-0.5">
-                          Phần trắc nghiệm bạn đạt <b className="text-white">{result.mcScore ?? result.score} điểm</b>. Điểm tự luận sẽ được cập nhật sau khi giáo viên hoàn tất việc chấm bài.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Teacher Prompt / Instructions */}
-              {essayConfig?.prompt && (
-                <div className="rounded-xl border border-slate-800 bg-[#091120] p-3 text-xs text-slate-300">
-                  <span className="text-[11px] font-black uppercase text-amber-400 block mb-1">
-                    📌 Yêu cầu phần tự luận:
-                  </span>
-                  <p className="whitespace-pre-wrap leading-relaxed text-slate-200 text-[11px]">{essayConfig.prompt}</p>
-                </div>
-              )}
-
-              {essayQuestions.length > 0 && (
-                <div className="space-y-2">
-                  <span className="block text-[11px] font-black uppercase text-amber-400">Bài nộp theo từng câu</span>
-                  {essayQuestions.map((question) => {
-                    const questionAttachments = attachmentsForQuestion(essayAttachments, question.id);
-                    return (
-                      <div key={question.id} className="rounded-xl border border-slate-800 bg-[#091120] p-3">
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-200">
-                          <span>Câu {question.displayNumber}</span>
-                          <span className="text-amber-300">{questionAttachments.length} ảnh</span>
-                        </div>
-                        {question.question_text && (
-                          <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-400">{question.question_text}</p>
-                        )}
-                        <textarea
-                          value={essayNotesByQuestion[String(question.id)] || ""}
-                          onChange={(event) => setEssayNotesByQuestion((current) => ({ ...current, [String(question.id)]: event.target.value }))}
-                          disabled={Boolean(result) || reviewMode}
-                          placeholder={`Ghi chú cho câu ${question.displayNumber}...`}
-                          rows={2}
-                          className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900/90 p-2 text-xs text-white outline-none placeholder:text-slate-500 focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-75"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Drag & Drop Upload Zone (hidden in review mode) */}
-              {!reviewMode && !result && essayQuestions.length <= 1 && (
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDraggingOver(true);
-                  }}
-                  onDragLeave={() => setIsDraggingOver(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setIsDraggingOver(false);
-                    if (e.dataTransfer.files) handleAddImages(e.dataTransfer.files, essayQuestions[0] || null);
-                  }}
-                  className={`relative rounded-2xl border-2 border-dashed p-4 text-center transition ${
-                    isDraggingOver
-                      ? "border-amber-400 bg-amber-500/10"
-                      : "border-slate-700 bg-slate-900/50 hover:border-slate-600"
-                  }`}
-                >
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    disabled={uploadingEssay}
-                    onChange={(e) => {
-                      if (e.target.files) handleAddImages(e.target.files, essayQuestions[0] || null);
-                      e.target.value = "";
-                    }}
-                    id="student-essay-file-input"
-                    className="hidden"
-                  />
-                  <label htmlFor="student-essay-file-input" className="cursor-pointer flex flex-col items-center gap-2">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 text-amber-400">
-                      <FiCamera className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <span className="text-xs font-black text-white hover:underline">
-                        {uploadingEssay ? "Đang tải ảnh gốc..." : "Bấm chọn ảnh hoặc Kéo thả ảnh vào đây"}
-                      </span>
-                      <p className="mt-0.5 text-[10px] text-slate-400">
-                        Hỗ trợ JPG, PNG, WEBP hoặc dán trực tiếp <kbd className="rounded bg-slate-800 px-1 py-0.5 font-mono text-[9px] text-slate-300">Ctrl+V</kbd>
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              )}
-              {!reviewMode && !result && essayQuestions.length > 1 && (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] font-semibold text-amber-200">
-                  Đề có nhiều câu tự luận. Hãy tải ảnh tại đúng dòng của từng câu để giáo viên nhận bài chính xác.
-                </div>
-              )}
-
-              {/* Uploaded Photos Gallery */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-                  <span>Ảnh bài làm đã tải ({essayAttachments.length})</span>
-                  {essayAttachments.length > 0 && (
-                    <span className="text-[10px] text-slate-400">Nhấp để xem to / xoay</span>
-                  )}
-                </div>
-
-                {essayAttachments.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-800 bg-[#09101d] p-5 text-center text-xs text-slate-500">
-                    Chưa có ảnh bài làm tự luận nào được tải lên.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {essayAttachments.map((img, idx) => (
-                      <div
-                        key={img.id || idx}
-                        className="group relative rounded-xl border border-slate-700/80 bg-slate-900 overflow-hidden shadow-sm aspect-[4/3]"
-                      >
-                        <img
-                          src={img.previewUrl || img.url}
-                          alt={img.name || `Trang ${idx + 1}`}
-                          className="h-full w-full object-contain transition duration-300 group-hover:scale-105"
-                        />
-                        <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-mono font-bold text-white backdrop-blur-xs">
-                          Trang {idx + 1}
-                        </span>
-                        {img.isCloudflare && (
-                          <span className="absolute top-1 left-1 rounded-md bg-emerald-950/80 border border-emerald-500/40 px-1.5 py-0.5 text-[8px] font-black text-emerald-300 backdrop-blur-xs flex items-center gap-1">
-                            ☁️ R2
-                          </span>
-                        )}
-                        {img.questionNumber && (
-                          <span className="absolute top-1 right-1 rounded-md bg-amber-950/90 border border-amber-500/40 px-1.5 py-0.5 text-[8px] font-black text-amber-200">
-                            Câu {img.questionNumber}
-                          </span>
-                        )}
-                        {/* Overlay Actions */}
-                        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition group-hover:opacity-100 backdrop-blur-xs">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLightboxImg(img.url);
-                              setLightboxRotation(0);
-                            }}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white shadow hover:bg-blue-500"
-                            title="Xem toàn màn hình"
-                          >
-                            <FiZoomIn className="h-3.5 w-3.5" />
-                          </button>
-                          {!reviewMode && !result && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveImage(img.id)}
-                              className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-600 text-white shadow hover:bg-rose-500"
-                              title="Xóa ảnh này"
-                            >
-                              <FiTrash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Student Notes / Text remarks */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">
-                  Ghi chú chung cho giáo viên (tùy chọn):
-                </label>
-                <textarea
-                  value={essayNotes}
-                  onChange={(e) => setEssayNotes(e.target.value)}
-                  disabled={Boolean(result) || reviewMode}
-                  placeholder="Ghi chú thêm cho giáo viên nếu cần..."
-                  rows={3}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-75 disabled:cursor-not-allowed"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* OMR Footer matching screenshot */}
-          <div className="shrink-0 border-t border-slate-800/90 bg-[#091120] p-3 sm:p-4">
-            <div className="flex items-center gap-2.5">
-              {/* Fullscreen Button */}
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800/90 py-2.5 px-3 text-xs font-bold text-slate-200 transition hover:bg-slate-700 hover:text-white"
-              >
-                {isFullscreen ? (
-                  <>
-                    <FiMinimize2 className="h-3.5 w-3.5 text-slate-400" />
-                    <span>Thu nhỏ</span>
-                  </>
-                ) : (
-                  <>
-                    <FiMaximize2 className="h-3.5 w-3.5 text-slate-400" />
-                    <span>Toàn màn hình</span>
-                  </>
-                )}
-              </button>
-
-              {/* Submit / Finish Button */}
-              {!reviewMode && !result ? (
+            {/* RIGHT COLUMN: ESSAY SUBMISSION PANEL */}
+            <section
+              className={`w-full lg:w-[380px] xl:w-[440px] 2xl:w-[480px] shrink-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0b1323] overflow-hidden shadow-2xl ${
+                mobileTab === "essay" ? "flex" : "hidden lg:flex"
+              }`}
+            >
+              {renderEssayPanel()}
+            </section>
+          </>
+        ) : (
+          /* TABBED OR SINGLE COLUMN MODE */
+          <section
+            className={`flex-[3] min-w-[320px] max-w-[460px] flex flex-col rounded-2xl border border-slate-800/80 bg-[#0b1323] overflow-hidden shadow-2xl ${
+              hasBoth
+                ? (mobileTab === "mc" || mobileTab === "essay" ? "flex" : "hidden lg:flex")
+                : (mobileTab === "paper" ? "hidden lg:flex" : "flex")
+            }`}
+          >
+            {hasBoth && (
+              <div className="flex shrink-0 border-b border-slate-800 bg-[#080e1b] p-1.5 gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setShowConfirm(true)}
-                  disabled={submitting}
-                  className="flex-[1.2] inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 py-2.5 px-4 text-xs font-black text-white shadow-lg shadow-rose-950/50 transition hover:from-red-500 hover:to-rose-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setAnswerPanelTab("mc")}
+                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-black transition ${
+                    answerPanelTab === "mc"
+                      ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-rose-950/40"
+                      : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
+                  }`}
                 >
-                  <FiSend className="h-3.5 w-3.5" />
-                  <span>{submitting ? "Đang nộp..." : "Nộp bài"}</span>
+                  <span>🔘 Trắc nghiệm</span>
+                  <span className="rounded-md bg-black/30 px-1.5 py-0.5 text-[10px] font-mono">
+                    {answeredCount}/{multipleChoiceQuestions.length}
+                  </span>
                 </button>
-              ) : (
+
                 <button
                   type="button"
-                  onClick={() => navigate(assignmentListPath)}
-                  className="flex-[1.2] inline-flex items-center justify-center gap-2 rounded-xl bg-slate-800 py-2.5 px-4 text-xs font-black text-slate-200 hover:bg-slate-700 transition"
+                  onClick={() => setAnswerPanelTab("essay")}
+                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-black transition ${
+                    answerPanelTab === "essay"
+                      ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-950/40"
+                      : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
+                  }`}
                 >
-                  <FiArrowLeft className="h-3.5 w-3.5" />
-                  <span>Thoát ra LMS</span>
+                  <span>✍️ Tự luận</span>
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-mono ${
+                      essayAttachments.length > 0 ? "bg-amber-400/20 text-amber-300 font-bold" : "bg-black/30"
+                    }`}
+                  >
+                    {essayAttachments.length} file
+                  </span>
                 </button>
-              )}
-            </div>
-
-            {/* Save status badge */}
-            {!reviewMode && !result && (
-              <div className="mt-2 text-center text-[10px] text-slate-500">
-                {saveStatus === "saving" && "Đang lưu nháp tự động..."}
-                {saveStatus === "saved" && "✓ Tiến độ bài làm đã được lưu an toàn"}
-                {saveStatus === "error" && "⚠ Lỗi lưu nháp - Đang kết nối lại"}
               </div>
             )}
-          </div>
-        </section>
+
+            {(!hasEssay || (hasBoth && answerPanelTab === "mc")) ? (
+              renderOmrPanel({ isSplitView: false })
+            ) : (
+              renderEssayPanel()
+            )}
+          </section>
+        )}
       </main>
 
       {/* CONFIRM SUBMIT MODAL */}

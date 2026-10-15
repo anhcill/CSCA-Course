@@ -591,7 +591,8 @@ export const getAllUsers = async (req, res) => {
 export const createUser = async (req, res) => {
   const client = await getClient();
   try {
-    const { username, email, password, role, gender, fullName } = req.body;
+    const { username, email, password, role, gender, fullName, hourlyRate, hourly_rate } = req.body;
+    const initialHourlyRate = Math.max(0, Number(hourlyRate ?? hourly_rate) || 0);
     const normalizedUsername = typeof username === "string" ? username.trim() : "";
     const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
     const normalizedFullName = normalizeOptionalText(fullName, 120);
@@ -616,12 +617,12 @@ export const createUser = async (req, res) => {
 
     await client.query("BEGIN");
     const { rows } = await client.query(
-      `INSERT INTO users (username, email, password_hash, role, gender, avatar_url, email_verified)
-       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
-       RETURNING id, username, email, role, avatar_url, gender, is_vip, is_locked,
+      `INSERT INTO users (username, email, password_hash, role, gender, avatar_url, email_verified, hourly_rate)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7)
+       RETURNING id, username, email, role, avatar_url, gender, hourly_rate, is_vip, is_locked,
                  vip_expires_at, email_verified, oauth_provider, password_hash,
                  created_at, updated_at`,
-      [normalizedUsername, normalizedEmail, hashedPassword, role || 'user', gender || 'other', avatarUrl]
+      [normalizedUsername, normalizedEmail, hashedPassword, role || 'user', gender || 'other', avatarUrl, initialHourlyRate]
     );
     if (normalizedFullName !== null) {
       await client.query(
@@ -696,6 +697,14 @@ export const updateUser = async (req, res) => {
       if (updates[field] !== undefined) {
         setClauses.push(`${field} = $${paramIndex}`);
         values.push(field === 'email' ? normalizedEmail : updates[field]);
+        paramIndex++;
+      }
+    }
+    if (updates.hourlyRate !== undefined || updates.hourly_rate !== undefined) {
+      const parsedRate = Number(updates.hourlyRate ?? updates.hourly_rate);
+      if (!Number.isNaN(parsedRate) && parsedRate >= 0) {
+        setClauses.push(`hourly_rate = $${paramIndex}`);
+        values.push(parsedRate);
         paramIndex++;
       }
     }

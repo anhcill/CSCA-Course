@@ -12,6 +12,11 @@ import {
   generateUploadPresignedUrl,
   generateVideoHeadSignedUrl,
 } from "../services/video.service.js";
+import {
+  getAllTeachersSalaryOverview,
+  getTeacherSalaryDetail,
+  updateTeacherHourlyRate,
+} from "../services/salary.service.js";
 
 const router = express.Router();
 const adminOnly = [protectRoute, requireAdmin];
@@ -90,6 +95,7 @@ const safeUser = (row) => ({
   gender: row.gender,
   avatarUrl: row.avatar_url || null,
   fullName: row.full_name || row.username,
+  hourlyRate: Number(row.hourly_rate || 0),
   isLocked: Boolean(row.is_locked),
   isVip: Boolean(row.is_vip),
   emailVerified: Boolean(row.email_verified),
@@ -106,6 +112,7 @@ const auditUserState = (row) => ({
   role: row.role,
   gender: row.gender,
   avatarUrl: row.avatar_url || null,
+  hourlyRate: Number(row.hourly_rate || 0),
   isLocked: Boolean(row.is_locked),
 });
 
@@ -142,6 +149,7 @@ const getUser = async (userId, db = { query }) => {
   const result = await db.query(
     `SELECT u.id, u.username, u.email, u.role, u.gender, u.avatar_url, u.is_locked,
             u.is_vip, u.email_verified, u.oauth_provider, u.password_hash,
+            COALESCE(u.hourly_rate, 0)::numeric(12,2) AS hourly_rate,
             u.created_at, u.updated_at, sp.full_name
      FROM users u LEFT JOIN student_profiles sp ON sp.user_id = u.id WHERE u.id = $1`,
     [userId],
@@ -573,6 +581,130 @@ router.get("/gradebook/export", ...adminOnly, async (req, res) => {
   }
 });
 
+// ============================================================================
+// TEACHER PAYROLL & SALARY MANAGEMENT
+// ============================================================================
+
+// GET /api/admin/teacher-salaries — high-level overview of teacher payroll, rates, and hours
+router.get("/teacher-salaries", ...adminOnly, async (req, res) => {
+  try {
+    const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const rateStatus = ["all", "assigned", "unassigned"].includes(req.query.rateStatus)
+      ? req.query.rateStatus
+      : "all";
+    const overview = await getAllTeachersSalaryOverview({ query }, { search, rateStatus });
+    return res.json({ success: true, data: overview });
+  } catch (error) {
+    return handleDbError(res, error, "Không thể tải bảng tổng hợp lương giảng viên");
+  }
+});
+
+// GET /api/admin/teacher-salaries/export — export payroll table to XLSX or CSV
+router.get("/teacher-salaries/export", ...adminOnly, async (req, res) => {
+  try {
+    const format = req.query.format === "csv" ? "csv" : "xlsx";
+    const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const rateStatus = ["all", "assigned", "unassigned"].includes(req.query.rateStatus)
+      ? req.query.rateStatus
+      : "all";
+    const overview = await getAllTeachersSalaryOverview({ query }, { search, rateStatus });
+
+    const rows = [
+      [
+        "ID",
+        "Giảng viên",
+        "Email",
+        "Vai trò",
+        "Mức lương/giờ (VNĐ)",
+        "Số lớp phụ trách",
+        "Số buổi đã dạy",
+        "Tổng số buổi",
+        "Số giờ đã dạy",
+        "Tổng số giờ",
+        "Lương tạm tính (VNĐ)",
+        "Lương dự kiến (VNĐ)",
+        "Tiến độ (%)",
+      ],
+      ...overview.teachers.map((t) => [
+        t.id,
+        t.fullName || t.username,
+        t.email,
+        t.role === "admin" ? "Quản trị viên" : "Giảng viên",
+        t.hourlyRate,
+        t.classesCount,
+        t.completedSessions,
+        t.totalSessions,
+        t.completedHours,
+        t.totalHours,
+        t.accruedSalary,
+        t.projectedSalary,
+        `${t.progressPct}%`,
+      ]),
+    ];
+
+    const file = format === "csv" ? makeCsv(rows) : makeXlsx(rows, "Bang luong giang vien");
+    res.set({
+      "Content-Type": format === "csv"
+        ? "text/csv; charset=utf-8"
+        : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="bang-luong-giang-vien-${Date.now()}.${format}"`,
+      "Cache-Control": "no-store",
+    });
+    return res.send(file);
+  } catch (error) {
+    return handleDbError(res, error, "Không thể xuất file bảng lương");
+  }
+});
+
+// GET /api/admin/teacher-salaries/:id/detail — detailed session breakdown for a specific teacher
+router.get("/teacher-salaries/:id/detail", ...adminOnly, async (req, res) => {
+  const teacherId = parseId(req.params.id);
+  if (!teacherId) return sendError(res, 422, "teacherId không hợp lệ", "VALIDATION_ERROR");
+  try {
+    const detail = await getTeacherSalaryDetail(teacherId, { query });
+    if (!detail) return sendError(res, 404, "Không tìm thấy giảng viên", "NOT_FOUND");
+    return res.json({ success: true, data: detail });
+  } catch (error) {
+    return handleDbError(res, error, "Không thể tải chi tiết lương giảng viên");
+  }
+});
+
+// PUT /api/admin/teacher-salaries/:id — assign / update hourly rate for a teacher
+router.put("/teacher-salaries/:id", ...adminOnly, async (req, res) => {
+  const teacherId = parseId(req.params.id);
+  if (!teacherId) return sendError(res, 422, "teacherId không hợp lệ", "VALIDATION_ERROR");
+
+  const hourlyRate = Number(req.body.hourlyRate);
+  if (!Number.isFinite(hourlyRate) || hourlyRate < 0) {
+    return sendError(res, 422, "Mức lương theo giờ phải là số lớn hơn hoặc bằng 0", "VALIDATION_ERROR");
+  }
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const updated = await updateTeacherHourlyRate({
+      teacherId,
+      hourlyRate,
+      actorId: req.user.id,
+      db: client,
+    });
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      message: `Đã cập nhật mức lương ${hourlyRate.toLocaleString("vi-VN")} đ/giờ cho giảng viên`,
+      data: updated,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error.message === "TEACHER_NOT_FOUND") {
+      return sendError(res, 404, "Không tìm thấy giảng viên", "NOT_FOUND");
+    }
+    return handleDbError(res, error, "Không thể cập nhật mức lương giảng viên");
+  } finally {
+    client.release();
+  }
+});
+
 // GET /api/admin/users — server-side search, filter, sort and pagination.
 router.get("/users", ...adminOnly, async (req, res) => {
   try {
@@ -604,6 +736,7 @@ router.get("/users", ...adminOnly, async (req, res) => {
       `SELECT u.id, u.username, u.email, u.role, u.gender, u.avatar_url,
               u.is_locked, u.is_vip, u.email_verified, u.oauth_provider,
               (u.password_hash IS NOT NULL) AS has_password,
+              COALESCE(u.hourly_rate, 0)::numeric(12,2) AS hourly_rate,
               u.created_at, u.updated_at, COALESCE(sp.full_name, u.username) AS full_name,
               COUNT(*) OVER()::int AS total_count
        FROM users u LEFT JOIN student_profiles sp ON sp.user_id = u.id
@@ -634,12 +767,13 @@ router.post("/users", ...adminOnly, async (req, res) => {
     if (!VALID_ROLES.has(role)) return sendError(res, 422, "Vai trò không hợp lệ", "VALIDATION_ERROR");
     if (!VALID_GENDERS.has(gender)) return sendError(res, 422, "Giới tính không hợp lệ", "VALIDATION_ERROR");
     const avatarUrl = req.body.avatarUrl === undefined ? null : normalizeText(req.body.avatarUrl, 1000);
+    const hourlyRate = req.body.hourlyRate !== undefined ? Math.max(0, Number(req.body.hourlyRate) || 0) : 0;
     const hash = await bcrypt.hash(password, 12);
     const result = await query(
-      `INSERT INTO users (username, email, password_hash, gender, avatar_url, role, email_verified, is_locked)
-       VALUES ($1, $2, $3, $4, $5, $6, FALSE, FALSE)
-       RETURNING id, username, email, role, gender, avatar_url, is_locked, is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
-      [username, email, hash, gender, avatarUrl, role],
+      `INSERT INTO users (username, email, password_hash, gender, avatar_url, role, hourly_rate, email_verified, is_locked)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, FALSE)
+       RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked, is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
+      [username, email, hash, gender, avatarUrl, role, hourlyRate],
     );
     await recordAuditEvent({ actorId: req.user.id, action: "user.created", entityType: "user", entityId: result.rows[0].id, afterState: auditUserState(result.rows[0]), metadata: { ip: req.ip } });
     return res.status(201).json({ success: true, data: safeUser(result.rows[0]), message: "Tạo tài khoản thành công" });
@@ -662,7 +796,7 @@ router.patch("/users/:id/lock", ...adminOnly, async (req, res) => {
     if (!before) { await client.query("ROLLBACK"); return sendError(res, 404, "Không tìm thấy người dùng", "NOT_FOUND"); }
     const result = await client.query(
       `UPDATE users SET is_locked = $1, updated_at = NOW() WHERE id = $2
-       RETURNING id, username, email, role, gender, avatar_url, is_locked, is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
+       RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked, is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
       [req.body.isLocked, userId],
     );
     if (req.body.isLocked) await client.query("DELETE FROM user_sessions WHERE user_id = $1", [userId]);
@@ -702,6 +836,14 @@ router.patch("/users/:id", ...adminOnly, async (req, res) => {
     }
     if (req.body.avatarUrl !== undefined) add("avatar_url", normalizeText(req.body.avatarUrl, 1000));
     if (req.body.role !== undefined) add("role", nextRole);
+    if (req.body.hourlyRate !== undefined) {
+      const parsedRate = Number(req.body.hourlyRate);
+      if (!Number.isFinite(parsedRate) || parsedRate < 0) {
+        await client.query("ROLLBACK");
+        return sendError(res, 422, "Mức lương theo giờ không hợp lệ", "VALIDATION_ERROR");
+      }
+      add("hourly_rate", parsedRate);
+    }
     if (req.body.isLocked !== undefined) {
       if (typeof req.body.isLocked !== "boolean") { await client.query("ROLLBACK"); return sendError(res, 422, "isLocked không hợp lệ", "VALIDATION_ERROR"); }
       add("is_locked", req.body.isLocked);
@@ -716,7 +858,7 @@ router.patch("/users/:id", ...adminOnly, async (req, res) => {
       values.push(userId);
       const result = await client.query(
         `UPDATE users SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${values.length}
-         RETURNING id, username, email, role, gender, avatar_url, is_locked, is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
+         RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked, is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
         values,
       );
       after = result.rows[0];

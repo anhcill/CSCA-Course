@@ -62,6 +62,7 @@ export default function AdminUser() {
     password: "",
     role: "user",
     gender: "male",
+    hourlyRate: 0,
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -124,6 +125,7 @@ export default function AdminUser() {
         password: "",
         role: user.role || "user",
         gender: user.gender || "male",
+        hourlyRate: Number(user.hourlyRate ?? user.hourly_rate ?? 0),
       });
     } else {
       setEditingUser(null);
@@ -134,6 +136,7 @@ export default function AdminUser() {
         password: "",
         role: "user",
         gender: "male",
+        hourlyRate: 0,
       });
     }
     setIsFormModalOpen(true);
@@ -426,6 +429,11 @@ export default function AdminUser() {
                         >
                           {u.role === "admin" ? "Admin" : u.role === "creator" ? "Giảng viên" : "Học viên"}
                         </span>
+                        {(u.role === "creator" || u.role === "admin") && (
+                          <span className="block mt-1 text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            {Number(u.hourlyRate || u.hourly_rate || 0).toLocaleString("vi-VN")} ₫/h
+                          </span>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4 text-center">
@@ -637,6 +645,49 @@ export default function AdminUser() {
                 </div>
               </div>
 
+              {(formData.role === "creator" || formData.role === "admin") && (
+                <div className="space-y-2 p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-emerald-800 dark:text-emerald-300 text-xs">
+                      Thù lao theo giờ (VNĐ/giờ):
+                    </label>
+                    <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 text-xs">
+                      {Number(formData.hourlyRate || 0).toLocaleString("vi-VN")} ₫/h
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="10000"
+                    value={formData.hourlyRate || 0}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        hourlyRate: Math.max(0, Number(e.target.value) || 0),
+                      })
+                    }
+                    placeholder="VD: 250000"
+                    className="w-full bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 rounded-xl p-2.5 text-xs text-gray-900 dark:text-white font-mono font-bold focus:outline-none focus:border-emerald-500"
+                  />
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {[150000, 200000, 250000, 300000, 400000].map((rate) => (
+                      <button
+                        key={rate}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, hourlyRate: rate })}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition ${
+                          formData.hourlyRate === rate
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : "bg-white dark:bg-gray-800 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700 hover:bg-emerald-100"
+                        }`}
+                      >
+                        {rate.toLocaleString("vi-VN")} ₫
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-end gap-3 pt-3">
                 <button
                   type="button"
@@ -691,6 +742,14 @@ export default function AdminUser() {
                   {detailUser.role}
                 </span>
               </div>
+              {(detailUser.role === "creator" || detailUser.role === "admin") && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Mức lương theo giờ:</span>
+                  <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                    {Number(detailUser.hourlyRate || detailUser.hourly_rate || 0).toLocaleString("vi-VN")} ₫/giờ
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-gray-500">Trạng thái:</span>
                 <span className={detailUser.isLocked ? "text-rose-500 font-bold" : "text-emerald-500 font-bold"}>

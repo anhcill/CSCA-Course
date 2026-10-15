@@ -1123,3 +1123,37 @@ export const uploadImageToR2 = async (file, { folder = "general", onProgress } =
     publicUrl: confirmRes?.data?.publicUrl || upload.publicUrl,
   };
 };
+
+// ============================================================================
+// TEACHER PAYROLL & SALARY API CLIENTS
+// ============================================================================
+
+export const fetchTeacherSalarySummary = async () => request("/teacher/salary-summary");
+
+export const fetchAdminTeacherSalaries = async ({ search = "", rateStatus = "all" } = {}) => {
+  const params = new URLSearchParams();
+  if (search && search.trim()) params.set("search", search.trim());
+  if (rateStatus && rateStatus !== "all") params.set("rateStatus", rateStatus);
+  const query = params.toString();
+  return request(`/admin/teacher-salaries${query ? `?${query}` : ""}`);
+};
+
+export const fetchAdminTeacherSalaryDetail = async (teacherId) => (
+  request(`/admin/teacher-salaries/${encodeURIComponent(teacherId)}/detail`)
+);
+
+export const updateTeacherHourlyRate = async (teacherId, hourlyRate) => (
+  request(`/admin/teacher-salaries/${encodeURIComponent(teacherId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ hourlyRate }),
+  })
+);
+
+export const adminTeacherSalariesExportUrl = ({ format = "xlsx", search = "", rateStatus = "all" } = {}) => {
+  const params = new URLSearchParams();
+  if (format) params.set("format", format);
+  if (search && search.trim()) params.set("search", search.trim());
+  if (rateStatus && rateStatus !== "all") params.set("rateStatus", rateStatus);
+  return `${API_BASE}/admin/teacher-salaries/export?${params.toString()}`;
+};
+

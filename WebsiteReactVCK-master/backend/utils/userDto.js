@@ -42,6 +42,7 @@ export const toUserDto = (row) => {
     gender: row.gender,
     avatarUrl: row.avatar_url ?? null,
     fullName: studentProfile?.fullName ?? row.full_name ?? row.username,
+    hourlyRate: Number(row.hourly_rate || 0),
     isVip: Boolean(row.is_vip),
     vipExpiresAt: row.vip_expires_at ?? null,
     emailVerified: Boolean(row.email_verified),
@@ -59,6 +60,7 @@ export const toUserDto = (row) => {
 export const getUserDtoById = async (userId, db = { query }) => {
   const { rows } = await db.query(
     `SELECT u.id, u.username, u.email, u.role, u.gender, u.avatar_url,
+            u.hourly_rate,
             u.is_vip, u.vip_expires_at, u.email_verified, u.is_locked, u.oauth_provider,
             u.is_management_managed, u.lms_account_status,
             u.password_hash, u.created_at, u.updated_at,

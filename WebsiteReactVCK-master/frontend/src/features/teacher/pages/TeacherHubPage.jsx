@@ -16,6 +16,7 @@ import { fetchTeacherDashboardStats, getLiveSessionAccess } from "../../api/lmsC
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState, PermissionDeniedState } from "../../../components/common/StateView";
 import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
+import TeacherSalarySection from "../components/TeacherSalarySection.jsx";
 
 const EMPTY_DATA = {
   stats: {
@@ -175,6 +176,8 @@ export default function TeacherHubPage() {
           <ErrorState title="Chưa thể tải dữ liệu" message={error} onRetry={loadDashboard} />
         ) : (
           <>
+            {/* Bảng Lương & Thù Lao Giảng Dạy Đặt Ngay Trên Đầu */}
+            <TeacherSalarySection salaryData={data.salary} onRefresh={loadDashboard} refreshing={loading} />
 
             {/* Danh sách lớp phụ trách */}
             <section className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-4 sm:p-5 space-y-3 shadow-sm">

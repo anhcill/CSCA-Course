@@ -6,6 +6,7 @@ import { query, getClient } from "../db/connect.js";
 import { getMeetingProvider } from "../services/liveClass.service.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import { assertGradebookOpen, assertManagedClass, notifyWorkflow, workflowError } from "../services/lmsWorkflow.service.js";
+import { getTeacherSalaryDetail } from "../services/salary.service.js";
 
 const router = express.Router();
 
@@ -360,7 +361,7 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("
     const pendingQuery = buildPendingQuery(scope, statusFilter, page, limit);
     const pendingCountParams = [...scope.params];
 
-    const [classesResult, riskResult, pendingResult, pendingCountResult, todayResult] = await Promise.all([
+    const [classesResult, riskResult, pendingResult, pendingCountResult, todayResult, salaryData] = await Promise.all([
       query(buildDashboardClassesQuery(scope), scope.params),
       query(buildRiskQuery(scope), scope.params),
       query(pendingQuery.text, pendingQuery.params),
@@ -383,6 +384,7 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("
          ORDER BY cs.start_time ASC`,
         scope.params,
       ),
+      getTeacherSalaryDetail(req.user.id),
     ]);
 
     const classes = classesResult.rows.map(serializeClass);
@@ -407,6 +409,7 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("
           attendanceRate: averageAttendance,
           todaySessionsCount: todayResult.rows.length,
         },
+        salary: salaryData || null,
         classes,
         todaySessions: todayResult.rows.map((row) => ({
           id: row.id,
@@ -432,6 +435,18 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("
   } catch (error) {
     console.error("Error fetching teacher dashboard:", error);
     return internalError(res, "Lỗi khi tổng hợp bảng điều khiển giảng viên");
+  }
+});
+
+// GET /api/teacher/salary-summary — full salary breakdown by class and session.
+router.get("/salary-summary", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const salaryData = await getTeacherSalaryDetail(req.user.id);
+    if (!salaryData) return notFound(res, "Không tìm thấy dữ liệu bảng lương giảng viên");
+    return res.json({ success: true, data: salaryData });
+  } catch (error) {
+    console.error("Error fetching teacher salary summary:", error);
+    return internalError(res, "Không thể tải bảng lương giảng viên");
   }
 });
 

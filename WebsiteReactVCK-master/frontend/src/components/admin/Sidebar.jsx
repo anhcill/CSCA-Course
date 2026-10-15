@@ -14,6 +14,7 @@ import {
   FiChevronRight,
   FiBarChart2,
   FiTrendingUp,
+  FiDollarSign,
 } from 'react-icons/fi';
 import { useAuthContext } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -75,6 +76,7 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
         { title: 'Báo cáo điểm danh', icon: <FiBarChart2 className="w-4 h-4 shrink-0" />, path: '/admin/attendance-report' },
         { title: 'Báo cáo & thống kê điểm', icon: <FiTrendingUp className="w-4 h-4 shrink-0" />, path: '/admin/grades-report' },
         { title: 'Sổ điểm & tổng kết', icon: <FiFileText className="w-4 h-4 shrink-0" />, path: '/admin/student-progress' },
+        { title: 'Lương giảng viên', icon: <FiDollarSign className="w-4 h-4 shrink-0" />, path: '/admin/salaries' },
         { title: 'Hỗ trợ học viên', icon: <FiUser className="w-4 h-4 shrink-0" />, path: '/admin/support' },
         { title: 'Ngân hàng câu hỏi', icon: <FiList className="w-4 h-4 shrink-0" />, path: '/admin/question-bank' },
         {

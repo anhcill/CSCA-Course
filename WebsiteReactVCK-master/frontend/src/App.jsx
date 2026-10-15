@@ -68,6 +68,7 @@ const TeacherStudentProgressPage = lazy(() => import("./features/teacher/pages/T
 const AttendanceReviewPage = lazy(() => import("./features/teacher/pages/AttendanceReviewPage.jsx"));
 const AttendanceReportPage = lazy(() => import("./pages/admin/AttendanceReportPage.jsx"));
 const AdminGradesReportPage = lazy(() => import("./pages/admin/AdminGradesReportPage.jsx"));
+const AdminTeacherSalaryPage = lazy(() => import("./features/admin/pages/AdminTeacherSalaryPage.jsx"));
 const QuestionBankPage = lazy(() => import("./features/teacher/pages/QuestionBankPage.jsx"));
 const StudentSupportPage = lazy(() => import("./features/teacher/pages/StudentSupportPage.jsx"));
 const StudentFilesPage = lazy(() => import("./features/learning/pages/StudentFilesPage.jsx"));
@@ -150,6 +151,7 @@ function AppRoutes() {
 
       {/* === Teacher LMS: canonical routes plus migration aliases === */}
       <Route path="/lms/teach" element={<TeacherHubPage />} />
+      <Route path="/lms/teach/salary" element={<TeacherHubPage />} />
       <Route path="/lms/teach/classes" element={<TeacherSchedulePage />} />
       <Route path="/lms/teach/classes/:classId" element={<TeacherClassDetailPage />} />
       <Route path="/lms/teach/classes/:classId/curriculum" element={<TeacherClassCurriculumPage />} />
@@ -192,6 +194,8 @@ function AppRoutes() {
         <Route path="attendance-review" element={<AttendanceReviewPage />} />
         <Route path="attendance-report" element={<AttendanceReportPage />} />
         <Route path="grades-report" element={<AdminGradesReportPage />} />
+        <Route path="salaries" element={<AdminTeacherSalaryPage />} />
+        <Route path="teacher-salaries" element={<Navigate to="/admin/salaries" replace />} />
         <Route path="question-bank" element={<QuestionBankPage />} />
         <Route path="student-progress" element={<TeacherStudentProgressPage />} />
         <Route path="support" element={<StudentSupportPage />} />
