@@ -1,0 +1,15 @@
+# Dependencies & Environment
+node_modules/
+.env
+.env.*
+*.log
+.DS_Store
+
+# Temporary build & local output folders
+.docx_qa_filled/
+.finance_build/
+outputs/
+moly-ecosystem-showcase/
+
+# Local personal documents
+Phiếu-đánh-giá*
