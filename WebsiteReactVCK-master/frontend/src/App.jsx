@@ -3,28 +3,28 @@ import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from "re
 import { Toaster } from "react-hot-toast";
 
 // Public website pages
-import Home from "./pages/client/Home.jsx";
-import NotFound from "./pages/client/NotFound.jsx";
-import Courses from "./pages/client/Courses.jsx";
-import DetailCourse from "./pages/client/DetailCourse.jsx";
-import Profile from "./pages/client/Profile.jsx";
-import Post from "./pages/client/Post.jsx";
-import PostDetail from "./pages/client/PostDetail.jsx";
-import About from "./pages/client/About.jsx";
-import Schedule from "./pages/client/Schedule.jsx";
-import SelectCourse from "./pages/client/SelectCourse.jsx";
-import SelectLevel from "./pages/client/SelectLevel.jsx";
-import PoliceAndLegal from "./pages/client/PoliceAndLegal.jsx";
-import Unauthorized from "./pages/client/Unauthorized.jsx";
-import Forbidden from "./pages/client/Forbidden.jsx";
+const Home = lazy(() => import("./pages/client/Home.jsx"));
+const NotFound = lazy(() => import("./pages/client/NotFound.jsx"));
+const Courses = lazy(() => import("./pages/client/Courses.jsx"));
+const DetailCourse = lazy(() => import("./pages/client/DetailCourse.jsx"));
+const Profile = lazy(() => import("./pages/client/Profile.jsx"));
+const Post = lazy(() => import("./pages/client/Post.jsx"));
+const PostDetail = lazy(() => import("./pages/client/PostDetail.jsx"));
+const About = lazy(() => import("./pages/client/About.jsx"));
+const Schedule = lazy(() => import("./pages/client/Schedule.jsx"));
+const SelectCourse = lazy(() => import("./pages/client/SelectCourse.jsx"));
+const SelectLevel = lazy(() => import("./pages/client/SelectLevel.jsx"));
+const PoliceAndLegal = lazy(() => import("./pages/client/PoliceAndLegal.jsx"));
+const Unauthorized = lazy(() => import("./pages/client/Unauthorized.jsx"));
+const Forbidden = lazy(() => import("./pages/client/Forbidden.jsx"));
 
 // Admin pages
 
 // Shared chrome and route policy
 import Navbar from "./components/Navbar.jsx";
 import Footer from "./components/Footer.jsx";
-import StudentLmsLayout from "./components/layouts/StudentLmsLayout.jsx";
-import TeacherLmsLayout from "./components/layouts/TeacherLmsLayout.jsx";
+const StudentLmsLayout = lazy(() => import("./components/layouts/StudentLmsLayout.jsx"));
+const TeacherLmsLayout = lazy(() => import("./components/layouts/TeacherLmsLayout.jsx"));
 import LmsRouteGuard from "./components/LmsRouteGuard.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -256,9 +256,11 @@ function AppContent() {
       <div className="min-h-screen">
         <Toaster position="top-center" reverseOrder={false} />
         <LmsRouteGuard allowedRoles={allowedRoles}>
-          <Layout>
-            <AppRoutes />
-          </Layout>
+          <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center px-4 text-sm font-semibold text-slate-500 dark:text-slate-400">Đang tải không gian học tập...</div>}>
+            <Layout>
+              <AppRoutes />
+            </Layout>
+          </Suspense>
         </LmsRouteGuard>
         <PwaInstallPrompt />
         <SessionExpiredModal

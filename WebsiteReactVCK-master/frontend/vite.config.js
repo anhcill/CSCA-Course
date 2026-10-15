@@ -56,10 +56,27 @@ export default defineConfig({
                 ]
             },
             workbox: {
-                globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2}'],
+                // Cache the app shell at install time. Route assets are cached
+                // on first use so installing an update does not download every
+                // course, teacher and admin bundle at once.
+                globPatterns: ['index.html', 'favicon.ico', 'favicon.svg', 'site.webmanifest'],
                 navigateFallback: '/index.html',
                 navigateFallbackDenylist: [/^\/api\//],
                 runtimeCaching: [
+                    {
+                        urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/assets/'),
+                        handler: 'CacheFirst',
+                        options: {
+                            cacheName: 'app-assets-cache',
+                            expiration: {
+                                maxEntries: 120,
+                                maxAgeSeconds: 30 * 24 * 60 * 60
+                            },
+                            cacheableResponse: {
+                                statuses: [200]
+                            }
+                        }
+                    },
                     {
                         urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
                         handler: 'CacheFirst',
