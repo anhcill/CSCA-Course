@@ -259,7 +259,7 @@ function QuizStatsModal({ quiz, onClose }) {
   const [search, setSearch] = useState("");
   const [selectedAttemptForGrading, setSelectedAttemptForGrading] = useState(null);
 
-  const essayConfig = useMemo(() => parseQuizDescription(quiz?.description)?.essayConfig, [quiz]);
+  const essayConfig = useMemo(() => quiz?.essayConfig || parseQuizDescription(quiz?.description)?.essayConfig, [quiz]);
 
   const loadReport = useCallback(async () => {
     if (!quiz?.id) return;

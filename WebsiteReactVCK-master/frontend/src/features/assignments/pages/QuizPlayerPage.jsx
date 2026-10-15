@@ -1,27 +1,21 @@
-/* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  FiAlertCircle,
   FiArrowLeft,
   FiBookOpen,
   FiCamera,
-  FiCheck,
   FiCheckCircle,
-  FiDownload,
   FiExternalLink,
   FiEye,
   FiFileText,
   FiFlag,
-  FiImage,
   FiMaximize2,
   FiMinimize2,
   FiRotateCcw,
   FiSend,
   FiTarget,
   FiTrash2,
-  FiUploadCloud,
   FiX,
   FiZoomIn,
 } from "react-icons/fi";
@@ -33,49 +27,21 @@ import {
   submitQuiz,
 } from "../../api/lmsClient";
 import { ErrorState, LoadingState } from "../../../components/common/StateView";
-import { parseQuizDescription, compressImageFile } from "../../teacher/utils/quizAnswerKey";
+import { parseQuizDescription } from "../../teacher/utils/quizAnswerKey";
+import {
+  attachmentsForQuestion,
+  buildEssayResponse,
+  isEssayQuestion,
+  normalizeEssayResponse,
+  preserveQuestionOrder,
+} from "../utils/quizQuestionPresentation";
 
-function dataURLtoBlob(dataUrl) {
-  const parts = dataUrl.split(";base64,");
-  const contentType = parts[0].split(":")[1] || "image/jpeg";
-  const raw = window.atob(parts[1]);
-  const rawLength = raw.length;
-  const uInt8Array = new Uint8Array(rawLength);
-  for (let i = 0; i < rawLength; ++i) {
-    uInt8Array[i] = raw.charCodeAt(i);
-  }
-  return new Blob([uInt8Array], { type: contentType });
-}
-
-function ScoreRing({ score, total }) {
-  const radius = 50;
-  const circumference = 2 * Math.PI * radius;
-  const progress = total > 0 ? Math.max(0, Math.min(1, score / total)) : 0;
-  const color = progress >= 0.6 ? "#10b981" : "#ef4444";
-  return (
-    <div className="relative mx-auto h-36 w-36">
-      <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
-        <circle cx="60" cy="60" r={radius} fill="none" stroke="currentColor" className="text-slate-800" strokeWidth="8" />
-        <circle
-          cx="60"
-          cy="60"
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth="8"
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - progress)}
-          strokeLinecap="round"
-          className="transition-all duration-1000"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <strong className="font-mono text-3xl font-black text-white">{score}</strong>
-        <span className="text-xs text-slate-400">/ {total} điểm</span>
-      </div>
-    </div>
-  );
-}
+const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = () => reject(reader.error || new Error("Không thể đọc file ảnh."));
+  reader.readAsDataURL(file);
+});
 
 export default function QuizPlayerPage() {
   const { quizId, courseId, classId } = useParams();
@@ -89,7 +55,6 @@ export default function QuizPlayerPage() {
   const [flaggedQuestions, setFlaggedQuestions] = useState(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
-  const [totalTime, setTotalTime] = useState(60 * 60);
   const [timeLeft, setTimeLeft] = useState(60 * 60);
   const [reviewMode, setReviewMode] = useState(false);
   const [activeViewerTab, setActiveViewerTab] = useState("paper"); // "paper" | "solution" | "questions"
@@ -103,6 +68,7 @@ export default function QuizPlayerPage() {
   const [answerPanelTab, setAnswerPanelTab] = useState("mc"); // "mc" | "essay"
   const [essayAttachments, setEssayAttachments] = useState([]); // [{ id, name, size, url, uploadedAt }]
   const [essayNotes, setEssayNotes] = useState("");
+  const [essayNotesByQuestion, setEssayNotesByQuestion] = useState({});
   const [uploadingEssay, setUploadingEssay] = useState(false);
   const [lightboxImg, setLightboxImg] = useState(null);
   const [lightboxRotation, setLightboxRotation] = useState(0);
@@ -110,10 +76,15 @@ export default function QuizPlayerPage() {
 
   const containerRef = useRef(null);
 
-  const questions = useMemo(() => quizData?.questions || [], [quizData]);
+  const questions = useMemo(() => preserveQuestionOrder(quizData?.questions), [quizData]);
+  const essayQuestions = useMemo(() => questions.filter(isEssayQuestion), [questions]);
+  const multipleChoiceQuestions = useMemo(() => questions.filter((question) => !isEssayQuestion(question)), [questions]);
   const isTimed = useMemo(() => Number(quizData?.durationMinutes || 0) > 0, [quizData]);
-  const essayConfig = useMemo(() => parseQuizDescription(quizData?.description)?.essayConfig || null, [quizData?.description]);
-  const hasEssay = Boolean(essayConfig?.enabled) || questions.some((q) => q.question_type === "essay" || q.type === "essay");
+  const essayConfig = useMemo(
+    () => quizData?.essayConfig || parseQuizDescription(quizData?.description)?.essayConfig || null,
+    [quizData?.description, quizData?.essayConfig],
+  );
+  const hasEssay = Boolean(essayConfig?.enabled) || essayQuestions.length > 0;
 
   const answerKeys = useMemo(() => {
     const keys = [...new Set(questions.flatMap((question) => (question.options || []).map((option) => option.key)))].sort();
@@ -125,12 +96,18 @@ export default function QuizPlayerPage() {
     [result]
   );
 
-  const answeredCount = useMemo(() => questions.filter((question) => {
+  const answeredCount = useMemo(() => multipleChoiceQuestions.filter((question) => {
     const value = answers[question.id];
     return Array.isArray(value) ? value.length > 0 : Boolean(value);
-  }).length, [answers, questions]);
+  }).length, [answers, multipleChoiceQuestions]);
 
-  const unansweredCount = Math.max(0, questions.length - answeredCount);
+  const unansweredCount = Math.max(0, multipleChoiceQuestions.length - answeredCount);
+  const essayPayload = useMemo(() => buildEssayResponse({
+    attachments: essayAttachments,
+    notesByQuestion: essayNotesByQuestion,
+    generalNotes: essayNotes,
+    essayQuestions,
+  }), [essayAttachments, essayNotes, essayNotesByQuestion, essayQuestions]);
 
   // Toggle HTML5 Fullscreen API
   const toggleFullscreen = useCallback(() => {
@@ -164,7 +141,7 @@ export default function QuizPlayerPage() {
       }
       const data = response.data;
       const parsedDesc = parseQuizDescription(data.description);
-      const isEssayEnabled = Boolean(parsedDesc?.essayConfig?.enabled);
+      const isEssayEnabled = Boolean(data.essayConfig?.enabled || parsedDesc?.essayConfig?.enabled);
 
       if ((!data.questions || data.questions.length === 0) && !isEssayEnabled) {
         throw new Error("Đề thi chưa có câu hỏi nào");
@@ -201,10 +178,12 @@ export default function QuizPlayerPage() {
       setResult(data.result || null);
       setAnswers(Object.keys(mcAnswers).length ? mcAnswers : savedAnswers);
 
-      const initialAttachments = loadedEssay?.attachments || savedEssay?.attachments || [];
-      const initialNotes = loadedEssay?.notes || savedEssay?.notes || "";
-      setEssayAttachments(Array.isArray(initialAttachments) ? initialAttachments : []);
-      setEssayNotes(typeof initialNotes === "string" ? initialNotes : "");
+      const sourceEssay = loadedEssay || savedEssay || null;
+      const orderedQuestions = preserveQuestionOrder(data.questions);
+      const normalizedEssay = normalizeEssayResponse(sourceEssay, orderedQuestions.filter(isEssayQuestion));
+      setEssayAttachments(normalizedEssay.attachments);
+      setEssayNotesByQuestion(normalizedEssay.notesByQuestion);
+      setEssayNotes(normalizedEssay.generalNotes);
 
       // If quiz is exclusively essay (0 MC questions), switch to essay panel
       if ((!data.questions || data.questions.length === 0) && isEssayEnabled) {
@@ -212,7 +191,6 @@ export default function QuizPlayerPage() {
       }
 
       const limit = Number(data.timeLimitSeconds) || Number(data.durationMinutes || 60) * 60;
-      setTotalTime(limit);
       const startedAt = data.attempt?.startedAt ? new Date(data.attempt.startedAt).getTime() : Date.now();
       const expiresAt = data.attempt?.expiresAt ? new Date(data.attempt.expiresAt).getTime() : startedAt + limit * 1000;
       setTimeLeft(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
@@ -232,9 +210,8 @@ export default function QuizPlayerPage() {
     loadQuiz();
   }, [loadQuiz]);
 
-  // Handle adding image files (from file dialog, drag & drop, or clipboard paste)
-  // Compresses via HTML5 Canvas and uploads directly to Cloudflare R2
-  const handleAddImages = useCallback(async (files) => {
+  // Upload the original file bytes so handwriting and metadata are not degraded.
+  const handleAddImages = useCallback(async (files, question = null) => {
     if (result || reviewMode) return;
     const validFiles = Array.from(files).filter((file) => file.type.startsWith("image/"));
     if (validFiles.length === 0) {
@@ -247,59 +224,60 @@ export default function QuizPlayerPage() {
       const newItems = [];
       for (let i = 0; i < validFiles.length; i++) {
         const file = validFiles[i];
-        // 1. Client-side compression (1600px max dimension, 0.82 JPEG quality for crystal-clear handwriting)
-        const dataUrl = await compressImageFile(file, 1600, 0.82);
-        const blob = dataURLtoBlob(dataUrl);
-
-        // 2. Format a clean filename for Cloudflare R2
+        const previewUrl = await readFileAsDataUrl(file);
         const rawName = file.name || `photo_${Date.now()}_${i + 1}.jpg`;
+        const extension = rawName.match(/\.[a-zA-Z0-9]+$/)?.[0] || "";
         const cleanBase = rawName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100) || `photo_${Date.now()}`;
-        const filename = `${cleanBase}.jpg`;
+        const filename = `${cleanBase}${extension}`;
+        const mimeType = file.type || "application/octet-stream";
 
         let cloudflareAssetId = null;
         let cloudflareUrl = null;
 
         try {
-          // 3. Request presigned upload URL from backend
           const uploadRes = await requestSubmissionUploadUrl({
             filename,
-            mimeType: "image/jpeg",
-            sizeBytes: blob.size,
+            mimeType,
+            sizeBytes: file.size,
             assetKind: "file",
           });
 
           const uploadData = uploadRes?.data;
           if (uploadData?.uploadUrl && uploadData?.assetId) {
-            // 4. Direct upload PUT to Cloudflare R2
             const r2Put = await fetch(uploadData.uploadUrl, {
               method: "PUT",
-              headers: uploadData.headers || { "Content-Type": "image/jpeg" },
-              body: blob,
+              headers: uploadData.headers || { "Content-Type": mimeType },
+              body: file,
             });
 
-            if (r2Put.ok) {
-              // 5. Confirm asset status in backend
-              const confirmed = await confirmSubmissionAsset({
-                assetId: uploadData.assetId,
-                mimeType: "image/jpeg",
-                sizeBytes: blob.size,
-              });
-              cloudflareAssetId = confirmed?.data?.id || uploadData.assetId;
-              cloudflareUrl = `/api/assignments/submission-assets/${cloudflareAssetId}/access`;
-            }
+            if (!r2Put.ok) throw new Error(`Kho lưu trữ từ chối file ${rawName}.`);
+            const confirmed = await confirmSubmissionAsset({
+              assetId: uploadData.assetId,
+              mimeType,
+              sizeBytes: file.size,
+            });
+            cloudflareAssetId = confirmed?.data?.id || uploadData.assetId;
+            cloudflareUrl = `/api/assignments/submission-assets/${cloudflareAssetId}/access`;
           }
         } catch (r2Err) {
-          console.warn("Cloudflare R2 direct upload failed, fallback to local preview:", r2Err);
+          throw new Error(r2Err?.message || `Không thể lưu file ${rawName} lên kho bài nộp.`);
+        }
+
+        if (!cloudflareAssetId || !cloudflareUrl) {
+          throw new Error(`Không thể xác nhận file ${rawName}. Vui lòng thử lại.`);
         }
 
         newItems.push({
           id: cloudflareAssetId ? `asset-${cloudflareAssetId}` : `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           assetId: cloudflareAssetId || null,
           name: filename,
-          size: blob.size,
-          url: cloudflareUrl || dataUrl, // Permanent Cloudflare R2 access URL
-          previewUrl: dataUrl,           // Instant local preview
-          isCloudflare: Boolean(cloudflareUrl),
+          size: file.size,
+          mimeType,
+          url: cloudflareUrl,
+          previewUrl,
+          isCloudflare: true,
+          questionId: question?.id || null,
+          questionNumber: question?.displayNumber || null,
           uploadedAt: new Date().toISOString(),
         });
       }
@@ -312,7 +290,7 @@ export default function QuizPlayerPage() {
         toast.success(`Đã thêm ${newItems.length} ảnh bài làm!`, { id: toastId });
       }
     } catch (err) {
-      console.error("Lỗi nén/tải ảnh tự luận:", err);
+      console.error("Lỗi tải ảnh tự luận:", err);
       toast.error(err?.message || "Không thể xử lý ảnh, vui lòng thử lại!", { id: toastId });
     } finally {
       setUploadingEssay(false);
@@ -340,25 +318,26 @@ export default function QuizPlayerPage() {
       }
       if (imageFiles.length > 0) {
         e.preventDefault();
-        await handleAddImages(imageFiles);
+        if (essayQuestions.length > 1) {
+          toast.error("Đề có nhiều câu tự luận. Hãy dán hoặc tải ảnh tại đúng câu.");
+          return;
+        }
+        await handleAddImages(imageFiles, essayQuestions[0] || null);
       }
     };
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
-  }, [handleAddImages, result, reviewMode]);
+  }, [essayQuestions, handleAddImages, result, reviewMode]);
 
   // Autosave answers & essay attachments
   useEffect(() => {
-    const hasWork = Object.keys(answers).length > 0 || essayAttachments.length > 0 || essayNotes.trim().length > 0;
+    const hasWork = Object.keys(answers).length > 0 || essayAttachments.length > 0 || essayPayload.notes.trim().length > 0;
     if (result || !hasWork) return undefined;
     setSaveStatus("saving");
     const timeout = setTimeout(() => {
       const payloadAnswers = {
         ...answers,
-        _essay: {
-          attachments: essayAttachments,
-          notes: essayNotes.trim(),
-        },
+        _essay: essayPayload,
       };
       try {
         localStorage.setItem(`csca_quiz_${quizId || "quiz"}`, JSON.stringify(payloadAnswers));
@@ -376,7 +355,7 @@ export default function QuizPlayerPage() {
         });
     }, 650);
     return () => clearTimeout(timeout);
-  }, [answers, essayAttachments, essayNotes, quizId, result, loadQuiz]);
+  }, [answers, essayAttachments.length, essayPayload, quizId, result, loadQuiz]);
 
   const handleSelect = useCallback((question, optionKey) => {
     if (result && !reviewMode) return;
@@ -414,10 +393,7 @@ export default function QuizPlayerPage() {
     try {
       const payloadAnswers = {
         ...answers,
-        _essay: {
-          attachments: essayAttachments,
-          notes: essayNotes.trim(),
-        },
+        _essay: essayPayload,
       };
       const response = await submitQuiz({ quizId, answers: payloadAnswers });
       if (!response.success || !response.data) throw new Error("Máy chủ chưa ghi nhận được bài thi");
@@ -443,7 +419,7 @@ export default function QuizPlayerPage() {
       setSubmitting(false);
       setShowConfirm(false);
     }
-  }, [answers, essayAttachments, essayNotes, hasEssay, quizId, result, submitting]);
+  }, [answers, essayPayload, hasEssay, quizId, result, submitting]);
 
   // Timer countdown
   useEffect(() => {
@@ -563,7 +539,7 @@ export default function QuizPlayerPage() {
             <div className="leading-tight">
               <span className="block text-[9px] font-bold text-slate-400 uppercase">Tiến độ</span>
               <span className="block text-xs font-mono font-black text-white">
-                TN: {answeredCount}/{questions.length}
+                TN: {answeredCount}/{multipleChoiceQuestions.length}
                 {hasEssay ? ` • TL: ${essayAttachments.length} ảnh` : ""}
               </span>
             </div>
@@ -628,7 +604,7 @@ export default function QuizPlayerPage() {
             mobileTab === "sheet" ? "bg-rose-600 text-white" : "bg-slate-800/60 text-slate-400"
           }`}
         >
-          📋 Làm bài {hasEssay ? `(TN: ${answeredCount}/${questions.length} • TL: ${essayAttachments.length} ảnh)` : `(${answeredCount}/${questions.length})`}
+          📋 Làm bài {hasEssay ? `(TN: ${answeredCount}/${multipleChoiceQuestions.length} • TL: ${essayAttachments.length} ảnh)` : `(${answeredCount}/${multipleChoiceQuestions.length})`}
         </button>
       </div>
 
@@ -830,6 +806,7 @@ export default function QuizPlayerPage() {
                 {questions.map((question, index) => {
                   const selected = answers[question.id];
                   const selectedKeys = Array.isArray(selected) ? selected : [selected];
+                  const questionAttachments = attachmentsForQuestion(essayAttachments, question.id);
 
                   return (
                     <article
@@ -851,7 +828,7 @@ export default function QuizPlayerPage() {
                             </span>
                           </div>
 
-                          {question.question_type === "essay" || question.type === "essay" ? (
+                          {isEssayQuestion(question) ? (
                             <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200 space-y-2">
                               <div className="flex items-center justify-between font-bold text-amber-300">
                                 <span className="flex items-center gap-1.5">
@@ -861,16 +838,34 @@ export default function QuizPlayerPage() {
                                   {question.points} điểm
                                 </span>
                               </div>
-                              <p className="text-slate-300 text-xs leading-relaxed">
-                                Học sinh làm bài giải chi tiết ra giấy kiểm tra, sau đó chuyển sang tab <b>“✍️ Tự luận & Lời giải”</b> bên phải để chụp ảnh các trang bài làm tải lên.
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => setAnswerPanelTab("essay")}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-500 transition shadow-sm"
-                              >
-                                Mở tab Nộp bài Tự luận →
-                              </button>
+                              <p className="text-slate-300 text-xs leading-relaxed">Làm bài ra giấy rồi tải ảnh đúng cho câu này.</p>
+                              {!reviewMode && !result && (
+                                <>
+                                  <input
+                                    id={`essay-upload-${question.id}`}
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    disabled={uploadingEssay}
+                                    onChange={(event) => {
+                                      if (event.target.files) handleAddImages(event.target.files, question);
+                                      event.target.value = "";
+                                    }}
+                                    className="hidden"
+                                  />
+                                  <label htmlFor={`essay-upload-${question.id}`} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-amber-500">
+                                    <FiCamera className="h-3.5 w-3.5" /> Tải ảnh câu {question.displayNumber} ({questionAttachments.length})
+                                  </label>
+                                  <textarea
+                                    value={essayNotesByQuestion[String(question.id)] || ""}
+                                    onChange={(event) => setEssayNotesByQuestion((current) => ({ ...current, [String(question.id)]: event.target.value }))}
+                                    placeholder={`Ghi chú hoặc lời giải vắn tắt cho câu ${question.displayNumber}...`}
+                                    rows={2}
+                                    className="w-full rounded-lg border border-amber-500/20 bg-slate-950/60 p-2 text-xs text-white outline-none focus:border-amber-400"
+                                  />
+                                </>
+                              )}
+                              {(reviewMode || result) && <span className="font-bold text-amber-300">Đã nộp {questionAttachments.length} ảnh cho câu này.</span>}
                             </div>
                           ) : (
                             <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -932,7 +927,7 @@ export default function QuizPlayerPage() {
               >
                 <span>🔘 Trắc nghiệm</span>
                 <span className="rounded-md bg-black/30 px-1.5 py-0.5 text-[10px] font-mono">
-                  {answeredCount}/{questions.length}
+                  {answeredCount}/{multipleChoiceQuestions.length}
                 </span>
               </button>
 
@@ -1003,6 +998,7 @@ export default function QuizPlayerPage() {
                       const selected = answers[question.id];
                       const selectedKeys = Array.isArray(selected) ? selected : [selected];
                       const isFlagged = flaggedQuestions.has(question.id);
+                      const questionAttachments = attachmentsForQuestion(essayAttachments, question.id);
 
                       return (
                         <div
@@ -1014,20 +1010,31 @@ export default function QuizPlayerPage() {
                             Câu {index + 1}
                           </span>
 
-                          {question.question_type === "essay" || question.type === "essay" ? (
+                          {isEssayQuestion(question) ? (
                             <div className="col-span-4 flex items-center justify-center px-1">
-                              <button
-                                type="button"
-                                onClick={() => setAnswerPanelTab("essay")}
-                                className="w-full flex items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/20 transition active:scale-95"
-                                title="Câu hỏi tự luận - Nhấn để mở tab Tự luận nộp bài làm"
+                              <input
+                                id={`essay-omr-upload-${question.id}`}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                disabled={uploadingEssay || reviewMode || Boolean(result)}
+                                onChange={(event) => {
+                                  if (event.target.files) handleAddImages(event.target.files, question);
+                                  event.target.value = "";
+                                }}
+                                className="hidden"
+                              />
+                              <label
+                                htmlFor={`essay-omr-upload-${question.id}`}
+                                className="w-full flex cursor-pointer items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/20 transition active:scale-95"
+                                title={`Tải ảnh bài làm cho câu ${question.displayNumber}`}
                               >
                                 <span className="flex items-center gap-1">
                                   <span>✍️ Tự luận</span>
                                   <span className="font-mono text-[10px] text-amber-400/90">({question.points}đ)</span>
                                 </span>
-                                <span className="text-[10px] font-bold text-amber-400 underline">Nộp ảnh →</span>
-                              </button>
+                                <span className="text-[10px] font-bold text-amber-400 underline">{questionAttachments.length} ảnh</span>
+                              </label>
                             </div>
                           ) : (
                             /* Bubble Buttons A, B, C, D */
@@ -1181,8 +1188,36 @@ export default function QuizPlayerPage() {
                 </div>
               )}
 
+              {essayQuestions.length > 0 && (
+                <div className="space-y-2">
+                  <span className="block text-[11px] font-black uppercase text-amber-400">Bài nộp theo từng câu</span>
+                  {essayQuestions.map((question) => {
+                    const questionAttachments = attachmentsForQuestion(essayAttachments, question.id);
+                    return (
+                      <div key={question.id} className="rounded-xl border border-slate-800 bg-[#091120] p-3">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-200">
+                          <span>Câu {question.displayNumber}</span>
+                          <span className="text-amber-300">{questionAttachments.length} ảnh</span>
+                        </div>
+                        {question.question_text && (
+                          <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-400">{question.question_text}</p>
+                        )}
+                        <textarea
+                          value={essayNotesByQuestion[String(question.id)] || ""}
+                          onChange={(event) => setEssayNotesByQuestion((current) => ({ ...current, [String(question.id)]: event.target.value }))}
+                          disabled={Boolean(result) || reviewMode}
+                          placeholder={`Ghi chú cho câu ${question.displayNumber}...`}
+                          rows={2}
+                          className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900/90 p-2 text-xs text-white outline-none placeholder:text-slate-500 focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-75"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Drag & Drop Upload Zone (hidden in review mode) */}
-              {!reviewMode && !result && (
+              {!reviewMode && !result && essayQuestions.length <= 1 && (
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -1192,7 +1227,7 @@ export default function QuizPlayerPage() {
                   onDrop={(e) => {
                     e.preventDefault();
                     setIsDraggingOver(false);
-                    if (e.dataTransfer.files) handleAddImages(e.dataTransfer.files);
+                    if (e.dataTransfer.files) handleAddImages(e.dataTransfer.files, essayQuestions[0] || null);
                   }}
                   className={`relative rounded-2xl border-2 border-dashed p-4 text-center transition ${
                     isDraggingOver
@@ -1206,7 +1241,7 @@ export default function QuizPlayerPage() {
                     multiple
                     disabled={uploadingEssay}
                     onChange={(e) => {
-                      if (e.target.files) handleAddImages(e.target.files);
+                      if (e.target.files) handleAddImages(e.target.files, essayQuestions[0] || null);
                       e.target.value = "";
                     }}
                     id="student-essay-file-input"
@@ -1218,13 +1253,18 @@ export default function QuizPlayerPage() {
                     </div>
                     <div>
                       <span className="text-xs font-black text-white hover:underline">
-                        {uploadingEssay ? "Đang xử lý & nén ảnh..." : "Bấm chọn ảnh hoặc Kéo thả ảnh vào đây"}
+                        {uploadingEssay ? "Đang tải ảnh gốc..." : "Bấm chọn ảnh hoặc Kéo thả ảnh vào đây"}
                       </span>
                       <p className="mt-0.5 text-[10px] text-slate-400">
                         Hỗ trợ JPG, PNG, WEBP hoặc dán trực tiếp <kbd className="rounded bg-slate-800 px-1 py-0.5 font-mono text-[9px] text-slate-300">Ctrl+V</kbd>
                       </p>
                     </div>
                   </label>
+                </div>
+              )}
+              {!reviewMode && !result && essayQuestions.length > 1 && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] font-semibold text-amber-200">
+                  Đề có nhiều câu tự luận. Hãy tải ảnh tại đúng dòng của từng câu để giáo viên nhận bài chính xác.
                 </div>
               )}
 
@@ -1251,7 +1291,7 @@ export default function QuizPlayerPage() {
                         <img
                           src={img.previewUrl || img.url}
                           alt={img.name || `Trang ${idx + 1}`}
-                          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                          className="h-full w-full object-contain transition duration-300 group-hover:scale-105"
                         />
                         <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-mono font-bold text-white backdrop-blur-xs">
                           Trang {idx + 1}
@@ -1259,6 +1299,11 @@ export default function QuizPlayerPage() {
                         {img.isCloudflare && (
                           <span className="absolute top-1 left-1 rounded-md bg-emerald-950/80 border border-emerald-500/40 px-1.5 py-0.5 text-[8px] font-black text-emerald-300 backdrop-blur-xs flex items-center gap-1">
                             ☁️ R2
+                          </span>
+                        )}
+                        {img.questionNumber && (
+                          <span className="absolute top-1 right-1 rounded-md bg-amber-950/90 border border-amber-500/40 px-1.5 py-0.5 text-[8px] font-black text-amber-200">
+                            Câu {img.questionNumber}
                           </span>
                         )}
                         {/* Overlay Actions */}
@@ -1294,7 +1339,7 @@ export default function QuizPlayerPage() {
               {/* Student Notes / Text remarks */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-300">
-                  Ghi chú hoặc lời giải vắn tắt (tùy chọn):
+                  Ghi chú chung cho giáo viên (tùy chọn):
                 </label>
                 <textarea
                   value={essayNotes}
@@ -1383,7 +1428,7 @@ export default function QuizPlayerPage() {
               <div className="flex justify-between">
                 <span className="text-slate-400">Trắc nghiệm đã làm:</span>
                 <b className="font-mono font-black text-emerald-400">
-                  {answeredCount}/{questions.length} câu
+                  {answeredCount}/{multipleChoiceQuestions.length} câu
                 </b>
               </div>
               <div className="flex justify-between">

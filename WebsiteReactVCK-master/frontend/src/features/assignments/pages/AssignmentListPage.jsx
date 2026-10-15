@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { BookOpenCheck, ClipboardList, FilePenLine, GraduationCap, Search } from "lucide-react";
 import { fetchAssignments } from "../../api/lmsClient";
 import { EmptyState, ErrorState, LoadingState } from "../../../components/common/StateView";
+import { parseQuizDescription } from "../../teacher/utils/quizAnswerKey";
 
 function itemType(item) {
   const value = String(item.type || item.assignment_type || "homework").toLowerCase();
@@ -146,6 +147,9 @@ export default function AssignmentListPage() {
           <section className="space-y-3">
             {visibleAssignments.map((assignment) => {
               const type = itemType(assignment);
+              const displayDescription = type === "quiz"
+                ? parseQuizDescription(assignment.description).text
+                : assignment.description;
               const typeConfig = typeStyle[type];
               const status = itemStatus(assignment);
               const statusConfig = statusStyle[status];
@@ -176,8 +180,8 @@ export default function AssignmentListPage() {
                         )}
                       </div>
                       <h2 className="mt-2 truncate text-base font-bold text-slate-900 dark:text-white">{assignment.title}</h2>
-                      {assignment.description && (
-                        <p className="mt-1 line-clamp-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{assignment.description}</p>
+                      {displayDescription && (
+                        <p className="mt-1 line-clamp-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{displayDescription}</p>
                       )}
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                         {type === "quiz" && !isHomeworkQuiz ? <><span className="font-semibold text-violet-700 dark:text-violet-300">Quiz trong buổi: {assignment.session_start ? new Date(assignment.session_start).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Chưa xác định"}</span>{assignment.class_title && <span>Lớp: {assignment.class_title}</span>}</> : <><span>{isHomeworkQuiz ? "Quiz về nhà · " : ""}Hạn nộp: {assignment.due_date ? new Date(assignment.due_date).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Không giới hạn"}</span><span className={status === "late" ? "font-semibold text-rose-600 dark:text-rose-400" : "font-semibold text-amber-600 dark:text-amber-400"}>{deadlineText(assignment.due_date)}</span></>}

@@ -109,9 +109,16 @@ const encodePathSegment = (value) => encodeURIComponent(value).replace(/[!'()*]/
 
 const encodeQuery = (value) => encodePathSegment(String(value));
 
-const buildCanonicalQuery = (params) => Object.entries(params)
-  .sort(([first], [second]) => first.localeCompare(second))
-  .map(([key, value]) => `${encodeQuery(key)}=${encodeQuery(value)}`)
+export const buildCanonicalQuery = (params) => Object.entries(params)
+  .map(([key, value]) => [encodeQuery(key), encodeQuery(value)])
+  .sort(([firstKey, firstValue], [secondKey, secondValue]) => {
+    if (firstKey < secondKey) return -1;
+    if (firstKey > secondKey) return 1;
+    if (firstValue < secondValue) return -1;
+    if (firstValue > secondValue) return 1;
+    return 0;
+  })
+  .map(([key, value]) => `${key}=${value}`)
   .join("&");
 
 const hmac = (key, value, encoding) => crypto.createHmac("sha256", key).update(value).digest(encoding);
@@ -324,14 +331,25 @@ export const generateLearningFileUploadPresignedUrl = async ({ userId, filename,
   };
 };
 
-export const generateLearningFilePlaybackSignedUrl = async ({ r2Key, filename }) => {
+export const generateLearningFilePlaybackSignedUrl = async ({
+  r2Key,
+  filename,
+  disposition = "attachment",
+  mimeType,
+}) => {
   getR2Config();
   if (!validateLearningFileKey(r2Key)) throw new Error("storageKey tài liệu không hợp lệ");
+  if (disposition !== "attachment" && disposition !== "inline") {
+    throw new Error("Chế độ hiển thị tài liệu không hợp lệ");
+  }
   const expiresInSeconds = getTtl("R2_FILE_PLAYBACK_URL_TTL_SECONDS", 600, 900);
   const extraParams = {};
   if (typeof filename === "string" && filename.trim()) {
     const cleanFilename = path.basename(filename.trim()).replace(/["\r\n]/g, "");
-    extraParams["response-content-disposition"] = `attachment; filename="${encodePathSegment(cleanFilename)}"`;
+    extraParams["response-content-disposition"] = `${disposition}; filename="${cleanFilename}"`;
+  }
+  if (disposition === "inline" && typeof mimeType === "string" && mimeType.trim()) {
+    extraParams["response-content-type"] = mimeType.trim();
   }
   const downloadUrl = createPresignedUrl({ method: "GET", key: r2Key, expiresInSeconds, extraParams });
   return { downloadUrl, expiresAt: Math.floor(Date.now() / 1000) + expiresInSeconds, expiresInSeconds };

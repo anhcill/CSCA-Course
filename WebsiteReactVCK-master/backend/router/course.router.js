@@ -806,7 +806,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
           uploadedAt: file.created_at,
           uploadedBy: file.uploaded_by,
           visibility: file.visibility,
-          downloadUrl: `/api/files/${file.id}/download`,
+          downloadUrl: `/api/files/${file.id}/download?download=1`,
         })),
         access: { canLearn: true },
       },

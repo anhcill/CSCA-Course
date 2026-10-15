@@ -1,5 +1,4 @@
 import express from "express";
-import crypto from "node:crypto";
 import { getClient, query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireRole from "../middleware/requireRole.js";
@@ -33,6 +32,14 @@ import {
   normalizeRubricScores,
   reviewIsAvailable,
 } from "../services/assessmentPolicy.service.js";
+import {
+  buildQuizResult,
+  getEssaySubmission,
+  makeQuestionSnapshot,
+  normalizeQuizAnswers,
+  parseQuizDescriptionMetadata,
+  publicQuizQuestion,
+} from "../services/quizAttempt.service.js";
 
 const router = express.Router();
 
@@ -81,31 +88,6 @@ const parseJsonArray = (value) => {
 
 const parseOptions = (value) => {
   return parseJsonArray(value);
-};
-
-const parseStoredAnswer = (value) => {
-  if (typeof value !== "string") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-};
-
-const normalizeAnswerArray = (value) => {
-  const parsed = parseStoredAnswer(value);
-  if (Array.isArray(parsed)) return parsed.map(String).sort();
-  if (typeof parsed === "string") return parsed.split(",").map((item) => item.trim()).filter(Boolean).sort();
-  return [];
-};
-
-const answersMatch = (question, studentAnswer) => {
-  if (question?.question_type === "essay" || question?.type === "essay") return false;
-  const correctAnswer = parseStoredAnswer(question.correct_answer);
-  if (question.question_type === "multiple_choice") {
-    return JSON.stringify(normalizeAnswerArray(studentAnswer)) === JSON.stringify(normalizeAnswerArray(correctAnswer));
-  }
-  return String(studentAnswer ?? "").trim().toLocaleLowerCase() === String(correctAnswer ?? "").trim().toLocaleLowerCase();
 };
 
 const assignmentAssetPath = (assetId) => assetId ? `/api/assignments/submission-assets/${assetId}/access` : null;
@@ -288,10 +270,15 @@ const serializeQuestionBankItem = (row) => {
   };
 };
 
-const serializeAssignment = (row) => ({
-  id: row.id,
-  title: row.title,
-  type: row.type || row.assignment_type || "homework",
+const serializeAssignment = (row) => {
+  const type = row.type || row.assignment_type || "homework";
+  const descriptionFields = type === "quiz"
+    ? parseQuizDescriptionMetadata(row.description)
+    : { description: row.description || "", essayConfig: null };
+  return {
+    id: row.id,
+    title: row.title,
+    type,
   course_id: row.course_id,
   live_class_id: row.live_class_id,
   class_session_id: row.class_session_id || null,
@@ -301,7 +288,8 @@ const serializeAssignment = (row) => ({
   session_start: row.session_start || null,
   session_end: row.session_end || null,
   course_title: row.course_title,
-  description: row.description || "",
+  description: descriptionFields.description,
+  ...(type === "quiz" ? { essayConfig: descriptionFields.essayConfig } : {}),
   max_score: row.max_score,
   due_date: row.due_date,
   attachment_url: row.attachment_url,
@@ -338,8 +326,9 @@ const serializeAssignment = (row) => ({
   resubmit_until: row.resubmit_until || null,
   can_resubmit: canResubmit(row),
   annotations: parseJsonArray(row.annotations),
-  status: row.status,
-});
+    status: row.status,
+  };
+};
 
 // GET /api/assignments — students get only active enrolled work; teachers get their own queue.
 router.get("/", protectRoute, async (req, res) => {
@@ -561,22 +550,25 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
        ORDER BY q.created_at DESC, q.id DESC`,
       params,
     );
-    return res.json({ success: true, data: result.rows.map((row) => ({
-      id: String(row.id), title: row.title, description: row.description || "",
-      courseTitle: row.course_title || "Chưa gắn khóa học", questionCount: Number(row.question_count || 0),
-      classId: row.live_class_id ? String(row.live_class_id) : null,
-      classTitle: row.class_title || "Chưa gắn lớp", sessionId: row.class_session_id ? String(row.class_session_id) : null,
-      sessionTitle: row.session_title || "Chưa gắn buổi học", sessionStart: row.session_start || null, sessionEnd: row.session_end || null,
-      activityScope: row.activity_scope || "session", dueDate: row.due_date || null,
-      availableFrom: row.available_from || null, availableUntil: row.available_until || null,
-      attemptLimit: Number(row.attempt_limit || 1), reviewPolicy: row.review_policy || "after_submit",
-      hasPaper: Boolean(row.paper_file_id),
-      hasSolution: Boolean(row.solution_file_id),
-      solutionFileId: row.solution_file_id ? String(row.solution_file_id) : null,
-      timeLimitMinutes: Number(row.duration_minutes || 0), passingScore: Number(row.passing_score || 0),
-      status: row.status, attemptsCount: Number(row.attempts_count || 0),
-      avgScore: row.avg_score === null ? null : Number(row.avg_score), createdAt: row.created_at,
-    })) });
+    return res.json({ success: true, data: result.rows.map((row) => {
+      const descriptionFields = parseQuizDescriptionMetadata(row.description);
+      return {
+        id: String(row.id), title: row.title, description: descriptionFields.description, essayConfig: descriptionFields.essayConfig,
+        courseTitle: row.course_title || "Chưa gắn khóa học", questionCount: Number(row.question_count || 0),
+        classId: row.live_class_id ? String(row.live_class_id) : null,
+        classTitle: row.class_title || "Chưa gắn lớp", sessionId: row.class_session_id ? String(row.class_session_id) : null,
+        sessionTitle: row.session_title || "Chưa gắn buổi học", sessionStart: row.session_start || null, sessionEnd: row.session_end || null,
+        activityScope: row.activity_scope || "session", dueDate: row.due_date || null,
+        availableFrom: row.available_from || null, availableUntil: row.available_until || null,
+        attemptLimit: Number(row.attempt_limit || 1), reviewPolicy: row.review_policy || "after_submit",
+        hasPaper: Boolean(row.paper_file_id),
+        hasSolution: Boolean(row.solution_file_id),
+        solutionFileId: row.solution_file_id ? String(row.solution_file_id) : null,
+        timeLimitMinutes: Number(row.duration_minutes || 0), passingScore: Number(row.passing_score || 0),
+        status: row.status, attemptsCount: Number(row.attempts_count || 0),
+        avgScore: row.avg_score === null ? null : Number(row.avg_score), createdAt: row.created_at,
+      };
+    }) });
   } catch (error) {
     console.error("Error listing teacher quizzes:", error);
     return internalError(res, "Lỗi khi lấy danh sách đề kiểm tra");
@@ -764,7 +756,12 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
         dedupePrefix: `quiz:${quizResult.rows[0].id}:published`,
       });
     }
-    return res.status(201).json({ success: true, data: { ...quizResult.rows[0], questionCount: normalizedQuestions.length }, message: "Tạo đề kiểm tra thành công" });
+    const descriptionFields = parseQuizDescriptionMetadata(quizResult.rows[0].description);
+    return res.status(201).json({
+      success: true,
+      data: { ...quizResult.rows[0], ...descriptionFields, questionCount: normalizedQuestions.length },
+      message: "Tạo đề kiểm tra thành công",
+    });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     if (error.message === "INVALID_QUESTION") return validationError(res, "Mỗi câu cần có nội dung, từ 2 đến 6 phương án, đáp án đúng và điểm hợp lệ");
@@ -819,6 +816,7 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
                 best_qa.attempt_number,
                 best_qa.started_at,
                 best_qa.submitted_at,
+                best_qa.answers_json,
                 COALESCE(att_count.cnt, 0)::int AS total_attempts
          FROM class_enrollments ce
          JOIN users u ON u.id = ce.user_id
@@ -854,6 +852,7 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
                 best_qa.attempt_number,
                 best_qa.started_at,
                 best_qa.submitted_at,
+                best_qa.answers_json,
                 COALESCE(att_count.cnt, 0)::int AS total_attempts
          FROM users u
          JOIN (SELECT DISTINCT user_id FROM quiz_attempts WHERE quiz_id = $1) qa_users ON qa_users.user_id = u.id
@@ -888,6 +887,9 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
       const answersJson = row.answers_json || {};
       const essay = answersJson._essay || answersJson.essay || null;
       const essayGrade = answersJson._essayGrade || answersJson.essayGrade || null;
+      const scopedEssayWork = essay?.byQuestion && Object.values(essay.byQuestion).some((value) => (
+        value?.text || value?.notes || (Array.isArray(value?.attachments) && value.attachments.length > 0)
+      ));
 
       return {
         userId: String(row.user_id),
@@ -905,7 +907,7 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
         totalAttempts: Number(row.total_attempts || 0),
         startedAt: row.started_at,
         submittedAt: row.submitted_at,
-        hasEssay: Boolean(essay && ((Array.isArray(essay.attachments) && essay.attachments.length > 0) || essay.notes)),
+        hasEssay: Boolean(essay && ((Array.isArray(essay.attachments) && essay.attachments.length > 0) || essay.notes || scopedEssayWork)),
         essay,
         essayGrade,
       };
@@ -930,13 +932,15 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
     const averageCount = scores.filter((p) => p >= 50 && p < 65).length;
     const weakCount = scores.filter((p) => p < 50).length;
 
+    const descriptionFields = parseQuizDescriptionMetadata(quizRow.description);
     return res.json({
       success: true,
       data: {
         quiz: {
           id: String(quizRow.id),
           title: quizRow.title,
-          description: quizRow.description || "",
+          description: descriptionFields.description,
+          essayConfig: descriptionFields.essayConfig,
           courseTitle: quizRow.course_title || "Khóa học",
           classTitle: quizRow.class_title || "Lớp học",
           sessionTitle: quizRow.session_title || "Buổi học",
@@ -986,6 +990,7 @@ router.get("/teacher/quizzes/:quizId/attempts/:attemptId", protectRoute, require
 
     const quiz = await getQuiz(quizId);
     if (!quiz) return notFound(res, "Không tìm thấy đề thi");
+    if (!(await ensureQuizAccess(quiz, req.user))) return forbidden(res, "Bạn không có quyền xem bài làm của đề thi này");
 
     const attemptRes = await query(
       `SELECT qa.id, qa.quiz_id, qa.user_id, qa.answers_json, qa.score, qa.max_score, qa.status,
@@ -1005,6 +1010,7 @@ router.get("/teacher/quizzes/:quizId/attempts/:attemptId", protectRoute, require
     const effectiveQuestions = attemptQuestions(attempt, questions);
     const answers = attempt.answers_json || {};
     const computed = buildQuizResult(effectiveQuestions, answers);
+    const descriptionFields = parseQuizDescriptionMetadata(quiz.description);
 
     return res.json({
       success: true,
@@ -1025,13 +1031,14 @@ router.get("/teacher/quizzes/:quizId/attempts/:attemptId", protectRoute, require
           attemptNumber: attempt.attempt_number,
           autoSubmitted: attempt.auto_submitted,
           answers,
-          essay: answers._essay || answers.essay || null,
+          essay: getEssaySubmission(effectiveQuestions, answers),
           essayGrade: answers._essayGrade || answers.essayGrade || null,
         },
         quiz: {
           id: quiz.id,
           title: quiz.title,
-          description: quiz.description,
+          description: descriptionFields.description,
+          essayConfig: descriptionFields.essayConfig,
           paperFileId: quiz.paper_file_id,
           paperStatus: quiz.paper_status,
           paperUrl: (quiz.paper_file_id && quiz.paper_status === "ready") ? `/api/files/${quiz.paper_file_id}/download` : null,
@@ -1060,11 +1067,24 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
     if (isNaN(essayScore) || essayScore < 0) {
       return validationError(res, "Điểm tự luận phải là số lớn hơn hoặc bằng 0");
     }
+    if (essayFeedback.length > 10000) return validationError(res, "Nhận xét tự luận không được dài quá 10.000 ký tự");
 
     await client.query("BEGIN");
+    const quiz = await getQuiz(quizId, client);
+    if (!quiz) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy đề thi");
+    }
+    if (!(await ensureQuizAccess(quiz, req.user, client))) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Bạn không có quyền chấm bài của đề thi này");
+    }
+    await assertGradebookOpen(client, quiz.live_class_id);
     const attemptRes = await client.query(
-      `SELECT qa.id, qa.quiz_id, qa.user_id, qa.answers_json, qa.score, qa.max_score, qa.status, qa.question_snapshot
+      `SELECT qa.id, qa.quiz_id, qa.user_id, qa.answers_json, qa.score, qa.max_score, qa.status, qa.question_snapshot,
+              u.email AS student_email, u.username AS student_username
        FROM quiz_attempts qa
+       JOIN users u ON u.id = qa.user_id
        WHERE qa.id = $1 AND qa.quiz_id = $2 FOR UPDATE`,
       [attemptId, quizId]
     );
@@ -1073,17 +1093,31 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy lượt làm bài");
     }
+    if (attempt.status !== "submitted") {
+      await client.query("ROLLBACK");
+      return conflict(res, "Học viên chưa nộp bài nên chưa thể chấm tự luận", "QUIZ_ATTEMPT_NOT_SUBMITTED");
+    }
 
     const questions = await getQuizQuestions(quizId);
     const effectiveQuestions = attemptQuestions(attempt, questions);
+    const essayQuestionMaxScore = effectiveQuestions
+      .filter((question) => question.question_type === "essay" || question.type === "essay")
+      .reduce((sum, question) => sum + (Number(question.points) || 0), 0);
+    const configuredEssayMaxScore = Number(parseQuizDescriptionMetadata(quiz.description).essayConfig?.maxScore || 0);
+    const essayMaxScore = essayQuestionMaxScore > 0 ? essayQuestionMaxScore : configuredEssayMaxScore;
+    if (essayMaxScore <= 0 || essayScore > essayMaxScore) {
+      await client.query("ROLLBACK");
+      return validationError(res, `Điểm tự luận phải nằm trong khoảng 0 đến ${essayMaxScore}`);
+    }
     const currentAnswers = attempt.answers_json || {};
+    const gradedAt = new Date().toISOString();
 
     const updatedAnswers = {
       ...currentAnswers,
       _essayGrade: {
         score: essayScore,
         feedback: essayFeedback,
-        gradedAt: new Date().toISOString(),
+        gradedAt,
         graderId: req.user.id,
         graderName: req.user.username || "Giáo viên",
       },
@@ -1103,13 +1137,50 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
       [JSON.stringify(updatedAnswers), newTotalScore, attempt.id]
     );
 
+    await recordAuditEvent({
+      db: client,
+      actorId: req.user.id,
+      action: "quiz.essay_graded",
+      entityType: "quiz_attempt",
+      entityId: attempt.id,
+      beforeState: currentAnswers._essayGrade || currentAnswers.essayGrade || null,
+      afterState: updatedAnswers._essayGrade,
+      metadata: { quizId, studentId: attempt.user_id, ip: req.ip },
+    });
+    const feedbackExcerpt = essayFeedback.length > 300 ? `${essayFeedback.slice(0, 300)}…` : essayFeedback;
+    await client.query(
+      `INSERT INTO notifications (user_id, title, message, type, event_type, link_url, dedupe_key, actor_id)
+       VALUES ($1, $2, $3, 'grade', 'grade.published', $4, $5, $6)
+       ON CONFLICT (user_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+      [
+        attempt.user_id,
+        "Phần tự luận đã được chấm",
+        `Bài “${quiz.title}” đã có điểm tự luận ${essayScore}/${essayMaxScore}.${feedbackExcerpt ? ` Nhận xét: “${feedbackExcerpt}”` : ""}`,
+        `/lms/quiz/${quizId}`,
+        `quiz-essay-grade:${attempt.id}:${gradedAt}`,
+        req.user.id,
+      ],
+    );
+
     await client.query("COMMIT");
+    if (attempt.student_email) {
+      const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+      sendNotificationEmail({
+        email: attempt.student_email,
+        username: attempt.student_username,
+        title: `Phần tự luận đã được chấm: ${quiz.title}`,
+        message: `Phần tự luận của bài “${quiz.title}” đã có điểm ${essayScore}/${essayMaxScore}.${essayFeedback ? ` Nhận xét: “${essayFeedback}”` : ""}`,
+        actionUrl: `${frontendUrl}/lms/quiz/${quizId}`,
+        actionText: "Xem Điểm & Nhận Xét",
+      }).catch((err) => console.error("[QUIZ ESSAY GRADE EMAIL WARNING]", err.message));
+    }
     return res.json({
       success: true,
       data: {
         attemptId: attempt.id,
         score: Number(updateRes.rows[0].score),
         maxScore: Number(updateRes.rows[0].max_score),
+        essayMaxScore,
         essayGrade: updatedAnswers._essayGrade,
         message: "Đã lưu điểm phần tự luận thành công",
       },
@@ -1117,6 +1188,7 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Error grading quiz essay:", error);
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
     return internalError(res, "Lỗi khi chấm điểm phần tự luận");
   } finally {
     client.release();
@@ -2183,65 +2255,19 @@ const getQuizQuestions = async (quizId, db = { query }) => {
   return result.rows;
 };
 
-const publicQuestion = (question) => ({
-  id: question.id,
-  quiz_id: question.quiz_id,
-  question_text: question.question_text,
-  question_type: question.question_type,
-  options: parseOptions(question.options_json),
-  points: Number(question.points),
-});
-
-const buildQuizResult = (questions, answers) => {
-  const essayGrade = answers?._essayGrade || answers?.essayGrade || null;
-  const review = questions.map((question) => {
-    const isEssay = question.question_type === "essay" || question.type === "essay";
-    const studentAnswer = answers?.[String(question.id)] ?? answers?.[question.id] ?? null;
-    const isCorrect = isEssay ? null : answersMatch(question, studentAnswer);
-    const points = Number(question.points) || 0;
-    return {
-      questionId: question.id,
-      studentAnswer,
-      correctAnswer: isEssay ? null : parseStoredAnswer(question.correct_answer),
-      explanation: question.explanation || "",
-      points,
-      earnedPoints: isCorrect ? points : 0,
-      isCorrect,
-      questionType: question.question_type || (isEssay ? "essay" : "single_choice"),
-    };
-  });
-  let score = review.reduce((sum, item) => sum + item.earnedPoints, 0);
-  if (essayGrade && typeof essayGrade.score === "number") {
-    score += Number(essayGrade.score) || 0;
-  }
-  const maxScore = review.reduce((sum, item) => sum + item.points, 0);
-  return {
-    score: Number(score.toFixed(2)),
-    maxScore: Number(maxScore.toFixed(2)),
-    percentage: maxScore > 0 ? Number(((score / maxScore) * 100).toFixed(2)) : 0,
-    review,
-    essayGrade,
-    essay: answers?._essay || answers?.essay || null,
-  };
-};
-
-const validateQuizAnswers = (questions, answers) => {
-  const questionIds = new Set(questions.map((question) => String(question.id)));
-  for (const key of Object.keys(answers)) {
-    if (key.startsWith("_") || key === "essay" || key === "essayAttachments" || key === "essayNotes") continue;
-    if (!questionIds.has(String(key))) return "Bài làm chứa câu hỏi không thuộc đề thi";
-  }
-  for (const question of questions) {
-    const value = answers[String(question.id)];
-    if (value === undefined || value === null || value === "") continue;
-    const options = parseOptions(question.options_json).map((option) => String(option.key));
-    if (question.question_type === "multiple_choice") {
-      if (!Array.isArray(value) || value.length > options.length || value.some((item) => !options.includes(String(item)))) return "Đáp án nhiều lựa chọn không hợp lệ";
-    } else if (question.question_type === "single_choice") {
-      if (typeof value !== "string" || !options.includes(value)) return "Đáp án lựa chọn không hợp lệ";
-    } else if (question.question_type === "essay") {
-      continue;
-    } else if (typeof value !== "string" || value.length > 1000) return "Đáp án điền vào không hợp lệ";
+const validateQuizEssayAssets = async (db, assetIds, userId) => {
+  if (assetIds.length === 0) return null;
+  const result = await db.query(
+    `SELECT id, asset_kind, status FROM submission_assets
+     WHERE id = ANY($1::bigint[]) AND user_id = $2 FOR UPDATE`,
+    [assetIds, userId],
+  );
+  const assets = new Map(result.rows.map((asset) => [Number(asset.id), asset]));
+  for (const assetId of assetIds) {
+    const asset = assets.get(Number(assetId));
+    if (!asset || asset.status !== "ready" || asset.asset_kind !== "file") {
+      return "Tệp tự luận không thuộc học viên, chưa upload xong hoặc không đúng loại file";
+    }
   }
   return null;
 };
@@ -2249,18 +2275,6 @@ const validateQuizAnswers = (questions, answers) => {
 const attemptQuestions = (attempt, fallbackQuestions) => {
   const snapshot = parseJsonArray(attempt?.question_snapshot);
   return snapshot.length ? snapshot : fallbackQuestions;
-};
-
-const makeQuestionSnapshot = (questions, shuffleQuestions) => {
-  const snapshot = questions.map((question) => ({ ...question, options_json: parseOptions(question.options_json) }));
-  if (!shuffleQuestions) return snapshot;
-  // The order is persisted with the attempt, so a refresh never changes a
-  // learner's paper while still giving each learner an independently mixed set.
-  for (let index = snapshot.length - 1; index > 0; index -= 1) {
-    const next = crypto.randomInt(index + 1);
-    [snapshot[index], snapshot[next]] = [snapshot[next], snapshot[index]];
-  }
-  return snapshot;
 };
 
 const serializeAttempt = (attempt) => attempt ? {
@@ -2380,11 +2394,13 @@ const quizResponse = ({ quiz, questions, attempt, computed, now = new Date() }) 
       }
     : null;
   const canViewSolution = isSubmitted || !attempt;
+  const descriptionFields = parseQuizDescriptionMetadata(quiz.description);
   return {
     id: quiz.id,
     quizId: quiz.id,
     title: quiz.title,
-    description: quiz.description || "",
+    description: descriptionFields.description,
+    essayConfig: descriptionFields.essayConfig,
     classId: quiz.live_class_id || null,
     classTitle: quiz.class_title || null,
     sessionId: quiz.class_session_id || null,
@@ -2406,7 +2422,7 @@ const quizResponse = ({ quiz, questions, attempt, computed, now = new Date() }) 
     attemptsUsed: attempt ? Number(attempt.attempt_number || 1) : 0,
     attemptsRemaining: Math.max(0, Number(quiz.attempt_limit || 1) - (attempt ? Number(attempt.attempt_number || 1) : 0)),
     accommodation: quiz.accommodation || null,
-    questions: questions.map(publicQuestion),
+    questions: questions.map(publicQuizQuestion),
     attempt: serializeAttempt(attempt),
     result,
   };
@@ -2465,8 +2481,6 @@ router.put("/quizzes/:quizId/answers", protectRoute, requireRole("user"), requir
     if (!quiz) return notFound(res, "Không tìm thấy đề thi");
     if (!(await ensureQuizAccess(quiz, req.user))) return forbidden(res, "Bạn chưa được cấp quyền làm đề thi này");
     const questions = await getQuizQuestions(quizId);
-    const answerError = validateQuizAnswers(questions, req.body.answers);
-    if (answerError) return validationError(res, answerError);
     const accommodation = await getAssessmentAccommodation({ assessmentType: "quiz", assessmentId: quizId, userId: req.user.id, db: client });
     const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation);
     await client.query("BEGIN");
@@ -2489,10 +2503,15 @@ router.put("/quizzes/:quizId/answers", protectRoute, requireRole("user"), requir
       await client.query("COMMIT");
       return conflict(res, "Đã hết thời gian. Hệ thống đã nộp phần đáp án đã lưu.", "QUIZ_ATTEMPT_EXPIRED");
     }
+    const effectiveQuestions = attemptQuestions(attempt, questions);
+    const normalized = normalizeQuizAnswers(effectiveQuestions, req.body.answers);
+    if (normalized.error) { await client.query("ROLLBACK"); return validationError(res, normalized.error); }
+    const assetError = await validateQuizEssayAssets(client, normalized.assetIds, req.user.id);
+    if (assetError) { await client.query("ROLLBACK"); return validationError(res, assetError); }
     const saved = await client.query(
       `UPDATE quiz_attempts SET answers_json = $1::jsonb, expires_at = COALESCE(expires_at, $2), updated_at = NOW()
        WHERE id = $3 RETURNING id, expires_at, updated_at`,
-      [JSON.stringify(req.body.answers), expiry?.toISOString() || null, attempt.id],
+      [JSON.stringify(normalized.answers), expiry?.toISOString() || null, attempt.id],
     );
     await client.query("COMMIT");
     return res.json({ success: true, data: { attemptId: saved.rows[0].id, expiresAt: saved.rows[0].expires_at, savedAt: saved.rows[0].updated_at } });
@@ -2515,8 +2534,6 @@ router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), requir
     if (!quiz) return notFound(res, "Không tìm thấy đề thi");
     if (!(await ensureQuizAccess(quiz, req.user))) return forbidden(res, "Bạn chưa được cấp quyền làm đề thi này");
     const questions = await getQuizQuestions(quizId);
-    const answerError = validateQuizAnswers(questions, req.body.answers);
-    if (answerError) return validationError(res, answerError);
     const accommodation = await getAssessmentAccommodation({ assessmentType: "quiz", assessmentId: quizId, userId: req.user.id, db: client });
     const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation);
     await client.query("BEGIN");
@@ -2533,9 +2550,14 @@ router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), requir
       if (expiry && new Date(expiry).getTime() <= Date.now()) {
         ({ attempt, computed } = await submitAttempt({ client, attempt, questions: attemptQuestions(attempt, questions), autoSubmitted: true }));
       } else {
-        const save = await client.query("UPDATE quiz_attempts SET answers_json = $1::jsonb, expires_at = COALESCE(expires_at, $2) WHERE id = $3 RETURNING *", [JSON.stringify(req.body.answers), expiry?.toISOString() || null, attempt.id]);
+        const effectiveQuestions = attemptQuestions(attempt, questions);
+        const normalized = normalizeQuizAnswers(effectiveQuestions, req.body.answers);
+        if (normalized.error) { await client.query("ROLLBACK"); return validationError(res, normalized.error); }
+        const assetError = await validateQuizEssayAssets(client, normalized.assetIds, req.user.id);
+        if (assetError) { await client.query("ROLLBACK"); return validationError(res, assetError); }
+        const save = await client.query("UPDATE quiz_attempts SET answers_json = $1::jsonb, expires_at = COALESCE(expires_at, $2) WHERE id = $3 RETURNING *", [JSON.stringify(normalized.answers), expiry?.toISOString() || null, attempt.id]);
         attempt = save.rows[0];
-        ({ attempt, computed } = await submitAttempt({ client, attempt, questions: attemptQuestions(attempt, questions) }));
+        ({ attempt, computed } = await submitAttempt({ client, attempt, questions: effectiveQuestions }));
       }
     }
     const passed = computed.percentage >= Number(quiz.passing_score);

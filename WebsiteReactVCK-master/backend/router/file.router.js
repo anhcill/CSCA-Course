@@ -165,7 +165,7 @@ const serializeFile = (row) => ({
   chapterId: row.chapter_id ? String(row.chapter_id) : null,
   chapterTitle: row.chapter_title || null,
   visibility: row.visibility,
-  downloadUrl: `/api/files/${row.id}/download`,
+  downloadUrl: `/api/files/${row.id}/download?download=1`,
 });
 
 // GET /api/teacher/files
@@ -575,9 +575,13 @@ router.get("/files/:fileId/download", protectRoute, requireManagedLearner, async
     const access = await fileAccess(fileId, req.user);
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
     if (access.error) return errorResponse(res, 403, "Bạn chưa được cấp quyền tải tài liệu", "FORBIDDEN");
+    const forceDownload = ["1", "true"].includes(String(req.query?.download || "").toLowerCase());
+    const displayInline = access.file.mime_type === "application/pdf" && !forceDownload;
     const { downloadUrl } = await generateLearningFilePlaybackSignedUrl({
       r2Key: access.file.storage_key,
       filename: access.file.original_name,
+      disposition: displayInline ? "inline" : "attachment",
+      mimeType: displayInline ? access.file.mime_type : undefined,
     });
     if (typeof res.set === "function") {
       res.set({

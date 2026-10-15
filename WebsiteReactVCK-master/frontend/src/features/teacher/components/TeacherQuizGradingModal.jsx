@@ -4,18 +4,16 @@ import toast from "react-hot-toast";
 import {
   FiX,
   FiCheckCircle,
-  FiAward,
   FiFileText,
-  FiUser,
   FiClock,
   FiMaximize2,
   FiRotateCw,
   FiExternalLink,
   FiInfo,
-  FiAlertCircle,
 } from "react-icons/fi";
 import { fetchTeacherQuizAttempt, gradeTeacherQuizEssay } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
+import { attachmentsForQuestion, normalizeEssayResponse } from "../../assignments/utils/quizQuestionPresentation";
 
 export default function TeacherQuizGradingModal({
   isOpen,
@@ -72,12 +70,27 @@ export default function TeacherQuizGradingModal({
 
   const attempt = attemptDetail?.attempt;
   const essay = attempt?.essay;
-  const attachments = useMemo(() => {
-    if (!essay?.attachments || !Array.isArray(essay.attachments)) return [];
-    return essay.attachments;
-  }, [essay]);
+  const essayQuestions = useMemo(() => (attemptDetail?.computed?.review || [])
+    .map((item, index) => ({
+      id: item.questionId,
+      displayNumber: index + 1,
+      prompt: item.questionText || item.prompt || "",
+      questionType: item.questionType,
+    }))
+    .filter((item) => item.questionType === "essay"), [attemptDetail]);
+  const normalizedEssay = useMemo(() => normalizeEssayResponse(essay, essayQuestions), [essay, essayQuestions]);
+  const attachments = normalizedEssay.attachments;
+  const essayGroups = useMemo(() => essayQuestions.map((question) => ({
+    ...question,
+    attachments: attachmentsForQuestion(attachments, question.id),
+    notes: normalizedEssay.notesByQuestion[String(question.id)] || "",
+  })), [attachments, essayQuestions, normalizedEssay.notesByQuestion]);
+  const unassignedAttachments = useMemo(
+    () => attachments.filter((attachment) => !attachment?.questionId),
+    [attachments],
+  );
 
-  const mcReview = attemptDetail?.computed?.review || [];
+  const mcReview = useMemo(() => attemptDetail?.computed?.review || [], [attemptDetail]);
   const mcScore = useMemo(() => {
     const raw = mcReview.reduce((sum, item) => sum + (item.earnedPoints || 0), 0);
     return Math.round(raw * 100) / 100;
@@ -222,7 +235,7 @@ export default function TeacherQuizGradingModal({
                   </span>
                 </div>
 
-                {attachments.length === 0 ? (
+                {attachments.length === 0 && essayGroups.every((group) => !group.notes) ? (
                   <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/50 p-6 text-center text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
                     <FiInfo className="mx-auto h-8 w-8 mb-2 text-amber-500" />
                     <p className="font-bold text-sm">Học viên không tải lên ảnh bài làm tự luận</p>
@@ -231,66 +244,54 @@ export default function TeacherQuizGradingModal({
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    {attachments.map((att, idx) => (
-                      <div
-                        key={idx}
-                        className="group relative rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 overflow-hidden shadow-xs hover:shadow-md transition"
-                      >
-                        <div
-                          className="relative h-56 w-full cursor-zoom-in overflow-hidden bg-slate-900/10 dark:bg-slate-950 flex items-center justify-center"
-                          onClick={() => {
-                            setLightboxImg(att.url);
-                            setRotation(0);
-                          }}
-                        >
-                          <img
-                            src={att.url}
-                            alt={att.name || `Trang ${idx + 1}`}
-                            className="h-full w-full object-contain transition group-hover:scale-105 duration-300"
-                            loading="lazy"
-                          />
-                          <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
-                            <span className="rounded-xl bg-white/90 dark:bg-slate-900/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs font-bold shadow-md flex items-center gap-1.5">
-                              <FiMaximize2 className="h-3.5 w-3.5" /> Xem phóng to
+                  <div className="space-y-4">
+                    {[...essayGroups, ...(unassignedAttachments.length ? [{ id: "legacy", displayNumber: null, prompt: "Ảnh cũ chưa gắn với câu cụ thể", attachments: unassignedAttachments, notes: essay?.notes || "" }] : [])]
+                      .filter((group) => group.attachments.length || group.notes)
+                      .map((group) => (
+                        <section key={group.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div>
+                              <h4 className="text-xs font-black text-slate-900 dark:text-white">
+                                {group.displayNumber ? `Câu ${group.displayNumber}` : "Bài nộp cũ"}
+                              </h4>
+                              {group.prompt && <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{group.prompt}</p>}
+                            </div>
+                            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
+                              {group.attachments.length} ảnh
                             </span>
                           </div>
-                        </div>
-
-                        <div className="p-3 flex items-center justify-between text-xs border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                          <div className="min-w-0 pr-2">
-                            <span className="block truncate font-bold text-slate-900 dark:text-white">
-                              Trang {idx + 1} — {att.name || "Ảnh bài làm"}
-                            </span>
-                            {att.size && (
-                              <span className="block text-[10px] text-slate-400">
-                                {Math.round(att.size / 1024)} KB
-                              </span>
-                            )}
-                          </div>
-                          <a
-                            href={att.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
-                            title="Mở ảnh trong tab mới"
-                          >
-                            <FiExternalLink className="h-4 w-4" />
-                          </a>
-                        </div>
-                      </div>
-                    ))}
+                          {group.attachments.length > 0 && (
+                            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                              {group.attachments.map((att, idx) => (
+                                <div key={att.id || idx} className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-xs transition hover:shadow-md dark:border-slate-800 dark:bg-slate-950/60">
+                                  <button type="button" className="relative flex h-56 w-full cursor-zoom-in items-center justify-center overflow-hidden bg-slate-900/10 dark:bg-slate-950" onClick={() => { setLightboxImg(att.url); setRotation(0); }}>
+                                    <img src={att.url} alt={att.name || `Trang ${idx + 1}`} className="h-full w-full object-contain transition duration-300 group-hover:scale-105" loading="lazy" />
+                                    <span className="absolute inset-0 flex items-center justify-center bg-slate-950/30 opacity-0 transition group-hover:opacity-100">
+                                      <span className="flex items-center gap-1.5 rounded-xl bg-white/90 px-3 py-1.5 text-xs font-bold text-slate-900 shadow-md dark:bg-slate-900/90 dark:text-white"><FiMaximize2 className="h-3.5 w-3.5" /> Xem phóng to</span>
+                                    </span>
+                                  </button>
+                                  <div className="flex items-center justify-between border-t border-slate-200 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-900">
+                                    <div className="min-w-0 pr-2"><span className="block truncate font-bold text-slate-900 dark:text-white">Trang {idx + 1} — {att.name || "Ảnh bài làm"}</span>{att.size && <span className="block text-[10px] text-slate-400">{Math.round(att.size / 1024)} KB</span>}</div>
+                                    <a href={att.url} target="_blank" rel="noreferrer" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200" title="Mở ảnh trong tab mới"><FiExternalLink className="h-4 w-4" /></a>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {group.notes && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"><b className="text-slate-500">Ghi chú: </b><span className="whitespace-pre-wrap">{group.notes}</span></div>}
+                        </section>
+                      ))}
                   </div>
                 )}
 
                 {/* Ghi chú học sinh */}
-                {essay?.notes && (
+                {normalizedEssay.generalNotes && (
                   <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4 space-y-1">
                     <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
                       Ghi chú của học viên:
                     </span>
                     <p className="text-xs text-slate-700 dark:text-slate-300 font-medium whitespace-pre-wrap leading-relaxed">
-                      {essay.notes}
+                      {normalizedEssay.generalNotes}
                     </p>
                   </div>
                 )}

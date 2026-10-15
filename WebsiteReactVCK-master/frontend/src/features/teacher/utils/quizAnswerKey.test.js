@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseQuizAnswerKey } from "./quizAnswerKey.js";
+import { formatQuizDescription, parseQuizAnswerKey, parseQuizDescription } from "./quizAnswerKey.js";
 
 test("parseQuizAnswerKey accepts compact numbered answer lists", () => {
   const parsed = parseQuizAnswerKey("1 A a\n2. b\nCâu 3: C\n4-D");
@@ -89,5 +89,16 @@ test("parseQuizAnswerKey keeps the last value and reports duplicate question num
   const parsed = parseQuizAnswerKey("1 A\n1 C\nGhi chú không phải đáp án");
   assert.deepEqual(parsed.entries, [{ questionNumber: 1, answerKey: "C" }]);
   assert.deepEqual(parsed.duplicateQuestionNumbers, [1]);
+});
+
+test("quiz description metadata round-trips without exposing JSON as display text", () => {
+  const stored = formatQuizDescription({
+    text: "Đọc kỹ đề trước khi làm bài.",
+    essayConfig: { enabled: true, maxScore: 4, prompt: "Nộp ảnh bài tự luận." },
+  });
+  const parsed = parseQuizDescription(stored);
+  assert.equal(parsed.text, "Đọc kỹ đề trước khi làm bài.");
+  assert.equal(parsed.essayConfig.maxScore, 4);
+  assert.equal(parsed.essayConfig.prompt, "Nộp ảnh bài tự luận.");
 });
 

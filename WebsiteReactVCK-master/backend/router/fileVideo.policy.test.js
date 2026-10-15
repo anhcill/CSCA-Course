@@ -82,6 +82,7 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   const listedA = await invoke(fileRouter, "get", "/student/files", { user: learnerA });
   assert.equal(listedA.statusCode, 200, JSON.stringify(listedA.body));
   assert.deepEqual(new Set(listedA.body.data.map((file) => file.id)), new Set([String(classOnly.id), String(courseWide.id)]));
+  assert.ok(listedA.body.data.every((file) => file.downloadUrl.endsWith("/download?download=1")));
   const listedB = await invoke(fileRouter, "get", "/student/files", { user: learnerB });
   assert.deepEqual(new Set(listedB.body.data.map((file) => file.id)), new Set([String(courseWide.id), String(otherClass.id)]));
   await db.query("UPDATE courses SET is_published=TRUE WHERE id=$1", [course.id]);
@@ -101,7 +102,17 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   const download = (user, id) => invoke(fileRouter, "get", "/files/:fileId/download", { user, params: { fileId: id } });
   assert.equal((await download(learnerA, privateFile.id)).statusCode, 403);
   assert.equal((await download(learnerB, classOnly.id)).statusCode, 403);
-  assert.equal((await download(learnerB, courseWide.id)).statusCode, 302);
+  const inlinePdf = await download(learnerB, courseWide.id);
+  assert.equal(inlinePdf.statusCode, 302);
+  assert.equal(new URL(inlinePdf.location).searchParams.get("response-content-disposition"),
+    `inline; filename="COURSE-${classA.id}.pdf"`);
+  assert.equal(new URL(inlinePdf.location).searchParams.get("response-content-type"), "application/pdf");
+  const forcedDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: learnerB, params: { fileId: courseWide.id }, query: { download: "1" },
+  });
+  assert.equal(forcedDownload.statusCode, 302);
+  assert.equal(new URL(forcedDownload.location).searchParams.get("response-content-disposition"),
+    `attachment; filename="COURSE-${classA.id}.pdf"`);
   assert.equal((await download(admin, privateFile.id)).statusCode, 302);
   const pendingFile = (await db.query(
     `INSERT INTO lms_learning_files(live_class_id,course_id,uploaded_by,original_name,storage_key,mime_type,size_bytes,visibility,status)
