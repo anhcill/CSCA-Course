@@ -1,10 +1,11 @@
-/* eslint-disable react/prop-types */
+/* eslint-disable react/prop-types, no-unused-vars */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   FiAlertCircle,
   FiAlertTriangle,
+  FiArchive,
   FiAward,
   FiBarChart2,
   FiBookOpen,
@@ -82,6 +83,33 @@ const formatSessionTarget = (session) => {
 const formatQuizSession = (quiz) => quiz?.sessionStart
   ? new Date(quiz.sessionStart).toLocaleString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
   : "Chưa gắn buổi học";
+
+const isQuizExpired = (quiz, now = new Date()) => {
+  if (!quiz) return false;
+  if (quiz.status === "DRAFT") return false;
+
+  if (quiz.availableUntil) {
+    const until = new Date(quiz.availableUntil);
+    if (!isNaN(until.getTime()) && until < now) return true;
+  }
+
+  if (quiz.activityScope === "homework") {
+    if (quiz.dueDate) {
+      const due = new Date(quiz.dueDate);
+      if (!isNaN(due.getTime()) && due < now) return true;
+    }
+  } else {
+    if (quiz.sessionEnd) {
+      const end = new Date(quiz.sessionEnd);
+      if (!isNaN(end.getTime()) && end < now) return true;
+    } else if (quiz.sessionStart) {
+      const start = new Date(quiz.sessionStart);
+      if (!isNaN(start.getTime()) && start < now) return true;
+    }
+  }
+
+  return false;
+};
 
 const normalizeQuestionForSubmit = (question, index = 0, mode = "manual") => {
   const isEssay = question?.type === "essay" || Boolean(question?.isEssay);
@@ -851,6 +879,7 @@ export default function TeacherQuizPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [expiryTab, setExpiryTab] = useState("active"); // "active" | "expired" | "all"
 
   // Selected quiz for statistics modal
   const [selectedQuizForStats, setSelectedQuizForStats] = useState(null);
@@ -1017,9 +1046,28 @@ export default function TeacherQuizPage() {
     return [...quizzes].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   }, [quizzes]);
 
+  const { activeQuizzesCount, expiredQuizzesCount } = useMemo(() => {
+    let active = 0;
+    let expired = 0;
+    const now = new Date();
+    for (const q of quizzes) {
+      if (isQuizExpired(q, now)) {
+        expired++;
+      } else {
+        active++;
+      }
+    }
+    return { activeQuizzesCount: active, expiredQuizzesCount: expired };
+  }, [quizzes]);
+
   // Filtering Quizzes
   const filteredQuizzes = useMemo(() => {
+    const now = new Date();
     return sortedQuizzes.filter((quiz) => {
+      const expired = isQuizExpired(quiz, now);
+      if (expiryTab === "active" && expired) return false;
+      if (expiryTab === "expired" && !expired) return false;
+
       if (statusFilter !== "all" && quiz.status !== statusFilter) return false;
       if (scopeFilter !== "all" && quiz.activityScope !== scopeFilter) return false;
       if (searchQuery.trim()) {
@@ -1031,7 +1079,7 @@ export default function TeacherQuizPage() {
       }
       return true;
     });
-  }, [sortedQuizzes, statusFilter, scopeFilter, searchQuery]);
+  }, [sortedQuizzes, expiryTab, statusFilter, scopeFilter, searchQuery]);
 
   const resetBuilder = () => {
     setQuizTitle("");
@@ -1800,7 +1848,86 @@ export default function TeacherQuizPage() {
 
         {/* TAB 1: DANH SÁCH QUIZ ĐÃ GIAO */}
         {activeTab === "assigned" && (
-          <section className="space-y-5 animate-in fade-in duration-200">
+          <section className="space-y-4 animate-in fade-in duration-200">
+            {/* Thanh chuyển đổi trạng thái: Còn hạn vs Đã kết thúc / Xem lại */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+              <div className="inline-flex rounded-xl bg-slate-100 p-1 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setExpiryTab("active")}
+                  className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-black transition-all ${
+                    expiryTab === "active"
+                      ? "bg-white text-emerald-700 shadow-xs dark:bg-slate-800 dark:text-emerald-400"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                  }`}
+                >
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span>Đang mở / Còn hạn</span>
+                  <span
+                    className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                      expiryTab === "active"
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300"
+                        : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    }`}
+                  >
+                    {activeQuizzesCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExpiryTab("expired")}
+                  className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-black transition-all ${
+                    expiryTab === "expired"
+                      ? "bg-white text-rose-700 shadow-xs dark:bg-slate-800 dark:text-rose-400"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                  }`}
+                >
+                  <FiArchive className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                  <span>Đã kết thúc / Xem lại</span>
+                  <span
+                    className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                      expiryTab === "expired"
+                        ? "bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300"
+                        : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    }`}
+                  >
+                    {expiredQuizzesCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExpiryTab("all")}
+                  className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-black transition-all ${
+                    expiryTab === "all"
+                      ? "bg-white text-violet-700 shadow-xs dark:bg-slate-800 dark:text-violet-300"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                  }`}
+                >
+                  <span>Tất cả</span>
+                  <span
+                    className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                      expiryTab === "all"
+                        ? "bg-violet-100 text-violet-800 dark:bg-violet-950/80 dark:text-violet-300"
+                        : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    }`}
+                  >
+                    {quizzes.length}
+                  </span>
+                </button>
+              </div>
+
+              <div className="text-xs font-medium text-slate-500 dark:text-slate-400 px-1">
+                {expiryTab === "active" && "🟢 Hiển thị các bài quiz đang trong thời hạn làm bài"}
+                {expiryTab === "expired" && "📦 Đề đã hết hạn hoặc buổi học đã qua — xem lại kết quả & phổ điểm"}
+                {expiryTab === "all" && "Toàn bộ bài quiz đã giao trong hệ thống"}
+              </div>
+            </div>
+
             {/* Thanh tìm kiếm & lọc */}
             <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 md:flex-row md:items-center md:justify-between">
               <div className="relative flex-1">
@@ -1849,148 +1976,195 @@ export default function TeacherQuizPage() {
               <Loading loading text="Đang tải danh sách đề kiểm tra..." fullScreen={false} className="min-h-[40vh] py-16" />
             ) : filteredQuizzes.length === 0 ? (
               <EmptyState
-                title={quizzes.length === 0 ? "Chưa có đề quiz nào" : "Không có quiz phù hợp với tìm kiếm"}
+                title={
+                  quizzes.length === 0
+                    ? "Chưa có đề quiz nào"
+                    : expiryTab === "active"
+                    ? "Không có đề quiz nào đang mở"
+                    : expiryTab === "expired"
+                    ? "Chưa có đề quiz nào hết hạn"
+                    : "Không có quiz phù hợp với tìm kiếm"
+                }
                 description={
                   quizzes.length === 0
                     ? "Tạo đề quiz đầu tiên cho lớp học để học viên làm bài và thống kê kết quả."
+                    : expiryTab === "active"
+                    ? (activeQuizzesCount === 0 && expiredQuizzesCount > 0
+                        ? `Tất cả ${expiredQuizzesCount} bài quiz trước đó đã kết thúc. Bạn có thể chuyển sang tab “Đã kết thúc / Xem lại” để xem lại bài làm hoặc tạo quiz mới.`
+                        : "Hiện không có quiz nào trong thời hạn nộp bài. Tạo đề quiz mới cho lớp học để học viên làm bài.")
+                    : expiryTab === "expired"
+                    ? "Các đề quiz sau khi hết hạn nộp hoặc buổi học kết thúc sẽ được tự động lưu trữ tại tab này."
                     : "Hãy thử thay đổi từ khóa hoặc bộ lọc trạng thái để xem các quiz khác."
                 }
-                actionLabel="Tạo quiz mới"
-                onAction={() => setActiveTab("create")}
+                actionLabel={
+                  quizzes.length === 0 || expiryTab === "active"
+                    ? "Tạo quiz mới"
+                    : activeQuizzesCount > 0
+                    ? "Xem quiz đang mở"
+                    : "Tạo quiz mới"
+                }
+                onAction={() => {
+                  if (expiryTab === "expired" && activeQuizzesCount > 0) {
+                    setExpiryTab("active");
+                  } else {
+                    setActiveTab("create");
+                  }
+                }}
               />
             ) : (
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {filteredQuizzes.map((quiz) => (
-                  <article
-                    key={quiz.id}
-                    className="group relative flex flex-col justify-between rounded-3xl border border-slate-200 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900"
-                  >
-                    <div className="space-y-3">
-                      {/* Top Badges */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-black ${
-                              quiz.status === "PUBLISHED"
-                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                                : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                            }`}
-                          >
-                            {quiz.status === "PUBLISHED" ? "ĐANG CÔNG BỐ" : "BẢN NHÁP"}
-                          </span>
-                          <span
-                            className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
-                              quiz.activityScope === "homework"
-                                ? "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300"
-                                : "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300"
-                            }`}
-                          >
-                            {quiz.activityScope === "homework" ? "BTVN" : "BUỔI HỌC"}
-                          </span>
-                        </div>
-                        <span className="text-[11px] font-medium text-slate-400">
-                          {new Date(quiz.createdAt).toLocaleDateString("vi-VN")}
-                        </span>
-                      </div>
-
-                      {/* Title */}
-                      <h2
-                        onClick={() => setSelectedQuizForStats(quiz)}
-                        className="line-clamp-2 cursor-pointer text-base font-black text-slate-950 transition hover:text-violet-600 dark:text-white dark:hover:text-violet-400"
-                        title={quiz.title}
-                      >
-                        {quiz.title}
-                      </h2>
-
-                      {/* Course and Class */}
-                      <div className="space-y-1 text-xs">
-                        <p className="flex items-center gap-1.5 truncate font-bold text-violet-700 dark:text-violet-300">
-                          <FiBookOpen className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                          <span className="truncate">{quiz.courseTitle}</span>
-                        </p>
-                        <p className="rounded-xl bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-950 dark:text-slate-300 flex items-center gap-1.5">
-                          <FiUsers className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                          <span className="truncate">{quiz.classTitle} · {formatQuizSession(quiz)}</span>
-                        </p>
-                        {quiz.activityScope === "homework" && (
-                          <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-                            <FiClock className="h-3 w-3 shrink-0" />
-                            Hạn nộp: {quiz.dueDate ? new Date(quiz.dueDate).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Chưa đặt"}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* PDF & Solution Badges */}
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                        {quiz.hasPaper && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/60">
-                            📄 Đề PDF
-                          </span>
-                        )}
-                        {quiz.hasSolution && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[10px] font-black text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 border border-sky-200/60 dark:border-sky-900/60">
-                            💡 Lời giải PDF
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Stats & Actions */}
-                    <div className="mt-4 space-y-3 border-t border-slate-100 pt-3 dark:border-slate-800">
-                      <div className="grid grid-cols-4 gap-1.5 text-center">
-                        <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950">
-                          <span className="block text-[9px] font-bold uppercase text-slate-400">Câu</span>
-                          <span className="mt-0.5 block font-mono text-xs font-black">{quiz.questionCount}</span>
-                        </div>
-                        <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950">
-                          <span className="block text-[9px] font-bold uppercase text-slate-400">Phút</span>
-                          <span className="mt-0.5 block font-mono text-xs font-black">{quiz.timeLimitMinutes}</span>
-                        </div>
-                        <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950">
-                          <span className="block text-[9px] font-bold uppercase text-slate-400">Nộp</span>
-                          <span className="mt-0.5 block font-mono text-xs font-black text-violet-600 dark:text-violet-300">
-                            {quiz.attemptsCount}
+                {filteredQuizzes.map((quiz) => {
+                  const isExpired = isQuizExpired(quiz);
+                  return (
+                    <article
+                      key={quiz.id}
+                      className={`group relative flex flex-col justify-between rounded-3xl border bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg dark:bg-slate-900 ${
+                        isExpired
+                          ? "border-slate-200/90 hover:border-slate-400 opacity-95 dark:border-slate-800"
+                          : "border-slate-200 hover:border-violet-400 dark:border-slate-800"
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        {/* Top Badges */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {isExpired ? (
+                              <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 font-mono text-[10px] font-black text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                ĐÃ HẾT HẠN
+                              </span>
+                            ) : (
+                              <span
+                                className={`rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-black ${
+                                  quiz.status === "PUBLISHED"
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                    : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                }`}
+                              >
+                                {quiz.status === "PUBLISHED" ? "ĐANG CÔNG BỐ" : "BẢN NHÁP"}
+                              </span>
+                            )}
+                            <span
+                              className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
+                                quiz.activityScope === "homework"
+                                  ? "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+                                  : "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                              }`}
+                            >
+                              {quiz.activityScope === "homework" ? "BTVN" : "BUỔI HỌC"}
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-medium text-slate-400">
+                            {new Date(quiz.createdAt).toLocaleDateString("vi-VN")}
                           </span>
                         </div>
-                        <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950">
-                          <span className="block text-[9px] font-bold uppercase text-slate-400">Điểm TB</span>
-                          <span className="mt-0.5 block font-mono text-xs font-black text-emerald-600 dark:text-emerald-400">
-                            {quiz.avgScore !== null ? `${quiz.avgScore}%` : "—"}
-                          </span>
-                        </div>
-                      </div>
 
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        <button
-                          type="button"
+                        {/* Title */}
+                        <h2
                           onClick={() => setSelectedQuizForStats(quiz)}
-                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-violet-50 px-3 py-2 text-xs font-black text-violet-700 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-900/50 border border-violet-200/80 dark:border-violet-800/80"
+                          className="line-clamp-2 cursor-pointer text-base font-black text-slate-950 transition hover:text-violet-600 dark:text-white dark:hover:text-violet-400"
+                          title={quiz.title}
                         >
-                          <FiBarChart2 className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
-                          <span>Xem thống kê & học viên</span>
-                        </button>
+                          {quiz.title}
+                        </h2>
 
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!window.confirm(`Xóa quiz “${quiz.title}”? Toàn bộ lượt làm bài liên quan cũng sẽ bị xóa.`)) return;
-                            try {
-                              await deleteTeacherQuiz(quiz.id);
-                              setQuizzes((current) => current.filter((item) => item.id !== quiz.id));
-                              toast.success("Đã xóa quiz.");
-                            } catch (error) {
-                              toast.error(error?.message || "Không thể xóa quiz");
-                            }
-                          }}
-                          className="rounded-xl p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30"
-                          title="Xóa quiz này"
-                        >
-                          <FiTrash2 className="h-4 w-4" />
-                        </button>
+                        {/* Course and Class */}
+                        <div className="space-y-1 text-xs">
+                          <p className="flex items-center gap-1.5 truncate font-bold text-violet-700 dark:text-violet-300">
+                            <FiBookOpen className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                            <span className="truncate">{quiz.courseTitle}</span>
+                          </p>
+                          <p className="rounded-xl bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-950 dark:text-slate-300 flex items-center gap-1.5">
+                            <FiUsers className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                            <span className="truncate">
+                              {quiz.classTitle} · {formatQuizSession(quiz)}
+                              {isExpired && quiz.activityScope !== "homework" ? " (Buổi đã kết thúc)" : ""}
+                            </span>
+                          </p>
+                          {quiz.activityScope === "homework" && (
+                            <p className={`text-[11px] font-bold flex items-center gap-1 ${
+                              isExpired
+                                ? "text-rose-600 dark:text-rose-400"
+                                : "text-emerald-700 dark:text-emerald-300"
+                            }`}>
+                              <FiClock className="h-3 w-3 shrink-0" />
+                              {isExpired ? "Đã hết hạn: " : "Hạn nộp: "}
+                              {quiz.dueDate ? new Date(quiz.dueDate).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Chưa đặt"}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* PDF & Solution Badges */}
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {quiz.hasPaper && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/60">
+                              📄 Đề PDF
+                            </span>
+                          )}
+                          {quiz.hasSolution && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[10px] font-black text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 border border-sky-200/60 dark:border-sky-900/60">
+                              💡 Lời giải PDF
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                ))}
+
+                      {/* Stats & Actions */}
+                      <div className="mt-4 space-y-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+                        <div className="grid grid-cols-4 gap-1.5 text-center">
+                          <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950">
+                            <span className="block text-[9px] font-bold uppercase text-slate-400">Câu</span>
+                            <span className="mt-0.5 block font-mono text-xs font-black">{quiz.questionCount}</span>
+                          </div>
+                          <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950">
+                            <span className="block text-[9px] font-bold uppercase text-slate-400">Phút</span>
+                            <span className="mt-0.5 block font-mono text-xs font-black">{quiz.timeLimitMinutes}</span>
+                          </div>
+                          <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950">
+                            <span className="block text-[9px] font-bold uppercase text-slate-400">Nộp</span>
+                            <span className="mt-0.5 block font-mono text-xs font-black text-violet-600 dark:text-violet-300">
+                              {quiz.attemptsCount}
+                            </span>
+                          </div>
+                          <div className="rounded-xl bg-slate-50 p-2 dark:bg-slate-950">
+                            <span className="block text-[9px] font-bold uppercase text-slate-400">Điểm TB</span>
+                            <span className="mt-0.5 block font-mono text-xs font-black text-emerald-600 dark:text-emerald-400">
+                              {quiz.avgScore !== null ? `${quiz.avgScore}%` : "—"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedQuizForStats(quiz)}
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-violet-50 px-3 py-2 text-xs font-black text-violet-700 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-900/50 border border-violet-200/80 dark:border-violet-800/80"
+                          >
+                            <FiBarChart2 className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                            <span>{isExpired ? "Xem lại kết quả & phổ điểm" : "Xem thống kê & học viên"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!window.confirm(`Xóa quiz “${quiz.title}”? Toàn bộ lượt làm bài liên quan cũng sẽ bị xóa.`)) return;
+                              try {
+                                await deleteTeacherQuiz(quiz.id);
+                                setQuizzes((current) => current.filter((item) => item.id !== quiz.id));
+                                toast.success("Đã xóa quiz.");
+                              } catch (error) {
+                                toast.error(error?.message || "Không thể xóa quiz");
+                              }
+                            }}
+                            className="rounded-xl p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30"
+                            title="Xóa quiz này"
+                          >
+                            <FiTrash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>
