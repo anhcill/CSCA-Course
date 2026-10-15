@@ -310,3 +310,109 @@ test("Management email changes preserve LMS identities, access and one active le
   }), /Email học viên đang thuộc tài khoản LMS khác/);
   assert.equal((await db.query("SELECT email FROM users WHERE id=$1", [student.id])).rows[0].email, "student-new@example.test");
 });
+
+test("teacher source takeover preserves the LMS user and rejects unrelated source conflicts", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^"]+\.sql"/g)].map((match) => JSON.parse(match[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  const legacyTeacher = (await db.query(
+    `INSERT INTO users
+       (username, email, role, management_staff_source_id, is_management_managed,
+        lms_account_status, management_source_updated_at)
+     VALUES ('teacher-legacy-source', 'teacher-takeover@example.test', 'creator',
+       'teacher-source-legacy', TRUE, 'active', '2026-10-01T00:00:00Z') RETURNING id`,
+  )).rows[0];
+  const course = (await db.query(
+    `INSERT INTO courses(name, slug, author_id, external_course_id, is_published, is_management_managed)
+     VALUES ('Teacher takeover course', 'teacher-takeover-course', $1, 'teacher-takeover-course', TRUE, TRUE)
+     RETURNING id`,
+    [legacyTeacher.id],
+  )).rows[0];
+  const liveClass = (await db.query(
+    `INSERT INTO live_classes
+       (title, course_id, instructor_id, status, management_class_source_id,
+        management_course_source_id, management_source_updated_at, management_approval_status)
+     VALUES ('Teacher takeover class', $1, $2, 'active', 'teacher-takeover-class',
+       'teacher-takeover-course', '2026-10-01T00:00:00Z', 'approved') RETURNING id`,
+    [course.id, legacyTeacher.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO class_teachers
+       (live_class_id, teacher_id, management_teacher_source_id, teaching_role, status, management_source_updated_at)
+     VALUES ($1, $2, 'teacher-source-legacy', 'lead', 'active', '2026-10-01T00:00:00Z')`,
+    [liveClass.id, legacyTeacher.id],
+  );
+
+  const takeover = await applyManagementEvent(db, {
+    eventType: "teacher.upserted",
+    occurredAt: new Date("2026-10-15T01:00:00Z"),
+    payload: {
+      teacherSourceId: "teacher-source-current",
+      legacyTeacherSourceIds: ["teacher-source-legacy"],
+      fullName: "Teacher Rebound",
+      email: "teacher-takeover@example.test",
+      accountStatus: "active",
+      sourceUpdatedAt: "2026-10-15T01:00:00Z",
+    },
+  });
+
+  assert.equal(takeover.entityId, Number(legacyTeacher.id));
+  assert.equal((await db.query("SELECT management_staff_source_id FROM users WHERE id=$1", [legacyTeacher.id])).rows[0].management_staff_source_id, "teacher-source-current");
+  assert.equal(Number((await db.query("SELECT instructor_id FROM live_classes WHERE id=$1", [liveClass.id])).rows[0].instructor_id), Number(legacyTeacher.id));
+  assert.equal(Number((await db.query("SELECT teacher_id FROM class_teachers WHERE live_class_id=$1", [liveClass.id])).rows[0].teacher_id), Number(legacyTeacher.id));
+
+  const preferredCurrent = (await db.query(
+    `INSERT INTO users
+       (username, email, role, management_staff_source_id, is_management_managed,
+        lms_account_status, management_source_updated_at)
+     VALUES ('teacher-current-priority', 'teacher-current-priority@example.test', 'creator',
+       'teacher-source-priority', TRUE, 'active', '2026-10-01T00:00:00Z') RETURNING id`,
+  )).rows[0];
+  const ignoredLegacy = (await db.query(
+    `INSERT INTO users
+       (username, email, role, management_staff_source_id, is_management_managed,
+        lms_account_status, management_source_updated_at)
+     VALUES ('teacher-ignored-legacy', 'teacher-ignored-legacy@example.test', 'creator',
+       'teacher-source-ignored-legacy', TRUE, 'active', '2026-10-01T00:00:00Z') RETURNING id`,
+  )).rows[0];
+  const priorityResult = await applyManagementEvent(db, {
+    eventType: "teacher.upserted",
+    occurredAt: new Date("2026-10-15T02:00:00Z"),
+    payload: {
+      teacherSourceId: "teacher-source-priority",
+      legacyTeacherSourceIds: ["teacher-source-ignored-legacy"],
+      fullName: "Current Teacher Wins",
+      email: "teacher-current-priority@example.test",
+      accountStatus: "active",
+      sourceUpdatedAt: "2026-10-15T02:00:00Z",
+    },
+  });
+  assert.equal(priorityResult.entityId, Number(preferredCurrent.id));
+  assert.equal((await db.query("SELECT management_staff_source_id FROM users WHERE id=$1", [ignoredLegacy.id])).rows[0].management_staff_source_id, "teacher-source-ignored-legacy");
+
+  await db.query(
+    `INSERT INTO users
+       (username, email, role, management_staff_source_id, is_management_managed,
+        lms_account_status, management_source_updated_at)
+     VALUES ('teacher-conflicting-source', 'teacher-conflict@example.test', 'creator',
+       'teacher-source-conflict-old', TRUE, 'active', '2026-10-01T00:00:00Z')`,
+  );
+  await assert.rejects(() => applyManagementEvent(db, {
+    eventType: "teacher.upserted",
+    occurredAt: new Date("2026-10-15T03:00:00Z"),
+    payload: {
+      teacherSourceId: "teacher-source-conflict-new",
+      fullName: "Conflicting Teacher",
+      email: "teacher-conflict@example.test",
+      accountStatus: "active",
+      sourceUpdatedAt: "2026-10-15T03:00:00Z",
+    },
+  }), /Email đã liên kết với giáo viên Management khác/);
+  assert.equal((await db.query(
+    "SELECT management_staff_source_id FROM users WHERE email='teacher-conflict@example.test'",
+  )).rows[0].management_staff_source_id, "teacher-source-conflict-old");
+});

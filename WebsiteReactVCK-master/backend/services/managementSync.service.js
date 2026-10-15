@@ -243,20 +243,30 @@ const assertEmailAvailableForUser = async (client, nextEmail, userId, identityLa
   if (conflict.rows[0]) throw new SyncValidationError(`${identityLabel} đang thuộc tài khoản LMS khác`);
 };
 
-const parseTeacher = (payload, occurredAt) => ({
-  teacherSourceId: sourceId(payload.teacherSourceId || payload.externalTeacherId, "teacherSourceId"),
-  fullName: text(payload.fullName, 160, "fullName"),
-  email: email(payload.email),
-  status: enumValue(payload.accountStatus, ACCOUNT_STATUSES, "active", "accountStatus"),
-  sourceUpdatedAt: sourceDate(payload, occurredAt),
-});
+const parseTeacher = (payload, occurredAt) => {
+  const legacyIds = payload.legacyTeacherSourceIds === undefined ? [] : payload.legacyTeacherSourceIds;
+  if (!Array.isArray(legacyIds) || legacyIds.length > 100) {
+    throw new SyncValidationError("legacyTeacherSourceIds không hợp lệ");
+  }
+  return {
+    teacherSourceId: sourceId(payload.teacherSourceId || payload.externalTeacherId, "teacherSourceId"),
+    legacyTeacherSourceIds: legacyIds.map((id) => sourceId(id, "legacyTeacherSourceIds")),
+    fullName: text(payload.fullName, 160, "fullName"),
+    email: email(payload.email),
+    status: enumValue(payload.accountStatus, ACCOUNT_STATUSES, "active", "accountStatus"),
+    sourceUpdatedAt: sourceDate(payload, occurredAt),
+  };
+};
 
 const syncTeacher = async (client, event) => {
   const input = parseTeacher(event.payload, event.occurredAt);
+  const sourceIds = [input.teacherSourceId, ...input.legacyTeacherSourceIds].map(lower);
   const bySource = await client.query(
-    `SELECT id, role, email, management_source_updated_at
-     FROM users WHERE LOWER(management_staff_source_id) = LOWER($1) FOR UPDATE`,
-    [input.teacherSourceId],
+    `SELECT id, role, email, management_staff_source_id, management_source_updated_at
+     FROM users WHERE LOWER(management_staff_source_id) = ANY($1::text[])
+     ORDER BY CASE WHEN LOWER(management_staff_source_id) = LOWER($2) THEN 0 ELSE 1 END, id
+     LIMIT 1 FOR UPDATE`,
+    [sourceIds, input.teacherSourceId],
   );
   let user = bySource.rows[0];
   if (!user) {
@@ -266,7 +276,8 @@ const syncTeacher = async (client, event) => {
       [input.email],
     );
     user = byEmail.rows[0] || null;
-    if (user?.management_staff_source_id && lower(user.management_staff_source_id) !== lower(input.teacherSourceId)) {
+    if (user?.management_staff_source_id && lower(user.management_staff_source_id) !== lower(input.teacherSourceId) &&
+        !input.legacyTeacherSourceIds.some((id) => lower(id) === lower(user.management_staff_source_id))) {
       throw new SyncValidationError("Email đã liên kết với giáo viên Management khác");
     }
   }
