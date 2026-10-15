@@ -1,10 +1,10 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Download, Search, SlidersHorizontal, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Download, Pencil, Search, SlidersHorizontal, Users, X } from "lucide-react";
 import GradebookPolicyPanel from "../components/GradebookPolicyPanel";
 import TeacherRiskStudentsSection from "../components/TeacherRiskStudentsSection";
-import { revokeAccommodation, fetchAssessmentAccommodations, fetchClassStudentProgress, fetchTeacherDashboardStats, gradebookExportUrl, saveAssessmentAccommodation } from "../../api/lmsClient";
+import { revokeAccommodation, fetchAssessmentAccommodations, fetchClassStudentProgress, fetchTeacherDashboardStats, gradebookExportUrl, saveAssessmentAccommodation, updateGradebookScore } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 
@@ -136,6 +136,153 @@ function AccommodationModal({ student, activities, initialActivity, onClose, onS
   );
 }
 
+function EditScoreModal({ target, onClose, onSaved }) {
+  const { student, activity, record, classId } = target;
+  const maxScore = record?.maxScore ?? activity.maxScore ?? 10;
+  const currentScore = record?.score !== null && record?.score !== undefined ? String(record.score) : "";
+  const [score, setScore] = useState(currentScore);
+  const [reason, setReason] = useState("");
+  const [feedbackText, setFeedbackText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const num = Number(score);
+    if (score === "" || isNaN(num) || num < 0) {
+      setErrorMsg("Vui lòng nhập điểm số hợp lệ (số lớn hơn hoặc bằng 0).");
+      return;
+    }
+    if (maxScore && num > maxScore) {
+      setErrorMsg(`Điểm số không được vượt quá điểm tối đa (${maxScore}).`);
+      return;
+    }
+    setSaving(true);
+    setErrorMsg("");
+    try {
+      await updateGradebookScore({
+        classId,
+        studentId: student.id,
+        activityId: activity.id,
+        score: num,
+        reason: reason.trim() || "Giáo viên cập nhật điểm từ sổ theo dõi",
+        feedbackText: feedbackText.trim() || undefined,
+      });
+      onSaved();
+    } catch (err) {
+      setErrorMsg(err.message || "Không thể lưu điểm.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Sửa điểm học viên">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <span className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-blue-600 dark:text-sky-400">
+              <Pencil className="h-3 w-3" /> Chấm / Sửa điểm
+            </span>
+            <h2 className="mt-1 text-base font-extrabold text-slate-950 dark:text-white">
+              {student.name}
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              {activity.type === "quiz" ? "Quiz" : "Bài tập"}: <span className="font-semibold text-slate-700 dark:text-slate-200">{activity.title}</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+            title="Đóng"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {errorMsg && (
+          <div className="mt-3 rounded-xl bg-rose-50 p-2.5 text-xs font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+            {errorMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Điểm số <span className="text-rose-500">*</span>
+              </label>
+              <span className="text-[11px] font-medium text-slate-400">Thang điểm: 0 - {maxScore}</span>
+            </div>
+            <div className="relative mt-1">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max={maxScore}
+                value={score}
+                onChange={(e) => setScore(e.target.value)}
+                placeholder={`0 - ${maxScore}`}
+                required
+                autoFocus
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+              <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">
+                / {maxScore}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              Lý do điều chỉnh <span className="font-normal text-slate-400">(tùy chọn)</span>
+            </label>
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Ví dụ: Chấm lại bài, kiểm tra bù, cộng điểm chuyên cần..."
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              Nhận xét cho học viên <span className="font-normal text-slate-400">(tùy chọn)</span>
+            </label>
+            <textarea
+              rows={2}
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="Lời nhận xét hoặc góp ý..."
+              className="mt-1 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+            />
+          </div>
+
+          <div className="mt-5 flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
+            >
+              {saving ? "Đang lưu..." : "Lưu điểm"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function TeacherStudentProgressPage() {
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState("");
@@ -147,6 +294,7 @@ export default function TeacherStudentProgressPage() {
   const [loadingGradebook, setLoadingGradebook] = useState(false);
   const [error, setError] = useState("");
   const [accommodationTarget, setAccommodationTarget] = useState(null);
+  const [editingScoreTarget, setEditingScoreTarget] = useState(null);
   const [activeView, setActiveView] = useState("overview");
   const [riskStudents, setRiskStudents] = useState([]);
   const [riskClassFilter, setRiskClassFilter] = useState("all");
@@ -267,14 +415,64 @@ export default function TeacherStudentProgressPage() {
   return (
     <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <header className="rounded-3xl border border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50 p-6 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/20 sm:p-8">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600 dark:text-sky-400">Sổ theo dõi giảng dạy</p>
-          <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <header className="rounded-2xl border border-blue-100/80 bg-gradient-to-r from-blue-50/60 via-white to-emerald-50/40 p-4 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/20 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">Học viên, điểm & chuyên cần</h1>
+              <p className="text-[11px] font-black uppercase tracking-wider text-blue-600 dark:text-sky-400">Sổ theo dõi giảng dạy</p>
+              <h1 className="mt-0.5 text-lg font-extrabold tracking-tight text-slate-950 dark:text-white sm:text-xl">Học viên, điểm & chuyên cần</h1>
             </div>
 
-            {activeView === "overview" && <div className="flex flex-wrap items-end gap-2"><label className="block text-xs font-bold">Khóa học<select aria-label="Lọc khóa học" value={courseFilter} onChange={(e)=>{const next=e.target.value;setCourseFilter(next);setClassId(String(classes.find((c)=>!next || String(c.courseId)===next)?.id || ""));setSelectedSessionId("all");}} className="mt-1.5 block rounded-xl border bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900"><option value="">Tất cả khóa</option>{[...new Map(classes.filter((c)=>c.courseId).map((c)=>[String(c.courseId),c])).values()].map((c)=><option key={c.courseId} value={c.courseId}>{c.courseTitle || c.courseId}</option>)}</select></label><label className="block text-xs font-bold text-slate-600 dark:text-slate-300">Chọn lớp<select value={classId} onChange={(event) => { setClassId(event.target.value); setSelectedSessionId("all"); }} className="mt-1.5 block min-w-[16rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{classes.filter((c)=>!courseFilter || String(c.courseId)===courseFilter).map((item) => <option key={item.id} value={item.id}>{item.title}{item.courseTitle ? ` · ${item.courseTitle}` : ""}</option>)}</select></label><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "xlsx" })} className="inline-flex h-[42px] items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-xs font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"><Download className="h-3.5 w-3.5" /> Xuất XLSX</a><a href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "csv" })} className="inline-flex h-[42px] items-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">CSV</a></div>}
+            {activeView === "overview" && (
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Khóa:</span>
+                  <select
+                    aria-label="Lọc khóa học"
+                    value={courseFilter}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setCourseFilter(next);
+                      setClassId(String(classes.find((c) => !next || String(c.courseId) === next)?.id || ""));
+                      setSelectedSessionId("all");
+                    }}
+                    className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="">Tất cả khóa</option>
+                    {[...new Map(classes.filter((c) => c.courseId).map((c) => [String(c.courseId), c])).values()].map((c) => (
+                      <option key={c.courseId} value={c.courseId}>{c.courseTitle || c.courseId}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Lớp:</span>
+                  <select
+                    value={classId}
+                    onChange={(event) => { setClassId(event.target.value); setSelectedSessionId("all"); }}
+                    className="min-w-[11rem] sm:min-w-[14rem] rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  >
+                    {classes.filter((c) => !courseFilter || String(c.courseId) === courseFilter).map((item) => (
+                      <option key={item.id} value={item.id}>{item.title}{item.courseTitle ? ` · ${item.courseTitle}` : ""}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5 pl-1">
+                  <a
+                    href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "xlsx" })}
+                    className="inline-flex h-[32px] items-center gap-1.5 rounded-xl bg-slate-950 px-2.5 text-xs font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                  >
+                    <Download className="h-3 w-3" /> Xuất XLSX
+                  </a>
+                  <a
+                    href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "csv" })}
+                    className="inline-flex h-[32px] items-center rounded-xl border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    CSV
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
         </header>
 
@@ -361,7 +559,57 @@ export default function TeacherStudentProgressPage() {
                             <td className="px-4 py-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 font-black text-blue-700 dark:bg-blue-950 dark:text-sky-300">{student.avatar ? <img src={student.avatar} alt="" className="h-full w-full object-cover" /> : student.name.slice(0, 1).toUpperCase()}</span><div><p className="font-black text-slate-900 dark:text-white">{student.name}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{student.email}</p>{scopedActivities.length > 0 && <button type="button" onClick={() => setAccommodationTarget({ student, activity: scopedActivities[0] })} className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 dark:text-sky-400"><SlidersHorizontal className="h-3 w-3" /> Hỗ trợ riêng</button>}</div></div></td>
                             <td className="px-4 py-4">{selectedSessionId === "all" ? <><p className="font-black text-slate-900 dark:text-white">{attendance?.rate ?? "—"}{attendance?.rate !== null ? "%" : ""}</p><p className="mt-1 text-[11px] text-slate-500">Có mặt {attendance?.present || 0}/{attendance?.recorded || 0} buổi đã điểm danh</p></> : sessionAttendance ? <><span className={`inline-flex rounded-full px-2 py-1 font-bold ${attendanceLabel[sessionAttendance.status]?.cls || "bg-slate-100 text-slate-600"}`}>{attendanceLabel[sessionAttendance.status]?.text || sessionAttendance.status}</span><p className="mt-1 text-[11px] text-slate-500">Điểm danh lúc {formatCheckedAt(sessionAttendance.checkedAt)}</p></> : <span className="text-slate-400">Chưa điểm danh</span>}</td>
                             <td className="px-4 py-4"><p className="flex items-center gap-1.5 font-black text-slate-900 dark:text-white"><BarChart3 className="h-4 w-4 text-blue-600 dark:text-sky-400" /> {score.average === null ? "Chưa có điểm" : `${score.average}%`}</p><p className="mt-1 text-[11px] text-slate-500">Đã có điểm {score.gradedCount}/{score.rows.length} hoạt động</p></td>
-                            <td className="px-4 py-4"><div className="max-w-sm space-y-1.5">{score.rows.length === 0 ? <span className="text-slate-400">Không có bài hoặc quiz trong phạm vi này</span> : score.rows.map(({ activity, record }) => { const maxScore = record?.maxScore ?? activity.maxScore; const hasScore = record?.score !== null && record?.score !== undefined; return <div key={activity.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-100/70 px-2.5 py-2 dark:bg-slate-950/70"><span className="min-w-0 truncate font-semibold text-slate-700 dark:text-slate-200">{activity.type === "quiz" ? "Quiz" : "Bài tập"}: {activity.title}</span><span className={`shrink-0 font-black ${hasScore ? "text-emerald-600 dark:text-emerald-400" : record ? "text-amber-600 dark:text-amber-400" : "text-slate-400"}`}>{hasScore ? `${record.score}${maxScore ? `/${maxScore}` : ""}` : record ? "Chờ chấm" : "Chưa nộp"}</span></div>; })}</div></td>
+                            <td className="px-4 py-4">
+                              <div className="max-w-sm space-y-1.5">
+                                {score.rows.length === 0 ? (
+                                  <span className="text-slate-400">Không có bài hoặc quiz trong phạm vi này</span>
+                                ) : (
+                                  score.rows.map(({ activity, record }) => {
+                                    const maxScore = record?.maxScore ?? activity.maxScore ?? 10;
+                                    const hasScore = record?.score !== null && record?.score !== undefined;
+                                    return (
+                                      <div
+                                        key={activity.id}
+                                        className="group flex items-center justify-between gap-2.5 rounded-lg bg-slate-100/70 px-2.5 py-1.5 transition hover:bg-blue-50/70 dark:bg-slate-950/70 dark:hover:bg-slate-800/70"
+                                      >
+                                        <span className="min-w-0 truncate font-semibold text-slate-700 dark:text-slate-200">
+                                          {activity.type === "quiz" ? "Quiz" : "Bài tập"}: {activity.title}
+                                        </span>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingScoreTarget({ classId, student, activity, record })}
+                                            className={`rounded px-1.5 py-0.5 font-black transition hover:ring-1 hover:ring-blue-400/50 ${
+                                              hasScore
+                                                ? "text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                                                : record
+                                                ? "text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                                                : "text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800"
+                                            }`}
+                                            title="Bấm để sửa điểm"
+                                          >
+                                            {hasScore
+                                              ? `${record.score}${maxScore ? `/${maxScore}` : ""}`
+                                              : record
+                                              ? "Chờ chấm"
+                                              : "Chưa nộp"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingScoreTarget({ classId, student, activity, record })}
+                                            className="inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[11px] font-bold text-blue-600 transition hover:bg-blue-100 dark:text-sky-400 dark:hover:bg-sky-950/60"
+                                            title="Sửa điểm học viên"
+                                          >
+                                            <Pencil className="h-3 w-3" />
+                                            <span className="hidden sm:inline">Sửa</span>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
@@ -375,6 +623,16 @@ export default function TeacherStudentProgressPage() {
         )}
       </div>
       {accommodationTarget && <AccommodationModal student={accommodationTarget.student} activities={scopedActivities.length ? scopedActivities : gradebook.activities} initialActivity={accommodationTarget.activity} onClose={() => setAccommodationTarget(null)} onSaved={() => { setAccommodationTarget(null); loadGradebook(); }} />}
+      {editingScoreTarget && (
+        <EditScoreModal
+          target={editingScoreTarget}
+          onClose={() => setEditingScoreTarget(null)}
+          onSaved={() => {
+            setEditingScoreTarget(null);
+            loadGradebook();
+          }}
+        />
+      )}
     </div>
   );
 }

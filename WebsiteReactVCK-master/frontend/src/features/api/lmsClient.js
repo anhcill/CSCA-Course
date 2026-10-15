@@ -654,6 +654,13 @@ export const fetchClassStudentProgress = async (classId) => (
   request(`/teacher/classes/${encodeURIComponent(classId)}/student-progress`)
 );
 
+export const updateGradebookScore = async ({ classId, studentId, activityId, score, reason, feedbackText }) => (
+  request(`/teacher/classes/${encodeURIComponent(classId)}/grades`, {
+    method: "PUT",
+    body: JSON.stringify({ studentId, activityId, score, reason, feedbackText }),
+  })
+);
+
 // Admin Console API helpers
 export const fetchAdminDashboardKpi = async () => request("/admin/kpi-summary");
 
@@ -1014,3 +1021,4 @@ export const uploadCourseQuizPaper = async (courseId, file, { onProgress } = {})
 };
 
 export const deleteClassFile = async (fileId) => request(`/teacher/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+export const deleteTeacherFile = deleteClassFile;

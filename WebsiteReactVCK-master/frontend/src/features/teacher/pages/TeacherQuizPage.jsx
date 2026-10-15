@@ -79,18 +79,32 @@ const formatQuizSession = (quiz) => quiz?.sessionStart
   ? new Date(quiz.sessionStart).toLocaleString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
   : "Chưa gắn buổi học";
 
-const normalizeQuestionForSubmit = (question) => {
-  const options = question.options
+const normalizeQuestionForSubmit = (question, index = 0, mode = "manual") => {
+  let rawOptions = Array.isArray(question?.options) ? question.options : [];
+  let options = rawOptions
     .map((text, originalIndex) => ({ text: String(text || "").trim(), originalIndex }))
     .filter((option) => option.text);
-  const correctAnswer = options.findIndex((option) => option.originalIndex === question.correctAnswer);
+
+  if (options.length < 2 && (mode === "paper" || !options.length || String(question?.questionText || "").includes("PDF"))) {
+    options = ["A", "B", "C", "D"].map((text, originalIndex) => ({ text, originalIndex }));
+  }
+
+  let correctAnswer = options.findIndex((option) => option.originalIndex === question?.correctAnswer);
+  if (correctAnswer === -1 && options.length > 0) {
+    if (typeof question?.correctAnswer === "number" && question.correctAnswer >= 0 && question.correctAnswer < options.length) {
+      correctAnswer = question.correctAnswer;
+    } else {
+      correctAnswer = 0;
+    }
+  }
+
   return {
-    questionText: question.questionText.trim(),
+    questionText: String(question?.questionText || `Câu ${index + 1}`).trim(),
     type: "single",
     options: options.map((option) => option.text),
     correctAnswer,
-    explanation: question.explanation.trim(),
-    points: Number(question.points) || 1,
+    explanation: String(question?.explanation || "").trim(),
+    points: Number(question?.points) || 1,
   };
 };
 
@@ -921,7 +935,7 @@ export default function TeacherQuizPage() {
     setPaperAnswerTab("paste");
     setManualQuestionCount(40);
     setQuickFillSequence("");
-    setQuestions([createBlankQuestion()]);
+    setQuestions([nextMode === "paper" ? createPaperQuestion(0) : createBlankQuestion()]);
   };
 
   const updateOption = (questionIndex, optionIndex, value) => {
@@ -953,7 +967,7 @@ export default function TeacherQuizPage() {
       toast.error("Hãy chọn khóa học trước khi lưu vào ngân hàng.");
       return;
     }
-    const question = normalizeQuestionForSubmit(questions[questionIndex]);
+    const question = normalizeQuestionForSubmit(questions[questionIndex], questionIndex, quizMode);
     if (!question.questionText || question.options.length < 2 || question.correctAnswer < 0) {
       toast.error("Hoàn thiện nội dung, phương án và đáp án đúng của câu hỏi trước khi lưu.");
       return;
@@ -1001,19 +1015,38 @@ export default function TeacherQuizPage() {
       const allArePaperQuestions = current.every((q) => q.questionText.includes("file đề PDF"));
       let workingQuestions = current;
       if (quizMode === "paper" && (hasOnlyBlankStarter || allArePaperQuestions)) {
-        workingQuestions = Array.from({ length: largestQuestionNumber }, (_, index) => current[index] || createPaperQuestion(index));
+        workingQuestions = Array.from({ length: largestQuestionNumber }, (_, index) => {
+          if (index === 0 && hasOnlyBlankStarter) return createPaperQuestion(0);
+          return current[index] || createPaperQuestion(index);
+        });
       } else if (quizMode === "paper" && largestQuestionNumber > current.length) {
         workingQuestions = [...current, ...Array.from({ length: largestQuestionNumber - current.length }, (_, index) => createPaperQuestion(current.length + index))];
       }
       return workingQuestions.map((question, index) => {
         const answerKey = parsedAnswerKey.answerByQuestion.get(index + 1);
-        if (!answerKey) return question;
+        const validOpts = question.options?.filter((o) => String(o || "").trim());
+        let currentOptions = question.options;
+        if (quizMode === "paper" && (!validOpts || validOpts.length < 2)) {
+          currentOptions = ["A", "B", "C", "D"];
+        }
+        if (!answerKey) {
+          return {
+            ...question,
+            options: currentOptions,
+            questionText: question.questionText || (quizMode === "paper" ? `Câu ${index + 1} — xem nội dung trong file đề PDF.` : question.questionText),
+          };
+        }
         const answerIndex = optionIndexForQuizKey(answerKey);
-        if (answerIndex < 0) return question;
-        const nextOptions = [...question.options];
-        while (nextOptions.length <= answerIndex) nextOptions.push("");
+        if (answerIndex < 0) return { ...question, options: currentOptions };
+        const nextOptions = [...currentOptions];
+        while (nextOptions.length <= answerIndex) nextOptions.push(QUIZ_OPTION_KEYS[nextOptions.length] || `Phương án ${nextOptions.length + 1}`);
         applied += 1;
-        return { ...question, options: nextOptions, correctAnswer: answerIndex };
+        return {
+          ...question,
+          options: nextOptions,
+          correctAnswer: answerIndex,
+          questionText: question.questionText || (quizMode === "paper" ? `Câu ${index + 1} — xem nội dung trong file đề PDF.` : question.questionText),
+        };
       });
     });
     setManualQuestionCount(largestQuestionNumber);
@@ -1026,15 +1059,20 @@ export default function TeacherQuizPage() {
     setQuestions((current) => {
       const newQuestions = [];
       for (let i = 0; i < targetCount; i++) {
-        if (i < current.length && current[i].options && current[i].options.length >= 2) {
+        const existing = current[i];
+        const validOpts = existing?.options?.filter((o) => String(o || "").trim());
+        if (existing && validOpts && validOpts.length >= 2) {
           newQuestions.push({
-            ...current[i],
-            questionText: current[i].questionText || `Câu ${i + 1} — xem nội dung trong file đề PDF.`,
-            options: current[i].options.length ? current[i].options : ["A", "B", "C", "D"],
-            correctAnswer: typeof current[i].correctAnswer === "number" && current[i].correctAnswer >= 0 ? current[i].correctAnswer : 0,
+            ...existing,
+            questionText: existing.questionText?.trim() || `Câu ${i + 1} — xem nội dung trong file đề PDF.`,
+            options: existing.options,
+            correctAnswer: typeof existing.correctAnswer === "number" && existing.correctAnswer >= 0 ? existing.correctAnswer : 0,
           });
         } else {
-          newQuestions.push(createPaperQuestion(i));
+          newQuestions.push({
+            ...createPaperQuestion(i),
+            correctAnswer: typeof existing?.correctAnswer === "number" && existing.correctAnswer >= 0 ? existing.correctAnswer : 0,
+          });
         }
       }
       const synced = newQuestions.map((q, idx) => `${idx + 1} ${QUIZ_OPTION_KEYS[q.correctAnswer] || "A"}`).join("\n");
@@ -1059,7 +1097,16 @@ export default function TeacherQuizPage() {
       const count = Math.max(current.length, letters.length);
       const newQuestions = [];
       for (let i = 0; i < count; i++) {
-        const base = i < current.length ? current[i] : createPaperQuestion(i);
+        let base = i < current.length ? current[i] : createPaperQuestion(i);
+        const validOpts = base?.options?.filter((o) => String(o || "").trim());
+        if (!validOpts || validOpts.length < 2) {
+          base = {
+            ...createPaperQuestion(i),
+            ...base,
+            options: ["A", "B", "C", "D"],
+            questionText: base.questionText?.trim() || `Câu ${i + 1} — xem nội dung trong file đề PDF.`,
+          };
+        }
         const letter = letters[i];
         const newAns = letter ? optionIndexForQuizKey(letter) : base.correctAnswer;
         newQuestions.push({
@@ -1266,9 +1313,9 @@ export default function TeacherQuizPage() {
 
   const validateQuestions = () => {
     for (let index = 0; index < questions.length; index += 1) {
-      const normalized = normalizeQuestionForSubmit(questions[index]);
+      const normalized = normalizeQuestionForSubmit(questions[index], index, quizMode);
       if (!normalized.questionText) return `Câu ${index + 1} chưa có nội dung.`;
-      if (normalized.options.length < 2) return `Câu ${index + 1} cần tối thiểu 2 phương án trả lời.`;
+      if (normalized.options.length < 2) return `Câu ${index + 1} cần tối thiểu 2 phương án lựa chọn (A, B...).`;
       if (normalized.correctAnswer < 0) return `Câu ${index + 1} chưa có đáp án đúng hợp lệ.`;
       if (!Number.isFinite(normalized.points) || normalized.points <= 0 || normalized.points > 100) return `Điểm của câu ${index + 1} không hợp lệ.`;
     }
@@ -1344,7 +1391,7 @@ export default function TeacherQuizPage() {
         paperFileId: paperFile?.id || undefined,
         solutionFileId: solutionFile?.id ? Number(solutionFile.id) : undefined,
         status,
-        questions: questions.map(normalizeQuestionForSubmit),
+        questions: questions.map((q, idx) => normalizeQuestionForSubmit(q, idx, quizMode)),
       });
 
       await loadData();

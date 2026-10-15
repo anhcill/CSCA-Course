@@ -2,8 +2,10 @@ import express from "express";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
-import { query } from "../db/connect.js";
+import { query, getClient } from "../db/connect.js";
 import { getMeetingProvider } from "../services/liveClass.service.js";
+import { recordAuditEvent } from "../services/audit.service.js";
+import { assertGradebookOpen, assertManagedClass, notifyWorkflow, workflowError } from "../services/lmsWorkflow.service.js";
 
 const router = express.Router();
 
@@ -474,7 +476,8 @@ router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, r
          WHERE a.live_class_id = $1
          UNION ALL
          SELECT q.class_session_id AS session_id, CONCAT('quiz-', q.id) AS activity_id,
-                q.title, 'quiz' AS activity_type, NULL::numeric AS max_score
+                q.title, 'quiz' AS activity_type,
+                COALESCE(NULLIF((SELECT SUM(points) FROM quiz_questions qq WHERE qq.quiz_id = q.id), 0), 10)::numeric AS max_score
          FROM quizzes q
          WHERE q.live_class_id = $1
          ORDER BY session_id DESC, activity_type, title`,
@@ -541,6 +544,213 @@ router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, r
   } catch (error) {
     console.error("Error fetching teacher student progress:", error);
     return internalError(res, "Không thể tải sổ theo dõi học viên");
+  }
+});
+
+// PUT /api/teacher/classes/:classId/grades — directly update or override a student's score for an activity
+router.put("/classes/:classId/grades", protectRoute, requireTeacher, requirePermission("lms.assignment.grade"), async (req, res) => {
+  const client = await getClient();
+  try {
+    const classId = parsePositiveId(req.params.classId);
+    if (!classId) return validationError(res, "classId không hợp lệ");
+
+    const studentId = parsePositiveId(req.body.studentId);
+    if (!studentId) return validationError(res, "studentId không hợp lệ");
+
+    const activityId = String(req.body.activityId || "").trim();
+    const [activityType, rawIdStr] = activityId.split("-");
+    const rawId = parsePositiveId(rawIdStr);
+    if (!activityType || !rawId || !["assignment", "quiz"].includes(activityType)) {
+      return validationError(res, "activityId không hợp lệ (phải có định dạng assignment-{id} hoặc quiz-{id})");
+    }
+
+    const numericScore = Number(req.body.score);
+    if (!Number.isFinite(numericScore) || numericScore < 0) {
+      return validationError(res, "Điểm số phải là số lớn hơn hoặc bằng 0");
+    }
+
+    const reason = typeof req.body.reason === "string" && req.body.reason.trim()
+      ? req.body.reason.trim()
+      : "Giáo viên cập nhật điểm từ sổ theo dõi";
+    const feedbackText = typeof req.body.feedbackText === "string" ? req.body.feedbackText.trim() : "";
+
+    await client.query("BEGIN");
+    await assertManagedClass(client, classId, req.user);
+    await assertGradebookOpen(client, classId);
+
+    const enrollment = await client.query(
+      `SELECT u.id, u.username, u.email
+       FROM class_enrollments ce
+       JOIN users u ON u.id = ce.user_id
+       WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'`,
+      [classId, studentId],
+    );
+    if (!enrollment.rows[0]) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Học viên không thuộc lớp này hoặc chưa được kích hoạt");
+    }
+
+    let maxScore = 10;
+    let targetTitle = "";
+
+    if (activityType === "assignment") {
+      const assignmentRes = await client.query(
+        `SELECT id, title, max_score, instructor_id
+         FROM assignments
+         WHERE id = $1 AND live_class_id = $2`,
+        [rawId, classId],
+      );
+      if (!assignmentRes.rows[0]) {
+        await client.query("ROLLBACK");
+        return notFound(res, "Không tìm thấy bài tập trong lớp học này");
+      }
+      const assignment = assignmentRes.rows[0];
+      maxScore = Number(assignment.max_score) > 0 ? Number(assignment.max_score) : 10;
+      targetTitle = assignment.title;
+
+      if (numericScore > maxScore) {
+        await client.query("ROLLBACK");
+        return validationError(res, `Điểm số không được vượt quá điểm tối đa (${maxScore})`);
+      }
+
+      const subRes = await client.query(
+        `SELECT id, revision, status
+         FROM assignment_submissions
+         WHERE assignment_id = $1 AND user_id = $2
+         ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+        [rawId, studentId],
+      );
+
+      let submissionId;
+      let revision = 1;
+      if (subRes.rows[0]) {
+        submissionId = subRes.rows[0].id;
+        revision = Number(subRes.rows[0].revision || 1);
+        await client.query(
+          `UPDATE assignment_submissions SET status = 'graded', updated_at = NOW() WHERE id = $1`,
+          [submissionId],
+        );
+      } else {
+        const newSub = await client.query(
+          `INSERT INTO assignment_submissions (assignment_id, user_id, content_text, status, revision, return_requested, file_asset_ids, submitted_at)
+           VALUES ($1, $2, 'Giáo viên cập nhật điểm từ sổ theo dõi.', 'graded', 1, FALSE, '{}', NOW())
+           RETURNING id, revision`,
+          [rawId, studentId],
+        );
+        submissionId = newSub.rows[0].id;
+        revision = Number(newSub.rows[0].revision || 1);
+      }
+
+      await client.query(
+        `INSERT INTO submission_grades (submission_id, grader_id, score, feedback_text, rubric_scores, submission_revision, annotations, change_reason)
+         VALUES ($1, $2, $3, $4, '[]'::jsonb, $5, '[]'::jsonb, $6)`,
+        [submissionId, req.user.id, numericScore, feedbackText, revision, reason],
+      );
+
+      await recordAuditEvent({
+        db: client,
+        actorId: req.user.id,
+        action: "gradebook.score_updated",
+        entityType: "assignment_submission",
+        entityId: submissionId,
+        afterState: { score: numericScore, maxScore, reason, activityId, studentId },
+      });
+
+      await notifyWorkflow(client, {
+        userId: studentId,
+        title: "Điểm bài tập đã được cập nhật",
+        message: `Bài “${targetTitle}” đã có điểm: ${numericScore}/${maxScore}.`,
+        link: `/lms/assignment/${rawId}/submit`,
+        key: `gradebook-score:assignment:${submissionId}:${Date.now()}`,
+        actorId: req.user.id,
+      });
+    } else if (activityType === "quiz") {
+      const quizRes = await client.query(
+        `SELECT q.id, q.title,
+                COALESCE(NULLIF((SELECT SUM(points) FROM quiz_questions qq WHERE qq.quiz_id = q.id), 0), 10)::numeric AS max_score
+         FROM quizzes q
+         WHERE q.id = $1 AND q.live_class_id = $2`,
+        [rawId, classId],
+      );
+      if (!quizRes.rows[0]) {
+        await client.query("ROLLBACK");
+        return notFound(res, "Không tìm thấy bài quiz trong lớp học này");
+      }
+      const quiz = quizRes.rows[0];
+      maxScore = Number(quiz.max_score) > 0 ? Number(quiz.max_score) : 10;
+      targetTitle = quiz.title;
+
+      if (numericScore > maxScore) {
+        await client.query("ROLLBACK");
+        return validationError(res, `Điểm số không được vượt quá điểm tối đa (${maxScore})`);
+      }
+
+      const attemptRes = await client.query(
+        `SELECT id, attempt_number, max_score
+         FROM quiz_attempts
+         WHERE quiz_id = $1 AND user_id = $2
+         ORDER BY attempt_number DESC, id DESC LIMIT 1 FOR UPDATE`,
+        [rawId, studentId],
+      );
+
+      let attemptId;
+      if (attemptRes.rows[0]) {
+        attemptId = attemptRes.rows[0].id;
+        const effectiveMaxScore = Number(attemptRes.rows[0].max_score) > 0 ? Number(attemptRes.rows[0].max_score) : maxScore;
+        await client.query(
+          `UPDATE quiz_attempts
+           SET score = $1, max_score = $2, status = 'submitted',
+               submitted_at = COALESCE(submitted_at, NOW()), updated_at = NOW()
+           WHERE id = $3`,
+          [numericScore, effectiveMaxScore, attemptId],
+        );
+      } else {
+        const newAttempt = await client.query(
+          `INSERT INTO quiz_attempts (quiz_id, user_id, answers_json, score, max_score, status, started_at, submitted_at, attempt_number, auto_submitted, question_snapshot)
+           VALUES ($1, $2, '{}'::jsonb, $3, $4, 'submitted', NOW(), NOW(), 1, FALSE, '[]'::jsonb)
+           RETURNING id`,
+          [rawId, studentId, numericScore, maxScore],
+        );
+        attemptId = newAttempt.rows[0].id;
+      }
+
+      await recordAuditEvent({
+        db: client,
+        actorId: req.user.id,
+        action: "gradebook.quiz_score_updated",
+        entityType: "quiz_attempt",
+        entityId: attemptId,
+        afterState: { score: numericScore, maxScore, reason, activityId, studentId },
+      });
+
+      await notifyWorkflow(client, {
+        userId: studentId,
+        title: "Điểm quiz đã được cập nhật",
+        message: `Quiz “${targetTitle}” đã có điểm: ${numericScore}/${maxScore}.`,
+        link: `/lms/quiz/${rawId}`,
+        key: `gradebook-score:quiz:${attemptId}:${Date.now()}`,
+        actorId: req.user.id,
+      });
+    }
+
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      message: "Cập nhật điểm thành công",
+      data: {
+        score: numericScore,
+        maxScore,
+        studentId: String(studentId),
+        activityId,
+      },
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Error updating gradebook score:", error);
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+    return internalError(res, "Không thể cập nhật điểm học viên");
+  } finally {
+    client.release();
   }
 });
 

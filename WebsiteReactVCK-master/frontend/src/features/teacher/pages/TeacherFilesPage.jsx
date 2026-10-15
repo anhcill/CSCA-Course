@@ -22,6 +22,7 @@ import {
   BookOpen,
   School,
   CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import {
@@ -829,7 +830,7 @@ export default function TeacherFilesPage() {
                   <option value="">-- Chọn lớp học --</option>
                   {classesLookup.map((cls) => (
                     <option key={cls.id} value={cls.id}>
-                      [{cls.courseCategory}] {cls.title} ({cls.courseTitle})
+                      [{cls.courseCategory}] {cls.title} ({cls.courseTitle}) {cls.sessions?.length ? `· ${cls.sessions.length} buổi học` : "· Chưa có lịch"}
                     </option>
                   ))}
                 </select>
@@ -837,9 +838,16 @@ export default function TeacherFilesPage() {
 
               {/* Chọn Buổi học / Ngày học */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Gắn vào Buổi học / Ngày học cụ thể:
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Gắn vào Buổi học / Ngày học cụ thể:
+                  </label>
+                  {uploadClassSessions.length > 0 && (
+                    <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      {uploadClassSessions.length} buổi học trong lịch
+                    </span>
+                  )}
+                </div>
                 <select
                   value={uploadSessionId}
                   onChange={(e) => setUploadSessionId(e.target.value)}
@@ -848,13 +856,25 @@ export default function TeacherFilesPage() {
                   <option value="">Tài liệu chung của lớp (không gắn ngày cụ thể)</option>
                   {uploadClassSessions.map((session) => (
                     <option key={session.id} value={session.id}>
-                      {formatDateOnly(session.startTime)} - {session.title}
+                      {formatDateOnly(session.startTime)} — {session.title}
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Gắn vào buổi học giúp học viên tìm thấy ngay trong lịch học và trang học mỗi ngày.
-                </p>
+                {uploadClassSessions.length === 0 ? (
+                  <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5 text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
+                    <div>
+                      <p className="font-bold">Lớp này hiện chưa có buổi học nào trong lịch.</p>
+                      <p className="mt-0.5 text-slate-600 dark:text-slate-400">
+                        Bạn có thể tải dưới dạng <strong>Tài liệu chung của lớp</strong>, hoặc vào mục <strong>Lịch giảng dạy</strong> để lên lịch các buổi học trước rồi quay lại gắn vào ngày cụ thể.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                    Gắn vào buổi học giúp học viên tìm thấy ngay trong chi tiết buổi học và lịch học mỗi ngày.
+                  </p>
+                )}
               </div>
 
               {/* Quyền hiển thị */}

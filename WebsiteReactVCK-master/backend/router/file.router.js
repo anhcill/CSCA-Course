@@ -509,10 +509,11 @@ const canDeleteFile = async (fileId, user) => {
   if (file.status === "deleted") return { error: "not_found" };
   if (user.role === "admin") return { file };
   if (user.role === "creator") {
+    if (String(file.uploaded_by) === String(user.id)) return { file };
     const access = file.live_class_id
       ? await classAccess(file.live_class_id, user)
       : await courseAccess(file.course_id, user);
-    if (!access.error && access.canManage && String(file.uploaded_by) === String(user.id)) return { file };
+    if (!access.error && access.canManage) return { file };
   }
   return { error: "forbidden" };
 };
@@ -542,6 +543,8 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
     }
 
     await query("UPDATE lms_learning_files SET status = 'deleted', updated_at = NOW() WHERE id = $1", [fileId]);
+    await query("UPDATE quizzes SET paper_file_id = NULL WHERE paper_file_id = $1", [fileId]).catch(() => {});
+    await query("UPDATE quizzes SET solution_file_id = NULL WHERE solution_file_id = $1", [fileId]).catch(() => {});
     await recordAuditEvent({
       actorId: req.user.id,
       action: "learning_file.deleted",
