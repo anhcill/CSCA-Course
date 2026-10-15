@@ -66,8 +66,6 @@ export default function QuizPlayerPage() {
   const [mobileTab, setMobileTab] = useState("paper"); // "paper" | "mc" | "essay" | "sheet"
   const [saveStatus, setSaveStatus] = useState("saved");
 
-  // Layout mode: "split" (Trắc nghiệm 1 bên, Tự luận 1 bên) or "tabs"
-  const [desktopLayout, setDesktopLayout] = useState("split");
   const [selectedEssayQuestionId, setSelectedEssayQuestionId] = useState(null);
   const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
 
@@ -603,7 +601,7 @@ export default function QuizPlayerPage() {
     </>
   );
 
-  const renderOmrPanel = ({ isSplitView = false } = {}) => (
+  const renderOmrPanel = () => (
     <div className="flex flex-col h-full overflow-hidden">
       {/* OMR Header */}
       <div className="flex shrink-0 items-start justify-between border-b border-slate-800/90 px-3.5 py-3 bg-[#091120]">
@@ -668,9 +666,8 @@ export default function QuizPlayerPage() {
                         type="button"
                         onClick={() => {
                           setSelectedEssayQuestionId(question.id);
-                          if (!isSplitView) {
-                            setAnswerPanelTab("essay");
-                          }
+                          setAnswerPanelTab("essay");
+                          setMobileTab("essay");
                           const el = document.getElementById(`essay-card-${question.id}`);
                           if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
                         }}
@@ -750,26 +747,7 @@ export default function QuizPlayerPage() {
 
       {/* Footer */}
       <div className="shrink-0 border-t border-slate-800/90 bg-[#091120] p-3">
-        {isSplitView ? (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400 font-medium text-[11px]">
-                Đã làm: <b className="text-emerald-400 font-mono">{answeredCount}/{multipleChoiceQuestions.length}</b> câu
-              </span>
-              {flaggedQuestions.size > 0 && (
-                <span className="text-amber-400 text-[11px] font-bold">
-                  ⚑ {flaggedQuestions.size} câu lưu ý
-                </span>
-              )}
-            </div>
-            {/* On mobile, when viewing MC tab in split view mode, provide submit actions */}
-            <div className="lg:hidden pt-2 border-t border-slate-800/60">
-              {renderSubmitActions()}
-            </div>
-          </div>
-        ) : (
-          renderSubmitActions()
-        )}
+        {renderSubmitActions()}
       </div>
     </div>
   );
@@ -1227,17 +1205,6 @@ export default function QuizPlayerPage() {
             </div>
           </div>
 
-          {/* Layout switcher if has both MC and Essay */}
-          {hasBoth && (
-            <button
-              type="button"
-              onClick={() => setDesktopLayout((prev) => (prev === "split" ? "tabs" : "split"))}
-              className="hidden xl:inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-slate-700 hover:text-white"
-              title={desktopLayout === "split" ? "Gộp Trắc nghiệm & Tự luận dùng Tab" : "Tách Trắc nghiệm 1 bên, Tự luận 1 bên"}
-            >
-              <span>{desktopLayout === "split" ? "⊞ Tách 2 bên" : "⊟ Dùng Tab"}</span>
-            </button>
-          )}
 
           {/* Fullscreen Button in Header */}
           <button
@@ -1321,11 +1288,7 @@ export default function QuizPlayerPage() {
       <main className="flex flex-1 min-h-0 overflow-hidden p-2 sm:p-3 gap-2 sm:gap-3">
         {/* LEFT COLUMN: PDF VIEWER / QUESTION CARDS */}
         <section
-          className={`min-w-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0a1222] overflow-hidden shadow-2xl ${
-            hasBoth && desktopLayout === "split"
-              ? "flex-1 min-w-[360px] xl:min-w-[440px]"
-              : "flex-[7]"
-          } ${
+          className={`min-w-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0a1222] overflow-hidden shadow-2xl flex-1 lg:flex-[7] ${
             mobileTab === "paper" ? "flex" : "hidden lg:flex"
           }`}
         >
@@ -1620,81 +1583,64 @@ export default function QuizPlayerPage() {
           </div>
         </section>
 
-        {/* When quiz has BOTH MC and Essay in SPLIT layout: Trắc nghiệm 1 bên, Tự luận 1 bên */}
-        {hasBoth && desktopLayout === "split" ? (
-          <>
-            {/* MIDDLE COLUMN: OMR ANSWER SHEET */}
-            <section
-              className={`w-full lg:w-[280px] xl:w-[320px] shrink-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0b1323] overflow-hidden shadow-2xl ${
-                mobileTab === "mc" ? "flex" : "hidden lg:flex"
-              }`}
-            >
-              {renderOmrPanel({ isSplitView: true })}
-            </section>
+        {/* RIGHT COLUMN: SINGLE TABBED ANSWER PANEL (SWITCH BETWEEN MC & ESSAY) */}
+        <section
+          className={`w-full lg:w-[380px] xl:w-[430px] 2xl:w-[460px] shrink-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0b1323] overflow-hidden shadow-2xl ${
+            hasBoth
+              ? (mobileTab === "mc" || mobileTab === "essay" ? "flex" : "hidden lg:flex")
+              : (mobileTab === "paper" ? "hidden lg:flex" : "flex")
+          }`}
+        >
+          {hasBoth && (
+            <div className="flex shrink-0 border-b border-slate-800 bg-[#080e1b] p-1.5 gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setAnswerPanelTab("mc");
+                  setMobileTab("mc");
+                }}
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-black transition ${
+                  answerPanelTab === "mc"
+                    ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-rose-950/40"
+                    : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <span>🔘 Trắc nghiệm</span>
+                <span className="rounded-md bg-black/30 px-1.5 py-0.5 text-[10px] font-mono">
+                  {answeredCount}/{multipleChoiceQuestions.length}
+                </span>
+              </button>
 
-            {/* RIGHT COLUMN: ESSAY SUBMISSION PANEL */}
-            <section
-              className={`w-full lg:w-[380px] xl:w-[440px] 2xl:w-[480px] shrink-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0b1323] overflow-hidden shadow-2xl ${
-                mobileTab === "essay" ? "flex" : "hidden lg:flex"
-              }`}
-            >
-              {renderEssayPanel()}
-            </section>
-          </>
-        ) : (
-          /* TABBED OR SINGLE COLUMN MODE */
-          <section
-            className={`flex-[3] min-w-[320px] max-w-[460px] flex flex-col rounded-2xl border border-slate-800/80 bg-[#0b1323] overflow-hidden shadow-2xl ${
-              hasBoth
-                ? (mobileTab === "mc" || mobileTab === "essay" ? "flex" : "hidden lg:flex")
-                : (mobileTab === "paper" ? "hidden lg:flex" : "flex")
-            }`}
-          >
-            {hasBoth && (
-              <div className="flex shrink-0 border-b border-slate-800 bg-[#080e1b] p-1.5 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setAnswerPanelTab("mc")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-black transition ${
-                    answerPanelTab === "mc"
-                      ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-rose-950/40"
-                      : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
+              <button
+                type="button"
+                onClick={() => {
+                  setAnswerPanelTab("essay");
+                  setMobileTab("essay");
+                }}
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-black transition ${
+                  answerPanelTab === "essay"
+                    ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-950/40"
+                    : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <span>✍️ Tự luận</span>
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-mono ${
+                    essayAttachments.length > 0 ? "bg-amber-400/20 text-amber-300 font-bold" : "bg-black/30"
                   }`}
                 >
-                  <span>🔘 Trắc nghiệm</span>
-                  <span className="rounded-md bg-black/30 px-1.5 py-0.5 text-[10px] font-mono">
-                    {answeredCount}/{multipleChoiceQuestions.length}
-                  </span>
-                </button>
+                  {essayAttachments.length} file
+                </span>
+              </button>
+            </div>
+          )}
 
-                <button
-                  type="button"
-                  onClick={() => setAnswerPanelTab("essay")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-black transition ${
-                    answerPanelTab === "essay"
-                      ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-950/40"
-                      : "bg-slate-800/60 text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <span>✍️ Tự luận</span>
-                  <span
-                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-mono ${
-                      essayAttachments.length > 0 ? "bg-amber-400/20 text-amber-300 font-bold" : "bg-black/30"
-                    }`}
-                  >
-                    {essayAttachments.length} file
-                  </span>
-                </button>
-              </div>
-            )}
-
-            {(!hasEssay || (hasBoth && answerPanelTab === "mc")) ? (
-              renderOmrPanel({ isSplitView: false })
-            ) : (
-              renderEssayPanel()
-            )}
-          </section>
-        )}
+          {(!hasEssay || (hasBoth && answerPanelTab === "mc")) ? (
+            renderOmrPanel()
+          ) : (
+            renderEssayPanel()
+          )}
+        </section>
       </main>
 
       {/* CONFIRM SUBMIT MODAL */}
