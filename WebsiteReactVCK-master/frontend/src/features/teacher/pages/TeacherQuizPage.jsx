@@ -84,6 +84,18 @@ const formatQuizSession = (quiz) => quiz?.sessionStart
   : "Chưa gắn buổi học";
 
 const normalizeQuestionForSubmit = (question, index = 0, mode = "manual") => {
+  const isEssay = question?.type === "essay" || Boolean(question?.isEssay);
+  if (isEssay) {
+    return {
+      questionText: String(question?.questionText || `Câu ${index + 1} — xem nội dung tự luận trong đề.`).trim(),
+      type: "essay",
+      options: [],
+      correctAnswer: null,
+      explanation: String(question?.explanation || "").trim(),
+      points: Number(question?.points) || 2,
+    };
+  }
+
   let rawOptions = Array.isArray(question?.options) ? question.options : [];
   let options = rawOptions
     .map((text, originalIndex) => ({ text: String(text || "").trim(), originalIndex }))
@@ -112,55 +124,101 @@ const normalizeQuestionForSubmit = (question, index = 0, mode = "manual") => {
   };
 };
 
-function AnswerKeySheet({ questions, onChooseAnswer, onScrollToQuestion }) {
+function AnswerKeySheet({ questions, onChooseAnswer, onScrollToQuestion, onToggleEssay, onUpdatePoints }) {
   const maxOptions = Math.max(4, ...questions.map((q) => q.options?.length || 4));
   const visibleKeys = QUIZ_OPTION_KEYS.slice(0, Math.min(maxOptions, 6));
 
   return (
-    <div className="overflow-x-auto max-h-[360px] overflow-y-auto pr-1">
+    <div className="overflow-x-auto max-h-[380px] overflow-y-auto pr-1">
       <div
-        className="grid min-w-[280px] items-center gap-y-1.5 text-center text-xs font-bold text-slate-700 dark:text-slate-200"
-        style={{ gridTemplateColumns: `56px repeat(${visibleKeys.length}, minmax(32px, 1fr))` }}
+        className="grid min-w-[320px] items-center gap-y-1.5 text-center text-xs font-bold text-slate-700 dark:text-slate-200"
+        style={{ gridTemplateColumns: `84px repeat(${visibleKeys.length}, minmax(32px, 1fr))` }}
       >
-        <span className="text-[10px] font-black uppercase text-slate-400">Câu</span>
+        <span className="text-[10px] font-black uppercase text-slate-400">Câu / Loại</span>
         {visibleKeys.map((key) => (
           <span key={key} className="text-xs font-black text-violet-700 dark:text-violet-300">
             {key}
           </span>
         ))}
-        {questions.map((question, index) => (
-          <div className="contents" key={question.id || `q-${index}`}>
-            <button
-              type="button"
-              onClick={() => onScrollToQuestion?.(index)}
-              className="rounded-lg py-1 text-left font-black text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 text-[11px]"
-              title={`Đi tới câu ${index + 1}`}
-            >
-              Câu {index + 1}
-            </button>
-            {visibleKeys.map((key) => {
-              const optionIndex = optionIndexForQuizKey(key);
-              const exists = optionIndex < (question.options?.length || 4);
-              const active = question.correctAnswer === optionIndex;
-              return (
+        {questions.map((question, index) => {
+          const isEssay = Boolean(question.isEssay || question.type === "essay");
+          return (
+            <div className="contents" key={question.id || `q-${index}`}>
+              <div className="flex items-center justify-between pr-1 gap-1">
                 <button
-                  key={key}
                   type="button"
-                  disabled={!exists}
-                  onClick={() => onChooseAnswer(index, optionIndex)}
-                  aria-label={`Câu ${index + 1}, chọn đáp án ${key}`}
-                  className={`mx-auto flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-black transition-all disabled:cursor-not-allowed disabled:opacity-20 ${
-                    active
-                      ? "border-violet-600 bg-violet-600 text-white shadow-sm shadow-violet-600/30 scale-105"
-                      : "border-slate-300 bg-white text-slate-600 hover:border-violet-400 hover:text-violet-600 hover:bg-violet-50/50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-violet-950/30"
+                  onClick={() => onScrollToQuestion?.(index)}
+                  className="font-black text-slate-700 hover:text-violet-600 dark:text-slate-200 text-[11px] truncate"
+                  title={`Đi tới câu ${index + 1}`}
+                >
+                  Câu {index + 1}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleEssay?.(index)}
+                  title={isEssay ? "Đang là Tự luận. Bấm để đổi thành Trắc nghiệm" : "Đang là Trắc nghiệm. Bấm để đổi thành Tự luận"}
+                  className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase transition shrink-0 ${
+                    isEssay
+                      ? "bg-amber-500 text-white shadow-2xs hover:bg-amber-600"
+                      : "bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-amber-950/50"
                   }`}
                 >
-                  {key}
+                  {isEssay ? "✍️ TL" : "TN"}
                 </button>
-              );
-            })}
-          </div>
-        ))}
+              </div>
+
+              {isEssay ? (
+                <div
+                  className="flex items-center justify-between gap-1.5 rounded-lg border border-amber-300 bg-amber-50/90 px-2 py-0.5 text-[11px] font-bold text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                  style={{ gridColumn: `span ${visibleKeys.length}` }}
+                >
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="shrink-0 text-amber-600 dark:text-amber-400 text-xs">✍️</span>
+                    <span className="truncate text-[10px] text-amber-800 dark:text-amber-300 font-extrabold">
+                      Tự luận (Học sinh nộp ảnh bài làm)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Điểm:</span>
+                    <input
+                      type="number"
+                      min="0.25"
+                      max="50"
+                      step="0.25"
+                      value={question.points ?? 2}
+                      onChange={(e) => onUpdatePoints?.(index, e.target.value)}
+                      className="h-5 w-12 rounded border border-amber-300 bg-white px-1 text-center text-[11px] font-black text-amber-900 focus:border-amber-500 focus:outline-none dark:border-amber-700 dark:bg-slate-900 dark:text-amber-200"
+                      title="Nhập số điểm cho câu tự luận này"
+                    />
+                    <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300">đ</span>
+                  </div>
+                </div>
+              ) : (
+                visibleKeys.map((key) => {
+                  const optionIndex = optionIndexForQuizKey(key);
+                  const exists = optionIndex < (question.options?.length || 4);
+                  const active = question.correctAnswer === optionIndex;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      disabled={!exists}
+                      onClick={() => onChooseAnswer(index, optionIndex)}
+                      aria-label={`Câu ${index + 1}, chọn đáp án ${key}`}
+                      className={`mx-auto flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-black transition-all disabled:cursor-not-allowed disabled:opacity-20 ${
+                        active
+                          ? "border-violet-600 bg-violet-600 text-white shadow-sm shadow-violet-600/30 scale-105"
+                          : "border-slate-300 bg-white text-slate-600 hover:border-violet-400 hover:text-violet-600 hover:bg-violet-50/50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-violet-950/30"
+                      }`}
+                    >
+                      {key}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -826,10 +884,25 @@ export default function TeacherQuizPage() {
   const [hasEssaySection, setHasEssaySection] = useState(false);
   const [essayMaxScore, setEssayMaxScore] = useState(3);
   const [essayPrompt, setEssayPrompt] = useState("Học sinh trình bày bài làm tự luận ra giấy thi, chụp ảnh các trang bài làm rõ nét và tải lên trước khi bấm nộp bài.");
+  const [essayRangeFrom, setEssayRangeFrom] = useState(36);
+  const [essayRangeTo, setEssayRangeTo] = useState(40);
+  const [essayRangePoints, setEssayRangePoints] = useState(2);
   const paperFileInputRef = useRef(null);
   const solutionFileInputRef = useRef(null);
   const [questionBank, setQuestionBank] = useState([]);
   const [questionBankLoading, setQuestionBankLoading] = useState(false);
+
+  const essayCount = useMemo(() => questions.filter((q) => q.isEssay || q.type === "essay").length, [questions]);
+  const mcCount = questions.length - essayCount;
+  const totalPoints = useMemo(() => {
+    return questions.reduce((sum, q) => sum + (Number(q.points) || (q.isEssay || q.type === "essay" ? 2 : 1)), 0);
+  }, [questions]);
+
+  useEffect(() => {
+    if (essayCount > 0 && !hasEssaySection) {
+      setHasEssaySection(true);
+    }
+  }, [essayCount, hasEssaySection]);
 
   const parsedAnswerKey = useMemo(() => parseQuizAnswerKey(answerKeyPaste), [answerKeyPaste]);
   const matchedAnswerCount = useMemo(
@@ -838,9 +911,10 @@ export default function TeacherQuizPage() {
   );
   const paperAnswersAreApplied = useMemo(() => {
     if (questions.length === 0) return false;
-    const allHaveAnswers = questions.every(
-      (q) => typeof q.correctAnswer === "number" && q.correctAnswer >= 0 && q.correctAnswer < (q.options?.length || 4)
-    );
+    const allHaveAnswers = questions.every((q) => {
+      if (q.isEssay || q.type === "essay") return true;
+      return typeof q.correctAnswer === "number" && q.correctAnswer >= 0 && q.correctAnswer < (q.options?.length || 4);
+    });
     if (paperAnswerTab === "manual") {
       return allHaveAnswers;
     }
@@ -848,7 +922,11 @@ export default function TeacherQuizPage() {
     const largestQuestionNumber = Math.max(...parsedAnswerKey.entries.map((entry) => entry.questionNumber));
     return (
       questions.length >= largestQuestionNumber &&
-      Array.from({ length: largestQuestionNumber }, (_, index) => parsedAnswerKey.answerByQuestion.has(index + 1)).every(Boolean) &&
+      Array.from({ length: largestQuestionNumber }, (_, index) => {
+        const q = questions[index];
+        if (q?.isEssay || q?.type === "essay") return true;
+        return parsedAnswerKey.answerByQuestion.has(index + 1);
+      }).every(Boolean) &&
       allHaveAnswers
     );
   }, [paperAnswerTab, parsedAnswerKey, questions]);
@@ -1189,13 +1267,109 @@ export default function TeacherQuizPage() {
 
   const handleSetAllAnswers = (optionIndex) => {
     setQuestions((current) => {
-      const updated = current.map((q) => ({ ...q, correctAnswer: optionIndex }));
+      const updated = current.map((q) => {
+        if (q.isEssay || q.type === "essay") return q;
+        return { ...q, correctAnswer: optionIndex };
+      });
       const key = QUIZ_OPTION_KEYS[optionIndex] || "A";
-      const synced = updated.map((_, idx) => `${idx + 1} ${key}`).join("\n");
+      const synced = updated.map((q, idx) => (q.isEssay || q.type === "essay" ? `${idx + 1} TL` : `${idx + 1} ${key}`)).join("\n");
       setAnswerKeyPaste(synced);
       return updated;
     });
-    toast.success(`Đã gán tất cả ${questions.length} câu thành đáp án ${QUIZ_OPTION_KEYS[optionIndex]}.`);
+    toast.success(`Đã gán các câu trắc nghiệm thành đáp án ${QUIZ_OPTION_KEYS[optionIndex]}.`);
+  };
+
+  const handleToggleQuestionEssay = (index) => {
+    setQuestions((curr) => {
+      const next = [...curr];
+      const target = next[index];
+      if (!target) return curr;
+      const isCurrentlyEssay = Boolean(target.isEssay || target.type === "essay");
+      next[index] = {
+        ...target,
+        isEssay: !isCurrentlyEssay,
+        type: !isCurrentlyEssay ? "essay" : "single",
+        options: !isCurrentlyEssay ? [] : (target.options?.length >= 2 ? target.options : ["A", "B", "C", "D"]),
+        correctAnswer: !isCurrentlyEssay ? null : (typeof target.correctAnswer === "number" && target.correctAnswer >= 0 ? target.correctAnswer : 0),
+        points: !isCurrentlyEssay ? (Number(target.points) > 1 ? Number(target.points) : 2) : 1,
+      };
+      return next;
+    });
+  };
+
+  const handleUpdateQuestionPoints = (index, pointsValue) => {
+    const val = parseFloat(pointsValue);
+    setQuestions((curr) => {
+      const next = [...curr];
+      if (!next[index]) return curr;
+      next[index] = {
+        ...next[index],
+        points: isNaN(val) ? pointsValue : val,
+      };
+      return next;
+    });
+  };
+
+  const handleMarkLastQuestionsAsEssay = (count) => {
+    if (!questions.length) return;
+    const startIdx = Math.max(0, questions.length - count);
+    setQuestions((curr) =>
+      curr.map((q, idx) => {
+        if (idx >= startIdx) {
+          return {
+            ...q,
+            isEssay: true,
+            type: "essay",
+            options: [],
+            correctAnswer: null,
+            points: Number(q.points) > 1 ? q.points : 2,
+          };
+        }
+        return q;
+      })
+    );
+    setHasEssaySection(true);
+    toast.success(`Đã đánh dấu từ câu ${startIdx + 1} đến câu ${questions.length} là câu Tự luận.`);
+  };
+
+  const handleClearAllEssay = () => {
+    setQuestions((curr) =>
+      curr.map((q) => ({
+        ...q,
+        isEssay: false,
+        type: "single",
+        options: q.options?.length >= 2 ? q.options : ["A", "B", "C", "D"],
+        correctAnswer: typeof q.correctAnswer === "number" && q.correctAnswer >= 0 ? q.correctAnswer : 0,
+        points: 1,
+      }))
+    );
+    toast.success("Đã chuyển tất cả câu hỏi về Trắc nghiệm.");
+  };
+
+  const handleApplyEssayRange = () => {
+    const from = Math.max(1, Math.min(questions.length, essayRangeFrom));
+    const to = Math.max(1, Math.min(questions.length, essayRangeTo));
+    const minIdx = Math.min(from, to) - 1;
+    const maxIdx = Math.max(from, to) - 1;
+    const pts = Math.max(0.25, Math.min(50, Number(essayRangePoints) || 2));
+
+    setQuestions((curr) =>
+      curr.map((q, idx) => {
+        if (idx >= minIdx && idx <= maxIdx) {
+          return {
+            ...q,
+            isEssay: true,
+            type: "essay",
+            options: [],
+            correctAnswer: null,
+            points: pts,
+          };
+        }
+        return q;
+      })
+    );
+    setHasEssaySection(true);
+    toast.success(`Đã đánh dấu câu ${minIdx + 1} đến câu ${maxIdx + 1} là Tự luận (${pts}đ/câu).`);
   };
 
   const handleDeletePaperFile = async () => {
@@ -1465,6 +1639,12 @@ export default function TeacherQuizPage() {
     for (let index = 0; index < questions.length; index += 1) {
       const normalized = normalizeQuestionForSubmit(questions[index], index, quizMode);
       if (!normalized.questionText) return `Câu ${index + 1} chưa có nội dung.`;
+      if (normalized.type === "essay") {
+        if (!Number.isFinite(normalized.points) || normalized.points <= 0 || normalized.points > 100) {
+          return `Điểm của câu tự luận ${index + 1} không hợp lệ.`;
+        }
+        continue;
+      }
       if (normalized.options.length < 2) return `Câu ${index + 1} cần tối thiểu 2 phương án lựa chọn (A, B...).`;
       if (normalized.correctAnswer < 0) return `Câu ${index + 1} chưa có đáp án đúng hợp lệ.`;
       if (!Number.isFinite(normalized.points) || normalized.points <= 0 || normalized.points > 100) return `Điểm của câu ${index + 1} không hợp lệ.`;
@@ -1502,9 +1682,10 @@ export default function TeacherQuizPage() {
         toast.error("Đề kiểm tra cần ít nhất 1 câu hỏi.");
         return;
       }
-      const unassignedIndex = questions.findIndex(
-        (q) => typeof q.correctAnswer !== "number" || q.correctAnswer < 0 || q.correctAnswer >= (q.options?.length || 4)
-      );
+      const unassignedIndex = questions.findIndex((q) => {
+        if (q.type === "essay" || q.isEssay) return false;
+        return typeof q.correctAnswer !== "number" || q.correctAnswer < 0 || q.correctAnswer >= (q.options?.length || 4);
+      });
       if (unassignedIndex !== -1) {
         toast.error(`Câu ${unassignedIndex + 1} chưa được chọn đáp án đúng.`);
         return;
@@ -1525,13 +1706,18 @@ export default function TeacherQuizPage() {
     }
     try {
       setSaving(true);
+      const totalEssayPoints = questions
+        .filter((q) => q.isEssay || q.type === "essay")
+        .reduce((sum, q) => sum + (Number(q.points) || 2), 0);
+      const hasAnyEssay = essayCount > 0 || hasEssaySection;
+
       const response = await createTeacherQuiz({
         title: quizTitle.trim(),
         description: formatQuizDescription({
           text: quizDesc.trim(),
           essayConfig: {
-            enabled: hasEssaySection,
-            maxScore: Number(essayMaxScore) || 3,
+            enabled: hasAnyEssay,
+            maxScore: totalEssayPoints > 0 ? totalEssayPoints : (Number(essayMaxScore) || 3),
             prompt: essayPrompt.trim(),
           },
         }),
@@ -2492,21 +2678,111 @@ export default function TeacherQuizPage() {
                     </div>
 
                     {/* Bảng đáp án trực quan */}
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900 space-y-2">
-                      <div className="flex items-center justify-between">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5 dark:border-slate-800">
                         <div>
-                          <h3 className="text-xs font-black text-slate-950 dark:text-white">Bảng đáp án trực quan</h3>
-                          <p className="text-[10px] text-slate-400">Nhấn vào nút A, B, C, D để đổi đáp án từng câu</p>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-xs font-black text-slate-950 dark:text-white">Bảng đáp án trực quan</h3>
+                            <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-black text-violet-700 dark:text-violet-300">
+                              {questions.length} câu
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400">
+                            Nhấn A, B, C, D cho câu Trắc nghiệm · Bấm nút <span className="font-bold text-amber-600 dark:text-amber-400">[✍️ TL]</span> để chuyển câu thành Tự luận
+                          </p>
                         </div>
-                        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
-                          {questions.length} câu
-                        </span>
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                          <span className="rounded-lg bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            TN: {mcCount} câu
+                          </span>
+                          <span className={`rounded-lg px-2 py-0.5 text-[10px] font-bold ${essayCount > 0 ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-black ring-1 ring-amber-400/40" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"}`}>
+                            ✍️ Tự luận: {essayCount} câu
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Thanh công cụ gắn nhanh câu Tự luận */}
+                      <div className="rounded-xl border border-amber-200/80 bg-amber-50/60 p-2.5 dark:border-amber-900/40 dark:bg-amber-950/20 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-xs font-black text-amber-900 dark:text-amber-200">
+                            <span>✍️ Công cụ đánh dấu Tự luận:</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleMarkLastQuestionsAsEssay(5)}
+                              className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[10px] font-black text-amber-800 shadow-2xs hover:bg-amber-100 hover:border-amber-400 dark:border-amber-800 dark:bg-slate-900 dark:text-amber-300 dark:hover:bg-amber-950/60 transition"
+                              title="Đánh dấu 5 câu cuối cùng của đề là Tự luận"
+                            >
+                              ✍️ 5 câu cuối là Tự luận
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMarkLastQuestionsAsEssay(10)}
+                              className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[10px] font-black text-amber-800 shadow-2xs hover:bg-amber-100 hover:border-amber-400 dark:border-amber-800 dark:bg-slate-900 dark:text-amber-300 dark:hover:bg-amber-950/60 transition"
+                              title="Đánh dấu 10 câu cuối cùng của đề là Tự luận"
+                            >
+                              ✍️ 10 câu cuối là Tự luận
+                            </button>
+                            {essayCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleClearAllEssay}
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-100 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 transition"
+                                title="Đưa toàn bộ câu hỏi về dạng Trắc nghiệm"
+                              >
+                                🔘 Tất cả là TN
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Bộ chọn dải câu: Từ câu ... đến câu ... */}
+                        <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-amber-200/50 dark:border-amber-900/30 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                          <span className="text-[10px] text-amber-800 dark:text-amber-300">Đặt dải tự luận:</span>
+                          <span className="text-[10px]">Từ câu</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={questions.length}
+                            value={essayRangeFrom}
+                            onChange={(e) => setEssayRangeFrom(Math.max(1, Math.min(questions.length, Number(e.target.value) || 1)))}
+                            className="w-12 rounded border border-slate-300 bg-white px-1 py-0.5 text-center text-xs font-black dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                          />
+                          <span className="text-[10px]">đến câu</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={questions.length}
+                            value={essayRangeTo}
+                            onChange={(e) => setEssayRangeTo(Math.max(1, Math.min(questions.length, Number(e.target.value) || 1)))}
+                            className="w-12 rounded border border-slate-300 bg-white px-1 py-0.5 text-center text-xs font-black dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                          />
+                          <span className="text-[10px]">thang</span>
+                          <input
+                            type="number"
+                            min="0.25"
+                            max="50"
+                            step="0.25"
+                            value={essayRangePoints}
+                            onChange={(e) => setEssayRangePoints(e.target.value)}
+                            className="w-12 rounded border border-slate-300 bg-white px-1 py-0.5 text-center text-xs font-black dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                          />
+                          <span className="text-[10px]">đ/câu</span>
+                          <button
+                            type="button"
+                            onClick={handleApplyEssayRange}
+                            className="rounded-md bg-amber-600 px-2.5 py-1 text-[10px] font-black text-white hover:bg-amber-500 transition shadow-2xs"
+                          >
+                            Áp dụng
+                          </button>
+                        </div>
                       </div>
 
                       <AnswerKeySheet
                         questions={questions}
                         onChooseAnswer={(questionIndex, answerIndex) => {
-                          updateQuestion(questionIndex, { correctAnswer: answerIndex });
+                          updateQuestion(questionIndex, { correctAnswer: answerIndex, isEssay: false, type: "single" });
                           setAnswerKeyPaste((currentText) => {
                             const lines = currentText ? currentText.split("\n") : [];
                             while (lines.length < questions.length) {
@@ -2519,6 +2795,8 @@ export default function TeacherQuizPage() {
                           });
                         }}
                         onScrollToQuestion={scrollToQuestion}
+                        onToggleEssay={handleToggleQuestionEssay}
+                        onUpdatePoints={handleUpdateQuestionPoints}
                       />
                     </div>
                   </>
@@ -2549,9 +2827,23 @@ export default function TeacherQuizPage() {
                           className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 space-y-2.5"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="rounded-lg bg-violet-600 px-2 py-0.5 text-[11px] font-black text-white">
-                              Câu {questionIndex + 1}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="rounded-lg bg-violet-600 px-2 py-0.5 text-[11px] font-black text-white">
+                                Câu {questionIndex + 1}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleQuestionEssay(questionIndex)}
+                                className={`rounded-lg px-2 py-0.5 text-[10px] font-black transition ${
+                                  question.isEssay || question.type === "essay"
+                                    ? "bg-amber-500 text-white shadow-2xs hover:bg-amber-600"
+                                    : "bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300"
+                                }`}
+                                title="Chuyển đổi giữa câu Trắc nghiệm và Tự luận"
+                              >
+                                {question.isEssay || question.type === "essay" ? "✍️ Tự luận" : "🔘 Trắc nghiệm"}
+                              </button>
+                            </div>
                             <div className="flex items-center gap-1.5">
                               <label className="flex items-center gap-1 text-[11px] font-bold text-slate-500">
                                 Điểm:
@@ -2588,11 +2880,35 @@ export default function TeacherQuizPage() {
                             value={question.questionText}
                             onChange={(e) => updateQuestion(questionIndex, { questionText: e.target.value })}
                             rows={2}
-                            placeholder={`Nhập nội dung Câu ${questionIndex + 1}...`}
+                            placeholder={
+                              question.isEssay || question.type === "essay"
+                                ? `Nhập nội dung/đề bài Câu tự luận ${questionIndex + 1}...`
+                                : `Nhập nội dung Câu ${questionIndex + 1}...`
+                            }
                             className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-2 text-xs font-semibold outline-none focus:border-violet-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                           />
 
-                          <div className="grid gap-1.5 sm:grid-cols-2">
+                          {question.isEssay || question.type === "essay" ? (
+                            <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50/80 p-2.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">✍️</span>
+                                <div>
+                                  <p className="font-bold">Câu hỏi tự luận (giải trên giấy & chụp ảnh bài làm)</p>
+                                  <p className="text-[10px] text-amber-800/80 dark:text-amber-300/80">
+                                    Học sinh sẽ xem đề và chụp ảnh bài làm để tải lên nộp. Giáo viên chấm điểm và nhận xét sau khi nộp.
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleQuestionEssay(questionIndex)}
+                                className="rounded-lg bg-amber-200 px-2 py-1 text-[10px] font-black text-amber-900 hover:bg-amber-300 dark:bg-amber-900 dark:text-amber-100"
+                              >
+                                Chuyển sang TN
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="grid gap-1.5 sm:grid-cols-2">
                             {question.options.map((option, optIdx) => {
                               const key = optionKeyAt(optIdx);
                               const active = question.correctAnswer === optIdx;
@@ -2622,6 +2938,7 @@ export default function TeacherQuizPage() {
                               );
                             })}
                           </div>
+                        )}
                         </div>
                       ))}
                     </div>

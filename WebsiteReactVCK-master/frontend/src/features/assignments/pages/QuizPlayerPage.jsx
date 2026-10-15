@@ -113,7 +113,7 @@ export default function QuizPlayerPage() {
   const questions = useMemo(() => quizData?.questions || [], [quizData]);
   const isTimed = useMemo(() => Number(quizData?.durationMinutes || 0) > 0, [quizData]);
   const essayConfig = useMemo(() => parseQuizDescription(quizData?.description)?.essayConfig || null, [quizData?.description]);
-  const hasEssay = Boolean(essayConfig?.enabled);
+  const hasEssay = Boolean(essayConfig?.enabled) || questions.some((q) => q.question_type === "essay" || q.type === "essay");
 
   const answerKeys = useMemo(() => {
     const keys = [...new Set(questions.flatMap((question) => (question.options || []).map((option) => option.key)))].sort();
@@ -851,34 +851,57 @@ export default function QuizPlayerPage() {
                             </span>
                           </div>
 
-                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                            {(question.options || []).map((option) => {
-                              const active = selectedKeys.includes(option.key);
-                              return (
-                                <button
-                                  key={option.key}
-                                  type="button"
-                                  onClick={() => handleSelect(question, option.key)}
-                                  className={`flex items-center gap-3 rounded-xl border p-3 text-xs font-semibold text-left transition ${
-                                    active
-                                      ? "border-rose-500 bg-rose-950/40 text-white shadow-sm ring-1 ring-rose-500/40"
-                                      : "border-slate-800 bg-[#09101d] text-slate-300 hover:border-slate-700 hover:bg-slate-800/60"
-                                  }`}
-                                >
-                                  <span
-                                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-black ${
+                          {question.question_type === "essay" || question.type === "essay" ? (
+                            <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200 space-y-2">
+                              <div className="flex items-center justify-between font-bold text-amber-300">
+                                <span className="flex items-center gap-1.5">
+                                  <span>✍️ Câu hỏi tự luận</span>
+                                </span>
+                                <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[11px] font-mono text-amber-200">
+                                  {question.points} điểm
+                                </span>
+                              </div>
+                              <p className="text-slate-300 text-xs leading-relaxed">
+                                Học sinh làm bài giải chi tiết ra giấy kiểm tra, sau đó chuyển sang tab <b>“✍️ Tự luận & Lời giải”</b> bên phải để chụp ảnh các trang bài làm tải lên.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setAnswerPanelTab("essay")}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-500 transition shadow-sm"
+                              >
+                                Mở tab Nộp bài Tự luận →
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                              {(question.options || []).map((option) => {
+                                const active = selectedKeys.includes(option.key);
+                                return (
+                                  <button
+                                    key={option.key}
+                                    type="button"
+                                    onClick={() => handleSelect(question, option.key)}
+                                    className={`flex items-center gap-3 rounded-xl border p-3 text-xs font-semibold text-left transition ${
                                       active
-                                        ? "border-rose-400 bg-rose-600 text-white"
-                                        : "border-slate-700 bg-slate-800 text-slate-400"
+                                        ? "border-rose-500 bg-rose-950/40 text-white shadow-sm ring-1 ring-rose-500/40"
+                                        : "border-slate-800 bg-[#09101d] text-slate-300 hover:border-slate-700 hover:bg-slate-800/60"
                                     }`}
                                   >
-                                    {option.key}
-                                  </span>
-                                  <span className="flex-1">{option.text}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
+                                    <span
+                                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-black ${
+                                        active
+                                          ? "border-rose-400 bg-rose-600 text-white"
+                                          : "border-slate-700 bg-slate-800 text-slate-400"
+                                      }`}
+                                    >
+                                      {option.key}
+                                    </span>
+                                    <span className="flex-1">{option.text}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </article>
@@ -991,54 +1014,71 @@ export default function QuizPlayerPage() {
                             Câu {index + 1}
                           </span>
 
-                          {/* Bubble Buttons A, B, C, D */}
-                          {answerKeys.slice(0, 4).map((key) => {
-                            const isChosen = Boolean(selectedKeys.includes(key));
+                          {question.question_type === "essay" || question.type === "essay" ? (
+                            <div className="col-span-4 flex items-center justify-center px-1">
+                              <button
+                                type="button"
+                                onClick={() => setAnswerPanelTab("essay")}
+                                className="w-full flex items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/20 transition active:scale-95"
+                                title="Câu hỏi tự luận - Nhấn để mở tab Tự luận nộp bài làm"
+                              >
+                                <span className="flex items-center gap-1">
+                                  <span>✍️ Tự luận</span>
+                                  <span className="font-mono text-[10px] text-amber-400/90">({question.points}đ)</span>
+                                </span>
+                                <span className="text-[10px] font-bold text-amber-400 underline">Nộp ảnh →</span>
+                              </button>
+                            </div>
+                          ) : (
+                            /* Bubble Buttons A, B, C, D */
+                            answerKeys.slice(0, 4).map((key) => {
+                              const isChosen = Boolean(selectedKeys.includes(key));
 
-                            // Review state colors
-                            const correctAnswer = review?.correctAnswer;
-                            const isCorrectOption =
-                              Boolean(review) &&
-                              (Array.isArray(correctAnswer)
-                                ? correctAnswer.includes(key)
-                                : correctAnswer === key);
-                            const isWrongChoice = Boolean(review) && isChosen && !isCorrectOption;
+                              // Review state colors
+                              const correctAnswer = review?.correctAnswer;
+                              const isCorrectOption =
+                                Boolean(review) &&
+                                (Array.isArray(correctAnswer)
+                                  ? correctAnswer.includes(key)
+                                  : correctAnswer === key);
+                              const isWrongChoice = Boolean(review) && isChosen && !isCorrectOption;
 
-                            let bubbleStyle =
-                              "border-2 border-slate-600/90 text-slate-400 bg-transparent hover:border-rose-400 hover:text-white";
+                              let bubbleStyle =
+                                "border-2 border-slate-600/90 text-slate-400 bg-transparent hover:border-rose-400 hover:text-white";
 
-                            if (reviewMode && review) {
-                              if (isCorrectOption) {
-                                bubbleStyle = "border-2 border-emerald-500 bg-emerald-600 text-white font-black shadow-sm";
-                              } else if (isWrongChoice) {
-                                bubbleStyle = "border-2 border-rose-500 bg-rose-600 text-white font-black shadow-sm";
-                              } else {
-                                bubbleStyle = "border border-slate-700/60 text-slate-600 bg-transparent opacity-40";
+                              if (reviewMode && review) {
+                                if (isCorrectOption) {
+                                  bubbleStyle = "border-2 border-emerald-500 bg-emerald-600 text-white font-black shadow-sm";
+                                } else if (isWrongChoice) {
+                                  bubbleStyle = "border-2 border-rose-500 bg-rose-600 text-white font-black shadow-sm";
+                                } else {
+                                  bubbleStyle = "border border-slate-700/60 text-slate-600 bg-transparent opacity-40";
+                                }
+                              } else if (isChosen) {
+                                // Vibrant Red Circle matching screenshot exactly
+                                bubbleStyle =
+                                  "border-2 border-red-600 bg-red-600 text-white font-black shadow-md shadow-red-600/40 scale-105";
                               }
-                            } else if (isChosen) {
-                              // Vibrant Red Circle matching screenshot exactly
-                              bubbleStyle =
-                                "border-2 border-red-600 bg-red-600 text-white font-black shadow-md shadow-red-600/40 scale-105";
-                            }
 
-                            return (
-                              <div key={key} className="flex justify-center">
-                                <button
-                                  type="button"
-                                  disabled={reviewMode || Boolean(result)}
-                                  onClick={() => handleSelect(question, key)}
-                                  aria-label={`Câu ${index + 1}, đáp án ${key}`}
-                                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-transform active:scale-95 disabled:cursor-default ${bubbleStyle}`}
-                                >
-                                  {isChosen || (reviewMode && (isCorrectOption || isWrongChoice)) ? (
-                                    <span>{key}</span>
-                                  ) : (
-                                    <span className="opacity-0 hover:opacity-100 text-[10px]">{key}</span>
-                                  )}
-                                </button>
-                              </div>
-                            );
-                          })}
+                              return (
+                                <div key={key} className="flex justify-center">
+                                  <button
+                                    type="button"
+                                    disabled={reviewMode || Boolean(result)}
+                                    onClick={() => handleSelect(question, key)}
+                                    aria-label={`Câu ${index + 1}, đáp án ${key}`}
+                                    className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-transform active:scale-95 disabled:cursor-default ${bubbleStyle}`}
+                                  >
+                                    {isChosen || (reviewMode && (isCorrectOption || isWrongChoice)) ? (
+                                      <span>{key}</span>
+                                    ) : (
+                                      <span className="opacity-0 hover:opacity-100 text-[10px]">{key}</span>
+                                    )}
+                                  </button>
+                                </div>
+                              );
+                            })
+                          )}
 
                           {/* Flag / Bookmark Button */}
                           <div className="flex justify-center">

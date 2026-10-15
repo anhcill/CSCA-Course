@@ -275,7 +275,6 @@ export default function TeacherSessionWorkspacePage() {
         {activeTab === "overview" && (
           <TeacherOverviewTab
             session={session}
-            students={students}
             tasks={tasks}
             files={files}
             announcements={announcements}
@@ -316,7 +315,6 @@ export default function TeacherSessionWorkspacePage() {
 
 function TeacherOverviewTab({
   session,
-  students,
   tasks,
   files,
   announcements,
@@ -327,93 +325,8 @@ function TeacherOverviewTab({
   navigate,
   setIsCreateHomeworkOpen,
 }) {
-  const pendingCount = tasks.reduce((sum, task) => sum + Number(task.pendingGradingCount || 0), 0);
-
   return (
     <div className="space-y-4">
-      {/* 1. Unified Metric Ribbon */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="grid grid-cols-2 divide-y divide-slate-100 sm:grid-cols-5 sm:divide-y-0 sm:divide-x dark:divide-slate-800">
-          <button
-            type="button"
-            onClick={() => setSearchParams({ tab: "students" })}
-            className="group flex items-center gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:scale-105 dark:bg-blue-950/60 dark:text-sky-400">
-              <Users className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-lg font-black leading-tight text-slate-950 dark:text-white sm:text-xl">{students.length}</p>
-              <p className="truncate text-xs font-semibold text-slate-500 transition group-hover:text-blue-600 dark:text-slate-400 dark:group-hover:text-sky-400">Học viên</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSearchParams({ tab: "tasks" })}
-            className="group flex items-center gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 transition group-hover:scale-105 dark:bg-violet-950/60 dark:text-violet-400">
-              <ClipboardList className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-lg font-black leading-tight text-slate-950 dark:text-white sm:text-xl">{tasks.length}</p>
-              <p className="truncate text-xs font-semibold text-slate-500 transition group-hover:text-violet-600 dark:text-slate-400 dark:group-hover:text-violet-400">Bài tập & Quiz</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSearchParams({ tab: "files" })}
-            className="group flex items-center gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 transition group-hover:scale-105 dark:bg-emerald-950/60 dark:text-emerald-400">
-              <FileText className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-lg font-black leading-tight text-slate-950 dark:text-white sm:text-xl">{files.length}</p>
-              <p className="truncate text-xs font-semibold text-slate-500 transition group-hover:text-emerald-600 dark:text-slate-400 dark:group-hover:text-emerald-400">Tài liệu</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSearchParams({ tab: "announcements" })}
-            className="group flex items-center gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 transition group-hover:scale-105 dark:bg-amber-950/60 dark:text-amber-400">
-              <Bell className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-lg font-black leading-tight text-slate-950 dark:text-white sm:text-xl">{announcements.length}</p>
-              <p className="truncate text-xs font-semibold text-slate-500 transition group-hover:text-amber-600 dark:text-slate-400 dark:group-hover:text-amber-400">Thông báo</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              const pendingTask = tasks.find((t) => Number(t.pendingGradingCount) > 0);
-              if (pendingTask) {
-                navigate(`${assessmentBasePath}/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${pendingTask.id}`);
-              } else {
-                setSearchParams({ tab: "tasks" });
-              }
-            }}
-            className="group flex items-center gap-3 rounded-xl p-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
-          >
-            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition group-hover:scale-105 ${
-              pendingCount > 0 ? "bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-            }`}>
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className={`text-lg font-black leading-tight sm:text-xl ${pendingCount > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-950 dark:text-white"}`}>{pendingCount}</p>
-              <p className="truncate text-xs font-semibold text-slate-500 transition group-hover:text-rose-600 dark:text-slate-400 dark:group-hover:text-rose-400">Cần chấm</p>
-            </div>
-          </button>
-        </div>
-      </div>
 
       {/* 2. Main content grid */}
       <div className="grid gap-4 lg:grid-cols-3">

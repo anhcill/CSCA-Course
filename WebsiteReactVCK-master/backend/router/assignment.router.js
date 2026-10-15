@@ -100,6 +100,7 @@ const normalizeAnswerArray = (value) => {
 };
 
 const answersMatch = (question, studentAnswer) => {
+  if (question?.question_type === "essay" || question?.type === "essay") return false;
   const correctAnswer = parseStoredAnswer(question.correct_answer);
   if (question.question_type === "multiple_choice") {
     return JSON.stringify(normalizeAnswerArray(studentAnswer)) === JSON.stringify(normalizeAnswerArray(correctAnswer));
@@ -701,13 +702,28 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
       if (!sol.rows[0]) { await client.query("ROLLBACK"); return validationError(res, "File lời giải PDF không hợp lệ hoặc chưa tải lên hoàn tất"); }
     }
     const normalizedQuestions = questions.map((question, index) => {
+      const isEssay = question.type === "essay" || question.question_type === "essay" || Boolean(question.isEssay);
       const text = typeof question.questionText === "string" ? question.questionText.trim() : "";
+      const points = Number(question.points);
+      if (isEssay) {
+        if (!text || text.length > 6000 || !Number.isFinite(points) || points <= 0 || points > 100) {
+          throw new Error("INVALID_QUESTION");
+        }
+        return {
+          text,
+          type: "essay",
+          options: [],
+          correct: null,
+          explanation: typeof question.explanation === "string" ? question.explanation.trim() : "",
+          points,
+          order: index + 1,
+        };
+      }
       const options = Array.isArray(question.options)
         ? question.options.slice(0, 6).map((value, optionIndex) => ({ key: String.fromCharCode(65 + optionIndex), text: String(value || "").trim() })).filter((option) => option.text)
         : [];
       const correctIndex = Number.isInteger(question.correctAnswer) ? question.correctAnswer : -1;
       const explanation = typeof question.explanation === "string" ? question.explanation.trim() : "";
-      const points = Number(question.points);
       if (!text || text.length > 6000 || options.length < 2 || options.some((option) => option.text.length > 2000) || !options[correctIndex] || explanation.length > 4000 || !Number.isFinite(points) || points <= 0 || points > 100) throw new Error("INVALID_QUESTION");
       return {
         text,
@@ -2179,10 +2195,20 @@ const publicQuestion = (question) => ({
 const buildQuizResult = (questions, answers) => {
   const essayGrade = answers?._essayGrade || answers?.essayGrade || null;
   const review = questions.map((question) => {
+    const isEssay = question.question_type === "essay" || question.type === "essay";
     const studentAnswer = answers?.[String(question.id)] ?? answers?.[question.id] ?? null;
-    const isCorrect = answersMatch(question, studentAnswer);
+    const isCorrect = isEssay ? null : answersMatch(question, studentAnswer);
     const points = Number(question.points) || 0;
-    return { questionId: question.id, studentAnswer, correctAnswer: parseStoredAnswer(question.correct_answer), explanation: question.explanation || "", points, earnedPoints: isCorrect ? points : 0, isCorrect };
+    return {
+      questionId: question.id,
+      studentAnswer,
+      correctAnswer: isEssay ? null : parseStoredAnswer(question.correct_answer),
+      explanation: question.explanation || "",
+      points,
+      earnedPoints: isCorrect ? points : 0,
+      isCorrect,
+      questionType: question.question_type || (isEssay ? "essay" : "single_choice"),
+    };
   });
   let score = review.reduce((sum, item) => sum + item.earnedPoints, 0);
   if (essayGrade && typeof essayGrade.score === "number") {
