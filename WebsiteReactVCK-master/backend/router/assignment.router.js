@@ -713,7 +713,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
           text,
           type: "essay",
           options: [],
-          correct: null,
+          correct: "",
           explanation: typeof question.explanation === "string" ? question.explanation.trim() : "",
           points,
           order: index + 1,
@@ -745,7 +745,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
       await client.query(
         `INSERT INTO quiz_questions (quiz_id, question_text, question_type, options_json, correct_answer, explanation, points, sort_order)
          VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)`,
-        [quizResult.rows[0].id, question.text, question.type, JSON.stringify(question.options), question.correct, question.explanation, question.points, question.order],
+        [quizResult.rows[0].id, question.text, question.type, JSON.stringify(question.options), question.correct ?? "", question.explanation, question.points, question.order],
       );
     }
     await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.created", entityType: "quiz", entityId: quizResult.rows[0].id, afterState: quizResult.rows[0], metadata: { ip: req.ip, questionCount: normalizedQuestions.length, liveClassId, classSessionId, activityScope, attemptLimit, reviewPolicy } });
