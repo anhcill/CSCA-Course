@@ -126,7 +126,7 @@ export default function AssignmentListPage() {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("todo");
   const [search, setSearch] = useState("");
 
   const loadAssignments = useCallback(async () => {
@@ -179,11 +179,11 @@ export default function AssignmentListPage() {
         <section className="flex flex-col gap-3 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm dark:shadow-none md:flex-row md:items-center md:justify-between">
           <div className="-mx-1 flex overflow-x-auto px-1 pb-1 md:mx-0 md:px-0 md:pb-0">
             {[
-              ["all", "Tất cả", assignments.length],
               ["todo", "Cần làm", counts.todo],
               ["submitted", "Đã nộp", counts.submitted],
               ["graded", "Đã chấm", counts.graded],
               ["late", "Quá hạn", counts.late],
+              ["all", "Tất cả", assignments.length],
             ].map(([value, label, count]) => (
               <button
                 key={value}
