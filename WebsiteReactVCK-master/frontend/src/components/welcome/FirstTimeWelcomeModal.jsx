@@ -9,7 +9,6 @@ import {
   ArrowRight,
   X,
   Compass,
-  CheckCircle2,
 } from "lucide-react";
 import { useAuthContext } from "../../context/AuthContext.jsx";
 import { USER_ROLES } from "../../constants/roles.js";
@@ -18,14 +17,16 @@ import { USER_ROLES } from "../../constants/roles.js";
  * FirstTimeWelcomeModal
  * 
  * Liquid Glass welcome screen for first-time login of Teachers and Students.
- * Conforms strictly to requirements:
- * - Liquid Glass iOS design: specular highlights, frosted blur, soft ambient lighting.
- * - Non-purple palette: ocean slate, cyan, emerald, warm amber, champagne gold.
- * - Sequential reveal: Icon/visual -> Title (word-by-word) -> Description -> Action button.
- * - Teacher animation: Liquid Glass book opens, flips 2-3 pages, warm amber glow, teaching symbol.
- * - Student animation: Luminous particles gather from multiple directions to forge a glass graduation cap,
- *                      lifts gently leaving a glowing curved journey arc and subtle starlight.
- * - Accessible: prefers-reduced-motion fallback, clean skip button, responsive, non-blocking on failure.
+ * Features ultra-refined visual craftsmanship:
+ * - Liquid Glass iOS / Apple Keynote aesthetics: specular reflections, frosted glass, 3D depth.
+ * - Non-purple palette: Deep ocean slate, cyan, emerald, champagne gold, warm amber.
+ * - Teacher: 3D Liquid Glass Book opening with 3 layered flipping pages, warm radiant core,
+ *            glowing golden knowledge threads, and floating educator compass emblem.
+ * - Student: Dynamic multi-angle luminous starlight convergence, fusion flash, 3D beveled
+ *            liquid glass mortarboard with physics-based swaying tassel, lifting with an
+ *            extended glowing curved journey arc and twinkle starlight.
+ * - Sequential reveal: Visual -> Title (word-by-word) -> Description -> Action button.
+ * - Strict constraints: Zero bottom note banner, no generic purple, accessible with reduced motion.
  */
 
 // Stagger word reveal animation helper
@@ -41,7 +42,7 @@ const WordReveal = ({ text, delay = 0, shouldReduceMotion }) => {
       {words.map((word, index) => (
         <motion.span
           key={`${word}-${index}`}
-          initial={{ opacity: 0, y: 14, filter: "blur(6px)" }}
+          initial={{ opacity: 0, y: 14, filter: "blur(8px)" }}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{
             duration: 0.45,
@@ -57,107 +58,205 @@ const WordReveal = ({ text, delay = 0, shouldReduceMotion }) => {
   );
 };
 
-// Teacher Visual: Liquid Glass 3D Book with Flipping Pages & Warm Inner Glow
+// 4-Point Starlight SVG Component
+const StarSparkle = ({ className, style }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    style={style}
+  >
+    <path d="M12 0C12 6.627 6.627 12 0 12C6.627 12 12 17.373 12 24C12 17.373 17.373 12 24 12C17.373 12 12 6.627 12 0Z" />
+  </svg>
+);
+
+// ============================================================
+// TEACHER VISUAL: 3D Liquid Glass Book with Flipping Pages & Warm Inner Glow
+// ============================================================
 const TeacherBookVisual = ({ shouldReduceMotion }) => {
   if (shouldReduceMotion) {
     return (
-      <div className="relative flex items-center justify-center w-28 h-28 mx-auto mb-6">
-        <div className="absolute inset-0 rounded-3xl bg-amber-500/20 blur-xl" />
+      <div className="relative flex items-center justify-center w-32 h-32 mx-auto mb-6">
+        <div className="absolute inset-0 rounded-3xl bg-amber-500/20 blur-2xl" />
         <div className="relative flex items-center justify-center w-24 h-24 rounded-2xl bg-white/10 border border-white/25 shadow-2xl backdrop-blur-xl text-amber-300">
-          <BookOpen className="w-12 h-12" />
+          <BookOpen className="w-12 h-12 drop-shadow-[0_2px_10px_rgba(251,191,36,0.6)]" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="relative flex items-center justify-center w-40 h-36 mx-auto mb-5 select-none perspective-[1000px]">
-      {/* Warm ambient radiant backlight from inside the book */}
+    <div className="relative flex items-center justify-center w-64 h-48 mx-auto mb-3 select-none perspective-[1200px]">
+      {/* 1. Deep Radiant Warm Amber Core & Volumetric Glow */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.5 }}
-        animate={{ opacity: [0, 0.8, 1], scale: [0.5, 1.2, 1.1] }}
-        transition={{ duration: 2.2, times: [0, 0.6, 1], ease: "easeOut" }}
-        className="absolute -inset-4 rounded-full bg-gradient-to-r from-amber-400/25 via-emerald-400/15 to-amber-300/30 blur-2xl pointer-events-none"
+        initial={{ opacity: 0, scale: 0.4 }}
+        animate={{
+          opacity: [0, 0.85, 1],
+          scale: [0.4, 1.25, 1.1],
+        }}
+        transition={{ duration: 2.2, ease: "easeOut" }}
+        className="absolute -inset-6 rounded-full bg-gradient-to-t from-amber-500/35 via-amber-300/20 to-emerald-400/10 blur-3xl pointer-events-none"
       />
 
-      {/* Book 3D Container */}
+      {/* Upward Warm God Rays */}
       <motion.div
-        initial={{ scale: 0.8, opacity: 0, rotateX: 18 }}
+        initial={{ opacity: 0, scaleY: 0 }}
+        animate={{ opacity: [0, 0.7, 0.4], scaleY: 1 }}
+        transition={{ duration: 1.8, delay: 0.6, ease: "easeOut" }}
+        className="absolute top-2 w-32 h-28 bg-gradient-to-t from-amber-300/30 via-amber-200/10 to-transparent blur-xl pointer-events-none origin-bottom"
+      />
+
+      {/* 2. Main Open Book Structure */}
+      <motion.div
+        initial={{ scale: 0.75, opacity: 0, rotateX: 22 }}
         animate={{ scale: 1, opacity: 1, rotateX: 0 }}
-        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-32 h-24 flex items-center justify-center"
+        transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+        className="relative w-52 h-36 flex items-center justify-center"
         style={{ transformStyle: "preserve-3d" }}
       >
-        {/* Left Book Base Page (Frosted Glass) */}
-        <div
-          className="absolute left-0 top-0 w-16 h-24 rounded-l-xl border-y border-l border-white/30 bg-gradient-to-br from-white/20 via-white/10 to-slate-800/40 backdrop-blur-xl shadow-lg flex items-center justify-center"
-          style={{ transformOrigin: "right center" }}
+        {/* SVG Curved Book Base (Left Wing & Right Wing with Natural Page Curvature) */}
+        <svg
+          className="absolute inset-0 w-full h-full overflow-visible drop-shadow-[0_20px_40px_rgba(0,0,0,0.65)]"
+          viewBox="0 0 208 144"
+          fill="none"
         >
-          <div className="w-10 h-16 rounded border border-white/10 bg-white/5 p-1 flex flex-col justify-around opacity-60">
-            <div className="h-1 bg-amber-200/40 rounded w-full" />
-            <div className="h-1 bg-white/30 rounded w-3/4" />
-            <div className="h-1 bg-white/30 rounded w-5/6" />
-            <div className="h-1 bg-white/30 rounded w-2/3" />
-          </div>
-        </div>
+          <defs>
+            <linearGradient id="bookGlassLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.28" />
+              <stop offset="60%" stopColor="#ffffff" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="#0f172a" stopOpacity="0.65" />
+            </linearGradient>
+            <linearGradient id="bookGlassRight" x1="100%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.28" />
+              <stop offset="60%" stopColor="#ffffff" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="#0f172a" stopOpacity="0.65" />
+            </linearGradient>
+            <linearGradient id="goldSpine" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#fef08a" />
+              <stop offset="50%" stopColor="#f59e0b" />
+              <stop offset="100%" stopColor="#b45309" />
+            </linearGradient>
+            <linearGradient id="pageThread" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#fef08a" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#fef08a" stopOpacity="0.1" />
+            </linearGradient>
+          </defs>
 
-        {/* Right Book Base Page */}
-        <div
-          className="absolute right-0 top-0 w-16 h-24 rounded-r-xl border-y border-r border-white/30 bg-gradient-to-bl from-white/20 via-white/10 to-slate-800/40 backdrop-blur-xl shadow-lg flex items-center justify-center"
-          style={{ transformOrigin: "left center" }}
-        >
-          <div className="w-10 h-16 rounded border border-white/10 bg-white/5 p-1 flex flex-col justify-around opacity-60">
-            <div className="h-1 bg-amber-200/40 rounded w-full" />
-            <div className="h-1 bg-white/30 rounded w-4/5" />
-            <div className="h-1 bg-white/30 rounded w-3/4" />
-            <div className="h-1 bg-white/30 rounded w-1/2" />
-          </div>
-        </div>
+          {/* Left Bed Page (Curved Frosted Glass) */}
+          <path
+            d="M 104 18 C 70 14, 25 18, 10 26 C 8 28, 8 116, 10 118 C 25 110, 70 106, 104 112 Z"
+            fill="url(#bookGlassLeft)"
+            stroke="rgba(255,255,255,0.4)"
+            strokeWidth="1.2"
+          />
+          {/* Subtle text threads on left page */}
+          <path d="M 28 42 Q 60 38, 92 41" stroke="url(#pageThread)" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M 28 56 Q 60 52, 85 55" stroke="url(#pageThread)" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M 28 70 Q 60 66, 90 69" stroke="url(#pageThread)" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M 28 84 Q 60 80, 75 83" stroke="url(#pageThread)" strokeWidth="1.5" strokeLinecap="round" />
 
+          {/* Right Bed Page (Curved Frosted Glass) */}
+          <path
+            d="M 104 18 C 138 14, 183 18, 198 26 C 200 28, 200 116, 198 118 C 183 110, 138 106, 104 112 Z"
+            fill="url(#bookGlassRight)"
+            stroke="rgba(255,255,255,0.4)"
+            strokeWidth="1.2"
+          />
+          {/* Subtle text threads on right page */}
+          <path d="M 116 41 Q 148 38, 180 42" stroke="url(#pageThread)" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M 116 55 Q 148 52, 172 56" stroke="url(#pageThread)" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M 116 69 Q 148 66, 178 70" stroke="url(#pageThread)" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M 116 83 Q 148 80, 160 84" stroke="url(#pageThread)" strokeWidth="1.5" strokeLinecap="round" />
+
+          {/* Golden Center Spine Highlight */}
+          <line x1="104" y1="16" x2="104" y2="114" stroke="url(#goldSpine)" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+
+        {/* 3. Layered 3D Flipping Pages (Right to Left) */}
         {/* Flipping Page 1 */}
         <motion.div
           initial={{ rotateY: 0 }}
-          animate={{ rotateY: -180 }}
-          transition={{ duration: 1.1, delay: 0.3, ease: [0.45, 0.05, 0.55, 0.95] }}
-          className="absolute right-0 top-0 w-16 h-24 rounded-r-xl border-y border-r border-amber-300/40 bg-gradient-to-l from-white/30 via-amber-200/20 to-transparent backdrop-blur-md shadow-md"
+          animate={{ rotateY: -180, skewY: [0, -6, 0] }}
+          transition={{ duration: 1.0, delay: 0.35, ease: [0.4, 0.0, 0.2, 1] }}
+          className="absolute right-2 top-3 w-[98px] h-[98px] rounded-r-2xl border-y border-r border-amber-300/40 bg-gradient-to-l from-white/30 via-amber-200/20 to-transparent backdrop-blur-md shadow-lg"
           style={{ transformOrigin: "left center", backfaceVisibility: "hidden" }}
-        />
+        >
+          <div className="p-3 space-y-2 opacity-50">
+            <div className="h-1 bg-amber-200/50 rounded w-full" />
+            <div className="h-1 bg-white/40 rounded w-3/4" />
+            <div className="h-1 bg-white/40 rounded w-5/6" />
+          </div>
+        </motion.div>
 
         {/* Flipping Page 2 */}
         <motion.div
           initial={{ rotateY: 0 }}
-          animate={{ rotateY: -180 }}
-          transition={{ duration: 1.15, delay: 0.65, ease: [0.45, 0.05, 0.55, 0.95] }}
-          className="absolute right-0 top-0 w-16 h-24 rounded-r-xl border-y border-r border-white/40 bg-gradient-to-l from-white/25 via-emerald-200/15 to-transparent backdrop-blur-md shadow-md"
+          animate={{ rotateY: -180, skewY: [0, -7, 0] }}
+          transition={{ duration: 1.05, delay: 0.75, ease: [0.4, 0.0, 0.2, 1] }}
+          className="absolute right-2 top-3 w-[98px] h-[98px] rounded-r-2xl border-y border-r border-white/50 bg-gradient-to-l from-white/35 via-emerald-200/15 to-transparent backdrop-blur-md shadow-lg"
           style={{ transformOrigin: "left center", backfaceVisibility: "hidden" }}
-        />
+        >
+          <div className="p-3 space-y-2 opacity-50">
+            <div className="h-1 bg-emerald-200/50 rounded w-full" />
+            <div className="h-1 bg-white/40 rounded w-2/3" />
+            <div className="h-1 bg-white/40 rounded w-4/5" />
+          </div>
+        </motion.div>
 
         {/* Flipping Page 3 (Final reveal page) */}
         <motion.div
           initial={{ rotateY: 0 }}
-          animate={{ rotateY: -180 }}
-          transition={{ duration: 1.2, delay: 1.0, ease: [0.45, 0.05, 0.55, 0.95] }}
-          className="absolute right-0 top-0 w-16 h-24 rounded-r-xl border-y border-r border-amber-200/40 bg-gradient-to-l from-white/35 via-amber-300/25 to-transparent backdrop-blur-md shadow-md"
+          animate={{ rotateY: -180, skewY: [0, -6, 0] }}
+          transition={{ duration: 1.1, delay: 1.15, ease: [0.4, 0.0, 0.2, 1] }}
+          className="absolute right-2 top-3 w-[98px] h-[98px] rounded-r-2xl border-y border-r border-amber-200/60 bg-gradient-to-l from-white/40 via-amber-300/25 to-transparent backdrop-blur-md shadow-xl"
           style={{ transformOrigin: "left center", backfaceVisibility: "hidden" }}
-        />
-
-        {/* Book Spine glow line */}
-        <div className="absolute top-0 bottom-0 w-1 bg-gradient-to-b from-amber-300 via-amber-100 to-amber-400 rounded-full shadow-[0_0_12px_rgba(251,191,36,0.8)] z-10" />
-
-        {/* Illuminated Educator Emblem floating out after final page turns */}
-        <motion.div
-          initial={{ opacity: 0, y: 10, scale: 0.4 }}
-          animate={{ opacity: 1, y: -26, scale: 1 }}
-          transition={{ duration: 0.7, delay: 1.6, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute z-20 flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-white/30 to-amber-500/20 border border-white/40 backdrop-blur-2xl shadow-[0_10px_25px_rgba(245,158,11,0.35)] text-amber-200"
         >
-          <Compass className="w-7 h-7 text-amber-300 drop-shadow-[0_2px_8px_rgba(251,191,36,0.5)]" />
+          <div className="p-3 space-y-2 opacity-60">
+            <div className="h-1 bg-amber-300/60 rounded w-5/6" />
+            <div className="h-1 bg-white/50 rounded w-3/4" />
+            <div className="h-1 bg-white/40 rounded w-1/2" />
+          </div>
+        </motion.div>
+
+        {/* 4. Illuminated Floating Educator Emblem (Emerges after 3rd page turns) */}
+        <motion.div
+          initial={{ opacity: 0, y: 15, scale: 0.3 }}
+          animate={{
+            opacity: 1,
+            y: -32,
+            scale: 1,
+          }}
+          transition={{
+            duration: 0.75,
+            delay: 1.8,
+            ease: [0.16, 1, 0.3, 1],
+          }}
+          className="absolute z-20 flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-white/40 via-amber-400/20 to-slate-900/60 border border-white/50 backdrop-blur-2xl shadow-[0_12px_30px_rgba(251,191,36,0.45),inset_0_1px_1px_rgba(255,255,255,0.7)] text-amber-200"
+        >
+          <Compass className="w-8 h-8 text-amber-300 drop-shadow-[0_2px_10px_rgba(251,191,36,0.7)]" />
+
+          {/* Orbiting Sparkle Star */}
           <motion.div
-            animate={{ scale: [1, 1.25, 1], opacity: [0.6, 1, 0.6] }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute -top-1.5 -right-1.5 text-amber-300"
+            animate={{
+              scale: [0.8, 1.3, 0.8],
+              opacity: [0.5, 1, 0.5],
+              rotate: [0, 90, 180],
+            }}
+            transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute -top-2 -right-2 text-amber-300"
           >
-            <Sparkles className="w-4 h-4" />
+            <StarSparkle className="w-5 h-5 drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]" />
+          </motion.div>
+
+          <motion.div
+            animate={{
+              scale: [1, 1.25, 1],
+              opacity: [0.4, 0.9, 0.4],
+            }}
+            transition={{ duration: 2.1, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+            className="absolute -bottom-1 -left-2 text-emerald-300"
+          >
+            <StarSparkle className="w-4 h-4 drop-shadow-[0_0_6px_rgba(110,231,183,0.8)]" />
           </motion.div>
         </motion.div>
       </motion.div>
@@ -165,42 +264,53 @@ const TeacherBookVisual = ({ shouldReduceMotion }) => {
   );
 };
 
-// Student Visual: Starlight Particles Converging into Liquid Glass Cap, Floating Lift & Curved Journey Arc
+// ============================================================
+// STUDENT VISUAL: Multi-Particle Convergence, Glass Mortarboard & Curved Journey Arc
+// ============================================================
 const StudentCapVisual = ({ shouldReduceMotion }) => {
   if (shouldReduceMotion) {
     return (
-      <div className="relative flex items-center justify-center w-28 h-28 mx-auto mb-6">
-        <div className="absolute inset-0 rounded-3xl bg-cyan-500/20 blur-xl" />
+      <div className="relative flex items-center justify-center w-32 h-32 mx-auto mb-6">
+        <div className="absolute inset-0 rounded-3xl bg-cyan-500/20 blur-2xl" />
         <div className="relative flex items-center justify-center w-24 h-24 rounded-2xl bg-white/10 border border-white/25 shadow-2xl backdrop-blur-xl text-cyan-300">
-          <GraduationCap className="w-12 h-12" />
+          <GraduationCap className="w-12 h-12 drop-shadow-[0_2px_10px_rgba(103,232,249,0.6)]" />
         </div>
       </div>
     );
   }
 
-  // Pre-calculated particle origins for clean convergence
+  // 14 converging particles with dynamic trajectory origins and delays
   const particles = [
-    { startX: -90, startY: -50, delay: 0.1 },
-    { startX: 90, startY: -45, delay: 0.15 },
-    { startX: -80, startY: 40, delay: 0.2 },
-    { startX: 85, startY: 45, delay: 0.12 },
-    { startX: 0, startY: -80, delay: 0.25 },
-    { startX: -60, startY: -70, delay: 0.18 },
-    { startX: 65, startY: -65, delay: 0.22 },
-    { startX: 0, startY: 70, delay: 0.28 },
+    { startX: -130, startY: -60, delay: 0.05, size: 3.5, color: "bg-cyan-200" },
+    { startX: 130, startY: -55, delay: 0.1, size: 3, color: "bg-teal-200" },
+    { startX: -110, startY: 50, delay: 0.15, size: 3, color: "bg-emerald-200" },
+    { startX: 115, startY: 60, delay: 0.12, size: 4, color: "bg-cyan-100" },
+    { startX: 0, startY: -100, delay: 0.22, size: 3.5, color: "bg-amber-100" },
+    { startX: -70, startY: -85, delay: 0.18, size: 2.5, color: "bg-cyan-300" },
+    { startX: 75, startY: -80, delay: 0.25, size: 3, color: "bg-teal-100" },
+    { startX: 0, startY: 90, delay: 0.2, size: 3.5, color: "bg-emerald-100" },
+    { startX: -140, startY: 0, delay: 0.08, size: 3, color: "bg-cyan-200" },
+    { startX: 140, startY: 10, delay: 0.14, size: 3.5, color: "bg-cyan-100" },
+    { startX: -45, startY: 75, delay: 0.28, size: 2.5, color: "bg-teal-200" },
+    { startX: 55, startY: 75, delay: 0.26, size: 3, color: "bg-amber-200" },
+    { startX: -95, startY: -20, delay: 0.16, size: 3, color: "bg-cyan-200" },
+    { startX: 95, startY: -20, delay: 0.24, size: 2.5, color: "bg-teal-100" },
   ];
 
   return (
-    <div className="relative flex items-center justify-center w-48 h-36 mx-auto mb-4 select-none">
-      {/* Ambient background aura (Cyan & Emerald, zero purple) */}
+    <div className="relative flex items-center justify-center w-64 h-48 mx-auto mb-2 select-none">
+      {/* 1. Ambient Background Glow Aura (Cyan, Teal, Amber - Zero Purple) */}
       <motion.div
         initial={{ opacity: 0, scale: 0.4 }}
-        animate={{ opacity: [0, 0.7, 0.9], scale: [0.4, 1.1, 1] }}
-        transition={{ duration: 2, ease: "easeOut" }}
-        className="absolute -inset-4 rounded-full bg-gradient-to-r from-cyan-500/20 via-teal-400/20 to-emerald-400/20 blur-2xl pointer-events-none"
+        animate={{
+          opacity: [0, 0.75, 0.9],
+          scale: [0.4, 1.2, 1.05],
+        }}
+        transition={{ duration: 2.2, ease: "easeOut" }}
+        className="absolute -inset-6 rounded-full bg-gradient-to-r from-cyan-500/25 via-teal-400/20 to-emerald-400/20 blur-3xl pointer-events-none"
       />
 
-      {/* Converging Luminous Starlight Particles */}
+      {/* 2. Converging Starlight Particles Swarm */}
       {particles.map((p, i) => (
         <motion.div
           key={i}
@@ -208,107 +318,247 @@ const StudentCapVisual = ({ shouldReduceMotion }) => {
             x: p.startX,
             y: p.startY,
             opacity: 0,
-            scale: 0.2,
+            scale: 0.3,
           }}
           animate={{
             x: 0,
             y: 0,
             opacity: [0, 1, 0.8, 0],
-            scale: [0.2, 1.4, 0.8, 0.2],
+            scale: [0.3, 1.6, 1, 0.2],
           }}
           transition={{
-            duration: 1.1,
+            duration: 1.05,
             delay: p.delay,
-            ease: [0.25, 0.1, 0.25, 1],
+            ease: [0.22, 1, 0.36, 1],
           }}
-          className="absolute w-2.5 h-2.5 rounded-full bg-cyan-200 shadow-[0_0_12px_rgba(103,232,249,0.9)] pointer-events-none z-10"
+          style={{ width: `${p.size}px`, height: `${p.size}px` }}
+          className={`absolute rounded-full ${p.color} shadow-[0_0_12px_rgba(103,232,249,0.9)] pointer-events-none z-10`}
         />
       ))}
 
-      {/* Curved radiant journey arc path drawn behind the cap */}
+      {/* Fusion Nova Flash when particles collide at center */}
+      <motion.div
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{
+          scale: [0, 1.8, 2.4],
+          opacity: [0, 0.9, 0],
+        }}
+        transition={{
+          duration: 0.7,
+          delay: 0.9,
+          ease: "easeOut",
+        }}
+        className="absolute w-20 h-20 rounded-full bg-gradient-to-r from-cyan-300 via-teal-200 to-amber-200 blur-md pointer-events-none z-10"
+      />
+
+      {/* 3. Curved Luminous Journey Arc (Flows gracefully behind the cap) */}
       <svg
         className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-0"
-        viewBox="0 0 192 144"
+        viewBox="0 0 256 192"
         fill="none"
       >
+        <defs>
+          <linearGradient id="journeyArcGlow" x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.05" />
+            <stop offset="45%" stopColor="#2dd4bf" stopOpacity="0.85" />
+            <stop offset="80%" stopColor="#fef08a" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="1" />
+          </linearGradient>
+          <filter id="arcBlur" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" />
+          </filter>
+        </defs>
+
+        {/* Ambient Soft Blur Track */}
         <motion.path
-          d="M 20 120 C 50 140, 120 130, 150 70 C 165 40, 175 25, 185 20"
-          stroke="url(#journeyGradient)"
+          d="M 15 155 C 65 175, 120 155, 165 95 C 195 55, 215 32, 240 22"
+          stroke="url(#journeyArcGlow)"
+          strokeWidth="6"
+          strokeLinecap="round"
+          filter="url(#arcBlur)"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 0.5 }}
+          transition={{ duration: 1.4, delay: 1.15, ease: [0.16, 1, 0.3, 1] }}
+        />
+
+        {/* Crisp Radiant Journey Path */}
+        <motion.path
+          d="M 15 155 C 65 175, 120 155, 165 95 C 195 55, 215 32, 240 22"
+          stroke="url(#journeyArcGlow)"
           strokeWidth="2.5"
           strokeLinecap="round"
-          strokeDasharray="4 6"
+          strokeDasharray="6 8"
           initial={{ pathLength: 0, opacity: 0 }}
-          animate={{ pathLength: 1, opacity: 0.85 }}
-          transition={{ duration: 1.4, delay: 1.3, ease: [0.16, 1, 0.3, 1] }}
+          animate={{ pathLength: 1, opacity: 0.95 }}
+          transition={{ duration: 1.3, delay: 1.2, ease: [0.16, 1, 0.3, 1] }}
         />
-        <defs>
-          <linearGradient id="journeyGradient" x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.1" />
-            <stop offset="50%" stopColor="#2dd4bf" stopOpacity="0.9" />
-            <stop offset="100%" stopColor="#fef08a" stopOpacity="1" />
-          </linearGradient>
-        </defs>
+
+        {/* Lead Shooting Star at the tip of the arc */}
+        <motion.circle
+          cx="240"
+          cy="22"
+          r="3.5"
+          fill="#ffffff"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: [0, 1.4, 1], opacity: [0, 1, 0.9] }}
+          transition={{ duration: 0.5, delay: 2.4, ease: "easeOut" }}
+          className="drop-shadow-[0_0_10px_rgba(255,255,255,1)]"
+        />
       </svg>
 
-      {/* The Liquid Glass Graduation Cap */}
+      {/* 4. The 3D Liquid Glass Graduation Cap (Forms & Gently Lifts) */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.3, y: 15 }}
+        initial={{ opacity: 0, scale: 0.35, y: 18 }}
         animate={{
           opacity: 1,
           scale: 1,
-          y: [-4, -14, -8],
+          y: [-2, -15, -10],
+          rotate: [-1, 1.5, 0],
         }}
         transition={{
-          opacity: { duration: 0.6, delay: 0.95 },
-          scale: { duration: 0.7, delay: 0.95, ease: [0.16, 1, 0.3, 1] },
-          y: { duration: 2.6, delay: 1.2, times: [0, 0.45, 1], ease: "easeInOut" },
+          opacity: { duration: 0.6, delay: 0.9 },
+          scale: { duration: 0.75, delay: 0.9, ease: [0.16, 1, 0.3, 1] },
+          y: { duration: 2.8, delay: 1.1, times: [0, 0.5, 1], ease: "easeInOut" },
+          rotate: { duration: 3.2, delay: 1.1, ease: "easeInOut" },
         }}
-        className="relative z-10 flex flex-col items-center justify-center"
+        className="relative z-10 flex flex-col items-center justify-center drop-shadow-[0_20px_35px_rgba(6,182,212,0.35)]"
       >
-        {/* Cap Diamond Top (Frosted glass with specular bevel) */}
-        <div className="relative w-28 h-14 flex items-center justify-center">
-          <div
-            className="w-24 h-12 rounded-xl bg-gradient-to-br from-white/35 via-cyan-300/15 to-slate-900/60 border border-white/40 shadow-[0_12px_30px_rgba(6,182,212,0.35),inset_0_1px_1px_rgba(255,255,255,0.6)] backdrop-blur-2xl flex items-center justify-center transform rotate-[16deg] skew-x-12"
+        {/* SVG Detailed 3D Glass Mortarboard Top & Beveled Crystal Edges */}
+        <div className="relative w-36 h-20 flex items-center justify-center">
+          <svg
+            viewBox="0 0 144 80"
+            className="w-full h-full overflow-visible"
+            fill="none"
           >
-            {/* Center Cap Button */}
-            <div className="w-3 h-3 rounded-full bg-cyan-200 border border-white shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
-          </div>
+            <defs>
+              {/* Upper Glass Plane */}
+              <linearGradient id="capGlassSurface" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.45" />
+                <stop offset="35%" stopColor="#67e8f9" stopOpacity="0.22" />
+                <stop offset="70%" stopColor="#0f172a" stopOpacity="0.75" />
+                <stop offset="100%" stopColor="#0284c7" stopOpacity="0.3" />
+              </linearGradient>
 
-          {/* Liquid Glass Tassel hanging down */}
+              {/* Beveled Edge Highlight */}
+              <linearGradient id="capBevel" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
+                <stop offset="50%" stopColor="#67e8f9" stopOpacity="0.5" />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity="0.8" />
+              </linearGradient>
+
+              {/* Skull Cap Gradient */}
+              <linearGradient id="skullBand" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.25" />
+                <stop offset="50%" stopColor="#0f172a" stopOpacity="0.8" />
+                <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.3" />
+              </linearGradient>
+            </defs>
+
+            {/* Skull band (lower head support) */}
+            <path
+              d="M 52 42 Q 72 56, 92 42 L 94 56 Q 72 70, 50 56 Z"
+              fill="url(#skullBand)"
+              stroke="rgba(255,255,255,0.3)"
+              strokeWidth="1"
+            />
+
+            {/* Mortarboard Diamond Top */}
+            <polygon
+              points="72,8 136,36 72,64 8,36"
+              fill="url(#capGlassSurface)"
+              stroke="url(#capBevel)"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+
+            {/* Specular Glare Diagonal Slash across glass face */}
+            <line
+              x1="32"
+              y1="34"
+              x2="112"
+              y2="38"
+              stroke="rgba(255,255,255,0.5)"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+            />
+
+            {/* Center Crystal Button */}
+            <circle
+              cx="72"
+              cy="36"
+              r="4.5"
+              fill="#cffafe"
+              stroke="#ffffff"
+              strokeWidth="1.5"
+              className="drop-shadow-[0_0_8px_rgba(255,255,255,0.9)]"
+            />
+          </svg>
+
+          {/* Golden Silk Tassel with Physics-based Sway */}
           <motion.div
             initial={{ rotate: 0 }}
-            animate={{ rotate: [-6, 12, -4, 0] }}
-            transition={{ duration: 2, delay: 1.3, ease: "easeInOut" }}
-            className="absolute right-3 top-6 w-1 h-10 origin-top flex flex-col items-center"
+            animate={{
+              rotate: [-14, 12, -7, 3, 0],
+            }}
+            transition={{
+              duration: 2.6,
+              delay: 1.25,
+              ease: "easeInOut",
+            }}
+            className="absolute right-5 top-9 origin-top flex flex-col items-center pointer-events-none"
           >
-            <div className="w-0.5 h-6 bg-gradient-to-b from-cyan-200 to-amber-200" />
-            <div className="w-2 h-4 rounded-full bg-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.8)]" />
+            {/* Tassel cord */}
+            <div className="w-0.5 h-7 bg-gradient-to-b from-cyan-200 via-amber-200 to-amber-300" />
+            {/* Tassel head ring */}
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.9)] -mt-0.5" />
+            {/* Tassel brush */}
+            <div className="w-2 h-5 rounded-b bg-gradient-to-b from-amber-300 to-amber-500 shadow-[0_2px_8px_rgba(251,191,36,0.5)]" />
           </motion.div>
         </div>
 
-        {/* Cap Base Ring */}
-        <div className="w-16 h-5 -mt-2 rounded-b-xl bg-gradient-to-b from-white/20 via-cyan-500/10 to-slate-950/80 border-x border-b border-white/25 backdrop-blur-xl shadow-lg" />
-
-        {/* Delicate floating sparkle stars */}
+        {/* 5. Delicate Floating Sparkle Stars */}
         <motion.div
-          animate={{ scale: [0.8, 1.25, 0.8], opacity: [0.4, 1, 0.4] }}
-          transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
-          className="absolute -top-3 -left-4 text-cyan-200"
+          animate={{
+            scale: [0.8, 1.35, 0.8],
+            opacity: [0.4, 1, 0.4],
+            rotate: [0, 90, 180],
+          }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
+          className="absolute -top-3 -left-3 text-cyan-200"
         >
-          <Sparkles className="w-4 h-4" />
+          <StarSparkle className="w-5 h-5 drop-shadow-[0_0_8px_rgba(103,232,249,0.9)]" />
         </motion.div>
+
         <motion.div
-          animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0.9, 0.3] }}
-          transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
-          className="absolute -bottom-2 -right-3 text-emerald-200"
+          animate={{
+            scale: [1, 1.4, 1],
+            opacity: [0.3, 0.95, 0.3],
+            rotate: [180, 90, 0],
+          }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
+          className="absolute -bottom-1 -right-4 text-emerald-200"
         >
-          <Sparkles className="w-3.5 h-3.5" />
+          <StarSparkle className="w-4 h-4 drop-shadow-[0_0_8px_rgba(110,231,183,0.8)]" />
+        </motion.div>
+
+        <motion.div
+          animate={{
+            scale: [0.7, 1.25, 0.7],
+            opacity: [0.2, 0.8, 0.2],
+          }}
+          transition={{ duration: 2.1, repeat: Infinity, ease: "easeInOut", delay: 1.4 }}
+          className="absolute top-2 right-1 text-amber-200"
+        >
+          <Sparkles className="w-3.5 h-3.5 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]" />
         </motion.div>
       </motion.div>
     </div>
   );
 };
 
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 export default function FirstTimeWelcomeModal() {
   const { authUser, markWelcomeSeen } = useAuthContext();
   const navigate = useNavigate();
@@ -497,17 +747,6 @@ export default function FirstTimeWelcomeModal() {
                 <span>{actionButtonText}</span>
                 <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
               </button>
-            </motion.div>
-
-            {/* Subtle bottom note */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: shouldReduceMotion ? 0.3 : 3.4, duration: 0.4 }}
-              className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-400"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Chỉ hiển thị tại lần đăng nhập đầu tiên</span>
             </motion.div>
           </motion.div>
         </motion.div>
