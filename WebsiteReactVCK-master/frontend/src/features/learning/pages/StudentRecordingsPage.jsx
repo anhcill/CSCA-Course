@@ -58,12 +58,11 @@ export default function StudentRecordingsPage() {
   return (
     <div className="min-h-full bg-[#f6f9fd] px-4 py-5 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-5">
-        <section className="overflow-hidden rounded-3xl border border-sky-200/80 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-5 shadow-sm dark:border-sky-900/50 dark:from-slate-900 dark:via-slate-900 dark:to-cyan-950/30 sm:p-7">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <section className="overflow-hidden rounded-3xl border border-sky-200/80 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-4 shadow-sm dark:border-sky-900/50 dark:from-slate-900 dark:via-slate-900 dark:to-cyan-950/30 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-700 dark:bg-sky-950 dark:text-sky-300"><Video className="h-4 w-4" /> Thư viện xem lại</span>
-              <h1 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">Bản ghi buổi học</h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">Bản ghi được xếp riêng theo từng lớp. Khi mở, hệ thống kiểm tra quyền lớp rồi chuyển sang Google Drive trong tab mới.</p>
+              <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">Bản ghi buổi học</h1>
             </div>
             <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_220px]">
               <label className="relative block">
