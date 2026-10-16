@@ -913,3 +913,46 @@ export const resetPassword = async (req, res) => {
     return res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
+
+// ============================================================
+// FIRST-TIME WELCOME SCREEN ACKNOWLEDGEMENT
+// ============================================================
+export const markWelcomeSeen = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Chưa đăng nhập" });
+    }
+
+    // Admin does not need to record or show welcome screen
+    if (req.user?.role === "admin") {
+      return res.status(200).json({
+        success: true,
+        message: "Welcome acknowledged",
+        data: { welcomeSeenAt: new Date().toISOString(), hasSeenWelcome: true },
+      });
+    }
+
+    const { rows } = await query(
+      `UPDATE users
+       SET welcome_seen_at = COALESCE(welcome_seen_at, NOW())
+       WHERE id = $1
+       RETURNING welcome_seen_at`,
+      [userId]
+    );
+
+    const welcomeSeenAt = rows[0]?.welcome_seen_at ?? new Date().toISOString();
+
+    return res.status(200).json({
+      success: true,
+      message: "Welcome acknowledged",
+      data: {
+        welcomeSeenAt,
+        hasSeenWelcome: true,
+      },
+    });
+  } catch (error) {
+    console.error("markWelcomeSeen error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};

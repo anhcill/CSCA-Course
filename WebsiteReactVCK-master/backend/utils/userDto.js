@@ -51,6 +51,8 @@ export const toUserDto = (row) => {
     isLocked: Boolean(row.is_locked),
     isManagementManaged: Boolean(row.is_management_managed),
     lmsAccountStatus: row.lms_account_status ?? "unmanaged",
+    welcomeSeenAt: row.welcome_seen_at ?? null,
+    hasSeenWelcome: Boolean(row.welcome_seen_at),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     studentProfile,
@@ -61,6 +63,7 @@ export const getUserDtoById = async (userId, db = { query }) => {
   const { rows } = await db.query(
     `SELECT u.id, u.username, u.email, u.role, u.gender, u.avatar_url,
             u.hourly_rate,
+            u.welcome_seen_at,
             u.is_vip, u.vip_expires_at, u.email_verified, u.is_locked, u.oauth_provider,
             u.is_management_managed, u.lms_account_status,
             u.password_hash, u.created_at, u.updated_at,

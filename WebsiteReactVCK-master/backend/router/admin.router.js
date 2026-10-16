@@ -101,6 +101,8 @@ const safeUser = (row) => ({
   emailVerified: Boolean(row.email_verified),
   authProvider: row.oauth_provider || "local",
   hasPassword: Boolean(row.has_password ?? row.password_hash),
+  welcomeSeenAt: row.welcome_seen_at || null,
+  hasSeenWelcome: Boolean(row.welcome_seen_at),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });

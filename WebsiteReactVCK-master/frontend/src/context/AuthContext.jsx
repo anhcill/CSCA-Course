@@ -18,6 +18,8 @@ export const normalizeUserDto = (user) => {
         hasPassword: user.hasPassword ?? Boolean(user.password_hash),
         isManagementManaged: user.isManagementManaged ?? user.is_management_managed ?? false,
         lmsAccountStatus: user.lmsAccountStatus ?? user.lms_account_status ?? 'unmanaged',
+        welcomeSeenAt: user.welcomeSeenAt ?? user.welcome_seen_at ?? null,
+        hasSeenWelcome: user.hasSeenWelcome ?? Boolean(user.welcomeSeenAt ?? user.welcome_seen_at),
         createdAt: user.createdAt ?? user.created_at ?? null,
         updatedAt: user.updatedAt ?? user.updated_at ?? null,
         studentProfile: user.studentProfile ?? null,
@@ -329,6 +331,24 @@ export const AuthContextProvider = ({ children }) => {
         }
     }, [t]);
 
+    const markWelcomeSeen = useCallback(async () => {
+        if (!authUser) return;
+        const updatedUser = {
+            ...authUser,
+            hasSeenWelcome: true,
+            welcomeSeenAt: authUser.welcomeSeenAt || new Date().toISOString(),
+        };
+        setAuthUser(updatedUser);
+
+        if (authUser.role === 'admin') return;
+
+        try {
+            await axios.post('/api/auth/welcome-seen');
+        } catch (error) {
+            console.error('Failed to mark welcome screen as seen in backend:', error?.message);
+        }
+    }, [authUser, setAuthUser]);
+
     // ─── Context value ─────────────────────────────────────────────────────────
 
     const contextValue = useMemo(() => ({
@@ -338,6 +358,7 @@ export const AuthContextProvider = ({ children }) => {
         setIsAuthenticated,
         loading,
         fetchCurrentUser,
+        markWelcomeSeen,
         initiateSignup,
         completeSignup,
         requestPasswordReset,
@@ -350,6 +371,7 @@ export const AuthContextProvider = ({ children }) => {
         isAuthenticated,
         loading,
         fetchCurrentUser,
+        markWelcomeSeen,
         initiateSignup,
         completeSignup,
         requestPasswordReset,

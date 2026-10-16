@@ -1157,3 +1157,10 @@ export const adminTeacherSalariesExportUrl = ({ format = "xlsx", search = "", ra
   return `${API_BASE}/admin/teacher-salaries/export?${params.toString()}`;
 };
 
+export const markWelcomeSeenApi = async () => (
+  request("/auth/welcome-seen", {
+    method: "POST",
+  })
+);
+
+

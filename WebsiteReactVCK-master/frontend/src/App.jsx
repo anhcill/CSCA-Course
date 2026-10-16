@@ -33,6 +33,7 @@ import { useAuthContext } from "./context/AuthContext.jsx";
 import { TEACHER_ROLES, USER_ROLES, isTeacherRole } from "./constants/roles";
 import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
 import PwaInstallPrompt from "./components/common/PwaInstallPrompt.jsx";
+import FirstTimeWelcomeModal from "./components/welcome/FirstTimeWelcomeModal.jsx";
 
 // LMS feature pages
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.jsx"));
@@ -227,6 +228,20 @@ function AppContent() {
   const isLiveRoomPage = pathname.startsWith("/lms/live-room/");
   const isLmsPage = pathname === "/lms" || pathname.startsWith("/lms/");
   const isTeacherPage = isTeacherLmsPath(pathname) || isSharedTeacherPath(pathname, authUser);
+
+  const isEligibleForWelcome = Boolean(
+    authUser && (authUser.role === USER_ROLES.TEACHER || authUser.role === USER_ROLES.STUDENT)
+  );
+  const shouldShowWelcome = isEligibleForWelcome && !authUser.hasSeenWelcome;
+
+  if (shouldShowWelcome) {
+    return (
+      <div className="fixed inset-0 z-[9999] h-screen w-screen overflow-hidden bg-slate-950">
+        <Toaster position="top-center" reverseOrder={false} />
+        <FirstTimeWelcomeModal />
+      </div>
+    );
+  }
 
   if (isLiveRoomPage) {
     return (

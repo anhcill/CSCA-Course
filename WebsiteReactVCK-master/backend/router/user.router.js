@@ -14,7 +14,8 @@ import {
   updateOwnProfile,
   updateStudentProfile,
   startGoogleLogin,
-  handleGoogleCallback
+  handleGoogleCallback,
+  markWelcomeSeen
 } from "../controllers/user.controllers.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireAdmin from "../middleware/requireAdmin.js";
@@ -48,6 +49,9 @@ router.post("/reset-password", sensitiveAuthRateLimit, resetPassword);
 router.get("/me", protectRoute, getCurrentUser);
 router.patch("/me", protectRoute, updateOwnProfile);
 router.patch("/me/student-profile", protectRoute, updateStudentProfile);
+router.post("/welcome-seen", protectRoute, markWelcomeSeen);
+router.post("/me/welcome-seen", protectRoute, markWelcomeSeen);
+router.patch("/me/welcome-seen", protectRoute, markWelcomeSeen);
 
 // Admin routes
 router.get("/", protectRoute, requireAdmin, getAllUsers);
