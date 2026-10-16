@@ -77,6 +77,8 @@ const StudentFilesPage = lazy(() => import("./features/learning/pages/StudentFil
 const TeacherFilesPage = lazy(() => import("./features/teacher/pages/TeacherFilesPage.jsx"));
 const TeacherQuizPage = lazy(() => import("./features/teacher/pages/TeacherQuizPage.jsx"));
 const NotificationCenterPage = lazy(() => import("./features/notifications/pages/NotificationCenterPage.jsx"));
+const StudentRecordingsPage = lazy(() => import("./features/learning/pages/StudentRecordingsPage.jsx"));
+const AdminRecordingsPage = lazy(() => import("./pages/admin/AdminRecordingsPage.jsx"));
 
 const isTeacherLmsPath = (p) => (
   p === "/lms/teach" || p.startsWith("/lms/teach/") || p === "/lms/teacher-hub" ||
@@ -125,6 +127,7 @@ function AppRoutes() {
       <Route path="/lms/live-classes" element={<Navigate to="/lms/live-schedule" replace />} />
       <Route path="/lms/assignments" element={<AssignmentListPage />} />
       <Route path="/lms/files" element={<StudentFilesPage />} />
+      <Route path="/lms/recordings" element={<StudentRecordingsPage />} />
       <Route path="/lms/materials" element={<StudentFilesPage />} />
       <Route path="/lms/notifications" element={<NotificationCenterPage />} />
       <Route path="/lms/courses/:courseId" element={<CourseClassListPage />} />
@@ -207,6 +210,7 @@ function AppRoutes() {
         <Route path="classes/:classId/sessions/:sessionId" element={<TeacherSessionWorkspacePage />} />
         <Route path="classes/:classId/attendance" element={<TeacherAttendancePage />} />
         <Route path="calendar" element={<AdminCalendarPage />} />
+        <Route path="recordings" element={<AdminRecordingsPage />} />
         <Route path="permissions" element={<AdminPermissionsPage />} />
         <Route path="sync" element={<AdminSyncPage />} />
         <Route path="audit-logs" element={<AdminAuditLogPage />} />

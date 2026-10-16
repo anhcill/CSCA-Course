@@ -15,6 +15,7 @@ import {
   FiBarChart2,
   FiTrendingUp,
   FiDollarSign,
+  FiVideo,
 } from 'react-icons/fi';
 import { useAuthContext } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -66,6 +67,11 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
           title: 'Lịch học',
           icon: <FiCalendar className="w-4 h-4 shrink-0" />,
           path: '/admin/calendar',
+        },
+        {
+          title: 'Bản ghi buổi học',
+          icon: <FiVideo className="w-4 h-4 shrink-0" />,
+          path: '/admin/recordings',
         },
       ],
     },

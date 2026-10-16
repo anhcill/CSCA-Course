@@ -848,6 +848,29 @@ export const fetchStudentFiles = async ({ courseId, classId, sessionId, date, se
   return request(`/student/files${params.size ? `?${params.toString()}` : ""}`);
 };
 
+// Class recordings are stored on Google Drive; LMS only manages metadata and access.
+export const fetchStudentRecordings = ({ classId } = {}) => {
+  const params = new URLSearchParams();
+  if (classId) params.set("classId", classId);
+  return request(`/recordings/mine${params.size ? `?${params.toString()}` : ""}`);
+};
+
+export const fetchAdminRecordingCatalog = () => request("/recordings/admin/catalog");
+
+export const createClassRecording = (payload) => request("/recordings/admin", {
+  method: "POST",
+  body: JSON.stringify(payload),
+});
+
+export const updateClassRecording = (recordingId, payload) => request(`/recordings/admin/${encodeURIComponent(recordingId)}`, {
+  method: "PATCH",
+  body: JSON.stringify(payload),
+});
+
+export const deleteClassRecording = (recordingId) => request(`/recordings/admin/${encodeURIComponent(recordingId)}`, {
+  method: "DELETE",
+});
+
 export const uploadClassFile = async (classId, file, { visibility = "CLASS_ONLY", sessionId, onProgress } = {}) => {
   onProgress?.({
     stage: "init",
