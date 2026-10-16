@@ -31,6 +31,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
   const [chapterMode, setChapterMode] = useState("existing");
   const [chapterId, setChapterId] = useState("");
   const [newChapter, setNewChapter] = useState({ title: "", description: "", objectives: "", teacherId: "" });
+  const [canManageCurriculum, setCanManageCurriculum] = useState(canManageFixedSchedule);
 
   const effectiveClassId = classId || selectedClassId;
 
@@ -58,6 +59,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
     setChapterId("");
     setChapterMode("existing");
     setTeachers([]);
+    setCanManageCurriculum(canManageFixedSchedule);
     setChaptersError("");
     if (!effectiveClassId) {
       setChaptersLoading(false);
@@ -70,7 +72,9 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
         .filter((chapter) => canManageFixedSchedule || String(chapter.assigned_teacher_id) === String(authUser?.id));
       setChapters(items);
       setTeachers(Array.isArray(response?.teachers) ? response.teachers : []);
-      if (items.length === 0) setChapterMode("new");
+      const mayManage = canManageFixedSchedule || Boolean(response?.canManageCurriculum);
+      setCanManageCurriculum(mayManage);
+      if (items.length === 0) setChapterMode(mayManage ? "new" : "existing");
       else setChapterId(String(items[0].id));
     }).catch((error) => {
       if (!cancelled) setChaptersError(error?.message || "Không tải được các chương của lớp.");
@@ -311,13 +315,15 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Chương học của buổi này</label>
                 <select value={chapterMode} disabled={!effectiveClassId || chaptersLoading || Boolean(chaptersError)} onChange={(e) => setChapterMode(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
                   {chapters.length > 0 && <option value="existing">Chọn chương đã có</option>}
-                  <option value="new">Thêm chương mới cùng buổi học</option>
+                  {canManageCurriculum && <option value="new">Thêm chương mới cùng buổi học</option>}
                 </select>
                 {chaptersLoading ? <p className="mt-2 text-xs text-slate-500">Đang tải các chương của lớp...</p> : chapterMode === "existing" && chapters.length > 0 ? (
                   <select value={chapterId} onChange={(e) => setChapterId(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
                     {chapters.map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
                   </select>
-                ) : !effectiveClassId || chaptersError ? <p className="mt-2 text-xs text-slate-500">Chọn lớp và tải chương trước khi tiếp tục.</p> : (
+                ) : !effectiveClassId || chaptersError ? <p className="mt-2 text-xs text-slate-500">Chọn lớp và tải chương trước khi tiếp tục.</p> : !canManageCurriculum ? (
+                  <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300">Admin chưa gán chương hoặc cấp quyền quản lý chương cho bạn ở lớp này.</p>
+                ) : (
                   <div className="mt-2 space-y-2">
                     <input required maxLength={255} value={newChapter.title} onChange={(e) => setNewChapter({ ...newChapter, title: e.target.value })} placeholder="Tên chương" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800" />
                     <textarea maxLength={5000} rows={2} value={newChapter.objectives} onChange={(e) => setNewChapter({ ...newChapter, objectives: e.target.value })} placeholder="Mục tiêu học tập (tùy chọn)" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800" />

@@ -339,7 +339,28 @@ function QuizStatsModal({ quiz, onClose }) {
     distribution: { excellent: 0, good: 0, average: 0, weak: 0 },
   };
 
-  const students = data?.students || [];
+  const students = useMemo(() => data?.students || [], [data?.students]);
+  const passRate = summary.submittedCount > 0
+    ? Math.round((summary.passedCount / summary.submittedCount) * 100)
+    : null;
+  const distributionItems = [
+    { key: "excellent", label: "Xuất sắc", range: "≥ 80%", value: summary.distribution?.excellent || 0, color: "#10b981" },
+    { key: "good", label: "Khá", range: "65–79%", value: summary.distribution?.good || 0, color: "#3b82f6" },
+    { key: "average", label: "Trung bình", range: "50–64%", value: summary.distribution?.average || 0, color: "#f59e0b" },
+    { key: "weak", label: "Cần cố gắng", range: "< 50%", value: summary.distribution?.weak || 0, color: "#f43f5e" },
+  ];
+  const distributionTotal = distributionItems.reduce((total, item) => total + item.value, 0);
+  let distributionCursor = 0;
+  const donutSegments = distributionItems
+    .filter((item) => item.value > 0)
+    .map((item) => {
+      const start = distributionCursor;
+      distributionCursor += (item.value / Math.max(distributionTotal, 1)) * 100;
+      return `${item.color} ${start}% ${distributionCursor}%`;
+    });
+  const donutBackground = donutSegments.length
+    ? `conic-gradient(${donutSegments.join(", ")})`
+    : "conic-gradient(#cbd5e1 0 100%)";
 
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
@@ -410,8 +431,13 @@ function QuizStatsModal({ quiz, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-3 backdrop-blur-sm sm:p-5">
-      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-0 backdrop-blur-sm sm:p-5">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quiz-report-title"
+        className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-3xl sm:border sm:border-slate-200 sm:dark:border-slate-800"
+      >
         {/* Header Modal */}
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
@@ -420,7 +446,7 @@ function QuizStatsModal({ quiz, onClose }) {
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate text-base font-black text-slate-950 dark:text-white sm:text-lg">
+                <h2 id="quiz-report-title" className="truncate text-base font-black text-slate-950 dark:text-white sm:text-lg">
                   {quiz.title}
                 </h2>
                 <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold ${
@@ -469,147 +495,84 @@ function QuizStatsModal({ quiz, onClose }) {
         </div>
 
         {/* Content Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
           {loading ? (
             <Loading loading text="Đang tải dữ liệu thống kê kết quả học viên..." fullScreen={false} className="py-20" />
           ) : (
             <>
-              {/* Thẻ KPI Tổng quan */}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-950/50">
-                  <div className="flex items-center justify-between text-slate-500">
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Học viên lớp</span>
-                    <FiUsers className="h-4 w-4 text-slate-400" />
+              {/* Tổng quan gọn: điểm trung bình là tâm của biểu đồ phân bố. */}
+              <section aria-labelledby="quiz-overview-title" className="border-b border-slate-200 pb-6 dark:border-slate-800">
+                <div className="mb-5 flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <h3 id="quiz-overview-title" className="text-sm font-black text-slate-950 dark:text-white">Tổng quan kết quả</h3>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      Cập nhật từ {summary.submittedCount} bài đã nộp
+                    </p>
                   </div>
-                  <div className="mt-2 text-2xl font-black text-slate-950 dark:text-white">
-                    {summary.totalStudents}
-                  </div>
-                  <span className="text-[10px] text-slate-500">Sĩ số chính thức</span>
+                  {summary.inProgressCount > 0 && (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300">
+                      <FiClock className="h-3.5 w-3.5" /> {summary.inProgressCount} học viên đang làm bài
+                    </span>
+                  )}
                 </div>
 
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3.5 dark:border-emerald-950/60 dark:bg-emerald-950/20">
-                  <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-300">
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Đã nộp bài</span>
-                    <FiUserCheck className="h-4 w-4" />
-                  </div>
-                  <div className="mt-2 text-2xl font-black text-emerald-700 dark:text-emerald-300">
-                    {summary.submittedCount}
-                    <span className="ml-1 text-xs font-bold opacity-80">({summary.submissionRate}%)</span>
-                  </div>
-                  <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80">Tỷ lệ nộp bài</span>
-                </div>
-
-                <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-3.5 dark:border-rose-950/60 dark:bg-rose-950/20">
-                  <div className="flex items-center justify-between text-rose-700 dark:text-rose-300">
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Chưa làm bài</span>
-                    <FiUserX className="h-4 w-4" />
-                  </div>
-                  <div className="mt-2 text-2xl font-black text-rose-700 dark:text-rose-300">
-                    {summary.unsubmittedCount}
-                  </div>
-                  <span className="text-[10px] text-rose-600/80 dark:text-rose-400/80">Cần nhắc nhở</span>
-                </div>
-
-                <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-3.5 dark:border-violet-950/60 dark:bg-violet-950/20">
-                  <div className="flex items-center justify-between text-violet-700 dark:text-violet-300">
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Điểm trung bình</span>
-                    <FiAward className="h-4 w-4" />
-                  </div>
-                  <div className="mt-2 text-2xl font-black text-violet-700 dark:text-violet-300">
-                    {summary.avgScore !== null ? `${summary.avgScore}%` : "—"}
-                  </div>
-                  <span className="text-[10px] text-violet-600/80 dark:text-violet-400/80">
-                    {summary.maxScore !== null ? `Cao nhất: ${summary.maxScore}%` : "Chưa có điểm"}
-                  </span>
-                </div>
-
-                <div className="col-span-2 sm:col-span-1 rounded-2xl border border-amber-200 bg-amber-50/70 p-3.5 dark:border-amber-950/60 dark:bg-amber-950/20">
-                  <div className="flex items-center justify-between text-amber-700 dark:text-amber-300">
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Tỷ lệ đạt chuẩn</span>
-                    <FiCheckCircle className="h-4 w-4" />
-                  </div>
-                  <div className="mt-2 text-2xl font-black text-amber-700 dark:text-amber-300">
-                    {summary.submittedCount > 0
-                      ? `${Math.round((summary.passedCount / summary.submittedCount) * 100)}%`
-                      : "—"}
-                  </div>
-                  <span className="text-[10px] text-amber-600/80 dark:text-amber-400/80">
-                    {summary.passedCount}/{summary.submittedCount} bài đạt &ge; {quiz.passingScore || 60}%
-                  </span>
-                </div>
-              </div>
-
-              {/* Phổ điểm phân bố */}
-              {summary.submittedCount > 0 && (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/40 space-y-3">
-                  <div className="flex items-center justify-between text-xs font-black text-slate-800 dark:text-slate-200">
-                    <span>Phân bổ kết quả theo phổ điểm</span>
-                    <span className="text-[11px] font-semibold text-slate-500">Dựa trên {summary.submittedCount} bài đã nộp</span>
-                  </div>
-
-                  {/* Thanh tiến trình phân bố */}
-                  <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800 flex">
-                    {summary.distribution.excellent > 0 && (
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-center">
+                  <div className="grid grid-cols-2 border-y border-slate-200 dark:border-slate-800 sm:grid-cols-4">
+                    {[
+                      { label: "Học viên", value: summary.totalStudents, detail: "Sĩ số lớp", color: "text-slate-950 dark:text-white" },
+                      { label: "Đã nộp", value: summary.submittedCount, detail: `${summary.submissionRate}% hoàn thành`, color: "text-emerald-600 dark:text-emerald-400" },
+                      { label: "Chưa làm", value: summary.unsubmittedCount, detail: "Cần nhắc nhở", color: "text-rose-600 dark:text-rose-400" },
+                      { label: "Đạt chuẩn", value: passRate === null ? "—" : `${passRate}%`, detail: `${summary.passedCount}/${summary.submittedCount} bài ≥ ${quiz.passingScore || 60}%`, color: "text-amber-600 dark:text-amber-400" },
+                    ].map((metric, index) => (
                       <div
-                        style={{ width: `${(summary.distribution.excellent / summary.submittedCount) * 100}%` }}
-                        className="bg-emerald-500 transition-all"
-                        title={`Xuất sắc (>=80%): ${summary.distribution.excellent} học viên`}
-                      />
-                    )}
-                    {summary.distribution.good > 0 && (
-                      <div
-                        style={{ width: `${(summary.distribution.good / summary.submittedCount) * 100}%` }}
-                        className="bg-blue-500 transition-all"
-                        title={`Khá (65-79%): ${summary.distribution.good} học viên`}
-                      />
-                    )}
-                    {summary.distribution.average > 0 && (
-                      <div
-                        style={{ width: `${(summary.distribution.average / summary.submittedCount) * 100}%` }}
-                        className="bg-amber-500 transition-all"
-                        title={`Trung bình (50-64%): ${summary.distribution.average} học viên`}
-                      />
-                    )}
-                    {summary.distribution.weak > 0 && (
-                      <div
-                        style={{ width: `${(summary.distribution.weak / summary.submittedCount) * 100}%` }}
-                        className="bg-rose-500 transition-all"
-                        title={`Cần cố gắng (<50%): ${summary.distribution.weak} học viên`}
-                      />
-                    )}
+                        key={metric.label}
+                        className={`py-3 ${index % 2 === 0 ? "pr-3" : "border-l border-slate-200 pl-3 dark:border-slate-800"} ${index > 1 ? "border-t border-slate-200 dark:border-slate-800 sm:border-t-0" : ""} sm:px-4 sm:first:pl-0 sm:last:pr-0 sm:[&:not(:first-child)]:border-l sm:[&:not(:first-child)]:border-slate-200 sm:dark:[&:not(:first-child)]:border-slate-800`}
+                      >
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{metric.label}</p>
+                        <p className={`mt-1 text-2xl font-black tabular-nums ${metric.color}`}>{metric.value}</p>
+                        <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500 dark:text-slate-400" title={metric.detail}>{metric.detail}</p>
+                      </div>
+                    ))}
                   </div>
 
-                  {/* Badges chi tiết */}
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-xs">
-                    <div className="flex items-center gap-2 rounded-xl bg-white p-2 border border-slate-200 dark:bg-slate-900 dark:border-slate-800">
-                      <span className="h-3 w-3 rounded-full bg-emerald-500 shrink-0" />
-                      <span className="text-slate-600 dark:text-slate-300 font-semibold text-[11px]">Xuất sắc (&ge;80%):</span>
-                      <b className="ml-auto font-black text-slate-900 dark:text-white">{summary.distribution.excellent}</b>
+                  <div className="flex items-center justify-center gap-5 sm:gap-8">
+                    <div
+                      className="relative h-32 w-32 shrink-0 rounded-full sm:h-36 sm:w-36"
+                      style={{ background: donutBackground }}
+                      role="img"
+                      aria-label={`Điểm trung bình ${summary.avgScore !== null ? `${summary.avgScore}%` : "chưa có"}; phân bố ${distributionItems.map((item) => `${item.label} ${item.value}`).join(", ")}`}
+                    >
+                      <div className="absolute inset-[15px] flex flex-col items-center justify-center rounded-full bg-white shadow-inner dark:bg-slate-900">
+                        <span className="text-2xl font-black tabular-nums text-slate-950 dark:text-white">
+                          {summary.avgScore !== null ? `${summary.avgScore}%` : "—"}
+                        </span>
+                        <span className="mt-0.5 text-[9px] font-black uppercase tracking-wider text-slate-500">Điểm TB</span>
+                        {summary.maxScore !== null && (
+                          <span className="mt-1 text-[9px] font-semibold text-slate-400">Cao nhất {summary.maxScore}%</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl bg-white p-2 border border-slate-200 dark:bg-slate-900 dark:border-slate-800">
-                      <span className="h-3 w-3 rounded-full bg-blue-500 shrink-0" />
-                      <span className="text-slate-600 dark:text-slate-300 font-semibold text-[11px]">Khá (65-79%):</span>
-                      <b className="ml-auto font-black text-slate-900 dark:text-white">{summary.distribution.good}</b>
-                    </div>
-                    <div className="flex items-center gap-2 rounded-xl bg-white p-2 border border-slate-200 dark:bg-slate-900 dark:border-slate-800">
-                      <span className="h-3 w-3 rounded-full bg-amber-500 shrink-0" />
-                      <span className="text-slate-600 dark:text-slate-300 font-semibold text-[11px]">Trung bình (50-64%):</span>
-                      <b className="ml-auto font-black text-slate-900 dark:text-white">{summary.distribution.average}</b>
-                    </div>
-                    <div className="flex items-center gap-2 rounded-xl bg-white p-2 border border-slate-200 dark:bg-slate-900 dark:border-slate-800">
-                      <span className="h-3 w-3 rounded-full bg-rose-500 shrink-0" />
-                      <span className="text-slate-600 dark:text-slate-300 font-semibold text-[11px]">Cần cố gắng (&lt;50%):</span>
-                      <b className="ml-auto font-black text-slate-900 dark:text-white">{summary.distribution.weak}</b>
+
+                    <div className="min-w-0 flex-1 space-y-2">
+                      {distributionItems.map((item) => (
+                        <div key={item.key} className="flex items-center gap-2 text-xs">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                          <span className="min-w-0 flex-1 truncate font-semibold text-slate-700 dark:text-slate-300">
+                            {item.label} <span className="font-medium text-slate-400">{item.range}</span>
+                          </span>
+                          <b className="font-black tabular-nums text-slate-950 dark:text-white">{item.value}</b>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
-              )}
+              </section>
 
               {/* Danh sách học viên và bộ lọc */}
               <div className="space-y-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   {/* Tabs lọc trạng thái */}
-                  <div className="flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80">
+                  <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80">
                     <button
                       type="button"
                       onClick={() => setTabFilter("all")}
@@ -643,10 +606,23 @@ function QuizStatsModal({ quiz, onClose }) {
                     >
                       Chưa làm ({summary.unsubmittedCount})
                     </button>
+                    {summary.inProgressCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTabFilter("in_progress")}
+                        className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-black transition ${
+                          tabFilter === "in_progress"
+                            ? "bg-white text-amber-700 shadow-sm dark:bg-slate-900 dark:text-amber-400"
+                            : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                        }`}
+                      >
+                        Đang làm ({summary.inProgressCount})
+                      </button>
+                    )}
                   </div>
 
                   {/* Tìm kiếm */}
-                  <div className="relative min-w-[200px] sm:w-64">
+                  <div className="relative w-full sm:w-64">
                     <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-3.5 w-3.5" />
                     <input
                       type="text"
@@ -664,8 +640,10 @@ function QuizStatsModal({ quiz, onClose }) {
                     <p className="text-xs font-semibold">Không tìm thấy học viên nào phù hợp với bộ lọc.</p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-xs">
-                    <table className="w-full text-left text-xs border-collapse">
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold text-slate-400 md:hidden">Vuốt ngang để xem đầy đủ thông tin và thao tác.</p>
+                    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-xs">
+                    <table className="w-full min-w-[860px] text-left text-xs border-collapse">
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50/80 text-[11px] font-black uppercase text-slate-500 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-400">
                           <th className="py-3 px-3.5 text-center w-12">STT</th>
@@ -808,6 +786,7 @@ function QuizStatsModal({ quiz, onClose }) {
                         })}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 )}
               </div>

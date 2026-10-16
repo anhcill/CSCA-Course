@@ -25,6 +25,7 @@ import {
 } from "../../api/lmsClient";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
 import { useAuthContext } from "../../../context/AuthContext";
+import CourseSessionCurriculumPanel from "../components/CourseSessionCurriculumPanel";
 
 export default function AdminCurriculumPage() {
   const { authUser } = useAuthContext();
@@ -492,11 +493,11 @@ export default function AdminCurriculumPage() {
             <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               Quản Lý Khóa Học & Curriculum
             </h1>
-            <p className="text-slate-600 dark:text-slate-400 text-xs md:text-sm mt-1">
-              {isAdmin
-                ? "Khởi tạo lộ trình CSCA/HSK/HSKK, biên tập danh mục chương bài và đính kèm Video Cloudflare R2."
-                : "Biên tập chương bài trong các khóa học được phân công."}
-            </p>
+            {!isAdmin && (
+              <p className="text-slate-600 dark:text-slate-400 text-xs md:text-sm mt-1">
+                Biên tập chương bài trong các khóa học được phân công.
+              </p>
+            )}
           </div>
 
           {isAdmin && <button
@@ -797,6 +798,14 @@ export default function AdminCurriculumPage() {
                   });
                 })()}
               </div>
+            )}
+
+            {isAdmin && courseDetail && (
+              <CourseSessionCurriculumPanel
+                courseId={selectedCourse.id}
+                sections={courseDetail.sections || []}
+                lessons={courseDetail.lessons || []}
+              />
             )}
           </div>
         )}

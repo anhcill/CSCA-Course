@@ -8,37 +8,117 @@ import { parseQuizDescription } from "../../teacher/utils/quizAnswerKey";
 function itemType(item) {
   const value = String(item.type || item.assignment_type || "homework").toLowerCase();
   if (value.includes("quiz") || value.includes("trac_nghiem")) return "quiz";
+  if (value.includes("essay") || value.includes("writing") || value.includes("tu_luan")) return "essay";
   if (value.includes("speak") || value.includes("hskk") || value.includes("noi")) return "speaking";
   return "homework";
 }
 
+function quizScope(item) {
+  return (item.activity_scope || item.activityScope) === "homework" ? "homework" : "session";
+}
+
+function isEssayQuiz(item) {
+  if (itemType(item) !== "quiz") return false;
+  const essayConfig = item.essayConfig || parseQuizDescription(item.description).essayConfig;
+  return Boolean(essayConfig?.enabled);
+}
+
+function timestamp(value) {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 function itemStatus(item) {
+  const type = itemType(item);
+  const submissionStatus = String(item.submission_status || "").toLowerCase();
+  const submitted = Boolean(item.submitted_at) || submissionStatus === "submitted" || item.status === "submitted";
+
+  if (item.can_resubmit) return "revision";
   if (item.score !== undefined && item.score !== null) return "graded";
-  if (item.status === "late") return "late";
-  if (item.submitted_at || item.status === "submitted") return "submitted";
-  return item.due_date && new Date(item.due_date) < new Date() ? "late" : "todo";
+  if (submitted) return item.status === "late" ? "submittedLate" : "submitted";
+  if (type === "quiz" && submissionStatus === "in_progress") return "inProgress";
+
+  const now = Date.now();
+  if (type === "quiz") {
+    const startsAt = timestamp(item.available_from || (quizScope(item) === "session" ? item.session_start : null));
+    const endsAt = timestamp(item.available_until || (quizScope(item) === "session" ? item.session_end : item.due_date));
+    if (startsAt && startsAt > now) return "upcoming";
+    if (endsAt && endsAt <= now) return "overdue";
+  }
+
+  const dueAt = timestamp(item.due_date);
+  return item.status === "late" || (dueAt && dueAt <= now) ? "overdue" : "todo";
+}
+
+function statusBucket(status) {
+  if (["todo", "upcoming", "inProgress", "revision"].includes(status)) return "todo";
+  if (["submitted", "submittedLate"].includes(status)) return "submitted";
+  if (status === "overdue") return "late";
+  return status;
 }
 
 function deadlineText(value) {
-  if (!value) return "Theo thời lượng bài";
-  const distance = new Date(value).getTime() - Date.now();
+  const dueAt = timestamp(value);
+  if (!dueAt) return "Không giới hạn thời gian";
+  const distance = dueAt - Date.now();
   if (distance <= 0) return "Đã hết hạn";
   const days = Math.floor(distance / 86400000);
   const hours = Math.floor((distance % 86400000) / 3600000);
   return days ? `Còn ${days} ngày ${hours} giờ` : `Còn ${Math.max(1, hours)} giờ`;
 }
 
+function formatDateTime(value) {
+  const parsed = timestamp(value);
+  return parsed
+    ? new Date(parsed).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })
+    : "Chưa xác định";
+}
+
 const typeStyle = {
-  quiz: { label: "Trắc nghiệm", icon: ClipboardList, className: "bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300" },
+  quiz: { icon: ClipboardList, className: "bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300" },
+  essay: { label: "Bài tự luận", icon: FilePenLine, className: "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300" },
   speaking: { label: "Khẩu ngữ HSKK", icon: GraduationCap, className: "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300" },
-  homework: { label: "Bài tập", icon: FilePenLine, className: "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-300" },
+  homework: { label: "Bài tập về nhà", icon: FilePenLine, className: "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-300" },
 };
 
 const statusStyle = {
   todo: { label: "Cần hoàn thành", className: "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-900/40" },
+  upcoming: { label: "Chưa đến giờ mở", className: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-700" },
+  inProgress: { label: "Đang làm dở", className: "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-900/60" },
+  revision: { label: "Cần sửa và nộp lại", className: "bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 ring-orange-200 dark:ring-orange-900/50" },
   submitted: { label: "Đã nộp · chờ chấm", className: "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-300 ring-blue-100 dark:ring-blue-900/40" },
+  submittedLate: { label: "Đã nộp muộn · chờ chấm", className: "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-300 ring-blue-200 dark:ring-blue-900/50" },
   graded: { label: "Đã chấm điểm", className: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-900/40" },
-  late: { label: "Quá hạn", className: "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-900/40" },
+  overdue: { label: "Quá hạn · chưa nộp", className: "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-900/40" },
+};
+
+function actionFor(item, type, status) {
+  if (status === "graded") {
+    if (type === "quiz") return { label: "Xem lại bài thi", tone: "success" };
+    if (type === "speaking") return { label: "Xem kết quả", tone: "success" };
+    return { label: "Xem bài & nhận xét", tone: "success" };
+  }
+  if (status === "submitted" || status === "submittedLate") {
+    return { label: type === "quiz" ? "Xem lại bài thi" : "Xem bài đã nộp", tone: "muted" };
+  }
+  if (status === "revision") return { label: "Sửa và nộp lại", tone: "warning" };
+  if (status === "inProgress") return { label: "Tiếp tục làm bài", tone: "primary" };
+  if (status === "upcoming") return { label: "Chưa đến giờ", tone: "disabled", disabled: true };
+  if (status === "overdue" && type === "quiz") return { label: "Đã hết hạn", tone: "disabled", disabled: true };
+  if (status === "overdue") return { label: "Nộp bài muộn", tone: "warning" };
+  if (type === "quiz") return { label: quizScope(item) === "homework" ? "Làm quiz về nhà" : "Làm quiz tại lớp", tone: "primary" };
+  if (type === "essay") return { label: "Làm bài tự luận", tone: "primary" };
+  if (type === "speaking") return { label: "Mở bài tập", tone: "primary" };
+  return { label: "Làm bài tập", tone: "primary" };
+}
+
+const actionStyle = {
+  primary: "bg-blue-600 text-white shadow-sm shadow-blue-200 dark:shadow-none hover:bg-blue-700",
+  success: "bg-emerald-600 text-white hover:bg-emerald-700",
+  warning: "bg-orange-600 text-white hover:bg-orange-700",
+  muted: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700",
+  disabled: "cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500",
 };
 
 export default function AssignmentListPage() {
@@ -68,12 +148,12 @@ export default function AssignmentListPage() {
   }, [loadAssignments]);
 
   const counts = useMemo(() => assignments.reduce((result, assignment) => {
-    result[itemStatus(assignment)] += 1;
+    result[statusBucket(itemStatus(assignment))] += 1;
     return result;
   }, { todo: 0, submitted: 0, graded: 0, late: 0 }), [assignments]);
 
   const visibleAssignments = useMemo(() => assignments.filter((assignment) => {
-    const matchesStatus = statusFilter === "all" || itemStatus(assignment) === statusFilter;
+    const matchesStatus = statusFilter === "all" || statusBucket(itemStatus(assignment)) === statusFilter;
     const needle = search.trim().toLocaleLowerCase();
     const matchesSearch = !needle || [assignment.title, assignment.description, assignment.course_title].some((value) => String(value || "").toLocaleLowerCase().includes(needle));
     return matchesStatus && matchesSearch;
@@ -97,7 +177,7 @@ export default function AssignmentListPage() {
       <div className="mx-auto max-w-6xl space-y-6">
 
         <section className="flex flex-col gap-3 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm dark:shadow-none md:flex-row md:items-center md:justify-between">
-          <div className="flex overflow-x-auto">
+          <div className="-mx-1 flex overflow-x-auto px-1 pb-1 md:mx-0 md:px-0 md:pb-0">
             {[
               ["all", "Tất cả", assignments.length],
               ["todo", "Cần làm", counts.todo],
@@ -109,7 +189,8 @@ export default function AssignmentListPage() {
                 key={value}
                 type="button"
                 onClick={() => setStatusFilter(value)}
-                className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                aria-pressed={statusFilter === value}
+                className={`min-h-10 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition ${
                   statusFilter === value
                     ? "bg-blue-600 text-white shadow-sm"
                     : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
@@ -132,6 +213,7 @@ export default function AssignmentListPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Tìm bài tập hoặc khóa học..."
+              aria-label="Tìm bài tập hoặc khóa học"
               className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 py-2.5 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-200 outline-none transition placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-400 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-800"
             />
           </label>
@@ -152,53 +234,97 @@ export default function AssignmentListPage() {
                 : assignment.description;
               const typeConfig = typeStyle[type];
               const status = itemStatus(assignment);
-              const statusConfig = statusStyle[status];
+              const essayQuiz = isEssayQuiz(assignment);
+              const statusConfig = status === "graded" && essayQuiz
+                ? { ...statusStyle.graded, label: "Đã nộp · xem điểm & nhận xét" }
+                : statusStyle[status];
               const Icon = typeConfig.icon;
-              const isHomeworkQuiz = type === "quiz" && (assignment.activity_scope || assignment.activityScope) === "homework";
+              const isHomeworkQuiz = type === "quiz" && quizScope(assignment) === "homework";
+              const typeLabel = type === "quiz" ? (isHomeworkQuiz ? "Quiz về nhà" : "Quiz tại lớp") : typeConfig.label;
+              const action = actionFor(assignment, type, status);
+              const submittedAt = assignment.submitted_at ? formatDateTime(assignment.submitted_at) : null;
               return (
                 <article
                   key={assignment.id}
-                  className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm dark:shadow-none transition hover:-translate-y-0.5 hover:shadow-md dark:hover:border-slate-700"
+                  className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm dark:shadow-none transition hover:-translate-y-0.5 hover:shadow-md dark:hover:border-slate-700 sm:p-5"
                 >
                   <div className="flex flex-col gap-4 md:flex-row md:items-center">
-                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${typeConfig.className}`}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${typeConfig.className}`}>
-                          {typeConfig.label}
-                        </span>
-                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${statusConfig.className}`}>
-                          {statusConfig.label}
-                          {status === "graded" ? ` · ${assignment.score}/${assignment.max_score || 10}` : ""}
-                        </span>
-                        {assignment.course_title && (
-                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                            {assignment.course_title}
+                    <div className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4">
+                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12 ${typeConfig.className}`}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${typeConfig.className}`}>
+                            {typeLabel}
                           </span>
+                          {essayQuiz && (
+                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                              Có phần tự luận
+                            </span>
+                          )}
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${statusConfig.className}`}>
+                            {statusConfig.label}
+                            {status === "graded" ? ` · ${assignment.score}/${assignment.max_score || 10}` : ""}
+                          </span>
+                          {assignment.course_title && (
+                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                              {assignment.course_title}
+                            </span>
+                          )}
+                        </div>
+                        <h2 className="mt-2 break-words text-base font-bold text-slate-900 dark:text-white">{assignment.title}</h2>
+                        {displayDescription && (
+                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{displayDescription}</p>
                         )}
-                      </div>
-                      <h2 className="mt-2 truncate text-base font-bold text-slate-900 dark:text-white">{assignment.title}</h2>
-                      {displayDescription && (
-                        <p className="mt-1 line-clamp-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{displayDescription}</p>
-                      )}
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                        {type === "quiz" && !isHomeworkQuiz ? <><span className="font-semibold text-violet-700 dark:text-violet-300">Quiz trong buổi: {assignment.session_start ? new Date(assignment.session_start).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Chưa xác định"}</span>{assignment.class_title && <span>Lớp: {assignment.class_title}</span>}</> : <><span>{isHomeworkQuiz ? "Quiz về nhà · " : ""}Hạn nộp: {assignment.due_date ? new Date(assignment.due_date).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Không giới hạn"}</span><span className={status === "late" ? "font-semibold text-rose-600 dark:text-rose-400" : "font-semibold text-amber-600 dark:text-amber-400"}>{deadlineText(assignment.due_date)}</span></>}
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                          {type === "quiz" && !isHomeworkQuiz ? (
+                            <>
+                              <span className="font-semibold text-violet-700 dark:text-violet-300">
+                                {status === "upcoming" ? "Mở lúc" : status === "overdue" ? "Đã kết thúc" : "Buổi học"}: {formatDateTime(
+                                  status === "overdue"
+                                    ? assignment.available_until || assignment.session_end
+                                    : status === "upcoming"
+                                      ? assignment.available_from || assignment.session_start
+                                      : assignment.session_start
+                                )}
+                              </span>
+                              {assignment.session_title && <span>Buổi: {assignment.session_title}</span>}
+                              {assignment.class_title && <span>Lớp: {assignment.class_title}</span>}
+                            </>
+                          ) : (
+                            <>
+                              {type === "quiz" && status === "upcoming" && assignment.available_from && (
+                                <span className="font-semibold text-violet-700 dark:text-violet-300">Mở lúc: {formatDateTime(assignment.available_from)}</span>
+                              )}
+                              <span>Hạn nộp: {assignment.due_date ? formatDateTime(assignment.due_date) : "Không giới hạn"}</span>
+                              {!submittedAt && status !== "graded" && (
+                                <span className={`font-semibold ${status === "overdue" ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"}`}>
+                                  {deadlineText(assignment.due_date)}
+                                </span>
+                              )}
+                            </>
+                          )}
+                          {submittedAt && <span className="font-semibold text-blue-600 dark:text-sky-400">Đã nộp: {submittedAt}</span>}
+                          {Number(assignment.max_score) > 0 && status !== "graded" && <span>Thang điểm: {assignment.max_score}</span>}
+                        </div>
                       </div>
                     </div>
-                    <Link
-                      to={buildPath(assignment)}
-                      className={`inline-flex shrink-0 items-center justify-center rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-                        status === "graded"
-                          ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                          : status === "submitted"
-                          ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
-                          : "bg-blue-600 text-white shadow-sm shadow-blue-200 dark:shadow-none hover:bg-blue-700"
-                      }`}
-                    >
-                      {status === "graded" ? "Xem kết quả" : status === "submitted" ? "Xem bài đã nộp" : type === "quiz" ? "Làm bài thi" : "Mở bài tập"}
-                    </Link>
+                    {action.disabled ? (
+                      <span
+                        aria-disabled="true"
+                        className={`inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-xl px-4 py-2.5 text-xs font-bold md:w-auto ${actionStyle[action.tone]}`}
+                      >
+                        {action.label}
+                      </span>
+                    ) : (
+                      <Link
+                        to={buildPath(assignment)}
+                        className={`inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-xl px-4 py-2.5 text-center text-xs font-bold transition md:w-auto ${actionStyle[action.tone]}`}
+                      >
+                        {action.label}
+                      </Link>
+                    )}
                   </div>
                 </article>
               );

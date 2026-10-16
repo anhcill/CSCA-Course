@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import PropTypes from "prop-types";
 import { fetchSubmissions, gradeSubmission } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 
@@ -30,6 +31,27 @@ const IconFile = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
   </svg>
 );
+const IconArrowLeft = () => (
+  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+  </svg>
+);
+const IconArrowRight = () => (
+  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+  </svg>
+);
+const IconExternal = () => (
+  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7m0 0v7m0-7L10 14" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M17 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V9a2 2 0 012-2h6" />
+  </svg>
+);
+const IconDownload = () => (
+  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" />
+  </svg>
+);
 /* Quick feedback chips */
 const QUICK_FEEDBACK = [
   { label: "🌟 Xuất sắc", text: "Bài làm rất xuất sắc! Em nắm vững ngữ pháp, từ vựng phong phú và diễn đạt tự nhiên.", cls: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
@@ -44,18 +66,137 @@ function countChineseChars(text) {
   return (text?.match(/[\u4e00-\u9fff]/g) || []).length;
 }
 
-function isImageSubmission(fileName) {
-  return /\.(?:jpe?g|png|webp|gif)$/i.test(String(fileName || ""));
+function getSubmissionFileKind(file) {
+  const fileName = String(file?.fileName || file?.name || "").toLowerCase();
+  const fileUrl = String(file?.fileUrl || file?.url || "").split(/[?#]/)[0].toLowerCase();
+  const mimeType = String(file?.mimeType || file?.contentType || "").toLowerCase();
+
+  if (mimeType.startsWith("image/") || [fileName, fileUrl].some((value) => /\.(?:jpe?g|png|webp|gif|bmp|svg)$/.test(value))) return "image";
+  if (mimeType === "application/pdf" || [fileName, fileUrl].some((value) => /\.pdf$/.test(value))) return "pdf";
+  if ([fileName, fileUrl].some((value) => /\.(?:doc|docx|odt|rtf)$/.test(value)) || mimeType.includes("word") || mimeType.includes("opendocument.text")) return "document";
+  return "file";
+}
+
+function getFileLabel(file, index) {
+  return file?.fileName || file?.name || `Tệp ${index + 1}`;
+}
+
+function SubmissionFilePreview({ file, studentName, fileIndex }) {
+  const fileUrl = file?.fileUrl || file?.url || "";
+  const fileName = getFileLabel(file, fileIndex);
+  const fileKind = getSubmissionFileKind(file);
+  const canPreview = fileKind === "image" || fileKind === "pdf";
+  const [previewStatus, setPreviewStatus] = useState(canPreview ? "loading" : "ready");
+
+  if (!fileUrl) {
+    return (
+      <div role="alert" className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-rose-300 bg-rose-50/60 px-6 text-center dark:border-rose-900 dark:bg-rose-950/20">
+        <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">Không tìm thấy đường dẫn của tệp này.</p>
+        <p className="mt-1 text-xs text-rose-600/80 dark:text-rose-400">Hãy thử tải lại danh sách bài nộp.</p>
+      </div>
+    );
+  }
+
+  if (!canPreview) {
+    const isDocument = fileKind === "document";
+    return (
+      <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-6 py-10 text-center dark:border-slate-700 dark:bg-slate-950/60">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">
+          <IconFile />
+        </span>
+        <p className="mt-4 max-w-md break-all text-sm font-bold text-slate-900 dark:text-white">{fileName}</p>
+        <p className="mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
+          {isDocument
+            ? "Tệp Word không thể xem trực tiếp ổn định trong trình duyệt. Mở ở tab mới hoặc tải xuống để chấm đầy đủ định dạng."
+            : "Định dạng này chưa hỗ trợ xem trực tiếp. Bạn vẫn có thể mở hoặc tải tệp gốc."}
+        </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <a href={fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200">
+            <IconExternal /> Mở tệp
+          </a>
+          <a href={fileUrl} download={fileName} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+            <IconDownload /> Tải xuống
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative min-h-64 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-950">
+      {previewStatus === "loading" && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-50/90 dark:bg-slate-950/90" role="status" aria-live="polite">
+          <span className="h-7 w-7 animate-spin rounded-full border-2 border-slate-300 border-t-emerald-600" />
+          <span className="ml-3 text-sm font-medium text-slate-600 dark:text-slate-300">Đang tải bản xem trước...</span>
+        </div>
+      )}
+      {previewStatus === "error" && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-50 px-6 text-center dark:bg-slate-950" role="alert">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Không thể hiển thị bản xem trước.</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Tệp có thể bị giới hạn truy cập hoặc trình duyệt không hỗ trợ định dạng này.</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <a href={fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white dark:bg-white dark:text-slate-900"><IconExternal /> Mở tệp</a>
+            <a href={fileUrl} download={fileName} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200"><IconDownload /> Tải xuống</a>
+          </div>
+        </div>
+      )}
+      {fileKind === "image" ? (
+        <img
+          src={fileUrl}
+          alt={`Bài làm của ${studentName} - ${fileName}`}
+          className="max-h-[70vh] min-h-64 w-full object-contain"
+          onLoad={() => setPreviewStatus("ready")}
+          onError={() => setPreviewStatus("error")}
+        />
+      ) : (
+        <iframe
+          src={fileUrl}
+          title={`Bản xem trước ${fileName} của ${studentName}`}
+          className="h-[68vh] min-h-[32rem] w-full bg-white"
+          onLoad={() => setPreviewStatus("ready")}
+          onError={() => setPreviewStatus("error")}
+        />
+      )}
+    </div>
+  );
+}
+
+SubmissionFilePreview.propTypes = {
+  file: PropTypes.shape({
+    fileName: PropTypes.string,
+    name: PropTypes.string,
+    fileUrl: PropTypes.string,
+    url: PropTypes.string,
+    mimeType: PropTypes.string,
+    contentType: PropTypes.string,
+  }).isRequired,
+  studentName: PropTypes.string,
+  fileIndex: PropTypes.number.isRequired,
+};
+
+SubmissionFilePreview.defaultProps = {
+  studentName: "học viên",
+};
+
+function normalizeAssignmentType(type) {
+  return type === "writing" ? "essay" : type;
 }
 
 function getTypeBadge(type) {
-  if ((type || "").includes("hskk") || (type || "").includes("speak")) {
+  const normalizedType = normalizeAssignmentType(type || "");
+  if (normalizedType.includes("hskk") || normalizedType.includes("speak")) {
     return { label: "HSKK Khẩu Ngữ", cls: "bg-violet-500/20 text-violet-400 border-violet-500/30" };
   }
-  if ((type || "").includes("quiz")) {
+  if (normalizedType.includes("quiz")) {
     return { label: "Trắc Nghiệm", cls: "bg-sky-500/20 text-sky-400 border-sky-500/30" };
   }
-  return { label: "Bài Luận Tự Luận", cls: "bg-rose-500/20 text-rose-400 border-rose-500/30" };
+  if (normalizedType === "essay") {
+    return { label: "Bài tự luận", cls: "bg-rose-500/20 text-rose-400 border-rose-500/30" };
+  }
+  if (normalizedType === "homework") {
+    return { label: "Bài tập về nhà", cls: "bg-amber-500/20 text-amber-400 border-amber-500/30" };
+  }
+  return { label: "Bài tập", cls: "bg-slate-500/20 text-slate-500 border-slate-500/30" };
 }
 
 import GradingWorkflowPanel from "../components/GradingWorkflowPanel";
@@ -165,7 +306,7 @@ export default function TeacherGradingPage() {
     }
 
     if (filterType !== "all") {
-      list = list.filter((s) => s.assignmentType === filterType);
+      list = list.filter((s) => normalizeAssignmentType(s.assignmentType) === filterType);
     }
 
     if (searchQuery) {
@@ -374,7 +515,8 @@ export default function TeacherGradingPage() {
                 </select>
                 <select value={filterType} onChange={(event) => setFilterType(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-white">
                   <option value="all">Mọi loại bài</option>
-                  <option value="homework">Bài tự luận</option>
+                  <option value="essay">Bài tự luận</option>
+                  <option value="homework">Bài tập về nhà</option>
                   <option value="hskk">Khẩu ngữ HSKK</option>
                   <option value="quiz">Trắc nghiệm</option>
                 </select>
@@ -469,69 +611,68 @@ export default function TeacherGradingPage() {
 
                       {subFiles.length > 0 && (
                         <div className="space-y-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                              Ảnh & Tệp bài làm ({subFiles.length} tệp)
-                            </p>
-                            {currentFile?.fileUrl && (
-                              <a
-                                href={currentFile.fileUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-300"
-                              >
-                                Mở ảnh đang chọn toàn màn hình ↗
-                              </a>
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Tệp bài làm</p>
+                              <p className="mt-0.5 max-w-xl truncate text-xs text-slate-500 dark:text-slate-400" title={currentFile ? getFileLabel(currentFile, activeFileIndex) : ""}>
+                                {currentFile ? `${activeFileIndex + 1}/${subFiles.length} · ${getFileLabel(currentFile, activeFileIndex)}` : `${subFiles.length} tệp`}
+                              </p>
+                            </div>
+                            {(currentFile?.fileUrl || currentFile?.url) && (
+                              <div className="flex shrink-0 gap-2">
+                                <a href={currentFile.fileUrl || currentFile.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white">
+                                  <IconExternal /> <span className="hidden sm:inline">Mở riêng</span>
+                                </a>
+                                <a href={currentFile.fileUrl || currentFile.url} download={getFileLabel(currentFile, activeFileIndex)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white">
+                                  <IconDownload /> <span className="hidden sm:inline">Tải xuống</span>
+                                </a>
+                              </div>
                             )}
                           </div>
 
-                          {/* Switcher tabs if student submitted multiple photos */}
+                          {/* File switcher stays usable with long names and on narrow screens. */}
                           {subFiles.length > 1 && (
-                            <div className="flex flex-wrap gap-1.5 pb-1">
-                              {subFiles.map((file, idx) => (
-                                <button
-                                  key={file.id || idx}
-                                  type="button"
-                                  onClick={() => setActiveGradingFileIndex(idx)}
-                                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                                    (activeFileIndex === idx || (!subFiles[activeFileIndex] && idx === 0))
-                                      ? "bg-rose-600 text-white shadow-sm"
-                                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
-                                  }`}
-                                >
-                                  <span>{isImageSubmission(file.fileName) ? "🖼️" : "📄"}</span>
-                                  <span>Ảnh #{idx + 1}</span>
-                                </button>
-                              ))}
+                            <div className="flex items-center gap-2">
+                              <button type="button" onClick={() => setActiveGradingFileIndex((index) => Math.max(0, index - 1))} disabled={activeFileIndex === 0} aria-label="Xem tệp trước" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                                <IconArrowLeft />
+                              </button>
+                              <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Chọn tệp bài làm">
+                                {subFiles.map((file, idx) => {
+                                  const selected = activeFileIndex === idx || (!subFiles[activeFileIndex] && idx === 0);
+                                  const fileKind = getSubmissionFileKind(file);
+                                  return (
+                                    <button
+                                      key={file.id || idx}
+                                      type="button"
+                                      role="tab"
+                                      aria-selected={selected}
+                                      aria-label={`Tệp ${idx + 1}: ${getFileLabel(file, idx)}`}
+                                      onClick={() => setActiveGradingFileIndex(idx)}
+                                      className={`flex max-w-48 shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${
+                                        selected
+                                          ? "bg-emerald-600 text-white shadow-sm"
+                                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                                      }`}
+                                    >
+                                      <span aria-hidden="true">{fileKind === "image" ? "🖼️" : fileKind === "pdf" ? "PDF" : "📄"}</span>
+                                      <span className="truncate">{getFileLabel(file, idx)}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <button type="button" onClick={() => setActiveGradingFileIndex((index) => Math.min(subFiles.length - 1, index + 1))} disabled={activeFileIndex >= subFiles.length - 1} aria-label="Xem tệp tiếp theo" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                                <IconArrowRight />
+                              </button>
                             </div>
                           )}
 
                           {currentFile && (
-                            <div>
-                              {isImageSubmission(currentFile.fileName) ? (
-                                <a
-                                  href={currentFile.fileUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="block overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950"
-                                >
-                                  <img
-                                    src={currentFile.fileUrl}
-                                    alt={`Bài làm của ${selectedSub.studentName} - Ảnh ${activeFileIndex + 1}`}
-                                    className="max-h-[44rem] w-full object-contain"
-                                  />
-                                </a>
-                              ) : (
-                                <a
-                                  href={currentFile.fileUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                                >
-                                  <IconFile /> <span className="truncate">{currentFile.fileName || "Mở tệp bài làm"}</span>
-                                </a>
-                              )}
-                            </div>
+                            <SubmissionFilePreview
+                              key={`${currentFile.id || currentFile.fileUrl || activeFileIndex}-${activeFileIndex}`}
+                              file={currentFile}
+                              fileIndex={activeFileIndex}
+                              studentName={selectedSub.studentName}
+                            />
                           )}
                         </div>
                       )}
@@ -542,7 +683,7 @@ export default function TeacherGradingPage() {
                           <SubmissionAnnotations
                             items={annotations}
                             onChange={setAnnotations}
-                            fileUrl={currentFile?.fileUrl || selectedSub.fileUrl}
+                            fileUrl={currentFile?.fileUrl || currentFile?.url || selectedSub.fileUrl}
                             fileName={currentFile?.fileName || selectedSub.fileName}
                           />
                         </div>
@@ -559,7 +700,7 @@ export default function TeacherGradingPage() {
                         </div>
                       )}
 
-                      {!selectedSub.contentText && !selectedSub.fileUrl && !selectedSub.audioUrl && <p className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">Học viên đã hoàn thành bài này. Không có nội dung bổ sung để xem.</p>}
+                      {!selectedSub.contentText && subFiles.length === 0 && !selectedSub.audioUrl && <p className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">Học viên đã hoàn thành bài này. Không có nội dung bổ sung để xem.</p>}
                     </div>
                   </article>
 

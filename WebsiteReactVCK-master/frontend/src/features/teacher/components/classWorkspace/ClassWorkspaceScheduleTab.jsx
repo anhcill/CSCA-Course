@@ -118,6 +118,12 @@ export default function ClassWorkspaceScheduleTab({
                         : <span>Chưa gán link phòng học</span>}
                       {meetingManagedExternally && <span>Link được quản lý tại InternalManagement</span>}
                     </div>
+                    {(s.course_section_title || s.lesson_title) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+                        {s.course_section_title && <span className="rounded-lg bg-violet-50 px-2 py-1 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">Chương: {s.course_section_title}</span>}
+                        {s.lesson_title && <span className="rounded-lg bg-emerald-50 px-2 py-1 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">Bài: {s.lesson_title}</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
 

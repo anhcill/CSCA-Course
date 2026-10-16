@@ -197,7 +197,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
           description: criterion.description.trim(),
           maxPoints: Number(criterion.maxPoints),
         })),
-        assignmentType: type === "speaking" ? "hskk" : type === "essay" ? "homework" : type,
+        assignmentType: type === "speaking" ? "hskk" : type,
         attachmentUrl: attachmentUrl || undefined,
       });
       const created = response?.data;
@@ -259,8 +259,12 @@ export default function CreateAssignmentModal({ isOpen, onClose, classId, sessio
         <form id="create-assignment-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 text-xs">
           <div className="flex items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-900/70 dark:bg-violet-950/25">
             <div>
-              <p className="font-black text-violet-950 dark:text-violet-100">{sessionTitle ? `Buổi gốc: ${sessionTitle}` : "Đây là form bài tập tự luận"}</p>
-              <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">Đây là bài tập về nhà có hạn nộp. Bài file cần giáo viên chấm ở Cổng chấm tổng; nút bên phải tạo Quiz về nhà tự chấm.</p>
+              <p className="font-black text-violet-950 dark:text-violet-100">{sessionTitle ? `Buổi gốc: ${sessionTitle}` : "Giao bài có hạn nộp cho học viên"}</p>
+              <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300">
+                {type === "essay"
+                  ? "Bài tự luận được nhận diện riêng, học viên nộp nội dung hoặc file và giáo viên chấm tại Cổng chấm tổng."
+                  : "Bài tập về nhà cần giáo viên chấm tại Cổng chấm tổng; nút bên phải tạo Quiz về nhà tự chấm."}
+              </p>
             </div>
             <button type="button" onClick={openQuizBuilder} className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-black text-white transition hover:bg-violet-500">Mở Quiz</button>
           </div>

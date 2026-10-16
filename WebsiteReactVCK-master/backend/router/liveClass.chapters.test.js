@@ -40,6 +40,7 @@ test("chapters group legacy sessions and enforce the session/class binding", asy
   )).rows[0];
 
   await db.exec(await fs.readFile("database/migrations/036_class_chapters.sql", "utf8"));
+  await db.exec(await fs.readFile("database/migrations/050_session_curriculum_assignments.sql", "utf8"));
   const legacyRow = (await db.query("SELECT chapter_id FROM class_sessions WHERE id = $1", [legacy.id])).rows[0];
   assert.ok(legacyRow.chapter_id);
   assert.equal((await db.query("SELECT is_system_default FROM class_chapters WHERE id=$1", [legacyRow.chapter_id])).rows[0].is_system_default, true);
@@ -75,6 +76,15 @@ test("chapters group legacy sessions and enforce the session/class binding", asy
   assert.equal(String(listed.body.data[1].assigned_teacher_id), String(teacher.id));
   assert.equal(listed.body.teachers[0].id, teacher.id);
 
+  const deniedEdit = await invoke("patch", "/:classId/chapters/:chapterId", { classId: cls.id, chapterId }, {
+    objectives: "Đã cập nhật",
+  }, { ...teacher, role: "creator" });
+  assert.equal(deniedEdit.statusCode, 403);
+  await db.query(
+    `INSERT INTO class_teachers(live_class_id,teacher_id,teaching_role,status,can_manage_curriculum)
+     VALUES ($1,$2,'lead','active',TRUE)`,
+    [cls.id, teacher.id],
+  );
   const edited = await invoke("patch", "/:classId/chapters/:chapterId", { classId: cls.id, chapterId }, {
     objectives: "Đã cập nhật",
   }, { ...teacher, role: "creator" });

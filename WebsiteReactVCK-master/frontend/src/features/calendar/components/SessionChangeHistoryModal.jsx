@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { useEffect, useState } from "react";
 import { History, X, Clock, User, ArrowRight, AlertCircle, RefreshCw } from "lucide-react";
 import { fetchSessionChangeHistory } from "../../api/lmsClient";
@@ -22,6 +23,7 @@ export default function SessionChangeHistoryModal({
   onClose,
   sessionId,
   sessionTitle = "Buổi học",
+  loadHistory = fetchSessionChangeHistory,
 }) {
   const [loading, setLoading] = useState(false);
   const [historyLogs, setHistoryLogs] = useState([]);
@@ -33,7 +35,7 @@ export default function SessionChangeHistoryModal({
     setLoading(true);
     setError("");
 
-    fetchSessionChangeHistory(sessionId)
+    loadHistory(sessionId)
       .then((res) => {
         if (!isMounted) return;
         const data = res?.data || {};
@@ -51,7 +53,7 @@ export default function SessionChangeHistoryModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, sessionId]);
+  }, [isOpen, loadHistory, sessionId]);
 
   if (!isOpen) return null;
 

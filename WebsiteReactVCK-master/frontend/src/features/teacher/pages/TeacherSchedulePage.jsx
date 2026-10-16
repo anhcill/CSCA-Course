@@ -92,6 +92,7 @@ export default function TeacherSchedulePage() {
   const [chapterMode, setChapterMode] = useState("existing");
   const [chapterId, setChapterId] = useState("");
   const [newChapter, setNewChapter] = useState({ title: "", description: "", objectives: "" });
+  const [canManageCurriculum, setCanManageCurriculum] = useState(false);
 
   // Student Roster Modal state
   const [rosterSession, setRosterSession] = useState(null);
@@ -143,8 +144,9 @@ export default function TeacherSchedulePage() {
       const items = (Array.isArray(response?.data) ? response.data : [])
         .filter((chapter) => String(chapter.assigned_teacher_id) === String(authUser?.id));
       setChapters(items);
+      setCanManageCurriculum(Boolean(response?.canManageCurriculum));
       setChapterId(items[0] ? String(items[0].id) : "");
-      setChapterMode(items.length ? "existing" : "new");
+      setChapterMode(items.length ? "existing" : response?.canManageCurriculum ? "new" : "existing");
     }).catch(() => { if (!cancelled) toast.error("Không tải được các chương của lớp."); });
     return () => { cancelled = true; };
   }, [showCreateModal, sessionForm.liveClassId, authUser?.id]);
@@ -600,13 +602,13 @@ export default function TeacherSchedulePage() {
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Chương học của buổi này</label>
                 <select value={chapterMode} onChange={(e) => setChapterMode(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
                   {chapters.length > 0 && <option value="existing">Chọn chương đã có</option>}
-                  <option value="new">Thêm chương mới cùng buổi dạy</option>
+                  {canManageCurriculum && <option value="new">Thêm chương mới cùng buổi dạy</option>}
                 </select>
                 {chapterMode === "existing" && chapters.length > 0 ? (
                   <select value={chapterId} onChange={(e) => setChapterId(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800">
                     {chapters.map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
                   </select>
-                ) : <div className="mt-2 space-y-2">
+                ) : !canManageCurriculum ? <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300">Admin chưa gán chương hoặc cấp quyền quản lý chương cho bạn ở lớp này.</p> : <div className="mt-2 space-y-2">
                   <input required maxLength={255} value={newChapter.title} onChange={(e) => setNewChapter({ ...newChapter, title: e.target.value })} placeholder="Tên chương" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800" />
                   <textarea maxLength={5000} rows={2} value={newChapter.objectives} onChange={(e) => setNewChapter({ ...newChapter, objectives: e.target.value })} placeholder="Mục tiêu học tập (tùy chọn)" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800" />
                 </div>}

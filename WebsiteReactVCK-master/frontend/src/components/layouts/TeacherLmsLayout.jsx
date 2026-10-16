@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   BarChart3, BookOpen, CalendarDays, ChevronRight, ClipboardCheck, FileQuestion,
-  FolderOpen, Home, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Presentation, Settings, Users, Wallet, X,
+  FolderOpen, GraduationCap, Home, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Presentation, Settings, Users, Wallet, X,
 } from 'lucide-react';
 import Logo from '../Logo';
 import NotificationBell from '../../features/notifications/components/NotificationBell';
@@ -21,7 +21,7 @@ const TEACHER_NAV = [
   { label: 'Lịch dạy', path: '/lms/teach/calendar', icon: CalendarDays },
   { label: 'Điểm danh', path: '/lms/teach/attendance', icon: Users },
   { label: 'Điểm & chuyên cần', path: '/lms/teach/student-progress', icon: BarChart3 },
-  { label: 'Giáo trình', path: '/lms/teacher/curriculum', icon: BookOpen },
+  { label: 'Giáo trình lớp', path: '/lms/teach/classes', icon: BookOpen },
   { label: 'Tài liệu học tập', path: '/lms/teach/files', icon: FolderOpen },
   { label: 'Quiz học viên', path: '/lms/teacher/quizzes', icon: FileQuestion },
   { label: 'Chấm bài', path: '/lms/teacher/grading', icon: ClipboardCheck },
@@ -139,30 +139,56 @@ export default function TeacherLmsLayout({ children }) {
       <header className="fixed inset-x-0 top-0 z-50 h-16 border-b border-slate-200 dark:border-emerald-500/20 bg-white/95 dark:bg-slate-950/95 shadow-sm backdrop-blur-xl">
         <div className="flex h-full items-center justify-between">
           {/* Khối bên trái: Khớp chiều rộng với Sidebar bên dưới để tạo đường viền dọc liền mạch, không có khấc */}
-          <div className={`flex h-full items-center gap-3 px-3 transition-[width] duration-200 lg:border-r border-slate-200/80 dark:border-slate-800 ${sidebarCollapsed ? 'lg:w-20 lg:justify-center' : 'lg:w-64'}`}>
-            <button type="button" onClick={() => setMobileOpen((o) => !o)} className="rounded-xl p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden">
+          <div className={`flex h-full items-center px-3 transition-[width] duration-200 lg:border-r border-slate-200/80 dark:border-slate-800 ${sidebarCollapsed ? 'lg:w-20 lg:justify-center' : 'lg:w-64'}`}>
+            <button
+              type="button"
+              onClick={() => setMobileOpen((o) => !o)}
+              className="rounded-xl p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden transition"
+              aria-label={mobileOpen ? "Đóng menu" : "Mở menu"}
+            >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            <button type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} className="hidden rounded-xl p-2 text-slate-700 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 lg:inline-flex" title={sidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'} aria-label={sidebarCollapsed ? 'Mở rộng menu giảng viên' : 'Thu gọn menu giảng viên'}>
-              {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-            </button>
-            {!sidebarCollapsed && (
-              <div className="flex items-center gap-2 truncate">
-                <Logo isTransparent />
+            {sidebarCollapsed ? (
+              <Link to="/lms/teach" aria-label="Moly Course" className="hidden lg:flex items-center justify-center group">
+                <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-red-600 to-red-800 text-white shadow-lg shadow-red-950/20 transition duration-300 group-hover:-rotate-3 group-hover:scale-105">
+                  <span className="absolute -right-3 -top-3 h-7 w-7 rounded-full bg-amber-300/50 blur-sm" />
+                  <GraduationCap className="relative h-5 w-5" aria-hidden="true" />
+                </span>
+              </Link>
+            ) : (
+              <div className="hidden lg:flex items-center gap-2 truncate">
+                <Logo isTransparent={false} />
               </div>
             )}
           </div>
 
           <div className="flex flex-1 h-full items-center justify-between gap-3 px-4 sm:px-6">
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Giảng viên
-              </span>
-              <span className="text-slate-300 dark:text-slate-700">·</span>
-              <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">Cổng giảng dạy</p>
+            <div className="flex items-center gap-3">
+              {/* Nút thu nhỏ/mở rộng sidebar đặt trực tiếp trong Navbar với UI cao cấp */}
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed((c) => !c)}
+                className="group relative hidden lg:inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 hover:bg-white dark:hover:bg-slate-800 hover:border-emerald-300 dark:hover:border-emerald-500/50 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 shadow-xs hover:shadow-sm active:scale-95 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 shrink-0"
+                title={sidebarCollapsed ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
+                aria-label={sidebarCollapsed ? "Mở rộng menu giảng viên" : "Thu gọn menu giảng viên"}
+              >
+                {sidebarCollapsed ? (
+                  <PanelLeftOpen className="h-5 w-5 transition-transform duration-200 group-hover:scale-105" />
+                ) : (
+                  <PanelLeftClose className="h-5 w-5 transition-transform duration-200 group-hover:scale-105" />
+                )}
+              </button>
+
+              <div className="hidden sm:flex items-center gap-2 pl-0.5">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Giảng viên
+                </span>
+                <span className="text-slate-300 dark:text-slate-700">·</span>
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">Cổng giảng dạy</p>
+              </div>
             </div>
 
-          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
             <NotificationBell />
             <button type="button" onClick={toggleTheme} className="rounded-xl p-2 text-amber-500 dark:text-amber-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition" title={isDarkMode ? 'Sáng' : 'Tối'}>
               {isDarkMode ? '☀' : '☾'}

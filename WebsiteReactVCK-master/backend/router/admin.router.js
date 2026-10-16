@@ -987,6 +987,206 @@ router.get("/courses/:id/curriculum", ...adminOnly, async (req, res) => {
   }
 });
 
+// Admin-only mapping between dated class sessions and the reusable course syllabus.
+router.get("/courses/:id/session-curriculum", ...adminOnly, async (req, res) => {
+  const courseId = parseId(req.params.id);
+  if (!courseId) return sendError(res, 422, "courseId không hợp lệ", "VALIDATION_ERROR");
+  try {
+    const course = await getCourse(courseId);
+    if (!course) return sendError(res, 404, "Không tìm thấy khóa học", "NOT_FOUND");
+    const [classes, sessions, teachers] = await Promise.all([
+      query(
+        `SELECT id, title, status, instructor_id
+         FROM live_classes WHERE course_id = $1
+         ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, title, id`,
+        [courseId],
+      ),
+      query(
+        `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
+                cs.course_section_id, s.title AS course_section_title,
+                cs.lesson_id, COALESCE(l.title, l.name) AS lesson_title
+         FROM class_sessions cs
+         JOIN live_classes lc ON lc.id = cs.live_class_id
+         LEFT JOIN sections s ON s.id = cs.course_section_id
+         LEFT JOIN lessons l ON l.id = cs.lesson_id
+         WHERE lc.course_id = $1 AND cs.status <> 'cancelled'
+         ORDER BY cs.start_time, cs.id`,
+        [courseId],
+      ),
+      query(
+        `WITH candidates AS (
+           SELECT lc.id AS live_class_id, lc.instructor_id AS teacher_id
+           FROM live_classes lc
+           WHERE lc.course_id = $1 AND lc.instructor_id IS NOT NULL
+           UNION
+           SELECT ct.live_class_id, ct.teacher_id
+           FROM class_teachers ct
+           JOIN live_classes lc ON lc.id = ct.live_class_id
+           WHERE lc.course_id = $1 AND ct.status = 'active'
+         )
+         SELECT candidates.live_class_id, u.id, COALESCE(u.username, u.email) AS name,
+                u.email, COALESCE(ct.can_manage_curriculum, FALSE) AS can_manage_curriculum
+         FROM candidates
+         JOIN users u ON u.id = candidates.teacher_id AND u.role = 'creator'
+         LEFT JOIN class_teachers ct ON ct.live_class_id = candidates.live_class_id
+                                    AND ct.teacher_id = candidates.teacher_id
+         ORDER BY candidates.live_class_id, name, u.id`,
+        [courseId],
+      ),
+    ]);
+    const sessionsByClass = new Map();
+    for (const session of sessions.rows) {
+      const key = String(session.live_class_id);
+      sessionsByClass.set(key, [...(sessionsByClass.get(key) || []), session]);
+    }
+    const teachersByClass = new Map();
+    for (const teacher of teachers.rows) {
+      const key = String(teacher.live_class_id);
+      teachersByClass.set(key, [...(teachersByClass.get(key) || []), teacher]);
+    }
+    return res.json({
+      success: true,
+      data: {
+        classes: classes.rows.map((liveClass) => ({
+          ...liveClass,
+          sessions: sessionsByClass.get(String(liveClass.id)) || [],
+          teachers: teachersByClass.get(String(liveClass.id)) || [],
+        })),
+      },
+    });
+  } catch (error) {
+    return handleDbError(res, error, "Không thể tải phân bổ chương trình theo buổi học");
+  }
+});
+
+router.patch("/class-sessions/:sessionId/curriculum", ...adminOnly, async (req, res) => {
+  const sessionId = parseId(req.params.sessionId);
+  if (!sessionId) return sendError(res, 422, "sessionId không hợp lệ", "VALIDATION_ERROR");
+  const sectionId = req.body?.sectionId === null || req.body?.sectionId === "" ? null : parseId(req.body?.sectionId);
+  const lessonId = req.body?.lessonId === null || req.body?.lessonId === "" ? null : parseId(req.body?.lessonId);
+  if (req.body?.sectionId !== null && req.body?.sectionId !== "" && !sectionId) return sendError(res, 422, "sectionId không hợp lệ", "VALIDATION_ERROR");
+  if (req.body?.lessonId !== null && req.body?.lessonId !== "" && !lessonId) return sendError(res, 422, "lessonId không hợp lệ", "VALIDATION_ERROR");
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const currentResult = await client.query(
+      `SELECT cs.id, cs.live_class_id, cs.course_section_id, cs.lesson_id, lc.course_id
+       FROM class_sessions cs JOIN live_classes lc ON lc.id = cs.live_class_id
+       WHERE cs.id = $1 FOR UPDATE OF cs`,
+      [sessionId],
+    );
+    const current = currentResult.rows[0];
+    if (!current) {
+      await client.query("ROLLBACK");
+      return sendError(res, 404, "Không tìm thấy buổi học", "NOT_FOUND");
+    }
+
+    let resolvedSectionId = sectionId;
+    if (lessonId) {
+      const lessonResult = await client.query(
+        "SELECT id, section_id FROM lessons WHERE id = $1 AND course_id = $2",
+        [lessonId, current.course_id],
+      );
+      if (!lessonResult.rows.length) {
+        await client.query("ROLLBACK");
+        return sendError(res, 422, "Bài học không thuộc khóa học của lớp", "VALIDATION_ERROR");
+      }
+      const lessonSectionId = Number(lessonResult.rows[0].section_id);
+      if (resolvedSectionId && Number(resolvedSectionId) !== lessonSectionId) {
+        await client.query("ROLLBACK");
+        return sendError(res, 422, "Bài học không thuộc chương đã chọn", "VALIDATION_ERROR");
+      }
+      resolvedSectionId = lessonSectionId;
+    } else if (resolvedSectionId) {
+      const sectionResult = await client.query(
+        "SELECT 1 FROM sections WHERE id = $1 AND course_id = $2",
+        [resolvedSectionId, current.course_id],
+      );
+      if (!sectionResult.rows.length) {
+        await client.query("ROLLBACK");
+        return sendError(res, 422, "Chương không thuộc khóa học của lớp", "VALIDATION_ERROR");
+      }
+    }
+
+    const result = await client.query(
+      `UPDATE class_sessions
+       SET course_section_id = $2, lesson_id = $3, updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, live_class_id, title, start_time, end_time, status,
+                 course_section_id, lesson_id`,
+      [sessionId, resolvedSectionId, lessonId],
+    );
+    await recordAuditEvent({
+      db: client,
+      actorId: req.user.id,
+      action: "class_session.curriculum_assigned",
+      entityType: "class_session",
+      entityId: sessionId,
+      beforeState: { sectionId: current.course_section_id, lessonId: current.lesson_id },
+      afterState: { sectionId: resolvedSectionId, lessonId },
+      metadata: { ip: req.ip, liveClassId: current.live_class_id },
+    });
+    await client.query("COMMIT");
+    return res.json({ success: true, data: result.rows[0], message: "Đã gán nội dung cho buổi học" });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    return handleDbError(res, error, "Không thể gán nội dung cho buổi học");
+  } finally {
+    client.release();
+  }
+});
+
+router.patch("/classes/:classId/teachers/:teacherId/curriculum-permission", ...adminOnly, async (req, res) => {
+  const classId = parseId(req.params.classId);
+  const teacherId = parseId(req.params.teacherId);
+  if (!classId || !teacherId || typeof req.body?.allowed !== "boolean") {
+    return sendError(res, 422, "Thông tin phân quyền không hợp lệ", "VALIDATION_ERROR");
+  }
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const membership = await client.query(
+      `SELECT lc.instructor_id,
+              EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id
+                      AND ct.teacher_id = $2 AND ct.status = 'active') AS is_assigned
+       FROM live_classes lc JOIN users u ON u.id = $2 AND u.role = 'creator'
+       WHERE lc.id = $1 FOR UPDATE OF lc`,
+      [classId, teacherId],
+    );
+    const row = membership.rows[0];
+    if (!row || (String(row.instructor_id) !== String(teacherId) && !row.is_assigned)) {
+      await client.query("ROLLBACK");
+      return sendError(res, 422, "Giáo viên chưa được phân công giảng lớp này", "VALIDATION_ERROR");
+    }
+    const result = await client.query(
+      `INSERT INTO class_teachers (live_class_id, teacher_id, teaching_role, status, can_manage_curriculum)
+       VALUES ($1, $2, $3, 'active', $4)
+       ON CONFLICT (live_class_id, teacher_id) DO UPDATE
+       SET can_manage_curriculum = EXCLUDED.can_manage_curriculum,
+           status = 'active', updated_at = NOW()
+       RETURNING live_class_id, teacher_id, can_manage_curriculum`,
+      [classId, teacherId, String(row.instructor_id) === String(teacherId) ? "lead" : "co_teacher", req.body.allowed],
+    );
+    await recordAuditEvent({
+      db: client,
+      actorId: req.user.id,
+      action: "class_teacher.curriculum_permission_updated",
+      entityType: "class_teacher",
+      entityId: teacherId,
+      afterState: { classId, teacherId, allowed: req.body.allowed },
+      metadata: { ip: req.ip },
+    });
+    await client.query("COMMIT");
+    return res.json({ success: true, data: result.rows[0], message: req.body.allowed ? "Đã cấp quyền quản lý chương" : "Đã thu hồi quyền quản lý chương" });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    return handleDbError(res, error, "Không thể cập nhật quyền giáo viên");
+  } finally {
+    client.release();
+  }
+});
+
 router.post("/courses", ...adminOnly, async (req, res) => {
   try {
     const input = validateCourseInput(req.body);

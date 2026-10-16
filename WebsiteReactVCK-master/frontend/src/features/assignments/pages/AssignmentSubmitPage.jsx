@@ -28,7 +28,7 @@ function countChineseChars(text) {
 function timeRemaining(dueDate) {
   if (!dueDate) return { text: "Không đặt hạn nộp", urgent: false };
   const diff = new Date(dueDate) - new Date();
-  if (diff <= 0) return { text: "Đã hết hạn nộp bài", urgent: true };
+  if (diff <= 0) return { text: "Đã quá hạn · bài nộp sẽ được ghi nhận muộn", urgent: true };
   const d = Math.floor(diff / 86400000);
   const h = Math.floor((diff % 86400000) / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
@@ -40,12 +40,48 @@ function isImageFile(fileName) {
   return /\.(?:jpe?g|png|webp|gif)$/i.test(String(fileName || ""));
 }
 
+function resolvedFileMimeType(file) {
+  const name = String(file?.name || "").toLowerCase();
+  if (name.endsWith(".zip") && ["application/zip", "application/x-zip-compressed", "application/x-zip"].includes(file?.type)) {
+    return file.type;
+  }
+  if (file?.type) return file.type;
+  if (name.endsWith(".zip")) return "application/zip";
+  if (name.endsWith(".pdf")) return "application/pdf";
+  if (name.endsWith(".doc")) return "application/msword";
+  if (name.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (name.endsWith(".txt")) return "text/plain";
+  if (/\.jpe?g$/.test(name)) return "image/jpeg";
+  if (name.endsWith(".png")) return "image/png";
+  if (name.endsWith(".webp")) return "image/webp";
+  if (name.endsWith(".gif")) return "image/gif";
+  return "application/octet-stream";
+}
+
+function fileTypeIcon(item) {
+  if (item?.isImage) return "🖼️";
+  const name = String(item?.name || "").toLowerCase();
+  if (name.endsWith(".zip")) return "🗜️";
+  if (name.endsWith(".pdf")) return "📕";
+  if (/\.docx?$/.test(name)) return "📝";
+  return "📄";
+}
+
 function formatFileSize(bytes) {
   if (!bytes || bytes <= 0) return "";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+function assignmentTypeLabel(type) {
+  const normalized = String(type || "homework").toLowerCase();
+  if (normalized === "essay" || normalized === "writing") return "Bài tự luận";
+  if (normalized === "homework") return "Bài tập về nhà";
+  return type || "Bài tập về nhà";
+}
+
+const MAX_FILES = 10;
 
 import SubmissionHistory from "../components/SubmissionHistory";
 import SubmissionAnnotations from "../components/SubmissionAnnotations";
@@ -60,14 +96,12 @@ export default function AssignmentSubmitPage() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const MAX_FILES = 10;
-
   // Submission inputs
   const [activeTab, setActiveTab] = useState("text"); // text | file | audio
   const [contentText, setContentText] = useState("");
   const [attachedFiles, setAttachedFiles] = useState([]); // [{ id, assetId, name, previewUrl, size, isImage, status, progress }]
   const [fileUrl, setFileUrl] = useState("");
-  const [fileAssetId, setFileAssetId] = useState("");
+  const [, setFileAssetId] = useState("");
   const [fileName, setFileName] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
   const [audioAssetId, setAudioAssetId] = useState("");
@@ -77,6 +111,7 @@ export default function AssignmentSubmitPage() {
   // File Upload State with Progress
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [uploadStatusText, setUploadStatusText] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [dragOver, setDragOver] = useState(false);
 
@@ -172,31 +207,30 @@ export default function AssignmentSubmitPage() {
 
   const remaining = useMemo(() => (assignment ? timeRemaining(assignment.due_date) : null), [assignment]);
   const chineseCount = useMemo(() => countChineseChars(contentText), [contentText]);
-  const hasImageSubmission = isImageFile(fileName);
-
   // Upload single file to Cloudflare R2 via presigned URL
-  const uploadSingleFile = async (file, assetKind = "file") => {
+  const uploadSingleFile = useCallback(async (file, assetKind = "file") => {
     const maxBytes = assetKind === "audio" ? 50 * 1024 * 1024 : 25 * 1024 * 1024;
     if (file.size > maxBytes) {
       throw new Error(`Tệp "${file.name}" vượt quá ${assetKind === "audio" ? 50 : 25}MB.`);
     }
 
+    const mimeType = resolvedFileMimeType(file);
     const uploadResponse = await requestSubmissionUploadUrl({
       filename: file.name,
-      mimeType: file.type || "application/octet-stream",
+      mimeType,
       sizeBytes: file.size,
       assetKind,
     });
     const uploadData = uploadResponse.data;
     const uploadResult = await fetch(uploadData.uploadUrl, {
       method: "PUT",
-      headers: uploadData.headers || { "Content-Type": file.type || "application/octet-stream" },
+      headers: uploadData.headers || { "Content-Type": mimeType },
       body: file,
     });
     if (!uploadResult.ok) throw new Error(`Không thể tải "${file.name}" lên kho lưu trữ Cloudflare R2`);
     const confirmed = await confirmSubmissionAsset({
       assetId: uploadData.assetId,
-      mimeType: file.type || "application/octet-stream",
+      mimeType,
       sizeBytes: file.size,
     });
     return {
@@ -206,10 +240,10 @@ export default function AssignmentSubmitPage() {
       size: file.size,
       isImage: isImageFile(file.name) || (file.type && file.type.startsWith("image/")),
     };
-  };
+  }, []);
 
-  const handleBatchFileUpload = async (files) => {
-    if (!files || files.length === 0) return;
+  const handleBatchFileUpload = useCallback(async (files) => {
+    if (!files || files.length === 0 || isUploadingFile) return;
     setUploadError("");
 
     const availableSlots = MAX_FILES - attachedFiles.length;
@@ -232,6 +266,7 @@ export default function AssignmentSubmitPage() {
     try {
       for (let i = 0; i < filesToUpload.length; i++) {
         const file = filesToUpload[i];
+        setUploadStatusText(`Đang tải tệp ${i + 1}/${filesToUpload.length}: ${file.name}`);
         setUploadProgress(Math.round(((i + 0.3) / filesToUpload.length) * 100));
         const res = await uploadSingleFile(file, "file");
         uploadedResults.push({
@@ -266,9 +301,10 @@ export default function AssignmentSubmitPage() {
       }
     } finally {
       setIsUploadingFile(false);
+      setUploadStatusText("");
       setUploadProgress(0);
     }
-  };
+  }, [attachedFiles.length, isUploadingFile, uploadSingleFile]);
 
   const handleFileUpload = async (file, assetKind = "file") => {
     if (!file) return;
@@ -292,6 +328,8 @@ export default function AssignmentSubmitPage() {
 
   const handleRemoveFile = (indexToRemove) => {
     setAttachedFiles((prev) => {
+      const removed = prev[indexToRemove];
+      if (removed?.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(removed.previewUrl);
       const next = prev.filter((_, idx) => idx !== indexToRemove);
       if (next.length > 0) {
         setFileAssetId(next[0].assetId);
@@ -304,6 +342,16 @@ export default function AssignmentSubmitPage() {
       }
       return next;
     });
+  };
+
+  const handleRemoveAllFiles = () => {
+    attachedFiles.forEach((item) => {
+      if (item?.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
+    });
+    setAttachedFiles([]);
+    setFileAssetId("");
+    setFileUrl("");
+    setFileName("");
   };
 
   // Clipboard paste listener: paste copied images or screenshots (Snipping Tool, Ctrl+V)
@@ -338,7 +386,7 @@ export default function AssignmentSubmitPage() {
 
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
-  }, [isAlreadySubmitted, assignment?.can_resubmit, attachedFiles.length]);
+  }, [isAlreadySubmitted, assignment?.can_resubmit, handleBatchFileUpload]);
 
   // Record real microphone audio, then send it through the same validated upload flow.
   const handleToggleRecord = async () => {
@@ -471,7 +519,7 @@ export default function AssignmentSubmitPage() {
             <div className="space-y-2 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="px-3 py-1 bg-rose-500/10 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20 dark:border-rose-500/25 text-xs font-bold rounded-full uppercase tracking-wider">
-                  {assignment.type || "Bài Tập Về Nhà"}
+                  {assignmentTypeLabel(assignment.type || assignment.assignment_type)}
                 </span>
                 {assignment.course_title && (
                   <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs font-medium rounded-full">
@@ -657,7 +705,7 @@ export default function AssignmentSubmitPage() {
                             rel="noreferrer"
                             className="shrink-0 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold text-rose-600 dark:text-rose-400 text-xs hover:bg-slate-50"
                           >
-                            Xem Ảnh ↗
+                            {item.isImage ? "Xem ảnh" : "Mở tệp"} ↗
                           </a>
                         </div>
                       </div>
@@ -706,29 +754,43 @@ export default function AssignmentSubmitPage() {
           /* VIEW MODE 2: SUBMIT WORKSPACE FORM */
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-sm dark:shadow-2xl">
             {assignment.return_requested && <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100"><b>Yêu cầu sửa bài:</b> {assignment.return_reason}<p>Hạn nộp lại: {new Date(assignment.resubmit_until).toLocaleString("vi-VN")}. Phiên bản cũ vẫn được lưu.</p><SubmissionHistory submissionId={assignment.submission_id}/></div>}
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-base font-black text-slate-900 dark:text-white">Bài làm của bạn</h2>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  Có thể kết hợp nhiều cách nộp; nội dung ở các mục được gửi cùng nhau khi bạn bấm nộp bài.
+                </p>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-400">
+                {contentText.trim() ? "Có văn bản" : "Chưa có văn bản"} · {attachedFiles.length} tệp
+              </span>
+            </div>
+
             {/* Tab navigation for submission methods */}
-            <div className="flex border-b border-slate-200 dark:border-slate-800 gap-2 pb-3">
+            <div className="flex overflow-x-auto border-b border-slate-200 dark:border-slate-800 gap-2 pb-3">
               <button
                 type="button"
                 onClick={() => setActiveTab("text")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${
                   activeTab === "text"
                     ? "bg-rose-600 text-white shadow-md shadow-rose-600/25"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
                 }`}
               >
-                <span>✏️ Soạn Thảo Văn Bản</span>
+                <span>✏️ Viết trực tiếp</span>
+                {contentText.trim() && <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px]">✓</span>}
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab("file")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${
                   activeTab === "file"
                     ? "bg-rose-600 text-white shadow-md shadow-rose-600/25"
-                    : "text-slate-400 hover:text-white"
+                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
                 }`}
               >
-                <span>📎 Đính Kèm Tệp</span>
+                <span>📎 Tải ảnh / tệp</span>
+                {attachedFiles.length > 0 && <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px]">{attachedFiles.length}</span>}
               </button>
               <button
                 type="button"
@@ -781,16 +843,27 @@ export default function AssignmentSubmitPage() {
                 {/* Dropzone (shown when under limit) */}
                 {attachedFiles.length < MAX_FILES && (
                   <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Khu vực tải ảnh hoặc tệp bài làm. Nhấn Enter để mở trình chọn tệp."
+                    aria-disabled={isUploadingFile}
                     onDragOver={(e) => {
                       e.preventDefault();
+                      if (isUploadingFile) return;
                       setDragOver(true);
                     }}
                     onDragLeave={() => setDragOver(false)}
                     onDrop={(e) => {
                       e.preventDefault();
                       setDragOver(false);
-                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                      if (!isUploadingFile && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                         handleBatchFileUpload(Array.from(e.dataTransfer.files));
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (!isUploadingFile && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        document.getElementById("assignment-file-input")?.click();
                       }
                     }}
                     className={`border-2 border-dashed rounded-3xl p-6 md:p-8 text-center transition space-y-3 ${
@@ -807,12 +880,14 @@ export default function AssignmentSubmitPage() {
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                      <label className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-800 dark:text-white transition">
+                      <label className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition ${isUploadingFile ? "cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800" : "cursor-pointer bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white"}`}>
                         <span>📁 Chọn tệp từ máy tính</span>
                         <input
                           type="file"
+                          id="assignment-file-input"
                           multiple
-                          accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/zip"
+                          disabled={isUploadingFile}
+                          accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/zip,application/x-zip-compressed,application/x-zip,.zip"
                           className="hidden"
                           onChange={(e) => {
                             if (e.target.files && e.target.files.length > 0) {
@@ -829,12 +904,17 @@ export default function AssignmentSubmitPage() {
 
                 {/* Upload Progress Bar */}
                 {isUploadingFile && (
-                  <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <div
+                    className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2"
+                    role="status"
+                    aria-live="polite"
+                    aria-busy="true"
+                  >
                     <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span>Đang tải lên bài làm...</span>
+                      <span className="min-w-0 truncate pr-3">{uploadStatusText || "Đang tải lên bài làm..."}</span>
                       <span className="font-mono text-rose-600 dark:text-rose-400 font-bold">{uploadProgress}%</span>
                     </div>
-                    <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                    <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden" role="progressbar" aria-label="Tiến độ tải tệp" aria-valuemin="0" aria-valuemax="100" aria-valuenow={uploadProgress}>
                       <div
                         className="bg-rose-600 h-full rounded-full transition-all duration-300"
                         style={{ width: `${uploadProgress}%` }}
@@ -845,10 +925,12 @@ export default function AssignmentSubmitPage() {
 
                 {/* Upload Error Display */}
                 {uploadError && (
-                  <div className="bg-rose-500/10 dark:bg-rose-500/15 border border-rose-500/30 p-3 rounded-xl text-xs text-rose-600 dark:text-rose-300 flex items-center justify-between">
+                  <div className="bg-rose-500/10 dark:bg-rose-500/15 border border-rose-500/30 p-3 rounded-xl text-xs text-rose-600 dark:text-rose-300 flex items-center justify-between" role="alert">
                     <span>⚠️ {uploadError}</span>
                     <button
+                      type="button"
                       onClick={() => setUploadError("")}
+                      aria-label="Đóng thông báo lỗi tải tệp"
                       className="text-slate-400 hover:text-slate-900 dark:hover:text-white font-bold"
                     >
                       ✕
@@ -863,8 +945,9 @@ export default function AssignmentSubmitPage() {
                       <span className="font-semibold uppercase tracking-wider">Danh sách ảnh/tệp đã tải lên ({attachedFiles.length}/{MAX_FILES}):</span>
                       <button
                         type="button"
-                        onClick={() => setAttachedFiles([])}
-                        className="text-rose-600 hover:underline text-[11px]"
+                        onClick={handleRemoveAllFiles}
+                        disabled={isUploadingFile}
+                        className="text-rose-600 hover:underline text-[11px] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         Xóa tất cả
                       </button>
@@ -890,7 +973,7 @@ export default function AssignmentSubmitPage() {
                               </div>
                             ) : (
                               <div className="aspect-video w-full rounded-xl bg-slate-200/50 dark:bg-slate-900 flex items-center justify-center text-3xl">
-                                📄
+                                <span aria-hidden="true">{fileTypeIcon(item)}</span>
                               </div>
                             )}
 
@@ -911,17 +994,19 @@ export default function AssignmentSubmitPage() {
                                 href={item.previewUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline"
+                                className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
                               >
-                                Xem ảnh ↗
+                                {item.isImage ? "Xem ảnh" : "Mở tệp"} ↗
                               </a>
                             )}
                             <button
                               type="button"
                               onClick={() => handleRemoveFile(idx)}
-                              className="text-[11px] text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 font-medium transition ml-auto"
+                              disabled={isUploadingFile}
+                              aria-label={`${item.isImage ? "Xóa ảnh" : "Xóa tệp"} ${item.name}`}
+                              className="text-[11px] text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 font-medium transition ml-auto disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              Xóa ảnh ✕
+                              {item.isImage ? "Xóa ảnh" : "Xóa tệp"} ✕
                             </button>
                           </div>
                         </div>
@@ -996,7 +1081,7 @@ export default function AssignmentSubmitPage() {
                   to={assignmentListPath}
                   className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold text-center transition"
                 >
-                  Hủy Bỏ
+                  Quay lại
                 </Link>
 
                 <button

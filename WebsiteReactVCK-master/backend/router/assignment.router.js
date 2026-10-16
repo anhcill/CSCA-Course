@@ -92,6 +92,11 @@ const parseOptions = (value) => {
 
 const assignmentAssetPath = (assetId) => assetId ? `/api/assignments/submission-assets/${assetId}/access` : null;
 
+const normalizeAssignmentType = (value) => {
+  const normalized = String(value || "homework").trim().toLowerCase();
+  return normalized === "writing" ? "essay" : normalized;
+};
+
 const getAssignment = async (assignmentId, db = { query }) => {
   const result = await db.query(
     `SELECT a.id, a.title, a.assignment_type, a.course_id, a.live_class_id, a.class_session_id, a.instructor_id,
@@ -287,6 +292,8 @@ const serializeAssignment = (row) => {
   session_title: row.session_title || null,
   session_start: row.session_start || null,
   session_end: row.session_end || null,
+  available_from: row.available_from || null,
+  available_until: row.available_until || null,
   course_title: row.course_title,
   description: descriptionFields.description,
   ...(type === "quiz" ? { essayConfig: descriptionFields.essayConfig } : {}),
@@ -460,7 +467,8 @@ router.get("/", protectRoute, async (req, res) => {
                 fa.original_filename AS file_name, aa.original_filename AS audio_name,
                 sg.score, sg.feedback_text, sg.graded_at,
                 a.class_session_id, NULL::varchar AS activity_scope, assignment_session.title AS session_title,
-                assignment_session.start_time AS session_start, assignment_session.end_time AS session_end, lc.title AS class_title,
+                assignment_session.start_time AS session_start, assignment_session.end_time AS session_end,
+                NULL::timestamptz AS available_from, NULL::timestamptz AS available_until, lc.title AS class_title,
                  CASE WHEN sg.score IS NOT NULL THEN 'graded'
                      WHEN s.id IS NOT NULL THEN s.status
                       WHEN COALESCE(assignment_accommodation.due_at, a.due_date) IS NOT NULL AND COALESCE(assignment_accommodation.due_at, a.due_date) < NOW() THEN 'late'
@@ -491,7 +499,8 @@ router.get("/", protectRoute, async (req, res) => {
                 NULL::varchar AS file_name, NULL::varchar AS audio_name,
                 qa.score, NULL::text AS feedback_text, qa.submitted_at AS graded_at,
                 q.class_session_id, q.activity_scope, quiz_session.title AS session_title,
-                quiz_session.start_time AS session_start, quiz_session.end_time AS session_end, quiz_lc.title AS class_title,
+                quiz_session.start_time AS session_start, quiz_session.end_time AS session_end,
+                q.available_from, q.available_until, quiz_lc.title AS class_title,
                  CASE WHEN qa.status = 'submitted' THEN 'graded'
                       WHEN q.activity_scope = 'homework' AND COALESCE(quiz_accommodation.due_at, q.due_date) IS NOT NULL AND COALESCE(quiz_accommodation.due_at, q.due_date) < NOW() THEN 'late'
                      ELSE 'todo' END AS status
@@ -1764,12 +1773,12 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
   let inTransaction = false;
   try {
     const { title, description, maxScore, dueDate, attachmentUrl } = req.body;
-    const assignmentType = req.body.assignmentType || req.body.type || "homework";
+    const assignmentType = normalizeAssignmentType(req.body.assignmentType || req.body.type);
     const courseId = parseOptionalId(req.body.courseId);
     const liveClassId = parseOptionalId(req.body.liveClassId);
     const classSessionId = parseOptionalId(req.body.classSessionId);
     if (!title || typeof title !== "string" || title.trim().length > 255) return validationError(res, "Tiêu đề bài tập không hợp lệ");
-    if (!["homework", "hskk", "quiz"].includes(assignmentType)) return validationError(res, "Loại bài tập không hợp lệ");
+    if (!["homework", "essay", "hskk", "quiz"].includes(assignmentType)) return validationError(res, "Loại bài tập không hợp lệ");
     if (!courseId && !liveClassId) return validationError(res, "Bài tập phải thuộc ít nhất một khóa học hoặc lớp trực tuyến");
     if (classSessionId && !liveClassId) return validationError(res, "Bài tập theo buổi học phải thuộc một lớp cụ thể");
     const parsedMaxScore = maxScore === undefined ? 10 : Number(maxScore);

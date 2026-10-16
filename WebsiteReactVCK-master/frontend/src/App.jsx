@@ -173,7 +173,7 @@ function AppRoutes() {
       <Route path="/lms/teacher/classes" element={<Navigate to="/lms/teach/classes" replace />} />
       <Route path="/lms/teacher/attendance" element={<TeacherAttendancePage />} />
       <Route path="/lms/teacher/classes/:classId/attendance" element={<TeacherAttendancePage />} />
-      <Route path="/lms/teacher/curriculum" element={<AdminCurriculumPage />} />
+      <Route path="/lms/teacher/curriculum" element={<Navigate to="/lms/teach/classes" replace />} />
       <Route path="/lms/teach/files" element={<TeacherFilesPage />} />
       <Route path="/lms/teacher/files" element={<Navigate to="/lms/teach/files" replace />} />
       <Route path="/lms/teacher/grading" element={<TeacherGradingPage />} />

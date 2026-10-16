@@ -3,7 +3,6 @@ import { query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requireRole from "../middleware/requireRole.js";
-import requirePermission from "../middleware/requirePermission.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
 import { getMeetingProvider } from "../services/liveClass.service.js";
 
@@ -989,7 +988,7 @@ router.post("/admin", protectRoute, requireRole("admin"), async (req, res) => {
 });
 
 // Admin: Create Section
-router.post("/admin/:courseId/sections", protectRoute, requireTeacher, requirePermission("lms.course.manage"), async (req, res) => {
+router.post("/admin/:courseId/sections", protectRoute, requireRole("admin"), async (req, res) => {
   try {
     const courseId = parsePositiveId(req.params.courseId);
     const { title, sortOrder } = req.body;
@@ -1023,7 +1022,7 @@ router.post("/admin/:courseId/sections", protectRoute, requireTeacher, requirePe
 });
 
 // Admin: Create Lesson
-router.post("/admin/sections/:sectionId/lessons", protectRoute, requireTeacher, requirePermission("lms.course.manage"), async (req, res) => {
+router.post("/admin/sections/:sectionId/lessons", protectRoute, requireRole("admin"), async (req, res) => {
   try {
     const sectionId = parsePositiveId(req.params.sectionId);
     const { courseId, title, videoAssetId, durationSeconds, isPreview, sortOrder, learningUrl } = req.body;
@@ -1084,7 +1083,7 @@ router.post("/admin/sections/:sectionId/lessons", protectRoute, requireTeacher, 
 });
 
 // Teacher/Admin: replace or clear the learning link for an existing lesson.
-router.patch("/admin/lessons/:lessonId/learning-link", protectRoute, requireTeacher, requirePermission("lms.course.manage"), async (req, res) => {
+router.patch("/admin/lessons/:lessonId/learning-link", protectRoute, requireRole("admin"), async (req, res) => {
   try {
     const lessonId = parsePositiveId(req.params.lessonId);
     if (!lessonId) return validationError(res, "lessonId không hợp lệ");

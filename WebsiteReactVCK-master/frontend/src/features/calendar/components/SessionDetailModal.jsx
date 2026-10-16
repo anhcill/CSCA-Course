@@ -112,6 +112,14 @@ export default function SessionDetailModal({
             </div>
           </div>
 
+          {(session.course_section_title || session.lesson_title) && (
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900/60 dark:bg-blue-950/20">
+              <p className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-sky-400">Nội dung buổi học</p>
+              {session.course_section_title && <p className="mt-1.5 text-sm font-bold text-slate-900 dark:text-white">Chương: {session.course_section_title}</p>}
+              {session.lesson_title && <p className="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Bài học: {session.lesson_title}</p>}
+            </div>
+          )}
+
           {/* Cảnh báo đổi lịch nếu có */}
           {isRescheduled && (
             <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-1.5">

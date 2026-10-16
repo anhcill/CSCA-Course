@@ -279,6 +279,67 @@ router.get("/teacher/classes-lookup", protectRoute, requireTeacher, async (req, 
   }
 });
 
+// GET /api/student/classes-lookup
+router.get("/student/classes-lookup", protectRoute, requireActiveStudentLmsAccess, async (req, res) => {
+  try {
+    const classesRes = await query(
+      `SELECT lc.id, lc.title, lc.status, lc.course_id,
+              COALESCE(c.title, c.name) AS course_title, c.category AS course_category
+       FROM live_classes lc
+       JOIN class_enrollments ce ON ce.live_class_id = lc.id
+       LEFT JOIN courses c ON c.id = lc.course_id
+       WHERE lc.status = 'active'
+         AND ce.user_id = $1 AND ce.status = 'active'
+         AND EXISTS (
+           SELECT 1 FROM lms_access_grants g
+           WHERE g.user_id = $1 AND g.course_id = lc.course_id AND g.access_status = 'active'
+             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+         )
+       ORDER BY lc.created_at DESC`,
+      [req.user.id],
+    );
+
+    const classIds = classesRes.rows.map((r) => r.id);
+    let sessions = [];
+    if (classIds.length > 0) {
+      const sessionsRes = await query(
+        `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
+                ch.id AS chapter_id, ch.title AS chapter_title
+         FROM class_sessions cs
+         LEFT JOIN class_chapters ch ON ch.id = cs.chapter_id
+         WHERE cs.live_class_id = ANY($1::bigint[]) AND cs.status <> 'cancelled'
+         ORDER BY cs.start_time ASC, cs.id ASC`,
+        [classIds],
+      );
+      sessions = sessionsRes.rows.map((s) => ({
+        id: String(s.id),
+        classId: String(s.live_class_id),
+        title: s.title,
+        startTime: s.start_time,
+        endTime: s.end_time,
+        status: s.status,
+        chapterId: s.chapter_id ? String(s.chapter_id) : null,
+        chapterTitle: s.chapter_title || null,
+      }));
+    }
+
+    const classes = classesRes.rows.map((c) => ({
+      id: String(c.id),
+      title: c.title,
+      status: c.status,
+      courseId: c.course_id ? String(c.course_id) : null,
+      courseTitle: c.course_title || "Khóa học",
+      courseCategory: c.course_category || "CSCA",
+      sessions: sessions.filter((s) => s.classId === String(c.id)),
+    }));
+
+    return res.json({ success: true, data: classes });
+  } catch (error) {
+    console.error("Error looking up student classes:", error);
+    return errorResponse(res, 500, "Không thể tải danh sách lớp học", "INTERNAL_ERROR");
+  }
+});
+
 // POST /api/teacher/courses/:courseId/files/upload-url
 // PDF sources are intentionally course scoped so every authorised learner can
 // open the paper in the protected quiz player.

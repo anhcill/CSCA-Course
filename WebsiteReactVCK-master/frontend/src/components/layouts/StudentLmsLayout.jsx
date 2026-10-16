@@ -141,13 +141,28 @@ export default function StudentLmsLayout({ children }) {
   return (
     <div className="student-lms min-h-screen bg-[#f6f9fd] dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       <header className={`fixed inset-x-0 top-0 z-50 h-[72px] border-b border-slate-200/80 bg-white/95 shadow-[0_4px_20px_rgba(41,72,110,0.04)] backdrop-blur-xl transition-[left] duration-200 dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none ${sidebarCollapsed ? 'lg:left-20' : 'lg:left-64'}`}>
-        <div className="flex h-full items-center justify-between gap-4 px-4 sm:px-7 lg:px-10">
+        <div className="flex h-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-7">
           <div className="flex min-w-0 items-center gap-3">
-            <button type="button" onClick={() => setMobileOpen((open) => !open)} className="rounded-xl p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden" aria-label={mobileOpen ? "Đóng menu học viên" : "Mở menu học viên"}>
+            <button
+              type="button"
+              onClick={() => setMobileOpen((open) => !open)}
+              className="rounded-xl p-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden transition"
+              aria-label={mobileOpen ? "Đóng menu học viên" : "Mở menu học viên"}
+            >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            <button type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} className="hidden rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-blue-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-sky-400 lg:inline-flex" title={sidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'} aria-label={sidebarCollapsed ? 'Mở rộng menu học viên' : 'Thu gọn menu học viên'}>
-              {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              className="group relative hidden lg:inline-flex items-center justify-center h-11 w-11 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-750 hover:border-blue-300 dark:hover:border-sky-500/50 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-sky-400 shadow-xs hover:shadow-sm active:scale-95 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shrink-0"
+              title={sidebarCollapsed ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
+              aria-label={sidebarCollapsed ? "Mở rộng menu học viên" : "Thu gọn menu học viên"}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen className="h-5 w-5 transition-transform duration-200 group-hover:scale-105" />
+              ) : (
+                <PanelLeftClose className="h-5 w-5 transition-transform duration-200 group-hover:scale-105" />
+              )}
             </button>
             <form onSubmit={handleSearch} className="relative hidden max-w-xl flex-1 items-center md:flex">
               <Search className="absolute left-4 h-4 w-4 text-slate-400 dark:text-slate-500" />

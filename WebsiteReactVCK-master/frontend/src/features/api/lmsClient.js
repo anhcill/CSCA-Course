@@ -231,6 +231,26 @@ export const fetchAdminConsoleCurriculum = async (courseId) => request(
   `/admin/courses/${encodeURIComponent(courseId)}/curriculum`,
 );
 
+export const fetchAdminSessionCurriculum = async (courseId) => request(
+  `/admin/courses/${encodeURIComponent(courseId)}/session-curriculum`,
+);
+
+export const updateAdminSessionCurriculum = async ({ sessionId, sectionId, lessonId }) => request(
+  `/admin/class-sessions/${encodeURIComponent(sessionId)}/curriculum`,
+  {
+    method: "PATCH",
+    body: JSON.stringify({ sectionId: sectionId || null, lessonId: lessonId || null }),
+  },
+);
+
+export const updateClassTeacherCurriculumPermission = async ({ classId, teacherId, allowed }) => request(
+  `/admin/classes/${encodeURIComponent(classId)}/teachers/${encodeURIComponent(teacherId)}/curriculum-permission`,
+  {
+    method: "PATCH",
+    body: JSON.stringify({ allowed: Boolean(allowed) }),
+  },
+);
+
 export const createAdminSection = async ({ courseId, title, sortOrder }) => request(
   `/admin/courses/${encodeURIComponent(courseId)}/sections`,
   {
@@ -305,6 +325,13 @@ export const updateClassChapter = async ({ classId, chapterId, title, descriptio
   request(`/live-classes/${encodeURIComponent(classId)}/chapters/${encodeURIComponent(chapterId)}`, {
     method: "PATCH",
     body: JSON.stringify({ title, description, objectives, position, teacherId }),
+  })
+);
+
+export const assignClassSessionChapter = async ({ sessionId, chapterId, expectedVersion }) => (
+  request(`/live-classes/sessions/${encodeURIComponent(sessionId)}/chapter`, {
+    method: "PATCH",
+    body: JSON.stringify({ chapterId, expectedVersion }),
   })
 );
 
@@ -831,6 +858,7 @@ export const fetchTeacherFiles = async ({ courseId, classId, sessionId, date, se
 };
 
 export const fetchTeacherClassesLookup = async () => request("/teacher/classes-lookup");
+export const fetchStudentClassesLookup = async () => request("/student/classes-lookup");
 
 export const fetchClassFiles = async (classId, { sessionId } = {}) => {
   const params = new URLSearchParams();

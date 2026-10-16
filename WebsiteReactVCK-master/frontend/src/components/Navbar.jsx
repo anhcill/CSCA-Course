@@ -49,7 +49,7 @@ const PUBLIC_LINKS = [
 const TEACHER_LINKS = [
   { label: 'Giảng dạy', description: 'Tổng quan các lớp phụ trách', icon: Presentation, path: '/lms/teach' },
   { label: 'Điểm & chuyên cần', description: 'Theo dõi học viên theo từng buổi', icon: BarChart3, path: '/lms/teach/student-progress' },
-  { label: 'Giáo trình', description: 'Nội dung và bài giảng môn học', icon: BookCheck, path: '/lms/teacher/curriculum' },
+  { label: 'Giáo trình lớp', description: 'Xem nội dung theo lớp được phân công', icon: BookCheck, path: '/lms/teach/classes' },
   { label: 'Chấm bài', description: 'Chấm bài tập và bài kiểm tra', icon: ClipboardCheck, path: '/lms/teacher/grading' },
 ];
 

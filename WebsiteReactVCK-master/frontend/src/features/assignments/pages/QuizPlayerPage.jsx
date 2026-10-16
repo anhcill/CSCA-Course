@@ -59,7 +59,7 @@ export default function QuizPlayerPage() {
   const [result, setResult] = useState(null);
   const [timeLeft, setTimeLeft] = useState(60 * 60);
   const [reviewMode, setReviewMode] = useState(false);
-  const [activeViewerTab, setActiveViewerTab] = useState("paper"); // "paper" | "solution" | "questions"
+  const [activeViewerTab, setActiveViewerTab] = useState("paper"); // "split" | "paper" | "solution" | "questions"
   const [showConfirm, setShowConfirm] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -101,6 +101,21 @@ export default function QuizPlayerPage() {
     () => new Map((result?.review || []).map((item) => [String(item.questionId), item])),
     [result]
   );
+  const answerReviewAvailable = Boolean(
+    result && (result.reviewAvailable ?? (Array.isArray(result.review) && result.review.length > 0)),
+  );
+  const canViewSolution = Boolean(reviewMode && answerReviewAvailable && quizData?.solutionUrl);
+  const hasSplitReview = Boolean(reviewMode && answerReviewAvailable && quizData?.paperUrl && quizData?.solutionUrl);
+  const reviewSummary = useMemo(() => multipleChoiceQuestions.reduce((summary, question) => {
+    const review = reviewByQuestion.get(String(question.id));
+    if (!review) return { ...summary, unavailable: summary.unavailable + 1 };
+    if (review.isCorrect) return { ...summary, correct: summary.correct + 1 };
+    const studentAnswer = review.studentAnswer ?? answers[question.id];
+    const isBlank = Array.isArray(studentAnswer) ? studentAnswer.length === 0 : !studentAnswer;
+    return isBlank
+      ? { ...summary, unanswered: summary.unanswered + 1 }
+      : { ...summary, incorrect: summary.incorrect + 1 };
+  }, { correct: 0, incorrect: 0, unanswered: 0, unavailable: 0 }), [answers, multipleChoiceQuestions, reviewByQuestion]);
 
   const answeredCount = useMemo(() => multipleChoiceQuestions.filter((question) => {
     const value = answers[question.id];
@@ -187,7 +202,15 @@ export default function QuizPlayerPage() {
       const sourceEssay = loadedEssay || savedEssay || null;
       const orderedQuestions = preserveQuestionOrder(data.questions);
       const normalizedEssay = normalizeEssayResponse(sourceEssay, orderedQuestions.filter(isEssayQuestion));
-      setEssayAttachments(normalizedEssay.attachments);
+      const normalizedAttachmentKeys = new Set(normalizedEssay.attachments.map((attachment) => (
+        attachment.assetId || attachment.id || attachment.url
+      )).filter(Boolean));
+      const generalAttachments = (Array.isArray(sourceEssay?.attachments) ? sourceEssay.attachments : [])
+        .filter((attachment) => {
+          const key = attachment?.assetId || attachment?.id || attachment?.url;
+          return key && !normalizedAttachmentKeys.has(key);
+        });
+      setEssayAttachments([...normalizedEssay.attachments, ...generalAttachments]);
       setEssayNotesByQuestion(normalizedEssay.notesByQuestion);
       setEssayNotes(normalizedEssay.generalNotes);
 
@@ -203,6 +226,13 @@ export default function QuizPlayerPage() {
 
       if (isSubmitted) {
         setReviewMode(true);
+        if (data.result?.reviewAvailable !== false && data.paperUrl && data.solutionUrl) {
+          setActiveViewerTab("split");
+        } else if (!data.paperUrl && data.result?.reviewAvailable !== false && data.solutionUrl) {
+          setActiveViewerTab("solution");
+        } else if (!data.paperUrl) {
+          setActiveViewerTab("questions");
+        }
       }
     } catch (error) {
       console.error("Could not load quiz:", error);
@@ -371,25 +401,6 @@ export default function QuizPlayerPage() {
     return () => window.removeEventListener("paste", handlePaste);
   }, [essayQuestions, essayAttachments, selectedEssayQuestionId, handleAddImages, result, reviewMode]);
 
-  // Auto request browser fullscreen on first user interaction if not already fullscreen
-  useEffect(() => {
-    const triggerFullscreen = () => {
-      if (!document.fullscreenElement) {
-        const el = containerRef.current || document.documentElement;
-        if (el?.requestFullscreen) {
-          el.requestFullscreen().catch(() => {});
-        }
-      }
-    };
-    triggerFullscreen();
-    window.addEventListener("click", triggerFullscreen, { once: true });
-    window.addEventListener("keydown", triggerFullscreen, { once: true });
-    return () => {
-      window.removeEventListener("click", triggerFullscreen);
-      window.removeEventListener("keydown", triggerFullscreen);
-    };
-  }, []);
-
   // Autosave answers & essay attachments
   useEffect(() => {
     const hasWork = Object.keys(answers).length > 0 || essayAttachments.length > 0 || essayPayload.notes.trim().length > 0;
@@ -462,6 +473,13 @@ export default function QuizPlayerPage() {
       if (response.data.solutionUrl) {
         setQuizData((curr) => ({ ...curr, solutionUrl: response.data.solutionUrl }));
       }
+      if (response.data.reviewAvailable !== false && quizData?.paperUrl && response.data.solutionUrl) {
+        setActiveViewerTab("split");
+      } else if (!quizData?.paperUrl && response.data.reviewAvailable !== false && response.data.solutionUrl) {
+        setActiveViewerTab("solution");
+      } else if (!quizData?.paperUrl) {
+        setActiveViewerTab("questions");
+      }
       try {
         localStorage.removeItem(`csca_quiz_${quizId}`);
       } catch {
@@ -480,7 +498,7 @@ export default function QuizPlayerPage() {
       setSubmitting(false);
       setShowConfirm(false);
     }
-  }, [answers, essayPayload, hasEssay, quizId, result, submitting]);
+  }, [answers, essayPayload, hasEssay, quizData?.paperUrl, quizId, result, submitting]);
 
   // Timer countdown
   useEffect(() => {
@@ -500,7 +518,11 @@ export default function QuizPlayerPage() {
   }, [doSubmit, isTimed, loading, result, reviewMode]);
 
   const handleExit = () => {
-    if (!result && answeredCount > 0) {
+    const hasUnsavedWork = answeredCount > 0
+      || essayAttachments.length > 0
+      || Object.values(essayNotesByQuestion).some((note) => String(note || "").trim())
+      || essayNotes.trim();
+    if (!result && hasUnsavedWork) {
       setShowExitConfirm(true);
     } else {
       navigate(assignmentListPath);
@@ -542,8 +564,14 @@ export default function QuizPlayerPage() {
     );
   }
 
-  // Active paper/solution URL
-  const currentViewUrl = activeViewerTab === "solution" && quizData.solutionUrl ? quizData.solutionUrl : quizData.paperUrl;
+  const currentViewUrl = activeViewerTab === "solution" && canViewSolution ? quizData.solutionUrl : quizData.paperUrl;
+  const activityLabel = quizData.activityScope === "homework" ? "QUIZ VỀ NHÀ" : "QUIZ TẠI LỚP";
+  const unassignedEssayAttachments = essayAttachments.filter((attachment) => !attachment?.questionId);
+  const reviewPolicyMessage = quizData.reviewPolicy === "never"
+    ? "Giáo viên không công bố đáp án cho quiz này. Bạn vẫn có thể xem lại lựa chọn và bài tự luận đã nộp."
+    : quizData.reviewPolicy === "after_close"
+      ? "Đáp án sẽ được công bố sau khi quiz đóng. Hiện tại bạn chỉ có thể xem lại bài đã nộp."
+      : "Đáp án chi tiết chưa sẵn sàng. Vui lòng quay lại sau hoặc liên hệ giáo viên.";
 
   const renderSubmitActions = () => (
     <>
@@ -604,41 +632,62 @@ export default function QuizPlayerPage() {
   const renderOmrPanel = () => (
     <div className="flex flex-col h-full overflow-hidden">
       {/* OMR Header */}
-      <div className="flex shrink-0 items-start justify-between border-b border-slate-800/90 px-3.5 py-3 bg-[#091120]">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-2 border-b border-slate-800/90 px-3.5 py-3 bg-[#091120]">
         <div>
           <h2 className="text-xs font-black tracking-wider text-white flex items-center gap-1.5">
-            <span>🔘</span> BẢNG TRẮC NGHIỆM
+            <span>🔘</span> {reviewMode ? "KẾT QUẢ TỪNG CÂU" : "BẢNG TRẮC NGHIỆM"}
           </h2>
           <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
-            {quizData.paperUrl ? "Chọn đáp án theo file PDF" : "Chọn đáp án cho từng câu"}
+            {reviewMode
+              ? answerReviewAvailable
+                ? `${reviewSummary.correct} đúng • ${reviewSummary.incorrect} sai • ${reviewSummary.unanswered} bỏ trống`
+                : "Các lựa chọn của bạn được giữ nguyên; đáp án đúng chưa được công bố"
+              : quizData.paperUrl ? "Chọn đáp án theo file PDF" : "Chọn đáp án cho từng câu"}
           </p>
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-          <span className="inline-flex items-center gap-1 text-slate-300">
-            <i className="h-2 w-2 rounded-full bg-red-600 shadow-xs shadow-red-600/50" /> Đã làm
-          </span>
-          <span className="inline-flex items-center gap-1 text-slate-400">
-            <i className="h-2 w-2 rounded-full border border-slate-500" /> Chưa làm
-          </span>
+        <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-[10px] font-bold text-slate-400">
+          {reviewMode && answerReviewAvailable ? (
+            <>
+              <span className="inline-flex items-center gap-1 text-emerald-300"><i className="h-2 w-2 rounded-full bg-emerald-500" /> Đúng</span>
+              <span className="inline-flex items-center gap-1 text-rose-300"><i className="h-2 w-2 rounded-full bg-rose-500" /> Sai</span>
+              <span className="inline-flex items-center gap-1 text-slate-300"><i className="h-2 w-2 rounded-full border border-slate-500" /> Bỏ trống</span>
+            </>
+          ) : (
+            <>
+              <span className="inline-flex items-center gap-1 text-slate-300"><i className="h-2 w-2 rounded-full bg-red-600 shadow-xs shadow-red-600/50" /> Đã chọn</span>
+              <span className="inline-flex items-center gap-1 text-slate-400"><i className="h-2 w-2 rounded-full border border-slate-500" /> Chưa chọn</span>
+            </>
+          )}
         </div>
       </div>
 
+      {reviewMode && !answerReviewAvailable && multipleChoiceQuestions.length > 0 && (
+        <div className="shrink-0 border-b border-amber-800/60 bg-amber-950/30 px-3.5 py-2 text-[10px] font-semibold leading-relaxed text-amber-200">
+          🔒 {reviewPolicyMessage}
+        </div>
+      )}
+
       {/* OMR Table Body */}
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2.5 py-2 scrollbar-thin">
-        <div className="w-full">
+      <div className="flex-1 min-h-0 overflow-auto px-2.5 py-2 scrollbar-thin">
+        <div className="w-full" style={{ minWidth: `${132 + (answerKeys.length * 38)}px` }}>
           {/* Table Column Headers */}
-          <div className="grid grid-cols-[56px_repeat(4,1fr)_30px] items-center gap-1 border-b border-slate-800/60 pb-2 text-center text-xs font-black text-slate-400">
+          <div
+            className="grid items-center gap-1 border-b border-slate-800/60 pb-2 text-center text-xs font-black text-slate-400"
+            style={{ gridTemplateColumns: `56px repeat(${answerKeys.length}, minmax(30px, 1fr)) ${reviewMode ? "72px" : "30px"}` }}
+          >
             <span className="text-left pl-1 text-[10px] uppercase tracking-wider text-slate-500">Câu</span>
-            {answerKeys.slice(0, 4).map((key) => (
+            {answerKeys.map((key) => (
               <span key={key} className="text-slate-300 font-black">
                 {key}
               </span>
             ))}
-            <span className="flex justify-center text-slate-500" title="Đánh dấu câu hỏi cần xem lại">
-              <FiFlag className="h-3 w-3" />
-            </span>
+            {reviewMode ? (
+              <span className="text-[9px] uppercase tracking-wide text-slate-500">Kết quả</span>
+            ) : (
+              <span className="flex justify-center text-slate-500" title="Đánh dấu câu hỏi cần xem lại"><FiFlag className="h-3 w-3" /></span>
+            )}
           </div>
 
           {/* Rows */}
@@ -649,19 +698,36 @@ export default function QuizPlayerPage() {
               const selectedKeys = Array.isArray(selected) ? selected : [selected];
               const isFlagged = flaggedQuestions.has(question.id);
               const questionAttachments = attachmentsForQuestion(essayAttachments, question.id);
+              const isEssay = isEssayQuestion(question);
+              const reviewStudentAnswer = review?.studentAnswer ?? selected;
+              const isUnanswered = Array.isArray(reviewStudentAnswer) ? reviewStudentAnswer.length === 0 : !reviewStudentAnswer;
+              const rowStatus = isEssay
+                ? result?.essayGrade ? "Đã chấm" : "Chờ chấm"
+                : !answerReviewAvailable || !review ? "Ẩn đáp án"
+                  : review.isCorrect ? "Đúng" : isUnanswered ? "Bỏ trống" : "Sai";
+              const rowStatusClass = isEssay
+                ? result?.essayGrade ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"
+                : !answerReviewAvailable || !review ? "bg-slate-700/60 text-slate-300"
+                  : review.isCorrect ? "bg-emerald-500/15 text-emerald-300"
+                    : isUnanswered ? "bg-slate-700/60 text-slate-300" : "bg-rose-500/15 text-rose-300";
 
               return (
                 <div
                   key={question.id}
-                  className="grid grid-cols-[56px_repeat(4,1fr)_30px] items-center gap-1 py-1.5 text-center transition hover:bg-slate-800/20"
+                  className={`grid items-center gap-1 py-1.5 text-center transition ${
+                    reviewMode && answerReviewAvailable && !isEssay
+                      ? review?.isCorrect ? "bg-emerald-950/10" : isUnanswered ? "bg-slate-900/20" : "bg-rose-950/10"
+                      : "hover:bg-slate-800/20"
+                  }`}
+                  style={{ gridTemplateColumns: `56px repeat(${answerKeys.length}, minmax(30px, 1fr)) ${reviewMode ? "72px" : "30px"}` }}
                 >
                   {/* Row Label */}
                   <span className="text-left pl-1 text-xs font-black text-slate-300">
                     Câu {index + 1}
                   </span>
 
-                  {isEssayQuestion(question) ? (
-                    <div className="col-span-4 flex items-center justify-center px-1">
+                  {isEssay ? (
+                    <div className="flex items-center justify-center px-1" style={{ gridColumn: `span ${answerKeys.length}` }}>
                       <button
                         type="button"
                         onClick={() => {
@@ -672,7 +738,7 @@ export default function QuizPlayerPage() {
                           if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
                         }}
                         className="w-full flex items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/20 transition active:scale-95"
-                        title={`Xem & nộp bài tự luận câu ${question.displayNumber}`}
+                        title={`${reviewMode ? "Xem lại" : "Xem và nộp"} bài tự luận câu ${question.displayNumber}`}
                       >
                         <span className="flex items-center gap-1">
                           <span>✍️ Tự luận</span>
@@ -682,48 +748,51 @@ export default function QuizPlayerPage() {
                       </button>
                     </div>
                   ) : (
-                    /* Bubble Buttons A, B, C, D */
-                    answerKeys.slice(0, 4).map((key) => {
+                    answerKeys.map((key) => {
+                      const optionExists = (question.options || []).some((option) => option.key === key);
                       const isChosen = Boolean(selectedKeys.includes(key));
                       const correctAnswer = review?.correctAnswer;
                       const isCorrectOption =
-                        Boolean(review) &&
+                        answerReviewAvailable && Boolean(review) &&
                         (Array.isArray(correctAnswer)
                           ? correctAnswer.includes(key)
                           : correctAnswer === key);
-                      const isWrongChosen = Boolean(review) && isChosen && !isCorrectOption;
+                      const isWrongChosen = answerReviewAvailable && Boolean(review) && isChosen && !isCorrectOption;
 
                       return (
                         <div key={key} className="flex justify-center">
-                          <button
-                            type="button"
-                            onClick={() => handleSelect(question, key)}
-                            disabled={Boolean(result) || reviewMode}
-                            className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black transition-all ${
-                              review
-                                ? isCorrectOption
-                                  ? "bg-emerald-600 text-white ring-2 ring-emerald-400/50"
-                                  : isWrongChosen
-                                  ? "bg-rose-600 text-white"
-                                  : "border border-slate-700 bg-slate-900/60 text-slate-500"
-                                : isChosen
-                                ? "bg-red-600 text-white shadow-md shadow-red-900/50 scale-105"
-                                : "border border-slate-700/80 bg-slate-900/40 text-slate-400 hover:border-slate-500 hover:bg-slate-800/80 hover:text-slate-200"
-                            } disabled:cursor-default`}
-                          >
-                            {isChosen || review ? (
-                              <span>{key}</span>
-                            ) : (
-                              <span className="opacity-0 hover:opacity-100 text-[10px]">{key}</span>
-                            )}
-                          </button>
+                          {optionExists ? (
+                            <button
+                              type="button"
+                              onClick={() => handleSelect(question, key)}
+                              disabled={Boolean(result) || reviewMode}
+                              title={reviewMode && isChosen ? `Bạn đã chọn ${key}` : `Chọn đáp án ${key}`}
+                              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black transition-all ${
+                                reviewMode && answerReviewAvailable && review
+                                  ? isCorrectOption
+                                    ? "bg-emerald-600 text-white ring-2 ring-emerald-400/50"
+                                    : isWrongChosen
+                                      ? "bg-rose-600 text-white ring-2 ring-rose-400/40"
+                                      : "border border-slate-700 bg-slate-900/60 text-slate-500"
+                                  : isChosen
+                                    ? reviewMode
+                                      ? "bg-blue-600 text-white ring-2 ring-blue-400/40"
+                                      : "bg-red-600 text-white shadow-md shadow-red-900/50 scale-105"
+                                    : "border border-slate-700/80 bg-slate-900/40 text-slate-400 hover:border-slate-500 hover:bg-slate-800/80 hover:text-slate-200"
+                              } disabled:cursor-default`}
+                            >
+                              {isChosen || reviewMode ? <span>{key}</span> : <span className="opacity-0 hover:opacity-100 text-[10px]">{key}</span>}
+                            </button>
+                          ) : <span className="text-slate-800">—</span>}
                         </div>
                       );
                     })
                   )}
 
-                  {/* Flag Button */}
-                  <div className="flex justify-center">
+                  <div className="flex justify-center px-0.5">
+                    {reviewMode ? (
+                      <span className={`w-full rounded-md px-1 py-1 text-[9px] font-black ${rowStatusClass}`}>{rowStatus}</span>
+                    ) : (
                     <button
                       type="button"
                       onClick={() => toggleFlag(question.id)}
@@ -737,6 +806,7 @@ export default function QuizPlayerPage() {
                     >
                       <FiFlag className={`h-3.5 w-3.5 ${isFlagged ? "fill-amber-400" : ""}`} />
                     </button>
+                    )}
                   </div>
                 </div>
               );
@@ -762,7 +832,9 @@ export default function QuizPlayerPage() {
           </span>
           <div>
             <h3 className="text-xs font-black text-white uppercase tracking-wider">PHẦN BÀI LÀM TỰ LUẬN</h3>
-            <p className="text-[10px] text-slate-400">Up ảnh, gửi file PDF hoặc dán ảnh (Ctrl+V)</p>
+            <p className="text-[10px] text-slate-400">
+              {reviewMode ? "Xem lại file, ghi chú đã nộp và kết quả chấm" : "Tải ảnh, gửi file PDF hoặc dán ảnh (Ctrl+V)"}
+            </p>
           </div>
         </div>
         <span className="rounded-lg bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-mono font-bold text-amber-300">
@@ -879,7 +951,11 @@ export default function QuizPlayerPage() {
                       </span>
                     </div>
                     <span className="text-[11px] font-bold">
-                      {questionAttachments.length > 0 ? (
+                      {reviewMode ? (
+                        result?.essayGrade
+                          ? <span className="text-emerald-400">✓ Đã chấm</span>
+                          : <span className="text-sky-300">⏳ Chờ chấm</span>
+                      ) : questionAttachments.length > 0 ? (
                         <span className="text-emerald-400">✓ {questionAttachments.length} file</span>
                       ) : (
                         <span className="text-slate-500">Chưa nộp file</span>
@@ -995,7 +1071,9 @@ export default function QuizPlayerPage() {
                             Trang {idx + 1}
                           </span>
                           {/* Actions Overlay */}
-                          <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/70 opacity-0 group-hover:opacity-100 transition backdrop-blur-xs">
+                          <div className={`absolute inset-0 flex items-center justify-center gap-1.5 transition backdrop-blur-xs ${
+                            reviewMode || result ? "bg-black/25 opacity-100" : "bg-black/70 opacity-0 group-hover:opacity-100"
+                          }`}>
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1031,19 +1109,47 @@ export default function QuizPlayerPage() {
                     </div>
                   )}
 
-                  {/* Textarea for this question */}
-                  <textarea
-                    value={essayNotesByQuestion[String(question.id)] || ""}
-                    onChange={(event) => setEssayNotesByQuestion((current) => ({ ...current, [String(question.id)]: event.target.value }))}
-                    onFocus={() => setSelectedEssayQuestionId(question.id)}
-                    disabled={Boolean(result) || reviewMode}
-                    placeholder={`Ghi chú, đáp số hoặc lời giải tóm tắt cho câu ${question.displayNumber}...`}
-                    rows={2}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-xs text-white outline-none placeholder:text-slate-500 focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-75 transition"
-                  />
+                  {reviewMode || result ? (
+                    <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-2.5 text-[11px] leading-relaxed text-slate-300">
+                      <b className="mb-1 block text-[9px] uppercase tracking-wide text-slate-500">Ghi chú / bài làm đã nhập</b>
+                      {essayNotesByQuestion[String(question.id)]?.trim() || "Không có ghi chú văn bản cho câu này."}
+                    </div>
+                  ) : (
+                    <textarea
+                      value={essayNotesByQuestion[String(question.id)] || ""}
+                      onChange={(event) => setEssayNotesByQuestion((current) => ({ ...current, [String(question.id)]: event.target.value }))}
+                      onFocus={() => setSelectedEssayQuestionId(question.id)}
+                      placeholder={`Ghi chú, đáp số hoặc lời giải tóm tắt cho câu ${question.displayNumber}...`}
+                      rows={2}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-xs text-white outline-none placeholder:text-slate-500 focus:border-amber-500 transition"
+                    />
+                  )}
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {unassignedEssayAttachments.length > 0 && (
+          <div className="rounded-2xl border border-sky-800/60 bg-sky-950/20 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-black uppercase tracking-wide text-sky-300">File bài làm chung</span>
+              <span className="text-[10px] font-semibold text-slate-400">{unassignedEssayAttachments.length} file</span>
+            </div>
+            <div className="space-y-1.5">
+              {unassignedEssayAttachments.map((attachment, index) => (
+                <a
+                  key={attachment.id || attachment.assetId || `${attachment.url || attachment.previewUrl}-${index}`}
+                  href={attachment.url || attachment.previewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-900/70 px-2.5 py-2 text-[11px] font-semibold text-slate-200 hover:border-sky-500 hover:text-white"
+                >
+                  <span className="min-w-0 truncate"><FiFileText className="mr-1.5 inline h-3.5 w-3.5 text-sky-400" />{attachment.name || `File ${index + 1}`}</span>
+                  <FiExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                </a>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1095,16 +1201,21 @@ export default function QuizPlayerPage() {
         {/* General Notes */}
         <div>
           <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
-            Ghi chú chung cho giáo viên:
+            {reviewMode ? "Ghi chú chung đã gửi:" : "Ghi chú chung cho giáo viên:"}
           </label>
-          <textarea
-            value={essayNotes}
-            onChange={(e) => setEssayNotes(e.target.value)}
-            disabled={Boolean(result) || reviewMode}
-            placeholder="Lời nhắn hoặc ghi chú thêm cho bài thi tự luận..."
-            rows={2}
-            className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 focus:outline-none transition disabled:opacity-75 disabled:cursor-not-allowed"
-          />
+          {reviewMode || result ? (
+            <div className="min-h-[52px] whitespace-pre-wrap rounded-xl border border-slate-700 bg-slate-950/60 p-2.5 text-xs leading-relaxed text-slate-300">
+              {essayNotes.trim() || "Không có ghi chú chung."}
+            </div>
+          ) : (
+            <textarea
+              value={essayNotes}
+              onChange={(e) => setEssayNotes(e.target.value)}
+              placeholder="Lời nhắn hoặc ghi chú thêm cho bài thi tự luận..."
+              rows={2}
+              className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 focus:outline-none transition"
+            />
+          )}
         </div>
       </div>
 
@@ -1118,7 +1229,7 @@ export default function QuizPlayerPage() {
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-50 flex h-screen w-screen flex-col overflow-hidden bg-[#060c18] text-slate-100 select-none font-sans"
+      className="fixed inset-0 z-50 flex h-screen w-screen flex-col overflow-hidden bg-[#060c18] text-slate-100 font-sans"
     >
       {/* TOP BAR / HEADER */}
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800/90 bg-[#091122] px-3 sm:px-5 gap-2 z-20">
@@ -1130,7 +1241,7 @@ export default function QuizPlayerPage() {
 
           <div className="min-w-0">
             <span className="block text-[10px] font-black uppercase tracking-wider text-rose-400">
-              {quizData.activityScope === "homework" ? "BÀI TẬP VỀ NHÀ" : "LUYỆN CHỦ ĐỀ"}
+              {activityLabel}
             </span>
             <h1 className="truncate text-sm sm:text-base font-black text-white" title={quizData.title}>
               {quizData.title.toUpperCase()}
@@ -1154,7 +1265,7 @@ export default function QuizPlayerPage() {
             <div className="leading-tight">
               <span className="block text-[9px] font-bold text-slate-400 uppercase">Chế độ</span>
               <span className="block text-xs font-bold text-slate-200">
-                {isTimed ? "Thi tính giờ" : "Tự do luyện tập"}
+                {quizData.activityScope === "homework" ? "Quiz về nhà" : isTimed ? "Quiz tại lớp tính giờ" : "Quiz tại lớp"}
               </span>
             </div>
           </div>
@@ -1171,7 +1282,7 @@ export default function QuizPlayerPage() {
               <span className="block text-[9px] font-bold text-slate-400 uppercase">Tiến độ</span>
               <span className="block text-xs font-mono font-black text-white">
                 TN: {answeredCount}/{multipleChoiceQuestions.length}
-                {hasEssay ? ` • TL: ${essayAttachments.length} ảnh` : ""}
+                {hasEssay ? ` • TL: ${essayAttachments.length} file` : ""}
               </span>
             </div>
           </div>
@@ -1247,7 +1358,7 @@ export default function QuizPlayerPage() {
             mobileTab === "paper" ? "bg-rose-600 text-white" : "bg-slate-800/60 text-slate-400"
           }`}
         >
-          📄 Đề thi {quizData.solutionUrl && reviewMode ? "/ Lời giải" : ""}
+          📄 {reviewMode ? "Xem lại bài" : "Đề thi"}
         </button>
 
         {hasBoth ? (
@@ -1294,14 +1405,27 @@ export default function QuizPlayerPage() {
         >
           {/* Top Viewer Subheader (Tabs for Review Mode & Solution File) */}
           {reviewMode && (
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-[#0d1629] px-4 py-2.5 gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-black uppercase text-slate-400 mr-1">Chế độ xem:</span>
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-[#0d1629] px-2.5 sm:px-4 py-2.5 gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5">
+                <span className="hidden sm:inline text-[11px] font-black uppercase text-slate-400 mr-1 whitespace-nowrap">Chế độ xem:</span>
+                {hasSplitReview && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveViewerTab("split")}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-black transition ${
+                      activeViewerTab === "split"
+                        ? "bg-violet-600 text-white shadow-sm"
+                        : "bg-slate-800/70 text-violet-300 hover:bg-slate-800"
+                    }`}
+                  >
+                    <span className="text-[11px]">◫</span> Chia đôi
+                  </button>
+                )}
                 {quizData.paperUrl && (
                   <button
                     type="button"
                     onClick={() => setActiveViewerTab("paper")}
-                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-black transition ${
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-black transition ${
                       activeViewerTab === "paper"
                         ? "bg-rose-600 text-white shadow-sm"
                         : "bg-slate-800/70 text-slate-300 hover:bg-slate-800"
@@ -1311,28 +1435,32 @@ export default function QuizPlayerPage() {
                   </button>
                 )}
 
-                {quizData.solutionUrl ? (
+                {canViewSolution ? (
                   <button
                     type="button"
                     onClick={() => setActiveViewerTab("solution")}
-                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-black transition ${
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-black transition ${
                       activeViewerTab === "solution"
                         ? "bg-amber-600 text-white shadow-sm ring-2 ring-amber-400/30"
                         : "bg-slate-800/70 text-amber-300 hover:bg-slate-800"
                     }`}
                   >
-                    <FiBookOpen className="h-3.5 w-3.5" /> Lời giải chi tiết (PDF)
+                    <FiBookOpen className="h-3.5 w-3.5" /> Lời giải
                   </button>
-                ) : (
-                  <span className="text-[11px] font-semibold text-slate-500 italic px-2">
-                    (Giáo viên chưa gắn file lời giải PDF riêng)
-                  </span>
+                ) : quizData.solutionUrl && !answerReviewAvailable ? (
+                  <span className="shrink-0 rounded-lg bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-300">🔒 Lời giải chưa mở</span>
+                ) : !quizData.solutionUrl ? (
+                  <span className="hidden xl:inline shrink-0 text-[10px] font-semibold text-slate-500 italic px-2">Không có file lời giải riêng</span>
+                ) : null}
+
+                {!answerReviewAvailable && (
+                  <span className="sm:hidden shrink-0 rounded-lg bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-300">Đáp án chưa công bố</span>
                 )}
 
                 <button
                   type="button"
                   onClick={() => setActiveViewerTab("questions")}
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-black transition ${
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-black transition ${
                     activeViewerTab === "questions"
                       ? "bg-blue-600 text-white shadow-sm"
                       : "bg-slate-800/70 text-slate-300 hover:bg-slate-800"
@@ -1342,7 +1470,7 @@ export default function QuizPlayerPage() {
                 </button>
               </div>
 
-              {currentViewUrl && activeViewerTab !== "questions" && (
+              {currentViewUrl && !["questions", "split"].includes(activeViewerTab) && (
                 <a
                   href={currentViewUrl}
                   target="_blank"
@@ -1357,13 +1485,40 @@ export default function QuizPlayerPage() {
 
           {/* Viewer Content Area */}
           <div className="flex-1 min-h-0 bg-slate-900 overflow-hidden relative">
-            {activeViewerTab === "questions" ? (
+            {activeViewerTab === "split" && hasSplitReview ? (
+              <div className="grid h-full grid-cols-1 overflow-y-auto bg-slate-950 lg:grid-cols-2 lg:overflow-hidden">
+                <div className="flex min-h-[68vh] flex-col border-b border-slate-700 lg:min-h-0 lg:border-b-0 lg:border-r">
+                  <div className="flex h-9 shrink-0 items-center justify-between bg-[#111b2e] px-3 text-[11px] font-black text-slate-200">
+                    <span><FiFileText className="mr-1.5 inline h-3.5 w-3.5 text-rose-400" />Đề bài</span>
+                    <a href={quizData.paperUrl} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-white" title="Mở đề trong tab mới"><FiExternalLink /></a>
+                  </div>
+                  <iframe
+                    src={`${quizData.paperUrl}#toolbar=0&navpanes=0&view=FitH`}
+                    title={`Đề bài ${quizData.title}`}
+                    className="min-h-0 flex-1 border-0 bg-white"
+                  />
+                </div>
+                <div className="flex min-h-[68vh] flex-col lg:min-h-0">
+                  <div className="flex h-9 shrink-0 items-center justify-between bg-amber-950/40 px-3 text-[11px] font-black text-amber-200">
+                    <span><FiBookOpen className="mr-1.5 inline h-3.5 w-3.5" />File lời giải</span>
+                    <a href={quizData.solutionUrl} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-200" title="Mở lời giải trong tab mới"><FiExternalLink /></a>
+                  </div>
+                  <iframe
+                    src={`${quizData.solutionUrl}#toolbar=0&navpanes=0&view=FitH`}
+                    title={`Lời giải ${quizData.title}`}
+                    className="min-h-0 flex-1 border-0 bg-white"
+                  />
+                </div>
+              </div>
+            ) : activeViewerTab === "questions" ? (
               /* Inline Question-by-Question breakdown */
               <div className="h-full overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#0a1222]">
-                <div className="rounded-2xl border border-slate-800 bg-[#0e182b] p-4 text-xs">
+                <div className={`rounded-2xl border p-4 text-xs ${answerReviewAvailable ? "border-slate-800 bg-[#0e182b]" : "border-amber-800/60 bg-amber-950/20"}`}>
                   <h3 className="font-black text-white text-sm mb-1">Chi tiết câu hỏi & Đáp án đối chiếu</h3>
-                  <p className="text-slate-400">
-                    Màu xanh lá là đáp án chính xác. Màu đỏ là lựa chọn chưa chính xác.
+                  <p className={answerReviewAvailable ? "text-slate-400" : "text-amber-200"}>
+                    {answerReviewAvailable
+                      ? "Màu xanh lá là đáp án đúng; màu đỏ là đáp án bạn chọn sai. Phần tự luận hiển thị đúng file và ghi chú đã nộp."
+                      : `🔒 ${reviewPolicyMessage}`}
                   </p>
                 </div>
 
@@ -1372,21 +1527,36 @@ export default function QuizPlayerPage() {
                   const selected = answers[question.id];
                   const selectedKeys = Array.isArray(selected) ? selected : [selected];
                   const isUserCorrect = review?.isCorrect;
+                  const isEssay = isEssayQuestion(question);
+                  const questionAttachments = attachmentsForQuestion(essayAttachments, question.id);
+                  const questionNote = essayNotesByQuestion[String(question.id)]?.trim();
+                  const reviewStudentAnswer = review?.studentAnswer ?? selected;
+                  const isUnanswered = Array.isArray(reviewStudentAnswer) ? reviewStudentAnswer.length === 0 : !reviewStudentAnswer;
+                  const resultLabel = isEssay
+                    ? result?.essayGrade ? "Đã chấm" : "Chờ chấm"
+                    : !answerReviewAvailable || !review ? "Chưa công bố" : isUserCorrect ? "Đúng" : isUnanswered ? "Bỏ trống" : "Sai";
 
                   return (
                     <article
                       key={question.id}
                       id={`quiz-question-card-${index}`}
-                      className="rounded-2xl border border-slate-800/90 bg-[#0e1728] p-4 sm:p-5"
+                      className={`rounded-2xl border bg-[#0e1728] p-4 sm:p-5 ${
+                        isEssay ? "border-amber-800/50"
+                          : answerReviewAvailable && review
+                            ? isUserCorrect ? "border-emerald-800/60" : isUnanswered ? "border-slate-700" : "border-rose-800/60"
+                            : "border-slate-800/90"
+                      }`}
                     >
                       <div className="flex items-start gap-3">
                         <span
                           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-black ${
-                            review
-                              ? isUserCorrect
-                                ? "bg-emerald-600 text-white"
-                                : "bg-rose-600 text-white"
-                              : "bg-blue-600 text-white"
+                            isEssay
+                              ? result?.essayGrade ? "bg-emerald-600 text-white" : "bg-amber-600 text-white"
+                              : answerReviewAvailable && review
+                                ? isUserCorrect
+                                  ? "bg-emerald-600 text-white"
+                                  : isUnanswered ? "bg-slate-600 text-white" : "bg-rose-600 text-white"
+                                : "bg-blue-600 text-white"
                           }`}
                         >
                           {index + 1}
@@ -1396,21 +1566,60 @@ export default function QuizPlayerPage() {
                             <h4 className="text-sm sm:text-base font-bold text-white leading-relaxed">
                               {question.question_text}
                             </h4>
-                            <span className="shrink-0 rounded-lg bg-slate-800 px-2.5 py-1 text-[10px] font-mono font-bold text-slate-300">
-                              {question.points} đ
-                            </span>
+                            <div className="flex shrink-0 flex-col items-end gap-1">
+                              <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-[10px] font-mono font-bold text-slate-300">{question.points} đ</span>
+                              <span className={`rounded-md px-2 py-0.5 text-[9px] font-black ${
+                                isEssay
+                                  ? result?.essayGrade ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"
+                                  : answerReviewAvailable && review
+                                    ? isUserCorrect ? "bg-emerald-500/15 text-emerald-300" : isUnanswered ? "bg-slate-700 text-slate-300" : "bg-rose-500/15 text-rose-300"
+                                    : "bg-slate-700 text-slate-300"
+                              }`}>{resultLabel}</span>
+                            </div>
                           </div>
 
-                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {isEssay ? (
+                            <div className="mt-3 space-y-2.5 rounded-xl border border-amber-500/20 bg-amber-950/10 p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                <span className="font-bold text-amber-300">Bài tự luận đã nộp</span>
+                                <span className="text-slate-400">{questionAttachments.length} file</span>
+                              </div>
+                              {questionAttachments.length > 0 ? (
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  {questionAttachments.map((attachment, attachmentIndex) => (
+                                    <a
+                                      key={attachment.id || attachment.assetId || `${attachment.url || attachment.previewUrl}-${attachmentIndex}`}
+                                      href={attachment.url || attachment.previewUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-950/60 px-2.5 py-2 text-[11px] font-semibold text-slate-200 hover:border-amber-500"
+                                    >
+                                      <span className="truncate"><FiFileText className="mr-1.5 inline h-3.5 w-3.5 text-amber-400" />{attachment.name || `File ${attachmentIndex + 1}`}</span>
+                                      <FiExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                                    </a>
+                                  ))}
+                                </div>
+                              ) : <p className="text-[11px] italic text-slate-500">Không có file riêng cho câu này.</p>}
+                              <div className="rounded-lg bg-slate-950/60 p-2.5 text-[11px] leading-relaxed text-slate-300">
+                                <b className="mb-1 block text-[9px] uppercase text-slate-500">Ghi chú / nội dung đã nhập</b>
+                                {questionNote || "Không có ghi chú văn bản cho câu này."}
+                              </div>
+                              {result?.essayGrade?.feedback && (
+                                <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/20 p-2.5 text-[11px] text-emerald-200">
+                                  <b>Nhận xét của giáo viên: </b>{result.essayGrade.feedback}
+                                </div>
+                              )}
+                            </div>
+                          ) : <div className="mt-3 grid gap-2 sm:grid-cols-2">
                             {(question.options || []).map((option) => {
                               const active = selectedKeys.includes(option.key);
                               const correctAnswer = review?.correctAnswer;
                               const isCorrectOption =
-                                Boolean(review) &&
+                                answerReviewAvailable && Boolean(review) &&
                                 (Array.isArray(correctAnswer)
                                   ? correctAnswer.includes(option.key)
                                   : correctAnswer === option.key);
-                              const isWrongChosen = Boolean(review) && active && !isCorrectOption;
+                              const isWrongChosen = answerReviewAvailable && Boolean(review) && active && !isCorrectOption;
 
                               return (
                                 <div
@@ -1448,9 +1657,9 @@ export default function QuizPlayerPage() {
                                 </div>
                               );
                             })}
-                          </div>
+                          </div>}
 
-                          {review?.explanation && (
+                          {!isEssay && answerReviewAvailable && review?.explanation && (
                             <div className="mt-3.5 rounded-xl border border-sky-900/60 bg-sky-950/30 p-3.5 text-xs text-sky-200 leading-relaxed">
                               <b className="font-bold text-sky-300">💡 Giải thích chi tiết: </b>
                               {review.explanation}
@@ -1653,7 +1862,12 @@ export default function QuizPlayerPage() {
               </span>
               <h3 className="mt-3 text-lg font-black text-white">Xác nhận nộp bài?</h3>
               <p className="mt-1 text-xs text-slate-400 leading-relaxed">
-                Sau khi nộp, hệ thống sẽ ghi nhận và khóa bài thi. Bạn có thể xem lời giải chi tiết ngay sau đó.
+                Sau khi nộp, hệ thống sẽ ghi nhận và khóa bài thi.
+                {quizData.reviewPolicy === "after_submit"
+                  ? " Bạn có thể đối chiếu đáp án ngay sau đó."
+                  : quizData.reviewPolicy === "after_close"
+                    ? " Đáp án được mở sau khi quiz đóng."
+                    : " Giáo viên không công bố đáp án cho quiz này."}
               </p>
             </div>
 
@@ -1672,9 +1886,9 @@ export default function QuizPlayerPage() {
               </div>
               {hasEssay && (
                 <div className="flex justify-between border-t border-slate-800/80 pt-1.5 mt-1.5">
-                  <span className="text-slate-400">Ảnh bài làm tự luận:</span>
+                  <span className="text-slate-400">File bài làm tự luận:</span>
                   <b className={`font-mono font-black ${essayAttachments.length > 0 ? "text-amber-400" : "text-rose-400"}`}>
-                    {essayAttachments.length} ảnh
+                    {essayAttachments.length} file
                   </b>
                 </div>
               )}
@@ -1694,7 +1908,7 @@ export default function QuizPlayerPage() {
 
             {hasEssay && essayAttachments.length === 0 && (
               <div className="mt-2.5 rounded-xl border border-rose-900/60 bg-rose-950/30 p-2.5 text-[11px] font-semibold text-rose-300">
-                ⚠ Đề thi có phần tự luận nhưng bạn chưa đính kèm ảnh bài làm nào! Hãy kiểm tra kỹ trước khi nộp.
+                ⚠ Quiz có phần tự luận nhưng bạn chưa đính kèm file bài làm nào. Hãy kiểm tra kỹ trước khi nộp.
               </div>
             )}
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Calendar } from "lucide-react";
-import { fetchAdminCalendar, updateLiveSession } from "../../api/lmsClient";
+import { fetchAdminCalendar, fetchAdminSessionHistory, updateLiveSession } from "../../api/lmsClient";
 import { LoadingState, ErrorState, EmptyState } from "../../../components/common/StateView";
 import AdminCalendarConflictBanner from "../components/calendar/AdminCalendarConflictBanner";
 import AdminCalendarFilterBar from "../components/calendar/AdminCalendarFilterBar";
@@ -197,6 +197,7 @@ export default function AdminCalendarPage() {
           onClose={() => setSelectedSessionForHistory(null)}
           sessionId={selectedSessionForHistory?.id}
           sessionTitle={selectedSessionForHistory?.title}
+          loadHistory={fetchAdminSessionHistory}
         />
         <AdminSessionRescheduleModal
           session={selectedSessionForEdit}

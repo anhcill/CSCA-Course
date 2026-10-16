@@ -6,6 +6,7 @@ import { useAuthContext } from "../../../context/AuthContext";
 import {
   deleteClassFile,
   fetchClassDetails,
+  fetchClassChapters,
   fetchClassFiles,
   fetchLiveClassSchedules,
   fetchLiveClassSessions,
@@ -38,22 +39,25 @@ export default function TeacherClassDetailPage() {
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false);
   const [meetingLinkSession, setMeetingLinkSession] = useState(null);
+  const [canManageCurriculum, setCanManageCurriculum] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [classResponse, sessionsResponse, schedulesResponse, filesResponse] = await Promise.all([
+      const [classResponse, sessionsResponse, schedulesResponse, filesResponse, chaptersResponse] = await Promise.all([
         fetchClassDetails(classId),
         fetchLiveClassSessions(classId),
         fetchLiveClassSchedules(classId),
         fetchClassFiles(classId).catch(() => ({ data: [] })),
+        fetchClassChapters(classId).catch(() => ({ canManageCurriculum: false })),
       ]);
       if (!classResponse?.data) throw new Error("Không tìm thấy dữ liệu lớp học.");
       setClassData(classResponse.data);
       setSessions(Array.isArray(sessionsResponse?.data) ? sessionsResponse.data : []);
       setSchedules(Array.isArray(schedulesResponse?.data) ? schedulesResponse.data : []);
       setFiles(Array.isArray(filesResponse?.data) ? filesResponse.data : []);
+      setCanManageCurriculum(Boolean(chaptersResponse?.canManageCurriculum));
     } catch (requestError) {
       setClassData(null);
       setError(requestError.message || "Không thể tải chi tiết lớp học.");
@@ -125,7 +129,7 @@ export default function TeacherClassDetailPage() {
           <a href="#class-workspace-files" className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
             <Files className="h-3.5 w-3.5" /> Tài liệu của lớp ({files.length})
           </a>
-          {isAdminView && <a href="#class-chapters-manager" className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
+          {canManageCurriculum && <a href="#class-chapters-manager" className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-blue-950/30">
             <BookOpen className="h-3.5 w-3.5" /> Chương & buổi học
           </a>}
         </div>
@@ -142,7 +146,7 @@ export default function TeacherClassDetailPage() {
 
         <ClassWorkspaceOverviewTab stats={stats} atRiskStudents={atRiskStudents} onOpenCreateSession={() => setIsCreateSessionOpen(true)} />
 
-        {isAdminView && authUser?.role === "admin" && <section id="class-chapters-manager" className="scroll-mt-20">
+        {canManageCurriculum && <section id="class-chapters-manager" className="scroll-mt-20">
           <ClassChaptersManager classId={classId} sessions={sessions} onChanged={loadData} />
         </section>}
 

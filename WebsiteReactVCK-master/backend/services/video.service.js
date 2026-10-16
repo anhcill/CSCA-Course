@@ -23,6 +23,8 @@ export const ALLOWED_SUBMISSION_FILE_MIME_TYPES = new Set([
   "image/webp",
   "image/gif",
   "application/zip",
+  "application/x-zip-compressed",
+  "application/x-zip",
 ]);
 
 export const ALLOWED_SUBMISSION_AUDIO_MIME_TYPES = new Set([
