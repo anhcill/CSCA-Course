@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { fetchStudentFiles, fetchStudentClassesLookup } from "../../api/lmsClient";
 import { EmptyState, ErrorState, LoadingState } from "../../../components/common/StateView";
+import { getClassTheme } from "../../../utils/classThemes";
 
 const mimeType = (file) => String(file.mimeType || file.mime_type || "").toLowerCase();
 const fileSize = (value) => {
@@ -680,7 +681,7 @@ export default function StudentFilesPage() {
                 />
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-                  {searchedClasses.map((cls) => {
+                  {searchedClasses.map((cls, index) => {
                     const clsFiles = files.filter((f) => String(f.classId) === String(cls.id));
                     const sessionsWithFilesCount = new Set(
                       clsFiles.filter((f) => f.classSessionId).map((f) => String(f.classSessionId))
@@ -693,19 +694,24 @@ export default function StudentFilesPage() {
                           new Date(b.uploadedAt || b.sessionStartTime || 0) -
                           new Date(a.uploadedAt || a.sessionStartTime || 0)
                       )[0];
+                    const theme = getClassTheme(cls, index);
 
                     return (
                       <div
                         key={cls.id}
                         onClick={() => handleSelectClass(cls.id)}
-                        className="group relative rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs hover:shadow-xl hover:border-emerald-400/80 dark:hover:border-emerald-500/60 transition-all duration-300 flex flex-col justify-between cursor-pointer overflow-hidden"
+                        className={`group relative rounded-3xl border ${theme.cardBorder} bg-white dark:bg-slate-900 p-5 shadow-xs hover:shadow-xl ${theme.borderHover} transition-all duration-300 flex flex-col justify-between cursor-pointer overflow-hidden`}
                       >
-                        <div className="absolute -right-16 -top-16 w-36 h-36 rounded-full bg-emerald-500/10 blur-2xl group-hover:bg-emerald-500/20 transition-all duration-500 pointer-events-none" />
+                        {/* Top Colorful Accent Strip */}
+                        <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${theme.topBar}`} />
+
+                        {/* Hiệu ứng hào quang khi hover */}
+                        <div className={`absolute -right-16 -top-16 w-36 h-36 rounded-full bg-gradient-to-br ${theme.glow} blur-2xl group-hover:scale-125 transition-all duration-500 pointer-events-none`} />
 
                         <div className="space-y-4">
                           {/* Course Category Badge & Class Status */}
                           <div className="flex items-center justify-between gap-2">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/70 max-w-[200px] truncate">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${theme.codeBadge} max-w-[200px] truncate`}>
                               <BookOpen className="h-3 w-3 shrink-0" />
                               <span className="truncate">[{cls.courseCategory}] {cls.courseTitle}</span>
                             </span>
@@ -718,11 +724,11 @@ export default function StudentFilesPage() {
 
                           {/* Class Name */}
                           <div className="flex items-start gap-3.5">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300 shadow-sm">
+                            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-sm transition-all duration-300 group-hover:scale-110 ${theme.iconBg}`}>
                               <School className="h-6 w-6" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h3 className="text-base font-black text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-2 leading-snug">
+                              <h3 className="text-base font-black text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-sky-400 transition-colors line-clamp-2 leading-snug">
                                 {cls.title}
                               </h3>
                               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">
@@ -733,9 +739,9 @@ export default function StudentFilesPage() {
 
                           {/* Metrics */}
                           <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs">
-                            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 p-2.5 border border-slate-100 dark:border-slate-800">
+                            <div className={`rounded-xl p-2.5 border ${theme.studentBox}`}>
                               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Tài liệu</span>
-                              <span className={`text-sm font-black ${clsFiles.length > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`}>
+                              <span className={`text-sm font-black ${clsFiles.length > 0 ? theme.studentText : "text-slate-400"}`}>
                                 {clsFiles.length} file
                               </span>
                             </div>
@@ -749,7 +755,7 @@ export default function StudentFilesPage() {
                           </div>
 
                           {latestFile && (
-                            <div className="text-[11px] text-slate-600 dark:text-slate-300 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-900/30 rounded-xl px-3 py-2 flex items-center gap-1.5 truncate">
+                            <div className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 rounded-xl px-3 py-2 flex items-center gap-1.5 truncate">
                               <Sparkles className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                               <span className="truncate">
                                 Mới nhất: <strong className="font-semibold text-slate-900 dark:text-white">{latestFile.name}</strong>
@@ -760,7 +766,7 @@ export default function StudentFilesPage() {
 
                         {/* Bottom action */}
                         <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end text-xs font-bold">
-                          <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 group-hover:translate-x-1 transition-transform">
+                          <span className={`inline-flex items-center gap-1 ${theme.accentText} group-hover:translate-x-1 transition-transform`}>
                             <span>Vào xem theo buổi</span>
                             <ArrowRight className="h-4 w-4" />
                           </span>

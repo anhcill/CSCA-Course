@@ -5,40 +5,8 @@ import { fetchCourseWorkspace } from "../../api/lmsClient";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 
-const CLASS_THEMES = [
-  {
-    topBar: "from-blue-500 via-indigo-500 to-violet-500",
-    iconBg: "bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-blue-500/30",
-    badge: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-sky-300 ring-blue-200/60 dark:ring-blue-800/60",
-    glow: "from-blue-500/15 to-indigo-500/5",
-    borderHover: "hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-blue-500/10",
-    buttonBg: "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-600/25",
-  },
-  {
-    topBar: "from-emerald-500 via-teal-500 to-cyan-500",
-    iconBg: "bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-emerald-500/30",
-    badge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 ring-emerald-200/60 dark:ring-emerald-800/60",
-    glow: "from-emerald-500/15 to-teal-500/5",
-    borderHover: "hover:border-emerald-400 dark:hover:border-emerald-500 hover:shadow-emerald-500/10",
-    buttonBg: "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/25",
-  },
-  {
-    topBar: "from-purple-500 via-fuchsia-500 to-pink-500",
-    iconBg: "bg-gradient-to-br from-purple-500 to-fuchsia-600 text-white shadow-purple-500/30",
-    badge: "bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 ring-purple-200/60 dark:ring-purple-800/60",
-    glow: "from-purple-500/15 to-fuchsia-500/5",
-    borderHover: "hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-purple-500/10",
-    buttonBg: "bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 text-white shadow-purple-600/25",
-  },
-  {
-    topBar: "from-amber-400 via-orange-500 to-rose-500",
-    iconBg: "bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-amber-500/30",
-    badge: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 ring-amber-200/60 dark:ring-amber-800/60",
-    glow: "from-amber-500/15 to-orange-500/5",
-    borderHover: "hover:border-amber-400 dark:hover:border-amber-500 hover:shadow-amber-500/10",
-    buttonBg: "bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-700 hover:to-rose-700 text-white shadow-amber-600/25",
-  },
-];
+import { getClassTheme } from "../../../utils/classThemes";
+
 
 export default function CourseClassListPage() {
   const { courseId } = useParams();
@@ -113,13 +81,13 @@ export default function CourseClassListPage() {
         ) : (
           <section className="mt-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-4.5">
             {classes.map((liveClass, index) => {
-              const theme = CLASS_THEMES[index % CLASS_THEMES.length];
+              const theme = getClassTheme(liveClass, index);
               const displayTitle = liveClass.title?.startsWith("Lớp") ? liveClass.title : `Lớp ${liveClass.title}`;
               return (
                 <Link
                   key={liveClass.id}
                   to={`/lms/courses/${courseId}/classes/${liveClass.id}`}
-                  className={`group relative flex min-h-[220px] flex-col justify-between overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/95 p-4 sm:p-5 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl ${theme.borderHover}`}
+                  className={`group relative flex min-h-[220px] flex-col justify-between overflow-hidden rounded-3xl border ${theme.cardBorder} bg-white dark:bg-slate-900/95 p-4 sm:p-5 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl ${theme.borderHover}`}
                 >
                   {/* Top Colorful Accent Strip */}
                   <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${theme.topBar}`} />

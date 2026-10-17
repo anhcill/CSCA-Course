@@ -1333,7 +1333,10 @@ router.post("/:classId/chapters", protectRoute, requireTeacher, async (req, res)
       await client.query("ROLLBACK");
       return forbidden(res, "Admin chưa cấp quyền quản lý chương cho bạn ở lớp này");
     }
-    const classResult = await client.query("SELECT id FROM live_classes WHERE id = $1 FOR UPDATE", [classId]);
+    const classResult = await client.query(
+      "SELECT id, instructor_id FROM live_classes WHERE id = $1 FOR UPDATE",
+      [classId],
+    );
     if (!classResult.rows.length) {
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy lớp học trực tuyến");
@@ -1354,7 +1357,7 @@ router.post("/:classId/chapters", protectRoute, requireTeacher, async (req, res)
        RETURNING id, live_class_id, title, description, objectives, position,
                  is_system_default, assigned_teacher_id, created_at, updated_at`,
       [classId, values.title, values.description, values.objectives, position,
-        req.user.role === "admin" ? values.teacherId ?? null : req.user.id, req.user.id],
+        values.teacherId ?? classResult.rows[0].instructor_id ?? null, req.user.id],
     );
     await client.query("COMMIT");
     return res.status(201).json({ success: true, data: { ...result.rows[0], sessions: [] } });
@@ -1368,27 +1371,44 @@ router.post("/:classId/chapters", protectRoute, requireTeacher, async (req, res)
 });
 
 router.patch("/:classId/chapters/:chapterId", protectRoute, requireTeacher, async (req, res) => {
+  let client;
   try {
     const classId = parsePositiveId(req.params.classId);
     const chapterId = parsePositiveId(req.params.chapterId);
     if (!classId || !chapterId) return validationError(res, "classId hoặc chapterId không hợp lệ");
-    const liveClass = await getClassById(classId);
-    if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!(await canManageClassCurriculum({ query }, classId, req.user))) return forbidden(res, "Admin chưa cấp quyền quản lý chương cho bạn ở lớp này");
     const { errors, values } = validateChapterInput(req.body || {}, { partial: true });
     if (errors.length) return validationError(res, errors.join("; "));
     if (req.user.role !== "admin" && values.teacherId !== undefined) {
       return forbidden(res, "Chỉ quản trị viên được phân công giáo viên cho chương");
     }
-    const chapter = await query(
-      "SELECT assigned_teacher_id FROM class_chapters WHERE id = $1 AND live_class_id = $2",
+    client = await getClient();
+    await client.query("BEGIN");
+    const liveClassResult = await client.query(
+      "SELECT id, management_class_source_id FROM live_classes WHERE id = $1 FOR UPDATE",
+      [classId],
+    );
+    if (!liveClassResult.rows.length) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy lớp học trực tuyến");
+    }
+    if (!(await canManageClassCurriculum(client, classId, req.user))) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Admin chưa cấp quyền quản lý chương cho bạn ở lớp này");
+    }
+    const chapter = await client.query(
+      `SELECT assigned_teacher_id, is_system_default
+       FROM class_chapters WHERE id = $1 AND live_class_id = $2 FOR UPDATE`,
       [chapterId, classId],
     );
-    if (!chapter.rows.length) return notFound(res, "Không tìm thấy chương của lớp này");
-    if (values.teacherId && !(await isClassTeacher({ query }, classId, values.teacherId))) {
+    if (!chapter.rows.length) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy chương của lớp này");
+    }
+    if (values.teacherId && !(await isClassTeacher(client, classId, values.teacherId))) {
+      await client.query("ROLLBACK");
       return validationError(res, "Giáo viên chưa được phân công vào lớp này");
     }
-    const result = await query(
+    const result = await client.query(
       `UPDATE class_chapters
        SET title = COALESCE($3, title), description = COALESCE($4, description),
            objectives = COALESCE($5, objectives), position = COALESCE($6, position),
@@ -1401,11 +1421,42 @@ router.patch("/:classId/chapters/:chapterId", protectRoute, requireTeacher, asyn
         values.objectives ?? null, values.position ?? null, req.user.id,
         values.teacherId !== undefined, values.teacherId ?? null],
     );
-    if (!result.rows.length) return notFound(res, "Không tìm thấy chương của lớp này");
-    return res.json({ success: true, data: result.rows[0] });
+    let renamedSessions = [];
+    if (values.title !== undefined && !chapter.rows[0].is_system_default) {
+      const renamed = await client.query(
+        `WITH updated AS (
+           UPDATE class_sessions
+           SET title = $3, version = version + 1, updated_at = NOW()
+           WHERE live_class_id = $1 AND chapter_id = $2 AND title IS DISTINCT FROM $3
+           RETURNING id, live_class_id, chapter_id, schedule_id, title, start_time, end_time,
+                     status, original_start_at, original_end_at, change_reason, changed_at,
+                     meet_url, version, management_session_source_id, created_at, updated_at
+         )
+         SELECT updated.*, recurring_schedule.management_schedule_source_id AS management_schedule_owner_id
+         FROM updated
+         LEFT JOIN class_schedules recurring_schedule ON recurring_schedule.id = updated.schedule_id`,
+        [classId, chapterId, result.rows[0].title],
+      );
+      renamedSessions = renamed.rows;
+      for (const session of renamedSessions) {
+        if (!isManagementOwnedSession(session)) {
+          await enqueueManagementCalendarDelivery(client, {
+            managementClassId: liveClassResult.rows[0].management_class_source_id,
+            eventType: "lms.session.upserted",
+            lmsSession: session,
+            correlationId: `session:${session.id}:v${session.version || 1}`,
+          });
+        }
+      }
+    }
+    await client.query("COMMIT");
+    return res.json({ success: true, data: result.rows[0], renamedSessionCount: renamedSessions.length });
   } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error updating class chapter:", error);
     return internalError(res, "Lỗi khi cập nhật chương học");
+  } finally {
+    client?.release();
   }
 });
 
@@ -1417,7 +1468,14 @@ router.patch("/sessions/:sessionId/chapter", protectRoute, requireTeacher, async
   try {
     await client.query("BEGIN");
     const sessionResult = await client.query(
-      `SELECT id, live_class_id, chapter_id, version FROM class_sessions WHERE id = $1 FOR UPDATE`,
+      `SELECT cs.id, cs.live_class_id, cs.chapter_id, cs.title, cs.version,
+              cs.management_session_source_id,
+              recurring_schedule.management_schedule_source_id AS management_schedule_owner_id,
+              lc.management_class_source_id
+       FROM class_sessions cs
+       JOIN live_classes lc ON lc.id = cs.live_class_id
+       LEFT JOIN class_schedules recurring_schedule ON recurring_schedule.id = cs.schedule_id
+       WHERE cs.id = $1 FOR UPDATE OF cs`,
       [sessionId],
     );
     const session = sessionResult.rows[0];
@@ -1430,7 +1488,7 @@ router.patch("/sessions/:sessionId/chapter", protectRoute, requireTeacher, async
       return forbidden(res, "Admin chưa cấp quyền quản lý chương cho bạn ở lớp này");
     }
     const chapter = await client.query(
-      "SELECT id FROM class_chapters WHERE id = $1 AND live_class_id = $2",
+      "SELECT id, title, is_system_default FROM class_chapters WHERE id = $1 AND live_class_id = $2",
       [chapterId, session.live_class_id],
     );
     if (!chapter.rows.length) {
@@ -1442,12 +1500,31 @@ router.patch("/sessions/:sessionId/chapter", protectRoute, requireTeacher, async
       return res.status(409).json({ success: false, errorCode: "SESSION_VERSION_CONFLICT", message: "Buổi học đã được sửa ở nơi khác. Hãy tải lại trước khi lưu." });
     }
     const result = await client.query(
-      `UPDATE class_sessions SET chapter_id = $2, version = version + 1, updated_at = NOW()
-       WHERE id = $1 RETURNING id, live_class_id, chapter_id, version`,
-      [sessionId, chapterId],
+      `UPDATE class_sessions
+       SET chapter_id = $2, title = $3, version = version + 1, updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, live_class_id, chapter_id, schedule_id, title, start_time, end_time, status,
+                 original_start_at, original_end_at, change_reason, changed_at,
+                 meet_url, version, management_session_source_id, created_at, updated_at`,
+      [sessionId, chapterId, chapter.rows[0].is_system_default ? session.title : chapter.rows[0].title],
     );
+    if (!isManagementOwnedSession(session)) {
+      await enqueueManagementCalendarDelivery(client, {
+        managementClassId: session.management_class_source_id,
+        eventType: "lms.session.upserted",
+        lmsSession: result.rows[0],
+        correlationId: `session:${result.rows[0].id}:v${result.rows[0].version || 1}`,
+      });
+    }
     await client.query("COMMIT");
-    return res.json({ success: true, data: result.rows[0], message: "Đã gắn chương cho buổi học" });
+    return res.json({
+      success: true,
+      data: safeSession({
+        ...result.rows[0],
+        management_schedule_owner_id: session.management_schedule_owner_id,
+      }),
+      message: "Đã gắn chương cho buổi học",
+    });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Error assigning session chapter:", error);
@@ -1525,9 +1602,10 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
     client = await getClient();
     await client.query("BEGIN");
     let selectedChapterId = chapterId;
+    let selectedChapterTitle = null;
     if (chapterId) {
       const chapterResult = await client.query(
-        "SELECT id, assigned_teacher_id FROM class_chapters WHERE id = $1 AND live_class_id = $2",
+        "SELECT id, title, is_system_default, assigned_teacher_id FROM class_chapters WHERE id = $1 AND live_class_id = $2",
         [chapterId, classId],
       );
       if (!chapterResult.rows.length) {
@@ -1539,9 +1617,13 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
         await client.query("ROLLBACK");
         return forbidden(res, "Bạn chưa được phân công dạy chương này");
       }
+      if (!chapterResult.rows[0].is_system_default) selectedChapterTitle = chapterResult.rows[0].title;
     } else if (chapterValues) {
       // Serialize position allocation with other chapter creation requests.
-      await client.query("SELECT id FROM live_classes WHERE id = $1 FOR UPDATE", [classId]);
+      const lockedClass = await client.query(
+        "SELECT id, instructor_id FROM live_classes WHERE id = $1 FOR UPDATE",
+        [classId],
+      );
       if (chapterValues.teacherId && !(await isClassTeacher(client, classId, chapterValues.teacherId))) {
         await client.query("ROLLBACK");
         return validationError(res, "Giáo viên chưa được phân công vào lớp này");
@@ -1550,11 +1632,12 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
       const chapterResult = await client.query(
         `INSERT INTO class_chapters (live_class_id, title, description, objectives, position,
            assigned_teacher_id, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING id`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING id, title`,
         [classId, chapterValues.title, chapterValues.description, chapterValues.objectives,
-          position, req.user.role === "admin" ? chapterValues.teacherId ?? null : req.user.id, req.user.id],
+          position, chapterValues.teacherId ?? lockedClass.rows[0].instructor_id ?? null, req.user.id],
       );
       selectedChapterId = chapterResult.rows[0].id;
+      selectedChapterTitle = chapterResult.rows[0].title;
     }
     const result = await client.query(
       `INSERT INTO class_sessions (
@@ -1565,7 +1648,7 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
        RETURNING id, live_class_id, chapter_id, schedule_id, title, start_time, end_time, status,
                  original_start_at, original_end_at, change_reason, changed_at,
                  meet_url, version, management_session_source_id, created_at, updated_at`,
-      [classId, selectedChapterId, req.body.title.trim(), req.body.meetUrl || null,
+      [classId, selectedChapterId, selectedChapterTitle || req.body.title.trim(), req.body.meetUrl || null,
         req.body.passcode || null, startTime, endTime, req.body.status || "scheduled"],
     );
     const session = result.rows[0];
@@ -1822,7 +1905,8 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
         return validationError(res, "chapterId không hợp lệ");
       }
       const chapter = await client.query(
-        "SELECT id, assigned_teacher_id FROM class_chapters WHERE id = $1 AND live_class_id = $2",
+        `SELECT id, title, is_system_default, assigned_teacher_id
+         FROM class_chapters WHERE id = $1 AND live_class_id = $2`,
         [selectedChapterId, current.live_class_id],
       );
       if (!chapter.rows.length) {
@@ -1833,6 +1917,13 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
         await client.query("ROLLBACK");
         return forbidden(res, "Bạn chưa được phân công dạy chương này");
       }
+      if (!chapter.rows[0].is_system_default) merged.title = chapter.rows[0].title;
+    } else if (body.title !== undefined) {
+      const chapter = await client.query(
+        "SELECT title, is_system_default FROM class_chapters WHERE id = $1 AND live_class_id = $2",
+        [selectedChapterId, current.live_class_id],
+      );
+      if (chapter.rows.length && !chapter.rows[0].is_system_default) merged.title = chapter.rows[0].title;
     }
 
     const result = await client.query(

@@ -31,44 +31,8 @@ const EMPTY_DATA = {
   pagination: { page: 1, limit: 8, total: 0, totalPages: 0 },
 };
 
-const TEACHER_CLASS_THEMES = [
-  {
-    topBar: "from-blue-500 via-indigo-500 to-sky-500",
-    codeBadge: "bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-sky-300 ring-1 ring-blue-200/60 dark:ring-blue-800/60",
-    studentBox: "bg-blue-50/50 dark:bg-blue-950/30 border-blue-100/60 dark:border-blue-900/40",
-    studentText: "text-blue-700 dark:text-sky-300",
-    glow: "from-blue-500/10 to-indigo-500/5",
-    borderHover: "hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-blue-500/10",
-    buttonBg: "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-500/20",
-  },
-  {
-    topBar: "from-purple-500 via-fuchsia-500 to-pink-500",
-    codeBadge: "bg-purple-50 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300 ring-1 ring-purple-200/60 dark:ring-purple-800/60",
-    studentBox: "bg-purple-50/50 dark:bg-purple-950/30 border-purple-100/60 dark:border-purple-900/40",
-    studentText: "text-purple-700 dark:text-purple-300",
-    glow: "from-purple-500/10 to-fuchsia-500/5",
-    borderHover: "hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-purple-500/10",
-    buttonBg: "bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 text-white shadow-purple-500/20",
-  },
-  {
-    topBar: "from-emerald-500 via-teal-500 to-cyan-500",
-    codeBadge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 ring-1 ring-emerald-200/60 dark:ring-emerald-800/60",
-    studentBox: "bg-emerald-50/50 dark:bg-emerald-950/30 border-emerald-100/60 dark:border-emerald-900/40",
-    studentText: "text-emerald-700 dark:text-emerald-300",
-    glow: "from-emerald-500/10 to-teal-500/5",
-    borderHover: "hover:border-emerald-400 dark:hover:border-emerald-500 hover:shadow-emerald-500/10",
-    buttonBg: "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-500/20",
-  },
-  {
-    topBar: "from-amber-400 via-orange-500 to-rose-500",
-    codeBadge: "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 ring-1 ring-amber-200/60 dark:ring-amber-800/60",
-    studentBox: "bg-amber-50/50 dark:bg-amber-950/30 border-amber-100/60 dark:border-amber-900/40",
-    studentText: "text-amber-700 dark:text-amber-300",
-    glow: "from-amber-500/10 to-orange-500/5",
-    borderHover: "hover:border-amber-400 dark:hover:border-amber-500 hover:shadow-amber-500/10",
-    buttonBg: "bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-orange-500/20",
-  },
-];
+import { getClassTheme } from "../../../utils/classThemes";
+
 
 const formatDateTime = (value, fallback = "Chưa có lịch") => {
   if (!value) return fallback;
@@ -197,11 +161,11 @@ export default function TeacherHubPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {data.classes.map((item, index) => {
-                    const theme = TEACHER_CLASS_THEMES[index % TEACHER_CLASS_THEMES.length];
+                    const theme = getClassTheme(item, index);
                     return (
                       <article
                         key={item.id}
-                        className={`group relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${theme.borderHover}`}
+                        className={`group relative overflow-hidden rounded-2xl border ${theme.cardBorder} bg-white dark:bg-slate-900 p-4 space-y-3 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${theme.borderHover}`}
                       >
                         {/* Top Colorful Accent Strip */}
                         <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${theme.topBar}`} />

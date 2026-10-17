@@ -80,7 +80,7 @@ export default function ClassChaptersManager({ classId, sessions = [], onChanged
           title: form.title.trim(),
           description: form.description.trim(),
           objectives: form.objectives.trim(),
-          ...(teachers.length ? { teacherId: form.teacherId ? Number(form.teacherId) : null } : {}),
+          ...(form.teacherId ? { teacherId: Number(form.teacherId) } : {}),
         });
       if (!result?.success || !result.data?.id) throw new Error(result?.message || "Không thể tạo chương.");
 
@@ -146,7 +146,7 @@ export default function ClassChaptersManager({ classId, sessions = [], onChanged
     {canManage && showForm && <form onSubmit={createChapter} className="mt-4 space-y-3 rounded-xl border border-blue-200 bg-blue-50/50 p-4 dark:border-blue-900/70 dark:bg-blue-950/20">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Tên chương *<input required maxLength={255} value={form.title} onChange={(event) => setForm((value) => ({ ...value, title: event.target.value }))} className={fieldClass} placeholder="Ví dụ: Chương 1 - Tổng quan" /></label>
-        {teachers.length > 0 && <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Giáo viên phụ trách<select value={form.teacherId} onChange={(event) => setForm((value) => ({ ...value, teacherId: event.target.value }))} className={fieldClass}><option value="">Chưa phân công</option>{teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name || teacher.email}</option>)}</select></label>}
+        {teachers.length > 0 && <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Giáo viên phụ trách<select value={form.teacherId} onChange={(event) => setForm((value) => ({ ...value, teacherId: event.target.value }))} className={fieldClass}><option value="">{editingChapterId ? "Chưa phân công" : "Giáo viên chính của lớp"}</option>{teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name || teacher.email}</option>)}</select></label>}
       </div>
       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Mô tả<input maxLength={10000} value={form.description} onChange={(event) => setForm((value) => ({ ...value, description: event.target.value }))} className={fieldClass} placeholder="Nội dung chính của chương (tùy chọn)" /></label>
       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Mục tiêu học tập<textarea maxLength={5000} rows={2} value={form.objectives} onChange={(event) => setForm((value) => ({ ...value, objectives: event.target.value }))} className={fieldClass} placeholder="Mục tiêu của chương (tùy chọn)" /></label>

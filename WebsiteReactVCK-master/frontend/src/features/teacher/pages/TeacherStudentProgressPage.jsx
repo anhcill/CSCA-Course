@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Download, Pencil, Search, SlidersHorizontal, Users, X } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, Download, Pencil, Search, SlidersHorizontal, Users, X } from "lucide-react";
 import GradebookPolicyPanel from "../components/GradebookPolicyPanel";
 import TeacherRiskStudentsSection from "../components/TeacherRiskStudentsSection";
 import { revokeAccommodation, fetchAssessmentAccommodations, fetchClassStudentProgress, fetchTeacherDashboardStats, gradebookExportUrl, saveAssessmentAccommodation, updateGradebookScore } from "../../api/lmsClient";
@@ -32,16 +32,6 @@ const attendanceLabel = {
   absent: { text: "Vắng", cls: "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300" },
   excused: { text: "Có phép", cls: "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300" },
 };
-
-function StatCard({ icon: Icon, label, value, tone }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tone}`}><Icon className="h-4 w-4" /></span>
-      <p className="mt-2 text-lg font-black leading-snug text-slate-950 dark:text-white">{value}</p>
-      <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
-    </div>
-  );
-}
 
 const datetimeLocalValue = (value) => {
   if (!value) return "";
@@ -384,7 +374,6 @@ export default function TeacherStudentProgressPage() {
     return gradebook.students.filter((student) => [student.name, student.email].some((value) => String(value || "").toLocaleLowerCase().includes(needle)));
   }, [gradebook.students, search]);
 
-  const completedSessions = gradebook.sessions.filter((session) => new Date(session.endTime).getTime() <= Date.now()).length;
   const selectedClass = classes.find((item) => String(item.id) === classId);
 
   const getAttendanceSummary = (studentId) => {
@@ -517,12 +506,6 @@ export default function TeacherStudentProgressPage() {
         ) : (
           <>
             <GradebookPolicyPanel key={classId + ":" + selectedSessionId} classId={classId} sessionId={selectedSessionId} search={search} />
-            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard icon={BookOpen} label="Khóa học" value={gradebook.classInfo?.courseTitle || selectedClass?.courseTitle || "Chưa gắn"} tone="bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-sky-400" />
-              <StatCard icon={Users} label="Sĩ số đang học" value={gradebook.students.length} tone="bg-violet-50 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400" />
-              <StatCard icon={CalendarDays} label="Buổi đã diễn ra" value={`${completedSessions}/${gradebook.sessions.length}`} tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400" />
-              <StatCard icon={ClipboardCheck} label="Hoạt động có điểm" value={gradebook.activities.length} tone="bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400" />
-            </section>
 
             <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
