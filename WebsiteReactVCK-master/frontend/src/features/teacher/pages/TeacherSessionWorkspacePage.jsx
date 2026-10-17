@@ -250,7 +250,7 @@ export default function TeacherSessionWorkspacePage() {
                 <h1 className="mt-2 line-clamp-2 text-xl font-black leading-tight sm:text-2xl">{session.title}</h1>
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-blue-100">
                   <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {formatDateTime(session.start_time)}</span>
-                  <span>Lớp: {classInfo.title || `Lớp #${classId}`}</span>
+                  <span>Lớp: {classInfo.title || "Lớp học"}</span>
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">

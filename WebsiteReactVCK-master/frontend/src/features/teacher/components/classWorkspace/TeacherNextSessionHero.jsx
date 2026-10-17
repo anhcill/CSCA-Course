@@ -14,7 +14,6 @@ const formatDateTime = (value) => {
 
 export default function TeacherNextSessionHero({
   classTitle,
-  classId,
   nextSession,
   onOpenSession,
   onOpenAttendance,
@@ -41,7 +40,7 @@ export default function TeacherNextSessionHero({
                   <Clock className="h-3.5 w-3.5 text-blue-200" /> {formatDateTime(nextSession.start_time || nextSession.startTime)}
                 </span>
                 <span className="text-blue-300/80">•</span>
-                <span>Lớp: {classTitle || `Lớp #${classId}`}</span>
+                <span>Lớp: {classTitle || "Lớp học"}</span>
               </div>
             </>
           ) : (

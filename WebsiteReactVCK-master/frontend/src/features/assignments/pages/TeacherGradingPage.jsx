@@ -509,7 +509,7 @@ export default function TeacherGradingPage() {
               <div className="mt-2 grid gap-2">
                 <select value={filterClass} onChange={(event) => setFilterClass(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-white">
                   <option value="all">Tất cả lớp</option>
-                  {[...new Map(submissions.filter((sub) => sub.classId).map((sub) => [sub.classId, sub.classTitle || `Lớp #${sub.classId}`]))].map(([classId, classTitle]) => (
+                  {[...new Map(submissions.filter((sub) => sub.classId).map((sub) => [sub.classId, sub.classTitle || "Lớp học chưa đặt tên"]))].map(([classId, classTitle]) => (
                     <option key={classId} value={classId}>{classTitle}</option>
                   ))}
                 </select>

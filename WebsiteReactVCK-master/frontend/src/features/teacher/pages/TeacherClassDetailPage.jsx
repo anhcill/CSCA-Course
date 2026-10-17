@@ -136,7 +136,6 @@ export default function TeacherClassDetailPage() {
 
         <TeacherNextSessionHero
           classTitle={classInfo.title}
-          classId={classId}
           nextSession={nextSession}
           onOpenSession={(session) => navigate(`${classBasePath}/sessions/${session.id}`)}
           onOpenAttendance={(session) => navigate(`${classBasePath}/attendance?sessionId=${session.id}`)}

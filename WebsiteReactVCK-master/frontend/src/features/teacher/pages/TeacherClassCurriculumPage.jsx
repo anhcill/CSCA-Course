@@ -84,7 +84,7 @@ export default function TeacherClassCurriculumPage() {
                 {workspace.course?.title || workspace.course?.name || classInfo?.courseTitle || "Giáo trình khóa học"}
               </h1>
               <p className="text-xs font-medium text-blue-100 sm:text-sm">
-                Lớp: <strong className="font-bold text-white">{classInfo?.title || `Lớp #${classId}`}</strong> · {totalLessons} bài học đã công bố
+                Lớp: <strong className="font-bold text-white">{classInfo?.title || "Lớp học"}</strong> · {totalLessons} bài học đã công bố
               </p>
             </div>
             {isAdmin && (
