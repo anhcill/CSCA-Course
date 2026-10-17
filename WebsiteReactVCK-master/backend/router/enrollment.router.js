@@ -211,6 +211,35 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
             (SELECT COUNT(*) FROM lesson_progress lp WHERE lp.user_id = $1 AND lp.course_id = c.id AND lp.is_completed = true),
             0
           ) AS completed_lessons,
+          COALESCE(
+            (
+              SELECT COUNT(*)
+              FROM class_sessions cs
+              JOIN live_classes lc ON lc.id = cs.live_class_id
+              JOIN class_enrollments ce ON ce.live_class_id = lc.id
+              WHERE ce.user_id = $1
+                AND ce.status = 'active'
+                AND lc.course_id = c.id
+                AND lc.status = 'active'
+                AND cs.status <> 'cancelled'
+            ),
+            0
+          ) AS total_sessions,
+          COALESCE(
+            (
+              SELECT COUNT(*)
+              FROM class_sessions cs
+              JOIN live_classes lc ON lc.id = cs.live_class_id
+              JOIN class_enrollments ce ON ce.live_class_id = lc.id
+              WHERE ce.user_id = $1
+                AND ce.status = 'active'
+                AND lc.course_id = c.id
+                AND lc.status = 'active'
+                AND cs.status <> 'cancelled'
+                AND (cs.status = 'ended' OR cs.end_time <= NOW())
+            ),
+            0
+          ) AS completed_sessions,
           (
             SELECT json_build_object(
               'lesson_id', lp.lesson_id,
@@ -232,13 +261,25 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
       );
 
     const courses = result.rows.map(row => {
-        const total = parseInt(row.total_lessons) || 0;
-        const completed = parseInt(row.completed_lessons) || 0;
-        const progress_percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+        const totalLessons = parseInt(row.total_lessons) || 0;
+        const completedLessons = parseInt(row.completed_lessons) || 0;
+        const totalSessions = parseInt(row.total_sessions) || 0;
+        const completedSessions = parseInt(row.completed_sessions) || 0;
+        const usesLessonProgress = totalLessons > 0;
+        const progressTotal = usesLessonProgress ? totalLessons : totalSessions;
+        const progressCompleted = usesLessonProgress ? completedLessons : completedSessions;
+        const progress_percent = progressTotal > 0
+          ? Math.round((progressCompleted / progressTotal) * 100)
+          : 0;
         return {
           ...row,
-          total_lessons: total,
-          completed_lessons: completed,
+          total_lessons: totalLessons,
+          completed_lessons: completedLessons,
+          total_sessions: totalSessions,
+          completed_sessions: completedSessions,
+          progress_total: progressTotal,
+          progress_completed: progressCompleted,
+          progress_source: usesLessonProgress ? "lessons" : "sessions",
           progress_percent,
           classes: Array.isArray(row.classes) ? row.classes : [],
         };

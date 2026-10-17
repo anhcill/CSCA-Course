@@ -211,8 +211,9 @@ export default function StudentCourseListPage() {
               const progress = getProgress(course);
               const completed = progress === 100;
               const hasStarted = progress > 0;
-              const totalLessons = Number(course.total_lessons || 0);
-              const completedLessons = Number(course.completed_lessons || 0);
+              const progressTotal = Number(course.progress_total || 0);
+              const progressCompleted = Number(course.progress_completed || 0);
+              const progressUnit = course.progress_source === "sessions" ? "buổi học" : "bài học";
               const classes = Array.isArray(course.classes) ? course.classes : [];
 
               return (
@@ -241,14 +242,16 @@ export default function StudentCourseListPage() {
 
                     {/* Card Body */}
                     <div className="space-y-3 p-4 sm:p-5">
-                      <p className="line-clamp-2 text-xs sm:text-sm leading-relaxed text-slate-600 dark:text-slate-300 min-h-[2.5rem]">
-                        {course.description || "Chương trình học được quản lý và cấp quyền riêng cho bạn."}
-                      </p>
+                      {course.description && (
+                        <p className="line-clamp-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300 sm:text-sm">
+                          {course.description}
+                        </p>
+                      )}
 
                       <div className="pt-1">
                         <div className="flex items-center justify-between text-xs font-semibold">
                           <span className="text-slate-500 dark:text-slate-400">
-                            {totalLessons > 0 ? `${completedLessons}/${totalLessons} bài học` : "Tiến độ học tập"}
+                            {progressTotal > 0 ? `${progressCompleted}/${progressTotal} ${progressUnit}` : "Tiến độ học tập"}
                           </span>
                           <span className={`font-black ${completed ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-sky-400"}`}>
                             {progress}%
