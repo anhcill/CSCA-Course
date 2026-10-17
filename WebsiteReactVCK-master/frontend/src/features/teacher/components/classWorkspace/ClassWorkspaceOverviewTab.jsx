@@ -27,9 +27,6 @@ export default function ClassWorkspaceOverviewTab({
               <h2 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white leading-tight">
                 Lớp là tổng quan, buổi học là không gian làm việc
               </h2>
-              <p className="mt-0.5 text-[11px] sm:text-xs leading-4 text-slate-600 dark:text-slate-300 line-clamp-2">
-                Chọn một buổi trong lịch bên dưới để giao bài, tạo Quiz, tải tài liệu, điểm danh và xem kết quả. Mọi dữ liệu đó được gắn riêng với đúng buổi học.
-              </p>
             </div>
           </div>
 
@@ -37,7 +34,9 @@ export default function ClassWorkspaceOverviewTab({
           <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               ["Sĩ số lớp", stats.totalStudents || stats.total_students || 0, Users, "text-blue-600 dark:text-sky-400 bg-blue-50 dark:bg-blue-950/60"],
-              ["Chuyên cần TB", `${stats.attendanceRate || stats.average_attendance_rate || 0}%`, CheckCircle2, "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60"],
+              ["Chuyên cần TB", stats.attendanceRate === null || stats.attendanceRate === undefined
+                ? "Chưa có"
+                : `${stats.attendanceRate}%`, CheckCircle2, "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60"],
               ["Bài cần chấm", stats.pendingGrading || stats.pending_assignments_count || 0, BookOpen, "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60"],
               ["Buổi đã học", stats.completedSessions || stats.completed_sessions_count || 0, CalendarDays, "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60"],
             ].map(([label, value, Icon, iconStyle]) => (

@@ -874,8 +874,8 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, requirePerm
       query(
         `SELECT COUNT(cs.id) FILTER (WHERE cs.status <> 'cancelled')::int AS total_sessions,
                 COUNT(cs.id) FILTER (WHERE cs.status = 'ended' OR cs.end_time <= NOW())::int AS completed_sessions,
-                COALESCE(ROUND(100.0 * COUNT(ca.id) FILTER (WHERE ca.status = 'present') /
-                  NULLIF(COUNT(ca.id) FILTER (WHERE ca.status IN ('present', 'absent', 'excused')), 0), 1), 0) AS attendance_rate,
+                ROUND(100.0 * COUNT(ca.id) FILTER (WHERE ca.status = 'present') /
+                  NULLIF(COUNT(ca.id) FILTER (WHERE ca.status IN ('present', 'absent', 'excused')), 0), 1) AS attendance_rate,
                 COALESCE(ROUND(AVG(student_progress.progress_pct), 1), 0) AS progress_pct,
                 ROUND(AVG(student_grades.gpa), 1) AS avg_gpa,
                 next_session.start_time AS next_session_start,
@@ -949,7 +949,9 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, requirePerm
       totalSessions: Number(summary.total_sessions || 0),
       completedSessions: Number(summary.completed_sessions || 0),
       progressPct: summary.progress_pct === null ? 0 : Number(summary.progress_pct),
-      avgAttendance: `${Number(summary.attendance_rate || 0)}%`,
+      avgAttendance: summary.attendance_rate === null || summary.attendance_rate === undefined
+        ? null
+        : `${Number(summary.attendance_rate)}%`,
       avgGpa: summary.avg_gpa === null ? null : Number(summary.avg_gpa),
       hasMeetingLink: Boolean(summary.next_meet_url),
       provider: getMeetingProvider(summary.next_meet_url),
@@ -995,6 +997,18 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, requirePerm
         if (leftStart && rightStart) return leftStart - rightStart;
         return new Date(left.dueDate || 0).getTime() - new Date(right.dueDate || 0).getTime();
       }),
+    };
+
+    detail.stats = {
+      totalStudents: students.length,
+      attendanceRate: summary.attendance_rate === null || summary.attendance_rate === undefined
+        ? null
+        : Number(summary.attendance_rate),
+      pendingGrading: detail.assignments.reduce(
+        (total, activity) => total + Number(activity.pendingGradingCount || 0),
+        0,
+      ),
+      completedSessions: Number(summary.completed_sessions || 0),
     };
 
     const scheduleResult = await query(
