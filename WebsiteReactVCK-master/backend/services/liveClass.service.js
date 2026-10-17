@@ -1,6 +1,23 @@
 import { query } from "../db/connect.js";
 
 const DEFAULT_JITSI_HOST = "meet.jit.si";
+export const MEETING_OPEN_EARLY_MINUTES = 15;
+export const MEETING_CLOSE_LATE_MINUTES = 30;
+
+export const getMeetingAccessWindow = (startTime, endTime, now = Date.now()) => {
+  const start = new Date(startTime).getTime();
+  const end = new Date(endTime).getTime();
+  const current = now instanceof Date ? now.getTime() : Number(now);
+  const opensAt = start - MEETING_OPEN_EARLY_MINUTES * 60 * 1000;
+  const closesAt = end + MEETING_CLOSE_LATE_MINUTES * 60 * 1000;
+  return {
+    opensAt,
+    closesAt,
+    isOpen: Number.isFinite(start) && Number.isFinite(end) && current >= opensAt && current <= closesAt,
+    isTooEarly: Number.isFinite(start) && current < opensAt,
+    isClosed: Number.isFinite(end) && current > closesAt,
+  };
+};
 
 const normalizeMeetingHost = (value) => {
   if (typeof value !== "string" || !value.trim()) return null;

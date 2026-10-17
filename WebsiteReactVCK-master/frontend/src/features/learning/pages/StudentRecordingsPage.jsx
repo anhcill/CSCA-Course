@@ -1,17 +1,35 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Clock3, ExternalLink, PlaySquare, Search, School, Video } from "lucide-react";
+import { CalendarDays, ExternalLink, FolderOpen, PlaySquare, Search, School, Video } from "lucide-react";
 import { fetchStudentRecordings } from "../../api/lmsClient";
 import { EmptyState, ErrorState, LoadingState } from "../../../components/common/StateView";
 
-const formatDate = (value) => {
-  if (!value) return "Chưa cập nhật ngày ghi hình";
+const dateValue = (value) => {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isNaN(time) ? 0 : time;
+};
+
+const formatDateTime = (value) => {
+  if (!dateValue(value)) return "Chưa cập nhật ngày ghi hình";
+  return new Date(value).toLocaleString("vi-VN", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+};
+
+const dateKey = (value) => {
+  if (!dateValue(value)) return "undated";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Chưa cập nhật ngày ghi hình";
-  return date.toLocaleString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
+const dateHeading = (value) => {
+  if (value === "undated") return "Chưa cập nhật ngày";
+  return new Date(`${value}T00:00:00`).toLocaleDateString("vi-VN", {
+    weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
+  });
 };
 
 export default function StudentRecordingsPage() {
-  const [recordings, setRecordings] = useState([]);
+  const [data, setData] = useState({ classes: [], recordings: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -22,7 +40,16 @@ export default function StudentRecordingsPage() {
     setError("");
     try {
       const response = await fetchStudentRecordings();
-      setRecordings(Array.isArray(response?.data) ? response.data : []);
+      const payload = response?.data;
+      if (Array.isArray(payload)) {
+        const classMap = new Map();
+        payload.forEach((item) => classMap.set(item.classId, {
+          id: item.classId, title: item.classTitle, courseTitle: item.courseTitle,
+        }));
+        setData({ classes: [...classMap.values()], recordings: payload });
+      } else {
+        setData({ classes: payload?.classes || [], recordings: payload?.recordings || [] });
+      }
     } catch (loadError) {
       console.error("Unable to load class recordings", loadError);
       setError(loadError?.message || "Không thể tải bản ghi buổi học.");
@@ -33,27 +60,36 @@ export default function StudentRecordingsPage() {
 
   useEffect(() => { loadRecordings(); }, [loadRecordings]);
 
-  const classes = useMemo(() => {
-    const map = new Map();
-    recordings.forEach((item) => map.set(item.classId, { id: item.classId, title: item.classTitle, courseTitle: item.courseTitle }));
-    return [...map.values()].sort((a, b) => a.title.localeCompare(b.title, "vi"));
-  }, [recordings]);
+  const classes = useMemo(() => [...data.classes].sort((a, b) =>
+    dateValue(b.latestRecordingAt) - dateValue(a.latestRecordingAt)
+      || String(a.title).localeCompare(String(b.title), "vi")), [data.classes]);
 
   const groups = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    const filtered = recordings.filter((item) => {
-      if (classId !== "all" && item.classId !== classId) return false;
-      if (!needle) return true;
-      return [item.title, item.classTitle, item.courseTitle, item.sessionTitle, item.description]
+    return classes.flatMap((classItem) => {
+      if (classId !== "all" && classItem.id !== classId) return [];
+      const items = data.recordings
+        .filter((item) => item.classId === classItem.id)
+        .filter((item) => !needle || [item.title, item.description, item.classTitle, item.courseTitle, formatDateTime(item.recordedAt)]
+          .some((value) => String(value || "").toLowerCase().includes(needle)))
+        .sort((a, b) => dateValue(b.recordedAt) - dateValue(a.recordedAt));
+      const classMatches = !needle || [classItem.title, classItem.courseTitle]
         .some((value) => String(value || "").toLowerCase().includes(needle));
+      if (!classMatches && items.length === 0) return [];
+      const days = new Map();
+      items.forEach((item) => {
+        const key = dateKey(item.recordedAt);
+        if (!days.has(key)) days.set(key, []);
+        days.get(key).push(item);
+      });
+      return [{
+        ...classItem,
+        classDriveUrl: classItem.folderOpenUrl || items.find((item) => item.hasDirectUrl)?.openUrl || null,
+        items,
+        days: [...days.entries()],
+      }];
     });
-    const map = new Map();
-    filtered.forEach((item) => {
-      if (!map.has(item.classId)) map.set(item.classId, { classId: item.classId, classTitle: item.classTitle, courseTitle: item.courseTitle, items: [] });
-      map.get(item.classId).items.push(item);
-    });
-    return [...map.values()];
-  }, [classId, recordings, search]);
+  }, [classId, classes, data.recordings, search]);
 
   return (
     <div className="min-h-full bg-[#f6f9fd] px-4 py-5 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
@@ -63,40 +99,26 @@ export default function StudentRecordingsPage() {
             <div>
               <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-700 dark:bg-sky-950 dark:text-sky-300"><Video className="h-4 w-4" /> Thư viện xem lại</span>
               <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">Bản ghi buổi học</h1>
+              <p className="mt-1 text-sm text-slate-500">Mỗi lớp có một thư mục Drive chung, bản ghi được xếp theo ngày mới nhất.</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_220px]">
-              <label className="relative block">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên buổi hoặc lớp..." className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900" />
-              </label>
-              <select value={classId} onChange={(event) => setClassId(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900">
-                <option value="all">Tất cả lớp ({classes.length})</option>
-                {classes.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-              </select>
+              <label className="relative block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm bản ghi hoặc lớp..." className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900" /></label>
+              <select value={classId} onChange={(event) => setClassId(event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900"><option value="all">Tất cả lớp ({classes.length})</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select>
             </div>
           </div>
         </section>
 
         {loading ? <LoadingState message="Đang tải bản ghi các lớp..." /> : error ? <ErrorState message={error} onRetry={loadRecordings} /> : groups.length === 0 ? (
-          <EmptyState icon={PlaySquare} title="Chưa có bản ghi phù hợp" description="Admin chưa xuất bản bản ghi cho lớp này hoặc không có kết quả khớp bộ lọc." />
+          <EmptyState icon={PlaySquare} title="Chưa có bản ghi phù hợp" description="Chưa có thư mục hoặc bản ghi được xuất bản cho lớp này." />
         ) : groups.map((group) => (
-          <section key={group.classId} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <header className="flex flex-col gap-2 border-b border-slate-100 bg-slate-50/80 px-5 py-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-600 text-white"><School className="h-5 w-5" /></span><div><h2 className="font-black">{group.classTitle}</h2><p className="text-xs text-slate-500">{group.courseTitle || "Khóa học"}</p></div></div>
-              <span className="w-fit rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-700 dark:bg-sky-950 dark:text-sky-300">{group.items.length} bản ghi</span>
+          <section key={group.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <header className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-600 text-white"><School className="h-5 w-5" /></span><div><h2 className="font-black">{group.title}</h2><p className="text-xs text-slate-500">{group.courseTitle || "Khóa học"} · {group.items.length} bản ghi</p></div></div>
+              {group.classDriveUrl && <a href={group.classDriveUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-black text-white hover:bg-sky-700"><FolderOpen className="h-4 w-4" /> Mở Drive của lớp <ExternalLink className="h-3.5 w-3.5" /></a>}
             </header>
-            <div className="grid gap-3 p-4 md:grid-cols-2">
-              {group.items.map((item) => (
-                <article key={item.id} className="flex flex-col rounded-2xl border border-slate-200 p-4 transition hover:border-sky-300 hover:shadow-md dark:border-slate-800 dark:hover:border-sky-800">
-                  <div className="flex items-start justify-between gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white"><PlaySquare className="h-5 w-5" /></span><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">ĐÃ XUẤT BẢN</span></div>
-                  <h3 className="mt-3 font-black text-slate-950 dark:text-white">{item.title}</h3>
-                  {item.sessionTitle && <p className="mt-1 text-xs font-bold text-sky-700 dark:text-sky-300">{item.sessionTitle}</p>}
-                  {item.description && <p className="mt-2 line-clamp-2 text-sm text-slate-600 dark:text-slate-300">{item.description}</p>}
-                  <div className="mt-3 space-y-1.5 text-xs text-slate-500"><p className="flex items-center gap-2"><CalendarDays className="h-3.5 w-3.5" /> {formatDate(item.recordedAt)}</p>{item.durationMinutes && <p className="flex items-center gap-2"><Clock3 className="h-3.5 w-3.5" /> {item.durationMinutes} phút</p>}</div>
-                  <a href={item.openUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-sky-700">Mở trên Google Drive <ExternalLink className="h-4 w-4" /></a>
-                </article>
-              ))}
-            </div>
+            {group.days.length === 0 ? <div className="p-5 text-sm text-slate-500">Các video của lớp được lưu trong thư mục Drive phía trên.</div> : (
+              <div className="space-y-5 p-4 sm:p-5">{group.days.map(([day, items]) => <div key={day}><h3 className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500"><CalendarDays className="h-4 w-4 text-sky-600" /> {dateHeading(day)}</h3><div className="grid gap-3 md:grid-cols-2">{items.map((item) => <article key={item.id} className="flex flex-col rounded-2xl border border-slate-200 p-4 transition hover:border-sky-300 hover:shadow-md dark:border-slate-800 dark:hover:border-sky-800"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white"><PlaySquare className="h-5 w-5" /></span><div className="min-w-0"><h4 className="font-black text-slate-950 dark:text-white">{item.title}</h4><p className="mt-1 text-xs text-slate-500">{formatDateTime(item.recordedAt)}{item.durationMinutes ? ` · ${item.durationMinutes} phút` : ""}</p></div></div>{item.description && <p className="mt-3 line-clamp-2 text-sm text-slate-600 dark:text-slate-300">{item.description}</p>}</article>)}</div></div>)}</div>
+            )}
           </section>
         ))}
       </div>

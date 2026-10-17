@@ -14,7 +14,7 @@ import {
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
-import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
+import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 import { classCalendarIcsUrl, googleCalendarEventUrl } from "../calendarLinks";
 
 const tabs = [
@@ -200,12 +200,9 @@ export default function SessionDetailPage() {
   if (error || !session) return <div className="py-12"><ErrorState title="Chưa thể mở buổi học" message={error} onRetry={loadSession} /></div>;
 
   const basePath = `/lms/courses/${courseId}/classes/${classId}`;
-  const now = Date.now();
-  const start = new Date(session.start_time).getTime();
-  const end = new Date(session.end_time).getTime();
-  const isLive = session.status === "live" || (now >= start && now <= end);
-  const isJoinable = isLive || (start - now <= 15 * 60 * 1000 && now <= end);
-  const isEnded = now > end || session.status === "ended";
+  const meetingWindow = getMeetingWindowState(session);
+  const isJoinable = meetingWindow.isOpen;
+  const isEnded = meetingWindow.isClosed;
   const completeTasks = tasks.filter((task) => ["submitted", "graded"].includes(task.status));
   const tabClass = (isActive) => `inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all duration-200 ${isActive ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-500/20" : "text-slate-600 hover:bg-blue-50/80 hover:text-blue-700 dark:text-slate-400 dark:hover:bg-slate-800/80 dark:hover:text-sky-300"}`;
 
@@ -239,7 +236,7 @@ export default function SessionDetailPage() {
               ) : (
                 <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-xs font-semibold">
                   {isEnded ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
-                  {isEnded ? "Buổi học đã kết thúc" : "Phòng mở trước 15 phút"}
+                  {isEnded ? "Phòng đã đóng sau giờ học 30 phút" : "Phòng mở trước 15 phút"}
                 </span>
               )}
               <a

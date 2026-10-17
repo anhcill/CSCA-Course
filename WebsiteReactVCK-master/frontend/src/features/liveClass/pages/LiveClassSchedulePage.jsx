@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import { CalendarDays, CheckCircle2, Clock3, LockKeyhole, Radio, RotateCcw, Users, Video } from "lucide-react";
 import { fetchMyLiveSchedule, getLiveSessionAccess } from "../../api/lmsClient";
 import { EmptyState, ErrorState, LoadingState } from "../../../components/common/StateView";
-import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../utils/meetingLaunch";
+import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../utils/meetingLaunch";
 
 const formatDate = (value, options) => new Date(value).toLocaleDateString("vi-VN", options);
 const formatTime = (value) => new Date(value).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
@@ -13,9 +13,10 @@ function sessionState(session) {
   const now = Date.now();
   const start = new Date(session.start_time).getTime();
   const end = new Date(session.end_time).getTime();
+  const windowState = getMeetingWindowState(session, now);
+  if (windowState.isClosed) return "completed";
   if (session.status === "live" || (now >= start && now <= end)) return "live";
-  if (now > end) return "completed";
-  if (start - now <= 15 * 60 * 1000) return "open";
+  if (windowState.isOpen) return "open";
   return "upcoming";
 }
 
@@ -70,11 +71,9 @@ export default function LiveClassSchedulePage() {
   }), [enrichedSessions, sessions.length]);
 
   const handleJoin = async (session) => {
-    const now = Date.now();
-    const start = new Date(session.start_time).getTime();
-    const end = new Date(session.end_time).getTime();
-    if (now > end) return toast("Buổi học này đã kết thúc.");
-    if (start - now > 15 * 60 * 1000) return toast("Phòng học mở trước giờ học 15 phút. Hẹn gặp lại bạn sau nhé!", { icon: "⏰" });
+    const windowState = getMeetingWindowState(session);
+    if (windowState.isClosed) return toast("Phòng học đã đóng sau giờ học 30 phút.");
+    if (windowState.isTooEarly) return toast("Phòng học mở trước giờ học 15 phút. Hẹn gặp lại bạn sau nhé!", { icon: "⏰" });
     setJoiningId(session.id);
     const meetingWindow = reserveMeetingWindow();
     try {

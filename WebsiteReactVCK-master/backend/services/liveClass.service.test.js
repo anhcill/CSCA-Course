@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { getMeetingAccessWindow } from "./liveClass.service.js";
+
+test("meeting access opens 15 minutes early and closes 30 minutes late", () => {
+  const start = new Date("2027-01-02T09:00:00.000Z");
+  const end = new Date("2027-01-02T10:00:00.000Z");
+
+  assert.equal(getMeetingAccessWindow(start, end, new Date("2027-01-02T08:44:59.999Z")).isTooEarly, true);
+  assert.equal(getMeetingAccessWindow(start, end, new Date("2027-01-02T08:45:00.000Z")).isOpen, true);
+  assert.equal(getMeetingAccessWindow(start, end, new Date("2027-01-02T10:30:00.000Z")).isOpen, true);
+  assert.equal(getMeetingAccessWindow(start, end, new Date("2027-01-02T10:30:00.001Z")).isClosed, true);
+});
+
 process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
 
 const {

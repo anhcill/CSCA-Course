@@ -15,7 +15,7 @@ import { useAuthContext } from "../../../context/AuthContext";
 import { fetchTeacherDashboardStats, getLiveSessionAccess } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState, PermissionDeniedState } from "../../../components/common/StateView";
-import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
+import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 
 const EMPTY_DATA = {
   stats: {
@@ -110,6 +110,9 @@ export default function TeacherHubPage() {
   }, [isTeacher, loadDashboard]);
 
   const openLiveRoom = async (session) => {
+    const accessWindow = getMeetingWindowState(session);
+    if (accessWindow.isTooEarly) return toast("Phòng dạy mở trước giờ bắt đầu 15 phút.", { icon: "⏰" });
+    if (accessWindow.isClosed) return toast("Phòng dạy đã đóng sau giờ học 30 phút.");
     const meetingWindow = reserveMeetingWindow();
     try {
       const result = await getLiveSessionAccess(session.id);
@@ -271,7 +274,9 @@ export default function TeacherHubPage() {
                 <EmptyState icon={CalendarDays} title="Hôm nay không có buổi dạy" description="Không có buổi học trực tuyến nào diễn ra hôm nay." />
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {data.todaySessions.map((session) => (
+                  {data.todaySessions.map((session) => {
+                    const accessWindow = getMeetingWindowState(session);
+                    return (
                     <div
                       key={session.id}
                       className="group relative overflow-hidden rounded-2xl border border-blue-100 dark:border-slate-800 bg-gradient-to-br from-blue-50/40 via-white to-indigo-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800/60 p-3.5 flex items-center justify-between gap-3 shadow-xs hover:border-blue-300 dark:hover:border-slate-700 transition"
@@ -288,13 +293,15 @@ export default function TeacherHubPage() {
                       <button
                         type="button"
                         onClick={() => openLiveRoom(session)}
-                        className="p-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md shadow-blue-500/20 transition-all duration-200 hover:scale-105 shrink-0"
-                        title="Vào phòng dạy"
+                        disabled={!accessWindow.isOpen}
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md shadow-blue-500/20 transition-all duration-200 hover:scale-105 shrink-0 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-400 disabled:shadow-none disabled:hover:scale-100"
+                        title={accessWindow.isOpen ? "Vào phòng dạy" : accessWindow.isClosed ? "Phòng đã đóng sau giờ học 30 phút" : "Phòng mở trước giờ dạy 15 phút"}
                       >
                         <Video className="w-4 h-4" />
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>

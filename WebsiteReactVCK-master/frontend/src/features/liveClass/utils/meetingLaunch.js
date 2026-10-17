@@ -6,6 +6,27 @@ const JITSI_ALLOWED_HOSTS = new Set([
     .filter(Boolean),
 ]);
 
+export const MEETING_OPEN_EARLY_MINUTES = 15;
+export const MEETING_CLOSE_LATE_MINUTES = 30;
+
+export const getMeetingWindowState = (session, now = Date.now()) => {
+  const startValue = session?.start_time ?? session?.startTime;
+  const endValue = session?.end_time ?? session?.endTime;
+  const start = new Date(startValue).getTime();
+  const end = new Date(endValue).getTime();
+  const current = now instanceof Date ? now.getTime() : Number(now);
+  const opensAt = start - MEETING_OPEN_EARLY_MINUTES * 60 * 1000;
+  const closesAt = end + MEETING_CLOSE_LATE_MINUTES * 60 * 1000;
+  const isValid = Number.isFinite(start) && Number.isFinite(end);
+  return {
+    opensAt,
+    closesAt,
+    isOpen: isValid && current >= opensAt && current <= closesAt,
+    isTooEarly: isValid && current < opensAt,
+    isClosed: isValid && current > closesAt,
+  };
+};
+
 export const isJitsiMeeting = (meetingUrl) => {
   try {
     const hostname = new URL(meetingUrl).hostname.toLowerCase();

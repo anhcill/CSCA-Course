@@ -885,6 +885,11 @@ export const fetchStudentRecordings = ({ classId } = {}) => {
 
 export const fetchAdminRecordingCatalog = () => request("/recordings/admin/catalog");
 
+export const updateClassRecordingFolder = (classId, payload) => request(
+  `/recordings/admin/classes/${encodeURIComponent(classId)}/folder`,
+  { method: "PUT", body: JSON.stringify(payload) },
+);
+
 export const createClassRecording = (payload) => request("/recordings/admin", {
   method: "POST",
   body: JSON.stringify(payload),

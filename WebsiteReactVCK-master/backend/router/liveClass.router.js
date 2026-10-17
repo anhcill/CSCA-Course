@@ -6,6 +6,7 @@ import requireActiveStudentLmsAccess from "../middleware/requireActiveStudentLms
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
 import {
+  getMeetingAccessWindow,
   getMeetingProvider,
   notifyClassStudents,
   notifyUpcomingSessions,
@@ -1921,21 +1922,19 @@ router.get("/sessions/:sessionId/access", protectRoute, requireManagedLearner, a
       return notFound(res, "Không tìm thấy buổi học");
     }
 
-    const isOwner = req.user.role === "admin"
+    const isAdmin = req.user.role === "admin";
+    const isOwner = isAdmin
       || (req.user.role === "creator" && (String(session.instructor_id) === String(req.user.id) || session.is_class_teacher));
     const canAccess = isOwner || (req.user.role === "user" && session.is_enrolled && session.course_is_published
       && session.has_management_entitlement);
     if (!canAccess) return forbidden(res, "Bạn không có quyền vào buổi học này");
     if (!session.meet_url) return notFound(res, "Buổi học chưa có link tham gia");
 
-    const now = Date.now();
-    if (!isOwner && session.status === "ended") {
-      return res.status(410).json({ success: false, message: "Buổi học đã kết thúc", errorCode: "SESSION_ENDED" });
+    const accessWindow = getMeetingAccessWindow(session.start_time, session.end_time);
+    if (!isAdmin && accessWindow.isClosed) {
+      return res.status(410).json({ success: false, message: "Phòng học đã đóng sau giờ học 30 phút", errorCode: "SESSION_ENDED" });
     }
-    if (!isOwner && now > new Date(session.end_time).getTime()) {
-      return res.status(410).json({ success: false, message: "Buổi học đã kết thúc", errorCode: "SESSION_ENDED" });
-    }
-    if (!isOwner && session.status === "scheduled" && now < new Date(session.start_time).getTime() - 15 * 60 * 1000) {
+    if (!isAdmin && accessWindow.isTooEarly) {
       return res.status(403).json({ success: false, message: "Phòng học chỉ mở trước giờ bắt đầu 15 phút", errorCode: "MEETING_NOT_OPEN" });
     }
 

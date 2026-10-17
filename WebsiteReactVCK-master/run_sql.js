@@ -46,6 +46,7 @@ const migrationFiles = [
   "database/migrations/049_class_recordings.sql",
   "database/migrations/050_session_curriculum_assignments.sql",
   "database/migrations/051_assignment_essay_type.sql",
+  "database/migrations/052_class_recording_folders.sql",
 ];
 
 // Git may check out SQL with CRLF on Windows while Railway reads LF. A

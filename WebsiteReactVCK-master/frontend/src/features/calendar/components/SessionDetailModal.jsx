@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import SessionChangeHistoryModal from "./SessionChangeHistoryModal";
 import { isSessionRescheduled, sessionChangeReason } from "../sessionScheduleChange.js";
+import { getMeetingWindowState } from "../../liveClass/utils/meetingLaunch.js";
 
 const formatDateTime = (value) => {
   if (!value) return "Chưa xác định";
@@ -38,11 +39,9 @@ export default function SessionDetailModal({
   const [showHistory, setShowHistory] = useState(false);
   if (!session) return null;
 
-  const isLive = session.uiState === "live";
-  // A teacher can always open their own room to prepare; learners retain the
-  // normal 15-minute opening rule enforced again by the server.
-  const isJoinable = isTeacher || isLive || session.uiState === "open";
-  const isCompleted = session.uiState === "completed";
+  const meetingWindow = getMeetingWindowState(session);
+  const isJoinable = meetingWindow.isOpen;
+  const isCompleted = meetingWindow.isClosed;
   const isRescheduled = isSessionRescheduled(session);
   return (
     <div
@@ -153,7 +152,7 @@ export default function SessionDetailModal({
                 </button>
               ) : isCompleted ? (
                 <div className="flex items-center justify-center gap-2 rounded-xl bg-slate-100 dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400">
-                  <CheckCircle2 className="h-4 w-4" /> Buổi học đã kết thúc
+                  <CheckCircle2 className="h-4 w-4" /> Phòng đã đóng sau giờ học 30 phút
                 </div>
               ) : (
                 <div className="flex items-center justify-center gap-2 rounded-xl bg-slate-100 dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400">
