@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Compass, RefreshCw, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Compass, GraduationCap, RefreshCw, Search, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import { fetchMyEnrolledCourses } from "../../api/lmsClient";
@@ -65,7 +65,9 @@ const getProgress = (course) => {
 
 const matchesSearch = (course, keyword) => {
   if (!keyword) return true;
-  return [course.title, course.category, course.level, course.description]
+  const classText = (Array.isArray(course.classes) ? course.classes : [])
+    .flatMap((liveClass) => [liveClass.title, liveClass.instructor_name]);
+  return [course.title, course.category, course.level, course.description, ...classText]
     .filter(Boolean)
     .join(" ")
     .toLocaleLowerCase()
@@ -211,6 +213,7 @@ export default function StudentCourseListPage() {
               const hasStarted = progress > 0;
               const totalLessons = Number(course.total_lessons || 0);
               const completedLessons = Number(course.completed_lessons || 0);
+              const classes = Array.isArray(course.classes) ? course.classes : [];
 
               return (
                 <div
@@ -279,23 +282,64 @@ export default function StudentCourseListPage() {
                           {completed ? "Đã hoàn thành" : hasStarted ? "Đang học" : "Chưa bắt đầu"}
                         </span>
                       </div>
+
+                      <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-black text-slate-800 dark:text-slate-100">
+                            <Users className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
+                            Lớp của bạn
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">
+                            {classes.length} lớp
+                          </span>
+                        </div>
+
+                        {classes.length === 0 ? (
+                          <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+                            Bạn đã có khóa học nhưng chưa được xếp lớp.
+                          </p>
+                        ) : (
+                          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {classes.map((liveClass) => {
+                              const displayTitle = liveClass.title?.startsWith("Lớp")
+                                ? liveClass.title
+                                : `Lớp ${liveClass.title}`;
+                              return (
+                                <Link
+                                  key={liveClass.id}
+                                  to={`/lms/courses/${course.course_id}/classes/${liveClass.id}`}
+                                  className="group/class flex items-center gap-3 py-2.5 first:pt-1 last:pb-0"
+                                >
+                                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover/class:bg-blue-600 group-hover/class:text-white dark:bg-blue-950/60 dark:text-sky-400">
+                                    <GraduationCap className="h-4 w-4" />
+                                  </span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-xs font-black text-slate-900 transition group-hover/class:text-blue-600 dark:text-white dark:group-hover/class:text-sky-400">
+                                      {displayTitle}
+                                    </span>
+                                    <span className="mt-0.5 block truncate text-[11px] text-slate-500 dark:text-slate-400">
+                                      GV: {liveClass.instructor_name || "Chưa phân công"}
+                                    </span>
+                                  </span>
+                                  <span className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold ${theme.btnBg}`}>
+                                    Vào lớp <ArrowRight className="h-3 w-3 transition group-hover/class:translate-x-0.5" />
+                                  </span>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   {/* Card Footer */}
-                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-900/40 px-4 sm:px-5 py-3">
+                  <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 dark:border-slate-800/80 dark:bg-slate-900/40 sm:px-5">
                     <Link
                       to="/lms/live-schedule"
                       className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400 transition"
                     >
                       <CalendarDays className="h-3.5 w-3.5" /> Xem lịch
-                    </Link>
-                    <Link
-                      to={`/lms/courses/${course.course_id}/classes`}
-                      className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all duration-200 hover:shadow-md ${theme.btnBg}`}
-                    >
-                      {completed ? "Xem lại lớp" : hasStarted ? "Vào học" : "Mở lớp"}
-                      <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" />
                     </Link>
                   </div>
                 </div>

@@ -182,6 +182,28 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
           c.level,
           c.description,
           COALESCE(
+            (
+              SELECT json_agg(
+                json_build_object(
+                  'id', lc.id,
+                  'title', lc.title,
+                  'description', lc.description,
+                  'instructor_id', lc.instructor_id,
+                  'instructor_name', COALESCE(instructor.username, instructor.email)
+                )
+                ORDER BY lc.created_at DESC, lc.id DESC
+              )
+              FROM class_enrollments ce
+              JOIN live_classes lc ON lc.id = ce.live_class_id
+              LEFT JOIN users instructor ON instructor.id = lc.instructor_id
+              WHERE ce.user_id = $1
+                AND ce.status = 'active'
+                AND lc.course_id = c.id
+                AND lc.status = 'active'
+            ),
+            '[]'::json
+          ) AS classes,
+          COALESCE(
             (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id AND l.is_published = true),
             0
           ) AS total_lessons,
@@ -217,7 +239,8 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
           ...row,
           total_lessons: total,
           completed_lessons: completed,
-          progress_percent
+          progress_percent,
+          classes: Array.isArray(row.classes) ? row.classes : [],
         };
       });
 
