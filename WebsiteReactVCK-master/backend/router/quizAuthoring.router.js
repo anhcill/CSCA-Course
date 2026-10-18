@@ -443,7 +443,7 @@ const requestAbortSignal = (req, res) => {
 };
 
 const authoringEnabled = (req, res, next) => {
-  if (String(process.env.MOLI_QUIZ_AUTHORING_ENABLED || "false").toLowerCase() === "true") return next();
+  if (String(process.env.MOLI_QUIZ_AUTHORING_ENABLED ?? "true").toLowerCase() === "true") return next();
   // Let the legacy assignment router keep serving its existing create/delete flow.
   return next("route");
 };

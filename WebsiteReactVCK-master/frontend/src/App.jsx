@@ -58,7 +58,6 @@ const SessionDetailPage = lazy(() => import("./features/calendar/pages/SessionDe
 const LiveClassRoomPage = lazy(() => import("./features/liveClass/pages/LiveClassRoomPage.jsx"));
 const AssignmentListPage = lazy(() => import("./features/assignments/pages/AssignmentListPage.jsx"));
 const AssignmentSubmitPage = lazy(() => import("./features/assignments/pages/AssignmentSubmitPage.jsx"));
-const QuizPlayerPage = lazy(() => import("./features/assignments/pages/QuizPlayerPage.jsx"));
 const TeacherGradingPage = lazy(() => import("./features/assignments/pages/TeacherGradingPage.jsx"));
 const TeacherHubPage = lazy(() => import("./features/teacher/pages/TeacherHubPage.jsx"));
 const TeacherSchedulePage = lazy(() => import("./features/teacher/pages/TeacherSchedulePage.jsx"));
@@ -84,8 +83,6 @@ const AdminWelcomeScreenPage = lazy(() => import("./pages/admin/AdminWelcomeScre
 const MoliQuizEditorPage = lazy(() => import("./features/quizzes/pages/QuizEditorPage.jsx"));
 const MoliQuizPlayerPage = lazy(() => import("./features/quizzes/pages/QuizPlayerPage.jsx"));
 const QuizMathGalleryPage = lazy(() => import("./features/quizzes/pages/QuizMathGalleryPage.jsx"));
-
-const isMoliQuizUiEnabled = import.meta.env.VITE_MOLI_QUIZ_UI === 'true';
 
 const isTeacherLmsPath = (p) => (
   p === "/lms/teach" || p.startsWith("/lms/teach/") || p === "/lms/teacher-hub" ||
@@ -148,7 +145,7 @@ function AppRoutes() {
         <Route path="sessions/:sessionId" element={<SessionDetailPage />} />
         <Route path="assignments" element={<AssignmentListPage />} />
         <Route path="assignments/:id/submit" element={<AssignmentSubmitPage />} />
-        <Route path="quizzes/:quizId" element={isMoliQuizUiEnabled ? <MoliQuizPlayerPage /> : <QuizPlayerPage />} />
+        <Route path="quizzes/:quizId" element={<MoliQuizPlayerPage />} />
         <Route path="materials" element={<StudentFilesPage />} />
         <Route path="files" element={<StudentFilesPage />} />
         <Route path="results" element={<CourseResultsPage />} />
@@ -158,8 +155,8 @@ function AppRoutes() {
       <Route path="/lms/learn/:courseId" element={<CourseClassRedirect />} />
       <Route path="/lms/assignment/:id/submit" element={<AssignmentSubmitPage />} />
       <Route path="/lms/quizzes/gallery" element={<QuizMathGalleryPage />} />
-      <Route path="/lms/quiz/:quizId" element={isMoliQuizUiEnabled ? <MoliQuizPlayerPage /> : <QuizPlayerPage />} />
-      <Route path="/lms/quizzes/:quizId" element={isMoliQuizUiEnabled ? <MoliQuizPlayerPage /> : <QuizPlayerPage />} />
+      <Route path="/lms/quiz/:quizId" element={<MoliQuizPlayerPage />} />
+      <Route path="/lms/quizzes/:quizId" element={<MoliQuizPlayerPage />} />
       <Route path="/lms/quizzes/:quizId/moli" element={<MoliQuizPlayerPage />} />
       <Route path="/lms/leaderboard" element={<Navigate to="/lms/my-learning" replace />} />
       <Route path="/lms/certificates" element={<Navigate to="/profile" replace />} />

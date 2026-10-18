@@ -32,6 +32,21 @@ test("cleanQuizOcrText strips fences and normalizes whitespace", () => {
   assert.equal(cleanQuizOcrText("```text\r\n25. x  \r\n\r\n\r\nA. 1\r\n```"), "25. x\n\nA. 1");
 });
 
+test("OCR reuses MolyPet provider configuration when dedicated values are absent", () => {
+  const config = getQuizOcrConfig({
+    MOLI_PET_ENABLED: "true",
+    MOLI_PET_BASE_URL: "https://router.example.test/v1",
+    MOLI_PET_API_KEYS: "key-a,key-b",
+    MOLI_PET_MODEL: "vision-primary",
+    MOLI_PET_FALLBACK_MODELS: "vision-fallback",
+  });
+
+  assert.equal(config.enabled, true);
+  assert.equal(config.baseUrl, "https://router.example.test/v1");
+  assert.deepEqual(config.apiKeys, ["key-a", "key-b"]);
+  assert.deepEqual(config.models, ["vision-primary", "vision-fallback"]);
+});
+
 test("extractQuizImageOcrText sends the image only to the configured server provider", async () => {
   let request = null;
   const result = await extractQuizImageOcrText(file, {

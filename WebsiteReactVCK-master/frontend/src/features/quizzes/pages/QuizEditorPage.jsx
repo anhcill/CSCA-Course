@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import {
   FiSave,
   FiEye,
@@ -31,7 +31,11 @@ import {
 export default function QuizEditorPage() {
   const { quizId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const isNew = !quizId || quizId === 'new';
+  const quizListPath = location.pathname.startsWith('/admin/')
+    ? '/admin/quizzes'
+    : '/lms/teacher/quizzes';
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -291,7 +295,7 @@ export default function QuizEditorPage() {
           message: 'Tạo mới và lưu bản nháp đề thi thành công!',
         });
         if (newId) {
-          navigate(`/lms/teacher/quizzes/${newId}/edit`, { replace: true });
+          navigate(`${quizListPath}/${newId}/edit`, { replace: true });
         }
       } else {
         await updateTeacherQuiz(quizId, quizMeta);
@@ -357,7 +361,7 @@ export default function QuizEditorPage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => navigate('/lms/teacher/quizzes')}
+              onClick={() => navigate(quizListPath)}
               className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
               title="Quay lại danh sách đề thi"
             >

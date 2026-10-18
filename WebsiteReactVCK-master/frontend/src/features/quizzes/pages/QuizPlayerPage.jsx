@@ -531,7 +531,7 @@ export default function QuizPlayerPage() {
             <div className="flex items-center justify-center gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => navigate('/lms/student/quizzes')}
+                onClick={() => navigate('/lms/assignments')}
                 className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors shadow-sm"
               >
                 Quay lại danh sách bài tập

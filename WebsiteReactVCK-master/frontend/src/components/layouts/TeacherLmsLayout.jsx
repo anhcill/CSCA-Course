@@ -23,7 +23,7 @@ const TEACHER_NAV = [
   { label: 'Điểm & chuyên cần', path: '/lms/teach/student-progress', icon: BarChart3 },
   { label: 'Giáo trình lớp', path: '/lms/teach/classes', icon: BookOpen },
   { label: 'Tài liệu học tập', path: '/lms/teach/files', icon: FolderOpen },
-  { label: 'Quiz học viên', path: '/lms/teacher/quizzes', icon: FileQuestion },
+  { label: 'Đăng đề & Quiz', path: '/lms/teacher/quizzes', icon: FileQuestion },
   { label: 'Chấm bài', path: '/lms/teacher/grading', icon: ClipboardCheck },
   { label: 'Ngân hàng câu hỏi', path: '/lms/teach/question-bank', icon: FileQuestion },
   { label: 'Hỗ trợ học viên', path: '/lms/teach/support', icon: Users },

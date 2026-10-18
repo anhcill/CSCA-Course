@@ -64,12 +64,22 @@ export class QuizOcrError extends Error {
 }
 
 export const getQuizOcrConfig = (env = process.env) => {
-  const primaryModel = String(env.QUIZ_OCR_MODEL || "").trim();
+  const primaryModel = String(env.QUIZ_OCR_MODEL || env.MOLI_PET_MODEL || "ag/gemini-3-flash").trim();
+  const explicitEnabled = String(env.QUIZ_OCR_ENABLED || "").trim();
   return {
-    enabled: String(env.QUIZ_OCR_ENABLED || "false").toLowerCase() === "true",
-    baseUrl: String(env.QUIZ_OCR_BASE_URL || "").trim(),
-    apiKeys: [...csv(env.QUIZ_OCR_API_KEYS), ...csv(env.QUIZ_OCR_API_KEY)],
-    models: [...new Set([primaryModel, ...csv(env.QUIZ_OCR_FALLBACK_MODELS)].filter(Boolean))],
+    enabled: String(explicitEnabled || env.MOLI_PET_ENABLED || "false").toLowerCase() === "true",
+    baseUrl: String(env.QUIZ_OCR_BASE_URL || env.MOLI_PET_BASE_URL || "").trim(),
+    apiKeys: [
+      ...csv(env.QUIZ_OCR_API_KEYS),
+      ...csv(env.QUIZ_OCR_API_KEY),
+      ...csv(env.MOLI_PET_API_KEYS),
+      ...csv(env.MOLI_PET_API_KEY),
+    ],
+    models: [...new Set([
+      primaryModel,
+      ...csv(env.QUIZ_OCR_FALLBACK_MODELS),
+      ...csv(env.MOLI_PET_FALLBACK_MODELS),
+    ].filter(Boolean))],
     timeoutMs: intFromEnv(env.QUIZ_OCR_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, { min: 1000, max: 300000 }),
     maxTokens: intFromEnv(env.QUIZ_OCR_MAX_TOKENS, DEFAULT_MAX_TOKENS, { min: 256, max: 12000 }),
   };

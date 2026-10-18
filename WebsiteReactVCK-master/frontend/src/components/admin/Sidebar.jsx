@@ -92,7 +92,7 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
           path: '/admin/grading',
         },
         {
-          title: 'Quiz học viên',
+          title: 'Đăng đề & Quiz',
           icon: <FiList className="w-4 h-4 shrink-0" />,
           path: '/admin/quizzes',
         },

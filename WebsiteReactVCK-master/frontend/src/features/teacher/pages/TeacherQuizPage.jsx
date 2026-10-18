@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types, no-unused-vars */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   FiAlertCircle,
@@ -834,7 +834,14 @@ function QuizStatsModal({ quiz, onClose }) {
 }
 
 export default function TeacherQuizPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const quizEditorBasePath = location.pathname.startsWith("/admin/")
+    ? "/admin/quizzes"
+    : "/lms/teacher/quizzes";
+  const openNewQuizEditor = () => navigate(`${quizEditorBasePath}/new`);
+  const openQuizEditor = (quizId) => navigate(`${quizEditorBasePath}/${quizId}/edit`);
   const requestedClassId = searchParams.get("classId");
   const requestedSessionId = searchParams.get("sessionId");
   const requestedScope = searchParams.get("scope") === "homework" ? "homework" : "session";
@@ -1812,7 +1819,7 @@ export default function TeacherQuizPage() {
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab("create")}
+              onClick={openNewQuizEditor}
               className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition-all ${
                 activeTab === "create"
                   ? "bg-violet-600 text-white shadow-md shadow-violet-600/30"
@@ -1943,7 +1950,7 @@ export default function TeacherQuizPage() {
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab("create")}
+                  onClick={openNewQuizEditor}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3.5 py-2 text-xs font-black text-white hover:bg-violet-500 shadow-sm transition shrink-0"
                 >
                   <FiPlus className="h-3.5 w-3.5" /> Thêm mới
@@ -1986,7 +1993,7 @@ export default function TeacherQuizPage() {
                   if (expiryTab === "expired" && activeQuizzesCount > 0) {
                     setExpiryTab("active");
                   } else {
-                    setActiveTab("create");
+                    openNewQuizEditor();
                   }
                 }}
               />
@@ -2120,6 +2127,15 @@ export default function TeacherQuizPage() {
                           >
                             <FiBarChart2 className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
                             <span>{isExpired ? "Xem lại kết quả & phổ điểm" : "Xem thống kê & học viên"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => openQuizEditor(quiz.id)}
+                            className="rounded-xl p-2 text-slate-400 transition hover:bg-violet-50 hover:text-violet-600 dark:hover:bg-violet-950/30"
+                            title="Sửa đề bằng trình soạn đề mới"
+                          >
+                            <FiEdit3 className="h-4 w-4" />
                           </button>
 
                           <button
