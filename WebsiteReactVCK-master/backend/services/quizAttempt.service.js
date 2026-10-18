@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { reconstructQuizAuthoringItems } from "./quizAuthoring.service.js";
 
 const isPlainObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
@@ -22,8 +23,10 @@ const parseStoredAnswer = (value) => {
   }
 };
 
-const questionType = (question) => question?.question_type || question?.type || "single_choice";
-const isEssayQuestion = (question) => questionType(question) === "essay";
+const questionType = (question) => question?.question_type || question?.questionType || question?.type || "single_choice";
+const MANUAL_GRADE_TYPES = new Set(["essay", "translation"]);
+const SINGLE_CHOICE_TYPES = new Set(["single_choice", "true_false", "reading_item"]);
+const isEssayQuestion = (question) => MANUAL_GRADE_TYPES.has(questionType(question));
 const positiveId = (value) => {
   if (!/^\d+$/.test(String(value ?? ""))) return null;
   const parsed = Number(value);
@@ -64,12 +67,42 @@ export const publicQuizQuestion = (question, index = 0) => ({
   id: question.id,
   quiz_id: question.quiz_id,
   question_text: question.question_text,
+  questionText: question.question_text || "",
+  questionTextCn: question.question_text_cn || "",
+  questionTextEn: question.question_text_en || "",
   question_type: questionType(question),
+  questionType: questionType(question),
   options: parseJsonArray(question.options_json),
   points: Number(question.points),
+  imageUrl: question.image_url || null,
+  explanationImageUrl: question.explanation_image_url || null,
+  subQuestionNumber: question.sub_question_number === null || question.sub_question_number === undefined
+    ? null
+    : Number(question.sub_question_number),
   position: index + 1,
   sortOrder: Number(question.sort_order || index + 1),
 });
+
+export const publicQuizItems = (questions) => {
+  const groups = new Map();
+  for (const question of questions || []) {
+    if (question.group_id === null || question.group_id === undefined) continue;
+    const key = String(question.group_id);
+    if (groups.has(key)) continue;
+    groups.set(key, {
+      id: question.group_id,
+      group_type: question.group_type,
+      passage_text: question.passage_text || "",
+      passage_text_cn: question.passage_text_cn || "",
+      passage_text_en: question.passage_text_en || "",
+      passage_image_url: question.passage_image_url || null,
+      linked_options: parseJsonArray(question.linked_options),
+      cloze_mode: question.cloze_mode || null,
+      sort_order: Number(question.group_sort_order || question.item_order || question.sort_order || 1),
+    });
+  }
+  return reconstructQuizAuthoringItems([...groups.values()], questions || [], { includeAnswers: false });
+};
 
 const normalizeAnswerArray = (value) => {
   const parsed = parseStoredAnswer(value);
@@ -154,7 +187,7 @@ export const normalizeQuizAnswers = (questions, rawAnswers) => {
         return { error: "Đáp án nhiều lựa chọn không hợp lệ", answers: {}, assetIds: [] };
       }
       normalized[String(question.id)] = [...new Set(value.map(String))];
-    } else if (questionType(question) === "single_choice") {
+    } else if (SINGLE_CHOICE_TYPES.has(questionType(question))) {
       if (typeof value !== "string" || !options.includes(value)) {
         return { error: "Đáp án lựa chọn không hợp lệ", answers: {}, assetIds: [] };
       }
@@ -289,8 +322,51 @@ export const buildQuizResult = (questions, answers) => {
 };
 
 export const makeQuestionSnapshot = (questions, shuffleQuestions, randomInt = crypto.randomInt) => {
-  const snapshot = questions.map((question) => ({ ...question, options_json: parseJsonArray(question.options_json) }));
+  const snapshot = questions.map((question) => ({
+    ...question,
+    options_json: parseJsonArray(question.options_json),
+    linked_options: parseJsonArray(question.linked_options),
+  }));
   if (!shuffleQuestions) return snapshot;
+  if (snapshot.some((question) => question.group_id !== null && question.group_id !== undefined)) {
+    const units = [];
+    const unitByKey = new Map();
+    for (const question of snapshot) {
+      const key = question.group_id === null || question.group_id === undefined
+        ? `question:${question.id}`
+        : `group:${question.group_id}`;
+      if (!unitByKey.has(key)) {
+        const unit = {
+          key,
+          originalOrder: Number(question.item_order || question.group_sort_order || question.sort_order || units.length + 1),
+          manual: question.group_id === null || question.group_id === undefined ? isEssayQuestion(question) : false,
+          questions: [],
+        };
+        unitByKey.set(key, unit);
+        units.push(unit);
+      }
+      unitByKey.get(key).questions.push(question);
+    }
+    units.sort((left, right) => left.originalOrder - right.originalOrder);
+    const objectiveSlots = units.map((unit, index) => unit.manual ? null : index).filter((index) => index !== null);
+    const objectiveUnits = objectiveSlots.map((index) => units[index]);
+    for (let index = objectiveUnits.length - 1; index > 0; index -= 1) {
+      const next = randomInt(index + 1);
+      [objectiveUnits[index], objectiveUnits[next]] = [objectiveUnits[next], objectiveUnits[index]];
+    }
+    objectiveSlots.forEach((slot, index) => {
+      units[slot] = objectiveUnits[index];
+    });
+    return units.flatMap((unit, unitIndex) => unit.questions
+      .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
+      .map((question) => ({
+        ...question,
+        item_order: unitIndex + 1,
+        group_sort_order: question.group_id === null || question.group_id === undefined
+          ? question.group_sort_order
+          : unitIndex + 1,
+      })));
+  }
   const objectiveSlots = snapshot
     .map((question, index) => (isEssayQuestion(question) ? null : index))
     .filter((index) => index !== null);

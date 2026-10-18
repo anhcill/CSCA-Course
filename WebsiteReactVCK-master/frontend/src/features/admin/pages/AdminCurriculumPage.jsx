@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
-import { FolderOpen } from "lucide-react";
+import { AlertTriangle, FolderOpen, School } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   createCourse,
@@ -136,10 +136,8 @@ export default function AdminCurriculumPage() {
         });
         setCourseStatuses(initialStatus);
 
-        // Auto select first course if none selected
-        if (!selectedCourse && res.data.length > 0) {
-          setSelectedCourse(res.data[0]);
-        }
+        // Keep the current selection without re-fetching whenever a card is clicked.
+        setSelectedCourse((current) => current || res.data[0] || null);
       } else {
         setCourses([]);
       }
@@ -149,7 +147,9 @@ export default function AdminCurriculumPage() {
     } finally {
       setLoadingCourses(false);
     }
-  }, [isAdmin, selectedCourse]);
+  }, [isAdmin]);
+
+  const coursesWithClasses = courses.filter((course) => Number(course.active_class_count || course.class_count || 0) > 0);
 
   const loadCourseDetailData = useCallback(async (course) => {
     if (!course?.id && !course?.slug) return;
@@ -541,6 +541,9 @@ export default function AdminCurriculumPage() {
               {courses.map((c) => {
                 const isSelected = selectedCourse?.id === c.id;
                 const status = courseStatuses[c.id] || (c.is_published !== false ? "published" : "draft");
+                const classCount = Number(c.class_count || 0);
+                const activeClassCount = Number(c.active_class_count || 0);
+                const activeEnrollments = Number(c.active_enrollments || 0);
 
                 return (
                   <div
@@ -583,12 +586,33 @@ export default function AdminCurriculumPage() {
                           {c.description || "Chưa có mô tả chi tiết."}
                         </p>
                       </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold">
+                        <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 ${
+                          activeClassCount > 0
+                            ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-sky-300"
+                            : "border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400"
+                        }`}>
+                          <School className="h-3 w-3" />
+                          {activeClassCount > 0 ? `${activeClassCount} lớp đang dạy` : `${classCount} lớp`}
+                        </span>
+                        {classCount === 0 && activeEnrollments > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                            <AlertTriangle className="h-3 w-3" /> Có học viên nhưng chưa có lớp
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3 text-xs dark:border-slate-800/60">
-                      <span className="text-rose-600 dark:text-rose-400 font-bold">
-                        {c.is_free || Number(c.price) === 0 ? "Miễn Phí" : `${Number(c.price).toLocaleString("vi-VN")} đ`}
-                      </span>
+                      <div className="min-w-0">
+                        <span className="block text-rose-600 dark:text-rose-400 font-bold">
+                          {c.is_free || Number(c.price) === 0 ? "Miễn Phí" : `${Number(c.price).toLocaleString("vi-VN")} đ`}
+                        </span>
+                        <span className="block max-w-44 truncate font-mono text-[9px] text-slate-400" title={c.external_course_id || `LMS course #${c.id}`}>
+                          {c.external_course_id || `LMS #${c.id}`}
+                        </span>
+                      </div>
                       {isAdmin && (
                         <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
                           <button type="button" onClick={() => handleOpenCourseModal(c)} className="rounded-lg px-2 py-1 font-semibold text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white">Sửa</button>
@@ -636,6 +660,37 @@ export default function AdminCurriculumPage() {
                 </button>
               </div>
             </div>
+
+            {Number(selectedCourse.class_count || 0) === 0 && (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-black">Khóa học này chưa được gắn với lớp nào</p>
+                    <p className="mt-1 text-xs leading-5 text-amber-800 dark:text-amber-200">
+                      {Number(selectedCourse.active_enrollments || 0) > 0
+                        ? `Khóa vẫn có ${Number(selectedCourse.active_enrollments)} học viên đang hoạt động. Hãy kiểm tra mapping trước khi chỉnh sửa hoặc xóa.`
+                        : "Hãy kiểm tra mã nguồn đồng bộ trước khi tạo lớp hoặc thay đổi dữ liệu."}
+                    </p>
+                    {coursesWithClasses.length > 0 && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-bold">Các khóa đang có lớp:</span>
+                        {coursesWithClasses.slice(0, 4).map((course) => (
+                          <button
+                            key={course.id}
+                            type="button"
+                            onClick={() => setSelectedCourse(course)}
+                            className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-amber-900 transition hover:bg-amber-100 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-100 dark:hover:bg-amber-950/60"
+                          >
+                            {course.title} · {Number(course.active_class_count || course.class_count || 0)} lớp
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {loadingDetail ? (
               <LoadingState message="Đang tải các chương bài giảng của khóa học..." count={2} />

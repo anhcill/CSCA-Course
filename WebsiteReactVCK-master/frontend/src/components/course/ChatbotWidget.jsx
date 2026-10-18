@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { FaTimes } from "react-icons/fa";
 import ChatBot from "./ChatBot"; 
 import { useTranslation } from 'react-i18next';
@@ -21,7 +21,7 @@ const ChatbotWidget = ({ isMobileMenuOpen, isChatbotOpen: externalIsOpen, setIsC
           onClick={() => setIsChatbotOpen(true)}
           className="cursor-pointer mb-2 mr-1 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-xs font-semibold py-1.5 px-3 rounded-full shadow-lg border border-blue-200 dark:border-gray-700 hover:shadow-xl transition-all flex items-center gap-1.5 float-right animate-bounce select-none"
         >
-          <span>Hỏi CoNan nhé! 🦉✨</span>
+          <span>Hỏi Moly Pet nhé! 🦉✨</span>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -39,7 +39,7 @@ const ChatbotWidget = ({ isMobileMenuOpen, isChatbotOpen: externalIsOpen, setIsC
         <div
           onClick={() => setIsChatbotOpen(!isChatbotOpen)}
           className="cursor-pointer transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center select-none"
-          title="Mở trợ giảng CoNan"
+          title="Mở Moly Pet"
         >
           {isChatbotOpen ? (
             <div className="w-12 h-12 lg:w-14 lg:h-14 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-2xl hover:opacity-90 transition-opacity">

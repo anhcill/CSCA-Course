@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useEffect, useState, useMemo } from "react";
 import toast from "react-hot-toast";
 import {
@@ -14,6 +13,7 @@ import {
 import { fetchTeacherQuizAttempt, gradeTeacherQuizEssay } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { attachmentsForQuestion, normalizeEssayResponse } from "../../assignments/utils/quizQuestionPresentation";
+import RichMathText from "../../../components/common/RichMathText.jsx";
 
 export default function TeacherQuizGradingModal({
   isOpen,
@@ -254,7 +254,11 @@ export default function TeacherQuizGradingModal({
                               <h4 className="text-xs font-black text-slate-900 dark:text-white">
                                 {group.displayNumber ? `Câu ${group.displayNumber}` : "Bài nộp cũ"}
                               </h4>
-                              {group.prompt && <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{group.prompt}</p>}
+                              {group.prompt && (
+                                <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                                  <RichMathText value={group.prompt} />
+                                </div>
+                              )}
                             </div>
                             <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
                               {group.attachments.length} ảnh
@@ -488,9 +492,16 @@ export default function TeacherQuizGradingModal({
                         </div>
                       </div>
 
+                      {item.questionText && (
+                        <div className="mt-2 text-xs font-medium text-slate-800 dark:text-slate-200 leading-relaxed">
+                          <RichMathText value={item.questionText} />
+                        </div>
+                      )}
+
                       {item.explanation && (
                         <div className="mt-2 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/50 p-2.5 text-xs text-sky-800 dark:text-sky-300 leading-relaxed">
-                          <b>💡 Hướng dẫn / Lời giải:</b> {item.explanation}
+                          <b>💡 Hướng dẫn / Lời giải:</b>
+                          <RichMathText value={item.explanation} className="mt-1" />
                         </div>
                       )}
                     </article>

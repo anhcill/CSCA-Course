@@ -45,7 +45,8 @@ const parseResponse = async (response) => {
 
 const request = async (path, options = {}) => {
   const headers = new Headers(options.headers || {});
-  if (options.body && !headers.has("Content-Type")) {
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (options.body && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -556,6 +557,31 @@ export const fetchQuiz = async (quizId) => (
   request(`/assignments/quizzes/${encodeURIComponent(quizId)}`)
 );
 
+export const fetchStudentQuizStart = async (quizId, { attemptId } = {}) => {
+  const query = attemptId ? `?attemptId=${encodeURIComponent(attemptId)}` : "";
+  return request(`/assignments/quizzes/${encodeURIComponent(quizId)}/start${query}`);
+};
+
+export const saveQuizAttemptAnswer = async (attemptId, payload) => request(
+  `/assignments/attempts/${encodeURIComponent(attemptId)}/answers`,
+  {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  },
+);
+
+export const submitQuizAttempt = async (attemptId, payload) => request(
+  `/assignments/attempts/${encodeURIComponent(attemptId)}/submit`,
+  {
+    method: "POST",
+    body: JSON.stringify(payload),
+  },
+);
+
+export const fetchStudentQuizResult = async (quizId, attemptId) => (
+  request(`/assignments/quizzes/${encodeURIComponent(quizId)}/attempts/${encodeURIComponent(attemptId)}/result`)
+);
+
 export const saveQuizAnswers = async ({ quizId, answers }) => (
   request(`/assignments/quizzes/${encodeURIComponent(quizId)}/answers`, {
     method: "PUT",
@@ -581,6 +607,52 @@ export const createTeacherQuiz = async (quiz) => request("/assignments/teacher/q
   method: "POST",
   body: JSON.stringify(quiz),
 });
+
+export const fetchTeacherQuizEditor = async (quizId) => (
+  request(`/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/editor`)
+);
+
+export const updateTeacherQuiz = async (quizId, quiz) => request(
+  `/assignments/teacher/quizzes/${encodeURIComponent(quizId)}`,
+  {
+    method: "PUT",
+    body: JSON.stringify(quiz),
+  },
+);
+
+export const updateTeacherQuizItems = async (quizId, items) => request(
+  `/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/items`,
+  {
+    method: "PUT",
+    body: JSON.stringify({ items }),
+  },
+);
+
+export const publishTeacherQuiz = async (quizId) => request(
+  `/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/publish`,
+  { method: "POST" },
+);
+
+export const archiveTeacherQuiz = async (quizId) => request(
+  `/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/archive`,
+  { method: "POST" },
+);
+
+export const ocrQuizImage = async (formData) => request(
+  "/assignments/teacher/quiz-ocr/image",
+  {
+    method: "POST",
+    body: formData,
+  },
+);
+
+export const previewQuizImport = async (formData) => request(
+  "/assignments/teacher/quiz-import/preview",
+  {
+    method: "POST",
+    body: formData,
+  },
+);
 
 export const deleteTeacherQuiz = async (quizId) => request(
   `/assignments/teacher/quizzes/${encodeURIComponent(quizId)}`,

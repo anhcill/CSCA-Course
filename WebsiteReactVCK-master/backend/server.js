@@ -11,6 +11,8 @@ import enrollmentRouter from "./router/enrollment.router.js";
 import progressRouter from "./router/progress.router.js";
 import videoRouter from "./router/video.router.js";
 import liveClassRouter from "./router/liveClass.router.js";
+import quizPlayerRouter from "./router/quizPlayer.router.js";
+import quizAuthoringRouter from "./router/quizAuthoring.router.js";
 import assignmentRouter from "./router/assignment.router.js";
 import notificationRouter from "./router/notification.router.js";
 import attendanceRouter from "./router/attendance.router.js";
@@ -28,6 +30,7 @@ import supportRouter from "./router/support.router.js";
 import healthRouter from "./router/health.router.js";
 import postRouter from "./router/post.router.js";
 import recordingRouter from "./router/recording.router.js";
+import aiRouter from "./router/ai.router.js";
 import { isAllowedOrigin, securityHeaders } from "./middleware/security.js";
 import { renderHtmlWithSeo } from "./services/seoPrerender.service.js";
 
@@ -111,6 +114,8 @@ app.use("/api/enrollments", enrollmentRouter);
 app.use("/api/progress", progressRouter);
 app.use("/api/videos", videoRouter);
 app.use("/api/live-classes", liveClassRouter);
+app.use("/api/assignments", quizPlayerRouter);
+app.use("/api/assignments", quizAuthoringRouter);
 app.use("/api/assignments", assignmentRouter);
 app.use("/api/notifications", notificationRouter);
 app.use("/api/v1/lms/notifications", notificationRouter);
@@ -125,6 +130,7 @@ app.use("/api/v1/admin/calendar", adminCalendarRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/posts", postRouter);
 app.use("/api/recordings", recordingRouter);
+app.use("/api/ai", aiRouter);
 app.use("/api", fileRouter);
 
 app.use("/api", (req, res) => {

@@ -1110,7 +1110,7 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
     const questions = await getQuizQuestions(quizId);
     const effectiveQuestions = attemptQuestions(attempt, questions);
     const essayQuestionMaxScore = effectiveQuestions
-      .filter((question) => question.question_type === "essay" || question.type === "essay")
+      .filter((question) => ["essay", "translation"].includes(question.question_type || question.type))
       .reduce((sum, question) => sum + (Number(question.points) || 0), 0);
     const configuredEssayMaxScore = Number(parseQuizDescriptionMetadata(quiz.description).essayConfig?.maxScore || 0);
     const essayMaxScore = essayQuestionMaxScore > 0 ? essayQuestionMaxScore : configuredEssayMaxScore;

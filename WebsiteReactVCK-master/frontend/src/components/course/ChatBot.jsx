@@ -1,40 +1,37 @@
-import React, { useEffect, useState, useRef, useContext } from "react";
+import { useEffect, useState, useRef, useContext } from "react";
 import { FaPaperPlane, FaTrash } from "react-icons/fa";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import ReactMarkdown from "react-markdown";
 import { Oval, ThreeDots } from "react-loader-spinner";
 import { useTranslation } from "react-i18next";
 import { AuthContext } from "../../context/AuthContext";
 import { Lottie } from "lottie-react";
 import owlAnimation from "../../assets/owl.json";
+import RichMathText from "../common/RichMathText.jsx";
 
 const ChatBot = () => {
   const [user, setUser] = useState(null);
   const [userInput, setUserInput] = useState("");
   const { authUser } = useContext(AuthContext);
   const [chatHistory, setChatHistory] = useState(() => {
-    const storedHistory = localStorage.getItem(`chat-history-${authUser?._id}`);
-    return storedHistory ? JSON.parse(storedHistory) : [];
+    try {
+      const storedHistory = localStorage.getItem(`chat-history-${authUser?._id || authUser?.id || "guest"}`);
+      return storedHistory ? JSON.parse(storedHistory) : [];
+    } catch {
+      return [];
+    }
   });
   const [loading, setLoading] = useState(false);
-  const [currentLesson, setCurrentLesson] = useState(null);
   const [showIntroMessage, setShowIntroMessage] = useState(() => {
     return chatHistory.length === 0;
   });
   const chatAreaRef = useRef(null);
-  const [keywords, setKeywords] = useState([
+  const [keywords] = useState([
     "Tóm tắt nội dung bài học",
-    "Tạo Bài Tập Ôn Tập",
+    "Tạo bài tập ôn tập",
+    "Giải thích công thức",
+    "Kế hoạch học tập hôm nay",
   ]);
 
-
-  const apiKey = import.meta.env.VITE_GEMNI_API_KEY;
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-pro",
-    systemInstruction:
-      "Bạn là một chatbot chuyên gia về React .Bạn có tên là trợ giảng CoNan.Bạn phải trả lời người dùng một cách lịch sự và có icon để hiển hiện sự lịch sự .Và khi người dùng xin chào hay tạm biệt bạn hãy trả lời cách thân thiện . Và khi trả lời bạn chỉ trả lời các câu hỏi liên quan đến lập trình và React. Nếu câu hỏi không liên quan đang học hãy từ chối trả lời người dùng và yêu cầu họ chỉ trả lời liên quan tới lập trình và react .",
-  });
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (authUser) {
@@ -43,39 +40,34 @@ const ChatBot = () => {
   }, [authUser]);
 
   useEffect(() => {
-    const lessonData = localStorage.getItem("currentLesson");
-    if (lessonData) {
-      const lesson = JSON.parse(lessonData);
-      setCurrentLesson(lesson);
-      // console.log("Đã tải currentLesson từ localStorage:", lesson);
-    }
-  }, []);
+    const key = `chat-history-${authUser?._id || authUser?.id || "guest"}`;
+    // Only persist string text messages (not React components)
+    const serializable = chatHistory
+      .filter((m) => typeof m.text === "string")
+      .slice(-30);
+    localStorage.setItem(key, JSON.stringify(serializable));
 
-  useEffect(() => {
-    localStorage.setItem(`chat-history-${authUser?._id}`, JSON.stringify(chatHistory));
     if (chatAreaRef.current) {
       chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight;
     }
-  }, [chatHistory, authUser?._id]);
+  }, [chatHistory, authUser?._id, authUser?.id]);
 
   useEffect(() => {
     setShowIntroMessage(chatHistory.length === 0);
   }, [chatHistory]);
-
-  const templateData = (currentLesson) => {
-    return `Đây là nội dung bài học: "${currentLesson.description}". Và id tương ứng là "${currentLesson.id}".`;
-  };
 
   const handleUserInput = (e) => {
     setUserInput(e.target.value);
   };
 
   const sendMessage = async () => {
-    if (!userInput.trim()) return;
+    const trimmed = userInput.trim();
+    if (!trimmed || loading) return;
     if (showIntroMessage) {
       setShowIntroMessage(false);
     }
 
+    const currentHistory = [...chatHistory, { role: "user", text: trimmed }];
     const loadingMessage = {
       role: "assistant",
       text: (
@@ -88,65 +80,111 @@ const ChatBot = () => {
         />
       ),
     };
-    setChatHistory((currentHistory) => [
-      ...currentHistory,
-      { role: "user", text: userInput },
-      loadingMessage,
-    ]);
+
+    setChatHistory([...currentHistory, loadingMessage]);
+    setUserInput("");
+    setLoading(true);
 
     try {
-      setLoading(true);
-
-      const requestBody = {
-        message: userInput,
-        currentLessonData: currentLesson ? currentLesson.description : "", // Sử dụng currentLesson.description làm currentLessonData, hoặc bạn có thể chọn trường khác từ currentLesson nếu phù hợp hơn
-        currentLessonId: currentLesson ? currentLesson.id : "", // Sử dụng currentLesson.id làm currentLessonId
-      };
-
-      const response = await fetch('/api/chat/message', { // **Đổi endpoint API của bạn nếu khác "/api/chat/message"**
-        method: 'POST',
+      const response = await fetch("/api/ai/moli-pet", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
         },
-        body: JSON.stringify(requestBody),
+        credentials: "include",
+        body: JSON.stringify({
+          message: trimmed,
+          page: window.location.pathname,
+          petName: "Moly Pet",
+          conversationHistory: currentHistory.slice(-6).map((item) => ({
+            role: item.role,
+            content: typeof item.text === "string" ? item.text : "",
+          })),
+        }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json(); // Lấy thông tin lỗi từ backend nếu có
-        throw new Error(`Lỗi server đang bận `);
+        if (response.status === 401) {
+          setChatHistory((curr) => {
+            const next = [...curr];
+            next[next.length - 1] = {
+              role: "assistant",
+              text: "Bạn đăng nhập xong Moly Pet mới dùng AI để trò chuyện và giải bài được nha! 🐾",
+            };
+            return next;
+          });
+          return;
+        }
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.answer || errorData?.message || "Moly Pet đang bận xử lý bài, bạn thử lại sau ít giây nhé!");
       }
 
-      const responseData = await response.json();
-      const llmResponse = responseData.response; // Backend trả về response trong trường "response"
+      if (!response.body) throw new Error("Không nhận được phản hồi từ Moly Pet.");
 
-      // Cập nhật tin nhắn loading bằng phản hồi thực tế từ backend
-      setChatHistory((currentHistory) => {
-        const updatedHistory = [...currentHistory];
-        updatedHistory[updatedHistory.length - 1] = {
-          role: "assistant",
-          text: llmResponse, // Sử dụng phản hồi từ backend
-        };
-        return updatedHistory;
-      });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let pending = "";
+      let fullContent = "";
 
-      // **Kết thúc phần code thay đổi trong sendMessage**
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value) pending += decoder.decode(value, { stream: !done });
+        if (done) pending += decoder.decode();
 
+        const lines = pending.split(/\r?\n/);
+        pending = done ? "" : (lines.pop() || "");
+
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(payload);
+            const chunk = parsed?.choices?.[0]?.delta?.content;
+            if (typeof chunk === "string" && chunk) {
+              fullContent += chunk;
+              setChatHistory((curr) => {
+                const next = [...curr];
+                next[next.length - 1] = {
+                  role: "assistant",
+                  text: fullContent,
+                };
+                return next;
+              });
+            }
+          } catch {
+            // ignore JSON parse for non-JSON lines
+          }
+        }
+        if (done) break;
+      }
+
+      if (!fullContent.trim()) {
+        setChatHistory((curr) => {
+          const next = [...curr];
+          next[next.length - 1] = {
+            role: "assistant",
+            text: "Moly Pet đã nhận được tin nhắn của bạn!",
+          };
+          return next;
+        });
+      }
     } catch (error) {
-      console.error("Lỗi khi gửi tin nhắn: ", error);
-      setChatHistory((currentHistory) => {
-        const updatedHistory = [...currentHistory];
-        updatedHistory[updatedHistory.length - 1] = {
+      console.error("Lỗi khi gửi tin nhắn Moly Pet:", error);
+      setChatHistory((curr) => {
+        const next = [...curr];
+        next[next.length - 1] = {
           role: "assistant",
-          text: "Xin lỗi, đã có lỗi xảy ra khi phản hồi. Vui lòng thử lại sau. " + error.message, // Hiển thị thêm thông tin lỗi nếu có
+          text: error.message || "Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại sau.",
         };
-        return updatedHistory;
+        return next;
       });
     } finally {
       setLoading(false);
-      setUserInput("");
     }
   };
-
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !loading) {
@@ -155,7 +193,8 @@ const ChatBot = () => {
   };
 
   const clearChatHistory = () => {
-    localStorage.removeItem(`chat-history-${authUser?._id}`);
+    const key = `chat-history-${authUser?._id || authUser?.id || "guest"}`;
+    localStorage.removeItem(key);
     setChatHistory([]);
     setShowIntroMessage(true);
   };
@@ -163,8 +202,6 @@ const ChatBot = () => {
   const handleKeywordClick = (keyword) => {
     setUserInput(keyword);
   };
-
-  const { t } = useTranslation();
 
   return (
     <div className="flex flex-col h-[calc(100vh-180px)]">
@@ -174,7 +211,7 @@ const ChatBot = () => {
         style={{ maxHeight: "calc(100vh - 280px)" }}
       >
         {showIntroMessage && chatHistory.length === 0 && (
-          <div className={`mb-2 flex justify-start`}>
+          <div className="mb-2 flex justify-start">
             <div className="mr-2 flex-shrink-0 w-11 h-11 flex items-center justify-center filter drop-shadow-sm">
               <Lottie
                 src={owlAnimation}
@@ -184,16 +221,12 @@ const ChatBot = () => {
                 style={{ width: "100%", height: "100%" }}
               />
             </div>
-            <div className={`flex flex-col items-start`}>
-              <div className={`text-sm text-gray-900 dark:text-white mb-1`}>
-                {t("chatName")}
+            <div className="flex flex-col items-start">
+              <div className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+                {t("chatName") || "Moly Pet"}
               </div>
-              <div
-                className={`rounded-xl p-3 bg-gray-100 text-gray-800 max-w-xs`}
-              >
-                Chào bạn! Tôi là trợ giảng React.js. Rất vui được hỗ trợ bạn
-                trong quá trình học tập. Hãy đặt câu hỏi về React.js hoặc nội
-                dung bài học nhé!
+              <div className="rounded-xl p-3 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 max-w-xs shadow-sm text-sm">
+                Chào bạn! Mình là Moly Pet, trợ lý học tập thông minh của MolyCourse. Rất vui được đồng hành cùng bạn. Bạn cần hỗ trợ bài học hay giải bài tập nào cứ nhắn mình nhé! 🐾✨
               </div>
             </div>
           </div>
@@ -201,8 +234,9 @@ const ChatBot = () => {
         {chatHistory.map((message, index) => (
           <div
             key={index}
-            className={`mb-2 flex ${message.role === "user" ? "justify-end" : "justify-start"
-              }`}
+            className={`mb-3 flex ${
+              message.role === "user" ? "justify-end" : "justify-start"
+            }`}
           >
             {message.role === "assistant" && (
               <div className="mr-2 flex-shrink-0 w-11 h-11 flex items-center justify-center filter drop-shadow-sm">
@@ -216,42 +250,45 @@ const ChatBot = () => {
               </div>
             )}
             <div
-              className={`flex flex-col ${message.role === "user" ? "items-end" : "items-start"
-                }`}
+              className={`flex flex-col ${
+                message.role === "user" ? "items-end" : "items-start"
+              }`}
             >
               <div
-                className={`text-sm ${message.role === "user"
-                  ? "text-blue-600"
-                  : "text-gray-900 dark:text-white"
-                  } mb-1`}
+                className={`text-xs font-semibold ${
+                  message.role === "user"
+                    ? "text-blue-600 dark:text-blue-400"
+                    : "text-gray-900 dark:text-white"
+                } mb-1`}
               >
-                {message.role === "user" ? "Bạn" : "Trợ giảng"}
+                {message.role === "user" ? "Bạn" : (t("chatName") || "Moly Pet")}
               </div>
               <div
-                className={`rounded-xl p-3 ${message.role === "user"
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-100 text-gray-800"
-                  } max-w-xs`}
+                className={`rounded-xl p-3 ${
+                  message.role === "user"
+                    ? "bg-blue-500 text-white shadow-sm"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 shadow-sm"
+                } max-w-xs sm:max-w-md break-words`}
               >
-                {message.role === "assistant" &&
-                  typeof message.text !== "string" ? ( // Kiểm tra nếu message.text không phải string thì render trực tiếp (là component Oval)
+                {message.role === "assistant" && typeof message.text !== "string" ? (
                   message.text
                 ) : (
-                  <ReactMarkdown className="prose max-w-none">
-                    {message.text}
-                  </ReactMarkdown>
+                  <RichMathText
+                    value={message.text}
+                    className={`prose max-w-none text-sm break-words ${
+                      message.role === "user" ? "text-white prose-invert" : "dark:prose-invert text-gray-800 dark:text-gray-100"
+                    }`}
+                  />
                 )}
               </div>
             </div>
             {message.role === "user" && (
               <div className="ml-2 avatar">
-                <div className="">
+                <div className="w-10 h-10 rounded-full overflow-hidden border border-blue-200 dark:border-gray-700">
                   <img
                     alt="Avatar User"
-                    className="rounded-full w-10 h-10"
-                    src={
-                      user?.avatarUrl || "https://avatar.iran.liara.run/public"
-                    }
+                    className="w-full h-full object-cover"
+                    src={user?.avatarUrl || "https://avatar.iran.liara.run/public"}
                   />
                 </div>
               </div>
@@ -260,37 +297,31 @@ const ChatBot = () => {
         ))}
       </div>
 
-      <div className="dark:bg-gray-900 border-t border-gray-200 dark:border-gray-950 pt-2 pb-4 mt-auto">
+      <div className="dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 pt-2 pb-4 mt-auto">
         <div className="max-w-screen-xl mx-auto flex flex-col gap-2 px-4">
-          {showIntroMessage && ( // Conditional rendering for keywords
+          {showIntroMessage && (
             <div className="flex flex-nowrap overflow-x-auto gap-3 mb-3 py-2 px-1 scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-transparent">
               {keywords.map((keyword, index) => (
                 <button
                   key={index}
                   className="
-                    px-6 py-3
+                    px-4 py-2
                     rounded-full 
-                    text-sm font-medium
+                    text-xs font-medium
                     transition-all duration-300 
-                    shadow-lg
+                    shadow-sm
                     whitespace-nowrap
-                    border-2
+                    border
                     transform hover:scale-105
-                    hover:shadow-xl
-                    dark:hover:shadow-blue-900/30
+                    hover:shadow-md
                     bg-white
                     text-blue-700
                     dark:text-blue-200
-                    dark:bg-gray-700
-                    border-blue-300/50
+                    dark:bg-gray-800
+                    border-blue-200
                     dark:border-blue-700/50
-                    hover:from-blue-200 hover:via-blue-100 hover:to-indigo-200
-                    dark:hover:from-gray-700 dark:hover:via-blue-800/40 dark:hover:to-gray-700
-                    backdrop-blur-sm
-                    hover:border-blue-400
-                    dark:hover:border-blue-600
-                    hover:text-blue-800
-                    dark:hover:text-blue-100
+                    hover:bg-blue-50
+                    dark:hover:bg-gray-700
                   "
                   onClick={() => handleKeywordClick(keyword)}
                 >
@@ -303,8 +334,8 @@ const ChatBot = () => {
             <div className="flex-1">
               <input
                 type="text"
-                className="w-full p-3 border dark:bg-gray-900 bg-white border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-300 outline-none"
-                placeholder={t("chatInput")}
+                className="w-full p-3 border dark:bg-gray-900 bg-white border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-300 outline-none text-sm dark:text-gray-100"
+                placeholder={t("chatInput") || "Hỏi Moly Pet điều bạn thắc mắc..."}
                 value={userInput}
                 onChange={handleUserInput}
                 onKeyDown={handleKeyDown}
@@ -312,10 +343,11 @@ const ChatBot = () => {
               />
             </div>
             <button
-              className={`p-3 rounded-lg ${loading
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-blue-500 hover:bg-blue-600"
-                } text-white font-medium transition-colors duration-200`}
+              className={`p-3 rounded-lg ${
+                loading
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-blue-500 hover:bg-blue-600"
+              } text-white font-medium transition-colors duration-200`}
               onClick={sendMessage}
               disabled={loading}
               aria-label="Send message"
@@ -334,19 +366,16 @@ const ChatBot = () => {
               )}
             </button>
             <button
-              className="p-3 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium transition-colors duration-200 ml-2"
+              className="p-3 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium transition-colors duration-200 ml-1"
               onClick={() => {
-                if (
-                  window.confirm(
-                    "Bạn có chắc chắn muốn xóa toàn bộ lịch sử chat?"
-                  )
-                ) {
+                if (window.confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử chat?")) {
                   clearChatHistory();
                 }
               }}
               aria-label="Clear chat history"
+              title="Xóa lịch sử chat"
             >
-              <FaTrash className="w-5 h-5" />
+              <FaTrash className="w-4 h-4" />
             </button>
           </div>
         </div>

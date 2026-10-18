@@ -141,10 +141,13 @@ const courseSelect = `
          COALESCE(c.is_free, true) AS is_free, c.is_published,
          COALESCE(c.thumbnail_url, c.image_url) AS thumbnail_url,
          c.total_lessons, c.ratings_count, c.ratings_avg, c.enrolled_count,
-         c.author_id, c.created_at, c.updated_at,
+         c.author_id, c.external_course_id, COALESCE(c.is_management_managed, false) AS is_management_managed,
+         c.created_at, c.updated_at,
          u.username AS instructor_name, u.avatar_url AS instructor_avatar_url,
          (SELECT COUNT(*)::int FROM sections s WHERE s.course_id = c.id) AS section_count,
          (SELECT COUNT(*)::int FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
+         (SELECT COUNT(*)::int FROM live_classes lc WHERE lc.course_id = c.id) AS class_count,
+         (SELECT COUNT(*)::int FROM live_classes lc WHERE lc.course_id = c.id AND lc.status = 'active') AS active_class_count,
          (SELECT COUNT(*)::int FROM enrollments e WHERE e.course_id = c.id AND e.status = 'active') AS active_enrollments,
          (SELECT COUNT(*)::int FROM lesson_progress lp WHERE lp.course_id = c.id) AS progress_count`;
 

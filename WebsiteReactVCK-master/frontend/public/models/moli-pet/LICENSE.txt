@@ -1,0 +1,10 @@
+Moly 3D pet model
+
+Source asset: Cube Pets 2.0
+Creator: Kenney
+Source: https://kenney.nl/assets/cube-pets
+
+License: Creative Commons Zero (CC0)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The model can be used for personal, educational, and commercial purposes.

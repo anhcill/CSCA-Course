@@ -5,6 +5,7 @@ import {
   makeQuestionSnapshot,
   normalizeQuizAnswers,
   parseQuizDescriptionMetadata,
+  publicQuizItems,
   publicQuizQuestion,
 } from "./quizAttempt.service.js";
 
@@ -108,4 +109,60 @@ test("student payload cannot inject grading fields or attach essays to objective
   assert.match(normalizeQuizAnswers(questions, {
     _essay: { byQuestion: { 20: { attachments: [{ assetId: 101 }] }, 30: { attachments: [{ assetId: 101 }] } } },
   }).error, /chỉ được gắn với một câu hỏi/);
+});
+
+test("new objective types validate and grade while translation stays manual", () => {
+  const questions = [
+    { ...objective(1, 1, "B"), question_type: "true_false" },
+    { ...objective(2, 2, "A"), question_type: "reading_item" },
+    { ...objective(3, 3, "x + 1"), question_type: "fill_blank_item", options_json: [] },
+    { ...essay(4, 4), question_type: "translation" },
+  ];
+  const normalized = normalizeQuizAnswers(questions, { 1: "B", 2: "A", 3: "x + 1", 4: "Bản dịch" });
+  assert.equal(normalized.error, null);
+  const result = buildQuizResult(questions, normalized.answers);
+  assert.equal(result.score, 3);
+  assert.equal(result.review[3].isCorrect, null);
+  assert.equal(result.review[3].correctAnswer, null);
+});
+
+test("nested public items retain group content without exposing answers or explanations", () => {
+  const questions = [
+    {
+      ...objective(11, 1, "A"),
+      group_id: 50,
+      item_order: 1,
+      group_type: "reading_passage",
+      passage_text: "Read this passage",
+      passage_text_cn: "阅读短文",
+      passage_text_en: "",
+      passage_image_url: null,
+      linked_options: [],
+      cloze_mode: null,
+      group_sort_order: 1,
+      question_type: "reading_item",
+      explanation: "secret explanation",
+    },
+    { ...objective(12, 2, "B"), item_order: 2, group_id: null },
+  ];
+  const items = publicQuizItems(questions);
+  assert.equal(items[0].kind, "reading_group");
+  assert.equal(items[0].passageText, "Read this passage");
+  assert.equal(items[0].questions[0].correctAnswer, undefined);
+  assert.equal(items[0].questions[0].explanation, undefined);
+  assert.equal(items[1].kind, "question");
+});
+
+test("group-aware snapshots shuffle top-level items without splitting group questions", () => {
+  const questions = [
+    { ...objective(1, 1), item_order: 1, group_id: null },
+    { ...objective(2, 2), item_order: 2, group_id: 90, group_type: "reading_passage", group_sort_order: 2, passage_text: "P" },
+    { ...objective(3, 3), item_order: 2, group_id: 90, group_type: "reading_passage", group_sort_order: 2, passage_text: "P" },
+    { ...essay(4, 4), item_order: 3, group_id: null },
+  ];
+  const snapshot = makeQuestionSnapshot(questions, true, () => 0);
+  assert.deepEqual(snapshot.map((question) => question.id), [2, 3, 1, 4]);
+  assert.deepEqual(snapshot.slice(0, 2).map((question) => question.item_order), [1, 1]);
+  assert.equal(snapshot[2].item_order, 2);
+  assert.equal(snapshot[3].item_order, 3);
 });

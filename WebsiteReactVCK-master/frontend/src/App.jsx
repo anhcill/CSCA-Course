@@ -34,6 +34,7 @@ import { TEACHER_ROLES, USER_ROLES, isTeacherRole } from "./constants/roles";
 import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
 import PwaInstallPrompt from "./components/common/PwaInstallPrompt.jsx";
 import FirstTimeWelcomeModal from "./components/welcome/FirstTimeWelcomeModal.jsx";
+import ChatbotWidget from "./components/course/ChatbotWidget.jsx";
 
 // LMS feature pages
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.jsx"));
@@ -80,6 +81,11 @@ const NotificationCenterPage = lazy(() => import("./features/notifications/pages
 const StudentRecordingsPage = lazy(() => import("./features/learning/pages/StudentRecordingsPage.jsx"));
 const AdminRecordingsPage = lazy(() => import("./pages/admin/AdminRecordingsPage.jsx"));
 const AdminWelcomeScreenPage = lazy(() => import("./pages/admin/AdminWelcomeScreenPage.jsx"));
+const MoliQuizEditorPage = lazy(() => import("./features/quizzes/pages/QuizEditorPage.jsx"));
+const MoliQuizPlayerPage = lazy(() => import("./features/quizzes/pages/QuizPlayerPage.jsx"));
+const QuizMathGalleryPage = lazy(() => import("./features/quizzes/pages/QuizMathGalleryPage.jsx"));
+
+const isMoliQuizUiEnabled = import.meta.env.VITE_MOLI_QUIZ_UI === 'true';
 
 const isTeacherLmsPath = (p) => (
   p === "/lms/teach" || p.startsWith("/lms/teach/") || p === "/lms/teacher-hub" ||
@@ -142,7 +148,7 @@ function AppRoutes() {
         <Route path="sessions/:sessionId" element={<SessionDetailPage />} />
         <Route path="assignments" element={<AssignmentListPage />} />
         <Route path="assignments/:id/submit" element={<AssignmentSubmitPage />} />
-        <Route path="quizzes/:quizId" element={<QuizPlayerPage />} />
+        <Route path="quizzes/:quizId" element={isMoliQuizUiEnabled ? <MoliQuizPlayerPage /> : <QuizPlayerPage />} />
         <Route path="materials" element={<StudentFilesPage />} />
         <Route path="files" element={<StudentFilesPage />} />
         <Route path="results" element={<CourseResultsPage />} />
@@ -151,7 +157,10 @@ function AppRoutes() {
       <Route path="/lms/courses/:slug" element={<Navigate to="/lms/my-learning" replace />} />
       <Route path="/lms/learn/:courseId" element={<CourseClassRedirect />} />
       <Route path="/lms/assignment/:id/submit" element={<AssignmentSubmitPage />} />
-      <Route path="/lms/quiz/:quizId" element={<QuizPlayerPage />} />
+      <Route path="/lms/quizzes/gallery" element={<QuizMathGalleryPage />} />
+      <Route path="/lms/quiz/:quizId" element={isMoliQuizUiEnabled ? <MoliQuizPlayerPage /> : <QuizPlayerPage />} />
+      <Route path="/lms/quizzes/:quizId" element={isMoliQuizUiEnabled ? <MoliQuizPlayerPage /> : <QuizPlayerPage />} />
+      <Route path="/lms/quizzes/:quizId/moli" element={<MoliQuizPlayerPage />} />
       <Route path="/lms/leaderboard" element={<Navigate to="/lms/my-learning" replace />} />
       <Route path="/lms/certificates" element={<Navigate to="/profile" replace />} />
 
@@ -179,6 +188,10 @@ function AppRoutes() {
       <Route path="/lms/teacher/files" element={<Navigate to="/lms/teach/files" replace />} />
       <Route path="/lms/teacher/grading" element={<TeacherGradingPage />} />
       <Route path="/lms/teacher/quizzes" element={<TeacherQuizPage />} />
+      <Route path="/lms/teacher/quizzes/new" element={<MoliQuizEditorPage />} />
+      <Route path="/lms/teacher/quizzes/:quizId/edit" element={<MoliQuizEditorPage />} />
+      <Route path="/lms/teach/quizzes/new" element={<MoliQuizEditorPage />} />
+      <Route path="/lms/teach/quizzes/:quizId/edit" element={<MoliQuizEditorPage />} />
       <Route path="/lms/admin/curriculum" element={<Navigate to="/admin/curriculum" replace />} />
       <Route path="/lms/admin/grading" element={<Navigate to="/admin/grading" replace />} />
       <Route path="/lms/admin/courses" element={<Navigate to="/admin/courses" replace />} />
@@ -197,6 +210,8 @@ function AppRoutes() {
         <Route path="files" element={<TeacherFilesPage />} />
         <Route path="grading" element={<TeacherGradingPage />} />
         <Route path="quizzes" element={<TeacherQuizPage />} />
+        <Route path="quizzes/new" element={<MoliQuizEditorPage />} />
+        <Route path="quizzes/:quizId/edit" element={<MoliQuizEditorPage />} />
         <Route path="attendance-review" element={<AttendanceReviewPage />} />
         <Route path="attendance-report" element={<AttendanceReportPage />} />
         <Route path="grades-report" element={<AdminGradesReportPage />} />
@@ -318,6 +333,7 @@ function AppContent() {
           navigate("/", { replace: true, state: { openAuthModal: "login" } });
         }}
       />
+      {!isAdminPage && !pathname.includes("/detail-course") && <ChatbotWidget />}
     </div>
   );
 }

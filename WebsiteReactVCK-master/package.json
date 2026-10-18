@@ -15,7 +15,7 @@
     "test:security": "node --test backend/middleware/requireRole.test.js backend/middleware/requireActiveStudentLmsAccess.test.js backend/middleware/security.test.js",
     "test:calendar": "node --test backend/services/calendarIcs.service.test.js",
     "test:assessment": "node --test backend/services/assessmentPolicy.service.test.js",
-    "test:quiz": "node --test backend/services/quizAttempt.service.test.js backend/router/quizEssayGrading.router.test.js",
+    "test:quiz": "node --test backend/services/quizAttempt.service.test.js backend/services/quizAuthoring.service.test.js backend/services/quizDocumentImport.service.test.js backend/services/quizOcr.service.test.js backend/router/quizAuthoring.router.test.js backend/router/quizPlayer.router.test.js backend/router/quizEssayGrading.router.test.js",
     "test:lms-workflows": "node --test backend/services/lmsWorkflow.integration.test.js",
     "test:integration": "node --test backend/middleware/requireManagementIntegration.test.js backend/services/managementCalendarDelivery.service.test.js backend/services/managementSync.service.test.js",
     "worker": "cross-env NODE_ENV=production node ./backend/worker.js",
@@ -35,6 +35,9 @@
     "express": "^4.21.2",
     "google-auth-library": "^10.9.0",
     "jsonwebtoken": "^9.0.2",
+    "mammoth": "^1.13.0",
+    "multer": "^2.4.0",
+    "pdf-parse": "^1.1.4",
     "pg": "^8.22.0"
   },
   "devDependencies": {

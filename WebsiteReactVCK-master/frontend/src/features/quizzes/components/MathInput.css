@@ -1,0 +1,57 @@
+/* KaTeX Math Input Styles */
+
+.math-preview .katex {
+  font-size: 1.1em;
+}
+
+.math-preview .katex-display {
+  margin: 0.5rem 0;
+}
+
+/* Make sure math doesn't overflow */
+.math-preview {
+  overflow-x: auto;
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.rich-math-text {
+  overflow-x: auto;
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.rich-math-text .katex-display {
+  margin: 0.5rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.rich-math-text .katex {
+  font-size: 1.05em;
+}
+
+.admin-question-preview-math {
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.admin-question-preview-math .katex {
+  font-size: 1.12em;
+}
+
+/* Preset button hover effect */
+.math-preset-btn:hover .katex {
+  transform: scale(1.1);
+}
+
+/* Smooth transitions */
+.math-input-panel {
+  transition: all 0.2s ease-in-out;
+}
+
+/* LaTeX code styling in placeholder */
+.font-mono::placeholder {
+  font-family: 'Courier New', Courier, monospace;
+  color: #9ca3af;
+}
