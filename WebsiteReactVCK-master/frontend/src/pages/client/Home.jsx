@@ -332,62 +332,6 @@ const HeroBanner = () => {
   );
 };
 
-const StatsSection = () => {
-  const stats = [
-    { value: '5.000+', label: 'Học viên', icon: Users, suffix: '学生', color: 'from-blue-500 to-indigo-600', shadow: 'hover:shadow-blue-200/50 dark:hover:shadow-blue-900/30' },
-    { value: '98%', label: 'Tỷ lệ đỗ HSK', icon: Award, suffix: '通过', color: 'from-emerald-500 to-teal-600', shadow: 'hover:shadow-emerald-200/50 dark:hover:shadow-emerald-900/30' },
-    { value: '10+', label: 'Năm kinh nghiệm', icon: GraduationCap, suffix: '经验', color: 'from-amber-500 to-orange-600', shadow: 'hover:shadow-amber-200/50 dark:hover:shadow-amber-900/30' },
-    { value: '300+', label: 'Hồ sơ du học thành công', icon: Plane, suffix: '成功', color: 'from-rose-500 to-pink-600', shadow: 'hover:shadow-rose-200/50 dark:hover:shadow-rose-900/30' },
-  ];
-
-  return (
-  <section aria-label="Thành tựu nổi bật" className="relative z-10 mt-16 px-4 sm:px-6 lg:px-8 py-14 bg-gray-50/80 dark:bg-gray-900/50">
-    <div className="mx-auto max-w-6xl">
-      {/* Section heading */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.6 }}
-        className="text-center mb-10"
-      >
-        <p className="text-red-600 dark:text-amber-400 text-sm font-bold uppercase tracking-[0.22em]">Thành tựu nổi bật</p>
-        <h2 className="mt-2 text-2xl font-black text-gray-900 dark:text-white sm:text-3xl">Con số biết nói</h2>
-      </motion.div>
-
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
-        {stats.map(({ value, label, icon: Icon, suffix, color, shadow }, index) => (
-          <motion.div
-            key={label}
-            initial={{ opacity: 0, y: 30, scale: 0.9 }}
-            whileInView={{ opacity: 1, y: 0, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5, delay: index * 0.12 }}
-            whileHover={{ y: -5, scale: 1.03 }}
-            className={`group relative overflow-hidden rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-5 sm:p-7 text-center cursor-default transition-all duration-300 shadow-md hover:shadow-xl ${shadow}`}
-          >
-            {/* Gradient accent bar top */}
-            <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${color}`} />
-
-            {/* Chinese character watermark */}
-            <span className="absolute -bottom-2 -right-1 text-5xl font-black text-gray-100 dark:text-gray-700/50 select-none pointer-events-none transition-colors group-hover:text-gray-200 dark:group-hover:text-gray-600/50">{suffix}</span>
-
-            <div className="relative">
-              <div className={`mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${color} shadow-sm transition-transform duration-300 group-hover:scale-110`}>
-                <Icon className="h-6 w-6 text-white" aria-hidden="true" />
-              </div>
-              <strong className="block text-3xl font-black tracking-tight text-gray-900 dark:text-white sm:text-4xl">{value}</strong>
-              <span className="mt-1 block text-xs font-semibold text-gray-500 dark:text-gray-400 sm:text-sm">{label}</span>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-    </div>
-  </section>
-  );
-};
-
 const TrustSection = () => {
   const trustItems = [
     { label: 'Luyện thi HSK chính quy', icon: BookOpenCheck },
@@ -701,7 +645,6 @@ const Home = () => {
       <Meta title={t('homeMetaTitle')} description={t('homeMetaDescription')} keywords={t('homeMetaKeywords')} url="https://www.molycourse.online/" structuredData={FAQ_SCHEMA} />
       <HeroBanner />
       <HomeLeaderboard />
-      <StatsSection />
       <TrustSection />
       <PartnerStrip />
       <FeaturedCourses />
