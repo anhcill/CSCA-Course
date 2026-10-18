@@ -35,6 +35,7 @@ import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
 import PwaInstallPrompt from "./components/common/PwaInstallPrompt.jsx";
 import FirstTimeWelcomeModal from "./components/welcome/FirstTimeWelcomeModal.jsx";
 import ChatbotWidget from "./components/course/ChatbotWidget.jsx";
+import OfflineScreen from "./components/common/OfflineScreen.jsx";
 
 // LMS feature pages
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.jsx"));
@@ -341,6 +342,7 @@ function App() {
     <ThemeProvider>
       <LoadingProvider>
         <AppContent />
+        <OfflineScreen />
       </LoadingProvider>
     </ThemeProvider>
   );
