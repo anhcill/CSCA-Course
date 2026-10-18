@@ -8,7 +8,6 @@ import owlAnimation from "../../assets/owl.json";
 import RichMathText from "../common/RichMathText.jsx";
 
 const ChatBot = () => {
-  const [user, setUser] = useState(null);
   const [userInput, setUserInput] = useState("");
   const { authUser } = useContext(AuthContext);
   const [chatHistory, setChatHistory] = useState(() => {
@@ -32,12 +31,6 @@ const ChatBot = () => {
   ]);
 
   const { t } = useTranslation();
-
-  useEffect(() => {
-    if (authUser) {
-      setUser(authUser);
-    }
-  }, [authUser]);
 
   useEffect(() => {
     const key = `chat-history-${authUser?._id || authUser?.id || "guest"}`;
@@ -284,12 +277,11 @@ const ChatBot = () => {
             </div>
             {message.role === "user" && (
               <div className="ml-2 avatar">
-                <div className="w-10 h-10 rounded-full overflow-hidden border border-blue-200 dark:border-gray-700">
-                  <img
-                    alt="Avatar User"
-                    className="w-full h-full object-cover"
-                    src={user?.avatarUrl || "https://avatar.iran.liara.run/public"}
-                  />
+                <div
+                  className="grid h-10 w-10 place-items-center rounded-full border border-blue-200 bg-gradient-to-br from-blue-500 to-cyan-400 text-sm font-bold uppercase text-white shadow-sm dark:border-gray-700"
+                  aria-label="Avatar người dùng"
+                >
+                  {(authUser?.display_name || authUser?.fullName || authUser?.username || "B").trim().charAt(0) || "B"}
                 </div>
               </div>
             )}

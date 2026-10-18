@@ -265,7 +265,7 @@ export default function MolyPetRoot({ defaultPosition = 'left' }) {
       )}
 
       <div
-        className={`fixed z-[65] h-[88px] w-[88px] select-none ${open ? 'z-[95]' : ''}`}
+        className={`fixed z-[65] h-[72px] w-[72px] select-none ${open ? 'z-[95]' : ''}`}
         style={containerStyle}
       >
         {showHintBubble && (
@@ -285,7 +285,7 @@ export default function MolyPetRoot({ defaultPosition = 'left' }) {
           className="group relative h-full w-full cursor-grab touch-none rounded-full outline-none active:cursor-grabbing focus-visible:ring-4 focus-visible:ring-violet-300/70"
           aria-label={open ? 'Đóng Moly Pet' : 'Mở Moly Pet'}
         >
-          <span className="relative block transition-transform duration-300 group-hover:scale-105">
+          <span className="relative flex h-full w-full scale-[0.82] items-center justify-center transition-transform duration-300 group-hover:scale-[0.88]">
             <PetFace
               color={settings.color}
               variant={settings.variant}

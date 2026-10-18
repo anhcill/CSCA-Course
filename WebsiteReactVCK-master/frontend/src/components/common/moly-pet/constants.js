@@ -2,7 +2,7 @@ export const SETTINGS_KEY = 'moly_pet_settings_v1';
 export const HIDDEN_UNTIL_KEY = 'moly_pet_hidden_until_v1';
 export const POSITION_KEY = 'moly_pet_position_v2';
 export const SETTINGS_DEFAULTS_VERSION = 6;
-export const PET_FRAME_SIZE = 88;
+export const PET_FRAME_SIZE = 72;
 export const PET_PANEL_MAX_WIDTH = 372;
 export const PET_PANEL_MARGIN = 12;
 
