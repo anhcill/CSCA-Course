@@ -231,8 +231,13 @@ router.get("/teacher/classes-lookup", protectRoute, requireTeacher, async (req, 
        FROM live_classes lc
        LEFT JOIN courses c ON c.id = lc.course_id
        WHERE lc.status <> 'cancelled'
-         AND ($1::boolean OR lc.instructor_id = $2 OR EXISTS (
-           SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+         AND ($1::boolean OR EXISTS (
+           SELECT 1 FROM class_teachers ct
+           WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
+         ) OR (
+           lc.instructor_id = $2 AND NOT EXISTS (
+             SELECT 1 FROM class_teachers assigned WHERE assigned.live_class_id = lc.id
+           )
          ))
        ORDER BY lc.created_at DESC`,
       [isAdmin, req.user.id],

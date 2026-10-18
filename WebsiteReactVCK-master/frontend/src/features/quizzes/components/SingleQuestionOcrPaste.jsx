@@ -132,23 +132,23 @@ export default function SingleQuestionOcrPaste({ onApply, onClear }) {
   };
 
   return (
-    <section className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+    <section className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/80">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-100 text-amber-700">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300">
             <FiClipboard size={16} />
           </span>
           <div>
-            <h4 className="text-sm font-bold text-amber-900">Dán OCR 1 câu</h4>
-            <p className="text-xs text-amber-800">Dán ảnh hoặc text OCR để tự tách đề bài, lựa chọn, đáp án, giải thích.</p>
+            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Dán OCR 1 câu</h4>
+            <p className="text-xs text-slate-600 dark:text-slate-400">Dán ảnh hoặc text OCR để tự tách đề bài, lựa chọn, đáp án, giải thích.</p>
           </div>
         </div>
         {parsed && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-amber-900">
-            <span className="rounded border border-amber-200 bg-white px-2 py-1">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+            <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-800">
               {parsed.answers.length} lựa chọn
             </span>
-            <span className="rounded border border-amber-200 bg-white px-2 py-1">
+            <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-800">
               Đáp án: {parsed.correctAnswer || '?'}
             </span>
           </div>
@@ -170,19 +170,19 @@ export default function SingleQuestionOcrPaste({ onApply, onClear }) {
         }}
         onPaste={handleTextareaPaste}
         rows={4}
-        className="mt-3 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-mono text-gray-900 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+        className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 outline-none placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-500 dark:focus:ring-sky-950"
         placeholder={'Dán text OCR hoặc dán ảnh vào đây\n25. ...\nA. ...\nB. ...\n解析: ...'}
       />
 
       {parsedDraft && (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-white p-3">
+        <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950/70">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">Xem trước tách OCR</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-300">Xem trước tách OCR</p>
             <button
               type="button"
               onClick={addDraftAnswer}
               disabled={parsedDraft.answers.length >= OCR_ANSWER_KEYS.length}
-              className="inline-flex items-center gap-1 rounded-lg border border-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <FiPlus size={12} />
               Thêm đáp án
@@ -203,14 +203,14 @@ export default function SingleQuestionOcrPaste({ onApply, onClear }) {
 
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             {parsedDraft.answers.map((answer, answerIndex) => (
-              <div key={`${answer.key}-${answerIndex}`} className="rounded-lg border border-gray-200 p-2.5">
+              <div key={`${answer.key}-${answerIndex}`} className="rounded-lg border border-slate-200 bg-slate-50/50 p-2.5 dark:border-slate-800 dark:bg-slate-900/50">
                 <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-gray-500">Đáp án {answer.key}</span>
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Đáp án {answer.key}</span>
                   <button
                     type="button"
                     onClick={() => removeDraftAnswer(answerIndex)}
                     disabled={parsedDraft.answers.length <= 2}
-                    className="inline-flex items-center gap-1 rounded border border-rose-200 px-1.5 py-0.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/60 dark:bg-slate-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
                   >
                     <FiTrash2 size={11} />
                     Xóa
@@ -232,11 +232,11 @@ export default function SingleQuestionOcrPaste({ onApply, onClear }) {
           </div>
 
           <div className="mt-3 max-w-xs">
-            <label className="mb-1 block text-xs font-semibold text-gray-600">Đáp án đúng</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">Đáp án đúng</label>
             <select
               value={parsedDraft.correctAnswer}
               onChange={event => updateDraft({ correctAnswer: event.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-sky-950"
             >
               <option value="">Chọn đáp án</option>
               {parsedDraft.answers.map(answer => (
@@ -264,7 +264,7 @@ export default function SingleQuestionOcrPaste({ onApply, onClear }) {
       {draftWarnings.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {draftWarnings.map(warning => (
-            <span key={warning} className="rounded border border-amber-200 bg-white px-2 py-0.5 text-xs text-amber-800">
+            <span key={warning} className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
               {warning}
             </span>
           ))}
@@ -276,7 +276,7 @@ export default function SingleQuestionOcrPaste({ onApply, onClear }) {
           type="button"
           onClick={handleApply}
           disabled={!canApply}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <FiCheck size={14} />
           Tách vào form
@@ -285,13 +285,13 @@ export default function SingleQuestionOcrPaste({ onApply, onClear }) {
           type="button"
           onClick={handleClear}
           disabled={!ocrText && !applied && !fileName && !previewUrl && !imageOcrLoading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           <FiTrash2 size={14} />
           Xóa OCR
         </button>
         {applied && (
-          <span className="text-xs font-semibold text-green-700">
+          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
             ✓ Đã đổ vào form bên dưới.
           </span>
         )}

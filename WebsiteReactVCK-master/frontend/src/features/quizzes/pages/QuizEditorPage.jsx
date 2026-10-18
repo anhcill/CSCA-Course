@@ -41,6 +41,7 @@ export default function QuizEditorPage() {
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null); // { type: 'success' | 'error' | 'info', message: string }
   const [classList, setClassList] = useState([]);
+  const [classesLoading, setClassesLoading] = useState(true);
   const [isPdfImportOpen, setIsPdfImportOpen] = useState(false);
 
   const handleImportedItems = (importedItems) => {
@@ -62,9 +63,9 @@ export default function QuizEditorPage() {
       return {
         title: 'Đề thi mới',
         description: '',
-        courseId: 1,
-        liveClassId: 2,
-        classSessionId: 3,
+        courseId: '',
+        liveClassId: '',
+        classSessionId: '',
         activityScope: 'session',
         durationMinutes: 45,
         passingScore: 60,
@@ -84,7 +85,17 @@ export default function QuizEditorPage() {
   const [activeTab, setActiveTab] = useState('meta');
   const [selectedItemIndex, setSelectedItemIndex] = useState(0);
 
-  // Load teacher classes lookup if available
+  const selectedClass = classList.find((item) => String(item.id) === String(quizMeta.liveClassId));
+  const availableClasses = classList.filter((item) => (
+    item.status === 'active' || String(item.id) === String(quizMeta.liveClassId)
+  ));
+  const sessionList = (selectedClass?.sessions || []).filter((session) => {
+    if (String(session.id) === String(quizMeta.classSessionId)) return true;
+    const endTime = session.endTime ? new Date(session.endTime).getTime() : Number.POSITIVE_INFINITY;
+    return ['scheduled', 'live', 'rescheduled'].includes(session.status) && endTime > Date.now();
+  });
+
+  // Only classes assigned to the current teacher are returned by this lookup.
   useEffect(() => {
     let isMounted = true;
     fetchTeacherClassesLookup()
@@ -93,18 +104,35 @@ export default function QuizEditorPage() {
         const classes = res?.data || res || [];
         if (Array.isArray(classes)) setClassList(classes);
       })
-      .catch(() => {
-        // Fallback default classes
-        setClassList([
-          { id: 1, name: 'Lớp Luyện thi HSK 4 - CSCA' },
-          { id: 2, name: 'Lớp Tiếng Trung Thương Mại K12' },
-          { id: 3, name: 'Lớp Toán Chuyên Đề Đạo Hàm K2026' },
-        ]);
+      .catch((error) => {
+        console.warn('Cannot load assigned teacher classes:', error);
+        setClassList([]);
+        setBanner({
+          type: 'error',
+          message: 'Không thể tải danh sách lớp được phân công. Vui lòng tải lại trang.',
+        });
+      })
+      .finally(() => {
+        if (isMounted) setClassesLoading(false);
       });
     return () => {
       isMounted = false;
     };
   }, []);
+
+  const formatSessionLabel = (session) => {
+    const start = session?.startTime ? new Date(session.startTime) : null;
+    const end = session?.endTime ? new Date(session.endTime) : null;
+    const validStart = start && !Number.isNaN(start.getTime());
+    const validEnd = end && !Number.isNaN(end.getTime());
+    const dayLabel = validStart
+      ? start.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
+      : 'Chưa có ngày';
+    const timeLabel = validStart
+      ? `${start.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}${validEnd ? ` - ${end.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}`
+      : '';
+    return `${dayLabel}${timeLabel ? ` · ${timeLabel}` : ''} — ${session?.title || 'Buổi học'}`;
+  };
 
   // Load real quiz editor data if editing an existing quiz
   useEffect(() => {
@@ -263,13 +291,18 @@ export default function QuizEditorPage() {
     [selectedItemIndex]
   );
 
-  const validateQuiz = () => {
+  const validateQuiz = ({ requireTarget = false } = {}) => {
     if (!quizMeta.title.trim()) {
       alert('Vui lòng nhập tiêu đề cho đề thi.');
       return false;
     }
     if (quizMeta.items.length === 0) {
       alert('Đề thi cần có ít nhất 1 câu hỏi hoặc 1 nhóm bài tập.');
+      return false;
+    }
+    if (requireTarget && (!quizMeta.courseId || !quizMeta.liveClassId || !quizMeta.classSessionId)) {
+      alert('Vui lòng chọn lớp và buổi học cụ thể trước khi xuất bản đề.');
+      setActiveTab('meta');
       return false;
     }
     if (quizMeta.availableFrom && quizMeta.availableUntil) {
@@ -321,7 +354,7 @@ export default function QuizEditorPage() {
   };
 
   const handlePublish = async () => {
-    if (!validateQuiz()) return;
+    if (!validateQuiz({ requireTarget: true })) return;
 
     if (!window.confirm('Bạn có chắc muốn xuất bản đề thi này cho học sinh làm bài?')) {
       return;
@@ -342,10 +375,9 @@ export default function QuizEditorPage() {
       });
     } catch (err) {
       console.warn('Publish API call:', err);
-      setQuizMeta((prev) => ({ ...prev, status: 'PUBLISHED' }));
       setBanner({
-        type: 'success',
-        message: 'Đã chuyển trạng thái đề sang ĐÃ XUẤT BẢN.',
+        type: 'error',
+        message: err?.message || 'Không thể xuất bản đề. Vui lòng kiểm tra lớp, buổi học và thời gian mở đề.',
       });
     } finally {
       setSaving(false);
@@ -533,16 +565,29 @@ export default function QuizEditorPage() {
                 </label>
                 <select
                   value={quizMeta.liveClassId || ''}
-                  onChange={(e) => setQuizMeta({ ...quizMeta, liveClassId: Number(e.target.value) || '' })}
+                  onChange={(e) => {
+                    const nextClass = classList.find((item) => String(item.id) === e.target.value);
+                    setQuizMeta({
+                      ...quizMeta,
+                      courseId: nextClass?.courseId || '',
+                      liveClassId: e.target.value,
+                      classSessionId: '',
+                    });
+                  }}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-xs"
                 >
-                  <option value="">-- Chọn lớp học áp dụng --</option>
-                  {classList.map((c) => (
+                  <option value="">{classesLoading ? '-- Đang tải lớp được phân công --' : '-- Chọn lớp học áp dụng --'}</option>
+                  {availableClasses.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name || `Lớp học #${c.id}`}
+                      {c.title || c.name || `Lớp học #${c.id}`}{c.courseTitle ? ` · ${c.courseTitle}` : ''}
                     </option>
                   ))}
                 </select>
+                {!classesLoading && availableClasses.length === 0 && (
+                  <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                    Tài khoản này chưa được phân công lớp học đang hoạt động.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -556,21 +601,31 @@ export default function QuizEditorPage() {
                 >
                   <option value="session">Bài trên lớp (Theo buổi học)</option>
                   <option value="homework">Bài tập về nhà</option>
-                  <option value="course">Bài kiểm tra chung toàn khóa</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Buổi học (Session ID)
+                  Buổi học theo ngày
                 </label>
-                <input
-                  type="number"
+                <select
                   value={quizMeta.classSessionId || ''}
-                  onChange={(e) => setQuizMeta({ ...quizMeta, classSessionId: Number(e.target.value) || '' })}
-                  placeholder="VD: 1, 2, 3..."
+                  onChange={(e) => setQuizMeta({ ...quizMeta, classSessionId: e.target.value })}
+                  disabled={!quizMeta.liveClassId}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-xs"
-                />
+                >
+                  <option value="">{quizMeta.liveClassId ? '-- Chọn buổi học --' : '-- Chọn lớp trước --'}</option>
+                  {sessionList.map((session) => (
+                    <option key={session.id} value={session.id}>
+                      {formatSessionLabel(session)}
+                    </option>
+                  ))}
+                </select>
+                {quizMeta.liveClassId && sessionList.length === 0 && (
+                  <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                    Lớp này chưa có buổi học hợp lệ. Hãy tạo lịch/buổi học trước khi đăng đề.
+                  </p>
+                )}
               </div>
             </div>
 
