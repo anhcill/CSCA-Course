@@ -33,7 +33,6 @@ import { useAuthContext } from "./context/AuthContext.jsx";
 import { TEACHER_ROLES, USER_ROLES, isTeacherRole } from "./constants/roles";
 import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
 import PwaInstallPrompt from "./components/common/PwaInstallPrompt.jsx";
-import MolyPet from "./components/common/MolyPet.jsx";
 import FirstTimeWelcomeModal from "./components/welcome/FirstTimeWelcomeModal.jsx";
 import ChatbotWidget from "./components/course/ChatbotWidget.jsx";
 
@@ -272,7 +271,6 @@ function AppContent() {
         <LmsRouteGuard allowedRoles={[...TEACHER_ROLES, USER_ROLES.STUDENT]}>
           <AppRoutes />
         </LmsRouteGuard>
-        {authUser && <MolyPet />}
         <SessionExpiredModal
           isOpen={sessionExpired}
           onClose={dismissSessionExpired}
@@ -305,7 +303,6 @@ function AppContent() {
             </Layout>
           </Suspense>
         </LmsRouteGuard>
-        {authUser && <MolyPet />}
         <PwaInstallPrompt />
         <SessionExpiredModal
           isOpen={sessionExpired}
@@ -336,11 +333,7 @@ function AppContent() {
           navigate("/", { replace: true, state: { openAuthModal: "login" } });
         }}
       />
-      {authUser ? (
-        <MolyPet />
-      ) : (
-        !isAdminPage && !pathname.includes("/detail-course") && <ChatbotWidget />
-      )}
+      {!isAdminPage && !pathname.includes("/detail-course") && <ChatbotWidget />}
     </div>
   );
 }
