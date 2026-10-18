@@ -5,6 +5,7 @@ import {
   buildQuizOcrPrompt,
   cleanQuizOcrText,
   extractQuizImageOcrText,
+  getQuizOcrConfig,
 } from "./quizOcr.service.js";
 
 const file = {
