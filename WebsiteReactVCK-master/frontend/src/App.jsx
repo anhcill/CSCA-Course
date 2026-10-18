@@ -312,7 +312,6 @@ function AppContent() {
           }}
         />
         {!isTeacherPage && <ChatbotWidget />}
-        <FloatingContactMenu avoidChatbot={!isTeacherPage} />
       </div>
     );
   }
@@ -335,7 +334,7 @@ function AppContent() {
         }}
       />
       {!isAdminPage && !pathname.includes("/detail-course") && <ChatbotWidget />}
-      {!isAdminPage && <FloatingContactMenu avoidChatbot />}
+      {pathname === "/" && <FloatingContactMenu avoidChatbot />}
     </div>
   );
 }

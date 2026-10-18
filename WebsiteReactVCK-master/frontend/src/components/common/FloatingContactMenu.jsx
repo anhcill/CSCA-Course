@@ -44,6 +44,10 @@ export default function FloatingContactMenu({ avoidChatbot = false }) {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [open]);
 
+  if (location.pathname !== '/') {
+    return null;
+  }
+
   return (
     <div className={`fixed right-3 z-40 flex flex-col items-end gap-2 sm:right-5 ${avoidChatbot ? 'bottom-20 sm:bottom-24' : 'bottom-4 sm:bottom-6'}`}>
       <div
