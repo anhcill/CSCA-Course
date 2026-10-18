@@ -15,6 +15,7 @@ import {
   sendPasswordResetOtpEmail,
   sendPasswordChangedNotificationEmail,
 } from "../services/brevoEmail.service.js";
+import { getWelcomeScreenConfig, DEFAULT_WELCOME_CONFIG } from "../services/welcomeScreen.service.js";
 
 const PRESET_AVATAR_PATTERN = /^\/avatar\/avt_(?:[1-9]|[1-9]\d|1[01]\d|12[0-6])\.webp$/;
 const VALID_GENDERS = new Set(["male", "female", "other"]);
@@ -956,3 +957,22 @@ export const markWelcomeSeen = async (req, res) => {
     return res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
+
+export const getWelcomeScreenSettings = async (req, res) => {
+  try {
+    const data = await getWelcomeScreenConfig();
+    return res.status(200).json({
+      success: true,
+      data: data.config,
+      updatedAt: data.updatedAt,
+    });
+  } catch (error) {
+    console.error("getWelcomeScreenSettings error:", error);
+    return res.status(200).json({
+      success: true,
+      data: DEFAULT_WELCOME_CONFIG,
+      updatedAt: null,
+    });
+  }
+};
+

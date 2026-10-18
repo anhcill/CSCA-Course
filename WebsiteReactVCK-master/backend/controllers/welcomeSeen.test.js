@@ -70,3 +70,28 @@ test("markWelcomeSeen bypasses admin without error", async () => {
   assert.equal(jsonBody.success, true);
   assert.equal(jsonBody.data.hasSeenWelcome, true);
 });
+
+test("getWelcomeScreenSettings returns valid structure", async () => {
+  const { getWelcomeScreenSettings } = await import("./user.controllers.js");
+  let statusCode = null;
+  let jsonBody = null;
+  const req = {};
+  const res = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      jsonBody = body;
+      return this;
+    },
+  };
+
+  await getWelcomeScreenSettings(req, res);
+  assert.equal(statusCode, 200);
+  assert.equal(jsonBody.success, true);
+  assert.equal(typeof jsonBody.data.badge, "string");
+  assert.equal(typeof jsonBody.data.teacher.title, "string");
+  assert.equal(typeof jsonBody.data.student.title, "string");
+});
+

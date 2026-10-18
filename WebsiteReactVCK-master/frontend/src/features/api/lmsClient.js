@@ -1219,4 +1219,36 @@ export const markWelcomeSeenApi = async () => (
   })
 );
 
+export const fetchWelcomeSettingsApi = async () => (
+  request("/auth/welcome-settings", {
+    method: "GET",
+  })
+);
+
+export const fetchAdminWelcomeSettingsApi = async () => (
+  request("/admin/welcome-settings", {
+    method: "GET",
+  })
+);
+
+export const updateAdminWelcomeSettingsApi = async (config) => (
+  request("/admin/welcome-settings", {
+    method: "PUT",
+    body: JSON.stringify({ config }),
+  })
+);
+
+export const resetAdminWelcomeSettingsApi = async () => (
+  request("/admin/welcome-settings/reset-defaults", {
+    method: "POST",
+  })
+);
+
+export const resetUserWelcomeStatusApi = async (userId) => (
+  request("/admin/welcome-settings/reset-user-welcome", {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  })
+);
+
 

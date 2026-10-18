@@ -17,6 +17,7 @@ import {
   FiDollarSign,
   FiVideo,
 } from 'react-icons/fi';
+import { Sparkles } from 'lucide-react';
 import { useAuthContext } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 
@@ -114,6 +115,11 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
           title: 'Nhật ký hệ thống',
           icon: <FiFileText className="w-4 h-4 shrink-0" />,
           path: '/admin/audit-logs',
+        },
+        {
+          title: 'Màn hình mở đầu',
+          icon: <Sparkles className="w-4 h-4 shrink-0" />,
+          path: '/admin/welcome-screen',
         },
         ...(authUser?.role === 'admin'
           ? [

@@ -8,9 +8,11 @@ import {
   Sparkles,
   ArrowRight,
   Compass,
+  X,
 } from "lucide-react";
 import { useAuthContext } from "../../context/AuthContext.jsx";
 import { USER_ROLES } from "../../constants/roles.js";
+import { fetchWelcomeSettingsApi } from "../../features/api/lmsClient.js";
 
 /**
  * FirstTimeWelcomeModal
@@ -25,9 +27,27 @@ import { USER_ROLES } from "../../constants/roles.js";
  * - Fluid Liquid Glass iOS aesthetics: specular highlights, deep ocean slate, cyan, emerald, amber.
  */
 
+export const DEFAULT_WELCOME_CONFIG = {
+  badge: "MolyCourse LMS",
+  autoTransitionDuration: 4.8,
+  autoTransitionEnabled: true,
+  teacher: {
+    title: "Chào mừng đến với không gian giảng dạy",
+    description: "Quản lý lớp học, bài giảng và đồng hành cùng học viên của bạn.",
+    buttonText: "Bắt đầu giảng dạy",
+    loadingNote: "Đang chuẩn bị không gian giảng dạy của bạn...",
+  },
+  student: {
+    title: "Chào mừng đến với không gian học tập",
+    description: "Khám phá bài học, theo dõi tiến độ và chinh phục mục tiêu của bạn.",
+    buttonText: "Bắt đầu học",
+    loadingNote: "Đang chuẩn bị không gian học tập của bạn...",
+  },
+};
+
 // Stagger word reveal animation helper
-const WordReveal = ({ text, delay = 0, shouldReduceMotion }) => {
-  const words = useMemo(() => text.split(" "), [text]);
+export const WordReveal = ({ text, delay = 0, shouldReduceMotion }) => {
+  const words = useMemo(() => (text ? text.split(" ") : []), [text]);
 
   if (shouldReduceMotion) {
     return <span>{text}</span>;
@@ -69,7 +89,7 @@ const StarSparkle = ({ className, style }) => (
 // ============================================================
 // TEACHER VISUAL: Full-Size 3D Liquid Glass Book with Flipping Pages
 // ============================================================
-const TeacherBookVisual = ({ shouldReduceMotion }) => {
+export const TeacherBookVisual = ({ shouldReduceMotion }) => {
   if (shouldReduceMotion) {
     return (
       <div className="relative flex items-center justify-center w-36 h-36 mx-auto mb-6">
@@ -263,7 +283,7 @@ const TeacherBookVisual = ({ shouldReduceMotion }) => {
 // ============================================================
 // STUDENT VISUAL: Full-Size Starlight Convergence & 3D Glass Mortarboard
 // ============================================================
-const StudentCapVisual = ({ shouldReduceMotion }) => {
+export const StudentCapVisual = ({ shouldReduceMotion }) => {
   if (shouldReduceMotion) {
     return (
       <div className="relative flex items-center justify-center w-36 h-36 mx-auto mb-6">
@@ -552,20 +572,53 @@ const StudentCapVisual = ({ shouldReduceMotion }) => {
 // ============================================================
 // MAIN COMPONENT: Full-Screen Edge-to-Edge Liquid Glass Showcase
 // ============================================================
-export default function FirstTimeWelcomeModal() {
+export default function FirstTimeWelcomeModal({
+  isPreview = false,
+  previewRole = null,
+  customConfig = null,
+  onClose = null,
+  embedded = false,
+} = {}) {
   const { authUser, markWelcomeSeen } = useAuthContext();
   const navigate = useNavigate();
   const shouldReduceMotion = useReducedMotion();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
+  const [serverConfig, setServerConfig] = useState(null);
 
-  const role = authUser?.role;
-  const isTeacher = role === USER_ROLES.TEACHER; // 'creator'
-  const isStudent = role === USER_ROLES.STUDENT; // 'user'
+  // Fetch customizable settings from server when live (not in preview with local edits)
+  useEffect(() => {
+    if (isPreview || customConfig) return;
+    let isSubscribed = true;
+    fetchWelcomeSettingsApi()
+      .then((res) => {
+        if (isSubscribed && res?.data) {
+          setServerConfig(res.data);
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not fetch welcome settings, using defaults:", err);
+      });
+    return () => {
+      isSubscribed = false;
+    };
+  }, [isPreview, customConfig]);
+
+  const activeConfig = customConfig || serverConfig || DEFAULT_WELCOME_CONFIG;
+
+  const role = isPreview ? (previewRole || USER_ROLES.STUDENT) : authUser?.role;
+  const isTeacher = role === USER_ROLES.TEACHER || role === "creator" || role === "teacher";
+  const isStudent = role === USER_ROLES.STUDENT || role === "user" || role === "student";
 
   const handleDismissAndNavigate = useCallback(async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
+
+    if (isPreview) {
+      setIsVisible(false);
+      onClose?.();
+      return;
+    }
 
     try {
       // 1. Mark in backend & optimistic local update
@@ -581,41 +634,55 @@ export default function FirstTimeWelcomeModal() {
         navigate("/lms/my-learning", { replace: true });
       }
     }
-  }, [isSubmitting, markWelcomeSeen, isTeacher, navigate]);
+  }, [isSubmitting, isPreview, onClose, markWelcomeSeen, isTeacher, navigate]);
+
+  const durationSec = typeof activeConfig.autoTransitionDuration === "number"
+    ? activeConfig.autoTransitionDuration
+    : 4.8;
+  const autoTransitionEnabled = activeConfig.autoTransitionEnabled !== false;
 
   // Automatic Scene Transition: After animation finishes, auto-transition smoothly to LMS
   useEffect(() => {
     if (!isVisible || isSubmitting) return;
+    if (!autoTransitionEnabled) return;
+    if (embedded) return; // In embedded preview inside admin dashboard, don't auto-dismiss
 
-    // Total duration: 4.8 seconds (2.5s for reduced motion)
-    const autoTransitionDuration = shouldReduceMotion ? 2600 : 4800;
+    const autoTransitionDurationMs = shouldReduceMotion
+      ? Math.max(1800, durationSec * 600)
+      : durationSec * 1000;
+
     const timer = setTimeout(() => {
       handleDismissAndNavigate();
-    }, autoTransitionDuration);
+    }, autoTransitionDurationMs);
 
     return () => clearTimeout(timer);
-  }, [isVisible, isSubmitting, shouldReduceMotion, handleDismissAndNavigate]);
+  }, [isVisible, isSubmitting, autoTransitionEnabled, embedded, shouldReduceMotion, durationSec, handleDismissAndNavigate]);
 
-  // Safety guard: Admin must never see this modal
-  if (!authUser || role === USER_ROLES.ADMIN || (!isTeacher && !isStudent)) {
-    return null;
-  }
+  // Safety guard: Admin must never see this modal in real mode
+  if (!isPreview) {
+    if (!authUser || role === USER_ROLES.ADMIN || (!isTeacher && !isStudent)) {
+      return null;
+    }
 
-  // Already seen guard
-  if (authUser.hasSeenWelcome || !isVisible) {
-    return null;
+    // Already seen guard
+    if (authUser.hasSeenWelcome || !isVisible) {
+      return null;
+    }
   }
 
   // Content specifications
-  const title = isTeacher
-    ? "Chào mừng đến với không gian giảng dạy"
-    : "Chào mừng đến với không gian học tập";
+  const roleData = isTeacher ? activeConfig.teacher : activeConfig.student;
+  const fallbackRoleData = isTeacher ? DEFAULT_WELCOME_CONFIG.teacher : DEFAULT_WELCOME_CONFIG.student;
 
-  const description = isTeacher
-    ? "Quản lý lớp học, bài giảng và đồng hành cùng học viên của bạn."
-    : "Khám phá bài học, theo dõi tiến độ và chinh phục mục tiêu của bạn.";
+  const title = roleData?.title?.trim() || fallbackRoleData.title;
+  const description = roleData?.description?.trim() || fallbackRoleData.description;
+  const actionButtonText = roleData?.buttonText?.trim() || fallbackRoleData.buttonText;
+  const loadingNote = roleData?.loadingNote?.trim() || fallbackRoleData.loadingNote;
+  const badgeText = activeConfig.badge?.trim() || DEFAULT_WELCOME_CONFIG.badge;
 
-  const actionButtonText = isTeacher ? "Bắt đầu giảng dạy" : "Bắt đầu học";
+  const containerClasses = embedded
+    ? "relative w-full h-[620px] rounded-2xl overflow-hidden bg-slate-950 flex flex-col justify-between py-8 px-4 sm:px-8 select-none border border-slate-800 shadow-2xl"
+    : "fixed inset-0 z-[9999] h-screen w-screen overflow-hidden bg-slate-950 flex flex-col justify-between py-12 sm:py-16 px-6 sm:px-12 select-none";
 
   return (
     <AnimatePresence>
@@ -626,9 +693,27 @@ export default function FirstTimeWelcomeModal() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, scale: 1.03, filter: "blur(14px)" }}
           transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-          className="fixed inset-0 z-[9999] h-screen w-screen overflow-hidden bg-slate-950 flex flex-col justify-between py-12 sm:py-16 px-6 sm:px-12 select-none"
+          className={containerClasses}
           style={{ willChange: "transform, opacity, filter" }}
         >
+          {isPreview && !embedded && (
+            <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+              <span className="hidden sm:inline-flex px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                Chế độ xem trước ({isTeacher ? "Giáo viên" : "Học viên"})
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsVisible(false);
+                  onClose?.();
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700/90 text-white text-xs font-medium border border-white/20 shadow-xl backdrop-blur-md cursor-pointer transition-all hover:scale-105 active:scale-95"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Thoát xem trước</span>
+              </button>
+            </div>
+          )}
           {/* Edge-to-edge Ambient Fluid Light Orbs (Cyan, Emerald, Amber - NO generic purple) */}
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
             <motion.div
@@ -685,7 +770,7 @@ export default function FirstTimeWelcomeModal() {
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 backdrop-blur-xl">
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               <span className="text-xs font-semibold tracking-wider uppercase text-slate-300/80">
-                MolyCourse LMS
+                {badgeText}
               </span>
             </div>
           </motion.div>
@@ -753,11 +838,9 @@ export default function FirstTimeWelcomeModal() {
               initial={{ opacity: 0 }}
               animate={{ opacity: [0.4, 0.8, 0.4] }}
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 2.5 }}
-              className="text-xs text-slate-400/80 tracking-wider"
+              className="text-xs text-slate-400/80 tracking-wider text-center px-4"
             >
-              {isTeacher
-                ? "Đang chuẩn bị không gian giảng dạy của bạn..."
-                : "Đang chuẩn bị không gian học tập của bạn..."}
+              {loadingNote}
             </motion.span>
 
             {/* Glowing countdown progress bar */}
@@ -766,7 +849,7 @@ export default function FirstTimeWelcomeModal() {
                 initial={{ width: "0%" }}
                 animate={{ width: "100%" }}
                 transition={{
-                  duration: shouldReduceMotion ? 2.6 : 4.8,
+                  duration: shouldReduceMotion ? Math.max(1.8, durationSec * 0.6) : durationSec,
                   ease: "linear",
                 }}
                 className="h-full bg-gradient-to-r from-cyan-400 via-teal-300 to-amber-300 shadow-[0_0_12px_rgba(103,232,249,0.9)]"

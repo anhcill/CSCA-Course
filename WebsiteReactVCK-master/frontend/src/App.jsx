@@ -79,6 +79,7 @@ const TeacherQuizPage = lazy(() => import("./features/teacher/pages/TeacherQuizP
 const NotificationCenterPage = lazy(() => import("./features/notifications/pages/NotificationCenterPage.jsx"));
 const StudentRecordingsPage = lazy(() => import("./features/learning/pages/StudentRecordingsPage.jsx"));
 const AdminRecordingsPage = lazy(() => import("./pages/admin/AdminRecordingsPage.jsx"));
+const AdminWelcomeScreenPage = lazy(() => import("./pages/admin/AdminWelcomeScreenPage.jsx"));
 
 const isTeacherLmsPath = (p) => (
   p === "/lms/teach" || p.startsWith("/lms/teach/") || p === "/lms/teacher-hub" ||
@@ -214,6 +215,7 @@ function AppRoutes() {
         <Route path="permissions" element={<AdminPermissionsPage />} />
         <Route path="sync" element={<AdminSyncPage />} />
         <Route path="audit-logs" element={<AdminAuditLogPage />} />
+        <Route path="welcome-screen" element={<AdminWelcomeScreenPage />} />
         <Route path="users" element={<AdminUser />} />
         <Route path="posts" element={<Navigate to="/admin/dashboard" replace />} />
       </Route>

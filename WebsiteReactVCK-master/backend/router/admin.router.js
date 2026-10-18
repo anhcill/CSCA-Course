@@ -17,6 +17,12 @@ import {
   getTeacherSalaryDetail,
   updateTeacherHourlyRate,
 } from "../services/salary.service.js";
+import {
+  getWelcomeScreenConfig,
+  updateWelcomeScreenConfig,
+  resetWelcomeScreenConfig,
+  resetUserWelcomeSeen,
+} from "../services/welcomeScreen.service.js";
 
 const router = express.Router();
 const adminOnly = [protectRoute, requireAdmin];
@@ -1484,6 +1490,79 @@ router.post("/videos/confirm", ...adminOnly, async (req, res) => {
     if (error.code === "R2_NOT_CONFIGURED") return sendError(res, 503, "Kho video Cloudflare R2 chưa được cấu hình", "SERVICE_UNAVAILABLE");
     if (["REQUIRED", "INVALID_TEXT"].includes(error.message)) return sendError(res, 422, "Tiêu đề video không hợp lệ", "VALIDATION_ERROR");
     return handleDbError(res, error, "Không thể xác nhận video");
+  }
+});
+
+// ============================================================
+// WELCOME SCREEN MANAGEMENT & CUSTOMIZATION ROUTES
+// ============================================================
+router.get("/welcome-settings", ...adminOnly, async (req, res) => {
+  try {
+    const data = await getWelcomeScreenConfig();
+    return res.json({ success: true, data });
+  } catch (error) {
+    return handleDbError(res, error, "Không thể tải cấu hình màn hình chào mừng");
+  }
+});
+
+router.put("/welcome-settings", ...adminOnly, async (req, res) => {
+  try {
+    const { config } = req.body;
+    if (!config || typeof config !== "object") {
+      return sendError(res, 422, "Dữ liệu cấu hình không hợp lệ", "VALIDATION_ERROR");
+    }
+    const updated = await updateWelcomeScreenConfig({
+      config,
+      userId: req.user.id,
+      ip: req.ip,
+    });
+    return res.json({
+      success: true,
+      data: updated,
+      message: "Cập nhật cấu hình màn hình mở đầu thành công",
+    });
+  } catch (error) {
+    return handleDbError(res, error, "Không thể lưu cấu hình màn hình chào mừng");
+  }
+});
+
+router.post("/welcome-settings/reset-defaults", ...adminOnly, async (req, res) => {
+  try {
+    const resetData = await resetWelcomeScreenConfig({
+      userId: req.user.id,
+      ip: req.ip,
+    });
+    return res.json({
+      success: true,
+      data: resetData,
+      message: "Đã khôi phục cài đặt màn hình mở đầu về mặc định",
+    });
+  } catch (error) {
+    return handleDbError(res, error, "Không thể khôi phục cài đặt mặc định");
+  }
+});
+
+router.post("/welcome-settings/reset-user-welcome", ...adminOnly, async (req, res) => {
+  try {
+    const targetUserId = req.body.userId ? parseId(req.body.userId) : req.user.id;
+    if (!targetUserId) {
+      return sendError(res, 422, "ID người dùng không hợp lệ", "VALIDATION_ERROR");
+    }
+    const result = await resetUserWelcomeSeen({
+      targetUserId,
+      actorId: req.user.id,
+      ip: req.ip,
+    });
+    return res.json({
+      success: true,
+      data: result,
+      message: "Đã đặt lại trạng thái màn hình mở đầu cho người dùng",
+    });
+  } catch (error) {
+    if (error.message === "USER_NOT_FOUND") {
+      return sendError(res, 404, "Không tìm thấy người dùng", "NOT_FOUND");
+    }
+    return handleDbError(res, error, "Không thể đặt lại trạng thái màn hình mở đầu");
   }
 });
 
