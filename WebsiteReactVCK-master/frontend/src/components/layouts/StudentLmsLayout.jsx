@@ -88,14 +88,16 @@ function StudentNavItem({ item, collapsed, onNavigate }) {
 
 function Sidebar({ collapsed = false, onNavigate }) {
   return (
-    <div className={`flex h-full flex-col py-6 ${collapsed ? 'px-2.5' : 'px-4'}`}>
-      <div className={collapsed ? '' : 'px-2'}><Brand collapsed={collapsed} /></div>
-      <div className="my-6 h-px bg-slate-100 dark:bg-slate-800" />
-      <p className={collapsed ? 'sr-only' : 'px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500'}>Tổng quan học tập</p>
-      <nav className="space-y-1" aria-label="Điều hướng LMS học viên">
-        {STUDENT_NAV.map((item) => <StudentNavItem key={item.path} item={item} collapsed={collapsed} onNavigate={onNavigate} />)}
-      </nav>
-      <div className="mt-auto border-t border-slate-100 dark:border-slate-800 pt-3">
+    <div className={`flex h-full min-h-0 flex-col overflow-hidden py-6 ${collapsed ? 'px-2.5' : 'px-4'}`}>
+      <div className={`shrink-0 ${collapsed ? '' : 'px-2'}`}><Brand collapsed={collapsed} /></div>
+      <div className="my-6 h-px shrink-0 bg-slate-100 dark:bg-slate-800" />
+      <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+        <p className={collapsed ? 'sr-only' : 'px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500'}>Tổng quan học tập</p>
+        <nav className="space-y-1" aria-label="Điều hướng LMS học viên">
+          {STUDENT_NAV.map((item) => <StudentNavItem key={item.path} item={item} collapsed={collapsed} onNavigate={onNavigate} />)}
+        </nav>
+      </div>
+      <div className="mt-3 shrink-0 border-t border-slate-100 pt-3 dark:border-slate-800">
         <Link to="/courses" onClick={onNavigate} title={collapsed ? 'Khám phá thêm' : undefined} className={`flex items-center rounded-2xl py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white ${collapsed ? 'justify-center px-2' : 'gap-2.5 px-3'}`}>
           <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800"><Compass className="h-3.5 w-3.5" /></span>
           <span className={collapsed ? 'sr-only' : ''}>Khám phá thêm</span>
@@ -218,7 +220,7 @@ export default function StudentLmsLayout({ children }) {
       {mobileOpen && (
         <>
           <button type="button" className="fixed inset-0 top-[72px] z-30 bg-slate-950/40 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Đóng menu học viên" />
-          <div className="fixed inset-y-0 left-0 z-40 w-[min(18rem,88vw)] overflow-y-auto border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pt-[72px] shadow-2xl lg:hidden">
+          <div className="fixed inset-y-0 left-0 z-40 w-[min(18rem,88vw)] overflow-hidden border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pt-[72px] shadow-2xl lg:hidden">
             <Sidebar onNavigate={() => setMobileOpen(false)} />
           </div>
         </>

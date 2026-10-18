@@ -16,6 +16,7 @@ import {
   FiTrendingUp,
   FiDollarSign,
   FiVideo,
+  FiPlusSquare,
 } from 'react-icons/fi';
 import { Sparkles } from 'lucide-react';
 import { useAuthContext } from '../../context/AuthContext';
@@ -33,7 +34,8 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
     }
   };
 
-  const isActive = (path) => {
+  const isActive = (path, exact = false) => {
+    if (exact) return location.pathname === path;
     if (path === '/admin/dashboard') {
       return location.pathname === '/admin/dashboard' || location.pathname === '/admin';
     }
@@ -95,6 +97,12 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
           title: 'Đăng đề & Quiz',
           icon: <FiList className="w-4 h-4 shrink-0" />,
           path: '/admin/quizzes',
+          exact: true,
+        },
+        {
+          title: 'Tạo đề mới',
+          icon: <FiPlusSquare className="w-4 h-4 shrink-0" />,
+          path: '/admin/quizzes/new',
         },
       ],
     },
@@ -136,13 +144,13 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
 
   return (
     <aside
-      className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-4rem)] w-64 flex-col justify-between overflow-y-auto border-r border-gray-200 bg-white shadow-xl transition-[transform,width] duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 lg:translate-x-0 lg:shadow-none ${
+      className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-4rem)] min-h-0 w-64 flex-col overflow-hidden border-r border-gray-200 bg-white shadow-xl transition-[transform,width] duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 lg:translate-x-0 lg:shadow-none ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       } ${
         collapsed ? 'lg:w-20' : 'lg:w-64'
       }`}
     >
-      <div className={`space-y-5 p-3.5 ${collapsed ? 'lg:px-2.5' : ''}`}>
+      <div className={`min-h-0 flex-1 touch-pan-y space-y-5 overflow-y-auto overscroll-contain p-3.5 [scrollbar-gutter:stable] ${collapsed ? 'lg:px-2.5' : ''}`}>
         {menuSections.map((sec, idx) => (
           <div key={idx} className="space-y-1">
             <div className={`px-3 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500 font-mono ${collapsed ? 'lg:sr-only' : ''}`}>
@@ -150,7 +158,7 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
             </div>
             <div className="space-y-0.5 mt-1">
               {sec.items.map((item) => {
-                const active = isActive(item.path);
+                const active = isActive(item.path, item.exact);
                 return (
                   <Link
                     key={item.path}
@@ -185,7 +193,7 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
       </div>
 
       {/* Footer System Badge */}
-      <div className={`flex items-center justify-between border-t border-gray-100 p-3.5 text-[11px] font-mono text-gray-400 dark:border-slate-800 dark:text-slate-500 ${collapsed ? 'lg:justify-center lg:px-2.5' : ''}`}>
+      <div className={`flex shrink-0 items-center justify-between border-t border-gray-100 p-3.5 text-[11px] font-mono text-gray-400 dark:border-slate-800 dark:text-slate-500 ${collapsed ? 'lg:justify-center lg:px-2.5' : ''}`}>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className={collapsed ? 'lg:sr-only' : ''}>CSCA Admin</span>
