@@ -2,35 +2,121 @@ import { useEffect, useState } from 'react';
 import { Download, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const STORAGE_KEY_INSTALLED = 'pwa_installed';
+const STORAGE_KEY_LAST_PROMPT = 'pwa_last_prompt_time';
+const LEGACY_STORAGE_KEY_DISMISSED = 'pwa_install_dismissed_at';
+
+// Kiểm tra xem ứng dụng đã được cài đặt hay chưa (đa tầng xác thực)
+const checkIsAppInstalled = async () => {
+  if (typeof window === 'undefined') return false;
+
+  // 1. Kiểm tra môi trường đang chạy có phải là PWA Standalone / Fullscreen không
+  const isStandalone =
+    window.matchMedia?.('(display-mode: standalone)')?.matches ||
+    window.matchMedia?.('(display-mode: fullscreen)')?.matches ||
+    window.matchMedia?.('(display-mode: minimal-ui)')?.matches ||
+    window.navigator?.standalone === true ||
+    (typeof document !== 'undefined' && document.referrer?.startsWith('android-app://'));
+
+  if (isStandalone) {
+    try {
+      localStorage.setItem(STORAGE_KEY_INSTALLED, 'true');
+    } catch {
+      // ignore
+    }
+    return true;
+  }
+
+  // 2. Kiểm tra cờ đã cài đặt trước đó trong localStorage
+  try {
+    if (localStorage.getItem(STORAGE_KEY_INSTALLED) === 'true') {
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+
+  // 3. Sử dụng API getInstalledRelatedApps nếu trình duyệt hỗ trợ (Chrome/Edge/Android)
+  if (typeof navigator !== 'undefined' && 'getInstalledRelatedApps' in navigator && typeof navigator.getInstalledRelatedApps === 'function') {
+    try {
+      const relatedApps = await navigator.getInstalledRelatedApps();
+      if (Array.isArray(relatedApps) && relatedApps.length > 0) {
+        try {
+          localStorage.setItem(STORAGE_KEY_INSTALLED, 'true');
+        } catch {
+          // ignore
+        }
+        return true;
+      }
+    } catch {
+      // API có thể không khả dụng trong một số ngữ cảnh bảo mật
+    }
+  }
+
+  return false;
+};
+
+// Kiểm tra xem đã qua 1 tuần kể từ lần gợi ý trước chưa
+const shouldShowPromptThisWeek = () => {
+  try {
+    const lastPrompt = localStorage.getItem(STORAGE_KEY_LAST_PROMPT) || localStorage.getItem(LEGACY_STORAGE_KEY_DISMISSED);
+    if (lastPrompt) {
+      const elapsed = Date.now() - Number(lastPrompt);
+      if (elapsed < ONE_WEEK_MS) {
+        return false;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return true;
+};
+
 export default function PwaInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    // Không hiển thị nếu ứng dụng đang chạy ở chế độ PWA Standalone (đã cài đặt)
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      window.navigator.standalone === true;
+    // Kiểm tra và cập nhật trạng thái nếu ứng dụng đang chạy ở chế độ standalone
+    checkIsAppInstalled();
 
-    if (isStandalone) return;
-
-    // Kiểm tra xem người dùng đã từ chối cài đặt trong vòng 7 ngày qua chưa
-    const dismissedAt = localStorage.getItem('pwa_install_dismissed_at');
-    if (dismissedAt && Date.now() - Number(dismissedAt) < 7 * 24 * 60 * 60 * 1000) {
-      return;
-    }
-
-    const handleBeforeInstallPrompt = (e) => {
-      // Ngăn chặn prompt mặc định của trình duyệt để tự điều khiển giao diện
+    const handleBeforeInstallPrompt = async (e) => {
+      // Ngăn chặn prompt mặc định của trình duyệt để hiển thị banner tùy chỉnh
       e.preventDefault();
+
+      // Kiểm tra xem ứng dụng đã cài đặt chưa
+      const isInstalled = await checkIsAppInstalled();
+      if (isInstalled) {
+        return;
+      }
+
+      // Kiểm tra xem đã đủ 1 tuần kể từ lần gợi ý trước chưa
+      if (!shouldShowPromptThisWeek()) {
+        return;
+      }
+
       setDeferredPrompt(e);
       setIsVisible(true);
+
+      // Ghi nhận mốc thời gian hiển thị gợi ý (1 tuần sau mới gợi ý lại)
+      try {
+        localStorage.setItem(STORAGE_KEY_LAST_PROMPT, Date.now().toString());
+      } catch {
+        // ignore
+      }
     };
 
     const handleAppInstalled = () => {
       setIsVisible(false);
       setDeferredPrompt(null);
-      localStorage.removeItem('pwa_install_dismissed_at');
+      try {
+        localStorage.setItem(STORAGE_KEY_INSTALLED, 'true');
+        localStorage.removeItem(STORAGE_KEY_LAST_PROMPT);
+        localStorage.removeItem(LEGACY_STORAGE_KEY_DISMISSED);
+      } catch {
+        // ignore
+      }
       toast.success('Ứng dụng Moly Course đã được cài đặt thành công!');
     };
 
@@ -50,16 +136,27 @@ export default function PwaInstallPrompt() {
     deferredPrompt.prompt();
 
     const choiceResult = await deferredPrompt.userChoice;
-    if (choiceResult.outcome === 'accepted') {
+    if (choiceResult?.outcome === 'accepted') {
       setIsVisible(false);
       setDeferredPrompt(null);
+      try {
+        localStorage.setItem(STORAGE_KEY_INSTALLED, 'true');
+        localStorage.removeItem(STORAGE_KEY_LAST_PROMPT);
+        localStorage.removeItem(LEGACY_STORAGE_KEY_DISMISSED);
+      } catch {
+        // ignore
+      }
     }
   };
 
   const handleDismiss = () => {
     setIsVisible(false);
-    // Nhớ việc đóng trong 7 ngày
-    localStorage.setItem('pwa_install_dismissed_at', Date.now().toString());
+    // Ghi nhớ mốc thời gian từ chối/để sau (1 tuần sau mới gợi ý lại)
+    try {
+      localStorage.setItem(STORAGE_KEY_LAST_PROMPT, Date.now().toString());
+    } catch {
+      // ignore
+    }
   };
 
   if (!isVisible || !deferredPrompt) return null;
