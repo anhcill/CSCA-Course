@@ -1,25 +1,28 @@
-/* eslint-disable react/prop-types */
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Bell, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
-  Download, FileSpreadsheet, FileText, Files, FolderOpen, Lock, Play, Trophy, Users, Video, Search,
+  Download, FileSpreadsheet, FileText, Files, FolderOpen, Languages, Lock, Play, Trophy, Users, Video, Search,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { isTeacherRole } from "../../../constants/roles";
 import {
   checkInToSession, fetchAssignments, fetchClassAnnouncements, fetchLiveClassSessions,
-  fetchMySessionCheckIn, fetchStudentFiles, getLiveSessionAccess,
+  fetchMySessionCheckIn, fetchSessionVocabulary, fetchStudentFiles, getLiveSessionAccess,
+  submitVocabularyPractice, toggleVocabularyStar,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 import { classCalendarIcsUrl, googleCalendarEventUrl } from "../calendarLinks";
+import SessionVocabularyTab from "../../learning/components/SessionVocabularyTab";
+import VocabularyPracticeModal from "../../learning/components/VocabularyPracticeModal";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
   { id: "content", label: "Nội dung", icon: BookOpen },
+  { id: "vocabulary", label: "Từ vựng", icon: Languages },
   { id: "tasks", label: "Bài tập & Quiz", icon: ClipboardList },
   { id: "materials", label: "Tài liệu", icon: FileText },
   { id: "announcements", label: "Thông báo", icon: Bell },
@@ -114,6 +117,21 @@ export default function SessionDetailPage() {
   const [error, setError] = useState("");
   const [checkIn, setCheckIn] = useState(null);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [currentVocabSession, setCurrentVocabSession] = useState(null);
+  const [showVocabPractice, setShowVocabPractice] = useState(false);
+
+  const sessionVocabs = currentVocabSession?.vocabularies || [];
+
+  const loadVocabulary = useCallback(async ({ silent = false } = {}) => {
+    try {
+      const response = await fetchSessionVocabulary(sessionId);
+      const data = response?.data;
+      setCurrentVocabSession(data?.session ? { ...data.session, vocabularies: data.vocabularies || [] } : null);
+    } catch (requestError) {
+      setCurrentVocabSession(null);
+      if (!silent) toast.error(requestError.message || "Không thể tải từ vựng của buổi học.");
+    }
+  }, [sessionId]);
 
   const loadSession = useCallback(async () => {
     setLoading(true);
@@ -156,6 +174,7 @@ export default function SessionDetailPage() {
 
   useEffect(() => { loadSession(); }, [loadSession]);
   useEffect(() => { loadResources(); }, [loadResources]);
+  useEffect(() => { loadVocabulary({ silent: true }); }, [loadVocabulary]);
   useEffect(() => {
     if (isTeacher || !sessionId) return undefined;
     let active = true;
@@ -292,7 +311,8 @@ export default function SessionDetailPage() {
         <nav className="flex gap-1.5 overflow-x-auto border-t border-slate-100 bg-white p-1.5 dark:border-slate-800 dark:bg-slate-900 sm:px-4 sm:py-2" aria-label="Chức năng của buổi học">
           {tabs.map((tab) => {
             const Icon = tab.icon;
-            const count = tab.id === "tasks" ? tasks.length
+            const count = tab.id === "vocabulary" ? sessionVocabs.length
+              : tab.id === "tasks" ? tasks.length
               : tab.id === "materials" ? files.length
               : tab.id === "announcements" ? announcements.length
               : tab.id === "results" ? completeTasks.length
@@ -335,11 +355,47 @@ export default function SessionDetailPage() {
           />
         )}
         {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black text-slate-900 dark:text-white">Nội dung buổi học</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Giáo viên sẽ cập nhật nội dung, slide và bài tập trong đúng không gian buổi học này."}</p><button type="button" onClick={() => setSearchParams({ tab: "materials" })} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700"><BookOpen className="h-4 w-4" /> Xem tài liệu buổi học</button></section>}
+        {activeTab === "vocabulary" && (
+          <SessionVocabularyTab
+            session={session}
+            vocabularies={sessionVocabs}
+            onStartPractice={() => setShowVocabPractice(true)}
+            onToggleStar={isTeacher ? null : async (wordId) => {
+              try {
+                const response = await toggleVocabularyStar(wordId);
+                const isStarred = Boolean(response?.data?.isStarred);
+                setCurrentVocabSession((current) => current ? {
+                  ...current,
+                  vocabularies: current.vocabularies.map((word) => (
+                    String(word.id) === String(wordId) ? { ...word, isStarred } : word
+                  )),
+                } : current);
+              } catch (requestError) {
+                toast.error(requestError.message || "Không thể cập nhật từ đã đánh dấu.");
+              }
+            }}
+          />
+        )}
         {activeTab === "tasks" && <SessionTaskList tasks={tasks} basePath={basePath} />}
         {activeTab === "materials" && <SessionFileList files={files} />}
         {activeTab === "announcements" && <SessionAnnouncementList announcements={announcements} />}
         {activeTab === "results" && <SessionResults tasks={completeTasks} basePath={basePath} />}
       </>}
+
+      <VocabularyPracticeModal
+        isOpen={showVocabPractice}
+        onClose={() => setShowVocabPractice(false)}
+        session={currentVocabSession}
+        onComplete={async (results) => {
+          if (!currentVocabSession || isTeacher) return;
+          try {
+            await submitVocabularyPractice(currentVocabSession.sessionId, results);
+            await loadVocabulary({ silent: true });
+          } catch (requestError) {
+            toast.error(requestError.message || "Không thể lưu kết quả luyện tập.");
+          }
+        }}
+      />
     </div>
   );
 }

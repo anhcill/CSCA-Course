@@ -85,6 +85,7 @@ const AdminWelcomeScreenPage = lazy(() => import("./pages/admin/AdminWelcomeScre
 const MoliQuizEditorPage = lazy(() => import("./features/quizzes/pages/QuizEditorPage.jsx"));
 const MoliQuizPlayerPage = lazy(() => import("./features/quizzes/pages/QuizPlayerPage.jsx"));
 const QuizMathGalleryPage = lazy(() => import("./features/quizzes/pages/QuizMathGalleryPage.jsx"));
+const StudentVocabularyHubPage = lazy(() => import("./features/learning/pages/StudentVocabularyHubPage.jsx"));
 
 const isTeacherLmsPath = (p) => (
   p === "/lms/teach" || p.startsWith("/lms/teach/") || p === "/lms/teacher-hub" ||
@@ -132,6 +133,7 @@ function AppRoutes() {
       <Route path="/lms/calendar" element={<ClassCalendarPage />} />
       <Route path="/lms/live-classes" element={<Navigate to="/lms/live-schedule" replace />} />
       <Route path="/lms/assignments" element={<AssignmentListPage />} />
+      <Route path="/lms/vocabulary" element={<StudentVocabularyHubPage />} />
       <Route path="/lms/files" element={<StudentFilesPage />} />
       <Route path="/lms/recordings" element={<StudentRecordingsPage />} />
       <Route path="/lms/materials" element={<StudentFilesPage />} />

@@ -80,4 +80,5 @@ export const XP_VALUES = Object.freeze({
   quizSubmitted: 5,
   assignmentGraded: 15,
   assignmentReviewed: 5,
+  vocabularyPractice: 5,
 });

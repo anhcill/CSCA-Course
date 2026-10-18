@@ -1,14 +1,15 @@
-/* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Bell, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
-  Download, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Play, Trash2, Trophy, UploadCloud, Users, Video,
+  Download, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Languages, Play, Trash2, Trophy, UploadCloud, Users, Video,
 } from "lucide-react";
 import {
-  createClassAnnouncement, deleteClassFile, fetchClassAnnouncements, fetchClassDetails, fetchClassFiles, fetchLiveClassSessions,
-  getLiveSessionAccess, uploadClassFile,
+  batchImportSessionVocabulary, createClassAnnouncement, createSessionVocabulary, deleteClassFile,
+  deleteSessionVocabulary, fetchClassAnnouncements, fetchClassDetails, fetchClassFiles,
+  fetchLiveClassSessions, fetchSessionVocabulary, getLiveSessionAccess, suggestSessionVocabulary,
+  updateSessionVocabulary, uploadClassFile,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
@@ -16,11 +17,13 @@ import CreateAssignmentModal from "../components/CreateAssignmentModal";
 import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
 import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 import { classCalendarIcsUrl, googleCalendarEventUrl } from "../../calendar/calendarLinks";
+import TeacherSessionVocabularyTab from "../components/TeacherSessionVocabularyTab";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
   { id: "students", label: "Học viên", icon: Users },
   { id: "content", label: "Nội dung", icon: BookOpen },
+  { id: "vocabulary", label: "Từ vựng", icon: Languages },
   { id: "tasks", label: "Bài tập & Quiz", icon: ClipboardList },
   { id: "files", label: "Tài liệu", icon: FileText },
   { id: "announcements", label: "Thông báo", icon: Bell },
@@ -77,16 +80,20 @@ export default function TeacherSessionWorkspacePage() {
   const [isCreateHomeworkOpen, setIsCreateHomeworkOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
   const [uploadFile, setUploadFile] = useState(null);
+  const [currentVocabSession, setCurrentVocabSession] = useState(null);
+
+  const sessionVocabs = currentVocabSession?.vocabularies || [];
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [detailResponse, sessionsResponse, filesResponse, announcementsResponse] = await Promise.all([
+      const [detailResponse, sessionsResponse, filesResponse, announcementsResponse, vocabularyResponse] = await Promise.all([
         fetchClassDetails(classId),
         fetchLiveClassSessions(classId),
         fetchClassFiles(classId, { sessionId }),
         fetchClassAnnouncements({ classId, sessionId }),
+        fetchSessionVocabulary(sessionId),
       ]);
       const foundSession = sessionsResponse?.success && Array.isArray(sessionsResponse.data)
         ? sessionsResponse.data.find((item) => String(item.id) === String(sessionId))
@@ -96,6 +103,10 @@ export default function TeacherSessionWorkspacePage() {
       setSession(foundSession);
       setFiles(Array.isArray(filesResponse?.data) ? filesResponse.data : []);
       setAnnouncements(Array.isArray(announcementsResponse?.data) ? announcementsResponse.data : []);
+      setCurrentVocabSession(vocabularyResponse?.data?.session ? {
+        ...vocabularyResponse.data.session,
+        vocabularies: vocabularyResponse.data.vocabularies || [],
+      } : null);
     } catch (requestError) {
       setClassData(null);
       setSession(null);
@@ -264,9 +275,19 @@ export default function TeacherSessionWorkspacePage() {
           <nav className="flex gap-1 overflow-x-auto border-t border-slate-100 bg-white p-1.5 dark:border-slate-800 dark:bg-slate-900 sm:px-4 sm:py-2" aria-label="Chức năng của buổi dạy">
             {tabs.map((tab) => {
               const Icon = tab.icon;
+              const count = tab.id === "vocabulary" ? sessionVocabs.length
+                : tab.id === "tasks" ? tasks.length
+                : tab.id === "files" ? files.length
+                : tab.id === "students" ? students.length
+                : null;
               return (
                 <button key={tab.id} type="button" onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })} className={tabClass(activeTab === tab.id)}>
                   <Icon className="h-4 w-4" /> {tab.label}
+                  {count !== null && (
+                    <span className="ml-1 rounded-full px-1.5 py-0.2 text-[10px] bg-black/10 dark:bg-white/20">
+                      {count}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -289,6 +310,46 @@ export default function TeacherSessionWorkspacePage() {
         )}
         {activeTab === "students" && <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800"><div><h2 className="font-black">Học viên của buổi học</h2><p className="mt-1 text-xs text-slate-500">Điểm danh và theo dõi chuyên cần theo đúng buổi này.</p></div><button type="button" onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)} className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white">Mở điểm danh</button></div><div className="divide-y divide-slate-100 dark:divide-slate-800">{students.map((student) => <div key={student.id} className="flex items-center justify-between p-4 text-sm"><span className="font-bold">{student.name || student.email}</span><span className="text-xs text-slate-500">{student.email}</span></div>)}</div></section>}
         {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black">Nội dung buổi dạy</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Chuẩn bị nội dung, slide và hoạt động học tập cho buổi này tại đây."}</p><Link to={`${classBasePath}/curriculum`} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white"><BookOpen className="h-4 w-4" /> Xem giáo trình khóa học</Link></section>}
+        {activeTab === "vocabulary" && (
+          <TeacherSessionVocabularyTab
+            session={session}
+            vocabularies={sessionVocabs}
+            onAddWord={async (word) => {
+              const response = await createSessionVocabulary(sessionId, word);
+              setCurrentVocabSession((current) => ({
+                ...(current || {}),
+                vocabularies: [response.data, ...(current?.vocabularies || [])],
+              }));
+              return response.data;
+            }}
+            onUpdateWord={async (wordId, word) => {
+              const response = await updateSessionVocabulary(wordId, word);
+              setCurrentVocabSession((current) => current ? {
+                ...current,
+                vocabularies: current.vocabularies.map((item) => (
+                  String(item.id) === String(wordId) ? response.data : item
+                )),
+              } : current);
+              return response.data;
+            }}
+            onDeleteWord={async (wordId) => {
+              await deleteSessionVocabulary(wordId);
+              setCurrentVocabSession((current) => current ? {
+                ...current,
+                vocabularies: current.vocabularies.filter((word) => String(word.id) !== String(wordId)),
+              } : current);
+            }}
+            onBatchImport={async (words) => {
+              const response = await batchImportSessionVocabulary(sessionId, words);
+              setCurrentVocabSession((current) => ({
+                ...(current || {}),
+                vocabularies: [...(response.data?.vocabularies || []), ...(current?.vocabularies || [])],
+              }));
+              return response.data;
+            }}
+            onSuggestVocabulary={(options) => suggestSessionVocabulary(sessionId, options)}
+          />
+        )}
         {activeTab === "tasks" && <TeacherSessionTasks tasks={tasks} classId={classId} sessionId={sessionId} onCreateHomework={() => setIsCreateHomeworkOpen(true)} onCreateSessionQuiz={() => navigate(`${assessmentBasePath}/quizzes?classId=${classId}&sessionId=${sessionId}&scope=session&new=1`)} onOpenGrading={(assignmentId) => navigate(`${assessmentBasePath}/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${assignmentId}`)} />}
         {activeTab === "files" && (
           <TeacherSessionFiles

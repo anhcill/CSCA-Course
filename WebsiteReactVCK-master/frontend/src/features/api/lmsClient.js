@@ -1239,6 +1239,61 @@ export const uploadImageToR2 = async (file, { folder = "general", onProgress } =
 };
 
 // ============================================================================
+// SESSION VOCABULARY
+// ============================================================================
+
+export const fetchVocabularySessions = ({ courseId, classId, status = "all" } = {}) => {
+  const params = new URLSearchParams();
+  if (courseId) params.set("courseId", courseId);
+  if (classId) params.set("classId", classId);
+  if (status && status !== "all") params.set("status", status);
+  return request(`/lms/vocabulary/sessions${params.size ? `?${params.toString()}` : ""}`, {
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
+};
+
+export const fetchSessionVocabulary = (sessionId) => request(
+  `/lms/sessions/${encodeURIComponent(sessionId)}/vocabulary`,
+  { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+);
+
+export const submitVocabularyPractice = (sessionId, results) => request(
+  `/lms/sessions/${encodeURIComponent(sessionId)}/vocabulary/submit`,
+  { method: "POST", body: JSON.stringify(results) },
+);
+
+export const toggleVocabularyStar = (vocabularyId) => request(
+  `/lms/vocabulary/${encodeURIComponent(vocabularyId)}/toggle-star`,
+  { method: "POST" },
+);
+
+export const createSessionVocabulary = (sessionId, vocabulary) => request(
+  `/lms/sessions/${encodeURIComponent(sessionId)}/vocabulary`,
+  { method: "POST", body: JSON.stringify(vocabulary) },
+);
+
+export const updateSessionVocabulary = (vocabularyId, vocabulary) => request(
+  `/lms/vocabulary/${encodeURIComponent(vocabularyId)}`,
+  { method: "PUT", body: JSON.stringify(vocabulary) },
+);
+
+export const deleteSessionVocabulary = (vocabularyId) => request(
+  `/lms/vocabulary/${encodeURIComponent(vocabularyId)}`,
+  { method: "DELETE" },
+);
+
+export const batchImportSessionVocabulary = (sessionId, vocabularies) => request(
+  `/lms/sessions/${encodeURIComponent(sessionId)}/vocabulary/batch-import`,
+  { method: "POST", body: JSON.stringify({ vocabularies }) },
+);
+
+export const suggestSessionVocabulary = (sessionId, options = {}) => request(
+  `/lms/sessions/${encodeURIComponent(sessionId)}/vocabulary/ai-suggest`,
+  { method: "POST", body: JSON.stringify(options) },
+);
+
+// ============================================================================
 // TEACHER PAYROLL & SALARY API CLIENTS
 // ============================================================================
 

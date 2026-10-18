@@ -31,6 +31,7 @@ import healthRouter from "./router/health.router.js";
 import postRouter from "./router/post.router.js";
 import recordingRouter from "./router/recording.router.js";
 import aiRouter from "./router/ai.router.js";
+import vocabularyRouter from "./router/vocabulary.router.js";
 import { isAllowedOrigin, securityHeaders } from "./middleware/security.js";
 import { renderHtmlWithSeo } from "./services/seoPrerender.service.js";
 
@@ -131,6 +132,7 @@ app.use("/api/admin", adminRouter);
 app.use("/api/posts", postRouter);
 app.use("/api/recordings", recordingRouter);
 app.use("/api/ai", aiRouter);
+app.use("/api/lms", vocabularyRouter);
 app.use("/api", fileRouter);
 
 app.use("/api", (req, res) => {
