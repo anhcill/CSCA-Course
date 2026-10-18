@@ -309,7 +309,7 @@ function AppContent() {
             navigate("/", { replace: true, state: { openAuthModal: "login" } });
           }}
         />
-        <ChatbotWidget />
+        {!isTeacherPage && <ChatbotWidget />}
       </div>
     );
   }
