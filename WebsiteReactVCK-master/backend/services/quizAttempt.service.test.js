@@ -101,6 +101,26 @@ test("legacy shared essay drafts remain readable by mapping to the first essay q
   assert.equal(normalized.answers._essay.byQuestion[40], undefined);
 });
 
+test("a fresh scoped essay autosave replaces the stale stored essay bundle", () => {
+  const questions = [essay(20, 1), essay(40, 2)];
+  const normalized = normalizeQuizAnswers(questions, {
+    20: { text: "Bản mới", attachments: [] },
+    40: "Bản đang lưu",
+    _essay: {
+      byQuestion: {
+        20: { text: "Bản cũ", attachments: [{ assetId: 101 }] },
+        40: { text: "Bản đang lưu", attachments: [{ assetId: 202 }] },
+      },
+    },
+  });
+
+  assert.equal(normalized.error, null);
+  assert.equal(normalized.answers._essay.byQuestion[20].text, "Bản mới");
+  assert.deepEqual(normalized.answers._essay.byQuestion[20].attachments, []);
+  assert.equal(normalized.answers._essay.byQuestion[40].attachments[0].assetId, 202);
+  assert.deepEqual(normalized.assetIds, [202]);
+});
+
 test("student payload cannot inject grading fields or attach essays to objective questions", () => {
   const questions = [objective(10, 1), essay(20, 2), essay(30, 3)];
   assert.match(normalizeQuizAnswers(questions, { 10: "A", _essayGrade: { score: 999 } }).error, /dữ liệu hệ thống/);

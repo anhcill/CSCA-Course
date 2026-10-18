@@ -143,12 +143,13 @@ export default function QuizEditorPage() {
 
   const handleAddItem = (kind) => {
     let newItem;
-    if (kind === 'question') {
+    if (kind === 'question' || kind === 'essay') {
+      const isEssay = kind === 'essay';
       newItem = {
         id: `q-${Date.now()}`,
         kind: 'question',
-        questionType: 'single_choice',
-        questionText: 'Nội dung câu hỏi mới...',
+        questionType: isEssay ? 'essay' : 'single_choice',
+        questionText: isEssay ? 'Nội dung câu tự luận mới...' : 'Nội dung câu hỏi mới...',
         questionTextCn: '',
         questionTextEn: '',
         answers: [
@@ -157,7 +158,7 @@ export default function QuizEditorPage() {
           { text: 'Lựa chọn C', textCn: '', textEn: '', imageUrl: '' },
           { text: 'Lựa chọn D', textCn: '', textEn: '', imageUrl: '' },
         ],
-        correctAnswer: 'A',
+        correctAnswer: isEssay ? null : 'A',
         explanation: '',
         explanationCn: '',
         points: 1,
@@ -697,6 +698,14 @@ export default function QuizEditorPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => handleAddItem('essay')}
+                    className="px-2 py-1 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 text-[11px] font-semibold flex items-center gap-1"
+                    title="Thêm câu tự luận có thể nộp ảnh hoặc tệp"
+                  >
+                    <FiFileText size={11} /> Tự luận
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleAddItem('reading_group')}
                     className="px-2 py-1 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 text-[11px] font-semibold flex items-center gap-1"
                     title="Thêm nhóm đọc hiểu"
@@ -728,7 +737,9 @@ export default function QuizEditorPage() {
 
                   const itemLabel =
                     itemKind === 'question'
-                      ? 'Câu hỏi'
+                      ? item.questionType === 'essay' || item.questionType === 'translation'
+                        ? 'Tự luận'
+                        : 'Trắc nghiệm'
                       : itemKind === 'reading_group'
                       ? 'Đọc hiểu'
                       : 'Điền từ';

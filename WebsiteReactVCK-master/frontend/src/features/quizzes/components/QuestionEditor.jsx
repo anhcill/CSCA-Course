@@ -49,6 +49,7 @@ function getDefaults(initial) {
 
 const QUESTION_TYPE_LABELS = {
   single_choice:   { label: '🔘 Trắc nghiệm A-B-C-D', desc: 'Câu hỏi chọn 1 đáp án đúng' },
+  essay:           { label: '✍️ Tự luận', desc: 'Học viên nhập bài và có thể đính kèm ảnh hoặc tệp' },
   fill_blank_pool: { label: '📝 Điền từ (Pool A-F)',  desc: 'Bắt đầu nhóm điền từ, có pool từ chọn' },
   reading_passage: { label: '📖 Đọc hiểu (đoạn văn)', desc: 'Bắt đầu đoạn văn đọc hiểu' },
 };
@@ -267,16 +268,20 @@ export default function QuestionEditor({
 
     setSaving(true);
     if (onSave) {
+      const isEssay = form.questionType === 'essay';
       onSave({
         ...form,
         // Map answers back to options for schema compatibility
-        options: form.answers.map((ans, idx) => ({
-          key: ANSWER_KEYS[idx] || String.fromCharCode(65 + idx),
-          text: ans.text,
-          textCn: ans.textCn,
-          textEn: ans.textEn,
-          imageUrl: ans.imageUrl,
-        })),
+        options: isEssay
+          ? []
+          : form.answers.map((ans, idx) => ({
+              key: ANSWER_KEYS[idx] || String.fromCharCode(65 + idx),
+              text: ans.text,
+              textCn: ans.textCn,
+              textEn: ans.textEn,
+              imageUrl: ans.imageUrl,
+            })),
+        correctAnswer: isEssay ? null : form.correctAnswer,
       });
     }
     setTimeout(() => setSaving(false), 800);
@@ -338,6 +343,25 @@ export default function QuestionEditor({
       </div>
 
       <div className="p-5 space-y-5">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/40">
+          <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+            Loại câu hỏi
+          </label>
+          <select
+            value={form.questionType}
+            onChange={event => set('questionType', event.target.value)}
+            className={ADMIN_SELECT_CLASS}
+          >
+            <option value="single_choice">Trắc nghiệm - chọn một đáp án</option>
+            <option value="essay">Tự luận - nhập bài, tải ảnh hoặc tệp</option>
+          </select>
+          {form.questionType === 'essay' && (
+            <p className="mt-2 text-[11px] leading-5 text-amber-700 dark:text-amber-300">
+              Câu này sẽ chờ giáo viên chấm tay. Học viên có thể gõ bài làm và kéo-thả nhiều ảnh/tệp.
+            </p>
+          )}
+        </div>
+
         {/* 1. OCR Paste Tool */}
         {form.questionType === 'single_choice' && (
           <SingleQuestionOcrPaste

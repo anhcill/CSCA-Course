@@ -170,6 +170,7 @@ export const normalizeQuizAnswers = (questions, rawAnswers) => {
   const essayQuestions = questions.filter(isEssayQuestion);
   const normalized = {};
   const essayByQuestion = {};
+  const directlyScopedEssayIds = new Set();
   const assetIds = [];
 
   for (const key of Object.keys(rawAnswers)) {
@@ -195,6 +196,7 @@ export const normalizeQuizAnswers = (questions, rawAnswers) => {
     } else if (isEssayQuestion(question)) {
       const essay = normalizeEssayPayload(value, question.id, positions.get(String(question.id)));
       if (essay.error) return { error: essay.error, answers: {}, assetIds: [] };
+      if (isPlainObject(value)) directlyScopedEssayIds.add(String(question.id));
       essayByQuestion[String(question.id)] = essay.payload;
       assetIds.push(...essay.assetIds);
       normalized[String(question.id)] = essay.payload.text || essay.payload.notes || null;
@@ -220,7 +222,9 @@ export const normalizeQuizAnswers = (questions, rawAnswers) => {
       const id = String(question.id);
       const position = positions.get(id);
       const supplied = byQuestion[id] ?? byPosition[String(position)];
-      if (supplied === undefined) continue;
+      // A current per-question payload must win over the normalized legacy
+      // bundle already stored on the attempt during an autosave merge.
+      if (supplied === undefined || directlyScopedEssayIds.has(id)) continue;
       const essay = normalizeEssayPayload(supplied, question.id, position);
       if (essay.error) return { error: essay.error, answers: {}, assetIds: [] };
       essayByQuestion[id] = essay.payload;

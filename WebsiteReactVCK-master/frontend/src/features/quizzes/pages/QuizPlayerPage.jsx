@@ -18,12 +18,48 @@ import {
 } from 'react-icons/fi';
 import RichMathText from '../../../components/common/RichMathText.jsx';
 import { EmptyState, ErrorState, PermissionDeniedState } from '../../../components/common/StateView.jsx';
+import EssayAnswerInput from '../components/EssayAnswerInput.jsx';
 import { MOCK_STUDENT_QUIZ_PLAYER_DATA } from '../constants/mockQuizData.js';
 import {
   fetchStudentQuizStart,
   saveQuizAttemptAnswer,
   submitQuizAttempt,
 } from '../../api/lmsClient.js';
+
+const MANUAL_GRADE_TYPES = new Set(['essay', 'translation']);
+
+const isEssayQuestion = (question) => MANUAL_GRADE_TYPES.has(
+  question?.questionType || question?.question_type || question?.type
+);
+
+const essayAnswerFor = (answers, questionId) => {
+  const direct = answers?.[questionId];
+  if (direct && typeof direct === 'object' && !Array.isArray(direct)) {
+    return {
+      text: typeof direct.text === 'string' ? direct.text : '',
+      notes: typeof direct.notes === 'string' ? direct.notes : '',
+      attachments: Array.isArray(direct.attachments) ? direct.attachments : [],
+    };
+  }
+  const scoped = answers?._essay?.byQuestion?.[questionId];
+  if (scoped && typeof scoped === 'object') {
+    return {
+      text: typeof scoped.text === 'string' ? scoped.text : '',
+      notes: typeof scoped.notes === 'string' ? scoped.notes : '',
+      attachments: Array.isArray(scoped.attachments) ? scoped.attachments : [],
+    };
+  }
+  return { text: typeof direct === 'string' ? direct : '', notes: '', attachments: [] };
+};
+
+const hasAnswerContent = (question, answers) => {
+  if (isEssayQuestion(question)) {
+    const essay = essayAnswerFor(answers, question.id);
+    return Boolean(essay.text.trim() || essay.notes.trim() || essay.attachments.length > 0);
+  }
+  const answer = answers?.[question.id];
+  return Array.isArray(answer) ? answer.length > 0 : Boolean(answer);
+};
 
 export default function QuizPlayerPage() {
   const { quizId } = useParams();
@@ -354,14 +390,15 @@ export default function QuizPlayerPage() {
       if (!result) {
         // Fallback simulated evaluation for preview
         let correctCount = 0;
-        flattenedQuestions.forEach((fq) => {
+        const objectiveQuestions = flattenedQuestions.filter((fq) => !isEssayQuestion(fq.question));
+        objectiveQuestions.forEach((fq) => {
           const ans = answers[fq.id];
           const correct = fq.question.correctAnswer || fq.question.correctAnswerKey;
           if (ans && correct && ans === correct) {
             correctCount += 1;
           }
         });
-        const score = Math.round((correctCount / Math.max(1, flattenedQuestions.length)) * 100) / 10;
+        const score = Math.round((correctCount / Math.max(1, objectiveQuestions.length)) * 100) / 10;
         result = {
           attemptId: attemptId || 1,
           score,
@@ -385,7 +422,7 @@ export default function QuizPlayerPage() {
 
   // Statistics
   const answeredCount = useMemo(() => {
-    return flattenedQuestions.filter((q) => Boolean(answers[q.id])).length;
+    return flattenedQuestions.filter((q) => hasAnswerContent(q.question, answers)).length;
   }, [flattenedQuestions, answers]);
 
   const flaggedCount = useMemo(() => {
@@ -500,7 +537,7 @@ export default function QuizPlayerPage() {
               <div>
                 <span className="text-xs text-slate-400">Điểm số</span>
                 <p className="text-3xl font-black text-blue-600 dark:text-blue-400">
-                  {submitResult.score} <span className="text-sm font-medium text-slate-400">/ 10</span>
+                  {submitResult.score} <span className="text-sm font-medium text-slate-400">/ {submitResult.maxScore || 10}</span>
                 </p>
               </div>
               <div className="w-px h-10 bg-slate-200 dark:bg-slate-800"></div>
@@ -550,14 +587,18 @@ export default function QuizPlayerPage() {
               <div className="space-y-6">
                 {flattenedQuestions.map((q, idx) => {
                   const studentAns = answers[q.id];
+                  const manualGrade = isEssayQuestion(q.question);
+                  const essayAnswer = manualGrade ? essayAnswerFor(answers, q.id) : null;
                   const correctAns = q.question.correctAnswer || q.question.correctAnswerKey;
-                  const isCorrect = studentAns && correctAns && studentAns === correctAns;
+                  const isCorrect = manualGrade ? null : Boolean(studentAns && correctAns && studentAns === correctAns);
 
                   return (
                     <div
                       key={q.id}
                       className={`p-5 rounded-2xl border transition-all ${
-                        isCorrect
+                        manualGrade
+                          ? 'border-amber-200 dark:border-amber-950/60 bg-amber-50/20 dark:bg-amber-950/10'
+                          : isCorrect
                           ? 'border-emerald-200 dark:border-emerald-950/60 bg-emerald-50/20 dark:bg-emerald-950/10'
                           : 'border-red-200 dark:border-red-950/60 bg-red-50/20 dark:bg-red-950/10'
                       }`}
@@ -568,12 +609,14 @@ export default function QuizPlayerPage() {
                         </span>
                         <span
                           className={`px-2.5 py-0.5 rounded text-[11px] font-bold ${
-                            isCorrect
+                            manualGrade
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              : isCorrect
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
                           }`}
                         >
-                          {isCorrect ? '✓ Đúng (+1đ)' : '✕ Sai (0đ)'}
+                          {manualGrade ? 'Chờ giáo viên chấm' : isCorrect ? '✓ Đúng' : '✕ Sai'}
                         </span>
                       </div>
 
@@ -581,8 +624,36 @@ export default function QuizPlayerPage() {
                         <RichMathText value={q.question.questionText} />
                       </div>
 
+                      {manualGrade && (
+                        <div className="mb-4 space-y-3 rounded-xl border border-amber-200 bg-white/70 p-4 dark:border-amber-900/50 dark:bg-slate-950/40">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                              Bài làm đã nộp
+                            </span>
+                            <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
+                              {essayAnswer.text || 'Không có nội dung văn bản.'}
+                            </p>
+                          </div>
+                          {essayAnswer.attachments.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {essayAnswer.attachments.map((attachment) => (
+                                <a
+                                  key={attachment.assetId}
+                                  href={attachment.url || `/api/assignments/submission-assets/${attachment.assetId}/access`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900"
+                                >
+                                  {attachment.name || `Tệp ${attachment.assetId}`}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Display options */}
-                      {(q.question.options || q.question.answers) && (
+                      {!manualGrade && (q.question.options || q.question.answers) && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                           {(q.question.options || q.question.answers).map((opt) => {
                             const isChosen = studentAns === opt.key;
@@ -607,7 +678,7 @@ export default function QuizPlayerPage() {
                       )}
 
                       {/* Explanation */}
-                      {q.question.explanation && (
+                      {!manualGrade && q.question.explanation && (
                         <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-xs text-blue-900 dark:text-blue-200 space-y-1">
                           <span className="font-bold uppercase tracking-wide text-[10px] text-blue-700 dark:text-blue-300">
                             💡 Lời giải chi tiết:
@@ -802,7 +873,14 @@ export default function QuizPlayerPage() {
                     </div>
                   )}
 
-                  {/* Options */}
+                  {/* Answer workspace */}
+                  {isEssayQuestion(currentItem) ? (
+                    <EssayAnswerInput
+                      questionId={currentItem.id}
+                      value={essayAnswerFor(answers, currentItem.id)}
+                      onChange={(value) => handleSelectAnswer(currentItem.id, value)}
+                    />
+                  ) : (
                   <div className="space-y-3 pt-2">
                     {(currentItem.options || currentItem.answers || []).map((opt) => {
                       const isSelected = answers[currentItem.id] === opt.key;
@@ -837,6 +915,7 @@ export default function QuizPlayerPage() {
                       );
                     })}
                   </div>
+                  )}
                 </div>
               )}
 
@@ -1070,12 +1149,12 @@ export default function QuizPlayerPage() {
           <div className="grid grid-cols-5 gap-2 max-h-72 overflow-y-auto pr-1">
             {flattenedQuestions
               .filter((q) => {
-                if (paletteFilter === 'unanswered') return !answers[q.id];
+                if (paletteFilter === 'unanswered') return !hasAnswerContent(q.question, answers);
                 if (paletteFilter === 'flagged') return Boolean(flagged[q.id]);
                 return true;
               })
               .map((q) => {
-                const hasAnswer = Boolean(answers[q.id]);
+                const hasAnswer = hasAnswerContent(q.question, answers);
                 const isFlagged = Boolean(flagged[q.id]);
                 const isCurrent =
                   currentItemIndex === q.itemIdx &&
@@ -1221,12 +1300,12 @@ export default function QuizPlayerPage() {
             <div className="grid grid-cols-5 gap-2 max-h-60 overflow-y-auto pr-1">
               {flattenedQuestions
                 .filter((q) => {
-                  if (paletteFilter === 'unanswered') return !answers[q.id];
+                  if (paletteFilter === 'unanswered') return !hasAnswerContent(q.question, answers);
                   if (paletteFilter === 'flagged') return Boolean(flagged[q.id]);
                   return true;
                 })
                 .map((q) => {
-                  const hasAnswer = Boolean(answers[q.id]);
+                  const hasAnswer = hasAnswerContent(q.question, answers);
                   const isFlagged = Boolean(flagged[q.id]);
                   const isCurrent =
                     currentItemIndex === q.itemIdx &&
