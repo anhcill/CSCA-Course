@@ -5,6 +5,8 @@ import ReactMarkdown from "react-markdown";
 import { Oval, ThreeDots } from "react-loader-spinner";
 import { useTranslation } from "react-i18next";
 import { AuthContext } from "../../context/AuthContext";
+import { Lottie } from "lottie-react";
+import owlAnimation from "../../assets/owl.json";
 
 const ChatBot = () => {
   const [user, setUser] = useState(null);
@@ -173,14 +175,14 @@ const ChatBot = () => {
       >
         {showIntroMessage && chatHistory.length === 0 && (
           <div className={`mb-2 flex justify-start`}>
-            <div className="mr-2 avatar">
-              <div className="w-10 rounded-full overflow-hidden">
-                <img
-                  alt="Avatar Bot"
-                  src="/chatbot.jpg"
-                  className="object-cover w-full h-full"
-                />
-              </div>
+            <div className="mr-2 flex-shrink-0 w-11 h-11 flex items-center justify-center filter drop-shadow-sm">
+              <Lottie
+                src={owlAnimation}
+                loop={true}
+                autoplay={true}
+                className="w-full h-full"
+                style={{ width: "100%", height: "100%" }}
+              />
             </div>
             <div className={`flex flex-col items-start`}>
               <div className={`text-sm text-gray-900 dark:text-white mb-1`}>
@@ -203,14 +205,14 @@ const ChatBot = () => {
               }`}
           >
             {message.role === "assistant" && (
-              <div className="mr-2 avatar">
-                <div className="w-10 rounded-full overflow-hidden">
-                  <img
-                    alt="Avatar Bot"
-                    src="/chatbot.jpg"
-                    className="object-cover w-full h-full"
-                  />
-                </div>
+              <div className="mr-2 flex-shrink-0 w-11 h-11 flex items-center justify-center filter drop-shadow-sm">
+                <Lottie
+                  src={owlAnimation}
+                  loop={true}
+                  autoplay={true}
+                  className="w-full h-full"
+                  style={{ width: "100%", height: "100%" }}
+                />
               </div>
             )}
             <div

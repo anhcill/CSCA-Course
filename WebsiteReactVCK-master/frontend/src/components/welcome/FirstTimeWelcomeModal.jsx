@@ -13,6 +13,9 @@ import {
 import { useAuthContext } from "../../context/AuthContext.jsx";
 import { USER_ROLES } from "../../constants/roles.js";
 import { fetchWelcomeSettingsApi } from "../../features/api/lmsClient.js";
+import { Lottie } from "lottie-react";
+import pigeonAnimation from "../../assets/pigeon.json";
+import magicBookAnimation from "../../assets/magic-book.json";
 
 /**
  * FirstTimeWelcomeModal
@@ -94,15 +97,21 @@ export const TeacherBookVisual = ({ shouldReduceMotion }) => {
     return (
       <div className="relative flex items-center justify-center w-36 h-36 mx-auto mb-6">
         <div className="absolute inset-0 rounded-full bg-amber-500/25 blur-3xl" />
-        <div className="relative flex items-center justify-center w-28 h-28 rounded-3xl bg-white/10 border border-white/25 shadow-2xl backdrop-blur-2xl text-amber-300">
-          <BookOpen className="w-14 h-14 drop-shadow-[0_2px_12px_rgba(251,191,36,0.6)]" />
+        <div className="relative flex items-center justify-center w-28 h-28">
+          <Lottie
+            src={magicBookAnimation}
+            loop={true}
+            autoplay={true}
+            className="w-full h-full"
+            style={{ width: "100%", height: "100%" }}
+          />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="relative flex items-center justify-center w-72 sm:w-80 h-52 sm:h-56 mx-auto select-none perspective-[1400px]">
+    <div className="relative flex items-center justify-center w-72 sm:w-80 h-52 sm:h-56 mx-auto select-none">
       {/* Radiant Warm Amber Volumetric Glow Core */}
       <motion.div
         initial={{ opacity: 0, scale: 0.4 }}
@@ -122,159 +131,20 @@ export const TeacherBookVisual = ({ shouldReduceMotion }) => {
         className="absolute top-0 w-44 h-36 bg-gradient-to-t from-amber-300/35 via-amber-200/15 to-transparent blur-2xl pointer-events-none origin-bottom"
       />
 
-      {/* Main 3D Book Container */}
+      {/* Main Animated Magic Book */}
       <motion.div
-        initial={{ scale: 0.75, opacity: 0, rotateX: 20 }}
-        animate={{ scale: 1, opacity: 1, rotateX: 0 }}
+        initial={{ scale: 0.75, opacity: 0, y: 15 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
         transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-64 sm:w-72 h-44 sm:h-48 flex items-center justify-center"
-        style={{ transformStyle: "preserve-3d" }}
+        className="relative z-10 w-48 sm:w-56 h-48 sm:h-56 flex items-center justify-center filter drop-shadow-[0_20px_40px_rgba(251,191,36,0.35)]"
       >
-        {/* SVG Curved Book Base (Natural Page Flow with Glass Gradients) */}
-        <svg
-          className="absolute inset-0 w-full h-full overflow-visible drop-shadow-[0_25px_50px_rgba(0,0,0,0.7)]"
-          viewBox="0 0 256 160"
-          fill="none"
-        >
-          <defs>
-            <linearGradient id="bookGlassLeft" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.32" />
-              <stop offset="60%" stopColor="#ffffff" stopOpacity="0.1" />
-              <stop offset="100%" stopColor="#0f172a" stopOpacity="0.7" />
-            </linearGradient>
-            <linearGradient id="bookGlassRight" x1="100%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.32" />
-              <stop offset="60%" stopColor="#ffffff" stopOpacity="0.1" />
-              <stop offset="100%" stopColor="#0f172a" stopOpacity="0.7" />
-            </linearGradient>
-            <linearGradient id="goldSpine" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#fef08a" />
-              <stop offset="50%" stopColor="#f59e0b" />
-              <stop offset="100%" stopColor="#b45309" />
-            </linearGradient>
-            <linearGradient id="pageThread" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#fef08a" stopOpacity="0.7" />
-              <stop offset="100%" stopColor="#fef08a" stopOpacity="0.1" />
-            </linearGradient>
-          </defs>
-
-          {/* Left Bed Page (Curved Frosted Glass) */}
-          <path
-            d="M 128 20 C 85 14, 30 20, 12 30 C 9 32, 9 128, 12 130 C 30 120, 85 116, 128 122 Z"
-            fill="url(#bookGlassLeft)"
-            stroke="rgba(255,255,255,0.45)"
-            strokeWidth="1.5"
-          />
-          {/* Subtle text threads on left page */}
-          <path d="M 32 48 Q 72 44, 112 47" stroke="url(#pageThread)" strokeWidth="1.8" strokeLinecap="round" />
-          <path d="M 32 64 Q 72 60, 105 63" stroke="url(#pageThread)" strokeWidth="1.8" strokeLinecap="round" />
-          <path d="M 32 80 Q 72 76, 110 79" stroke="url(#pageThread)" strokeWidth="1.8" strokeLinecap="round" />
-          <path d="M 32 96 Q 72 92, 92 95" stroke="url(#pageThread)" strokeWidth="1.8" strokeLinecap="round" />
-
-          {/* Right Bed Page (Curved Frosted Glass) */}
-          <path
-            d="M 128 20 C 171 14, 226 20, 244 30 C 247 32, 247 128, 244 130 C 226 120, 171 116, 128 122 Z"
-            fill="url(#bookGlassRight)"
-            stroke="rgba(255,255,255,0.45)"
-            strokeWidth="1.5"
-          />
-          {/* Subtle text threads on right page */}
-          <path d="M 144 47 Q 184 44, 224 48" stroke="url(#pageThread)" strokeWidth="1.8" strokeLinecap="round" />
-          <path d="M 144 63 Q 184 60, 214 64" stroke="url(#pageThread)" strokeWidth="1.8" strokeLinecap="round" />
-          <path d="M 144 79 Q 184 76, 220 80" stroke="url(#pageThread)" strokeWidth="1.8" strokeLinecap="round" />
-          <path d="M 144 95 Q 184 92, 200 96" stroke="url(#pageThread)" strokeWidth="1.8" strokeLinecap="round" />
-
-          {/* Golden Center Spine Highlight */}
-          <line x1="128" y1="18" x2="128" y2="124" stroke="url(#goldSpine)" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-
-        {/* 3 Layered 3D Flipping Pages (Right to Left) */}
-        {/* Flipping Page 1 */}
-        <motion.div
-          initial={{ rotateY: 0 }}
-          animate={{ rotateY: -180, skewY: [0, -6, 0] }}
-          transition={{ duration: 1.05, delay: 0.35, ease: [0.4, 0.0, 0.2, 1] }}
-          className="absolute right-2 top-3 w-[120px] sm:w-[130px] h-[110px] sm:h-[120px] rounded-r-2xl border-y border-r border-amber-300/40 bg-gradient-to-l from-white/35 via-amber-200/25 to-transparent backdrop-blur-md shadow-xl"
-          style={{ transformOrigin: "left center", backfaceVisibility: "hidden" }}
-        >
-          <div className="p-3 space-y-2 opacity-50">
-            <div className="h-1.5 bg-amber-200/50 rounded w-full" />
-            <div className="h-1.5 bg-white/40 rounded w-3/4" />
-            <div className="h-1.5 bg-white/40 rounded w-5/6" />
-          </div>
-        </motion.div>
-
-        {/* Flipping Page 2 */}
-        <motion.div
-          initial={{ rotateY: 0 }}
-          animate={{ rotateY: -180, skewY: [0, -7, 0] }}
-          transition={{ duration: 1.1, delay: 0.75, ease: [0.4, 0.0, 0.2, 1] }}
-          className="absolute right-2 top-3 w-[120px] sm:w-[130px] h-[110px] sm:h-[120px] rounded-r-2xl border-y border-r border-white/50 bg-gradient-to-l from-white/40 via-emerald-200/20 to-transparent backdrop-blur-md shadow-xl"
-          style={{ transformOrigin: "left center", backfaceVisibility: "hidden" }}
-        >
-          <div className="p-3 space-y-2 opacity-50">
-            <div className="h-1.5 bg-emerald-200/50 rounded w-full" />
-            <div className="h-1.5 bg-white/40 rounded w-2/3" />
-            <div className="h-1.5 bg-white/40 rounded w-4/5" />
-          </div>
-        </motion.div>
-
-        {/* Flipping Page 3 (Final reveal page) */}
-        <motion.div
-          initial={{ rotateY: 0 }}
-          animate={{ rotateY: -180, skewY: [0, -6, 0] }}
-          transition={{ duration: 1.15, delay: 1.15, ease: [0.4, 0.0, 0.2, 1] }}
-          className="absolute right-2 top-3 w-[120px] sm:w-[130px] h-[110px] sm:h-[120px] rounded-r-2xl border-y border-r border-amber-200/60 bg-gradient-to-l from-white/45 via-amber-300/30 to-transparent backdrop-blur-md shadow-2xl"
-          style={{ transformOrigin: "left center", backfaceVisibility: "hidden" }}
-        >
-          <div className="p-3 space-y-2 opacity-60">
-            <div className="h-1.5 bg-amber-300/60 rounded w-5/6" />
-            <div className="h-1.5 bg-white/50 rounded w-3/4" />
-            <div className="h-1.5 bg-white/40 rounded w-1/2" />
-          </div>
-        </motion.div>
-
-        {/* Illuminated Floating Educator Emblem */}
-        <motion.div
-          initial={{ opacity: 0, y: 15, scale: 0.3 }}
-          animate={{
-            opacity: 1,
-            y: -36,
-            scale: 1,
-          }}
-          transition={{
-            duration: 0.8,
-            delay: 1.8,
-            ease: [0.16, 1, 0.3, 1],
-          }}
-          className="absolute z-20 flex items-center justify-center w-18 h-18 sm:w-20 sm:h-20 rounded-3xl bg-gradient-to-br from-white/45 via-amber-400/25 to-slate-900/70 border border-white/60 backdrop-blur-3xl shadow-[0_15px_35px_rgba(251,191,36,0.5),inset_0_1px_1px_rgba(255,255,255,0.8)] text-amber-200"
-        >
-          <Compass className="w-9 h-9 sm:w-10 sm:h-10 text-amber-300 drop-shadow-[0_2px_12px_rgba(251,191,36,0.8)]" />
-
-          {/* Orbiting Sparkle Stars */}
-          <motion.div
-            animate={{
-              scale: [0.8, 1.35, 0.8],
-              opacity: [0.5, 1, 0.5],
-              rotate: [0, 90, 180],
-            }}
-            transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute -top-2.5 -right-2.5 text-amber-300"
-          >
-            <StarSparkle className="w-6 h-6 drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]" />
-          </motion.div>
-
-          <motion.div
-            animate={{
-              scale: [1, 1.3, 1],
-              opacity: [0.4, 0.95, 0.4],
-            }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
-            className="absolute -bottom-2 -left-2 text-emerald-300"
-          >
-            <StarSparkle className="w-5 h-5 drop-shadow-[0_0_8px_rgba(110,231,183,0.9)]" />
-          </motion.div>
-        </motion.div>
+        <Lottie
+          src={magicBookAnimation}
+          loop={true}
+          autoplay={true}
+          className="w-full h-full"
+          style={{ width: "100%", height: "100%" }}
+        />
       </motion.div>
     </div>
   );
@@ -288,8 +158,14 @@ export const StudentCapVisual = ({ shouldReduceMotion }) => {
     return (
       <div className="relative flex items-center justify-center w-36 h-36 mx-auto mb-6">
         <div className="absolute inset-0 rounded-full bg-cyan-500/25 blur-3xl" />
-        <div className="relative flex items-center justify-center w-28 h-28 rounded-3xl bg-white/10 border border-white/25 shadow-2xl backdrop-blur-2xl text-cyan-300">
-          <GraduationCap className="w-14 h-14 drop-shadow-[0_2px_12px_rgba(103,232,249,0.6)]" />
+        <div className="relative flex items-center justify-center w-28 h-28">
+          <Lottie
+            src={pigeonAnimation}
+            loop={true}
+            autoplay={true}
+            className="w-full h-full"
+            style={{ width: "100%", height: "100%" }}
+          />
         </div>
       </div>
     );
@@ -439,94 +315,15 @@ export const StudentCapVisual = ({ shouldReduceMotion }) => {
         }}
         className="relative z-10 flex flex-col items-center justify-center drop-shadow-[0_25px_45px_rgba(6,182,212,0.4)]"
       >
-        {/* SVG Detailed 3D Glass Mortarboard Top & Beveled Crystal Edges */}
-        <div className="relative w-44 sm:w-52 h-24 sm:h-28 flex items-center justify-center">
-          <svg
-            viewBox="0 0 172 96"
-            className="w-full h-full overflow-visible"
-            fill="none"
-          >
-            <defs>
-              <linearGradient id="capGlassSurface" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
-                <stop offset="35%" stopColor="#67e8f9" stopOpacity="0.25" />
-                <stop offset="70%" stopColor="#0f172a" stopOpacity="0.8" />
-                <stop offset="100%" stopColor="#0284c7" stopOpacity="0.35" />
-              </linearGradient>
-
-              <linearGradient id="capBevel" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
-                <stop offset="50%" stopColor="#67e8f9" stopOpacity="0.6" />
-                <stop offset="100%" stopColor="#ffffff" stopOpacity="0.85" />
-              </linearGradient>
-
-              <linearGradient id="skullBand" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.3" />
-                <stop offset="50%" stopColor="#0f172a" stopOpacity="0.85" />
-                <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.35" />
-              </linearGradient>
-            </defs>
-
-            {/* Skull band (lower head support) */}
-            <path
-              d="M 62 50 Q 86 66, 110 50 L 112 66 Q 86 82, 60 66 Z"
-              fill="url(#skullBand)"
-              stroke="rgba(255,255,255,0.35)"
-              strokeWidth="1.2"
-            />
-
-            {/* Mortarboard Diamond Top */}
-            <polygon
-              points="86,10 162,44 86,78 10,44"
-              fill="url(#capGlassSurface)"
-              stroke="url(#capBevel)"
-              strokeWidth="1.8"
-              strokeLinejoin="round"
-            />
-
-            {/* Specular Glare Diagonal Slash across glass face */}
-            <line
-              x1="38"
-              y1="42"
-              x2="134"
-              y2="46"
-              stroke="rgba(255,255,255,0.6)"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-
-            {/* Center Crystal Button */}
-            <circle
-              cx="86"
-              cy="44"
-              r="5.5"
-              fill="#cffafe"
-              stroke="#ffffff"
-              strokeWidth="1.8"
-              className="drop-shadow-[0_0_10px_rgba(255,255,255,0.95)]"
-            />
-          </svg>
-
-          {/* Golden Silk Tassel with Physics-based Sway */}
-          <motion.div
-            initial={{ rotate: 0 }}
-            animate={{
-              rotate: [-15, 13, -7, 3, 0],
-            }}
-            transition={{
-              duration: 2.8,
-              delay: 1.25,
-              ease: "easeInOut",
-            }}
-            className="absolute right-6 sm:right-7 top-11 origin-top flex flex-col items-center pointer-events-none"
-          >
-            {/* Tassel cord */}
-            <div className="w-0.5 h-9 bg-gradient-to-b from-cyan-200 via-amber-200 to-amber-300" />
-            {/* Tassel head ring */}
-            <div className="w-3 h-3 rounded-full bg-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.95)] -mt-0.5" />
-            {/* Tassel brush */}
-            <div className="w-2.5 h-6 rounded-b bg-gradient-to-b from-amber-300 to-amber-500 shadow-[0_2px_10px_rgba(251,191,36,0.6)]" />
-          </motion.div>
+        {/* Animated Pigeon Character */}
+        <div className="relative w-48 sm:w-56 h-48 sm:h-56 flex items-center justify-center filter drop-shadow-[0_15px_30px_rgba(6,182,212,0.35)]">
+          <Lottie
+            src={pigeonAnimation}
+            loop={true}
+            autoplay={true}
+            className="w-full h-full"
+            style={{ width: "100%", height: "100%" }}
+          />
         </div>
 
         {/* Delicate Floating Sparkle Stars */}
