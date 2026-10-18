@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 
-const invoke = async (router, method, path, { params = {}, query = {}, body = {}, user } = {}) => {
+const invoke = async (router, method, path, { params = {}, query = {}, body = {}, user, file } = {}) => {
   const layer = router.stack.find((item) => item.route?.path === path && item.route.methods[method]);
   assert.ok(layer, `${method} ${path}`);
   const response = {
@@ -12,7 +12,7 @@ const invoke = async (router, method, path, { params = {}, query = {}, body = {}
     json(value) { this.body = value; return this; },
     redirect(code, location) { this.statusCode = code; this.location = location; return this; },
   };
-  await layer.route.stack.at(-1).handle({ params, query, body, user, ip: "127.0.0.1" }, response);
+  await layer.route.stack.at(-1).handle({ params, query, body, user, file, ip: "127.0.0.1" }, response);
   return response;
 };
 
@@ -78,6 +78,31 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   const fileRouter = (await import("./file.router.js")).default;
   const videoRouter = (await import("./video.router.js")).default;
   const courseRouter = (await import("./course.router.js")).default;
+
+  const avatarUpload = await invoke(fileRouter, "post", "/files/images/upload", {
+    user: learnerA,
+    body: { folder: "avatars" },
+    file: {
+      originalname: "avatar.png",
+      mimetype: "image/png",
+      size: 4,
+      buffer: Buffer.from("test"),
+    },
+  });
+  assert.equal(avatarUpload.statusCode, 201, JSON.stringify(avatarUpload.body));
+  assert.match(avatarUpload.body.data.fileKey, /^images\/avatars\//);
+  assert.match(avatarUpload.body.data.publicUrl, /\/api\/images\/images\/avatars\//);
+  const forbiddenCourseImage = await invoke(fileRouter, "post", "/files/images/upload", {
+    user: learnerA,
+    body: { folder: "courses" },
+    file: {
+      originalname: "course.png",
+      mimetype: "image/png",
+      size: 4,
+      buffer: Buffer.from("test"),
+    },
+  });
+  assert.equal(forbiddenCourseImage.statusCode, 403);
 
   const listedA = await invoke(fileRouter, "get", "/student/files", { user: learnerA });
   assert.equal(listedA.statusCode, 200, JSON.stringify(listedA.body));

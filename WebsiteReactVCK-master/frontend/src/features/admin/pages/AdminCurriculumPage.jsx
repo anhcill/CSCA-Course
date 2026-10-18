@@ -81,10 +81,10 @@ export default function AdminCurriculumPage() {
       setUploadingThumbnail(true);
       const res = await uploadImageToR2(file, { folder: "courses" });
       setCourseForm((prev) => ({ ...prev, thumbnailUrl: res.publicUrl }));
-      toast.success("Tải ảnh bìa lên Cloudflare R2 thành công!");
+      toast.success("Tải ảnh bìa thành công!");
     } catch (err) {
-      console.error("Lỗi tải ảnh khóa học lên Cloudflare:", err);
-      toast.error(err.message || "Không thể tải ảnh bìa lên Cloudflare");
+      console.error("Lỗi tải ảnh khóa học:", err);
+      toast.error(err.message || "Không thể tải ảnh bìa");
     } finally {
       setUploadingThumbnail(false);
       if (thumbnailInputRef.current) thumbnailInputRef.current.value = "";
@@ -945,7 +945,7 @@ export default function AdminCurriculumPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Ảnh đại diện khóa học (Cloudflare R2 / URL)</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Ảnh đại diện khóa học</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -968,7 +968,7 @@ export default function AdminCurriculumPage() {
                     className="px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 disabled:opacity-60"
                   >
                     <span>☁️</span>
-                    <span>{uploadingThumbnail ? "Đang tải…" : "Tải ảnh lên R2"}</span>
+                    <span>{uploadingThumbnail ? "Đang tải…" : "Tải ảnh lên"}</span>
                   </button>
                 </div>
                 {courseForm.thumbnailUrl && (

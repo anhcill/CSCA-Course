@@ -44,10 +44,10 @@ const AvatarModal = ({ isOpen, onClose, onSave, currentAvatarUrl, saving = false
                 onProgress: (p) => setUploadProgress(p),
             });
             setSelectedAvatar(result.publicUrl);
-            toast.success('Đã tải ảnh lên Cloudflare thành công! Nhấn "Lưu ảnh đại diện" để hoàn tất.');
+            toast.success('Đã tải ảnh thành công! Nhấn "Lưu ảnh đại diện" để hoàn tất.');
         } catch (err) {
-            console.error('Lỗi tải ảnh đại diện lên Cloudflare:', err);
-            toast.error(err.message || 'Không thể tải ảnh lên Cloudflare');
+            console.error('Lỗi tải ảnh đại diện:', err);
+            toast.error(err.message || 'Không thể tải ảnh');
         } finally {
             setUploading(false);
             setUploadProgress(null);
@@ -84,14 +84,14 @@ const AvatarModal = ({ isOpen, onClose, onSave, currentAvatarUrl, saving = false
                             className="inline-flex items-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 text-sm font-semibold shadow-sm transition disabled:opacity-60"
                         >
                             <span>☁️</span>
-                            <span>{uploading ? 'Đang tải lên Cloudflare…' : 'Tải ảnh từ máy tính'}</span>
+                            <span>{uploading ? 'Đang tải ảnh…' : 'Tải ảnh từ máy tính'}</span>
                         </button>
                     </div>
                 </div>
 
                 {uploadProgress && (
                     <div className="bg-sky-50 dark:bg-sky-950/40 border-b border-sky-200 dark:border-sky-800 px-6 py-2.5 flex items-center justify-between gap-4 text-xs font-medium text-sky-800 dark:text-sky-200">
-                        <span>{uploadProgress.message || 'Đang tải ảnh lên Cloudflare…'}</span>
+                        <span>{uploadProgress.message || 'Đang tải ảnh…'}</span>
                         <div className="flex items-center gap-2">
                             <div className="w-24 h-2 rounded-full bg-sky-200 dark:bg-sky-800 overflow-hidden">
                                 <div className="h-full bg-sky-600 transition-all duration-200" style={{ width: `${uploadProgress.percent}%` }} />

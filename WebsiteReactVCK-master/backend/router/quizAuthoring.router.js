@@ -57,7 +57,10 @@ const finiteNumber = (value, fallback, field, { min, max, integer = false }) => 
 
 const optionalDate = (value, field) => {
   if (value === undefined || value === null || value === "") return null;
-  const parsed = new Date(value);
+  const text = typeof value === "string" ? value.trim() : value;
+  const vietnamLocalDateTime = typeof text === "string"
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(text);
+  const parsed = new Date(vietnamLocalDateTime ? `${text}+07:00` : text);
   if (Number.isNaN(parsed.getTime())) throw httpError(400, "VALIDATION_ERROR", `${field} không hợp lệ`, { path: field });
   return parsed;
 };
@@ -561,7 +564,7 @@ export const createQuizAuthoringRouter = ({
       const result = await client.query(
         `UPDATE quizzes SET title=$1, description=$2, course_id=$3, live_class_id=$4, class_session_id=$5,
          activity_scope=$6, due_date=$7, duration_minutes=$8, passing_score=$9, shuffle_questions=$10,
-         attempt_limit=$11, available_from=$12, available_until=$13, review_policy=$14
+         attempt_limit=$11, available_from=$12, available_until=$13, review_policy=$14, updated_at=NOW()
          WHERE id=$15 RETURNING *`,
         [scheduled.title, scheduled.description, scheduled.courseId, scheduled.liveClassId, scheduled.classSessionId,
           scheduled.activityScope, scheduled.dueDate?.toISOString() || null, scheduled.durationMinutes,
@@ -633,7 +636,7 @@ export const createQuizAuthoringRouter = ({
       const items = await fetchItems(client, quizId, { includeAnswers: true });
       normalizeQuizAuthoringItems(items, { allowIncomplete: false });
       published = (await client.query(
-        `UPDATE quizzes SET status='PUBLISHED', available_from=$2, available_until=$3, due_date=$4
+        `UPDATE quizzes SET status='PUBLISHED', available_from=$2, available_until=$3, due_date=$4, updated_at=NOW()
          WHERE id=$1 RETURNING *`,
         [quizId, scheduled.availableFrom?.toISOString() || null, scheduled.availableUntil?.toISOString() || null, scheduled.dueDate?.toISOString() || null],
       )).rows[0];

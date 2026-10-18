@@ -500,7 +500,10 @@ export const fetchAssignments = async ({ courseId, classId, sessionId } = {}) =>
   if (courseId) params.set("courseId", courseId);
   if (classId) params.set("classId", classId);
   if (sessionId) params.set("sessionId", sessionId);
-  return request(`/assignments${params.size ? `?${params.toString()}` : ""}`);
+  return request(`/assignments${params.size ? `?${params.toString()}` : ""}`, {
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
 };
 
 export const createAssignment = async ({ title, description, liveClassId, classSessionId, assignmentType, maxScore, dueDate, attachmentUrl, rubric }) => request("/assignments", {
@@ -1166,41 +1169,24 @@ export const uploadImageToR2 = async (file, { folder = "general", onProgress } =
   onProgress?.({
     stage: "init",
     percent: 5,
-    message: "Khởi tạo tải ảnh lên Cloudflare...",
+    message: "Đang chuẩn bị ảnh...",
     loaded: 0,
     total: file.size,
   });
 
-  const uploadResponse = await request("/files/images/upload-url", {
-    method: "POST",
-    body: JSON.stringify({ filename: file.name, mimeType: file.type, sizeBytes: file.size, folder }),
-  });
-  const upload = uploadResponse?.data;
-  if (!upload?.uploadUrl || !upload?.fileKey) throw new LmsApiError("Máy chủ không trả về mục tiêu tải ảnh");
+  const formData = new FormData();
+  formData.append("image", file);
+  formData.append("folder", folder);
 
-  onProgress?.({
-    stage: "uploading",
-    percent: 20,
-    message: "Đang tải ảnh lên Cloudflare...",
-    loaded: 0,
-    total: file.size,
-  });
-
-  await new Promise((resolve, reject) => {
+  const uploadResponse = await new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", upload.uploadUrl, true);
-    if (upload.headers && typeof upload.headers === "object") {
-      Object.entries(upload.headers).forEach(([k, v]) => {
-        try { xhr.setRequestHeader(k, v); } catch { /* ignore header error */ }
-      });
-    } else {
-      xhr.setRequestHeader("Content-Type", file.type || "image/jpeg");
-    }
+    xhr.open("POST", `${API_BASE}/files/images/upload`, true);
+    xhr.withCredentials = true;
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && event.total > 0) {
         const rawPercent = Math.min(100, Math.round((event.loaded / event.total) * 100));
-        const mappedPercent = Math.min(90, Math.round(20 + (event.loaded / event.total) * 70));
+        const mappedPercent = Math.min(95, Math.round(10 + (event.loaded / event.total) * 85));
         onProgress?.({
           stage: "uploading",
           percent: mappedPercent,
@@ -1213,43 +1199,43 @@ export const uploadImageToR2 = async (file, { folder = "general", onProgress } =
     };
 
     xhr.onload = () => {
+      let body = null;
+      try {
+        body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        reject(new LmsApiError("Máy chủ trả về dữ liệu không hợp lệ", { status: xhr.status, errorCode: "INVALID_RESPONSE" }));
+        return;
+      }
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve();
+        resolve(body);
       } else {
-        reject(new LmsApiError(`Tải ảnh thất bại (Mã: ${xhr.status})`, { status: xhr.status }));
+        if (xhr.status === 401 && typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("csca:session-expired"));
+        }
+        reject(new LmsApiError(body?.message || `Tải ảnh thất bại (Mã: ${xhr.status})`, {
+          status: xhr.status,
+          errorCode: body?.errorCode || `HTTP_${xhr.status}`,
+          details: body,
+        }));
       }
     };
 
     xhr.onerror = () => reject(new LmsApiError("Lỗi kết nối mạng khi tải ảnh"));
     xhr.ontimeout = () => reject(new LmsApiError("Hết thời gian chờ khi tải ảnh"));
-    xhr.send(file);
+    xhr.send(formData);
   });
 
-  onProgress?.({
-    stage: "confirming",
-    percent: 92,
-    message: "Đang xác thực ảnh trên Cloudflare...",
-    loaded: file.size,
-    total: file.size,
-  });
-
-  const confirmRes = await request("/files/images/confirm", {
-    method: "POST",
-    body: JSON.stringify({ fileKey: upload.fileKey }),
-  });
+  if (!uploadResponse?.data?.publicUrl) throw new LmsApiError("Máy chủ không trả về địa chỉ ảnh");
 
   onProgress?.({
     stage: "done",
     percent: 100,
-    message: "Tải ảnh lên Cloudflare thành công!",
+    message: "Đã tải ảnh thành công!",
     loaded: file.size,
     total: file.size,
   });
 
-  return {
-    fileKey: upload.fileKey,
-    publicUrl: confirmRes?.data?.publicUrl || upload.publicUrl,
-  };
+  return uploadResponse.data;
 };
 
 // ============================================================================

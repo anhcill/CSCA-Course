@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FiMenu, FiSun, FiMoon, FiUser, FiHome, FiLogOut } from 'react-icons/fi';
+import { FiBookOpen, FiMenu, FiSun, FiMoon, FiUser, FiHome, FiLogOut } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuthContext } from '../../context/AuthContext';
@@ -151,6 +151,15 @@ const AdminNavbar = ({ toggleSidebar, collapsed = false }) => {
                 >
                   <FiUser className="w-4 h-4 text-gray-400" />
                   <span>{t('profileLink')}</span>
+                </Link>
+
+                <Link
+                  to="/lms/teach"
+                  className="flex items-center gap-2.5 px-4 py-2 text-xs text-emerald-700 hover:bg-emerald-50 transition dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                  onClick={() => setShowProfileMenu(false)}
+                >
+                  <FiBookOpen className="w-4 h-4" />
+                  <span>Chế độ giảng viên</span>
                 </Link>
 
                 <Link

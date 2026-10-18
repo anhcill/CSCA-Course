@@ -1,4 +1,5 @@
 import express from "express";
+import multer from "multer";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
@@ -24,6 +25,31 @@ import {
 import { createCloudinaryUploadSignature } from "../services/cloudinary.service.js";
 
 const router = express.Router();
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_IMAGE_SIZE_BYTES, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(file.mimetype)) {
+      return callback(new Error("UNSUPPORTED_IMAGE_TYPE"));
+    }
+    return callback(null, true);
+  },
+});
+
+const acceptSingleImage = (req, res, next) => {
+  imageUpload.single("image")(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      return errorResponse(res, 422, "Kích thước ảnh tối đa 10MB", "IMAGE_TOO_LARGE");
+    }
+    if (error.message === "UNSUPPORTED_IMAGE_TYPE") {
+      return errorResponse(res, 422, "Tệp ảnh không hợp lệ (hỗ trợ JPG, PNG, WEBP, GIF, SVG)", "VALIDATION_ERROR");
+    }
+    console.error("Error reading image upload:", error);
+    return errorResponse(res, 400, "Không thể đọc tệp ảnh", "INVALID_UPLOAD");
+  });
+};
 
 const errorResponse = (res, status, message, errorCode) => res.status(status).json({
   success: false, message, errorCode,
@@ -664,7 +690,50 @@ router.get("/files/:fileId/download", protectRoute, requireManagedLearner, async
   }
 });
 
-// POST /api/files/images/upload-url — Upload image directly to Cloudflare R2
+// POST /api/files/images/upload — Same-origin upload avoids browser storage CORS failures.
+router.post("/files/images/upload", protectRoute, acceptSingleImage, async (req, res) => {
+  if (!req.file) {
+    return errorResponse(res, 422, "Vui lòng chọn một tệp ảnh", "VALIDATION_ERROR");
+  }
+
+  const cleanFolder = ALLOWED_IMAGE_FOLDERS.has(req.body?.folder) ? req.body.folder : "general";
+  if (cleanFolder !== "avatars" && req.user.role !== "admin" && req.user.role !== "creator") {
+    return errorResponse(res, 403, "Bạn không có quyền tải ảnh vào thư mục này", "FORBIDDEN");
+  }
+
+  try {
+    const upload = await generateImageUploadPresignedUrl({
+      userId: req.user.id,
+      filename: req.file.originalname,
+      mimeType: req.file.mimetype,
+      sizeBytes: req.file.size,
+      folder: cleanFolder,
+    });
+    const storageResponse = await fetch(upload.uploadUrl, {
+      method: "PUT",
+      headers: upload.headers,
+      body: req.file.buffer,
+    });
+    if (!storageResponse.ok) {
+      const error = new Error(`Image storage rejected upload with status ${storageResponse.status}`);
+      error.code = "IMAGE_UPLOAD_FAILED";
+      throw error;
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: { fileKey: upload.fileKey, publicUrl: upload.publicUrl },
+    });
+  } catch (error) {
+    if (error.code === "R2_NOT_CONFIGURED") {
+      return errorResponse(res, 503, "Kho ảnh chưa được cấu hình", "IMAGE_STORAGE_NOT_CONFIGURED");
+    }
+    console.error("Error uploading image:", error);
+    return errorResponse(res, 502, "Không thể tải ảnh lên kho lưu trữ", "IMAGE_UPLOAD_FAILED");
+  }
+});
+
+// Legacy direct-upload endpoints remain for older clients.
 router.post("/files/images/upload-url", protectRoute, async (req, res) => {
   const { filename, mimeType, sizeBytes, folder = "general" } = req.body || {};
   if (!safeFilename(filename) || !ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {

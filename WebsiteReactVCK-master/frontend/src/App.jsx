@@ -36,6 +36,7 @@ import PwaInstallPrompt from "./components/common/PwaInstallPrompt.jsx";
 import FirstTimeWelcomeModal from "./components/welcome/FirstTimeWelcomeModal.jsx";
 import ChatbotWidget from "./components/course/ChatbotWidget.jsx";
 import OfflineScreen from "./components/common/OfflineScreen.jsx";
+import FloatingContactMenu from "./components/common/FloatingContactMenu.jsx";
 
 // LMS feature pages
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.jsx"));
@@ -311,6 +312,7 @@ function AppContent() {
           }}
         />
         {!isTeacherPage && <ChatbotWidget />}
+        <FloatingContactMenu avoidChatbot={!isTeacherPage} />
       </div>
     );
   }
@@ -333,6 +335,7 @@ function AppContent() {
         }}
       />
       {!isAdminPage && !pathname.includes("/detail-course") && <ChatbotWidget />}
+      {!isAdminPage && <FloatingContactMenu avoidChatbot />}
     </div>
   );
 }

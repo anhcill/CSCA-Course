@@ -72,6 +72,16 @@ test("metadata normalization supports incomplete drafts and enforces publish tar
   );
 });
 
+test("metadata normalization treats timezone-less authoring values as Vietnam time", () => {
+  const metadata = normalizeQuizMetadata({
+    title: "Vietnam schedule",
+    availableFrom: "2026-10-19T12:02",
+    availableUntil: "2026-10-19T13:02",
+  });
+  assert.equal(metadata.availableFrom.toISOString(), "2026-10-19T05:02:00.000Z");
+  assert.equal(metadata.availableUntil.toISOString(), "2026-10-19T06:02:00.000Z");
+});
+
 test("validateQuizOcrImage rejects a forged MIME type", () => {
   assert.throws(
     () => validateQuizOcrImage({ mimetype: "image/png", size: 8, buffer: Buffer.from("not-png!") }),

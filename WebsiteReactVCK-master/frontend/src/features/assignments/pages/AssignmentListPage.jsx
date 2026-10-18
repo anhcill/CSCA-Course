@@ -71,7 +71,11 @@ function deadlineText(value) {
 function formatDateTime(value) {
   const parsed = timestamp(value);
   return parsed
-    ? new Date(parsed).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })
+    ? new Date(parsed).toLocaleString("vi-VN", {
+        dateStyle: "short",
+        timeStyle: "short",
+        timeZone: "Asia/Ho_Chi_Minh",
+      })
     : "Chưa xác định";
 }
 
@@ -129,22 +133,40 @@ export default function AssignmentListPage() {
   const [statusFilter, setStatusFilter] = useState("todo");
   const [search, setSearch] = useState("");
 
-  const loadAssignments = useCallback(async () => {
-    setLoading(true);
-    setErrorMessage("");
+  const loadAssignments = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setErrorMessage("");
+    }
     try {
       const result = await fetchAssignments({ courseId, classId });
       setAssignments(result?.success && Array.isArray(result.data) ? result.data : []);
+      setErrorMessage("");
     } catch (error) {
       console.error("Unable to load assignments", error);
-      setErrorMessage("Không thể tải danh sách bài tập. Vui lòng thử lại sau.");
+      if (!silent) setErrorMessage("Không thể tải danh sách bài tập. Vui lòng thử lại sau.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [classId, courseId]);
 
   useEffect(() => {
     loadAssignments();
+  }, [loadAssignments]);
+
+  useEffect(() => {
+    const refresh = () => loadAssignments({ silent: true });
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [loadAssignments]);
 
   const counts = useMemo(() => assignments.reduce((result, assignment) => {

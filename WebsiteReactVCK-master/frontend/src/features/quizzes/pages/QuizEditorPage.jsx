@@ -27,6 +27,19 @@ import {
   publishTeacherQuiz,
   fetchTeacherClassesLookup,
 } from '../../api/lmsClient.js';
+import { toVietnamDateTimeInput, vietnamDateTimeInputToIso } from '../utils/quizDateTime.js';
+
+const editorDateFields = ['availableFrom', 'availableUntil', 'dueDate'];
+
+const hydrateQuizForEditor = (quiz) => editorDateFields.reduce((result, field) => ({
+  ...result,
+  [field]: toVietnamDateTimeInput(quiz?.[field]),
+}), { ...quiz });
+
+const buildQuizPayload = (quiz) => editorDateFields.reduce((result, field) => ({
+  ...result,
+  [field]: vietnamDateTimeInputToIso(quiz?.[field]),
+}), { ...quiz });
 
 export default function QuizEditorPage() {
   const { quizId } = useParams();
@@ -145,7 +158,7 @@ export default function QuizEditorPage() {
         if (!isMounted) return;
         const data = res?.data || res;
         if (data && (data.title || data.items)) {
-          setQuizMeta(data);
+          setQuizMeta(hydrateQuizForEditor(data));
           setBanner({
             type: 'info',
             message: `Đã tải đề thi #${quizId} từ máy chủ LMS.`,
@@ -306,7 +319,9 @@ export default function QuizEditorPage() {
       return false;
     }
     if (quizMeta.availableFrom && quizMeta.availableUntil) {
-      if (new Date(quizMeta.availableFrom) > new Date(quizMeta.availableUntil)) {
+      const availableFrom = vietnamDateTimeInputToIso(quizMeta.availableFrom);
+      const availableUntil = vietnamDateTimeInputToIso(quizMeta.availableUntil);
+      if (!availableFrom || !availableUntil || new Date(availableFrom) > new Date(availableUntil)) {
         alert('Thời gian bắt đầu mở đề không thể sau thời gian đóng đề.');
         return false;
       }
@@ -317,12 +332,14 @@ export default function QuizEditorPage() {
   const handleSaveDraft = async () => {
     if (!validateQuiz()) return;
 
+    let metadataSaved = false;
     try {
       setSaving(true);
       setBanner(null);
+      const payload = buildQuizPayload(quizMeta);
 
       if (isNew) {
-        const res = await createTeacherQuiz(quizMeta);
+        const res = await createTeacherQuiz(payload);
         const newId = res?.data?.id || res?.id;
         setBanner({
           type: 'success',
@@ -332,21 +349,31 @@ export default function QuizEditorPage() {
           navigate(`${quizListPath}/${newId}/edit`, { replace: true });
         }
       } else {
-        await updateTeacherQuiz(quizId, quizMeta);
+        const response = await updateTeacherQuiz(quizId, payload);
+        metadataSaved = true;
         if (quizMeta.items?.length) {
           await updateTeacherQuizItems(quizId, quizMeta.items);
         }
+        const savedQuiz = response?.data || response;
+        if (savedQuiz?.id) {
+          setQuizMeta((current) => ({
+            ...current,
+            ...hydrateQuizForEditor(savedQuiz),
+            items: current.items,
+          }));
+        }
         setBanner({
           type: 'success',
-          message: `Lưu cập nhật đề thi #${quizId} thành công!`,
+          message: `Đã đồng bộ thay đổi đề #${quizId} cho học viên.`,
         });
       }
     } catch (err) {
       console.error('Lưu đề thi thất bại:', err);
-      // Even if server is offline, acknowledge locally
       setBanner({
-        type: 'info',
-        message: 'Đã lưu thay đổi vào bộ nhớ cục bộ (Máy chủ LMS chưa kết nối DB đề thi).',
+        type: 'error',
+        message: metadataSaved
+          ? 'Thời gian và cấu hình đã đồng bộ, nhưng nội dung câu hỏi chưa lưu được.'
+          : (err?.message || 'Không thể lưu thay đổi lên máy chủ LMS.'),
       });
     } finally {
       setSaving(false);
@@ -362,13 +389,22 @@ export default function QuizEditorPage() {
 
     try {
       setSaving(true);
+      const payload = buildQuizPayload(quizMeta);
+      let response;
       if (!isNew && quizId) {
-        await publishTeacherQuiz(quizId);
+        await updateTeacherQuiz(quizId, payload);
+        if (quizMeta.items?.length) await updateTeacherQuizItems(quizId, quizMeta.items);
+        response = await publishTeacherQuiz(quizId);
       } else {
-        const payload = { ...quizMeta, status: 'PUBLISHED' };
-        await createTeacherQuiz(payload);
+        response = await createTeacherQuiz({ ...payload, status: 'PUBLISHED' });
       }
-      setQuizMeta((prev) => ({ ...prev, status: 'PUBLISHED' }));
+      const publishedQuiz = response?.data || response;
+      setQuizMeta((prev) => ({
+        ...prev,
+        ...(publishedQuiz?.id ? hydrateQuizForEditor(publishedQuiz) : {}),
+        items: prev.items,
+        status: 'PUBLISHED',
+      }));
       setBanner({
         type: 'success',
         message: 'Đề thi đã được xuất bản thành công!',
@@ -449,7 +485,7 @@ export default function QuizEditorPage() {
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-50"
             >
               <FiSave size={13} />
-              {saving ? 'Đang lưu...' : 'Lưu nháp'}
+              {saving ? 'Đang lưu...' : (isNew ? 'Lưu nháp' : 'Lưu thay đổi')}
             </button>
             <button
               type="button"
@@ -458,7 +494,7 @@ export default function QuizEditorPage() {
               className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors disabled:opacity-50"
             >
               <FiCheckCircle size={13} />
-              Xuất bản
+              {quizMeta.status === 'PUBLISHED' ? 'Cập nhật đã xuất bản' : 'Xuất bản'}
             </button>
           </div>
         </div>

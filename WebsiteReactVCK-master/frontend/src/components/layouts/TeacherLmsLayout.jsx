@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   BarChart3, BookOpen, CalendarDays, ChevronRight, ClipboardCheck, FileQuestion,
-  FilePlus2, FolderOpen, GraduationCap, Home, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Presentation, Settings, Users, Wallet, X,
+  FilePlus2, FolderOpen, GraduationCap, Home, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Presentation, Settings, ShieldCheck, Users, Wallet, X,
 } from 'lucide-react';
 import Logo from '../Logo';
 import NotificationBell from '../../features/notifications/components/NotificationBell';
@@ -61,17 +61,19 @@ function TeacherNavItem({ item, active, collapsed, onNavigate }) {
   );
 }
 
-function TeacherSidebarContent({ collapsed = false, onNavigate }) {
+function TeacherSidebarContent({ collapsed = false, onNavigate, isAdmin = false }) {
   const location = useLocation();
+  const roleLabel = isAdmin ? 'Quản trị viên' : 'Giảng viên';
+  const roleCode = isAdmin ? 'ADMIN' : 'TEACHER';
 
   return (
     <div className={`flex h-full min-h-0 flex-col overflow-hidden ${collapsed ? 'p-2.5' : 'p-4'}`}>
-      <div title={collapsed ? 'Giảng viên' : undefined} className={`mb-4 flex shrink-0 rounded-xl border border-slate-200 bg-slate-100 py-2 dark:border-slate-800 dark:bg-slate-900 ${collapsed ? 'justify-center px-2' : 'items-center justify-between px-3'}`}>
+      <div title={collapsed ? roleLabel : undefined} className={`mb-4 flex shrink-0 rounded-xl border border-slate-200 bg-slate-100 py-2 dark:border-slate-800 dark:bg-slate-900 ${collapsed ? 'justify-center px-2' : 'items-center justify-between px-3'}`}>
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className={collapsed ? 'sr-only' : 'text-[11px] font-bold tracking-wide text-slate-700 dark:text-slate-300'}>Giảng viên</span>
+            <span className={collapsed ? 'sr-only' : 'text-[11px] font-bold tracking-wide text-slate-700 dark:text-slate-300'}>{roleLabel}</span>
           </div>
-          {!collapsed && <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase text-emerald-600 dark:text-emerald-400">TEACHER</span>}
+          {!collapsed && <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase text-emerald-600 dark:text-emerald-400">{roleCode}</span>}
       </div>
 
       <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
@@ -125,6 +127,7 @@ export default function TeacherLmsLayout({ children }) {
   const closeMobile = () => setMobileOpen(false);
 
   const isAuthorizedTeacher = authUser?.role === 'creator' || authUser?.role === 'admin';
+  const isAdmin = authUser?.role === 'admin';
   if (!isAuthorizedTeacher) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-6 flex items-center justify-center">
@@ -182,7 +185,7 @@ export default function TeacherLmsLayout({ children }) {
 
               <div className="hidden sm:flex items-center gap-2 pl-0.5">
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Giảng viên
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> {isAdmin ? 'Quản trị viên' : 'Giảng viên'}
                 </span>
                 <span className="text-slate-300 dark:text-slate-700">·</span>
                 <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">Cổng giảng dạy</p>
@@ -213,8 +216,24 @@ export default function TeacherLmsLayout({ children }) {
                   <div className="border-b border-slate-100 dark:border-slate-800 px-3 py-2">
                     <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{authUser.fullName || authUser.username}</p>
                     <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">@{authUser.username}</p>
-                    <span className="mt-1 inline-block rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-bold">Giảng viên</span>
+                    {isAdmin ? (
+                      <Link
+                        to="/admin/dashboard"
+                        onClick={() => setProfileMenuOpen(false)}
+                        className="mt-1 inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-bold text-blue-700 transition hover:bg-blue-500/25 dark:text-blue-300"
+                        title="Chuyển sang trang quản trị"
+                      >
+                        <ShieldCheck className="h-3 w-3" /> Quản trị viên · Mở trang quản trị
+                      </Link>
+                    ) : (
+                      <span className="mt-1 inline-block rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Giảng viên</span>
+                    )}
                   </div>
+                  {isAdmin && (
+                    <Link to="/admin/dashboard" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/40">
+                      <ShieldCheck className="h-3.5 w-3.5" /> Chuyển sang trang quản trị
+                    </Link>
+                  )}
                   <Link to="/profile" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
                     <Settings className="h-3.5 w-3.5" /> Hồ sơ cá nhân
                   </Link>
@@ -230,14 +249,14 @@ export default function TeacherLmsLayout({ children }) {
     </header>
 
       <aside className={`fixed inset-y-16 left-0 z-40 hidden border-r border-slate-200 bg-white text-slate-800 transition-[width] duration-200 dark:border-slate-800 dark:bg-slate-950 dark:text-white lg:flex lg:flex-col ${sidebarCollapsed ? 'w-20' : 'w-64'}`}>
-        <TeacherSidebarContent collapsed={sidebarCollapsed} onNavigate={closeMobile} />
+        <TeacherSidebarContent collapsed={sidebarCollapsed} onNavigate={closeMobile} isAdmin={isAdmin} />
       </aside>
 
       {mobileOpen && (
         <>
           <button type="button" className="fixed inset-0 top-16 z-30 bg-slate-950/60 backdrop-blur-sm lg:hidden" onClick={closeMobile} />
           <div className="fixed inset-y-16 left-0 z-40 w-[min(18rem,88vw)] overflow-hidden border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-2xl lg:hidden">
-            <TeacherSidebarContent onNavigate={closeMobile} />
+            <TeacherSidebarContent onNavigate={closeMobile} isAdmin={isAdmin} />
           </div>
         </>
       )}
