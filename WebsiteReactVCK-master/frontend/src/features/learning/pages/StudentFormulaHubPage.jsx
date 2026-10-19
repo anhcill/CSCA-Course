@@ -6,13 +6,11 @@ import {
 import toast from 'react-hot-toast';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import {
-  getStoredFormulaSessions, toggleFormulaStar
-} from '../data/mockFormulaData';
 import { fetchFormulaSessions, toggleFormulaStarApi } from '../../api/lmsClient';
 
 export default function StudentFormulaHubPage() {
-  const [sessions, setSessions] = useState(() => getStoredFormulaSessions());
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('ALL'); // 'ALL' | 'MATH' | 'PHYSICS' | 'CHEMISTRY'
   const [showStarredOnly, setShowStarredOnly] = useState(false);
@@ -22,16 +20,18 @@ export default function StudentFormulaHubPage() {
 
   useEffect(() => {
     let isMounted = true;
+    setLoading(true);
     fetchFormulaSessions()
       .then((res) => {
         if (!isMounted) return;
         const apiSessions = res?.data?.sessions;
-        if (Array.isArray(apiSessions) && apiSessions.length > 0) {
-          setSessions(apiSessions);
-        }
+        setSessions(Array.isArray(apiSessions) ? apiSessions : []);
       })
       .catch(() => {
-        // Fallback silently to mock/stored data
+        if (isMounted) setSessions([]);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
       });
     return () => { isMounted = false; };
   }, []);
@@ -97,13 +97,30 @@ export default function StudentFormulaHubPage() {
     }).filter(Boolean);
   }, [sessions, selectedSubject, showStarredOnly, searchQuery]);
 
+  const expandedSession = useMemo(
+    () => filteredSessions.find((session) => String(session.sessionId) === String(expandedSessionId)) || null,
+    [expandedSessionId, filteredSessions]
+  );
+
   const handleToggleStar = async (sessionId, formulaId) => {
-    const updated = toggleFormulaStar(sessionId, formulaId);
-    setSessions([...updated]);
+    const previousSessions = sessions;
+    setSessions((current) => current.map((session) => (
+      String(session.sessionId) === String(sessionId)
+        ? {
+            ...session,
+            formulas: session.formulas.map((formula) => (
+              String(formula.id) === String(formulaId)
+                ? { ...formula, isStarred: !formula.isStarred }
+                : formula
+            )),
+          }
+        : session
+    )));
     try {
       await toggleFormulaStarApi(formulaId);
-    } catch {
-      // Offline or local storage fallback already updated
+    } catch (error) {
+      setSessions(previousSessions);
+      toast.error(error.message || 'Không thể cập nhật công thức đã lưu.');
     }
   };
 
@@ -237,67 +254,103 @@ export default function StudentFormulaHubPage() {
       </div>
 
       {/* Main Content: Card View or Cheat Sheet View */}
-      {filteredSessions.length === 0 ? (
+      {loading ? (
+        <div className="rounded-3xl border border-slate-200 dark:border-slate-800 p-12 text-center bg-white/40 dark:bg-slate-900/40">
+          <Binary className="h-10 w-10 text-slate-400 mx-auto mb-3 animate-pulse" />
+          <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Đang tải công thức theo buổi học...</p>
+        </div>
+      ) : filteredSessions.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center bg-white/40 dark:bg-slate-900/40">
           <Binary className="h-10 w-10 text-slate-400 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">Không tìm thấy công thức phù hợp</h3>
-          <p className="text-xs text-slate-500 mt-1">Hãy thử xóa bộ lọc hoặc tìm kiếm bằng từ khóa khác.</p>
+          <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">Chưa có công thức cho các buổi học</h3>
+          <p className="text-xs text-slate-500 mt-1">Công thức do giáo viên đăng sẽ xuất hiện tại đây.</p>
         </div>
       ) : viewMode === 'card' ? (
         /* === CARD VIEW === */
         <div className="space-y-5">
-          {filteredSessions.map((s) => {
-            const isExpanded = expandedSessionId === s.sessionId;
-            return (
-              <div
-                key={s.sessionId}
-                className="overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition hover:shadow-md"
-              >
-                {/* Session Header Card */}
-                <div className="p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/40 dark:bg-slate-850/40 border-b border-slate-100 dark:border-slate-800/80">
-                  <div className="space-y-1.5 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1 text-xs font-bold text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60">
-                        <Calendar className="h-3.5 w-3.5" />
-                        {s.formattedDate}
-                      </span>
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
-                        <GraduationCap className="h-3.5 w-3.5" />
-                        {s.classTitle}
-                      </span>
-                      <span className="inline-flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                        {s.subjectLabel}
-                      </span>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-extrabold uppercase tracking-wide text-blue-600 dark:text-sky-400">
-                        {s.chapter}
-                      </p>
-                      <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mt-0.5">
-                        {s.sessionTitle}
-                      </h2>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                      {s.formulas.length} công thức trọng tâm
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {filteredSessions.map((s) => {
+              const isExpanded = String(expandedSessionId) === String(s.sessionId);
+              return (
+                <button
+                  key={s.sessionId}
+                  type="button"
+                  aria-expanded={isExpanded}
+                  onClick={() => setExpandedSessionId(isExpanded ? null : s.sessionId)}
+                  className={`group flex min-h-[270px] flex-col rounded-3xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:bg-slate-900 sm:aspect-square sm:p-5 ${
+                    isExpanded
+                      ? 'border-blue-500 ring-2 ring-blue-500/20 dark:border-sky-500'
+                      : 'border-slate-200/90 hover:border-blue-300 dark:border-slate-800 dark:hover:border-blue-700'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200/60 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700 dark:border-blue-800/60 dark:bg-blue-950/60 dark:text-blue-300">
+                      <Calendar className="h-3.5 w-3.5" />
+                      {s.formattedDate}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setExpandedSessionId(isExpanded ? null : s.sessionId)}
-                      className="flex items-center gap-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                    >
-                      <span>{isExpanded ? 'Thu gọn' : 'Xem chi tiết'}</span>
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
-                    </button>
+                    <span className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      {s.subjectLabel}
+                    </span>
                   </div>
-                </div>
 
-                {/* Formulas List in Session */}
-                <div className="p-5 sm:p-6 space-y-4">
-                  {s.formulas.map((formula) => {
+                  <div className="mt-4 flex-1">
+                    <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-blue-600 dark:text-sky-400">
+                      Chủ đề buổi học
+                    </p>
+                    <h2 className="mt-1 line-clamp-3 text-lg font-black leading-snug text-slate-900 dark:text-white sm:text-xl">
+                      {s.chapter || s.sessionTitle}
+                    </h2>
+                    {s.sessionTitle && s.sessionTitle !== s.chapter && (
+                      <p className="mt-2 line-clamp-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        {s.sessionTitle}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <div className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                      <GraduationCap className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{s.classTitle}</span>
+                    </div>
+                    <div className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition ${
+                      isExpanded
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 group-hover:bg-blue-50 group-hover:text-blue-700 dark:bg-slate-800 dark:text-slate-300 dark:group-hover:bg-blue-950/60 dark:group-hover:text-sky-300'
+                    }`}>
+                      <span>{s.formulas.length} công thức</span>
+                      <span className="inline-flex items-center gap-1">
+                        {isExpanded ? 'Đang xem' : 'Xem chi tiết'}
+                        <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {expandedSession && (
+            <section className="overflow-hidden rounded-3xl border border-blue-200/80 bg-white shadow-md dark:border-blue-900/60 dark:bg-slate-900">
+              <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/40 p-4 dark:border-slate-800 dark:bg-slate-800/30 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                <div>
+                  <p className="text-xs font-extrabold uppercase tracking-wide text-blue-600 dark:text-sky-400">
+                    {expandedSession.chapter}
+                  </p>
+                  <h2 className="mt-0.5 text-lg font-black text-slate-900 dark:text-white sm:text-xl">
+                    {expandedSession.sessionTitle}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExpandedSessionId(null)}
+                  className="self-start rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 sm:self-auto"
+                >
+                  Đóng chi tiết
+                </button>
+              </div>
+
+              <div className="space-y-4 p-4 sm:p-5">
+                {expandedSession.formulas.map((formula) => {
                     let formulaHtml = '';
                     try {
                       formulaHtml = katex.renderToString(formula.latex, {
@@ -344,7 +397,7 @@ export default function StudentFormulaHubPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleToggleStar(s.sessionId, formula.id)}
+                              onClick={() => handleToggleStar(expandedSession.sessionId, formula.id)}
                               className={`p-1.5 rounded-xl border transition ${
                                 formula.isStarred
                                   ? 'border-amber-300 bg-amber-50 text-amber-500 dark:border-amber-800 dark:bg-amber-950/40'
@@ -380,10 +433,9 @@ export default function StudentFormulaHubPage() {
                       </div>
                     );
                   })}
-                </div>
               </div>
-            );
-          })}
+            </section>
+          )}
         </div>
       ) : (
         /* === CHEAT SHEET TABLE VIEW === */

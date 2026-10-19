@@ -311,7 +311,7 @@ export default function VocabularyPracticeModal({
                 >
                   <div
                     onClick={() => setIsFlipped((prev) => !prev)}
-                    className="group relative w-full min-h-[300px] sm:min-h-[340px] cursor-pointer rounded-3xl border-2 border-slate-200/90 dark:border-slate-800 bg-gradient-to-b from-slate-50/50 to-white dark:from-slate-800/40 dark:to-slate-900/90 p-6 sm:p-8 flex flex-col justify-between shadow-xl transition-all hover:border-blue-300 dark:hover:border-blue-700/60 select-none"
+                    className="group relative w-full min-h-[300px] sm:min-h-[340px] cursor-pointer rounded-3xl border-2 border-slate-200/90 dark:border-slate-800 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] dark:bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.9)_100%)] p-6 sm:p-8 flex flex-col justify-between shadow-xl transition-all hover:border-blue-300 dark:hover:border-blue-700/60 select-none"
                     style={{ perspective: 1000 }}
                   >
                     {/* Top card actions */}
