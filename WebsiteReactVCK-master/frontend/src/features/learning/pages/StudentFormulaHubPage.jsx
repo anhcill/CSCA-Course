@@ -117,38 +117,35 @@ export default function StudentFormulaHubPage() {
   return (
     <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950 p-4 sm:p-6 lg:p-8 space-y-6">
       {/* Hero Welcome Banner */}
-      <div className="relative overflow-hidden rounded-3xl border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-700 via-blue-600 to-sky-700 p-6 sm:p-8 text-white shadow-xl shadow-indigo-600/15">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-xl">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-bold backdrop-blur-md">
-              <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+      <div className="relative overflow-hidden rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-700 via-blue-600 to-sky-700 p-4 sm:p-5 text-white shadow-lg shadow-indigo-600/15">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1.5 max-w-xl">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-bold backdrop-blur-md sm:text-[11px]">
+              <Sparkles className="h-3 w-3 text-amber-300" />
               <span>Sổ tay công thức & Thuật ngữ CSCA chuẩn hóa</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight">
               Công Thức Theo Buổi Học
             </h1>
-            <p className="text-sm text-blue-100 leading-relaxed">
-              Hệ thống công thức Toán học & Khoa học theo từng ngày học và chương học. Tra cứu công thức LaTeX, giải thích biến số và bài toán mẫu.
-            </p>
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 shrink-0">
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-md border border-white/10 text-center">
-              <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-wider">Tổng công thức</p>
-              <p className="text-2xl font-black mt-0.5">{stats.totalFormulas}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+            <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-md border border-white/10 text-center">
+              <p className="text-[9px] font-semibold text-blue-200 uppercase tracking-wider">Tổng công thức</p>
+              <p className="text-xl font-black">{stats.totalFormulas}</p>
             </div>
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-md border border-white/10 text-center">
-              <p className="text-[11px] font-semibold text-amber-300 uppercase tracking-wider">Đã lưu ⭐</p>
-              <p className="text-2xl font-black text-amber-300 mt-0.5">{stats.starredCount}</p>
+            <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-md border border-white/10 text-center">
+              <p className="text-[9px] font-semibold text-amber-300 uppercase tracking-wider">Đã lưu ⭐</p>
+              <p className="text-xl font-black text-amber-300">{stats.starredCount}</p>
             </div>
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-md border border-white/10 text-center">
-              <p className="text-[11px] font-semibold text-sky-200 uppercase tracking-wider">Toán CSCA</p>
-              <p className="text-2xl font-black text-white mt-0.5">{stats.mathCount}</p>
+            <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-md border border-white/10 text-center">
+              <p className="text-[9px] font-semibold text-sky-200 uppercase tracking-wider">Toán CSCA</p>
+              <p className="text-xl font-black text-white">{stats.mathCount}</p>
             </div>
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-md border border-white/10 text-center">
-              <p className="text-[11px] font-semibold text-emerald-300 uppercase tracking-wider">Lý & Hóa</p>
-              <p className="text-2xl font-black text-emerald-300 mt-0.5">{stats.physicsCount + stats.chemCount}</p>
+            <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-md border border-white/10 text-center">
+              <p className="text-[9px] font-semibold text-emerald-300 uppercase tracking-wider">Lý & Hóa</p>
+              <p className="text-xl font-black text-emerald-300">{stats.physicsCount + stats.chemCount}</p>
             </div>
           </div>
         </div>
