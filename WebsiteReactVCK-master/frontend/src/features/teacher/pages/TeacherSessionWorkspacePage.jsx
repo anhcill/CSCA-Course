@@ -8,7 +8,7 @@ import {
 import {
   batchImportSessionVocabulary, createClassAnnouncement, createSessionVocabulary, deleteClassFile,
   deleteSessionVocabulary, fetchClassAnnouncements, fetchClassDetails, fetchClassFiles,
-  fetchLiveClassSessions, fetchSessionVocabulary, getLiveSessionAccess, suggestSessionVocabulary,
+  fetchLiveClassSessions, fetchSessionFormulas, fetchSessionVocabulary, getLiveSessionAccess, suggestSessionVocabulary,
   updateSessionVocabulary, uploadClassFile, createSessionFormulaApi, deleteFormulaApi,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
@@ -19,7 +19,6 @@ import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reser
 import { classCalendarIcsUrl, googleCalendarEventUrl } from "../../calendar/calendarLinks";
 import TeacherSessionVocabularyTab from "../components/TeacherSessionVocabularyTab";
 import TeacherSessionFormulaTab from "../components/TeacherSessionFormulaTab";
-import { getStoredFormulaSessions, saveFormulaSessions } from "../../learning/data/mockFormulaData";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
@@ -84,28 +83,22 @@ export default function TeacherSessionWorkspacePage() {
   const [uploadProgress, setUploadProgress] = useState(null);
   const [uploadFile, setUploadFile] = useState(null);
   const [currentVocabSession, setCurrentVocabSession] = useState(null);
+  const [currentFormulaSession, setCurrentFormulaSession] = useState(null);
 
   const sessionVocabs = currentVocabSession?.vocabularies || [];
-  const [formulaSessions, setFormulaSessions] = useState(() => getStoredFormulaSessions());
-
-  const currentFormulaSession = useMemo(() => {
-    const found = formulaSessions.find((s) => String(s.sessionId) === String(sessionId));
-    if (found) return found;
-    return formulaSessions[0] || null;
-  }, [formulaSessions, sessionId]);
-
   const sessionFormulas = currentFormulaSession?.formulas || [];
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [detailResponse, sessionsResponse, filesResponse, announcementsResponse, vocabularyResponse] = await Promise.all([
+      const [detailResponse, sessionsResponse, filesResponse, announcementsResponse, vocabularyResponse, formulaResponse] = await Promise.all([
         fetchClassDetails(classId),
         fetchLiveClassSessions(classId),
         fetchClassFiles(classId, { sessionId }),
         fetchClassAnnouncements({ classId, sessionId }),
         fetchSessionVocabulary(sessionId),
+        fetchSessionFormulas(sessionId),
       ]);
       const foundSession = sessionsResponse?.success && Array.isArray(sessionsResponse.data)
         ? sessionsResponse.data.find((item) => String(item.id) === String(sessionId))
@@ -118,6 +111,10 @@ export default function TeacherSessionWorkspacePage() {
       setCurrentVocabSession(vocabularyResponse?.data?.session ? {
         ...vocabularyResponse.data.session,
         vocabularies: vocabularyResponse.data.vocabularies || [],
+      } : null);
+      setCurrentFormulaSession(formulaResponse?.data?.session ? {
+        ...formulaResponse.data.session,
+        formulas: formulaResponse.data.formulas || [],
       } : null);
     } catch (requestError) {
       setClassData(null);
@@ -368,27 +365,23 @@ export default function TeacherSessionWorkspacePage() {
             session={session}
             formulas={sessionFormulas}
             onAddFormula={async (formula) => {
-              if (currentFormulaSession) {
-                currentFormulaSession.formulas.unshift(formula);
-                saveFormulaSessions(formulaSessions);
-                setFormulaSessions([...formulaSessions]);
-              }
-              try {
-                await createSessionFormulaApi(sessionId, formula);
-              } catch {
-                // LocalStorage fallback already persisted
-              }
+              const response = await createSessionFormulaApi(sessionId, formula);
+              setCurrentFormulaSession((current) => ({
+                ...(current || { sessionId: String(sessionId) }),
+                formulas: [response.data, ...(current?.formulas || [])],
+              }));
+              return response.data;
             }}
             onDeleteFormula={async (formulaId) => {
-              if (currentFormulaSession) {
-                currentFormulaSession.formulas = currentFormulaSession.formulas.filter((f) => f.id !== formulaId);
-                saveFormulaSessions(formulaSessions);
-                setFormulaSessions([...formulaSessions]);
-              }
               try {
                 await deleteFormulaApi(formulaId);
-              } catch {
-                // LocalStorage fallback already persisted
+                setCurrentFormulaSession((current) => current ? {
+                  ...current,
+                  formulas: current.formulas.filter((formula) => String(formula.id) !== String(formulaId)),
+                } : current);
+                toast.success("Đã xóa công thức.");
+              } catch (requestError) {
+                toast.error(requestError.message || "Không thể xóa công thức.");
               }
             }}
           />

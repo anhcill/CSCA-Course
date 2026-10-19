@@ -45,7 +45,7 @@ export default function TeacherSessionFormulaTab({
     }));
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!newFormula.nameVi.trim() || !newFormula.latex.trim()) {
       toast.error('Vui lòng nhập tên công thức và mã biểu thức LaTeX!');
@@ -61,19 +61,22 @@ export default function TeacherSessionFormulaTab({
       : [];
 
     if (onAddFormula) {
-      onAddFormula({
-        id: `fm-${Date.now()}`,
-        nameVi: newFormula.nameVi,
-        nameZh: newFormula.nameZh,
-        pinyin: newFormula.pinyin,
-        latex: newFormula.latex,
-        description: newFormula.description,
-        conditions: newFormula.conditions,
-        exampleProblem: newFormula.exampleProblem,
-        exampleSolution: newFormula.exampleSolution,
-        variables,
-        isStarred: false,
-      });
+      try {
+        await onAddFormula({
+          nameVi: newFormula.nameVi,
+          nameZh: newFormula.nameZh,
+          pinyin: newFormula.pinyin,
+          latex: newFormula.latex,
+          description: newFormula.description,
+          conditions: newFormula.conditions,
+          exampleProblem: newFormula.exampleProblem,
+          exampleSolution: newFormula.exampleSolution,
+          variables,
+        });
+      } catch (requestError) {
+        toast.error(requestError.message || 'Không thể thêm công thức.');
+        return;
+      }
       toast.success('Đã thêm công thức mới vào buổi dạy!');
       setShowAddModal(false);
       setNewFormula({
