@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Lottie } from 'lottie-react';
 import {
@@ -125,6 +126,19 @@ export default function VocabularyPracticeModal({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return undefined;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
+    };
+  }, [isOpen]);
+
   const handleNextWord = useCallback((isMastered) => {
     const wordId = currentWord.id;
     if (isMastered) {
@@ -208,10 +222,15 @@ export default function VocabularyPracticeModal({
 
   const scorePercent = Math.round((masteredIds.length / words.length) * 100);
 
-  if (!isOpen || !session || words.length === 0) return null;
+  if (!isOpen || !session || words.length === 0 || typeof document === 'undefined') return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex h-dvh w-screen items-center justify-center bg-slate-950/80 p-3 backdrop-blur-md sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Luyện tập từ vựng"
+    >
       <div
         className="relative flex flex-col w-full max-w-2xl max-h-[92vh] overflow-hidden rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -584,6 +603,7 @@ export default function VocabularyPracticeModal({
           </AnimatePresence>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
