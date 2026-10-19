@@ -105,6 +105,7 @@ router.get("/classes", ...adminOnly, async (req, res) => {
   try {
     const result = await query(
       `SELECT lc.id, lc.title, lc.status, lc.management_approval_status,
+              lc.allow_file_download,
               lc.management_class_source_id,
               COALESCE(lc.management_course_source_id, c.external_course_id) AS management_course_source_id,
               COALESCE(c.title, c.name) AS course_title,
@@ -135,11 +136,55 @@ router.get("/classes", ...adminOnly, async (req, res) => {
       entitlementCount: Number(row.entitlement_count || 0),
       mappingStatus: row.management_class_source_id && row.management_course_source_id ? "MAPPED" : "PENDING",
       approvalStatus: row.management_approval_status,
+      allowFileDownload: row.allow_file_download !== false,
       active: row.status === "active" && Boolean(row.management_class_source_id && row.management_course_source_id),
     })) });
   } catch (error) {
     console.error("Error listing LMS class mappings:", error);
     return errorResponse(res, 500, "Không thể tải danh sách lớp học", "INTERNAL_ERROR");
+  }
+});
+
+// PATCH /api/v1/admin/classes/:id/file-download-policy
+router.patch("/classes/:id/file-download-policy", ...adminOnly, async (req, res) => {
+  const classId = parseId(req.params.id);
+  const allowFileDownload = req.body?.allowFileDownload;
+  if (!classId || typeof allowFileDownload !== "boolean") {
+    return errorResponse(res, 422, "Chính sách tải tài liệu không hợp lệ", "VALIDATION_ERROR");
+  }
+  try {
+    const current = (await query(
+      "SELECT id, title, allow_file_download FROM live_classes WHERE id = $1",
+      [classId],
+    )).rows[0];
+    if (!current) return errorResponse(res, 404, "Không tìm thấy lớp học", "NOT_FOUND");
+    const result = await query(
+      `UPDATE live_classes
+       SET allow_file_download = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, title, allow_file_download`,
+      [allowFileDownload, classId],
+    );
+    await recordAuditEvent({
+      actorId: req.user.id,
+      action: "class.file_download_policy_updated",
+      entityType: "live_class",
+      entityId: classId,
+      beforeState: { allowFileDownload: current.allow_file_download !== false },
+      afterState: { allowFileDownload },
+      metadata: { ip: req.ip },
+    });
+    return res.json({
+      success: true,
+      data: {
+        id: String(result.rows[0].id),
+        allowFileDownload: result.rows[0].allow_file_download !== false,
+      },
+      message: allowFileDownload ? "Đã cho phép học viên tải tài liệu" : "Đã chuyển tài liệu lớp sang chế độ chỉ xem",
+    });
+  } catch (error) {
+    console.error("Error updating class file download policy:", error);
+    return errorResponse(res, 500, "Không thể cập nhật chính sách tài liệu", "INTERNAL_ERROR");
   }
 });
 

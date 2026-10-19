@@ -3,14 +3,14 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Bell, BookOpen, Binary, CalendarDays, CheckCircle2, ClipboardList, Clock,
-  Download, FileSpreadsheet, FileText, Files, FolderOpen, Languages, Lock, Play, Trophy, Users, Video, Search,
+  Download, Eye, FileSpreadsheet, FileText, Files, FolderOpen, Languages, Lock, Play, Trophy, Users, Video, Search,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { isTeacherRole } from "../../../constants/roles";
 import {
   checkInToSession, fetchAssignments, fetchClassAnnouncements, fetchLiveClassSessions,
-  fetchMySessionCheckIn, fetchSessionVocabulary, fetchStudentFiles, getLiveSessionAccess,
-  submitVocabularyPractice, toggleVocabularyStar,
+  fetchMySessionCheckIn, fetchSessionFormulas, fetchSessionVocabulary, fetchStudentFiles, getLiveSessionAccess,
+  submitVocabularyPractice, toggleFormulaStarApi, toggleVocabularyStar,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
@@ -19,7 +19,6 @@ import { classCalendarIcsUrl, googleCalendarEventUrl } from "../calendarLinks";
 import SessionVocabularyTab from "../../learning/components/SessionVocabularyTab";
 import SessionFormulaTab from "../../learning/components/SessionFormulaTab";
 import VocabularyPracticeModal from "../../learning/components/VocabularyPracticeModal";
-import { getStoredFormulaSessions, toggleFormulaStar } from "../../learning/data/mockFormulaData";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
@@ -122,14 +121,7 @@ export default function SessionDetailPage() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [currentVocabSession, setCurrentVocabSession] = useState(null);
   const [showVocabPractice, setShowVocabPractice] = useState(false);
-  const [formulaSessions, setFormulaSessions] = useState(() => getStoredFormulaSessions());
-
-  const currentFormulaSession = useMemo(() => {
-    const found = formulaSessions.find((s) => String(s.sessionId) === String(sessionId));
-    if (found) return found;
-    return formulaSessions[0] || null;
-  }, [formulaSessions, sessionId]);
-
+  const [currentFormulaSession, setCurrentFormulaSession] = useState(null);
   const sessionFormulas = currentFormulaSession?.formulas || [];
 
   const sessionVocabs = currentVocabSession?.vocabularies || [];
@@ -142,6 +134,17 @@ export default function SessionDetailPage() {
     } catch (requestError) {
       setCurrentVocabSession(null);
       if (!silent) toast.error(requestError.message || "Không thể tải từ vựng của buổi học.");
+    }
+  }, [sessionId]);
+
+  const loadFormulas = useCallback(async ({ silent = false } = {}) => {
+    try {
+      const response = await fetchSessionFormulas(sessionId);
+      const data = response?.data;
+      setCurrentFormulaSession(data?.session ? { ...data.session, formulas: data.formulas || [] } : null);
+    } catch (requestError) {
+      setCurrentFormulaSession(null);
+      if (!silent) toast.error(requestError.message || "Không thể tải công thức của buổi học.");
     }
   }, [sessionId]);
 
@@ -187,6 +190,7 @@ export default function SessionDetailPage() {
   useEffect(() => { loadSession(); }, [loadSession]);
   useEffect(() => { loadResources(); }, [loadResources]);
   useEffect(() => { loadVocabulary({ silent: true }); }, [loadVocabulary]);
+  useEffect(() => { loadFormulas({ silent: true }); }, [loadFormulas]);
   useEffect(() => {
     if (isTeacher || !sessionId) return undefined;
     let active = true;
@@ -393,10 +397,18 @@ export default function SessionDetailPage() {
           <SessionFormulaTab
             session={session}
             formulas={sessionFormulas}
-            onToggleStar={(formulaId) => {
-              if (currentFormulaSession) {
-                const updated = toggleFormulaStar(currentFormulaSession.sessionId, formulaId);
-                setFormulaSessions([...updated]);
+            onToggleStar={isTeacher ? null : async (formulaId) => {
+              try {
+                const response = await toggleFormulaStarApi(formulaId);
+                const isStarred = Boolean(response?.data?.isStarred);
+                setCurrentFormulaSession((current) => current ? {
+                  ...current,
+                  formulas: current.formulas.map((formula) => (
+                    String(formula.id) === String(formulaId) ? { ...formula, isStarred } : formula
+                  )),
+                } : current);
+              } catch (requestError) {
+                toast.error(requestError.message || "Không thể cập nhật công thức đã lưu.");
               }
             }}
           />
@@ -686,7 +698,7 @@ function SessionFileList({ files }) {
               </span>
             </div>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Bạn có thể xem trước hoặc tải về để ôn tập trước và sau buổi học.
+              Bấm vào tên tài liệu để mở xem; nút tải chỉ hiện khi lớp cho phép.
             </p>
           </div>
         </div>
@@ -746,6 +758,8 @@ function SessionFileList({ files }) {
             const kindInfo = kindConfig[kind] || kindConfig.other;
             const IconComponent = kindInfo.icon;
             const downloadUrl = file.downloadUrl || file.download_url;
+            const viewUrl = file.viewUrl || file.view_url || downloadUrl;
+            const canDownload = file.canDownload !== false && Boolean(downloadUrl);
 
             return (
               <div
@@ -774,8 +788,8 @@ function SessionFileList({ files }) {
                     </div>
 
                     <h3 className="text-sm sm:text-[15px] font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug group-hover:text-blue-600 dark:group-hover:text-sky-400 transition-colors" title={file.name}>
-                      {downloadUrl ? (
-                        <a href={downloadUrl} target="_blank" rel="noreferrer" className="hover:underline">
+                      {viewUrl ? (
+                        <a href={viewUrl} target="_blank" rel="noreferrer" className="hover:underline">
                           {file.name}
                         </a>
                       ) : (
@@ -795,7 +809,7 @@ function SessionFileList({ files }) {
                   </span>
 
                   <div className="flex items-center gap-2">
-                    {downloadUrl && (
+                    {canDownload ? (
                       <a
                         href={downloadUrl}
                         target="_blank"
@@ -805,6 +819,11 @@ function SessionFileList({ files }) {
                         <Download className="h-3.5 w-3.5" />
                         <span>Tải tài liệu</span>
                       </a>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+                        <Eye className="h-3.5 w-3.5" />
+                        <span>Chỉ xem</span>
+                      </span>
                     )}
                   </div>
                 </div>

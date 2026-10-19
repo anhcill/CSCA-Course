@@ -65,10 +65,20 @@ const parseId = (value) => {
 };
 
 const safeFilename = (value) => typeof value === "string" && value.trim() && value.trim().length <= 255;
+const INLINE_VIEW_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/svg+xml",
+  "image/webp",
+  "text/csv",
+  "text/plain",
+]);
 
 const classAccess = async (classId, user) => {
   const result = await query(
-    `SELECT lc.id, lc.course_id, lc.instructor_id, lc.title,
+    `SELECT lc.id, lc.course_id, lc.instructor_id, lc.title, lc.allow_file_download,
             COALESCE(c.title, c.name) AS course_title
      FROM live_classes lc LEFT JOIN courses c ON c.id = lc.course_id
      WHERE lc.id = $1 AND lc.status <> 'cancelled'`,
@@ -134,9 +144,10 @@ const courseAccess = async (courseId, user) => {
   return { error: "forbidden" };
 };
 
-const fileAccess = async (fileId, user) => {
+const fileAccess = async (fileId, user, requestedClassId = null) => {
   const result = await query(
     `SELECT f.*, lc.instructor_id, lc.course_id AS class_course_id,
+            COALESCE(lc.allow_file_download, TRUE) AS allow_file_download,
             course_scope.id AS scoped_course_id
      FROM lms_learning_files f
      LEFT JOIN live_classes lc ON lc.id = f.live_class_id
@@ -169,30 +180,61 @@ const fileAccess = async (fileId, user) => {
      LIMIT 1`,
     [file.live_class_id, user.id, file.live_class_id ? file.class_course_id : file.course_id, file.visibility],
   );
-  return access.rows.length ? { file } : { error: "forbidden" };
+  if (!access.rows.length) return { error: "forbidden" };
+
+  if (file.visibility === "CLASS_ONLY" && file.live_class_id) {
+    return { file, canDownload: file.allow_file_download !== false };
+  }
+
+  const policyCourseId = file.course_id || file.class_course_id;
+  const policyParams = [user.id, policyCourseId];
+  const requestedClassFilter = requestedClassId ? "AND lc.id = $3" : "";
+  if (requestedClassId) policyParams.push(requestedClassId);
+  const policies = await query(
+    `SELECT lc.allow_file_download
+     FROM live_classes lc
+     JOIN class_enrollments ce ON ce.live_class_id = lc.id
+     WHERE ce.user_id = $1 AND ce.status = 'active'
+       AND lc.course_id = $2 AND lc.status = 'active'
+       ${requestedClassFilter}`,
+    policyParams,
+  );
+  if (requestedClassId && policies.rows.length === 0) return { error: "forbidden" };
+  const canDownload = policies.rows.length === 0
+    || policies.rows.every((row) => row.allow_file_download !== false);
+  return { file, canDownload };
 };
 
-const serializeFile = (row) => ({
-  id: String(row.id),
-  name: row.original_name,
-  sizeBytes: Number(row.size_bytes),
-  mimeType: row.mime_type,
-  uploadedAt: row.created_at,
-  uploadedBy: row.uploaded_by_name || row.uploader_email || "Giáo viên",
-  courseId: row.course_id ? String(row.course_id) : (row.class_course_id ? String(row.class_course_id) : null),
-  courseTitle: row.course_title || null,
-  courseCategory: row.course_category || null,
-  classId: row.live_class_id ? String(row.live_class_id) : null,
-  classTitle: row.class_title || null,
-  classSessionId: row.class_session_id ? String(row.class_session_id) : null,
-  sessionTitle: row.session_title || null,
-  sessionStartTime: row.session_start_time || null,
-  sessionEndTime: row.session_end_time || null,
-  chapterId: row.chapter_id ? String(row.chapter_id) : null,
-  chapterTitle: row.chapter_title || null,
-  visibility: row.visibility,
-  downloadUrl: `/api/files/${row.id}/download?download=1`,
-});
+const serializeFile = (row, { enforceDownloadPolicy = false, contextClassId = null } = {}) => {
+  const canDownload = !enforceDownloadPolicy || row.allow_file_download !== false;
+  const classQuery = contextClassId ? `?classId=${encodeURIComponent(contextClassId)}` : "";
+  const downloadQuery = contextClassId
+    ? `?classId=${encodeURIComponent(contextClassId)}&download=1`
+    : "?download=1";
+  return {
+    id: String(row.id),
+    name: row.original_name,
+    sizeBytes: Number(row.size_bytes),
+    mimeType: row.mime_type,
+    uploadedAt: row.created_at,
+    uploadedBy: row.uploaded_by_name || row.uploader_email || "Giáo viên",
+    courseId: row.course_id ? String(row.course_id) : (row.class_course_id ? String(row.class_course_id) : null),
+    courseTitle: row.course_title || null,
+    courseCategory: row.course_category || null,
+    classId: row.live_class_id ? String(row.live_class_id) : null,
+    classTitle: row.class_title || null,
+    classSessionId: row.class_session_id ? String(row.class_session_id) : null,
+    sessionTitle: row.session_title || null,
+    sessionStartTime: row.session_start_time || null,
+    sessionEndTime: row.session_end_time || null,
+    chapterId: row.chapter_id ? String(row.chapter_id) : null,
+    chapterTitle: row.chapter_title || null,
+    visibility: row.visibility,
+    canDownload,
+    viewUrl: `/api/files/${row.id}/download${classQuery}`,
+    downloadUrl: canDownload ? `/api/files/${row.id}/download${downloadQuery}` : null,
+  };
+};
 
 // GET /api/teacher/files
 router.get("/teacher/files", protectRoute, requireTeacher, async (req, res) => {
@@ -314,7 +356,7 @@ router.get("/teacher/classes-lookup", protectRoute, requireTeacher, async (req, 
 router.get("/student/classes-lookup", protectRoute, requireActiveStudentLmsAccess, async (req, res) => {
   try {
     const classesRes = await query(
-      `SELECT lc.id, lc.title, lc.status, lc.course_id,
+      `SELECT lc.id, lc.title, lc.status, lc.course_id, lc.allow_file_download,
               COALESCE(c.title, c.name) AS course_title, c.category AS course_category
        FROM live_classes lc
        JOIN class_enrollments ce ON ce.live_class_id = lc.id
@@ -361,6 +403,7 @@ router.get("/student/classes-lookup", protectRoute, requireActiveStudentLmsAcces
       courseId: c.course_id ? String(c.course_id) : null,
       courseTitle: c.course_title || "Khóa học",
       courseCategory: c.course_category || "CSCA",
+      allowFileDownload: c.allow_file_download !== false,
       sessions: sessions.filter((s) => s.classId === String(c.id)),
     }));
 
@@ -556,6 +599,26 @@ router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async 
     }
     const result = await query(
       `SELECT DISTINCT f.*,
+              CASE
+                WHEN f.visibility = 'CLASS_ONLY' AND f.live_class_id IS NOT NULL
+                  THEN COALESCE(lc.allow_file_download, TRUE)
+                WHEN $3::bigint IS NOT NULL THEN COALESCE((
+                  SELECT policy_class.allow_file_download
+                  FROM live_classes policy_class
+                  JOIN class_enrollments policy_enrollment ON policy_enrollment.live_class_id = policy_class.id
+                  WHERE policy_class.id = $3 AND policy_class.course_id = COALESCE(f.course_id, lc.course_id)
+                    AND policy_class.status = 'active' AND policy_enrollment.user_id = $1
+                    AND policy_enrollment.status = 'active'
+                ), TRUE)
+                ELSE NOT EXISTS (
+                  SELECT 1
+                  FROM live_classes policy_class
+                  JOIN class_enrollments policy_enrollment ON policy_enrollment.live_class_id = policy_class.id
+                  WHERE policy_class.course_id = COALESCE(f.course_id, lc.course_id)
+                    AND policy_class.status = 'active' AND policy_enrollment.user_id = $1
+                    AND policy_enrollment.status = 'active' AND policy_class.allow_file_download = FALSE
+                )
+              END AS allow_file_download,
               COALESCE(cs.start_time, f.created_at) AS sort_time,
               COALESCE(c.title, c.name, c_lc.title, c_lc.name) AS course_title,
               COALESCE(c.category, c_lc.category) AS course_category,
@@ -595,7 +658,13 @@ router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async 
        ORDER BY sort_time DESC, f.id DESC`,
       [req.user.id, courseId, classId, sessionId, date, search],
     );
-    return res.json({ success: true, data: result.rows.map(serializeFile) });
+    return res.json({
+      success: true,
+      data: result.rows.map((row) => serializeFile(row, {
+        enforceDownloadPolicy: true,
+        contextClassId: classId,
+      })),
+    });
   } catch (error) {
     console.error("Error listing student files:", error);
     return errorResponse(res, 500, "Không thể tải tài liệu học tập", "INTERNAL_ERROR");
@@ -663,12 +732,23 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
 router.get("/files/:fileId/download", protectRoute, requireManagedLearner, async (req, res) => {
   const fileId = parseId(req.params.fileId);
   if (!fileId) return errorResponse(res, 422, "fileId không hợp lệ", "VALIDATION_ERROR");
+  const requestedClassId = req.query?.classId === undefined ? null : parseId(req.query.classId);
+  if (req.query?.classId !== undefined && !requestedClassId) {
+    return errorResponse(res, 422, "classId không hợp lệ", "VALIDATION_ERROR");
+  }
   try {
-    const access = await fileAccess(fileId, req.user);
+    const access = await fileAccess(fileId, req.user, requestedClassId);
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
     if (access.error) return errorResponse(res, 403, "Bạn chưa được cấp quyền tải tài liệu", "FORBIDDEN");
     const forceDownload = ["1", "true"].includes(String(req.query?.download || "").toLowerCase());
-    const displayInline = access.file.mime_type === "application/pdf" && !forceDownload;
+    if (req.user.role === "user" && forceDownload && access.canDownload === false) {
+      return errorResponse(res, 403, "Lớp này chỉ cho phép xem tài liệu trực tuyến", "FILE_DOWNLOAD_DISABLED");
+    }
+    if (req.user.role === "user" && access.canDownload === false
+        && !INLINE_VIEW_MIME_TYPES.has(access.file.mime_type)) {
+      return errorResponse(res, 415, "Định dạng tài liệu này chưa hỗ trợ xem trực tuyến", "INLINE_VIEW_UNSUPPORTED");
+    }
+    const displayInline = INLINE_VIEW_MIME_TYPES.has(access.file.mime_type) && !forceDownload;
     const { downloadUrl } = await generateLearningFilePlaybackSignedUrl({
       r2Key: access.file.storage_key,
       filename: access.file.original_name,

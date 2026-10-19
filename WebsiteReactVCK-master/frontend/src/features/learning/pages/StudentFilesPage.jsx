@@ -10,6 +10,7 @@ import {
   FileText,
   Files,
   FolderOpen,
+  Eye,
   LayoutGrid,
   Search,
   BookOpen,
@@ -117,6 +118,8 @@ function StudentFileCard({ file, onDownload }) {
   const config = fileConfig[kind] || fileConfig.other;
   const Icon = config.icon;
   const downloadUrl = file.downloadUrl || file.download_url;
+  const viewUrl = file.viewUrl || file.view_url || downloadUrl;
+  const canDownload = file.canDownload !== false && Boolean(downloadUrl);
 
   return (
     <div
@@ -152,8 +155,8 @@ function StudentFileCard({ file, onDownload }) {
             className="text-xs sm:text-[13px] font-bold text-slate-900 dark:text-white line-clamp-2 mt-0.5 leading-snug group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors"
             title={file.name}
           >
-            {downloadUrl ? (
-              <a href={downloadUrl} target="_blank" rel="noreferrer" className="hover:underline">
+            {viewUrl ? (
+              <a href={viewUrl} target="_blank" rel="noreferrer" className="hover:underline">
                 {file.name}
               </a>
             ) : (
@@ -173,13 +176,19 @@ function StudentFileCard({ file, onDownload }) {
         <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-[120px]">
           {file.uploadedBy || "Giáo viên"}
         </span>
-        <button
-          type="button"
-          onClick={() => onDownload(file)}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500 px-3 py-1.5 text-xs font-bold shadow-xs transition active:scale-95"
-        >
-          <Download className="h-3.5 w-3.5" /> Tải về
-        </button>
+        {canDownload ? (
+          <button
+            type="button"
+            onClick={() => onDownload(file)}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500 px-3 py-1.5 text-xs font-bold shadow-xs transition active:scale-95"
+          >
+            <Download className="h-3.5 w-3.5" /> Tải về
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            <Eye className="h-3.5 w-3.5" /> Chỉ xem
+          </span>
+        )}
       </div>
     </div>
   );

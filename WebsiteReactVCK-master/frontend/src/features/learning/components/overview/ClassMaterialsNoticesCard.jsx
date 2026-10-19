@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Download, FileSpreadsheet, FileText, Files } from "lucide-react";
+import { Download, Eye, FileSpreadsheet, FileText, Files } from "lucide-react";
 
 const formatFileSize = (bytes) => {
   const value = Number(bytes) || 0;
@@ -63,11 +63,13 @@ export default function ClassMaterialsNoticesCard({
             const cfg = kindBadge[kind] || kindBadge.other;
             const Icon = cfg.icon;
             const downloadUrl = file.downloadUrl || file.download_url;
+            const viewUrl = file.viewUrl || file.view_url || downloadUrl;
+            const canDownload = file.canDownload !== false && Boolean(downloadUrl);
 
             return (
               <a
                 key={file.id}
-                href={downloadUrl}
+                href={viewUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/50 p-3.5 transition-all duration-200 hover:border-blue-400 dark:hover:border-sky-500/60 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md hover:-translate-y-0.5"
@@ -88,7 +90,7 @@ export default function ClassMaterialsNoticesCard({
                   </div>
                 </div>
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white dark:bg-slate-900 text-slate-400 group-hover:bg-blue-600 group-hover:text-white dark:group-hover:bg-blue-600 transition shadow-2xs">
-                  <Download className="h-3.5 w-3.5" />
+                  {canDownload ? <Download className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 </div>
               </a>
             );

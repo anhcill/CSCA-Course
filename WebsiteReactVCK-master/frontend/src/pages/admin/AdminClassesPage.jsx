@@ -8,12 +8,15 @@ import {
   FiCheckCircle,
   FiClock,
   FiExternalLink,
+  FiDownload,
+  FiEye,
   FiX,
   FiRefreshCw,
 } from "react-icons/fi";
 import {
   fetchAdminClasses, updateAdminClassMapping, reviewAdminClass,
   fetchPendingMembershipApprovals, reviewAdminMembership,
+  updateAdminClassFileDownloadPolicy,
 } from "../../features/api/lmsClient";
 import Loading from "../../components/Loading.jsx";
 
@@ -21,6 +24,7 @@ export default function AdminClassesPage() {
   const [classes, setClasses] = useState([]);
   const [pendingMemberships, setPendingMemberships] = useState([]);
   const [reviewing, setReviewing] = useState("");
+  const [savingDownloadPolicy, setSavingDownloadPolicy] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -88,6 +92,22 @@ export default function AdminClassesPage() {
       toast.error(error?.message || "Không thể lưu quyết định duyệt");
     } finally {
       setReviewing("");
+    }
+  };
+
+  const toggleDownloadPolicy = async (cls) => {
+    setSavingDownloadPolicy(cls.id);
+    try {
+      const allowFileDownload = !cls.allowFileDownload;
+      await updateAdminClassFileDownloadPolicy(cls.id, allowFileDownload);
+      setClasses((current) => current.map((item) => (
+        item.id === cls.id ? { ...item, allowFileDownload } : item
+      )));
+      toast.success(allowFileDownload ? "Đã cho phép tải tài liệu" : "Đã bật chế độ chỉ xem");
+    } catch (error) {
+      toast.error(error?.message || "Không thể cập nhật quyền tải tài liệu");
+    } finally {
+      setSavingDownloadPolicy("");
     }
   };
 
@@ -253,19 +273,20 @@ export default function AdminClassesPage() {
                 <th className="py-3.5 px-4">Moly Course ID</th>
                 <th className="py-3.5 px-4 text-center">Sĩ Số</th>
                 <th className="py-3.5 px-4 text-center">Trạng Thái Mapping</th>
+                <th className="py-3.5 px-4 text-center">Tài Liệu</th>
                 <th className="py-3.5 px-5 text-right">Thao Tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-12">
+                  <td colSpan={8} className="py-12">
                     <Loading loading={true} text="Đang tải danh sách lớp học & Moly..." fullScreen={false} />
                   </td>
                 </tr>
               ) : filteredClasses.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-gray-400">
+                  <td colSpan={8} className="py-12 text-center text-gray-400">
                     {errorMessage ? "Danh sách lớp học chưa tải được." : "Không tìm thấy lớp học nào phù hợp."}
                   </td>
                 </tr>
@@ -305,6 +326,22 @@ export default function AdminClassesPage() {
                           PENDING
                         </span>
                       )}
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      <button
+                        type="button"
+                        disabled={savingDownloadPolicy === cls.id}
+                        onClick={() => toggleDownloadPolicy(cls)}
+                        className={`inline-flex min-w-[104px] items-center justify-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${
+                          cls.allowFileDownload
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+                            : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
+                        }`}
+                        title="Bấm để đổi chính sách tải tài liệu của lớp"
+                      >
+                        {cls.allowFileDownload ? <FiDownload className="h-3.5 w-3.5" /> : <FiEye className="h-3.5 w-3.5" />}
+                        {cls.allowFileDownload ? "Cho tải" : "Chỉ xem"}
+                      </button>
                     </td>
                     <td className="py-4 px-5 text-right">
                       <Link

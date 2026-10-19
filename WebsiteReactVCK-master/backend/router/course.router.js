@@ -543,6 +543,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       }
       const selectedClassResult = await query(
         `SELECT lc.id, lc.title, lc.description, lc.instructor_id, lc.max_students,
+                lc.allow_file_download,
                 COALESCE(u.username, u.email) AS instructor_name
          FROM live_classes lc
          LEFT JOIN users u ON u.id = lc.instructor_id
@@ -672,6 +673,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       ),
       query(
         `SELECT lc.id, lc.title, lc.description, lc.instructor_id, lc.max_students,
+                lc.allow_file_download,
                 COALESCE(u.username, u.email) AS instructor_name,
                 COUNT(ce.id) FILTER (WHERE ce.status = 'active')::int AS enrolled_count
          FROM live_classes lc
@@ -753,7 +755,8 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       ),
       query(
         `SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at,
-                f.visibility, COALESCE(u.username, u.email, 'Giáo viên') AS uploaded_by
+                f.visibility, f.live_class_id, COALESCE(lc.allow_file_download, TRUE) AS allow_file_download,
+                COALESCE(u.username, u.email, 'Giáo viên') AS uploaded_by
          FROM lms_learning_files f
          LEFT JOIN live_classes lc ON lc.id = f.live_class_id
          LEFT JOIN users u ON u.id = f.uploaded_by
@@ -797,16 +800,31 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         })),
         assignments: taskRows,
         quizCount: Number(quizCountResult.rows[0]?.count) || 0,
-        files: filesResult.rows.map((file) => ({
-          id: String(file.id),
-          name: file.original_name,
-          mimeType: file.mime_type,
-          sizeBytes: Number(file.size_bytes),
-          uploadedAt: file.created_at,
-          uploadedBy: file.uploaded_by,
-          visibility: file.visibility,
-          downloadUrl: `/api/files/${file.id}/download?download=1`,
-        })),
+        files: filesResult.rows.map((file) => {
+          const contextClassId = selectedClassId || file.live_class_id || null;
+          const allowFileDownload = !isLearner
+            || (file.visibility === "CLASS_ONLY"
+              ? file.allow_file_download !== false
+              : selectedClass
+                ? selectedClass.allow_file_download !== false
+                : classesResult.rows.every((item) => item.allow_file_download !== false));
+          const classQuery = contextClassId ? `?classId=${encodeURIComponent(contextClassId)}` : "";
+          const downloadQuery = contextClassId
+            ? `?classId=${encodeURIComponent(contextClassId)}&download=1`
+            : "?download=1";
+          return {
+            id: String(file.id),
+            name: file.original_name,
+            mimeType: file.mime_type,
+            sizeBytes: Number(file.size_bytes),
+            uploadedAt: file.created_at,
+            uploadedBy: file.uploaded_by,
+            visibility: file.visibility,
+            canDownload: allowFileDownload,
+            viewUrl: `/api/files/${file.id}/download${classQuery}`,
+            downloadUrl: allowFileDownload ? `/api/files/${file.id}/download${downloadQuery}` : null,
+          };
+        }),
         access: { canLearn: true },
       },
     });

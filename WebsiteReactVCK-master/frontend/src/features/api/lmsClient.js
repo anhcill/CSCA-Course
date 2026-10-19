@@ -902,6 +902,11 @@ export const updateAdminClassMapping = async (classId, mapping) => request(
   { method: "PATCH", body: JSON.stringify(mapping) },
 );
 
+export const updateAdminClassFileDownloadPolicy = async (classId, allowFileDownload) => request(
+  `/v1/admin/classes/${encodeURIComponent(classId)}/file-download-policy`,
+  { method: "PATCH", body: JSON.stringify({ allowFileDownload }) },
+);
+
 export const reviewAdminClass = (classId, decision) => request(
   `/v1/admin/classes/${encodeURIComponent(classId)}/approval`,
   { method: "POST", body: JSON.stringify({ decision }) },

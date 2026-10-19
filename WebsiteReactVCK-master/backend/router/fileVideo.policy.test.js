@@ -45,6 +45,7 @@ test("file visibility and video upload intent enforce teacher and learner scope"
     "INSERT INTO live_classes(title,course_id,instructor_id) VALUES ('B',$1,$2) RETURNING id",
     [course.id, otherTeacher.id],
   )).rows[0];
+  await db.query("UPDATE live_classes SET allow_file_download=FALSE WHERE id=$1", [classB.id]);
   await db.query("INSERT INTO class_teachers(live_class_id,teacher_id,status) VALUES ($1,$2,'active')", [classA.id, teacher.id]);
   for (const [learner, cls] of [[learnerA, classA], [learnerB, classB]]) {
     await db.query("INSERT INTO class_enrollments(user_id,live_class_id) VALUES ($1,$2)", [learner.id, cls.id]);
@@ -110,6 +111,9 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   assert.ok(listedA.body.data.every((file) => file.downloadUrl.endsWith("/download?download=1")));
   const listedB = await invoke(fileRouter, "get", "/student/files", { user: learnerB });
   assert.deepEqual(new Set(listedB.body.data.map((file) => file.id)), new Set([String(courseWide.id), String(otherClass.id)]));
+  assert.ok(listedB.body.data.every((file) => file.canDownload === false));
+  assert.ok(listedB.body.data.every((file) => file.downloadUrl === null));
+  assert.ok(listedB.body.data.every((file) => file.viewUrl.endsWith("/download")));
   await db.query("UPDATE courses SET is_published=TRUE WHERE id=$1", [course.id]);
   const workspace = await invoke(courseRouter, "get", "/:courseId/workspace", {
     user: { ...learnerA, is_management_managed: true, lms_account_status: "active" },
@@ -118,6 +122,13 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   assert.equal(workspace.statusCode, 200, JSON.stringify(workspace.body));
   assert.deepEqual(new Set(workspace.body.data.files.map((file) => file.id)),
     new Set([String(classOnly.id), String(courseWide.id)]));
+  const restrictedWorkspace = await invoke(courseRouter, "get", "/:courseId/workspace", {
+    user: { ...learnerB, is_management_managed: true, lms_account_status: "active" },
+    params: { courseId: course.id }, query: { classId: classB.id },
+  });
+  assert.equal(restrictedWorkspace.statusCode, 200, JSON.stringify(restrictedWorkspace.body));
+  assert.ok(restrictedWorkspace.body.data.files.every((file) => file.canDownload === false));
+  assert.ok(restrictedWorkspace.body.data.files.every((file) => file.downloadUrl === null));
   const teacherWorkspace = await invoke(courseRouter, "get", "/:courseId/workspace", {
     user: teacher, params: { courseId: course.id }, query: { classId: classA.id },
   });
@@ -135,8 +146,13 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   const forcedDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
     user: learnerB, params: { fileId: courseWide.id }, query: { download: "1" },
   });
-  assert.equal(forcedDownload.statusCode, 302);
-  assert.equal(new URL(forcedDownload.location).searchParams.get("response-content-disposition"),
+  assert.equal(forcedDownload.statusCode, 403);
+  assert.equal(forcedDownload.body.errorCode, "FILE_DOWNLOAD_DISABLED");
+  const allowedDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: learnerA, params: { fileId: courseWide.id }, query: { download: "1" },
+  });
+  assert.equal(allowedDownload.statusCode, 302);
+  assert.equal(new URL(allowedDownload.location).searchParams.get("response-content-disposition"),
     `attachment; filename="COURSE-${classA.id}.pdf"`);
   assert.equal((await download(admin, privateFile.id)).statusCode, 302);
   const pendingFile = (await db.query(

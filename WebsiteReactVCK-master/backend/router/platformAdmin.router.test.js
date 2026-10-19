@@ -39,6 +39,20 @@ test("admin can approve a Management class and its enrollment", async (t) => {
   assert.deepEqual((await db.query("SELECT status,management_approval_status FROM class_enrollments WHERE id=$1", [membership.id])).rows[0],
     { status: "active", management_approval_status: "approved" });
 
+  const updateDownloadPolicy = router.stack.find((layer) => (
+    layer.route?.path === "/classes/:id/file-download-policy" && layer.route.methods.patch
+  )).route.stack.at(-1).handle;
+  const policyResponse = { statusCode: 200, body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; return this; },
+  };
+  await updateDownloadPolicy({
+    params: { id: cls.id }, body: { allowFileDownload: false }, user: admin, ip: "127.0.0.1",
+  }, policyResponse);
+  assert.equal(policyResponse.statusCode, 200, JSON.stringify(policyResponse.body));
+  assert.equal(policyResponse.body.data.allowFileDownload, false);
+  assert.equal((await db.query("SELECT allow_file_download FROM live_classes WHERE id=$1", [cls.id])).rows[0].allow_file_download, false);
+
   const updatePermission = router.stack.find((layer) => layer.route?.path === "/permissions/:id" && layer.route.methods.patch).route.stack.at(-1).handle;
   const permission = (await db.query("SELECT id FROM lms_permissions WHERE code='lms.class.manage'")).rows[0];
   const response = () => ({ statusCode: 200, body: null,
