@@ -41,13 +41,95 @@ const accessError = (res, access) => {
   return errorResponse(res, 403, "Bạn không có quyền truy cập từ vựng của buổi học này", "FORBIDDEN");
 };
 
-const extractJsonArray = (value) => {
+const LATEX_COMMANDS = new Set([
+  "alpha", "beta", "gamma", "delta", "epsilon", "theta", "lambda", "mu", "pi", "rho",
+  "sigma", "tau", "phi", "chi", "psi", "omega", "frac", "sqrt", "sin", "cos", "tan",
+  "cot", "sec", "csc", "log", "ln", "lim", "sum", "prod", "int", "left", "right",
+  "cdot", "times", "div", "pm", "mp", "le", "leq", "ge", "geq", "neq", "infty",
+  "partial", "vec", "overline", "underline", "begin", "end", "mathrm", "mathbf", "text",
+]);
+
+const repairJsonStringEscapes = (source) => {
+  let repaired = "";
+  let inString = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (!inString) {
+      repaired += character;
+      if (character === '"') inString = true;
+      continue;
+    }
+
+    if (character === '"') {
+      repaired += character;
+      inString = false;
+      continue;
+    }
+
+    if (character === "\\") {
+      const remaining = source.slice(index + 1);
+      const command = remaining.match(/^([A-Za-z]+)/)?.[1];
+      if (command && LATEX_COMMANDS.has(command)) {
+        repaired += "\\\\";
+        continue;
+      }
+
+      const next = source[index + 1];
+      if ('"\\/bfnrt'.includes(next)) {
+        repaired += character + next;
+        index += 1;
+        continue;
+      }
+      if (next === "u" && /^[0-9a-fA-F]{4}$/.test(source.slice(index + 2, index + 6))) {
+        repaired += source.slice(index, index + 6);
+        index += 5;
+        continue;
+      }
+
+      repaired += "\\\\";
+      continue;
+    }
+
+    if (character === "\n") repaired += "\\n";
+    else if (character === "\r") repaired += "\\r";
+    else if (character === "\t") repaired += "\\t";
+    else if (character.charCodeAt(0) < 0x20) repaired += `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`;
+    else repaired += character;
+  }
+
+  return repaired;
+};
+
+const readVocabularyArray = (parsed) => {
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== "object") return null;
+  return [parsed.vocabularies, parsed.items, parsed.data].find(Array.isArray) || null;
+};
+
+export const extractJsonArray = (value) => {
   const text = String(value || "").trim();
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
-  const source = fenced || text.slice(text.indexOf("["), text.lastIndexOf("]") + 1);
-  const parsed = JSON.parse(source);
-  if (!Array.isArray(parsed)) throw new Error("AI response is not an array");
-  return parsed;
+  const fencedCandidates = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1].trim());
+  const firstBracket = text.indexOf("[");
+  const lastBracket = text.lastIndexOf("]");
+  const arrayCandidate = firstBracket >= 0 && lastBracket > firstBracket
+    ? text.slice(firstBracket, lastBracket + 1)
+    : "";
+  const candidates = [...new Set([...fencedCandidates, text, arrayCandidate].filter(Boolean))];
+  let lastError = new Error("AI response does not contain a JSON array");
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(repairJsonStringEscapes(candidate));
+      const array = readVocabularyArray(parsed);
+      if (array) return array;
+      lastError = new Error("AI response is not an array");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
 };
 
 export const createVocabularyRouter = ({
@@ -546,6 +628,7 @@ export const createVocabularyRouter = ({
 Chủ đề giáo viên yêu cầu: ${topic}.
 Chỉ trả về một JSON array hợp lệ, không markdown, không giải thích. Mỗi phần tử có đúng các trường:
 {"term":"chữ Hán","pinyin":"pinyin có dấu","sinoVietnamese":"âm Hán Việt","meaning":"nghĩa tiếng Việt","partOfSpeech":"từ loại","exampleSentence":"câu ví dụ tiếng Trung","exampleMeaning":"dịch câu ví dụ tiếng Việt"}.
+Không dùng Markdown, LaTeX hoặc ký tự backslash trong bất kỳ giá trị nào; công thức toán phải viết dạng văn bản thường như sin(x), cos(x).
 Ưu tiên thuật ngữ đúng ngữ cảnh CSCA/HSK, không lặp từ và không bịa công thức.`;
       const aiResult = await askAi(prompt, {
         pageType: "teacher-vocabulary",
@@ -556,9 +639,15 @@ Chỉ trả về một JSON array hợp lệ, không markdown, không giải th�
         return errorResponse(res, 503, aiResult?.answer || "Moly AI tạm thời chưa sẵn sàng", "AI_UNAVAILABLE");
       }
 
-      const vocabularies = extractJsonArray(aiResult.answer)
-        .slice(0, count)
-        .map((item, index) => normalizeVocabularyPayload({ ...item, orderIndex: index }));
+      const vocabularies = [];
+      for (const item of extractJsonArray(aiResult.answer).slice(0, count)) {
+        try {
+          vocabularies.push(normalizeVocabularyPayload({ ...item, orderIndex: vocabularies.length }));
+        } catch (error) {
+          if (!(error instanceof VocabularyValidationError)) throw error;
+          console.warn("Skipping invalid AI vocabulary item:", error.message);
+        }
+      }
       if (vocabularies.length === 0) throw new Error("AI returned an empty list");
       return res.json({ success: true, data: { vocabularies, model: aiResult.model || null } });
     } catch (error) {

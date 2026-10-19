@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs/promises";
 import express from "express";
 import { PGlite } from "@electric-sql/pglite";
-import { createVocabularyRouter } from "./vocabulary.router.js";
+import { createVocabularyRouter, extractJsonArray } from "./vocabulary.router.js";
 
 const jsonRequest = async (baseUrl, path, { method = "GET", user, body } = {}) => {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -16,6 +16,20 @@ const jsonRequest = async (baseUrl, path, { method = "GET", user, body } = {}) =
   });
   return { status: response.status, body: await response.json() };
 };
+
+test("extractJsonArray repairs unescaped LaTeX from AI vocabulary responses", () => {
+  const response = "Danh sách gợi ý:\n```json\n"
+    + String.raw`[{"term":"正弦函数","meaning":"Hàm số sin","exampleMeaning":"Đồ thị \(y=\sin(x)\)"}]`
+    + "\n```";
+  const parsed = extractJsonArray(response);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].exampleMeaning, String.raw`Đồ thị \(y=\sin(x)\)`);
+});
+
+test("extractJsonArray accepts an object wrapper returned by the AI provider", () => {
+  const parsed = extractJsonArray('{"vocabularies":[{"term":"函数","meaning":"Hàm số"}]}');
+  assert.equal(parsed[0].term, "函数");
+});
 
 test("session vocabulary API enforces class access and persists learner progress", async (t) => {
   const db = new PGlite();
