@@ -94,13 +94,31 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
     *{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden;background:#0f172a;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
     header{height:52px;display:flex;align-items:center;gap:12px;padding:0 16px;background:#0f172a;color:#fff;border-bottom:1px solid #334155}
     strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.badge{flex:none;border:1px solid #38bdf8;border-radius:999px;padding:4px 8px;color:#7dd3fc;font-size:10px;font-weight:800;letter-spacing:.08em}
-    button{margin-left:auto;flex:none;border:1px solid #475569;border-radius:9px;background:#1e293b;color:#e2e8f0;padding:7px 12px;font-weight:700;cursor:pointer}button:hover{background:#334155}
+    .controls{margin-left:auto;display:flex;align-items:center;gap:7px}.zoom-value{min-width:48px;text-align:center;color:#cbd5e1;font-size:12px;font-weight:800}
+    button{flex:none;border:1px solid #475569;border-radius:9px;background:#1e293b;color:#e2e8f0;padding:7px 12px;font-weight:800;cursor:pointer}button:hover{background:#334155}.zoom-button{width:34px;padding:7px 0;font-size:18px;line-height:1}.close-button{margin-left:5px}
     main{position:fixed;inset:52px 0 0;overflow:hidden}iframe{position:absolute;top:-56px;left:0;width:100%;height:calc(100% + 56px);border:0;background:#334155}
   </style>
 </head>
 <body>
-  <header><span class="badge">CHỈ XEM</span><strong>${escapeHtml(filename)}</strong><button type="button" onclick="history.length > 1 ? history.back() : window.close()">Đóng</button></header>
-  <main><iframe title="${escapeHtml(filename)}" src="${escapeHtml(`${signedUrl}#toolbar=0&navpanes=0&scrollbar=1`)}"></iframe></main>
+  <header>
+    <span class="badge">CHỈ XEM</span><strong>${escapeHtml(filename)}</strong>
+    <div class="controls">
+      <button class="zoom-button" type="button" title="Thu nhỏ PDF" aria-label="Thu nhỏ PDF" onclick="changeZoom(-10)">−</button>
+      <span class="zoom-value" id="zoom-value">100%</span>
+      <button class="zoom-button" type="button" title="Phóng to PDF" aria-label="Phóng to PDF" onclick="changeZoom(10)">+</button>
+      <button class="close-button" type="button" onclick="history.length > 1 ? history.back() : window.close()">Đóng</button>
+    </div>
+  </header>
+  <main><iframe id="pdf-frame" title="${escapeHtml(filename)}" data-base-url="${escapeHtml(signedUrl)}" src="${escapeHtml(`${signedUrl}#toolbar=0&navpanes=0&scrollbar=1&zoom=100`)}"></iframe></main>
+  <script>
+    let zoom = 100;
+    function changeZoom(delta) {
+      zoom = Math.max(50, Math.min(200, zoom + delta));
+      document.getElementById('zoom-value').textContent = zoom + '%';
+      const frame = document.getElementById('pdf-frame');
+      frame.src = frame.dataset.baseUrl + '#toolbar=0&navpanes=0&scrollbar=1&zoom=' + zoom;
+    }
+  </script>
 </body>
 </html>`;
 

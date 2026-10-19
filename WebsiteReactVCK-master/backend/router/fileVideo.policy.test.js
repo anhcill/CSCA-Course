@@ -142,7 +142,9 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   const inlinePdf = await download(learnerB, courseWide.id);
   assert.equal(inlinePdf.statusCode, 200);
   assert.match(inlinePdf.body, /CHỈ XEM/);
-  assert.match(inlinePdf.body, /#toolbar=0&amp;navpanes=0&amp;scrollbar=1/);
+  assert.match(inlinePdf.body, /#toolbar=0&amp;navpanes=0&amp;scrollbar=1&amp;zoom=100/);
+  assert.match(inlinePdf.body, /aria-label="Thu nhỏ PDF"/);
+  assert.match(inlinePdf.body, /aria-label="Phóng to PDF"/);
   assert.doesNotMatch(inlinePdf.body, />Tải/);
   const forcedDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
     user: learnerB, params: { fileId: courseWide.id }, query: { download: "1" },
