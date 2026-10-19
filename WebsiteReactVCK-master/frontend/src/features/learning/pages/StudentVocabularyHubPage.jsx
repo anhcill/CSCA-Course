@@ -142,35 +142,35 @@ export default function StudentVocabularyHubPage() {
   return (
     <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950 p-4 sm:p-6 lg:p-8 space-y-6">
       {/* Hero Welcome Banner */}
-      <div className="relative overflow-hidden rounded-3xl border border-blue-100 dark:border-blue-900/40 bg-gradient-to-br from-blue-600 via-indigo-600 to-sky-700 p-6 sm:p-8 text-white shadow-xl shadow-blue-600/15">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-xl">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-bold backdrop-blur-md">
-              <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+      <div className="relative overflow-hidden rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-gradient-to-br from-blue-600 via-indigo-600 to-sky-700 p-4 sm:p-5 text-white shadow-lg shadow-blue-600/15">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1.5 max-w-xl">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-bold backdrop-blur-md sm:text-[11px]">
+              <Sparkles className="h-3 w-3 text-amber-300" />
               <span>Góc học từ vựng chuyên ngành CSCA & Tiếng Trung</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight">
               Từ Vựng Theo Buổi Học
             </h1>
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 shrink-0">
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-md border border-white/10 text-center">
-              <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-wider">Tổng từ</p>
-              <p className="text-2xl font-black mt-0.5">{stats.totalWords}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+            <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-md border border-white/10 text-center">
+              <p className="text-[9px] font-semibold text-blue-200 uppercase tracking-wider">Tổng từ</p>
+              <p className="text-xl font-black">{stats.totalWords}</p>
             </div>
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-md border border-white/10 text-center">
-              <p className="text-[11px] font-semibold text-emerald-300 uppercase tracking-wider">Đã thuộc</p>
-              <p className="text-2xl font-black text-emerald-300 mt-0.5">{stats.masteredCount}</p>
+            <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-md border border-white/10 text-center">
+              <p className="text-[9px] font-semibold text-emerald-300 uppercase tracking-wider">Đã thuộc</p>
+              <p className="text-xl font-black text-emerald-300">{stats.masteredCount}</p>
             </div>
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-md border border-white/10 text-center">
-              <p className="text-[11px] font-semibold text-amber-300 uppercase tracking-wider">Đang học</p>
-              <p className="text-2xl font-black text-amber-300 mt-0.5">{stats.learningCount}</p>
+            <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-md border border-white/10 text-center">
+              <p className="text-[9px] font-semibold text-amber-300 uppercase tracking-wider">Đang học</p>
+              <p className="text-xl font-black text-amber-300">{stats.learningCount}</p>
             </div>
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-md border border-white/10 text-center">
-              <p className="text-[11px] font-semibold text-purple-200 uppercase tracking-wider">Thành thạo</p>
-              <p className="text-2xl font-black text-white mt-0.5">{stats.masteryRate}%</p>
+            <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-md border border-white/10 text-center">
+              <p className="text-[9px] font-semibold text-purple-200 uppercase tracking-wider">Thành thạo</p>
+              <p className="text-xl font-black text-white">{stats.masteryRate}%</p>
             </div>
           </div>
         </div>
