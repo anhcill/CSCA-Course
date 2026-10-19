@@ -66,9 +66,10 @@ const kindConfig = {
 export default function TeacherSessionWorkspacePage() {
   const { classId, sessionId } = useParams();
   const location = useLocation();
-  const classBasePath = location.pathname.startsWith("/admin/classes/")
+  const isAdminView = location.pathname.startsWith("/admin/classes/");
+  const classBasePath = isAdminView
     ? `/admin/classes/${classId}` : `/lms/teach/classes/${classId}`;
-  const assessmentBasePath = location.pathname.startsWith("/admin/classes/") ? "/admin" : "/lms/teacher";
+  const assessmentBasePath = isAdminView ? "/admin" : "/lms/teacher";
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = tabs.some((tab) => tab.id === searchParams.get("tab")) ? searchParams.get("tab") : "overview";
@@ -255,7 +256,7 @@ export default function TeacherSessionWorkspacePage() {
 
   const classInfo = classData.classInfo || {};
   const meetingWindow = getMeetingWindowState(session);
-  const canJoin = meetingWindow.isOpen;
+  const canJoin = isAdminView || meetingWindow.isOpen;
   const tabClass = (isActive) => `inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition ${isActive ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400/20" : "text-slate-600 hover:bg-emerald-50/80 hover:text-emerald-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-emerald-300"}`;
 
   return (
@@ -274,7 +275,7 @@ export default function TeacherSessionWorkspacePage() {
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
-                {canJoin ? <button type="button" onClick={handleJoin} className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><Play className="h-3.5 w-3.5" /> Vào phòng dạy</button> : <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/15 px-3.5 py-2 text-xs font-bold">{meetingWindow.isClosed ? "Phòng đã đóng sau 30 phút" : "Mở trước giờ dạy 15 phút"}</span>}
+                {canJoin ? <button type="button" onClick={handleJoin} className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><Play className="h-3.5 w-3.5" /> {isAdminView ? "Mở link phòng học" : "Vào phòng dạy"}</button> : <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/15 px-3.5 py-2 text-xs font-bold">{meetingWindow.isClosed ? "Phòng đã đóng sau 30 phút" : "Mở trước giờ dạy 15 phút"}</span>}
                 <a href={googleCalendarEventUrl({ title: session.title, startTime: session.start_time, endTime: session.end_time, details: "Buổi dạy CSCA Academy" })} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><CalendarDays className="h-3.5 w-3.5" /> Google Calendar</a>
                 <a href={classCalendarIcsUrl(classId)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><FileText className="h-3.5 w-3.5" /> Tải .ics</a>
                 <button type="button" onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><CheckCircle2 className="h-3.5 w-3.5" /> Điểm danh</button>
