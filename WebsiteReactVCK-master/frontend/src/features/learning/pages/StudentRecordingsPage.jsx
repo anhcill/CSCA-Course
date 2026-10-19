@@ -99,7 +99,6 @@ export default function StudentRecordingsPage() {
             <div>
               <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-700 dark:bg-sky-950 dark:text-sky-300"><Video className="h-4 w-4" /> Thư viện xem lại</span>
               <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">Bản ghi buổi học</h1>
-              <p className="mt-1 text-sm text-slate-500">Mỗi lớp có một thư mục Drive chung, bản ghi được xếp theo ngày mới nhất.</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_220px]">
               <label className="relative block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm bản ghi hoặc lớp..." className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-sky-400 dark:border-slate-700 dark:bg-slate-900" /></label>
