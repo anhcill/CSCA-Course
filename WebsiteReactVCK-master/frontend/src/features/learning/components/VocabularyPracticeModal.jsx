@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Lottie } from 'lottie-react';
 import {
   X, Volume2, RotateCcw, Check, Sparkles, Trophy,
@@ -9,12 +9,70 @@ import {
 import toast from 'react-hot-toast';
 import { speakChinese } from '../utils/speech';
 
+const FIREWORK_COLORS = ['#f59e0b', '#38bdf8', '#34d399', '#fb7185', '#a78bfa', '#facc15'];
+const FIREWORK_PARTICLES = Array.from({ length: 28 }, (_, index) => {
+  const angle = (index % 14) * ((Math.PI * 2) / 14);
+  const distance = 54 + (index % 4) * 13;
+
+  return {
+    color: FIREWORK_COLORS[index % FIREWORK_COLORS.length],
+    delay: (index % 7) * 0.05 + (index >= 14 ? 0.45 : 0),
+    left: index < 14 ? '24%' : '76%',
+    top: index < 14 ? '38%' : '28%',
+    x: Math.cos(angle) * distance,
+    y: Math.sin(angle) * distance,
+  };
+});
+
+function CelebrationFireworks({ reduceMotion }) {
+  if (reduceMotion) {
+    return (
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <Sparkles className="absolute left-[12%] top-[24%] h-7 w-7 text-amber-400" />
+        <Sparkles className="absolute right-[12%] top-[18%] h-8 w-8 text-sky-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      {FIREWORK_PARTICLES.map((particle, index) => (
+        <motion.span
+          key={`${particle.left}-${index}`}
+          className="absolute h-2 w-2 rounded-full shadow-sm"
+          style={{
+            backgroundColor: particle.color,
+            left: particle.left,
+            top: particle.top,
+          }}
+          initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
+          animate={{
+            opacity: [0, 1, 1, 0],
+            scale: [0.4, 1.2, 1, 0.3],
+            x: [0, particle.x * 0.35, particle.x],
+            y: [0, particle.y * 0.35, particle.y + 24],
+          }}
+          transition={{
+            duration: 1.25,
+            delay: particle.delay,
+            ease: 'easeOut',
+            repeat: 1,
+            repeatDelay: 0.35,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function VocabularyPracticeModal({
   isOpen,
   onClose,
   session,
   onComplete,
 }) {
+  const reduceMotion = useReducedMotion();
+  const autoSpokenWordIds = useRef(new Set());
   const [mode, setMode] = useState('flashcard'); // 'flashcard' | 'quiz'
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -42,8 +100,30 @@ export default function VocabularyPracticeModal({
       setStreak(0);
       setSelectedQuizOption(null);
       setQuizAnswerChecked(false);
+      autoSpokenWordIds.current.clear();
     }
   }, [isOpen, session]);
+
+  useEffect(() => {
+    if (!isOpen || isFinished || !currentWord) return undefined;
+
+    const wordKey = String(currentWord.id ?? `${currentIndex}-${currentWord.term}`);
+    if (autoSpokenWordIds.current.has(wordKey)) return undefined;
+
+    const timerId = window.setTimeout(() => {
+      if (autoSpokenWordIds.current.has(wordKey)) return;
+      autoSpokenWordIds.current.add(wordKey);
+      speakChinese(currentWord.term);
+    }, 180);
+
+    return () => window.clearTimeout(timerId);
+  }, [currentIndex, currentWord, isFinished, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, [isOpen]);
 
   const handleNextWord = useCallback((isMastered) => {
     const wordId = currentWord.id;
@@ -269,7 +349,7 @@ export default function VocabularyPracticeModal({
                     </div>
 
                     {/* Center Word Content */}
-                    <div className="my-auto text-center py-4">
+                    <div className="flex flex-1 items-center justify-center py-4 text-center">
                       {!isFlipped ? (
                         /* Front side */
                         <div className="space-y-3">
@@ -287,8 +367,8 @@ export default function VocabularyPracticeModal({
                         </div>
                       ) : (
                         /* Back side */
-                        <div className="space-y-4 text-left">
-                          <div>
+                        <div className="w-full space-y-4 text-center">
+                          <div className="flex min-h-28 flex-col items-center justify-center">
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                               Nghĩa tiếng Việt & Hán Việt
                             </p>
@@ -303,7 +383,7 @@ export default function VocabularyPracticeModal({
                           </div>
 
                           {currentWord.exampleSentence && (
-                            <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800/60 p-4 space-y-1.5">
+                            <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800/60 p-4 space-y-1.5 text-left">
                               <div className="flex items-center justify-between">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-sky-400">
                                   Ví dụ thực tế (CSCA / Đề thi)
@@ -426,10 +506,12 @@ export default function VocabularyPracticeModal({
                 key="celebration"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="text-center py-4 flex flex-col items-center"
+                className="relative text-center py-4 flex flex-col items-center"
               >
+                <CelebrationFireworks reduceMotion={reduceMotion} />
+
                 {/* Lottie Owl Animation */}
-                <div className="relative w-44 h-44 sm:w-52 sm:h-52 my-1">
+                <div className="relative z-10 w-44 h-44 sm:w-52 sm:h-52 my-1">
                   <Lottie
                     src="/owl.json"
                     autoplay
@@ -442,7 +524,7 @@ export default function VocabularyPracticeModal({
                 </div>
 
                 {/* Score & Praise */}
-                <div className="space-y-1.5 mt-2">
+                <div className="relative z-10 space-y-1.5 mt-2">
                   <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-xs font-black">
                     <Award className="h-3.5 w-3.5" /> Hoàn thành buổi luyện tập!
                   </span>
@@ -459,7 +541,7 @@ export default function VocabularyPracticeModal({
                 </div>
 
                 {/* Stat badges */}
-                <div className="grid grid-cols-3 gap-3 w-full max-w-md my-6">
+                <div className="relative z-10 grid grid-cols-3 gap-3 w-full max-w-md my-6">
                   <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 p-3 text-center">
                     <p className="text-[10px] font-bold text-slate-400 uppercase">Tổng từ</p>
                     <p className="text-xl font-black text-slate-900 dark:text-white mt-0.5">{words.length}</p>
@@ -475,7 +557,7 @@ export default function VocabularyPracticeModal({
                 </div>
 
                 {/* Bottom actions */}
-                <div className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-md">
+                <div className="relative z-10 flex flex-col sm:flex-row items-center gap-3 w-full max-w-md">
                   {learningIds.length > 0 && (
                     <button
                       type="button"

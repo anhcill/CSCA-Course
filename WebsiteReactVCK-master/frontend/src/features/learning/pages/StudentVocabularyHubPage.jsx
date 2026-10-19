@@ -245,21 +245,21 @@ export default function StudentVocabularyHubPage() {
         </div>
       </div>
 
-      {/* Session Cards List */}
-      <div className="space-y-4">
+      {/* Compact session tiles */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {loading ? (
-          <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 p-12 text-center text-sm font-semibold text-slate-500">
+          <div className="col-span-full rounded-3xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 p-12 text-center text-sm font-semibold text-slate-500">
             Đang tải từ vựng theo buổi học...
           </div>
         ) : error ? (
-          <div className="rounded-3xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 p-8 text-center">
+          <div className="col-span-full rounded-3xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 p-8 text-center">
             <p className="text-sm font-bold text-rose-700 dark:text-rose-300">{error}</p>
             <button type="button" onClick={loadSessions} className="mt-3 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white">
               Thử tải lại
             </button>
           </div>
         ) : filteredSessions.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center bg-white/40 dark:bg-slate-900/40">
+          <div className="col-span-full rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center bg-white/40 dark:bg-slate-900/40">
             <BookA className="h-10 w-10 text-slate-400 mx-auto mb-3" />
             <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">Không tìm thấy buổi học nào</h3>
             <p className="text-xs text-slate-500 mt-1">Hãy thử thay đổi từ khóa tìm kiếm hoặc bộ lọc trạng thái.</p>
@@ -274,11 +274,15 @@ export default function StudentVocabularyHubPage() {
             return (
               <div
                 key={s.sessionId}
-                className="overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition hover:shadow-md"
+                className={`overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${
+                  isExpanded ? 'col-span-full' : 'min-h-[270px] sm:aspect-square'
+                }`}
               >
                 {/* Main Session Card Header */}
-                <div className="p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div className="space-y-2 flex-1">
+                <div className={`flex h-full justify-between gap-4 p-4 sm:p-5 ${
+                  isExpanded ? 'flex-col lg:flex-row lg:items-center' : 'flex-col'
+                }`}>
+                  <div className="flex flex-1 flex-col space-y-3">
                     {/* Date and Class Badge */}
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1 text-xs font-bold text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60">
@@ -291,19 +295,19 @@ export default function StudentVocabularyHubPage() {
                       </span>
                     </div>
 
-                    {/* Chapter & Session Title */}
-                    <div>
-                      <p className="text-xs font-extrabold uppercase tracking-wide text-blue-600 dark:text-sky-400">
-                        {s.chapter}
+                    {/* Use the chapter as the tile name instead of the generic session label. */}
+                    <div className="flex-1">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-blue-600 dark:text-sky-400">
+                        Chủ đề buổi học
                       </p>
-                      <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mt-0.5">
-                        {s.sessionTitle}
+                      <h2 className="mt-1 line-clamp-3 text-lg font-black leading-snug text-slate-900 dark:text-white sm:text-xl">
+                        {s.chapter || s.sessionTitle}
                       </h2>
                     </div>
 
                     {/* Vocabulary Stats Bar */}
                     <div className="flex items-center gap-4 pt-1">
-                      <div className="flex-1 max-w-xs">
+                      <div className={`flex-1 ${isExpanded ? 'max-w-xs' : 'max-w-none'}`}>
                         <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
                           <span>Tiến độ ghi nhớ:</span>
                           <span className="font-bold text-slate-800 dark:text-slate-200">{masteredWords}/{totalWords} từ ({percent}%)</span>
@@ -325,11 +329,13 @@ export default function StudentVocabularyHubPage() {
                   </div>
 
                   {/* Actions Right */}
-                  <div className="flex items-center gap-2.5 shrink-0 pt-2 lg:pt-0">
+                  <div className={`shrink-0 gap-2.5 ${
+                    isExpanded ? 'flex items-center pt-2 lg:pt-0' : 'grid grid-cols-2'
+                  }`}>
                     <button
                       type="button"
                       onClick={() => setExpandedSessionId(isExpanded ? null : s.sessionId)}
-                      className="flex items-center gap-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                      className="flex items-center justify-center gap-1.5 rounded-2xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 sm:text-xs"
                     >
                       <span>{isExpanded ? 'Thu gọn' : `Xem ${totalWords} từ vựng`}</span>
                       <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
@@ -338,7 +344,7 @@ export default function StudentVocabularyHubPage() {
                     <button
                       type="button"
                       onClick={() => setActivePracticeSession(s)}
-                      className="group flex items-center gap-2 rounded-2xl bg-blue-600 hover:bg-blue-700 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition active:scale-95"
+                      className="group flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-3 py-2.5 text-[11px] font-bold text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-700 active:scale-95 sm:text-xs"
                     >
                       <Play className="h-4 w-4 fill-current transition group-hover:scale-110" />
                       <span>Luyện tập ngay</span>
