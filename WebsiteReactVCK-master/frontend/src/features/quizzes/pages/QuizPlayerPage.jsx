@@ -464,7 +464,7 @@ export default function QuizPlayerPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex items-center justify-center">
+      <div className="fixed inset-0 z-[1000] flex h-dvh items-center justify-center bg-slate-100 dark:bg-slate-950">
         <div className="text-center space-y-3">
           <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
           <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
@@ -477,7 +477,7 @@ export default function QuizPlayerPage() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[1000] flex h-dvh items-center justify-center overflow-y-auto bg-slate-100 p-4 dark:bg-slate-950">
         <div className="max-w-lg w-full">
           {loadError.type === 'permission' ? (
             <PermissionDeniedState
@@ -510,7 +510,7 @@ export default function QuizPlayerPage() {
     const showAnswers = quiz.reviewPolicy === 'after_submit';
 
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-10 px-4 sm:px-6">
+      <div className="fixed inset-0 z-[1000] h-dvh overflow-y-auto bg-slate-50 px-4 py-10 dark:bg-slate-950 sm:px-6">
         <div className="max-w-4xl mx-auto space-y-8">
           {/* Result Card */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 shadow-xl text-center space-y-5">
@@ -700,7 +700,7 @@ export default function QuizPlayerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col select-none">
+    <div className="fixed inset-0 z-[1000] flex h-dvh flex-col overflow-hidden bg-slate-100 select-none dark:bg-slate-950">
       {/* Sticky Header with Timer & Autosave Status */}
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2 sm:py-2.5 shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
@@ -800,7 +800,7 @@ export default function QuizPlayerPage() {
       )}
 
       {/* Main Examination Layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <main className="min-h-0 flex-1 max-w-7xl w-full mx-auto overflow-y-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left / Center: Question Paper Workspace */}
         <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 shadow-sm min-h-[560px] flex flex-col justify-between">
           {currentItem ? (
