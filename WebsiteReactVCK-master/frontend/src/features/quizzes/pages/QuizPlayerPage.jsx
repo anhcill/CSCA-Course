@@ -6,6 +6,8 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiAlertCircle,
+  FiAlertTriangle,
+  FiAward,
   FiFlag,
   FiMaximize,
   FiMinimize,
@@ -62,7 +64,7 @@ const hasAnswerContent = (question, answers) => {
 };
 
 export default function QuizPlayerPage() {
-  const { quizId } = useParams();
+  const { courseId, classId, quizId } = useParams();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -175,10 +177,45 @@ export default function QuizPlayerPage() {
               // ignore
             }
           }
+          // If result has review items, ensure student answers are merged into state
+          if (data.result?.review && Array.isArray(data.result.review)) {
+            data.result.review.forEach((r) => {
+              if (r.studentAnswer !== undefined && r.studentAnswer !== null) {
+                mergedAnswers[String(r.questionId)] = r.studentAnswer;
+              }
+            });
+          }
           setAnswers(mergedAnswers);
 
-          // Set countdown
-          if (attempt.remainingSeconds !== undefined) {
+          // If attempt is already submitted OR result payload is present, display the result screen!
+          const isAttemptSubmitted = Boolean(
+            data.result ||
+            attempt.status === 'submitted' ||
+            (attempt.remainingSeconds !== undefined && attempt.remainingSeconds <= 0 && attempt.submittedAt)
+          );
+
+          if (isAttemptSubmitted) {
+            const rawScore = Number(data.result?.score ?? attempt.score ?? 0);
+            const rawMaxScore = Number(data.result?.maxScore ?? attempt.max_score ?? loadedQuiz.maxScore ?? 10);
+            const passed = data.result?.passed ?? (attempt.passed ?? (rawScore >= (loadedQuiz.passingScore || 6)));
+            setIsSubmitted(true);
+            setSubmitResult(data.result || {
+              attemptId: loadedAttemptId,
+              score: rawScore,
+              maxScore: rawMaxScore,
+              percentage: data.result?.percentage ?? (rawMaxScore > 0 ? Math.round((rawScore / rawMaxScore) * 100) : 0),
+              passed,
+              passingScore: loadedQuiz.passingScore || 6,
+              reviewPolicy: loadedQuiz.reviewPolicy || 'after_submit',
+              reviewAvailable: Boolean(data.result?.reviewAvailable ?? (loadedQuiz.reviewPolicy === 'after_submit')),
+              review: data.result?.review || [],
+              alreadySubmitted: true,
+            });
+            return;
+          }
+
+          // Set countdown for active/in-progress attempt
+          if (attempt.remainingSeconds !== undefined && attempt.remainingSeconds !== null) {
             if (attempt.remainingSeconds <= 0) {
               setLoadError({
                 type: 'expired',
@@ -507,7 +544,11 @@ export default function QuizPlayerPage() {
   // POST-SUBMIT COMPLETION SCREEN
   if (isSubmitted && submitResult) {
     const isPassed = submitResult.passed ?? (submitResult.score >= (submitResult.passingScore || 6));
-    const showAnswers = quiz.reviewPolicy === 'after_submit';
+    const showAnswers = Boolean(
+      submitResult.reviewAvailable ??
+      (submitResult.review && submitResult.review.length > 0) ??
+      (quiz.reviewPolicy === 'after_submit')
+    );
 
     return (
       <div className="fixed inset-0 z-[1000] h-dvh overflow-y-auto bg-slate-50 px-4 py-10 dark:bg-slate-950 sm:px-6">
@@ -535,7 +576,7 @@ export default function QuizPlayerPage() {
 
             <div className="flex items-center justify-center gap-8 py-4 border-y border-slate-100 dark:border-slate-800 max-w-md mx-auto">
               <div>
-                <span className="text-xs text-slate-400">Điểm số</span>
+                <span className="text-xs text-slate-400">Tổng điểm</span>
                 <p className="text-3xl font-black text-blue-600 dark:text-blue-400">
                   {submitResult.score} <span className="text-sm font-medium text-slate-400">/ {submitResult.maxScore || 10}</span>
                 </p>
@@ -553,7 +594,47 @@ export default function QuizPlayerPage() {
               </div>
             </div>
 
-            {quiz.reviewPolicy === 'after_close' && (
+            {submitResult.essayGrade && (
+              <div className="text-left bg-gradient-to-r from-indigo-50/80 to-purple-50/80 dark:from-indigo-950/40 dark:to-purple-950/40 border border-indigo-200 dark:border-indigo-900/60 rounded-2xl p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-2">
+                    <FiAward className="text-indigo-600 dark:text-indigo-400 text-lg" /> Đánh giá phần thi Tự luận của Giáo viên
+                  </span>
+                  {typeof submitResult.essayGrade.score === 'number' && (
+                    <span className="px-3 py-1 rounded-full text-xs font-black bg-indigo-600 text-white shadow-xs">
+                      Tự luận: {submitResult.essayGrade.score} đ
+                    </span>
+                  )}
+                </div>
+                {submitResult.essayGrade.feedback && (
+                  <div className="text-xs text-indigo-950 dark:text-indigo-200 space-y-1">
+                    <span className="font-bold text-[10px] uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                      Nhận xét tổng quát:
+                    </span>
+                    <div className="p-3 bg-white/90 dark:bg-slate-900/90 rounded-xl border border-indigo-100 dark:border-indigo-900 text-slate-800 dark:text-slate-100 font-medium">
+                      <RichMathText value={submitResult.essayGrade.feedback} />
+                    </div>
+                  </div>
+                )}
+                {Array.isArray(submitResult.essayGrade.attachments) && submitResult.essayGrade.attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {submitResult.essayGrade.attachments.map((att, aIdx) => (
+                      <a
+                        key={att.assetId || aIdx}
+                        href={att.url || `/api/assignments/submission-assets/${att.assetId}/access`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 shadow-xs transition-colors"
+                      >
+                        📎 {att.name || `Tệp đính kèm ${aIdx + 1}`}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {quiz.reviewPolicy === 'after_close' && !showAnswers && (
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
                 🔒 Đáp án chi tiết và giải thích sẽ được hiển thị sau khi đề thi kết thúc hạn nộp.
               </p>
@@ -568,7 +649,7 @@ export default function QuizPlayerPage() {
             <div className="flex items-center justify-center gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => navigate('/lms/assignments')}
+                onClick={() => (courseId && classId ? navigate(`/lms/courses/${courseId}/classes/${classId}/assignments`) : navigate('/lms/assignments'))}
                 className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors shadow-sm"
               >
                 Quay lại danh sách bài tập
@@ -586,18 +667,49 @@ export default function QuizPlayerPage() {
 
               <div className="space-y-6">
                 {flattenedQuestions.map((q, idx) => {
-                  const studentAns = answers[q.id];
+                  const reviewItem = Array.isArray(submitResult.review)
+                    ? submitResult.review.find((r) =>
+                        String(r.questionId) === String(q.id) ||
+                        String(r.questionId) === String(q.question?.id) ||
+                        Number(r.position) === (idx + 1)
+                      )
+                    : null;
+                  const studentAns = answers[q.id] ?? answers[q.question?.id] ?? reviewItem?.studentAnswer;
                   const manualGrade = isEssayQuestion(q.question);
                   const essayAnswer = manualGrade ? essayAnswerFor(answers, q.id) : null;
-                  const correctAns = q.question.correctAnswer || q.question.correctAnswerKey;
-                  const isCorrect = manualGrade ? null : Boolean(studentAns && correctAns && studentAns === correctAns);
+                  const correctAns = reviewItem?.correctAnswer || q.question.correctAnswer || q.question.correctAnswerKey;
+                  const isCorrect = manualGrade ? null : (reviewItem && reviewItem.isCorrect !== undefined ? reviewItem.isCorrect : Boolean(studentAns && correctAns && studentAns === correctAns));
+                  const explanation = reviewItem?.explanation || q.question.explanation;
+
+                  // Resolve student essay content & attachments from all available sources
+                  const essayText = (typeof studentAns === 'object' && studentAns?.text)
+                    ? studentAns.text
+                    : (essayAnswer?.text || (typeof studentAns === 'string' ? studentAns : ''));
+
+                  const essayAttachments = [
+                    ...(essayAnswer?.attachments || []),
+                    ...(Array.isArray(studentAns?.attachments) ? studentAns.attachments : []),
+                    ...(Array.isArray(submitResult?.essay?.byQuestion?.[q.id]?.attachments) ? submitResult.essay.byQuestion[q.id].attachments : []),
+                  ].filter((att, aIdx, self) => self.findIndex((t) => (t.assetId || t.id) === (att.assetId || att.id)) === aIdx);
+
+                  const isEssayGraded = manualGrade && (
+                    reviewItem?.isGraded ||
+                    reviewItem?.earnedPoints !== undefined ||
+                    Boolean(submitResult?.essayGrade?.gradesByQuestion?.[String(q.id)]) ||
+                    Boolean(submitResult?.essayGrade?.score !== undefined)
+                  );
+                  const earnedEssayPoints = reviewItem?.earnedPoints ?? submitResult?.essayGrade?.gradesByQuestion?.[String(q.id)]?.score ?? 0;
+                  const essayFeedback = reviewItem?.essayFeedback || submitResult?.essayGrade?.gradesByQuestion?.[String(q.id)]?.feedback || null;
+                  const teacherCorrectionAttachments = reviewItem?.teacherAttachments || submitResult?.essayGrade?.gradesByQuestion?.[String(q.id)]?.attachments || [];
 
                   return (
                     <div
                       key={q.id}
                       className={`p-5 rounded-2xl border transition-all ${
                         manualGrade
-                          ? 'border-amber-200 dark:border-amber-950/60 bg-amber-50/20 dark:bg-amber-950/10'
+                          ? isEssayGraded
+                            ? 'border-indigo-200 dark:border-indigo-950/60 bg-indigo-50/15 dark:bg-indigo-950/10'
+                            : 'border-amber-200 dark:border-amber-950/60 bg-amber-50/20 dark:bg-amber-950/10'
                           : isCorrect
                           ? 'border-emerald-200 dark:border-emerald-950/60 bg-emerald-50/20 dark:bg-emerald-950/10'
                           : 'border-red-200 dark:border-red-950/60 bg-red-50/20 dark:bg-red-950/10'
@@ -607,17 +719,25 @@ export default function QuizPlayerPage() {
                         <span className="font-bold text-xs text-slate-500">
                           Câu {idx + 1}
                         </span>
-                        <span
-                          className={`px-2.5 py-0.5 rounded text-[11px] font-bold ${
-                            manualGrade
-                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                              : isCorrect
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
-                          }`}
-                        >
-                          {manualGrade ? 'Chờ giáo viên chấm' : isCorrect ? '✓ Đúng' : '✕ Sai'}
-                        </span>
+                        {manualGrade ? (
+                          isEssayGraded ? (
+                            <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                              Đã chấm: {earnedEssayPoints}/{q.points || reviewItem?.points || 1} đ
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                              Chờ giáo viên chấm
+                            </span>
+                          )
+                        ) : isCorrect ? (
+                          <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                            ✓ Đúng (+{reviewItem?.earnedPoints ?? q.points ?? 1} đ)
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">
+                            ✕ Sai (0 đ)
+                          </span>
+                        )}
                       </div>
 
                       <div className="text-sm font-medium text-slate-800 dark:text-slate-100 mb-4 leading-relaxed">
@@ -625,28 +745,91 @@ export default function QuizPlayerPage() {
                       </div>
 
                       {manualGrade && (
-                        <div className="mb-4 space-y-3 rounded-xl border border-amber-200 bg-white/70 p-4 dark:border-amber-900/50 dark:bg-slate-950/40">
+                        <div className="mb-4 space-y-3 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white/70 dark:bg-slate-950/40 p-4">
                           <div>
                             <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                              Bài làm đã nộp
+                              Bài làm đã nộp của bạn
                             </span>
                             <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
-                              {essayAnswer.text || 'Không có nội dung văn bản.'}
+                              {essayText || 'Không có nội dung văn bản.'}
                             </p>
                           </div>
-                          {essayAnswer.attachments.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                              {essayAnswer.attachments.map((attachment) => (
-                                <a
-                                  key={attachment.assetId}
-                                  href={attachment.url || `/api/assignments/submission-assets/${attachment.assetId}/access`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900"
-                                >
-                                  {attachment.name || `Tệp ${attachment.assetId}`}
-                                </a>
-                              ))}
+                          {essayAttachments.length > 0 && (
+                            <div className="space-y-2 pt-1 border-t border-amber-100 dark:border-amber-900/40">
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                Ảnh / Tệp bài làm bạn đã đính kèm ({essayAttachments.length}):
+                              </span>
+                              <div className="flex flex-wrap gap-2.5">
+                                {essayAttachments.map((attachment) => {
+                                  const url = attachment.url || `/api/assignments/submission-assets/${attachment.assetId}/access`;
+                                  const isImg = (attachment.name || '').match(/\.(jpe?g|png|webp|gif)$/i) || attachment.assetKind === 'image' || url.match(/\.(jpe?g|png|webp|gif)/i);
+                                  return (
+                                    <a
+                                      key={attachment.assetId || attachment.id}
+                                      href={url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="group relative flex items-center gap-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 text-xs font-semibold text-blue-600 hover:border-blue-400 dark:hover:border-blue-600 transition-all shadow-xs"
+                                    >
+                                      {isImg ? (
+                                        <img
+                                          src={url}
+                                          alt={attachment.name || 'Ảnh bài làm'}
+                                          className="w-12 h-12 object-cover rounded-lg border border-slate-100 dark:border-slate-800"
+                                          loading="lazy"
+                                        />
+                                      ) : (
+                                        <span className="w-12 h-12 flex items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-600 text-lg">📄</span>
+                                      )}
+                                      <div className="pr-2 text-left">
+                                        <p className="max-w-[150px] truncate font-medium text-slate-700 dark:text-slate-200">{attachment.name || `Tệp ${attachment.assetId}`}</p>
+                                        <p className="text-[10px] text-blue-500 group-hover:underline">Xem / Tải ảnh</p>
+                                      </div>
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Display teacher feedback & correction files if graded */}
+                      {manualGrade && isEssayGraded && (
+                        <div className="space-y-3 mb-4">
+                          {essayFeedback && (
+                            <div className="p-4 rounded-2xl bg-purple-50/80 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/60 text-xs text-purple-950 dark:text-purple-200 space-y-1.5 shadow-xs">
+                              <span className="font-bold uppercase tracking-wider text-[10px] text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
+                                ✍️ Lời nhận xét & Chữa bài của giáo viên:
+                              </span>
+                              <div className="text-sm text-purple-900 dark:text-purple-100 font-normal">
+                                <RichMathText value={essayFeedback} />
+                              </div>
+                            </div>
+                          )}
+
+                          {Array.isArray(teacherCorrectionAttachments) && teacherCorrectionAttachments.length > 0 && (
+                            <div className="p-3.5 rounded-2xl bg-purple-50/40 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/40 space-y-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                                📎 Tệp / Ảnh sửa bài của giáo viên ({teacherCorrectionAttachments.length}):
+                              </span>
+                              <div className="flex flex-wrap gap-2">
+                                {teacherCorrectionAttachments.map((att, aIdx) => {
+                                  const url = att.url || `/api/assignments/submission-assets/${att.assetId}/access`;
+                                  const isImg = (att.name || '').match(/\.(jpe?g|png|webp|gif)$/i) || att.assetKind === 'image' || url.match(/\.(jpe?g|png|webp|gif)/i);
+                                  return (
+                                    <a
+                                      key={att.assetId || aIdx}
+                                      href={url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800 bg-white dark:bg-slate-900 text-xs font-semibold text-purple-700 dark:text-purple-300 hover:bg-purple-100/50 transition-colors shadow-xs"
+                                    >
+                                      {isImg ? '🖼️' : '📄'} {att.name || `Tệp sửa bài ${aIdx + 1}`}
+                                    </a>
+                                  );
+                                })}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -678,13 +861,13 @@ export default function QuizPlayerPage() {
                       )}
 
                       {/* Explanation */}
-                      {!manualGrade && q.question.explanation && (
+                      {explanation && (
                         <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-xs text-blue-900 dark:text-blue-200 space-y-1">
                           <span className="font-bold uppercase tracking-wide text-[10px] text-blue-700 dark:text-blue-300">
-                            💡 Lời giải chi tiết:
+                            💡 {manualGrade ? 'Hướng dẫn giải / Đáp án mẫu:' : 'Lời giải chi tiết:'}
                           </span>
                           <div>
-                            <RichMathText value={q.question.explanation} />
+                            <RichMathText value={explanation} />
                           </div>
                         </div>
                       )}
@@ -1235,6 +1418,26 @@ export default function QuizPlayerPage() {
                 </div>
               )}
             </div>
+
+            {(() => {
+              const essayQuestions = flattenedQuestions.filter((q) => isEssayQuestion(q.question));
+              const missingEssay = essayQuestions.filter((q) => {
+                const essay = essayAnswerFor(answers, q.id);
+                return (essay.attachments?.length || 0) === 0 && !essay.text?.trim() && !essay.notes?.trim();
+              });
+              if (missingEssay.length === 0) return null;
+              return (
+                <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl text-left text-xs space-y-1.5 shadow-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                    <FiAlertTriangle className="shrink-0 text-base text-amber-600" />
+                    <span>Lưu ý quan trọng: Chưa nộp ảnh tự luận!</span>
+                  </div>
+                  <p className="text-amber-700 dark:text-amber-400 leading-relaxed text-[11px]">
+                    Bạn có <strong>{missingEssay.length} câu tự luận</strong> (Câu {missingEssay.map((q) => q.number).join(', ')}) chưa đính kèm ảnh bài làm hoặc nội dung tự luận. Sau khi nộp bài, bạn sẽ <strong>không thể bổ sung ảnh hoặc sửa bài làm</strong> được nữa!
+                  </p>
+                </div>
+              );
+            })()}
 
             <div className="flex items-center gap-3 pt-2">
               <button

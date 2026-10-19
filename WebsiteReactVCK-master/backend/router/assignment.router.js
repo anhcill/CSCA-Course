@@ -1138,12 +1138,16 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
     }
     const currentAnswers = attempt.answers_json || {};
     const gradedAt = new Date().toISOString();
+    const gradesByQuestion = req.body.gradesByQuestion && typeof req.body.gradesByQuestion === "object" ? req.body.gradesByQuestion : {};
+    const teacherAttachments = Array.isArray(req.body.teacherAttachments) ? req.body.teacherAttachments : [];
 
     const updatedAnswers = {
       ...currentAnswers,
       _essayGrade: {
         score: essayScore,
         feedback: essayFeedback,
+        gradesByQuestion,
+        attachments: teacherAttachments,
         gradedAt,
         graderId: req.user.id,
         graderName: req.user.username || "Giáo viên",
@@ -1563,8 +1567,13 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
   }
 });
 
+const requireSubmissionUploader = (req, res, next) => {
+  if (req.user?.role === "creator" || req.user?.role === "admin") return next();
+  return requireRole("user")(req, res, next);
+};
+
 // POST /api/assignments/submission-assets/upload-url — server-owned upload target.
-router.post("/submission-assets/upload-url", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
+router.post("/submission-assets/upload-url", protectRoute, requireSubmissionUploader, async (req, res) => {
   try {
     const { filename, mimeType, sizeBytes, assetKind } = req.body;
     const parsedSize = Number(sizeBytes);
@@ -1589,7 +1598,7 @@ router.post("/submission-assets/upload-url", protectRoute, requireRole("user"), 
 });
 
 // POST /api/assignments/submission-assets/:assetId/confirm — owner only.
-router.post("/submission-assets/:assetId/confirm", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
+router.post("/submission-assets/:assetId/confirm", protectRoute, requireSubmissionUploader, async (req, res) => {
   try {
     const assetId = parsePositiveId(req.params.assetId);
     if (!assetId) return validationError(res, "assetId không hợp lệ");

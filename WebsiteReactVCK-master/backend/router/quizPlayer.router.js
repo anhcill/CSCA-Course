@@ -183,8 +183,11 @@ const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
     "SELECT 1 FROM gradebook_finalizations WHERE class_id=$1 AND reopened_at IS NULL",
     [quiz.live_class_id],
   )).rows.length > 0;
-  if (finalized && submitted.rows.length === 0) throw Object.assign(new Error("Sổ điểm đã chốt; không thể bắt đầu lượt mới"), { status: 409, code: "GRADEBOOK_FINALIZED" });
-  if (finalized || submitted.rows.length >= Number(quiz.attempt_limit || 1)) {
+  const availability = getQuizAvailability(quiz, now);
+  const reachedLimit = submitted.rows.length >= Number(quiz.attempt_limit || 1);
+  const cannotStartNew = finalized || reachedLimit || !availability.isOpen;
+
+  if (cannotStartNew && submitted.rows.length > 0) {
     const latest = submitted.rows[0] || null;
     return {
       attempt: latest,
@@ -194,7 +197,8 @@ const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
     };
   }
 
-  const availability = getQuizAvailability(quiz, now);
+  if (finalized && submitted.rows.length === 0) throw Object.assign(new Error("Sổ điểm đã chốt; không thể bắt đầu lượt mới"), { status: 409, code: "GRADEBOOK_FINALIZED" });
+
   if (!availability.isOpen) {
     const error = new Error(availability.reason === "not_open" ? "QUIZ_NOT_OPEN" : "QUIZ_CLOSED");
     error.availability = availability;

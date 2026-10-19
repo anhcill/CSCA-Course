@@ -290,30 +290,47 @@ export const getEssaySubmission = (questions, answers) => {
 export const buildQuizResult = (questions, answers) => {
   const essayGrade = answers?._essayGrade || answers?.essayGrade || null;
   const essay = getEssaySubmission(questions, answers);
+  const gradesByQuestion = essayGrade?.gradesByQuestion && typeof essayGrade.gradesByQuestion === "object"
+    ? essayGrade.gradesByQuestion
+    : {};
   const review = questions.map((question, index) => {
+    const isEssay = isEssayQuestion(question);
     const essayAnswer = essay?.byQuestion?.[String(question.id)] || null;
     const storedAnswer = answers?.[String(question.id)] ?? answers?.[question.id] ?? null;
-    const studentAnswer = isEssayQuestion(question)
+    const studentAnswer = isEssay
       ? (essayAnswer || storedAnswer)
       : storedAnswer;
-    const isCorrect = isEssayQuestion(question) ? null : answersMatch(question, studentAnswer);
+    const isCorrect = isEssay ? null : answersMatch(question, studentAnswer);
     const points = Number(question.points) || 0;
+    const qGrade = isEssay ? gradesByQuestion[String(question.id)] : null;
+    const earnedPoints = isEssay
+      ? (typeof qGrade?.score === "number" ? Number(qGrade.score) : 0)
+      : (isCorrect ? points : 0);
     return {
       questionId: question.id,
       position: index + 1,
       sortOrder: Number(question.sort_order || index + 1),
       questionText: question.question_text || question.questionText || "",
       studentAnswer,
-      correctAnswer: isEssayQuestion(question) ? null : parseStoredAnswer(question.correct_answer),
+      correctAnswer: isEssay ? null : parseStoredAnswer(question.correct_answer),
       explanation: question.explanation || "",
+      options: parseJsonArray(question.options_json),
       points,
-      earnedPoints: isCorrect ? points : 0,
-      isCorrect,
+      earnedPoints,
+      isCorrect: isEssay ? (qGrade ? qGrade.score > 0 : null) : isCorrect,
       questionType: questionType(question),
+      isGraded: isEssay ? Boolean(essayGrade && (qGrade !== undefined || essayGrade.score !== undefined)) : true,
+      essayFeedback: qGrade?.feedback || null,
+      teacherAttachments: Array.isArray(qGrade?.attachments) ? qGrade.attachments : [],
     };
   });
-  let score = review.reduce((sum, item) => sum + item.earnedPoints, 0);
-  if (essayGrade && typeof essayGrade.score === "number") score += Number(essayGrade.score) || 0;
+  const objectiveScore = review.filter((item) => !MANUAL_GRADE_TYPES.has(item.questionType)).reduce((sum, item) => sum + item.earnedPoints, 0);
+  let score = objectiveScore;
+  if (essayGrade && typeof essayGrade.score === "number") {
+    score += Number(essayGrade.score) || 0;
+  } else {
+    score += review.filter((item) => MANUAL_GRADE_TYPES.has(item.questionType)).reduce((sum, item) => sum + item.earnedPoints, 0);
+  }
   const maxScore = review.reduce((sum, item) => sum + item.points, 0);
   return {
     score: Number(score.toFixed(2)),
