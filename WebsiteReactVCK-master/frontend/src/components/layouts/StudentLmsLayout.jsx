@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -22,6 +21,7 @@ import {
   X,
   Clapperboard,
   Languages,
+  Binary,
 } from "lucide-react";
 import NotificationBell from "../../features/notifications/components/NotificationBell";
 import { useAuthContext } from "../../context/AuthContext";
@@ -35,6 +35,7 @@ const STUDENT_NAV = [
   { label: "Lịch học", path: "/lms/calendar", icon: CalendarDays },
   { label: "Bài tập & hạn nộp", path: "/lms/assignments", icon: FileCheck2 },
   { label: "Từ vựng buổi học", path: "/lms/vocabulary", icon: Languages },
+  { label: "Công thức học tập", path: "/lms/formulas", icon: Binary },
   { label: "Tài liệu các lớp", path: "/lms/files", icon: FolderOpen },
   { label: "Bản ghi buổi học", path: "/lms/recordings", icon: Clapperboard },
   { label: "Điểm tổng quan", path: "/lms/analytics", icon: BarChart3 },

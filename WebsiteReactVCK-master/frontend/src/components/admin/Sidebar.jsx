@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { Link, useLocation } from 'react-router-dom';
 import {
   FiGrid,
@@ -18,7 +17,7 @@ import {
   FiVideo,
   FiPlusSquare,
 } from 'react-icons/fi';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Sigma } from 'lucide-react';
 import { useAuthContext } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 
@@ -88,6 +87,7 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
         { title: 'Lương giảng viên', icon: <FiDollarSign className="w-4 h-4 shrink-0" />, path: '/admin/salaries' },
         { title: 'Hỗ trợ học viên', icon: <FiUser className="w-4 h-4 shrink-0" />, path: '/admin/support' },
         { title: 'Ngân hàng câu hỏi', icon: <FiList className="w-4 h-4 shrink-0" />, path: '/admin/question-bank' },
+        { title: 'Quản lý công thức', icon: <Sigma className="w-4 h-4 shrink-0" />, path: '/admin/formulas' },
         {
           title: 'Chấm bài',
           icon: <FiCheckSquare className="w-4 h-4 shrink-0" />,

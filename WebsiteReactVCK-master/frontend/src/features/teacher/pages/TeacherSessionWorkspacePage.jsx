@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  ArrowLeft, Bell, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
+  ArrowLeft, Bell, BookOpen, Binary, CalendarDays, CheckCircle2, ClipboardList, Clock,
   Download, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Languages, Play, Trash2, Trophy, UploadCloud, Users, Video,
 } from "lucide-react";
 import {
   batchImportSessionVocabulary, createClassAnnouncement, createSessionVocabulary, deleteClassFile,
   deleteSessionVocabulary, fetchClassAnnouncements, fetchClassDetails, fetchClassFiles,
   fetchLiveClassSessions, fetchSessionVocabulary, getLiveSessionAccess, suggestSessionVocabulary,
-  updateSessionVocabulary, uploadClassFile,
+  updateSessionVocabulary, uploadClassFile, createSessionFormulaApi, deleteFormulaApi,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
@@ -18,12 +18,15 @@ import FileUploadProgressBox from "../../../components/common/FileUploadProgress
 import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 import { classCalendarIcsUrl, googleCalendarEventUrl } from "../../calendar/calendarLinks";
 import TeacherSessionVocabularyTab from "../components/TeacherSessionVocabularyTab";
+import TeacherSessionFormulaTab from "../components/TeacherSessionFormulaTab";
+import { getStoredFormulaSessions, saveFormulaSessions } from "../../learning/data/mockFormulaData";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
   { id: "students", label: "Học viên", icon: Users },
   { id: "content", label: "Nội dung", icon: BookOpen },
   { id: "vocabulary", label: "Từ vựng", icon: Languages },
+  { id: "formulas", label: "Công thức", icon: Binary },
   { id: "tasks", label: "Bài tập & Quiz", icon: ClipboardList },
   { id: "files", label: "Tài liệu", icon: FileText },
   { id: "announcements", label: "Thông báo", icon: Bell },
@@ -83,6 +86,15 @@ export default function TeacherSessionWorkspacePage() {
   const [currentVocabSession, setCurrentVocabSession] = useState(null);
 
   const sessionVocabs = currentVocabSession?.vocabularies || [];
+  const [formulaSessions, setFormulaSessions] = useState(() => getStoredFormulaSessions());
+
+  const currentFormulaSession = useMemo(() => {
+    const found = formulaSessions.find((s) => String(s.sessionId) === String(sessionId));
+    if (found) return found;
+    return formulaSessions[0] || null;
+  }, [formulaSessions, sessionId]);
+
+  const sessionFormulas = currentFormulaSession?.formulas || [];
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -276,6 +288,7 @@ export default function TeacherSessionWorkspacePage() {
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const count = tab.id === "vocabulary" ? sessionVocabs.length
+                : tab.id === "formulas" ? sessionFormulas.length
                 : tab.id === "tasks" ? tasks.length
                 : tab.id === "files" ? files.length
                 : tab.id === "students" ? students.length
@@ -348,6 +361,36 @@ export default function TeacherSessionWorkspacePage() {
               return response.data;
             }}
             onSuggestVocabulary={(options) => suggestSessionVocabulary(sessionId, options)}
+          />
+        )}
+        {activeTab === "formulas" && (
+          <TeacherSessionFormulaTab
+            session={session}
+            formulas={sessionFormulas}
+            onAddFormula={async (formula) => {
+              if (currentFormulaSession) {
+                currentFormulaSession.formulas.unshift(formula);
+                saveFormulaSessions(formulaSessions);
+                setFormulaSessions([...formulaSessions]);
+              }
+              try {
+                await createSessionFormulaApi(sessionId, formula);
+              } catch {
+                // LocalStorage fallback already persisted
+              }
+            }}
+            onDeleteFormula={async (formulaId) => {
+              if (currentFormulaSession) {
+                currentFormulaSession.formulas = currentFormulaSession.formulas.filter((f) => f.id !== formulaId);
+                saveFormulaSessions(formulaSessions);
+                setFormulaSessions([...formulaSessions]);
+              }
+              try {
+                await deleteFormulaApi(formulaId);
+              } catch {
+                // LocalStorage fallback already persisted
+              }
+            }}
           />
         )}
         {activeTab === "tasks" && <TeacherSessionTasks tasks={tasks} classId={classId} sessionId={sessionId} onCreateHomework={() => setIsCreateHomeworkOpen(true)} onCreateSessionQuiz={() => navigate(`${assessmentBasePath}/quizzes?classId=${classId}&sessionId=${sessionId}&scope=session&new=1`)} onOpenGrading={(assignmentId) => navigate(`${assessmentBasePath}/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${assignmentId}`)} />}

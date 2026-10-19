@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  ArrowLeft, Bell, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock,
+  ArrowLeft, Bell, BookOpen, Binary, CalendarDays, CheckCircle2, ClipboardList, Clock,
   Download, FileSpreadsheet, FileText, Files, FolderOpen, Languages, Lock, Play, Trophy, Users, Video, Search,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
@@ -17,12 +17,15 @@ import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 import { classCalendarIcsUrl, googleCalendarEventUrl } from "../calendarLinks";
 import SessionVocabularyTab from "../../learning/components/SessionVocabularyTab";
+import SessionFormulaTab from "../../learning/components/SessionFormulaTab";
 import VocabularyPracticeModal from "../../learning/components/VocabularyPracticeModal";
+import { getStoredFormulaSessions, toggleFormulaStar } from "../../learning/data/mockFormulaData";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
   { id: "content", label: "Nội dung", icon: BookOpen },
   { id: "vocabulary", label: "Từ vựng", icon: Languages },
+  { id: "formulas", label: "Công thức", icon: Binary },
   { id: "tasks", label: "Bài tập & Quiz", icon: ClipboardList },
   { id: "materials", label: "Tài liệu", icon: FileText },
   { id: "announcements", label: "Thông báo", icon: Bell },
@@ -119,6 +122,15 @@ export default function SessionDetailPage() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [currentVocabSession, setCurrentVocabSession] = useState(null);
   const [showVocabPractice, setShowVocabPractice] = useState(false);
+  const [formulaSessions, setFormulaSessions] = useState(() => getStoredFormulaSessions());
+
+  const currentFormulaSession = useMemo(() => {
+    const found = formulaSessions.find((s) => String(s.sessionId) === String(sessionId));
+    if (found) return found;
+    return formulaSessions[0] || null;
+  }, [formulaSessions, sessionId]);
+
+  const sessionFormulas = currentFormulaSession?.formulas || [];
 
   const sessionVocabs = currentVocabSession?.vocabularies || [];
 
@@ -312,6 +324,7 @@ export default function SessionDetailPage() {
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const count = tab.id === "vocabulary" ? sessionVocabs.length
+              : tab.id === "formulas" ? sessionFormulas.length
               : tab.id === "tasks" ? tasks.length
               : tab.id === "materials" ? files.length
               : tab.id === "announcements" ? announcements.length
@@ -372,6 +385,18 @@ export default function SessionDetailPage() {
                 } : current);
               } catch (requestError) {
                 toast.error(requestError.message || "Không thể cập nhật từ đã đánh dấu.");
+              }
+            }}
+          />
+        )}
+        {activeTab === "formulas" && (
+          <SessionFormulaTab
+            session={session}
+            formulas={sessionFormulas}
+            onToggleStar={(formulaId) => {
+              if (currentFormulaSession) {
+                const updated = toggleFormulaStar(currentFormulaSession.sessionId, formulaId);
+                setFormulaSessions([...updated]);
               }
             }}
           />

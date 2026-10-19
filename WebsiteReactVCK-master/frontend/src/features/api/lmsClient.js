@@ -1364,4 +1364,83 @@ export const resetUserWelcomeStatusApi = async (userId) => (
   })
 );
 
+// === FORMULA APIS ===
+export const fetchFormulaSessions = async ({ subject = "", search = "", courseId = "", classId = "" } = {}) => {
+  const params = new URLSearchParams();
+  if (subject && subject !== "ALL") params.set("subject", subject);
+  if (search && search.trim()) params.set("search", search.trim());
+  if (courseId) params.set("courseId", courseId);
+  if (classId) params.set("classId", classId);
+  const query = params.toString();
+  return request(`/lms/formulas/sessions${query ? `?${query}` : ""}`);
+};
+
+export const fetchSessionFormulas = async (sessionId) => (
+  request(`/lms/sessions/${encodeURIComponent(sessionId)}/formulas`)
+);
+
+export const toggleFormulaStarApi = async (formulaId, personalNote = "") => (
+  request(`/lms/formulas/${encodeURIComponent(formulaId)}/toggle-star`, {
+    method: "POST",
+    body: JSON.stringify({ personalNote }),
+  })
+);
+
+export const createSessionFormulaApi = async (sessionId, payload) => (
+  request(`/lms/sessions/${encodeURIComponent(sessionId)}/formulas`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const updateFormulaApi = async (formulaId, payload) => (
+  request(`/lms/formulas/${encodeURIComponent(formulaId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const deleteFormulaApi = async (formulaId) => (
+  request(`/lms/formulas/${encodeURIComponent(formulaId)}`, {
+    method: "DELETE",
+  })
+);
+
+export const fetchTeacherFormulaLibrary = async ({ subject = "", search = "", page = 1, limit = 50 } = {}) => {
+  const params = new URLSearchParams();
+  if (subject && subject !== "ALL") params.set("subject", subject);
+  if (search && search.trim()) params.set("search", search.trim());
+  if (page) params.set("page", page);
+  if (limit) params.set("limit", limit);
+  const query = params.toString();
+  return request(`/lms/teach/formulas${query ? `?${query}` : ""}`);
+};
+
+export const fetchFormulaPresets = async ({ subject = "", search = "", limit = 30 } = {}) => {
+  const params = new URLSearchParams();
+  if (subject && subject !== "ALL") params.set("subject", subject);
+  if (search && search.trim()) params.set("search", search.trim());
+  if (limit) params.set("limit", limit);
+  const query = params.toString();
+  return request(`/lms/formulas/presets${query ? `?${query}` : ""}`);
+};
+
+export const fetchAdminFormulas = async ({ subject = "", search = "", page = 1, limit = 50 } = {}) => {
+  const params = new URLSearchParams();
+  if (subject && subject !== "ALL") params.set("subject", subject);
+  if (search && search.trim()) params.set("search", search.trim());
+  if (page) params.set("page", page);
+  if (limit) params.set("limit", limit);
+  const query = params.toString();
+  return request(`/admin/formulas${query ? `?${query}` : ""}`);
+};
+
+export const batchImportFormulasApi = async (formulas) => (
+  request("/admin/formulas/batch-import", {
+    method: "POST",
+    body: JSON.stringify({ formulas }),
+  })
+);
+
+
 

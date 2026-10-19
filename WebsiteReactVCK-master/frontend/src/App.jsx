@@ -86,6 +86,8 @@ const MoliQuizEditorPage = lazy(() => import("./features/quizzes/pages/QuizEdito
 const MoliQuizPlayerPage = lazy(() => import("./features/quizzes/pages/QuizPlayerPage.jsx"));
 const QuizMathGalleryPage = lazy(() => import("./features/quizzes/pages/QuizMathGalleryPage.jsx"));
 const StudentVocabularyHubPage = lazy(() => import("./features/learning/pages/StudentVocabularyHubPage.jsx"));
+const StudentFormulaHubPage = lazy(() => import("./features/learning/pages/StudentFormulaHubPage.jsx"));
+const AdminFormulaPage = lazy(() => import("./pages/admin/AdminFormulaPage.jsx"));
 
 const isTeacherLmsPath = (p) => (
   p === "/lms/teach" || p.startsWith("/lms/teach/") || p === "/lms/teacher-hub" ||
@@ -134,6 +136,7 @@ function AppRoutes() {
       <Route path="/lms/live-classes" element={<Navigate to="/lms/live-schedule" replace />} />
       <Route path="/lms/assignments" element={<AssignmentListPage />} />
       <Route path="/lms/vocabulary" element={<StudentVocabularyHubPage />} />
+      <Route path="/lms/formulas" element={<StudentFormulaHubPage />} />
       <Route path="/lms/files" element={<StudentFilesPage />} />
       <Route path="/lms/recordings" element={<StudentRecordingsPage />} />
       <Route path="/lms/materials" element={<StudentFilesPage />} />
@@ -232,6 +235,7 @@ function AppRoutes() {
         <Route path="sync" element={<AdminSyncPage />} />
         <Route path="audit-logs" element={<AdminAuditLogPage />} />
         <Route path="welcome-screen" element={<AdminWelcomeScreenPage />} />
+        <Route path="formulas" element={<AdminFormulaPage />} />
         <Route path="users" element={<AdminUser />} />
         <Route path="posts" element={<Navigate to="/admin/dashboard" replace />} />
       </Route>
