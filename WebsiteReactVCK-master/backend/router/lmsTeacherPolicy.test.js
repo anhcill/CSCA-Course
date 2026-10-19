@@ -41,6 +41,9 @@ test("course publishing and class operations require admin; teaching data obeys 
   const adminOnly = [
     [courseRouter, "post", "/admin"],
     [courseRouter, "patch", "/admin/:courseId/status"],
+    [courseRouter, "post", "/admin/:courseId/sections"],
+    [courseRouter, "post", "/admin/sections/:sectionId/lessons"],
+    [courseRouter, "patch", "/admin/lessons/:lessonId/learning-link"],
     [liveClassRouter, "post", "/"],
     [liveClassRouter, "patch", "/:classId"],
     [liveClassRouter, "post", "/:classId/enrollments"],
@@ -54,9 +57,6 @@ test("course publishing and class operations require admin; teaching data obeys 
   }
 
   const permissionRoutes = [
-    [courseRouter, "post", "/admin/:courseId/sections"],
-    [courseRouter, "post", "/admin/sections/:sectionId/lessons"],
-    [courseRouter, "patch", "/admin/lessons/:lessonId/learning-link"],
     [announcementRouter, "post", "/"],
     [announcementRouter, "patch", "/:id/cancel"],
     [teacherRouter, "get", "/dashboard-stats"],

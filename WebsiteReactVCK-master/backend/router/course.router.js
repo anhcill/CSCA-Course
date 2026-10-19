@@ -1082,7 +1082,7 @@ router.post("/admin/sections/:sectionId/lessons", protectRoute, requireRole("adm
   }
 });
 
-// Teacher/Admin: replace or clear the learning link for an existing lesson.
+// Admin: replace or clear the learning link for an existing lesson.
 router.patch("/admin/lessons/:lessonId/learning-link", protectRoute, requireRole("admin"), async (req, res) => {
   try {
     const lessonId = parsePositiveId(req.params.lessonId);
