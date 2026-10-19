@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  ArrowLeft, Bell, BookOpen, Binary, CalendarDays, CheckCircle2, ClipboardList, Clock,
+  ArrowLeft, Bell, Binary, CalendarDays, CheckCircle2, ClipboardList, Clock,
   Download, Eye, FileSpreadsheet, FileText, Files, FolderOpen, Languages, Lock, Play, Trophy, Users, Video, Search,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
@@ -22,7 +22,6 @@ import VocabularyPracticeModal from "../../learning/components/VocabularyPractic
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
-  { id: "content", label: "Nội dung", icon: BookOpen },
   { id: "vocabulary", label: "Từ vựng", icon: Languages },
   { id: "formulas", label: "Công thức", icon: Binary },
   { id: "tasks", label: "Bài tập & Quiz", icon: ClipboardList },
@@ -362,7 +361,6 @@ export default function SessionDetailPage() {
       {resourcesLoading ? <Loading loading text="Đang đồng bộ học liệu của buổi..." fullScreen={false} className="min-h-40 py-10" /> : <>
         {activeTab === "overview" && (
           <StudentOverviewTab
-            session={session}
             tasks={tasks}
             completeTasks={completeTasks}
             files={files}
@@ -371,7 +369,6 @@ export default function SessionDetailPage() {
             setSearchParams={setSearchParams}
           />
         )}
-        {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black text-slate-900 dark:text-white">Nội dung buổi học</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Giáo viên sẽ cập nhật nội dung, slide và bài tập trong đúng không gian buổi học này."}</p><button type="button" onClick={() => setSearchParams({ tab: "materials" })} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700"><BookOpen className="h-4 w-4" /> Xem tài liệu buổi học</button></section>}
         {activeTab === "vocabulary" && (
           <SessionVocabularyTab
             session={session}
@@ -438,7 +435,6 @@ export default function SessionDetailPage() {
 }
 
 function StudentOverviewTab({
-  session,
   tasks,
   completeTasks,
   files,
@@ -539,59 +535,8 @@ function StudentOverviewTab({
           </div>
         </div>
 
-        {/* Right column (1 col): Content + Announcements + Materials */}
+        {/* Right column (1 col): Materials + Announcements */}
         <div className="space-y-4">
-          {/* Card: Nội dung buổi học */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
-              <div className="flex items-center gap-1.5">
-                <BookOpen className="h-4 w-4 text-blue-600 dark:text-sky-400" />
-                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Nội dung buổi học</h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSearchParams({ tab: "content" })}
-                className="text-xs font-bold text-blue-600 hover:underline dark:text-sky-400"
-              >
-                Chi tiết →
-              </button>
-            </div>
-            <p className="mt-2.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-              {session.description || "Giáo viên sẽ cập nhật nội dung, slide và bài tập trong đúng không gian buổi học này."}
-            </p>
-          </div>
-
-          {/* Card: Thông báo */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
-              <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Thông báo ({announcements.length})</h2>
-              <button
-                type="button"
-                onClick={() => setSearchParams({ tab: "announcements" })}
-                className="text-xs font-bold text-blue-600 hover:underline dark:text-sky-400"
-              >
-                Xem tất cả →
-              </button>
-            </div>
-            {announcements.length === 0 ? (
-              <p className="py-5 text-center text-xs text-slate-400">Chưa có thông báo nào trong buổi này.</p>
-            ) : (
-              <div className="mt-3 space-y-2.5">
-                {announcements.slice(0, 3).map((item) => (
-                  <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="truncate text-xs font-bold text-slate-900 dark:text-white">{item.title}</h3>
-                      <span className="shrink-0 text-[10px] text-slate-400">
-                        {item.created_at ? new Date(item.created_at).toLocaleDateString("vi-VN") : ""}
-                      </span>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-[11px] text-slate-600 dark:text-slate-300">{item.message}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* Card: Tài liệu */}
           <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
@@ -641,6 +586,38 @@ function StudentOverviewTab({
               </div>
             )}
           </div>
+
+          {/* Card: Thông báo */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
+              <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Thông báo ({announcements.length})</h2>
+              <button
+                type="button"
+                onClick={() => setSearchParams({ tab: "announcements" })}
+                className="text-xs font-bold text-blue-600 hover:underline dark:text-sky-400"
+              >
+                Xem tất cả →
+              </button>
+            </div>
+            {announcements.length === 0 ? (
+              <p className="py-5 text-center text-xs text-slate-400">Chưa có thông báo nào trong buổi này.</p>
+            ) : (
+              <div className="mt-3 space-y-2.5">
+                {announcements.slice(0, 3).map((item) => (
+                  <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="truncate text-xs font-bold text-slate-900 dark:text-white">{item.title}</h3>
+                      <span className="shrink-0 text-[10px] text-slate-400">
+                        {item.created_at ? new Date(item.created_at).toLocaleDateString("vi-VN") : ""}
+                      </span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[11px] text-slate-600 dark:text-slate-300">{item.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
     </div>
