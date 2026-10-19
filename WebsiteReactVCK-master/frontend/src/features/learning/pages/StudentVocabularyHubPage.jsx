@@ -152,9 +152,6 @@ export default function StudentVocabularyHubPage() {
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
               Từ Vựng Theo Buổi Học
             </h1>
-            <p className="text-sm text-blue-100 leading-relaxed">
-              Theo dõi và rèn luyện thuật ngữ theo từng ngày học và chương học. Luyện tập với Flashcard 3D và Trắc nghiệm phản xạ cùng Bé Cú Moly!
-            </p>
           </div>
 
           {/* Quick Metrics Bar */}
