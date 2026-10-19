@@ -233,8 +233,9 @@ export default function QuizPlayerPage() {
       .catch((err) => {
         if (!isMounted) return;
         const status = err?.response?.status || err?.status;
-        const code = err?.response?.data?.code || err?.code;
+        const code = err?.response?.data?.errorCode || err?.errorCode || err?.code;
         const msg = err?.response?.data?.message || err?.message || '';
+        const opensAt = err?.response?.data?.opensAt || err?.details?.opensAt || null;
 
         if (status === 403 || code === 'FORBIDDEN' || msg.includes('permission') || msg.includes('enroll')) {
           setLoadError({

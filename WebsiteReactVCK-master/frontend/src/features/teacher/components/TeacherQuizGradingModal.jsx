@@ -12,7 +12,6 @@ import {
   FiUploadCloud,
   FiTrash2,
   FiPaperclip,
-  FiCheck,
   FiAlertCircle,
   FiEye,
   FiEyeOff,

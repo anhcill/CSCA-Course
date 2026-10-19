@@ -670,10 +670,14 @@ export const fetchTeacherQuizAttempt = async (quizId, attemptId) => (
   request(`/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/attempts/${encodeURIComponent(attemptId)}`)
 );
 
-export const gradeTeacherQuizEssay = async (quizId, attemptId, { essayScore, essayFeedback }) => (
+export const gradeTeacherQuizEssay = async (
+  quizId,
+  attemptId,
+  { essayScore, essayFeedback, gradesByQuestion, teacherAttachments },
+) => (
   request(`/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/attempts/${encodeURIComponent(attemptId)}/grade-essay`, {
     method: "POST",
-    body: JSON.stringify({ essayScore, essayFeedback }),
+    body: JSON.stringify({ essayScore, essayFeedback, gradesByQuestion, teacherAttachments }),
   })
 );
 

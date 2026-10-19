@@ -107,7 +107,13 @@ test("teacher essay grade and feedback are returned to the learner", async (t) =
   const graded = await invoke(assignmentRouter, "post", gradePath, {
     user: teacher,
     params: { quizId: quiz.id, attemptId: attempt.id },
-    body: { essayScore: 2.5, essayFeedback: feedback },
+    body: {
+      essayScore: 2.5,
+      essayFeedback: feedback,
+      gradesByQuestion: {
+        [String(essay.id)]: { score: 2.5, feedback, attachments: [] },
+      },
+    },
   });
   assert.equal(graded.statusCode, 200, JSON.stringify(graded.body));
   assert.equal(graded.body.data.score, 3.5);
@@ -121,6 +127,9 @@ test("teacher essay grade and feedback are returned to the learner", async (t) =
   assert.equal(studentResult.body.data.result.essayGrade.score, 2.5);
   assert.equal(studentResult.body.data.result.essayGrade.feedback, feedback);
   assert.equal(studentResult.body.data.result.mcScore, 1);
+  const essayReview = studentResult.body.data.result.review.find((item) => String(item.questionId) === String(essay.id));
+  assert.equal(essayReview.earnedPoints, 2.5);
+  assert.equal(essayReview.essayFeedback, feedback);
 
   const notification = (await db.query(
     "SELECT title,message,link_url,event_type FROM notifications WHERE user_id=$1 ORDER BY id DESC LIMIT 1",
