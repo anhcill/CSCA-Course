@@ -235,6 +235,18 @@ test("LMS workflows execute against isolated PostgreSQL migrations", async (t) =
     r=await invoke(support,"get","/",{user:stranger,query:{classId:cls.id}});
     assert.equal(r.statusCode,403);
   });
+  await t.test("student assignment list collapses quiz attempts and reports the attempt policy",async()=>{
+    const quiz=await one("INSERT INTO quizzes(title,course_id,live_class_id,class_session_id,instructor_id,status,activity_scope,attempt_limit,due_date) VALUES ('Retry quiz',$1,$2,$3,$4,'PUBLISHED','homework',3,NOW()+INTERVAL '1 day') RETURNING *",[course.id,cls.id,session.id,teacher.id]);
+    await db.query("INSERT INTO quiz_attempts(quiz_id,user_id,score,max_score,status,attempt_number,submitted_at) VALUES ($1,$2,4,10,'submitted',1,NOW()-INTERVAL '2 hours'),($1,$2,8,10,'submitted',2,NOW()-INTERVAL '1 hour')",[quiz.id,student.id]);
+    const r=await invoke(assignments,"get","/",{user:student,query:{courseId:course.id}});
+    assert.equal(r.statusCode,200,JSON.stringify(r.body));
+    const rows=r.body.data.filter((item)=>item.type==="quiz"&&Number(item.id)===Number(quiz.id));
+    assert.equal(rows.length,1);
+    assert.equal(rows[0].attempt_limit,3);
+    assert.equal(rows[0].attempt_count,2);
+    assert.equal(rows[0].attempt_number,2);
+    assert.equal(Number(rows[0].score),8);
+  });
   await t.test("revoking a recorded lead overrides stale instructor_id",async()=>{
     await db.query("UPDATE class_teachers SET status='revoked' WHERE live_class_id=$1 AND teacher_id=$2",[cls.id,teacher.id]);
     let r=await invoke(reports,"get","/gradebook",{user:teacher,query:{classId:cls.id}});

@@ -800,13 +800,13 @@ export default function QuizPlayerPage() {
       )}
 
       {/* Main Examination Layout */}
-      <main className="min-h-0 flex-1 max-w-7xl w-full mx-auto overflow-y-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <main className="min-h-0 flex-1 max-w-7xl w-full mx-auto overflow-y-auto p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Left / Center: Question Paper Workspace */}
-        <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 shadow-sm min-h-[560px] flex flex-col justify-between">
+        <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-sm min-h-[460px] flex flex-col justify-between">
           {currentItem ? (
-            <div className="space-y-6 flex-1">
+            <div className="space-y-4 flex-1">
               {/* Question Item Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-0.5 rounded-lg bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 font-bold text-xs uppercase tracking-wide">
                     {currentItem.kind === 'reading_group'
@@ -853,14 +853,14 @@ export default function QuizPlayerPage() {
 
               {/* 1. SINGLE CHOICE QUESTION VIEW */}
               {currentItem.kind === 'question' && (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {/* Statement */}
-                  <div className="text-base text-slate-900 dark:text-slate-100 font-medium leading-relaxed">
+                  <div className="text-sm sm:text-base text-slate-900 dark:text-slate-100 font-medium leading-relaxed">
                     <RichMathText value={currentItem.questionText} />
                   </div>
 
                   {showBilingual && currentItem.questionTextCn && (
-                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
+                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
                       <span className="font-bold text-slate-400 mr-2">中文:</span>
                       <RichMathText value={currentItem.questionTextCn} />
                     </div>
@@ -881,21 +881,21 @@ export default function QuizPlayerPage() {
                       onChange={(value) => handleSelectAnswer(currentItem.id, value)}
                     />
                   ) : (
-                  <div className="space-y-3 pt-2">
+                  <div className="grid grid-cols-1 gap-2 pt-1 md:grid-cols-2">
                     {(currentItem.options || currentItem.answers || []).map((opt) => {
                       const isSelected = answers[currentItem.id] === opt.key;
                       return (
                         <div
                           key={opt.key}
                           onClick={() => handleSelectAnswer(currentItem.id, opt.key)}
-                          className={`p-4 rounded-2xl border text-sm cursor-pointer transition-all flex items-start gap-3.5 ${
+                          className={`min-h-14 p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm cursor-pointer transition-all flex items-start gap-2.5 ${
                             isSelected
                               ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 text-blue-900 dark:text-blue-100 ring-2 ring-blue-500/30 font-medium shadow-sm'
                               : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-200'
                           }`}
                         >
                           <span
-                            className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 transition-colors ${
+                            className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0 transition-colors ${
                               isSelected
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
@@ -903,10 +903,10 @@ export default function QuizPlayerPage() {
                           >
                             {opt.key}
                           </span>
-                          <div className="flex-1 pt-0.5">
+                          <div className="min-w-0 flex-1">
                             <RichMathText value={opt.text} />
                             {showBilingual && opt.textCn && (
-                              <div className="text-xs text-slate-400 mt-1">
+                              <div className="mt-0.5 text-[11px] text-slate-400">
                                 <RichMathText value={opt.textCn} />
                               </div>
                             )}
@@ -1075,7 +1075,7 @@ export default function QuizPlayerPage() {
           )}
 
           {/* Bottom Pagination Bar */}
-          <div className="flex items-center justify-between pt-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               disabled={currentItemIndex === 0}
@@ -1103,7 +1103,7 @@ export default function QuizPlayerPage() {
         </div>
 
         {/* Right Sidebar: Palette Grid */}
-        <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 shadow-sm">
+        <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
               Bảng câu hỏi ({flattenedQuestions.length})

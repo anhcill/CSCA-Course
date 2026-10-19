@@ -327,6 +327,9 @@ const serializeAssignment = (row) => {
   instructor_avatar: row.grader_avatar || row.instructor_avatar || null,
   rubric: parseJsonArray(row.rubric_criteria),
   accommodation: row.accommodation || null,
+  attempt_limit: row.attempt_limit === null || row.attempt_limit === undefined ? null : Number(row.attempt_limit),
+  attempt_count: row.attempt_count === null || row.attempt_count === undefined ? 0 : Number(row.attempt_count),
+  attempt_number: row.attempt_number === null || row.attempt_number === undefined ? null : Number(row.attempt_number),
   revision: Number(row.revision || 1),
   return_requested: Boolean(row.return_requested),
   return_reason: row.return_reason || "",
@@ -468,7 +471,8 @@ router.get("/", protectRoute, async (req, res) => {
                 sg.score, sg.feedback_text, sg.graded_at,
                 a.class_session_id, NULL::varchar AS activity_scope, assignment_session.title AS session_title,
                 assignment_session.start_time AS session_start, assignment_session.end_time AS session_end,
-                NULL::timestamptz AS available_from, NULL::timestamptz AS available_until, lc.title AS class_title,
+                 NULL::timestamptz AS available_from, NULL::timestamptz AS available_until, lc.title AS class_title,
+                 NULL::integer AS attempt_limit, NULL::bigint AS attempt_count, NULL::integer AS attempt_number,
                  CASE WHEN sg.score IS NOT NULL THEN 'graded'
                      WHEN s.id IS NOT NULL THEN s.status
                       WHEN COALESCE(assignment_accommodation.due_at, a.due_date) IS NOT NULL AND COALESCE(assignment_accommodation.due_at, a.due_date) < NOW() THEN 'late'
@@ -500,7 +504,10 @@ router.get("/", protectRoute, async (req, res) => {
                 qa.score, NULL::text AS feedback_text, qa.submitted_at AS graded_at,
                 q.class_session_id, q.activity_scope, quiz_session.title AS session_title,
                 quiz_session.start_time AS session_start, quiz_session.end_time AS session_end,
-                q.available_from, q.available_until, quiz_lc.title AS class_title,
+                 q.available_from, q.available_until, quiz_lc.title AS class_title,
+                 COALESCE(quiz_accommodation.attempt_limit_override, q.attempt_limit, 1)::integer AS attempt_limit,
+                 COALESCE(quiz_attempt_stats.attempt_count, 0)::bigint AS attempt_count,
+                 qa.attempt_number::integer AS attempt_number,
                  CASE WHEN qa.status = 'submitted' THEN 'graded'
                       WHEN q.activity_scope = 'homework' AND COALESCE(quiz_accommodation.due_at, q.due_date) IS NOT NULL AND COALESCE(quiz_accommodation.due_at, q.due_date) < NOW() THEN 'late'
                      ELSE 'todo' END AS status
@@ -509,7 +516,18 @@ router.get("/", protectRoute, async (req, res) => {
          JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
          LEFT JOIN live_classes quiz_lc ON quiz_lc.id = q.live_class_id
          LEFT JOIN class_sessions quiz_session ON quiz_session.id = q.class_session_id
-         LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.user_id = $1
+          LEFT JOIN LATERAL (
+            SELECT latest_attempt.*
+            FROM quiz_attempts latest_attempt
+            WHERE latest_attempt.quiz_id = q.id AND latest_attempt.user_id = $1
+            ORDER BY latest_attempt.attempt_number DESC, latest_attempt.id DESC
+            LIMIT 1
+          ) qa ON true
+          LEFT JOIN LATERAL (
+            SELECT COUNT(*)::bigint AS attempt_count
+            FROM quiz_attempts counted_attempt
+            WHERE counted_attempt.quiz_id = q.id AND counted_attempt.user_id = $1
+          ) quiz_attempt_stats ON true
           LEFT JOIN assessment_accommodations quiz_accommodation
             ON quiz_accommodation.assessment_type = 'quiz' AND quiz_accommodation.assessment_id = q.id
             AND quiz_accommodation.user_id = $1 AND quiz_accommodation.status = 'active'

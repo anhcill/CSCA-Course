@@ -79,6 +79,16 @@ function formatDateTime(value) {
     : "Chưa xác định";
 }
 
+function quizAttemptInfo(item) {
+  const limit = Math.max(1, Number(item.attempt_limit || item.attemptLimit || 1));
+  const used = Math.max(0, Number(item.attempt_count || item.attemptCount || item.attempt_number || 0));
+  return { limit, used, remaining: Math.max(0, limit - used) };
+}
+
+function activityTimestamp(item) {
+  return timestamp(item.graded_at || item.submitted_at || item.updated_at || item.created_at) || 0;
+}
+
 const typeStyle = {
   quiz: { icon: ClipboardList, className: "bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300" },
   essay: { label: "Bài tự luận", icon: FilePenLine, className: "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300" },
@@ -99,7 +109,14 @@ const statusStyle = {
 
 function actionFor(item, type, status) {
   if (status === "graded") {
-    if (type === "quiz") return { label: "Xem lại bài thi", tone: "success" };
+    if (type === "quiz") {
+      const { remaining } = quizAttemptInfo(item);
+      const closesAt = timestamp(item.available_until || item.due_date || item.session_end);
+      if (remaining > 0 && (!closesAt || closesAt > Date.now())) {
+        return { label: `Làm lại · còn ${remaining} lượt`, tone: "primary" };
+      }
+      return { label: "Xem lại bài thi", tone: "success" };
+    }
     if (type === "speaking") return { label: "Xem kết quả", tone: "success" };
     return { label: "Xem bài & nhận xét", tone: "success" };
   }
@@ -169,24 +186,64 @@ export default function AssignmentListPage() {
     };
   }, [loadAssignments]);
 
-  const counts = useMemo(() => assignments.reduce((result, assignment) => {
+  // Older API responses may contain one row per quiz attempt. Collapse them so
+  // every assignment/quiz always occupies exactly one card in the list.
+  const uniqueAssignments = useMemo(() => {
+    const groups = new Map();
+    assignments.forEach((assignment) => {
+      const key = `${itemType(assignment)}:${assignment.id}`;
+      const current = groups.get(key) || [];
+      current.push(assignment);
+      groups.set(key, current);
+    });
+
+    return Array.from(groups.values()).map((group) => {
+      const latest = [...group].sort((left, right) => {
+        const attemptDelta = Number(right.attempt_number || 0) - Number(left.attempt_number || 0);
+        return attemptDelta || activityTimestamp(right) - activityTimestamp(left);
+      })[0];
+      if (itemType(latest) !== "quiz") return latest;
+
+      const inferredAttemptCount = Math.max(
+        group.length,
+        ...group.map((item) => Number(item.attempt_count || item.attempt_number || 0))
+      );
+      return { ...latest, attempt_count: inferredAttemptCount };
+    });
+  }, [assignments]);
+
+  const counts = useMemo(() => uniqueAssignments.reduce((result, assignment) => {
     result[statusBucket(itemStatus(assignment))] += 1;
     return result;
-  }, { todo: 0, submitted: 0, graded: 0, late: 0 }), [assignments]);
+  }, { todo: 0, submitted: 0, graded: 0, late: 0 }), [uniqueAssignments]);
 
-  const visibleAssignments = useMemo(() => assignments.filter((assignment) => {
+  const visibleAssignments = useMemo(() => uniqueAssignments.filter((assignment) => {
     const matchesStatus = statusFilter === "all" || statusBucket(itemStatus(assignment)) === statusFilter;
     const needle = search.trim().toLocaleLowerCase();
     const matchesSearch = !needle || [assignment.title, assignment.description, assignment.course_title].some((value) => String(value || "").toLocaleLowerCase().includes(needle));
     return matchesStatus && matchesSearch;
   }).sort((left, right) => {
-    const priority = (item) => item.session_start && new Date(item.session_start).getTime() >= Date.now() ? 0 : item.session_start ? 2 : 1;
-    const priorityDelta = priority(left) - priority(right);
-    if (priorityDelta) return priorityDelta;
-    const leftTime = new Date(left.session_start || left.due_date || "9999-12-31").getTime();
-    const rightTime = new Date(right.session_start || right.due_date || "9999-12-31").getTime();
-    return leftTime - rightTime;
-  }), [assignments, search, statusFilter]);
+    const leftStatus = statusBucket(itemStatus(left));
+    const rightStatus = statusBucket(itemStatus(right));
+
+    if (statusFilter === "all") {
+      const statusPriority = { todo: 0, submitted: 1, graded: 2, late: 3 };
+      const statusDelta = statusPriority[leftStatus] - statusPriority[rightStatus];
+      if (statusDelta) return statusDelta;
+    }
+
+    if ((statusFilter === "todo" || statusFilter === "all") && leftStatus === "todo" && rightStatus === "todo") {
+      const leftDeadline = timestamp(left.available_from || left.session_start || left.due_date) ?? Number.POSITIVE_INFINITY;
+      const rightDeadline = timestamp(right.available_from || right.session_start || right.due_date) ?? Number.POSITIVE_INFINITY;
+      return leftDeadline - rightDeadline;
+    }
+
+    if (leftStatus === "late" && rightStatus === "late") {
+      return (timestamp(right.due_date || right.session_end) || 0) - (timestamp(left.due_date || left.session_end) || 0);
+    }
+
+    return activityTimestamp(right) - activityTimestamp(left);
+  }), [search, statusFilter, uniqueAssignments]);
 
   const buildPath = (assignment) => {
     const isQuiz = itemType(assignment) === "quiz";
@@ -205,7 +262,7 @@ export default function AssignmentListPage() {
               ["submitted", "Đã nộp", counts.submitted],
               ["graded", "Đã chấm", counts.graded],
               ["late", "Quá hạn", counts.late],
-              ["all", "Tất cả", assignments.length],
+              ["all", "Tất cả", uniqueAssignments.length],
             ].map(([value, label, count]) => (
               <button
                 key={value}
@@ -263,6 +320,7 @@ export default function AssignmentListPage() {
               const Icon = typeConfig.icon;
               const isHomeworkQuiz = type === "quiz" && quizScope(assignment) === "homework";
               const typeLabel = type === "quiz" ? (isHomeworkQuiz ? "Quiz về nhà" : "Quiz tại lớp") : typeConfig.label;
+              const attemptInfo = type === "quiz" ? quizAttemptInfo(assignment) : null;
               const action = actionFor(assignment, type, status);
               const submittedAt = assignment.submitted_at ? formatDateTime(assignment.submitted_at) : null;
               return (
@@ -283,6 +341,11 @@ export default function AssignmentListPage() {
                           {essayQuiz && (
                             <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
                               Có phần tự luận
+                            </span>
+                          )}
+                          {attemptInfo && (
+                            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 dark:bg-sky-950/60 dark:text-sky-300">
+                              {attemptInfo.limit === 1 ? "Chỉ làm 1 lần" : `Được làm ${attemptInfo.limit} lần`}
                             </span>
                           )}
                           <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${statusConfig.className}`}>
@@ -328,6 +391,11 @@ export default function AssignmentListPage() {
                             </>
                           )}
                           {submittedAt && <span className="font-semibold text-blue-600 dark:text-sky-400">Đã nộp: {submittedAt}</span>}
+                          {attemptInfo && (
+                            <span className="font-semibold text-violet-700 dark:text-violet-300">
+                              Lượt làm: {attemptInfo.used}/{attemptInfo.limit}
+                            </span>
+                          )}
                           {Number(assignment.max_score) > 0 && status !== "graded" && <span>Thang điểm: {assignment.max_score}</span>}
                         </div>
                       </div>
