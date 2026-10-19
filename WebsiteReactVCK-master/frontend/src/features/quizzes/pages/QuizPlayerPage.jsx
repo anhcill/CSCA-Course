@@ -242,11 +242,17 @@ export default function QuizPlayerPage() {
             title: 'Truy cập bài thi bị từ chối',
             message: 'Bạn chưa ghi danh vào lớp học này hoặc không có quyền tham gia làm đề thi này.',
           });
-        } else if (status === 410 || code === 'EXPIRED' || msg.includes('expired') || msg.includes('hết hạn')) {
+        } else if (code === 'QUIZ_NOT_OPEN' || msg.includes('chưa mở') || msg.includes('chưa đến giờ')) {
+          setLoadError({
+            type: 'not_open',
+            title: 'Chưa đến giờ làm bài thi nha! ⏰',
+            message: msg || (opensAt ? `Bài kiểm tra chưa đến giờ mở đâu nè! ⏰ Bài thi sẽ bắt đầu lúc ${new Date(opensAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}. Bạn chuẩn bị ôn bài xíu rồi quay lại nhé! ✨` : 'Bài kiểm tra chưa đến giờ mở đâu nè! ⏰ Bạn vui lòng quay lại sau nha! ✨'),
+          });
+        } else if (status === 410 || code === 'EXPIRED' || code === 'QUIZ_CLOSED' || msg.includes('expired') || msg.includes('đã đóng') || msg.includes('hết hạn')) {
           setLoadError({
             type: 'expired',
-            title: 'Bài kiểm tra đã hết hạn',
-            message: 'Thời hạn mở đề thi đã kết thúc. Vui lòng liên hệ giảng viên nếu bạn cần làm bù.',
+            title: 'Bài kiểm tra đã đóng 🔒',
+            message: msg || 'Thời hạn mở đề thi đã kết thúc. Vui lòng liên hệ giảng viên nếu bạn cần làm bù nhé!',
           });
         } else if (status === 404 || code === 'NOT_FOUND') {
           setLoadError({
@@ -513,21 +519,55 @@ export default function QuizPlayerPage() {
   }
 
   if (loadError) {
+    const backPath = (courseId && classId)
+      ? `/lms/courses/${courseId}/classes/${classId}/assignments`
+      : '/lms/assignments';
+
     return (
       <div className="fixed inset-0 z-[1000] flex h-dvh items-center justify-center overflow-y-auto bg-slate-100 p-4 dark:bg-slate-950">
         <div className="max-w-lg w-full">
-          {loadError.type === 'permission' ? (
+          {loadError.type === 'not_open' ? (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-sky-100 dark:border-sky-900/60 p-8 shadow-2xl text-center space-y-5">
+              <div className="w-16 h-16 rounded-3xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto text-3xl shadow-xs">
+                ⏰
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                  {loadError.title}
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-sm mx-auto leading-relaxed">
+                  {loadError.message}
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(backPath)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition-colors"
+                >
+                  Quay lại danh sách bài tập
+                </button>
+                <button
+                  type="button"
+                  onClick={loadQuiz}
+                  className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs transition-colors shadow-sm"
+                >
+                  Thử lại
+                </button>
+              </div>
+            </div>
+          ) : loadError.type === 'permission' ? (
             <PermissionDeniedState
               title={loadError.title}
               message={loadError.message}
-              redirectPath="/lms/assignments"
+              redirectPath={backPath}
             />
           ) : loadError.type === 'not_found' || loadError.type === 'empty' ? (
             <EmptyState
               title={loadError.title}
               description={loadError.message}
               actionLabel="Về danh sách bài thi"
-              actionTo="/lms/assignments"
+              actionTo={backPath}
             />
           ) : (
             <ErrorState

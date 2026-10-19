@@ -22,7 +22,7 @@ const router = express.Router();
 const validationError = (res, message) => res.status(400).json({ success: false, message, errorCode: "VALIDATION_ERROR" });
 const notFound = (res, message) => res.status(404).json({ success: false, message, errorCode: "NOT_FOUND" });
 const forbidden = (res, message) => res.status(403).json({ success: false, message, errorCode: "FORBIDDEN" });
-const conflict = (res, message, errorCode = "CONFLICT") => res.status(409).json({ success: false, message, errorCode });
+const conflict = (res, message, errorCode = "CONFLICT", extra = {}) => res.status(409).json({ success: false, message, errorCode, ...extra });
 const internalError = (res, message) => res.status(500).json({ success: false, message, errorCode: "INTERNAL_ERROR" });
 
 const parsePositiveId = (value) => {
@@ -335,10 +335,28 @@ const resultPayload = ({ quiz, attempt, computed, alreadySubmitted = false, gami
 
 const quizWindowError = (res, error) => {
   const notOpen = error.message === "QUIZ_NOT_OPEN";
+  const at = notOpen ? error.availability?.opensAt : error.availability?.closesAt;
+  const timeFormatted = at
+    ? new Date(at).toLocaleString("vi-VN", {
+        timeZone: "Asia/Ho_Chi_Minh",
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : "";
+  const message = notOpen
+    ? (timeFormatted
+        ? `Bài kiểm tra chưa đến giờ mở đâu nè! ⏰ Bài thi sẽ bắt đầu lúc ${timeFormatted}. Bạn chuẩn bị ôn bài xíu rồi quay lại nhé! ✨`
+        : "Bài kiểm tra chưa đến giờ mở đâu nè! ⏰ Bạn vui lòng quay lại sau nha! ✨")
+    : "Bài kiểm tra đã đóng thời gian làm bài rồi bạn ơi! Hệ thống không thể mở thêm lượt làm bài mới.";
+
   return conflict(
     res,
-    notOpen ? "Quiz chưa mở" : "Quiz đã đóng. Hệ thống không thể mở thêm lượt làm bài.",
+    message,
     notOpen ? "QUIZ_NOT_OPEN" : "QUIZ_CLOSED",
+    { opensAt: error.availability?.opensAt || null, closesAt: error.availability?.closesAt || null },
   );
 };
 
