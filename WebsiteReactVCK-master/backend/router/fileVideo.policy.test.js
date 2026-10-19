@@ -10,6 +10,7 @@ const invoke = async (router, method, path, { params = {}, query = {}, body = {}
     statusCode: 200, body: null, location: null,
     status(code) { this.statusCode = code; return this; },
     json(value) { this.body = value; return this; },
+    send(value) { this.body = value; return this; },
     redirect(code, location) { this.statusCode = code; this.location = location; return this; },
   };
   await layer.route.stack.at(-1).handle({ params, query, body, user, file, ip: "127.0.0.1" }, response);
@@ -139,10 +140,10 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   assert.equal((await download(learnerA, privateFile.id)).statusCode, 403);
   assert.equal((await download(learnerB, classOnly.id)).statusCode, 403);
   const inlinePdf = await download(learnerB, courseWide.id);
-  assert.equal(inlinePdf.statusCode, 302);
-  assert.equal(new URL(inlinePdf.location).searchParams.get("response-content-disposition"),
-    `inline; filename="COURSE-${classA.id}.pdf"`);
-  assert.equal(new URL(inlinePdf.location).searchParams.get("response-content-type"), "application/pdf");
+  assert.equal(inlinePdf.statusCode, 200);
+  assert.match(inlinePdf.body, /CHỈ XEM/);
+  assert.match(inlinePdf.body, /#toolbar=0&amp;navpanes=0&amp;scrollbar=1/);
+  assert.doesNotMatch(inlinePdf.body, />Tải/);
   const forcedDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
     user: learnerB, params: { fileId: courseWide.id }, query: { download: "1" },
   });

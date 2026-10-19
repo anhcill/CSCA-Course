@@ -76,6 +76,34 @@ const INLINE_VIEW_MIME_TYPES = new Set([
   "text/plain",
 ]);
 
+const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (character) => ({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  "\"": "&quot;",
+  "'": "&#39;",
+}[character]));
+
+const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${escapeHtml(filename)}</title>
+  <style>
+    *{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden;background:#0f172a;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    header{height:52px;display:flex;align-items:center;gap:12px;padding:0 16px;background:#0f172a;color:#fff;border-bottom:1px solid #334155}
+    strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.badge{flex:none;border:1px solid #38bdf8;border-radius:999px;padding:4px 8px;color:#7dd3fc;font-size:10px;font-weight:800;letter-spacing:.08em}
+    button{margin-left:auto;flex:none;border:1px solid #475569;border-radius:9px;background:#1e293b;color:#e2e8f0;padding:7px 12px;font-weight:700;cursor:pointer}button:hover{background:#334155}
+    main{position:fixed;inset:52px 0 0;overflow:hidden}iframe{position:absolute;top:-56px;left:0;width:100%;height:calc(100% + 56px);border:0;background:#334155}
+  </style>
+</head>
+<body>
+  <header><span class="badge">CHỈ XEM</span><strong>${escapeHtml(filename)}</strong><button type="button" onclick="history.length > 1 ? history.back() : window.close()">Đóng</button></header>
+  <main><iframe title="${escapeHtml(filename)}" src="${escapeHtml(`${signedUrl}#toolbar=0&navpanes=0&scrollbar=1`)}"></iframe></main>
+</body>
+</html>`;
+
 const classAccess = async (classId, user) => {
   const result = await query(
     `SELECT lc.id, lc.course_id, lc.instructor_id, lc.title, lc.allow_file_download,
@@ -761,6 +789,19 @@ router.get("/files/:fileId/download", protectRoute, requireManagedLearner, async
         "Pragma": "no-cache",
         "Expires": "0",
       });
+    }
+    if (req.user.role === "user" && access.canDownload === false
+        && access.file.mime_type === "application/pdf" && !forceDownload) {
+      if (typeof res.set === "function") {
+        res.set({
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy": "default-src 'none'; frame-src https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+        });
+      }
+      return res.status(200).send(protectedPdfViewerHtml({
+        filename: access.file.original_name,
+        signedUrl: downloadUrl,
+      }));
     }
     return res.redirect(302, downloadUrl);
   } catch (error) {
