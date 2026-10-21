@@ -199,7 +199,7 @@ function AppRoutes() {
       <Route path="/lms/teach/quizzes/new" element={<MoliQuizEditorPage />} />
       <Route path="/lms/teach/quizzes/:quizId/edit" element={<MoliQuizEditorPage />} />
       <Route path="/lms/admin/curriculum" element={<Navigate to="/admin/curriculum" replace />} />
-      <Route path="/lms/admin/grading" element={<Navigate to="/admin/grading" replace />} />
+      <Route path="/lms/admin/grading" element={<Navigate to="/lms/teacher/quizzes" replace />} />
       <Route path="/lms/admin/courses" element={<Navigate to="/admin/courses" replace />} />
       <Route path="/lms/admin/classes" element={<Navigate to="/admin/classes" replace />} />
       <Route path="/lms/admin/calendar" element={<Navigate to="/admin/calendar" replace />} />
