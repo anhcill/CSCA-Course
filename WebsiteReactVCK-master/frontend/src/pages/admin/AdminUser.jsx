@@ -10,13 +10,30 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiUserCheck,
-  FiAlertTriangle
+  FiAlertTriangle,
+  FiMonitor,
+  FiSmartphone,
+  FiWifi
 } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { useAuthContext } from "../../context/AuthContext";
 import useCUDUser from "../../hooks/useCUDUser";
 import { fetchAdminUsers, toggleUserLockStatus } from "../../features/api/lmsClient";
+import { fetchAdminTrustedDevices, removeAdminTrustedDevice } from "../../features/api/accountSecurityClient";
 import Loading from "../../components/Loading.jsx";
+
+const formatSecurityTime = (value) => value
+  ? new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value))
+  : "Chưa có dữ liệu";
+
+const isMobileDevice = (device) => /iphone|ipad|android|mobile/i.test(
+  `${device?.deviceName || ""} ${device?.userAgent || ""}`,
+);
+
+const LOCK_REASON_LABELS = {
+  DEVICE_LIMIT_ABUSE: "Cố đăng nhập thiết bị thứ ba quá 3 lần",
+  ADMIN_LOCK: "Quản trị viên khóa thủ công",
+};
 
 export default function AdminUser() {
   const { createUser, updateUser, deleteUser } = useCUDUser();
@@ -44,6 +61,9 @@ export default function AdminUser() {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [detailUser, setDetailUser] = useState(null);
+  const [detailDevices, setDetailDevices] = useState({ limit: null, used: 0, devices: [], security: null });
+  const [detailDevicesLoading, setDetailDevicesLoading] = useState(false);
+  const [detailDevicesError, setDetailDevicesError] = useState("");
 
   // Confirm dialog modal state
   const [confirmDialog, setConfirmDialog] = useState({
@@ -68,6 +88,20 @@ export default function AdminUser() {
   const [submitting, setSubmitting] = useState(false);
 
   const totalPages = Math.max(1, serverTotalPages);
+
+  const loadDetailDevices = useCallback(async (userId) => {
+    if (!userId) return;
+    try {
+      setDetailDevicesLoading(true);
+      setDetailDevicesError("");
+      const response = await fetchAdminTrustedDevices(userId);
+      setDetailDevices(response?.data || { limit: null, used: 0, devices: [], security: null });
+    } catch (error) {
+      setDetailDevicesError(error?.message || "Không thể tải thiết bị tin cậy.");
+    } finally {
+      setDetailDevicesLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
@@ -113,6 +147,16 @@ export default function AdminUser() {
       controller.abort();
     };
   }, [currentPage, pageSize, debouncedSearch, roleFilter, statusFilter, refreshIndex, searchPending]);
+
+  useEffect(() => {
+    if (!detailUser?.id) {
+      setDetailDevices({ limit: null, used: 0, devices: [], security: null });
+      setDetailDevicesError("");
+      return;
+    }
+    setDetailDevices({ limit: null, used: 0, devices: [], security: null });
+    loadDetailDevices(detailUser.id);
+  }, [detailUser?.id, loadDetailDevices]);
 
   // Open Form Modal for Create or Edit
   const handleOpenFormModal = (user = null) => {
@@ -222,7 +266,9 @@ export default function AdminUser() {
         title: willLock ? "Xác Nhận Khóa Tài Khoản" : "Mở Khóa Tài Khoản",
         message: willLock
           ? `Học viên/người dùng "${user.username}" sẽ bị đăng xuất ngay lập tức và không thể truy cập LMS.`
-          : `Khôi phục quyền truy cập LMS cho tài khoản "${user.username}".`,
+          : user.lockedReason === "DEVICE_LIMIT_ABUSE"
+            ? `Mở khóa tài khoản "${user.username}" và đặt lại số lần vi phạm. Hai vị trí thiết bị vẫn được giữ nguyên; hãy xóa một thiết bị cũ nếu người dùng cần đăng nhập máy mới.`
+            : `Khôi phục quyền truy cập LMS cho tài khoản "${user.username}".`,
         confirmLabel: willLock ? "Khóa Tài Khoản" : "Mở Khóa Ngay",
         confirmVariant: willLock ? "danger" : "primary",
         onConfirm: async () => {
@@ -245,6 +291,35 @@ export default function AdminUser() {
     },
     [authUser, refetchUsers]
   );
+
+  const handleRemoveTrustedDevice = useCallback((device) => {
+    if (!detailUser?.id) return;
+    setConfirmDialog({
+      isOpen: true,
+      title: "Xóa Thiết Bị Tin Cậy",
+      message: device.isCurrent
+        ? `Đây là thiết bị admin đang sử dụng. Xóa “${device.deviceName}” sẽ thu hồi phiên hiện tại ngay sau thao tác.`
+        : `Xóa “${device.deviceName}” khỏi tài khoản ${detailUser.username}? Tất cả phiên đăng nhập trên thiết bị này sẽ bị thu hồi ngay.`,
+      confirmLabel: "Xóa Thiết Bị",
+      confirmVariant: "danger",
+      onConfirm: async () => {
+        try {
+          await removeAdminTrustedDevice(detailUser.id, device.id);
+          toast.success("Đã xóa thiết bị và giải phóng một vị trí đăng nhập.");
+          if (device.isCurrent) {
+            window.dispatchEvent(new CustomEvent("csca:session-expired"));
+          } else {
+            await loadDetailDevices(detailUser.id);
+            refetchUsers();
+          }
+        } catch (error) {
+          toast.error(error?.message || "Không thể xóa thiết bị tin cậy.");
+        } finally {
+          setConfirmDialog((current) => ({ ...current, isOpen: false }));
+        }
+      },
+    });
+  }, [detailUser, loadDetailDevices, refetchUsers]);
 
   return (
     <div className="space-y-6 font-sans pb-16">
@@ -714,7 +789,7 @@ export default function AdminUser() {
           ══════════════════════════════════════════════════════════ */}
       {detailUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-6 sm:p-8 max-w-sm w-full space-y-5 shadow-2xl text-center">
+          <div className="max-h-[92vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-3xl border border-gray-200 bg-white p-6 text-center shadow-2xl dark:border-gray-800 dark:bg-gray-900 sm:p-8">
             <img
               src={
                 detailUser.avatarUrl ||
@@ -761,6 +836,94 @@ export default function AdminUser() {
                 <span className="text-gray-700 dark:text-gray-300 font-mono">
                   {detailUser.createdAt ? new Date(detailUser.createdAt).toLocaleDateString("vi-VN") : "N/A"}
                 </span>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-left">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-black text-gray-900 dark:text-white">Thiết bị tin cậy</h4>
+                  <p className="text-[11px] text-gray-500">
+                    {detailDevices.limit === null
+                      ? `${detailDevices.used} thiết bị · giảng viên/admin không bị giới hạn`
+                      : `${detailDevices.used}/${detailDevices.limit} vị trí đã dùng · chỉ admin được quyền xóa`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadDetailDevices(detailUser.id)}
+                  disabled={detailDevicesLoading}
+                  className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300"
+                >
+                  {detailDevicesLoading ? "Đang tải..." : "Làm mới"}
+                </button>
+              </div>
+
+              {(detailDevices.security?.lockedReason || detailUser.lockedReason || detailDevices.security?.deviceLimitAttempts > 0 || detailUser.deviceLimitAttempts > 0) && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-[11px] text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                  <p className="font-black">
+                    Lý do khóa: {LOCK_REASON_LABELS[detailDevices.security?.lockedReason || detailUser.lockedReason] || "Chưa bị khóa tự động"}
+                  </p>
+                  <p className="mt-1">
+                    Số lần vi phạm thiết bị hiện tại: {detailDevices.security?.deviceLimitAttempts ?? detailUser.deviceLimitAttempts ?? 0}/3
+                  </p>
+                  {(detailDevices.security?.deviceLimitLastAttemptAt || detailUser.deviceLimitLastAttemptAt) && (
+                    <p className="mt-1">
+                      Lần vi phạm gần nhất: {formatSecurityTime(detailDevices.security?.deviceLimitLastAttemptAt || detailUser.deviceLimitLastAttemptAt)}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {detailDevicesError && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
+                  {detailDevicesError}
+                </div>
+              )}
+
+              {!detailDevicesLoading && !detailDevicesError && detailDevices.devices.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-gray-200 p-5 text-center text-xs text-gray-500 dark:border-gray-700">
+                  Tài khoản chưa có thiết bị tin cậy.
+                </div>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {!detailDevicesLoading && detailDevices.devices.map((device) => {
+                  const DeviceIcon = isMobileDevice(device) ? FiSmartphone : FiMonitor;
+                  return (
+                    <div key={device.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/70">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                          <DeviceIcon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-black text-gray-900 dark:text-white">{device.deviceName}</p>
+                          {device.isCurrent && (
+                            <span className="mt-1 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                              Thiết bị admin hiện tại
+                            </span>
+                          )}
+                          <p className="mt-1 flex items-center gap-1 text-[10px] text-gray-500">
+                            <FiWifi /> IP gần nhất: {device.lastIp || "Không xác định"}
+                          </p>
+                          <p className="mt-1 text-[10px] text-gray-500">IP đầu tiên: {device.firstIp || "Không xác định"}</p>
+                          <p className="mt-1 text-[10px] text-gray-500">Đăng nhập: {formatSecurityTime(device.lastLoginAt)}</p>
+                          <p className="mt-1 text-[10px] text-gray-500">Ghi nhận từ: {formatSecurityTime(device.firstSeenAt)}</p>
+                          <p className="mt-1 text-[10px] text-gray-500">
+                            {device.activeSessions > 0 ? `${device.activeSessions} phiên còn hiệu lực` : "Không có phiên còn hiệu lực"}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTrustedDevice(device)}
+                        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-white py-2 text-[11px] font-bold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900 dark:bg-gray-900 dark:text-rose-300"
+                      >
+                        <FiTrash2 /> Xóa thiết bị
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

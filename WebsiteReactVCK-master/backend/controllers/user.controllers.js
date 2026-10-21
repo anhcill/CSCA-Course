@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { getClient, query } from "../db/connect.js";
-import generateTokenAndSetCookie, { jwtCookieOptions } from "../utils/generateToken.js";
+import generateTokenAndSetCookie, { getJwtExpirationDate, jwtCookieOptions } from "../utils/generateToken.js";
 import {
   clearGoogleOAuthCookie,
   consumeGoogleCallback,
@@ -16,6 +17,15 @@ import {
   sendPasswordChangedNotificationEmail,
 } from "../services/brevoEmail.service.js";
 import { getWelcomeScreenConfig, DEFAULT_WELCOME_CONFIG } from "../services/welcomeScreen.service.js";
+import {
+  TrustedDeviceAuthError,
+  establishLoginSession,
+  getTrustedDeviceLimitForRole,
+  getRequestLoginContext,
+  listTrustedDevicesForUser,
+  revokeSessionFromJwtPayload,
+  setTrustedDeviceCookie,
+} from "../services/trustedDevice.service.js";
 
 const PRESET_AVATAR_PATTERN = /^\/avatar\/avt_(?:[1-9]|[1-9]\d|1[01]\d|12[0-6])\.webp$/;
 const VALID_GENDERS = new Set(["male", "female", "other"]);
@@ -48,8 +58,28 @@ const GOOGLE_AUTH_ERRORS = new Set([
   "email_unverified",
   "account_conflict",
   "account_locked",
+  "device_limit",
+  "device_limit_locked",
   "oauth_failed",
 ]);
+
+const createPersistedLogin = async ({ user, req, res }) => {
+  const session = await establishLoginSession({
+    userId: user.id,
+    ...getRequestLoginContext(req),
+    expiresAt: getJwtExpirationDate(),
+  });
+  setTrustedDeviceCookie(res, session.deviceToken);
+  generateTokenAndSetCookie(user, res, session);
+  return session;
+};
+
+const sendTrustedDeviceError = (res, error) => res.status(error.status).json({
+  success: false,
+  message: error.message,
+  errorCode: error.errorCode,
+  ...(error.details ? { details: error.details } : {}),
+});
 
 const getFrontendUrl = () => {
   const value = process.env.FRONTEND_URL?.trim();
@@ -93,7 +123,6 @@ const findOrCreateGoogleUser = async ({ googleId, email, name, picture }) => {
         [googleId]
       );
       if (googleUsers[0]) {
-        await client.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [googleUsers[0].id]);
         await client.query("COMMIT");
         return googleUsers[0];
       }
@@ -115,7 +144,7 @@ const findOrCreateGoogleUser = async ({ googleId, email, name, picture }) => {
         const { rows } = await client.query(
           `UPDATE users
            SET google_id = $1, oauth_provider = 'google', email_verified = TRUE,
-               last_login_at = NOW()
+               updated_at = NOW()
            WHERE id = $2
            RETURNING *`,
           [googleId, emailUser.id]
@@ -176,7 +205,7 @@ export const handleGoogleCallback = async (req, res) => {
     if (user.is_locked) {
       return redirectGoogleResult(res, "google-error", "account_locked");
     }
-    generateTokenAndSetCookie(user, res);
+    await createPersistedLogin({ user, req, res });
     return redirectGoogleResult(res, "google-success");
   } catch (error) {
     clearGoogleOAuthCookie(res);
@@ -187,6 +216,18 @@ export const handleGoogleCallback = async (req, res) => {
     }
     if (error.message === "GOOGLE_ACCOUNT_CONFLICT") {
       return redirectGoogleResult(res, "google-error", "account_conflict");
+    }
+    if (error instanceof TrustedDeviceAuthError) {
+      const reason = error.errorCode === "ACCOUNT_LOCKED"
+        ? "account_locked"
+        : error.errorCode === "ACCOUNT_LOCKED_DEVICE_LIMIT"
+          ? "device_limit_locked"
+          : "device_limit";
+      return redirectGoogleResult(
+        res,
+        "google-error",
+        reason,
+      );
     }
     if (error.message.startsWith("OAUTH_STATE") || error.message === "OAUTH_CODE_MISSING") {
       return redirectGoogleResult(res, "google-error", "state_invalid");
@@ -378,11 +419,7 @@ export const login = async (req, res) => {
       return res.status(400).json({ success: false, message: "Tài khoản hoặc mật khẩu không đúng" });
     }
 
-    // Cập nhật last_login_at
-    await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
-
-    // Tạo JWT
-    generateTokenAndSetCookie(user, res);
+    await createPersistedLogin({ user, req, res });
 
     return res.status(200).json({
       success: true,
@@ -390,6 +427,9 @@ export const login = async (req, res) => {
     });
 
   } catch (error) {
+    if (error instanceof TrustedDeviceAuthError) {
+      return sendTrustedDeviceError(res, error);
+    }
     console.error("Login error:", error);
     return res.status(500).json({ success: false, message: "Lỗi server" });
   }
@@ -398,14 +438,41 @@ export const login = async (req, res) => {
 // ============================================================
 // LOGOUT
 // ============================================================
-export const logout = (req, res) => {
+export const logout = async (req, res) => {
   try {
+    const token = req.cookies?.jwt;
+    if (token) {
+      try {
+        const payload = jwt.verify(token, process.env.JWT_SECRET);
+        await revokeSessionFromJwtPayload(payload);
+      } catch {
+        // An expired/invalid JWT should never prevent the browser from clearing it.
+      }
+    }
     const { maxAge, ...cookieOptions } = jwtCookieOptions();
     res.clearCookie("jwt", cookieOptions);
     return res.status(200).json({ success: true, message: "Đăng xuất thành công" });
   } catch (error) {
     console.error("Logout error:", error);
     return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+export const getTrustedDevices = async (req, res) => {
+  try {
+    const devices = await listTrustedDevicesForUser(req.user.id, req.authSession?.trustedDeviceId);
+    return res.status(200).json({
+      success: true,
+      data: {
+        limit: getTrustedDeviceLimitForRole(req.user.role),
+        used: devices.length,
+        devices,
+        removalPolicy: "ADMIN_ONLY",
+      },
+    });
+  } catch (error) {
+    console.error("Get trusted devices error:", error);
+    return res.status(500).json({ success: false, message: "Không thể tải danh sách thiết bị" });
   }
 };
 
@@ -433,6 +500,7 @@ export const updateOwnProfile = async (req, res) => {
 
     const setClauses = [];
     const values = [];
+    let passwordChanged = false;
     const addUpdate = (column, value) => {
       values.push(value);
       setClauses.push(`${column} = $${values.length}`);
@@ -477,6 +545,7 @@ export const updateOwnProfile = async (req, res) => {
         return res.status(400).json({ success: false, message: "Mật khẩu hiện tại không đúng" });
       }
       addUpdate("password_hash", await bcrypt.hash(req.body.newPassword, 10));
+      passwordChanged = true;
     }
 
     if (setClauses.length === 0) {
@@ -488,6 +557,14 @@ export const updateOwnProfile = async (req, res) => {
       `UPDATE users SET ${setClauses.join(", ")} WHERE id = $${values.length}`,
       values
     );
+    if (passwordChanged) {
+      await query(
+        `UPDATE user_sessions
+         SET revoked_at = COALESCE(revoked_at, NOW())
+         WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL`,
+        [req.user.id, req.authSession?.id || 0],
+      );
+    }
     const user = await getUserDtoById(req.user.id);
     return res.status(200).json({ success: true, message: user });
   } catch (error) {
@@ -891,7 +968,12 @@ export const resetPassword = async (req, res) => {
         await client.query("ROLLBACK");
         return res.status(400).json({ success: false, message: "Mã xác thực không hợp lệ hoặc đã hết hạn" });
       }
-      await client.query('DELETE FROM user_sessions WHERE user_id = $1', [userResult.rows[0].id]);
+      await client.query(
+        `UPDATE user_sessions
+         SET revoked_at = COALESCE(revoked_at, NOW())
+         WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userResult.rows[0].id],
+      );
       await client.query("COMMIT");
     } catch (transactionError) {
       await client.query("ROLLBACK").catch(() => {});

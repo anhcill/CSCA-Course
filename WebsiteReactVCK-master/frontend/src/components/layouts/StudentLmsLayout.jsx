@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Sun,
+  Settings,
   UserRound,
   X,
   Clapperboard,
@@ -40,6 +41,7 @@ const STUDENT_NAV = [
   { label: "Bản ghi buổi học", path: "/lms/recordings", icon: Clapperboard },
   { label: "Điểm tổng quan", path: "/lms/analytics", icon: BarChart3 },
   { label: "Thông báo", path: "/lms/notifications", icon: Bell },
+  { label: "Cài đặt", path: "/lms/settings", icon: Settings },
 ];
 
 function Brand({ collapsed = false }) {

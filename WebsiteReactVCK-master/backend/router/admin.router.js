@@ -23,6 +23,7 @@ import {
   resetWelcomeScreenConfig,
   resetUserWelcomeSeen,
 } from "../services/welcomeScreen.service.js";
+import { getTrustedDeviceLimitForRole, listTrustedDevicesForUser } from "../services/trustedDevice.service.js";
 
 const router = express.Router();
 const adminOnly = [protectRoute, requireAdmin];
@@ -103,6 +104,10 @@ const safeUser = (row) => ({
   fullName: row.full_name || row.username,
   hourlyRate: Number(row.hourly_rate || 0),
   isLocked: Boolean(row.is_locked),
+  lockedReason: row.locked_reason || null,
+  lockedAt: row.locked_at || null,
+  deviceLimitAttempts: Number(row.device_limit_attempts || 0),
+  deviceLimitLastAttemptAt: row.device_limit_last_attempt_at || null,
   isVip: Boolean(row.is_vip),
   emailVerified: Boolean(row.email_verified),
   authProvider: row.oauth_provider || "local",
@@ -122,6 +127,8 @@ const auditUserState = (row) => ({
   avatarUrl: row.avatar_url || null,
   hourlyRate: Number(row.hourly_rate || 0),
   isLocked: Boolean(row.is_locked),
+  lockedReason: row.locked_reason || null,
+  deviceLimitAttempts: Number(row.device_limit_attempts || 0),
 });
 
 const auditCourseState = (row) => ({
@@ -159,6 +166,7 @@ const getCourse = async (courseId, db = { query }) => {
 const getUser = async (userId, db = { query }) => {
   const result = await db.query(
     `SELECT u.id, u.username, u.email, u.role, u.gender, u.avatar_url, u.is_locked,
+            u.locked_reason, u.locked_at, u.device_limit_attempts, u.device_limit_last_attempt_at,
             u.is_vip, u.email_verified, u.oauth_provider, u.password_hash,
             COALESCE(u.hourly_rate, 0)::numeric(12,2) AS hourly_rate,
             u.created_at, u.updated_at, sp.full_name
@@ -745,7 +753,9 @@ router.get("/users", ...adminOnly, async (req, res) => {
     params.push(limit, offset);
     const result = await query(
       `SELECT u.id, u.username, u.email, u.role, u.gender, u.avatar_url,
-              u.is_locked, u.is_vip, u.email_verified, u.oauth_provider,
+              u.is_locked, u.locked_reason, u.locked_at,
+              u.device_limit_attempts, u.device_limit_last_attempt_at,
+              u.is_vip, u.email_verified, u.oauth_provider,
               (u.password_hash IS NOT NULL) AS has_password,
               COALESCE(u.hourly_rate, 0)::numeric(12,2) AS hourly_rate,
               u.created_at, u.updated_at, COALESCE(sp.full_name, u.username) AS full_name,
@@ -806,11 +816,26 @@ router.patch("/users/:id/lock", ...adminOnly, async (req, res) => {
     const before = await getUser(userId, client);
     if (!before) { await client.query("ROLLBACK"); return sendError(res, 404, "Không tìm thấy người dùng", "NOT_FOUND"); }
     const result = await client.query(
-      `UPDATE users SET is_locked = $1, updated_at = NOW() WHERE id = $2
-       RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked, is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
+      `UPDATE users
+       SET is_locked = $1,
+           locked_reason = CASE WHEN $1 THEN 'ADMIN_LOCK' ELSE NULL END,
+           locked_at = CASE WHEN $1 THEN NOW() ELSE NULL END,
+           device_limit_attempts = CASE WHEN $1 THEN device_limit_attempts ELSE 0 END,
+           device_limit_last_attempt_at = CASE WHEN $1 THEN device_limit_last_attempt_at ELSE NULL END,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked,
+                 locked_reason, locked_at, device_limit_attempts, device_limit_last_attempt_at,
+                 is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
       [req.body.isLocked, userId],
     );
-    if (req.body.isLocked) await client.query("DELETE FROM user_sessions WHERE user_id = $1", [userId]);
+    if (req.body.isLocked) {
+      await client.query(
+        `UPDATE user_sessions SET revoked_at = COALESCE(revoked_at, NOW())
+         WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId],
+      );
+    }
     await recordAuditEvent({ db: client, actorId: req.user.id, action: req.body.isLocked ? "user.locked" : "user.unlocked", entityType: "user", entityId: userId, beforeState: auditUserState(before), afterState: auditUserState(result.rows[0]), metadata: { ip: req.ip } });
     await client.query("COMMIT");
     return res.json({ success: true, data: safeUser(result.rows[0]), message: req.body.isLocked ? "Đã khóa tài khoản" : "Đã mở khóa tài khoản" });
@@ -858,6 +883,12 @@ router.patch("/users/:id", ...adminOnly, async (req, res) => {
     if (req.body.isLocked !== undefined) {
       if (typeof req.body.isLocked !== "boolean") { await client.query("ROLLBACK"); return sendError(res, 422, "isLocked không hợp lệ", "VALIDATION_ERROR"); }
       add("is_locked", req.body.isLocked);
+      add("locked_reason", req.body.isLocked ? "ADMIN_LOCK" : null);
+      add("locked_at", req.body.isLocked ? new Date() : null);
+      if (!req.body.isLocked) {
+        add("device_limit_attempts", 0);
+        add("device_limit_last_attempt_at", null);
+      }
     }
     if (req.body.newPassword !== undefined) {
       const newPassword = normalizeText(req.body.newPassword, 200, { required: true });
@@ -869,11 +900,19 @@ router.patch("/users/:id", ...adminOnly, async (req, res) => {
       values.push(userId);
       const result = await client.query(
         `UPDATE users SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${values.length}
-         RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked, is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
+         RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked,
+                   locked_reason, locked_at, device_limit_attempts, device_limit_last_attempt_at,
+                   is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
         values,
       );
       after = result.rows[0];
-      if (req.body.isLocked === true) await client.query("DELETE FROM user_sessions WHERE user_id = $1", [userId]);
+      if (req.body.isLocked === true || req.body.newPassword !== undefined) {
+        await client.query(
+          `UPDATE user_sessions SET revoked_at = COALESCE(revoked_at, NOW())
+           WHERE user_id = $1 AND revoked_at IS NULL`,
+          [userId],
+        );
+      }
     }
     await recordAuditEvent({ db: client, actorId: req.user.id, action: before.is_locked !== after.is_locked ? (after.is_locked ? "user.locked" : "user.unlocked") : "user.updated", entityType: "user", entityId: userId, beforeState: auditUserState(before), afterState: auditUserState(after), metadata: { ip: req.ip } });
     await client.query("COMMIT");
@@ -882,6 +921,95 @@ router.patch("/users/:id", ...adminOnly, async (req, res) => {
     await client.query("ROLLBACK").catch(() => {});
     if (["REQUIRED", "INVALID_TEXT"].includes(error.message)) return sendError(res, 422, "Thông tin cập nhật không hợp lệ", "VALIDATION_ERROR");
     return handleDbError(res, error, "Không thể cập nhật người dùng");
+  } finally {
+    client.release();
+  }
+});
+
+// Trusted-device slots are intentionally admin-managed. End users can inspect
+// their devices, but only this route can release a slot.
+router.get("/users/:id/devices", ...adminOnly, async (req, res) => {
+  const userId = parseId(req.params.id);
+  if (!userId) return sendError(res, 422, "userId không hợp lệ", "VALIDATION_ERROR");
+
+  try {
+    const user = await getUser(userId);
+    if (!user) return sendError(res, 404, "Không tìm thấy người dùng", "NOT_FOUND");
+    const currentDeviceId = userId === Number(req.user.id) ? req.authSession?.trustedDeviceId : null;
+    const devices = await listTrustedDevicesForUser(userId, currentDeviceId);
+    return res.json({
+      success: true,
+      data: {
+        limit: getTrustedDeviceLimitForRole(user.role),
+        used: devices.length,
+        devices,
+        security: {
+          isLocked: Boolean(user.is_locked),
+          lockedReason: user.locked_reason || null,
+          lockedAt: user.locked_at || null,
+          deviceLimitAttempts: Number(user.device_limit_attempts || 0),
+          deviceLimitLastAttemptAt: user.device_limit_last_attempt_at || null,
+        },
+      },
+    });
+  } catch (error) {
+    return handleDbError(res, error, "Không thể tải danh sách thiết bị tin cậy");
+  }
+});
+
+router.delete("/users/:id/devices/:deviceId", ...adminOnly, async (req, res) => {
+  const userId = parseId(req.params.id);
+  const deviceId = parseId(req.params.deviceId);
+  if (!userId || !deviceId) return sendError(res, 422, "Thông tin thiết bị không hợp lệ", "VALIDATION_ERROR");
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const deviceResult = await client.query(
+      `SELECT id, user_id, device_name, user_agent, host(first_ip) AS first_ip,
+              host(last_ip) AS last_ip, first_seen_at, last_seen_at, last_login_at
+       FROM trusted_login_devices
+       WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+       FOR UPDATE`,
+      [deviceId, userId],
+    );
+    const device = deviceResult.rows[0];
+    if (!device) {
+      await client.query("ROLLBACK");
+      return sendError(res, 404, "Không tìm thấy thiết bị tin cậy", "NOT_FOUND");
+    }
+
+    await client.query(
+      `UPDATE user_sessions
+       SET revoked_at = COALESCE(revoked_at, NOW())
+       WHERE trusted_device_id = $1 AND revoked_at IS NULL`,
+      [deviceId],
+    );
+    await client.query(
+      `UPDATE trusted_login_devices
+       SET revoked_at = NOW(), revoked_by = $1
+       WHERE id = $2`,
+      [req.user.id, deviceId],
+    );
+    await recordAuditEvent({
+      db: client,
+      actorId: req.user.id,
+      action: "user.trusted_device.removed",
+      entityType: "trusted_login_device",
+      entityId: deviceId,
+      beforeState: device,
+      afterState: { ...device, revoked: true },
+      metadata: { ip: req.ip, targetUserId: userId },
+    });
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      data: { id: deviceId, userId },
+      message: "Đã xóa thiết bị tin cậy và thu hồi toàn bộ phiên đăng nhập của thiết bị này",
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    return handleDbError(res, error, "Không thể xóa thiết bị tin cậy");
   } finally {
     client.release();
   }

@@ -87,6 +87,7 @@ const MoliQuizPlayerPage = lazy(() => import("./features/quizzes/pages/QuizPlaye
 const QuizMathGalleryPage = lazy(() => import("./features/quizzes/pages/QuizMathGalleryPage.jsx"));
 const StudentVocabularyHubPage = lazy(() => import("./features/learning/pages/StudentVocabularyHubPage.jsx"));
 const StudentFormulaHubPage = lazy(() => import("./features/learning/pages/StudentFormulaHubPage.jsx"));
+const StudentSettingsPage = lazy(() => import("./features/learning/pages/StudentSettingsPage.jsx"));
 const AdminFormulaPage = lazy(() => import("./pages/admin/AdminFormulaPage.jsx"));
 
 const isTeacherLmsPath = (p) => (
@@ -141,6 +142,7 @@ function AppRoutes() {
       <Route path="/lms/recordings" element={<StudentRecordingsPage />} />
       <Route path="/lms/materials" element={<StudentFilesPage />} />
       <Route path="/lms/notifications" element={<NotificationCenterPage />} />
+      <Route path="/lms/settings" element={<StudentSettingsPage />} />
       <Route path="/lms/courses/:courseId" element={<CourseClassListPage />} />
       <Route path="/lms/courses/:courseId/classes" element={<CourseClassListPage />} />
       <Route path="/lms/courses/:courseId/classes/:classId" element={<CourseWorkspaceLayout />}>

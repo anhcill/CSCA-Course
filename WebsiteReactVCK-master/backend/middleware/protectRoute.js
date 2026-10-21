@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { query } from '../db/connect.js';
+import { TRUSTED_DEVICE_COOKIE, resolveAuthenticatedSession } from '../services/trustedDevice.service.js';
 
 const protectRoute = async (req, res, next) => {
   let token;
@@ -18,15 +18,8 @@ const protectRoute = async (req, res, next) => {
 
   try {
     const verified = jwt.verify(token, process.env.JWT_SECRET);
-    const { rows } = await query(
-      `SELECT id, username, email, role, avatar_url, gender,
-              is_vip, vip_expires_at, email_verified, is_locked, created_at,
-              is_management_managed, lms_account_status
-       FROM users WHERE id = $1`,
-      [verified.userId]
-    );
-
-    if (!rows[0]) {
+    const deviceToken = req.cookies?.[TRUSTED_DEVICE_COOKIE];
+    if (!verified.sessionId || !verified.sessionToken || !deviceToken) {
       return res.status(401).json({
         success: false,
         message: "Phiên đăng nhập không còn hợp lệ",
@@ -34,7 +27,23 @@ const protectRoute = async (req, res, next) => {
       });
     }
 
-    if (rows[0].is_locked) {
+    const authenticated = await resolveAuthenticatedSession({
+      userId: verified.userId,
+      sessionId: verified.sessionId,
+      sessionToken: verified.sessionToken,
+      deviceToken,
+      ipAddress: req.ip,
+    });
+
+    if (!authenticated) {
+      return res.status(401).json({
+        success: false,
+        message: "Phiên đăng nhập không còn hợp lệ",
+        errorCode: "UNAUTHENTICATED",
+      });
+    }
+
+    if (authenticated.user.is_locked) {
       return res.status(403).json({
         success: false,
         message: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.",
@@ -42,7 +51,8 @@ const protectRoute = async (req, res, next) => {
       });
     }
 
-    req.user = rows[0];
+    req.user = authenticated.user;
+    req.authSession = authenticated.authSession;
     next();
 
   } catch (error) {

@@ -199,6 +199,8 @@ export const AuthContextProvider = ({ children }) => {
                     email_unverified: 'Email Google chưa được xác minh.',
                     account_conflict: 'Không thể liên kết tài khoản Google với email này.',
                     account_locked: 'Tài khoản LMS chưa được kích hoạt hoặc đã bị tạm ngưng. Vui lòng liên hệ quản lý học viên.',
+                    device_limit: 'Tài khoản đã đủ 2 thiết bị tin cậy. Vui lòng liên hệ quản trị viên để xóa thiết bị cũ trước khi đăng nhập.',
+                    device_limit_locked: 'Tài khoản đã bị khóa vì đăng nhập từ thiết bị thứ ba quá 3 lần. Vui lòng liên hệ quản trị viên.',
                     oauth_failed: 'Đăng nhập Google thất bại. Vui lòng thử lại.',
                 };
                 toast.error(messages[reason] || messages.oauth_failed);
