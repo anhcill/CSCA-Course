@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  BarChart3, BookOpen, CalendarDays, ChevronRight, ClipboardCheck, FileQuestion,
+  BarChart3, BookOpen, CalendarDays, ChevronRight, FileQuestion,
   FilePlus2, FolderOpen, GraduationCap, Home, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Presentation, Settings, ShieldCheck, Users, Wallet, X,
 } from 'lucide-react';
 import Logo from '../Logo';
@@ -25,7 +25,6 @@ const TEACHER_NAV = [
   { label: 'Tài liệu học tập', path: '/lms/teach/files', icon: FolderOpen },
   { label: 'Đăng đề & Quiz', path: '/lms/teacher/quizzes', icon: FileQuestion, end: true },
   { label: 'Tạo đề mới', path: '/lms/teacher/quizzes/new', icon: FilePlus2 },
-  { label: 'Chấm bài', path: '/lms/teacher/grading', icon: ClipboardCheck },
   { label: 'Ngân hàng câu hỏi', path: '/lms/teach/question-bank', icon: FileQuestion },
   { label: 'Hỗ trợ học viên', path: '/lms/teach/support', icon: Users },
 ];
