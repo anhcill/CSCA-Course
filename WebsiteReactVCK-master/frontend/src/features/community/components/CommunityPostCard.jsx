@@ -1,9 +1,8 @@
-/* eslint-disable react/prop-types */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Heart, MessageSquare, Share2, Bookmark, MoreHorizontal, Trash2,
-  Send, Pin, CheckCircle2, ShieldCheck, GraduationCap, Sparkles, ExternalLink
+  Send, Pin, ShieldCheck, GraduationCap, Sparkles, ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { TOPIC_BADGES } from '../communityData';

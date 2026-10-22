@@ -1,4 +1,3 @@
-import React from "react";
 import { Video, Clock, School, Film } from "lucide-react";
 
 export default function RecordingStatsWidget({ totalRecordings = 0, totalMinutes = 0, totalClasses = 0 }) {

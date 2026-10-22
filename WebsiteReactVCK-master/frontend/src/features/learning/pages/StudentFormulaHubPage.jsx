@@ -1,18 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Binary,
-  BookOpen,
   Calendar,
   Check,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Copy,
-  Eye,
   GraduationCap,
-  ListFilter,
+  RefreshCw,
   Search,
-  Sparkles,
   Star,
   Table,
 } from "lucide-react";
@@ -43,6 +40,7 @@ function renderCachedKatex(latex, displayMode = false) {
 export default function StudentFormulaHubPage() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("sessions"); // "sessions" | "cheatsheet" | "starred"
   const [selectedClassId, setSelectedClassId] = useState("ALL");
   const [selectedSubject, setSelectedSubject] = useState("ALL"); // "ALL" | "MATH" | "PHYSICS" | "CHEMISTRY"
@@ -64,14 +62,16 @@ export default function StudentFormulaHubPage() {
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const res = await fetchFormulaSessions();
       const apiSessions = res?.data?.sessions;
-      if (Array.isArray(apiSessions)) {
-        setSessions(apiSessions);
-      }
+      if (!res?.success || !Array.isArray(apiSessions)) throw new Error(res?.message || "Dữ liệu công thức không hợp lệ");
+      setSessions(apiSessions);
     } catch (err) {
       console.error("Error loading formula sessions:", err);
+      setSessions([]);
+      setError(err.message || "Không thể tải danh sách công thức");
     } finally {
       setLoading(false);
     }
@@ -200,7 +200,7 @@ export default function StudentFormulaHubPage() {
 
   const handleToggleStar = async (formula) => {
     try {
-      await toggleFormulaStarApi(formula.id).catch(() => {});
+      await toggleFormulaStarApi(formula.id);
       setSessions((current) =>
         current.map((session) => ({
           ...session,
@@ -214,8 +214,8 @@ export default function StudentFormulaHubPage() {
       if (selectedFormula && String(selectedFormula.id) === String(formula.id)) {
         setSelectedFormula((prev) => ({ ...prev, isStarred: !prev.isStarred }));
       }
-    } catch {
-      // Local state already updated
+    } catch (requestError) {
+      toast.error(requestError.message || "Không thể cập nhật công thức đã lưu.");
     }
   };
 
@@ -231,6 +231,21 @@ export default function StudentFormulaHubPage() {
     setSelectedFormula(formula);
     setSelectedFormulaSession(session || formula.session);
   };
+
+  if (!loading && error) {
+    return (
+      <div className="min-h-[60vh] px-4 py-12">
+        <div className="mx-auto max-w-xl rounded-3xl border border-rose-200 bg-white/90 p-8 text-center shadow-sm backdrop-blur-md">
+          <Binary className="mx-auto h-10 w-10 text-rose-400" />
+          <h1 className="mt-4 text-lg font-black text-[#102f63]">Chưa thể tải kho công thức</h1>
+          <p className="mt-2 text-sm text-[#487291]">{error}</p>
+          <button type="button" onClick={loadSessions} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700">
+            <RefreshCw className="h-4 w-4" /> Thử lại
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Reusable Cheatsheet Table Component
   const renderFormulaTable = (formulasList, emptyMessage) => (

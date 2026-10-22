@@ -1,4 +1,3 @@
-import React from "react";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, List } from "lucide-react";
 
 export default function ScheduleControlBar({

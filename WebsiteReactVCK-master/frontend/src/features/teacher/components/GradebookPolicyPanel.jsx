@@ -1,24 +1,15 @@
-/* eslint-disable react/prop-types */
+
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Award,
-  BarChart3,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  FileSpreadsheet,
   Lock,
-  RefreshCw,
-  RotateCcw,
   Send,
-  Settings,
-  ShieldAlert,
-  ShieldCheck,
   Sliders,
   Unlock,
-  User,
-  Users,
 } from "lucide-react";
 import {
   fetchGradebook,
@@ -123,7 +114,7 @@ export default function GradebookPolicyPanel({ classId, sessionId, search = "" }
 
   return (
     <section className="rounded-3xl border border-white/80 bg-white/92 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 space-y-4">
-      
+
       {/* Top Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3.5 dark:border-slate-800">
         <div>

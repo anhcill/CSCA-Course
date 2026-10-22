@@ -10,17 +10,19 @@ export const buildGradebook = async (db, classId, sessionId = null) => {
     AND end_time <= NOW() AND ($2::bigint IS NULL OR id = $2)`, [classId, sessionId])).rows;
   const activities = (await db.query(
     `SELECT CONCAT('assignment-', id) AS id, title, 'assignment' AS type, max_score FROM assignments
-      WHERE live_class_id = $1 AND ($2::bigint IS NULL OR class_session_id = $2)
+      WHERE (live_class_id = $1 OR (live_class_id IS NULL AND course_id = $3))
+        AND ($2::bigint IS NULL OR class_session_id = $2)
      UNION ALL
      SELECT CONCAT('quiz-', q.id), q.title, 'quiz', (SELECT COALESCE(SUM(points),0) FROM quiz_questions WHERE quiz_id = q.id)
       FROM quizzes q WHERE q.live_class_id = $1 AND q.status = 'PUBLISHED' AND ($2::bigint IS NULL OR q.class_session_id = $2)
-     ORDER BY type, title`, [classId, sessionId],
+     ORDER BY type, title`, [classId, sessionId, classInfo?.course_id || null],
   )).rows;
   const assignments = (await db.query(
     `SELECT s.user_id, CONCAT('assignment-',a.id) AS activity_id, s.status, s.return_requested, g.score, a.max_score
      FROM assignments a JOIN assignment_submissions s ON s.assignment_id = a.id
      LEFT JOIN LATERAL (SELECT score FROM submission_grades WHERE submission_id=s.id AND submission_revision=s.revision ORDER BY graded_at DESC,id DESC LIMIT 1) g ON true
-     WHERE a.live_class_id=$1 AND ($2::bigint IS NULL OR a.class_session_id=$2)`, [classId, sessionId],
+     WHERE (a.live_class_id=$1 OR (a.live_class_id IS NULL AND a.course_id=$3))
+       AND ($2::bigint IS NULL OR a.class_session_id=$2)`, [classId, sessionId, classInfo?.course_id || null],
   )).rows;
   const quizzes = (await db.query(
     `SELECT qa.*, CONCAT('quiz-', q.id) AS activity_id FROM quiz_attempts qa JOIN quizzes q ON q.id=qa.quiz_id

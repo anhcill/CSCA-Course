@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-/* eslint-disable react/prop-types */
+
 import { BookOpen, PlayCircle } from "lucide-react";
 
 export default function ClassWorkspaceCurriculumTab({

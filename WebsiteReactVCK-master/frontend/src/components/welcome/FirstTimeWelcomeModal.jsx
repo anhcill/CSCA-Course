@@ -1,13 +1,9 @@
-/* eslint-disable react/prop-types */
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
-  BookOpen,
-  GraduationCap,
   Sparkles,
   ArrowRight,
-  Compass,
   X,
 } from "lucide-react";
 import { useAuthContext } from "../../context/AuthContext.jsx";
@@ -30,6 +26,7 @@ import magicBookAnimation from "../../assets/magic-book.json";
  * - Fluid Liquid Glass iOS aesthetics: specular highlights, deep ocean slate, cyan, emerald, amber.
  */
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const DEFAULT_WELCOME_CONFIG = {
   badge: "MolyCourse LMS",
   autoTransitionDuration: 4.8,

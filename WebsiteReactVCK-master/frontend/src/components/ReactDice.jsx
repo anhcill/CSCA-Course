@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const ReactDice = ({ isDarkMode }) => {
@@ -78,7 +78,6 @@ const ReactDice = ({ isDarkMode }) => {
       ]
     }
   ];
-  const topics = initialTopics; // Use the initialTopics here
   // Then define translatedTips after topics
   const translatedTips = {
     Hooks: {
@@ -149,12 +148,6 @@ const ReactDice = ({ isDarkMode }) => {
     const tips = translatedTips[topic.name][currentLang] || translatedTips[topic.name]['en'];
     return tips[Math.floor(Math.random() * tips.length)];
   };
-  // Update where the tip is set in the animate function
-  const animate = () => {
-    // const elapsed = Date.now() - startTime; // startTime is not defined here, it's in rollDice function
-    // const progress = Math.min(elapsed / duration, 1); // duration is not defined here, it's in rollDice function
-  };
- 
   const rollDice = () => {
     if (rolling) return;
 

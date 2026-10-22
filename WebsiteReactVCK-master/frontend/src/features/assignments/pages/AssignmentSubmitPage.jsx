@@ -465,7 +465,7 @@ export default function AssignmentSubmitPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex items-center justify-center p-6">
+      <div className="min-h-[60vh] text-slate-900 flex items-center justify-center p-6">
         <div className="max-w-md w-full">
           <LoadingState message="Đang nạp dữ liệu bài tập và hồ sơ nộp bài..." count={3} />
         </div>
@@ -475,7 +475,7 @@ export default function AssignmentSubmitPage() {
 
   if (errorMessage || !assignment) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex items-center justify-center p-6">
+      <div className="min-h-[60vh] text-slate-900 flex items-center justify-center p-6">
         <div className="max-w-md w-full">
           <ErrorState
             title="Không Tìm Thấy Bài Tập"
@@ -496,9 +496,9 @@ export default function AssignmentSubmitPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16">
+    <div className="min-h-full pb-16 font-sans text-slate-900">
       {/* Breadcrumb Navigation */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+      <div className="border-b border-white/80 bg-white/80 backdrop-blur-md">
         <div className="container mx-auto max-w-4xl px-4 py-3">
           <nav className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
             <Link to={assignmentListPath} className="hover:text-slate-900 dark:hover:text-white transition">
@@ -514,7 +514,7 @@ export default function AssignmentSubmitPage() {
 
       <div className="container mx-auto max-w-4xl px-4 py-8 space-y-8">
         {/* Assignment Header Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-4 shadow-sm dark:shadow-xl">
+        <div className="space-y-4 rounded-3xl border border-white/85 bg-white/90 p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md md:p-8">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             <div className="space-y-2 flex-1">
               <div className="flex flex-wrap items-center gap-2">

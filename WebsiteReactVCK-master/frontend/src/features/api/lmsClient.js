@@ -507,9 +507,33 @@ export const fetchAssignments = async ({ courseId, classId, sessionId } = {}) =>
   });
 };
 
-export const createAssignment = async ({ title, description, liveClassId, classSessionId, assignmentType, maxScore, dueDate, attachmentUrl, rubric }) => request("/assignments", {
+export const createAssignment = async ({
+  title,
+  description,
+  courseId,
+  liveClassId,
+  classSessionId,
+  classId,
+  sessionId,
+  assignmentType,
+  maxScore,
+  dueDate,
+  attachmentUrl,
+  rubric,
+}) => request("/assignments", {
   method: "POST",
-  body: JSON.stringify({ title, description, liveClassId, classSessionId, assignmentType, maxScore, dueDate, attachmentUrl, rubric }),
+  body: JSON.stringify({
+    title,
+    description,
+    courseId,
+    liveClassId: liveClassId ?? classId,
+    classSessionId: classSessionId ?? sessionId,
+    assignmentType,
+    maxScore,
+    dueDate,
+    attachmentUrl,
+    rubric,
+  }),
 });
 
 export const fetchAssignmentDetail = async (assignmentId) => (
@@ -561,8 +585,11 @@ export const fetchQuiz = async (quizId) => (
   request(`/assignments/quizzes/${encodeURIComponent(quizId)}`)
 );
 
-export const fetchStudentQuizStart = async (quizId, { attemptId } = {}) => {
-  const query = attemptId ? `?attemptId=${encodeURIComponent(attemptId)}` : "";
+export const fetchStudentQuizStart = async (quizId, { attemptId, newAttempt = false } = {}) => {
+  const params = new URLSearchParams();
+  if (attemptId) params.set("attemptId", attemptId);
+  if (newAttempt) params.set("newAttempt", "1");
+  const query = params.size ? `?${params.toString()}` : "";
   return request(`/assignments/quizzes/${encodeURIComponent(quizId)}/start${query}`);
 };
 
@@ -782,6 +809,8 @@ export const updateGradebookScore = async ({ classId, studentId, activityId, sco
 // Admin Console API helpers
 export const fetchAdminDashboardKpi = async () => request("/admin/kpi-summary");
 
+export const fetchMyLmsPermissions = async () => request("/auth/me/lms-permissions");
+
 export const fetchAdminUsers = async ({ page = 1, limit = 8, search = "", role = "all", status = "all", signal } = {}) => {
   const params = new URLSearchParams({ page, limit });
   if (search.trim()) params.set("search", search.trim());
@@ -789,6 +818,21 @@ export const fetchAdminUsers = async ({ page = 1, limit = 8, search = "", role =
   if (status !== "all") params.set("status", status);
   return request(`/admin/users?${params.toString()}`, { signal });
 };
+
+export const createAdminUser = async (userData) => request("/admin/users", {
+  method: "POST",
+  body: JSON.stringify(userData),
+});
+
+export const updateAdminUser = async (userId, userData) => request(
+  `/admin/users/${encodeURIComponent(userId)}`,
+  { method: "PATCH", body: JSON.stringify(userData) },
+);
+
+export const deleteAdminUser = async (userId) => request(
+  `/admin/users/${encodeURIComponent(userId)}`,
+  { method: "DELETE" },
+);
 
 export const toggleUserLockStatus = async (userId, isLocked) => (
   request(`/admin/users/${encodeURIComponent(userId)}/lock`, {
@@ -817,8 +861,27 @@ export const markNotificationAsRead = async (notificationId) => (
   request(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: "PATCH" })
 );
 
+export const markNotificationAsUnread = async (notificationId) => (
+  request(`/notifications/${encodeURIComponent(notificationId)}/unread`, { method: "PATCH" })
+);
+
+export const deleteNotification = async (notificationId) => (
+  request(`/notifications/${encodeURIComponent(notificationId)}`, { method: "DELETE" })
+);
+
 export const markAllNotificationsAsRead = async () => (
   request("/notifications/read-all", { method: "POST" })
+);
+
+export const fetchNotificationPreferences = async () => (
+  request("/notifications/preferences")
+);
+
+export const updateNotificationPreferences = async (preferences) => (
+  request("/notifications/preferences", {
+    method: "PATCH",
+    body: JSON.stringify(preferences),
+  })
 );
 
 export const fetchSessionChangeHistory = async (sessionId) => (
@@ -915,6 +978,11 @@ export const updateAdminClassFileDownloadPolicy = async (classId, allowFileDownl
 export const updateAdminClassPresentation = async (classId, presentation) => request(
   `/v1/admin/classes/${encodeURIComponent(classId)}/presentation`,
   { method: "PATCH", body: JSON.stringify(presentation) },
+);
+
+export const updateAdminClassTeacher = async (classId, teacherId) => request(
+  `/v1/admin/classes/${encodeURIComponent(classId)}/teacher`,
+  { method: "PATCH", body: JSON.stringify({ teacherId: teacherId || null }) },
 );
 
 export const reviewAdminClass = (classId, decision) => request(

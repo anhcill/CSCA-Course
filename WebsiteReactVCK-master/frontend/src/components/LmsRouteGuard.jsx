@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useAuthContext } from '../context/AuthContext';
 import Loading from './Loading';
 import Unauthorized from '../pages/client/Unauthorized';

@@ -25,7 +25,7 @@ const AdminLayout = () => {
   }, [isSidebarCollapsed]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,rgba(186,224,252,0.85),transparent_36%),linear-gradient(180deg,#edf8ff_0%,#f7fbff_45%,#edf6fc_100%)] text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100">
       <AdminNavbar toggleSidebar={toggleSidebar} collapsed={isSidebarCollapsed} />
       
       {/* Mobile backdrop overlay when sidebar is open */}
@@ -46,7 +46,7 @@ const AdminLayout = () => {
           isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'
         }`}
       >
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+        <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
           <Outlet />
         </div>
       </main>

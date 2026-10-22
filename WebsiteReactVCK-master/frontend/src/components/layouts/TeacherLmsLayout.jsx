@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
@@ -7,9 +6,7 @@ import {
   CalendarDays,
   ChevronDown,
   FileQuestion,
-  FilePlus2,
   FolderOpen,
-  GraduationCap,
   Home,
   Library,
   LogOut,
@@ -18,7 +15,6 @@ import {
   Palette,
   Presentation,
   Settings,
-  ShieldCheck,
   Users,
   Wallet,
   X,
@@ -30,19 +26,40 @@ import useLogout from '../../hooks/useLogout';
 import { getAvatarUrl, handleAvatarError } from '../../utils/avatar';
 import { PermissionDeniedState } from '../common/StateView';
 import { CSCA_WALLPAPERS } from '../../utils/classWallpapers';
+import { fetchMyLmsPermissions } from '../../features/api/lmsClient';
 
 const TEACHER_NAV = [
-  { label: 'Tổng quan', path: '/lms/teach', icon: Presentation, end: true },
-  { label: 'Lịch dạy', path: '/lms/teach/calendar', icon: CalendarDays },
-  { label: 'Điểm danh', path: '/lms/teach/attendance', icon: Users },
-  { label: 'Điểm & chuyên cần', path: '/lms/teach/student-progress', icon: BarChart3 },
-  { label: 'Giáo trình lớp', path: '/lms/teach/classes', icon: BookOpen },
+  { label: 'Tổng quan', path: '/lms/teach', icon: Presentation, end: true, permission: 'lms.student.view' },
+  { label: 'Lịch dạy', path: '/lms/teach/calendar', icon: CalendarDays, permission: 'lms.schedule.manage' },
+  { label: 'Điểm danh', path: '/lms/teach/attendance', icon: Users, permission: 'lms.attendance.manage' },
+  { label: 'Điểm & chuyên cần', path: '/lms/teach/student-progress', icon: BarChart3, permission: 'lms.student.view' },
+  { label: 'Giáo trình lớp', path: '/lms/teach/classes', icon: BookOpen, permission: 'lms.course.manage' },
   { label: 'Bảng lương', path: '/lms/teach/salary', icon: Wallet },
-  { label: 'Tài liệu học tập', path: '/lms/teach/files', icon: FolderOpen },
-  { label: 'Đăng đề & Quiz', path: '/lms/teacher/quizzes', icon: FileQuestion, end: true },
-  { label: 'Ngân hàng câu hỏi', path: '/lms/teach/question-bank', icon: Library },
-  { label: 'Hỗ trợ học viên', path: '/lms/teach/support', icon: MessageSquare },
+  { label: 'Tài liệu học tập', path: '/lms/teach/files', icon: FolderOpen, permission: 'lms.file.manage' },
+  { label: 'Đăng đề & Quiz', path: '/lms/teacher/quizzes', icon: FileQuestion, end: true, permission: 'lms.quiz.manage' },
+  { label: 'Ngân hàng câu hỏi', path: '/lms/teach/question-bank', icon: Library, permission: 'lms.quiz.manage' },
+  { label: 'Hỗ trợ học viên', path: '/lms/teach/support', icon: MessageSquare, permission: 'lms.support.manage' },
 ];
+
+const getTeacherRouteAccess = (pathname) => {
+  if (pathname.startsWith('/lms/teacher/assignments/review')) {
+    return { label: 'chấm bài tập', permission: 'lms.assignment.grade' };
+  }
+  if (pathname.startsWith('/lms/teacher/quizzes') || pathname.startsWith('/lms/teach/quizzes')) {
+    return { label: 'đăng đề và Quiz', permission: 'lms.quiz.manage' };
+  }
+  if (pathname.startsWith('/lms/teach/attendance-review')) {
+    return { label: 'duyệt sửa điểm danh', permission: 'lms.attendance.amend.review' };
+  }
+  if (
+    pathname.startsWith('/lms/teacher/attendance')
+    || /^\/lms\/teach\/classes\/[^/]+\/attendance(?:\/|$)/.test(pathname)
+    || /^\/lms\/teacher\/classes\/[^/]+\/attendance(?:\/|$)/.test(pathname)
+  ) {
+    return { label: 'điểm danh', permission: 'lms.attendance.manage' };
+  }
+  return null;
+};
 
 function Brand() {
   return (
@@ -82,7 +99,8 @@ function TeacherNavItem({ item, onNavigate }) {
   );
 }
 
-function TeacherSidebarContent({ onNavigate, isAdmin = false }) {
+function TeacherSidebarContent({ onNavigate, isAdmin = false, permissions = new Set() }) {
+  const navigation = TEACHER_NAV.filter((item) => isAdmin || !item.permission || permissions.has(item.permission));
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden px-4 py-5">
       {/* Brand Header */}
@@ -107,7 +125,7 @@ function TeacherSidebarContent({ onNavigate, isAdmin = false }) {
 
       {/* Navigation List */}
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Điều hướng LMS giảng viên">
-        {TEACHER_NAV.map((item) => (
+        {navigation.map((item) => (
           <TeacherNavItem key={item.path} item={item} onNavigate={onNavigate} />
         ))}
       </nav>
@@ -150,6 +168,8 @@ export default function TeacherLmsLayout({ children }) {
   const { logout } = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [permissions, setPermissions] = useState(new Set());
+  const [permissionsReady, setPermissionsReady] = useState(authUser?.role === 'admin');
   const profileMenuRef = useRef(null);
 
   // Synchronize wallpaper with student aesthetic
@@ -191,6 +211,31 @@ export default function TeacherLmsLayout({ children }) {
 
   const isAuthorizedTeacher = authUser?.role === 'creator' || authUser?.role === 'admin';
   const isAdmin = authUser?.role === 'admin';
+  const currentNavItem = [...TEACHER_NAV]
+    .sort((left, right) => right.path.length - left.path.length)
+    .find((item) => item.end ? location.pathname === item.path : location.pathname.startsWith(item.path));
+  const currentAccessItem = getTeacherRouteAccess(location.pathname) || currentNavItem;
+  const deniedByMatrix = !isAdmin && permissionsReady && currentAccessItem?.permission && !permissions.has(currentAccessItem.permission);
+  useEffect(() => {
+    let active = true;
+    if (isAdmin) {
+      setPermissionsReady(true);
+      return () => { active = false; };
+    }
+    setPermissionsReady(false);
+    fetchMyLmsPermissions()
+      .then((response) => {
+        if (!active) return;
+        setPermissions(new Set(Array.isArray(response?.data) ? response.data : []));
+        setPermissionsReady(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        setPermissions(new Set());
+        setPermissionsReady(true);
+      });
+    return () => { active = false; };
+  }, [isAdmin]);
   if (!isAuthorizedTeacher) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-6 flex items-center justify-center">
@@ -225,7 +270,7 @@ export default function TeacherLmsLayout({ children }) {
 
       {/* Floating Sidebar Card - Exactly matching Student LMS */}
       <aside className="fixed bottom-4 left-4 top-4 z-50 hidden w-[230px] overflow-hidden rounded-3xl border border-white/80 bg-white/92 dark:bg-slate-900/90 dark:border-slate-800 shadow-[0_16px_50px_rgba(32,78,120,0.15)] backdrop-blur-xl lg:flex lg:flex-col">
-        <TeacherSidebarContent onNavigate={closeMobile} isAdmin={isAdmin} />
+        <TeacherSidebarContent onNavigate={closeMobile} isAdmin={isAdmin} permissions={permissions} />
       </aside>
 
       {/* Mobile Drawer */}
@@ -238,14 +283,65 @@ export default function TeacherLmsLayout({ children }) {
             aria-label="Đóng menu giảng viên"
           />
           <div className="fixed inset-y-3 left-3 z-50 w-[min(18rem,88vw)] overflow-hidden rounded-3xl bg-white/95 dark:bg-slate-900/95 shadow-2xl lg:hidden">
-            <TeacherSidebarContent onNavigate={closeMobile} isAdmin={isAdmin} />
+            <TeacherSidebarContent onNavigate={closeMobile} isAdmin={isAdmin} permissions={permissions} />
           </div>
         </>
       )}
 
       {/* Main Content Area */}
       <main className="min-h-screen lg:pl-[260px]">
-        {children}
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-end gap-2 border-b border-white/70 bg-[#e9f5fd]/82 px-4 shadow-[0_8px_28px_rgba(38,91,132,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 sm:px-6">
+          {!permissionsReady && (
+            <span className="mr-auto hidden text-xs font-semibold text-slate-500 sm:inline">Đang đồng bộ quyền truy cập...</span>
+          )}
+          <button
+            type="button"
+            onClick={cycleWallpaper}
+            className="rounded-xl border border-white/80 bg-[#dff1ff]/85 p-2 text-[#17365f] shadow-sm backdrop-blur transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+            title="Đổi ảnh nền"
+            aria-label="Đổi ảnh nền"
+          >
+            <Palette className="h-4 w-4" />
+          </button>
+          <NotificationBell variant="bare" />
+          <div ref={profileMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setProfileMenuOpen((open) => !open)}
+              className="flex items-center gap-2 rounded-2xl border border-white/80 bg-[#dff1ff]/78 py-1.5 pl-1.5 pr-2.5 text-left shadow-[0_6px_22px_rgba(30,86,128,0.14)] backdrop-blur-xl transition hover:bg-white dark:border-slate-700 dark:bg-slate-900/85"
+              aria-expanded={profileMenuOpen}
+            >
+              <img src={getAvatarUrl(authUser)} onError={handleAvatarError} alt="" className="h-8 w-8 rounded-xl object-cover" />
+              <span className="hidden max-w-36 sm:block">
+                <span className="block truncate text-xs font-black text-[#102f63] dark:text-white">{authUser?.fullName || authUser?.username}</span>
+                <span className="block text-[10px] font-semibold text-blue-600 dark:text-sky-400">{isAdmin ? 'Quản trị viên' : 'Giảng viên'}</span>
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-[#487291]" />
+            </button>
+            {profileMenuOpen && (
+              <div className="absolute right-0 mt-2 w-56 overflow-hidden rounded-2xl border border-[#c4def0] bg-[#eef8ff]/95 p-2 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95">
+                {isAdmin && <Link to="/admin/dashboard" className="block rounded-xl px-3 py-2 text-xs font-bold text-[#17365f] hover:bg-white/80 dark:text-slate-200 dark:hover:bg-slate-800">Bảng điều khiển Admin</Link>}
+                <Link to="/profile" className="block rounded-xl px-3 py-2 text-xs font-bold text-[#17365f] hover:bg-white/80 dark:text-slate-200 dark:hover:bg-slate-800">Hồ sơ cá nhân</Link>
+                <button type="button" onClick={logout} className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/30">
+                  <LogOut className="h-4 w-4" /> Đăng xuất
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
+        {!permissionsReady ? (
+          <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-5 py-10 text-sm font-semibold text-slate-500 dark:text-slate-400">
+            Đang đồng bộ quyền truy cập...
+          </div>
+        ) : deniedByMatrix ? (
+          <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-xl items-center px-5 py-10">
+            <PermissionDeniedState
+              title="Chức năng chưa được cấp quyền"
+              message={`Vai trò Giảng viên hiện chưa có quyền ${currentAccessItem.label.toLowerCase()}. Quản trị viên có thể bật quyền trong ma trận phân quyền LMS.`}
+              redirectPath="/lms/teach"
+            />
+          </div>
+        ) : children}
       </main>
     </div>
   );

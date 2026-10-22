@@ -476,6 +476,27 @@ export const getTrustedDevices = async (req, res) => {
   }
 };
 
+export const getCurrentLmsPermissions = async (req, res) => {
+  try {
+    if (req.user.role === "admin") {
+      const { rows } = await query("SELECT code FROM lms_permissions ORDER BY code");
+      return res.status(200).json({ success: true, data: rows.map((row) => row.code) });
+    }
+    const { rows } = await query(
+      `SELECT p.code
+       FROM lms_permissions p
+       JOIN lms_role_permissions rp ON rp.permission_id = p.id
+       WHERE rp.role = $1 AND rp.is_allowed = TRUE
+       ORDER BY p.code`,
+      [req.user.role],
+    );
+    return res.status(200).json({ success: true, data: rows.map((row) => row.code) });
+  } catch (error) {
+    console.error("Get current LMS permissions error:", error);
+    return res.status(500).json({ success: false, message: "Không thể tải quyền LMS", errorCode: "INTERNAL_ERROR" });
+  }
+};
+
 // ============================================================
 // CURRENT USER PROFILE
 // ============================================================

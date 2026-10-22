@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Calendar, X } from "lucide-react";

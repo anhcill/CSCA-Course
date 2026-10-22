@@ -1,6 +1,5 @@
 // --- START OF FILE CourseRatingForm.jsx ---
-import React from 'react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { HiStar, HiOutlineStar } from "react-icons/hi2";
 import { useTranslation } from 'react-i18next';
 import { useAuthContext } from '../../context/AuthContext';

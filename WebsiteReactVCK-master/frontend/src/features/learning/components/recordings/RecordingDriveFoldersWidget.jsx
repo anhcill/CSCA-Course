@@ -1,4 +1,3 @@
-import React from "react";
 import { FolderOpen, ExternalLink, School } from "lucide-react";
 
 export default function RecordingDriveFoldersWidget({ classes = [] }) {

@@ -70,19 +70,20 @@ export default function StudentCourseListPage() {
 
   const visibleCourses = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase();
-    return courses.filter((course) => {
-      const progress = getProgress(course);
-      const matchesFilter = filter === "all"
-        || (filter === "progress" && progress > 0 && progress < 100)
-        || (filter === "completed" && progress === 100);
-      return matchesFilter && matchesSearch(course, keyword);
-    });
-  }, [courses, filter, search]);
+    return courses.filter((course) => matchesSearch(course, keyword));
+  }, [courses, search]);
 
   const classCards = useMemo(() => visibleCourses.flatMap((course) => {
     const classes = Array.isArray(course.classes) ? course.classes : [];
-    return classes.map((liveClass) => ({ course, liveClass }));
-  }), [visibleCourses]);
+    return classes
+      .map((liveClass) => ({ course, liveClass }))
+      .filter(({ liveClass }) => {
+        const progress = getProgress(liveClass);
+        return filter === "all"
+          || (filter === "progress" && progress > 0 && progress < 100)
+          || (filter === "completed" && progress === 100);
+      });
+  }), [filter, visibleCourses]);
 
   const totalClasses = useMemo(() => courses.reduce(
     (total, course) => total + (Array.isArray(course.classes) ? course.classes.length : 0),
@@ -164,14 +165,14 @@ export default function StudentCourseListPage() {
         ) : (
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {classCards.map(({ course, liveClass }, index) => {
-              const progress = getProgress(course);
+              const progress = getProgress(liveClass);
               const completed = progress === 100;
               const started = progress > 0;
               const tone = TONES[index % TONES.length];
               const cover = getClassCoverImage(liveClass || course, course.course_id || course.id);
-              const progressTotal = Number(course.progress_total || 0);
-              const progressCompleted = Number(course.progress_completed || 0);
-              const progressUnit = course.progress_source === "sessions" ? "buổi" : "bài";
+              const progressTotal = Number(liveClass.progress_total || 0);
+              const progressCompleted = Number(liveClass.progress_completed || 0);
+              const progressUnit = liveClass.progress_source === "sessions" ? "buổi" : "bài";
 
               return (
                 <Link

@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { BookOpen, Calendar, Clock, Plus } from "lucide-react";
 
 const formatDateTime = (value) => {

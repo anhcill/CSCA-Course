@@ -15,6 +15,7 @@ import {
 import { enqueueManagementCalendarDelivery } from "../services/managementCalendarDelivery.service.js";
 import { buildClassCalendarIcs } from "../services/calendarIcs.service.js";
 import { getDeterministicClassCover } from "../utils/classWallpapers.js";
+import { recordAuditEvent } from "../services/audit.service.js";
 
 const router = express.Router();
 
@@ -723,6 +724,17 @@ router.post("/:classId/join", protectRoute, requireRole("user"), requireActiveSt
       return forbidden(res, "Khóa học chưa được mở");
     }
 
+    const accessGrant = await client.query(
+      `SELECT 1 FROM lms_access_grants
+       WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
+         AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())`,
+      [req.user.id, liveClass.course_id],
+    );
+    if (!accessGrant.rows.length) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Bạn chưa được cấp quyền học khóa học của lớp này");
+    }
+
     const existing = await client.query(
       `SELECT id, status FROM class_enrollments
        WHERE live_class_id = $1 AND user_id = $2
@@ -813,7 +825,7 @@ router.post("/:classId/enrollments", protectRoute, requireRole("admin"), async (
   try {
     await client.query("BEGIN");
     const classResult = await client.query(
-      "SELECT id, instructor_id, max_students, status FROM live_classes WHERE id = $1 FOR UPDATE",
+      "SELECT id, course_id, instructor_id, max_students, status FROM live_classes WHERE id = $1 FOR UPDATE",
       [classId],
     );
     const liveClass = classResult.rows[0];
@@ -829,8 +841,15 @@ router.post("/:classId/enrollments", protectRoute, requireRole("admin"), async (
       await client.query("ROLLBACK");
       return validationError(res, "Không thể thêm học viên vào lớp đã đóng");
     }
+    if (!liveClass.course_id) {
+      await client.query("ROLLBACK");
+      return validationError(res, "Cần gắn lớp với khóa học trước khi thêm học viên");
+    }
 
-    const userResult = await client.query("SELECT id, role FROM users WHERE id = $1", [userId]);
+    const userResult = await client.query(
+      "SELECT id, role, is_locked, is_management_managed, lms_account_status FROM users WHERE id = $1 FOR UPDATE",
+      [userId],
+    );
     if (!userResult.rows[0]) {
       await client.query("ROLLBACK");
       return notFound(res, "Không tìm thấy học viên");
@@ -839,36 +858,84 @@ router.post("/:classId/enrollments", protectRoute, requireRole("admin"), async (
       await client.query("ROLLBACK");
       return validationError(res, "Chỉ tài khoản học viên mới được thêm vào lớp");
     }
+    if (userResult.rows[0].is_locked) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ success: false, message: "Không thể ghi danh tài khoản đang bị khóa", errorCode: "STUDENT_ACCOUNT_LOCKED" });
+    }
 
     const existing = await client.query(
       "SELECT id, status FROM class_enrollments WHERE user_id = $1 AND live_class_id = $2 FOR UPDATE",
       [userId, classId],
     );
-    if (existing.rows[0]?.status === "active") {
-      await client.query("COMMIT");
-      return res.json({ success: true, data: { userId, classId, isEnrolled: true } });
-    }
-
-    const countResult = await client.query(
-      "SELECT COUNT(*)::int AS count FROM class_enrollments WHERE live_class_id = $1 AND status = 'active'",
-      [classId],
-    );
-    if (countResult.rows[0].count >= liveClass.max_students) {
-      await client.query("ROLLBACK");
-      return res.status(409).json({ success: false, message: "Lớp học đã đủ số lượng", errorCode: "CAPACITY_REACHED" });
-    }
-
-    if (existing.rows[0]) {
-      await client.query("UPDATE class_enrollments SET status = 'active', enrolled_at = NOW() WHERE id = $1", [existing.rows[0].id]);
-    } else {
-      await client.query(
-        `INSERT INTO class_enrollments (user_id, live_class_id, status)
-         VALUES ($1, $2, 'active')`,
-        [userId, classId],
+    const alreadyActive = existing.rows[0]?.status === "active";
+    let enrollmentId = existing.rows[0]?.id || null;
+    if (!alreadyActive) {
+      const countResult = await client.query(
+        "SELECT COUNT(*)::int AS count FROM class_enrollments WHERE live_class_id = $1 AND status = 'active'",
+        [classId],
       );
+      if (countResult.rows[0].count >= liveClass.max_students) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ success: false, message: "Lớp học đã đủ số lượng", errorCode: "CAPACITY_REACHED" });
+      }
+
+      if (existing.rows[0]) {
+        const restored = await client.query(
+          `UPDATE class_enrollments
+           SET status = 'active', enrolled_at = NOW(), ended_at = NULL
+           WHERE id = $1 RETURNING id`,
+          [existing.rows[0].id],
+        );
+        enrollmentId = restored.rows[0].id;
+      } else {
+        const inserted = await client.query(
+          `INSERT INTO class_enrollments (user_id, live_class_id, status)
+           VALUES ($1, $2, 'active') RETURNING id`,
+          [userId, classId],
+        );
+        enrollmentId = inserted.rows[0].id;
+      }
     }
+
+    // Admin enrollment is an explicit LMS access override. Keep the course and
+    // class projections in sync so the learner does not receive a 403 after a
+    // successful roster operation.
+    await client.query(
+      `UPDATE users
+       SET is_management_managed = TRUE, lms_account_status = 'active', updated_at = NOW()
+       WHERE id = $1`,
+      [userId],
+    );
+    await client.query(
+      `INSERT INTO lms_access_grants
+         (user_id, course_id, access_status, reason, valid_from, source_updated_at)
+       VALUES ($1, $2, 'active', 'ADMIN_CLASS_ENROLLMENT', NOW(), NOW())
+       ON CONFLICT (user_id, course_id) DO UPDATE SET
+         access_status = 'active', valid_until = NULL, revoked_at = NULL,
+         reason = CASE WHEN lms_access_grants.access_status = 'active'
+                            AND lms_access_grants.valid_from <= NOW()
+                            AND (lms_access_grants.valid_until IS NULL OR lms_access_grants.valid_until > NOW())
+                       THEN lms_access_grants.reason ELSE EXCLUDED.reason END,
+         source_updated_at = NOW()`,
+      [userId, liveClass.course_id],
+    );
+    await client.query(
+      `INSERT INTO enrollments (user_id, course_id, status)
+       VALUES ($1, $2, 'active')
+       ON CONFLICT (user_id, course_id) DO UPDATE SET status = 'active'`,
+      [userId, liveClass.course_id],
+    );
+    await recordAuditEvent({
+      db: client,
+      actorId: req.user.id,
+      action: "class.enrollment.added",
+      entityType: "class_enrollment",
+      entityId: enrollmentId,
+      afterState: { classId, userId, courseId: Number(liveClass.course_id), status: "active" },
+      metadata: { ip: req.ip, accessSource: "admin_override" },
+    });
     await client.query("COMMIT");
-    return res.status(201).json({ success: true, data: { userId, classId, isEnrolled: true } });
+    return res.status(alreadyActive ? 200 : 201).json({ success: true, data: { userId, classId, isEnrolled: true } });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Error enrolling student in live class:", error);
@@ -879,22 +946,94 @@ router.post("/:classId/enrollments", protectRoute, requireRole("admin"), async (
 });
 
 router.delete("/:classId/enrollments/:userId", protectRoute, requireRole("admin"), async (req, res) => {
+  const client = await getClient();
   try {
     const classId = parsePositiveId(req.params.classId);
     const userId = parsePositiveId(req.params.userId);
     if (!classId || !userId) return validationError(res, "classId hoặc userId không hợp lệ");
-    const liveClass = await getClassById(classId);
-    if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
-    if (!(await canManageClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền quản lý lớp này");
-    await query(
-      `UPDATE class_enrollments SET status = 'removed'
-       WHERE live_class_id = $1 AND user_id = $2 AND status = 'active'`,
+    await client.query("BEGIN");
+    const liveClass = (await client.query(
+      "SELECT id, course_id, instructor_id FROM live_classes WHERE id = $1 FOR UPDATE",
+      [classId],
+    )).rows[0];
+    if (!liveClass) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy lớp học trực tuyến");
+    }
+    if (!(await canManageClass(liveClass, req.user))) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Bạn không có quyền quản lý lớp này");
+    }
+    const removed = await client.query(
+      `UPDATE class_enrollments SET status = 'removed', ended_at = COALESCE(ended_at, NOW())
+       WHERE live_class_id = $1 AND user_id = $2 AND status = 'active'
+       RETURNING id`,
       [classId, userId],
     );
+
+    if (removed.rowCount && liveClass.course_id) {
+      const otherClass = await client.query(
+        `SELECT 1
+         FROM class_enrollments ce
+         JOIN live_classes lc ON lc.id = ce.live_class_id
+         WHERE ce.user_id = $1 AND lc.course_id = $2 AND ce.status = 'active'
+         LIMIT 1`,
+        [userId, liveClass.course_id],
+      );
+      if (!otherClass.rows.length) {
+        const revokedGrant = await client.query(
+          `UPDATE lms_access_grants
+           SET access_status = 'revoked', revoked_at = NOW(), source_updated_at = NOW()
+           WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
+             AND reason = 'ADMIN_CLASS_ENROLLMENT'`,
+          [userId, liveClass.course_id],
+        );
+        if (revokedGrant.rowCount) {
+          await client.query(
+            "UPDATE enrollments SET status = 'revoked' WHERE user_id = $1 AND course_id = $2 AND status = 'active'",
+            [userId, liveClass.course_id],
+          );
+          await client.query(
+            `UPDATE users
+             SET lms_account_status = CASE
+               WHEN EXISTS (
+                 SELECT 1 FROM lms_access_grants active_grant
+                 WHERE active_grant.user_id = users.id AND active_grant.access_status = 'active'
+                   AND active_grant.valid_from <= NOW()
+                   AND (active_grant.valid_until IS NULL OR active_grant.valid_until > NOW())
+               ) THEN 'active'
+               WHEN EXISTS (
+                 SELECT 1 FROM lms_access_grants suspended_grant
+                 WHERE suspended_grant.user_id = users.id AND suspended_grant.access_status = 'suspended'
+               ) THEN 'suspended'
+               ELSE 'revoked'
+             END,
+             updated_at = NOW()
+             WHERE id = $1 AND role = 'user'`,
+            [userId],
+          );
+        }
+      }
+    }
+    if (removed.rows.length) {
+      await recordAuditEvent({
+        db: client,
+        actorId: req.user.id,
+        action: "class.enrollment.removed",
+        entityType: "class_enrollment",
+        entityId: removed.rows[0].id,
+        afterState: { classId, userId, courseId: liveClass.course_id ? Number(liveClass.course_id) : null, status: "removed" },
+        metadata: { ip: req.ip },
+      });
+    }
+    await client.query("COMMIT");
     return res.json({ success: true, data: { classId, userId, isEnrolled: false } });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Error removing live class enrollment:", error);
     return internalError(res, "Lỗi khi xóa học viên khỏi lớp");
+  } finally {
+    client.release();
   }
 });
 

@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types, no-unused-vars */
+/* eslint-disable no-unused-vars */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -869,9 +869,11 @@ export default function TeacherQuizPage() {
   const openQuizEditor = (quizId) => navigate(`${quizEditorBasePath}/${quizId}/edit`);
   const requestedClassId = searchParams.get("classId");
   const requestedSessionId = searchParams.get("sessionId");
+  const requestedReportQuizId = searchParams.get("reportQuizId");
   const requestedScope = searchParams.get("scope") === "homework" ? "homework" : "session";
   const shouldOpenBuilder = searchParams.get("new") === "1";
   const quickCreateHandledRef = useRef(false);
+  const reportOpenedRef = useRef(null);
 
   // Tab state: "assigned" | "create"
   const [activeTab, setActiveTab] = useState(
@@ -1001,6 +1003,15 @@ export default function TeacherQuizPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!requestedReportQuizId || selectedQuizForStats || reportOpenedRef.current === requestedReportQuizId) return;
+    const requestedQuiz = quizzes.find((quiz) => String(quiz.id) === String(requestedReportQuizId));
+    if (requestedQuiz) {
+      reportOpenedRef.current = requestedReportQuizId;
+      setSelectedQuizForStats(requestedQuiz);
+    }
+  }, [quizzes, requestedReportQuizId, selectedQuizForStats]);
 
   useEffect(() => {
     let cancelled = false;

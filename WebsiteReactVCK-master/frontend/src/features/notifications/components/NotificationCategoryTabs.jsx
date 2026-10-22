@@ -1,7 +1,6 @@
-import React from "react";
 import { LayoutGrid, Settings, BookOpen, UserRound, Bell } from "lucide-react";
 
-export const CATEGORY_DEFINITIONS = [
+const CATEGORY_DEFINITIONS = [
   { id: "all", label: "Tất cả", icon: LayoutGrid },
   { id: "system", label: "Hệ thống", icon: Settings },
   { id: "course", label: "Khóa học", icon: BookOpen },

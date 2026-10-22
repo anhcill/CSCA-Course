@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { BookOpen, Plus } from "lucide-react";

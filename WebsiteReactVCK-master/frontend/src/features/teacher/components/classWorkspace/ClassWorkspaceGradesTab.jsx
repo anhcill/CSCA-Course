@@ -1,12 +1,9 @@
-import { Award, CheckCircle2, ClipboardCheck } from "lucide-react";
+import { Award } from "lucide-react";
 
 export default function ClassWorkspaceGradesTab({
   assignments = [],
-  classId,
   onOpenGradingModal
 }) {
-  const gradedCount = assignments.filter((a) => (a.avgScore || a.avg_score) !== null).length;
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">

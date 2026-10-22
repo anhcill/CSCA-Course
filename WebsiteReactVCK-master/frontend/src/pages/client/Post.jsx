@@ -1,8 +1,7 @@
-/* eslint-disable react/prop-types */
 import { useEffect, useMemo, useState } from 'react';
 import {
   Sparkles, Search, MessageSquare, Flame, Clock, Bookmark, User,
-  Filter, HelpCircle, BookOpen, Award, Users, RefreshCw, X, MessageCircle
+  Award, Users, RefreshCw, X, MessageCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Meta from '../../components/Meta.jsx';
@@ -34,7 +33,7 @@ export default function Post() {
   const [selectedSort, setSelectedSort] = useState('trending');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
 
   // Load real posts from PostgreSQL Backend API on mount & on filters
   useEffect(() => {

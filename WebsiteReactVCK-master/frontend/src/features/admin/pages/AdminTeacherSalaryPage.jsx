@@ -11,7 +11,6 @@ import {
   FiTrendingUp,
   FiAlertCircle,
   FiCheckCircle,
-  FiCalendar,
   FiPrinter,
   FiFileText,
   FiSliders,

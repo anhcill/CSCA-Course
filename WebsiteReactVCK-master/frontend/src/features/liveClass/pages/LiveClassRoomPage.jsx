@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, LoaderCircle, Maximize, Minimize, RotateCcw, Video, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuthContext } from "../../../context/AuthContext";
@@ -84,7 +84,7 @@ export default function LiveClassRoomPage() {
     }
   };
 
-  const handleLeave = () => {
+  const handleLeave = useCallback(() => {
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
     }
@@ -93,7 +93,7 @@ export default function LiveClassRoomPage() {
     } else {
       navigate(isTeacherRole(authUser?.role) ? "/lms/teach" : "/lms/my-learning");
     }
-  };
+  }, [authUser?.role, navigate]);
 
   useEffect(() => {
     let active = true;
@@ -173,7 +173,7 @@ export default function LiveClassRoomPage() {
       active = false;
       api?.dispose?.();
     };
-  }, [displayName, jitsiConfig]);
+  }, [displayName, handleLeave, jitsiConfig]);
 
   const errorMessage = accessError || parsedMeeting.error || embedError;
 

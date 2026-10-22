@@ -26,8 +26,8 @@ export default function CourseResultsPage() {
     };
   }, [classId]);
 
-  const { progress = {}, assignments = [] } = useOutletContext() || {};
-  const graded = (assignments || []).filter((item) => item.score !== null && item.score !== undefined);
+  const { progress = {}, allAssignments, assignments = [] } = useOutletContext() || {};
+  const graded = (allAssignments || assignments || []).filter((item) => item.score !== null && item.score !== undefined);
   const averageScore = graded.length
     ? (graded.reduce((sum, item) => sum + Number(item.score || 0), 0) / graded.length).toFixed(1)
     : null;

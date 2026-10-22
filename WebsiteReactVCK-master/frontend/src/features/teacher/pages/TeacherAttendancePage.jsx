@@ -6,9 +6,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardEdit,
-  GraduationCap,
   Lock,
-  Plus,
   ShieldCheck,
   UserCheck,
   UserX,
@@ -106,6 +104,17 @@ export default function TeacherAttendancePage() {
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
+
+  useEffect(() => {
+    const requestedSessionId = searchParams.get("sessionId");
+    if (
+      requestedSessionId
+      && sessions.some((session) => String(session.id) === String(requestedSessionId))
+      && String(selectedSessionId) !== String(requestedSessionId)
+    ) {
+      setSelectedSessionId(requestedSessionId);
+    }
+  }, [searchParams, selectedSessionId, sessions]);
 
   const loadRoster = useCallback(async () => {
     if (!sessionsLoaded || !selectedSessionId) {

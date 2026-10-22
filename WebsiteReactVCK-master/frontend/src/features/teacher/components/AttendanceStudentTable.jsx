@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import PropTypes from "prop-types";
-import { Check, CheckCircle2, Clock, Search, UserRound, XCircle } from "lucide-react";
+import { Check, CheckCircle2, Clock, Search, XCircle } from "lucide-react";
 import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
 
 export default function AttendanceStudentTable({
@@ -54,7 +54,7 @@ export default function AttendanceStudentTable({
             {filteredStudents.length === 0 ? (
               <tr>
                 <td colSpan={4} className="py-8 text-center text-xs text-slate-500 dark:text-slate-400">
-                  Không tìm thấy học viên nào khớp với "{search}".
+                  Không tìm thấy học viên nào khớp với &quot;{search}&quot;.
                 </td>
               </tr>
             ) : (

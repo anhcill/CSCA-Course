@@ -25,7 +25,7 @@ const withServer = async (callback) => {
   }
 };
 
-const invoke = async (method, path, { params = {}, body = {}, user } = {}) => {
+const invoke = async (method, path, { params = {}, query = {}, body = {}, user } = {}) => {
   const layer = quizPlayerRouter.stack.find((item) => item.route?.path === path && item.route.methods[method]);
   assert.ok(layer, `${method} ${path}`);
   const response = {
@@ -34,7 +34,7 @@ const invoke = async (method, path, { params = {}, body = {}, user } = {}) => {
     status(code) { this.statusCode = code; return this; },
     json(value) { this.body = value; return this; },
   };
-  await layer.route.stack.at(-1).handle({ params, body, user, ip: "127.0.0.1" }, response);
+  await layer.route.stack.at(-1).handle({ params, query, body, user, ip: "127.0.0.1" }, response);
   return response;
 };
 
@@ -204,6 +204,60 @@ test("a shortened server deadline auto-submits saved answers and rejects a late 
   assert.equal(Number(stored.score), 1);
   assert.equal(stored.status, "submitted");
   assert.equal(stored.auto_submitted, true);
+});
+
+test("reviewing a submitted multi-attempt quiz does not consume another attempt", async (t) => {
+  const db = await loadDatabase();
+  t.after(() => db.close());
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('retry-teacher','retry-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const learner = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('retry-learner','retry-learner@example.test','user') RETURNING id",
+  )).rows[0];
+  const course = (await db.query(
+    "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Retry course','retry-course',$1,TRUE) RETURNING id",
+    [teacher.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - interval '1 day',NOW())`,
+    [learner.id, course.id],
+  );
+  const quiz = (await db.query(
+    `INSERT INTO quizzes(title,course_id,instructor_id,status,duration_minutes,passing_score,attempt_limit,available_until,review_policy)
+     VALUES ('Retry quiz',$1,$2,'PUBLISHED',30,60,2,NOW() + interval '2 hours','after_submit') RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+  const question = (await db.query(
+    `INSERT INTO quiz_questions(quiz_id,question_text,question_type,options_json,correct_answer,points,sort_order)
+     VALUES ($1,'Retry question','single_choice',$2::jsonb,'A',1,1) RETURNING id`,
+    [quiz.id, JSON.stringify([{ key: "A", text: "Yes" }, { key: "B", text: "No" }])],
+  )).rows[0];
+
+  const started = await invoke("get", "/quizzes/:quizId/start", { user: learner, params: { quizId: quiz.id } });
+  const firstAttemptId = started.body.data.attempt.id;
+  await invoke("post", "/attempts/:attemptId/submit", {
+    user: learner,
+    params: { attemptId: firstAttemptId },
+    body: { answers: { [question.id]: "A" } },
+  });
+
+  const reviewed = await invoke("get", "/quizzes/:quizId/start", { user: learner, params: { quizId: quiz.id } });
+  assert.equal(reviewed.body.data.attempt.id, firstAttemptId);
+  assert.equal(reviewed.body.data.result.alreadySubmitted, true);
+  assert.equal(reviewed.body.data.canStartNewAttempt, true);
+  assert.equal((await db.query("SELECT COUNT(*)::int AS count FROM quiz_attempts WHERE quiz_id=$1", [quiz.id])).rows[0].count, 1);
+
+  const retried = await invoke("get", "/quizzes/:quizId/start", {
+    user: learner,
+    params: { quizId: quiz.id },
+    query: { newAttempt: "1" },
+  });
+  assert.notEqual(retried.body.data.attempt.id, firstAttemptId);
+  assert.equal(retried.body.data.attempt.number, 2);
+  assert.equal(retried.body.data.result, null);
+  assert.equal((await db.query("SELECT COUNT(*)::int AS count FROM quiz_attempts WHERE quiz_id=$1", [quiz.id])).rows[0].count, 2);
 });
 
 test("overdue unsubmitted quiz allows learner to review questions, answers and explanations without being locked out", async (t) => {

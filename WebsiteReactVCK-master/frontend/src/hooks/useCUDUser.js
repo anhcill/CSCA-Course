@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { useAuthContext } from '../context/AuthContext';
+import { createAdminUser, deleteAdminUser, updateAdminUser } from '../features/api/lmsClient';
 
 const useCUDUser = () => {
     const { authUser, isAuthenticated, setAuthUser } = useAuthContext();
@@ -17,7 +18,7 @@ const useCUDUser = () => {
         try {
             return await callback();
         } catch (error) {
-            throw new Error(error.response?.data?.message || 'Cập nhật thất bại');
+            throw new Error(error.response?.data?.message || error.message || 'Cập nhật thất bại');
         } finally {
             setSaving(false);
         }
@@ -25,25 +26,25 @@ const useCUDUser = () => {
 
     const createUser = (data) => request(async () => {
         checkAdminAuth();
-        const response = await axios.post('/api/auth/admin/users', data);
-        return response.data.message;
+        const response = await createAdminUser(data);
+        return response.data;
     });
 
     const updateUser = (id, data) => request(async () => {
         checkAdminAuth();
-    const { password, ...editableFields } = data;
-    const payload = {
-      ...editableFields,
-      ...(password ? { newPassword: password } : {}),
-    };
-    const response = await axios.put(`/api/auth/admin/users/${id}`, payload);
-        return response.data.message;
+        const { password, ...editableFields } = data;
+        const payload = {
+            ...editableFields,
+            ...(password ? { newPassword: password } : {}),
+        };
+        const response = await updateAdminUser(id, payload);
+        return response.data;
     });
 
     const deleteUser = (id) => request(async () => {
         checkAdminAuth();
-        const response = await axios.delete(`/api/auth/admin/users/${id}`);
-        return response.data.message;
+        const response = await deleteAdminUser(id);
+        return response.data;
     });
 
     const updateUserInfo = (data) => request(async () => {

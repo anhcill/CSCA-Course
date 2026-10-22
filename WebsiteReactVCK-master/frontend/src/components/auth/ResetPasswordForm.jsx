@@ -1,13 +1,11 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { useTranslation } from "react-i18next";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { Lock, Eye, EyeOff, KeyRound, Loader2, ArrowLeft, AlertCircle, RotateCcw } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Loader2, ArrowLeft, AlertCircle, RotateCcw } from "lucide-react";
 import useForgotPassword from "../../hooks/useForgotPassword";
 
 const ResetPasswordForm = ({ onSwitchMode, email }) => {
-  const { t } = useTranslation();
   const [verificationCode, setVerificationCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

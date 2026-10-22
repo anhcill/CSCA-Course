@@ -1,13 +1,11 @@
-/* eslint-disable react/prop-types */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Library,
-  BookOpen,
   Search,
   Plus,
   Filter,
-  Check,
   Trash2,
   Pencil,
   X,

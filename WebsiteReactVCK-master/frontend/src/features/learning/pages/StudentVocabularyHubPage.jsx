@@ -1,18 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookA,
   BookOpen,
   Calendar,
   Check,
-  CheckCircle2,
-  ChevronDown,
-  Filter,
   GraduationCap,
-  Languages,
   Play,
   RotateCcw,
   Search,
-  Sparkles,
   Star,
   Volume2,
 } from "lucide-react";
@@ -36,15 +31,16 @@ export default function StudentVocabularyHubPage() {
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const response = await fetchVocabularySessions();
       const apiSessions = response?.data?.sessions;
-      if (Array.isArray(apiSessions)) {
-        setSessions(apiSessions);
-      }
+      if (!response?.success || !Array.isArray(apiSessions)) throw new Error(response?.message || "Dữ liệu từ vựng không hợp lệ");
+      setSessions(apiSessions);
     } catch (err) {
       console.error("Error loading vocabulary sessions:", err);
-      setError("Không thể tải danh sách từ vựng");
+      setSessions([]);
+      setError(err.message || "Không thể tải danh sách từ vựng");
     } finally {
       setLoading(false);
     }
@@ -137,7 +133,7 @@ export default function StudentVocabularyHubPage() {
 
   const handleToggleStar = async (sessionId, wordId) => {
     try {
-      await toggleVocabularyStar(wordId).catch(() => {});
+      await toggleVocabularyStar(wordId);
       setSessions((current) =>
         current.map((session) => ({
           ...session,
@@ -148,24 +144,39 @@ export default function StudentVocabularyHubPage() {
           ),
         }))
       );
-    } catch {
-      // Local state already updated
+    } catch (requestError) {
+      toast.error(requestError.message || "Không thể cập nhật từ đã lưu.");
     }
   };
 
   const handlePracticeComplete = async (results) => {
     if (!activePracticeSession) return;
     try {
-      const response = await submitVocabularyPractice(activePracticeSession.sessionId, results).catch(() => null);
+      const response = await submitVocabularyPractice(activePracticeSession.sessionId, results);
       const xpAwarded = Number(response?.data?.gamification?.xp || 50);
       toast.success(`Đã hoàn thành luyện tập! Nhận +${xpAwarded} XP 🎉`);
       await loadSessions();
-    } catch {
-      toast.success("Đã ghi nhận kết quả ôn tập từ vựng!");
+    } catch (requestError) {
+      toast.error(requestError.message || "Không thể lưu kết quả ôn tập từ vựng.");
     } finally {
       setActivePracticeSession(null);
     }
   };
+
+  if (!loading && error) {
+    return (
+      <div className="min-h-[60vh] px-4 py-12">
+        <div className="mx-auto max-w-xl rounded-3xl border border-rose-200 bg-white/90 p-8 text-center shadow-sm backdrop-blur-md">
+          <BookA className="mx-auto h-10 w-10 text-rose-400" />
+          <h1 className="mt-4 text-lg font-black text-[#102f63]">Chưa thể tải kho từ vựng</h1>
+          <p className="mt-2 text-sm text-[#487291]">{error}</p>
+          <button type="button" onClick={loadSessions} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700">
+            <RotateCcw className="h-4 w-4" /> Thử lại
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full p-2.5 sm:p-3.5 xl:px-4 xl:py-3">

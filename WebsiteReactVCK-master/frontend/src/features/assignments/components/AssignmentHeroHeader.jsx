@@ -1,5 +1,3 @@
-import React from "react";
-
 export default function AssignmentHeroHeader() {
   return (
     <div className="pt-0.5 pb-1">

@@ -529,7 +529,8 @@ function StudentOverviewTab({
               <div className="mt-3.5 space-y-2.5">
                 {tasks.slice(0, 4).map((task) => {
                   const isHomeworkQuiz = task.type === "quiz" && (task.activity_scope || task.activityScope) === "homework";
-                  const isDone = task.status === "graded" || task.status === "submitted";
+                  const submittedLate = task.status === "late" && Boolean(task.submission_id || task.submitted_at);
+                  const isDone = task.status === "graded" || task.status === "submitted" || submittedLate;
                   return (
                     <Link
                       key={`${task.type}-${task.id}`}
@@ -558,7 +559,15 @@ function StudentOverviewTab({
                           ? "border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-2xs"
                           : "bg-[#102f63] text-white hover:bg-blue-800 shadow-xs"
                       }`}>
-                        {task.status === "graded" ? "Đã có điểm" : task.status === "submitted" ? "Đã nộp" : "Làm bài"}
+                        {task.status === "graded"
+                          ? "Đã có điểm"
+                          : submittedLate
+                            ? "Đã nộp trễ"
+                            : task.status === "submitted"
+                              ? "Đã nộp"
+                              : task.status === "late"
+                                ? "Quá hạn"
+                                : "Làm bài"}
                       </span>
                     </Link>
                   );
@@ -591,22 +600,22 @@ function StudentOverviewTab({
                   const cfg = kindConfig[k] || kindConfig.other;
                   const Icon = cfg.icon;
                   return (
-                    <div key={file.id} className="flex items-center justify-between gap-2 rounded-xl border border-sky-100/70 bg-white/70 p-2.5 transition hover:bg-white">
+                    <div key={file.instanceId || file.id} className="flex items-center justify-between gap-2 rounded-xl border border-sky-100/70 bg-white/70 p-2.5 transition hover:bg-white">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[11px] font-bold ${cfg.badge}`}>
                           <Icon className="h-4 w-4" />
                         </span>
                         <div className="min-w-0">
                           <p className="truncate text-xs font-bold text-[#102f63]">{file.name}</p>
-                          <p className="text-[10px] text-[#487291]">{formatBytes(file.size_bytes)}</p>
+                          <p className="text-[10px] text-[#487291]">{formatBytes(file.sizeBytes ?? file.size_bytes)}</p>
                         </div>
                       </div>
-                      {file.file_url && (
+                      {(file.viewUrl || file.downloadUrl || file.file_url) && (
                         <a
-                          href={file.file_url}
+                          href={file.downloadUrl || file.viewUrl || file.file_url}
                           target="_blank"
                           rel="noreferrer"
-                          download
+                          download={Boolean(file.downloadUrl)}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-sky-50 hover:text-blue-700 transition"
                           title="Tải về"
                         >

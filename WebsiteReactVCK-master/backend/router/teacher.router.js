@@ -642,7 +642,13 @@ router.put("/classes/:classId/grades", protectRoute, requireTeacher, requirePerm
       const assignmentRes = await client.query(
         `SELECT id, title, max_score, instructor_id
          FROM assignments
-         WHERE id = $1 AND live_class_id = $2`,
+         WHERE id = $1 AND (
+           live_class_id = $2 OR (
+             live_class_id IS NULL AND course_id = (
+               SELECT course_id FROM live_classes WHERE id = $2
+             )
+           )
+         )`,
         [rawId, classId],
       );
       if (!assignmentRes.rows[0]) {
@@ -672,7 +678,7 @@ router.put("/classes/:classId/grades", protectRoute, requireTeacher, requirePerm
         submissionId = subRes.rows[0].id;
         revision = Number(subRes.rows[0].revision || 1);
         await client.query(
-          `UPDATE assignment_submissions SET status = 'graded', updated_at = NOW() WHERE id = $1`,
+          `UPDATE assignment_submissions SET status = 'graded' WHERE id = $1`,
           [submissionId],
         );
       } else {

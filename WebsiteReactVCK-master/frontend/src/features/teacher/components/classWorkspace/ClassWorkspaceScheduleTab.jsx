@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { Link } from "react-router-dom";
 import { CalendarDays, CheckCircle2, Clock, Link2, Plus, Video } from "lucide-react";
 import ClassScheduleManager from "./ClassScheduleManager";

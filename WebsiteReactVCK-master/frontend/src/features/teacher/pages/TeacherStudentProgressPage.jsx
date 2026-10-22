@@ -1,6 +1,6 @@
-/* eslint-disable react/prop-types */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   AlertTriangle,
   BarChart3,
@@ -438,6 +438,8 @@ function EditScoreModal({ target, onClose, onSaved }) {
 
 /* ── Main Page Component ─────────────────────────────────────── */
 export default function TeacherStudentProgressPage() {
+  const location = useLocation();
+  const isAdminView = location.pathname.startsWith("/admin/");
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState("");
   const [courseFilter, setCourseFilter] = useState("");
@@ -959,7 +961,7 @@ export default function TeacherStudentProgressPage() {
                 Thời điểm điểm danh là dữ liệu đã được giáo viên chốt cho buổi học.
               </span>
               <Link
-                to={`/lms/teach/classes/${classId}`}
+                to={isAdminView ? `/admin/classes/${classId}` : `/lms/teach/classes/${classId}`}
                 className="font-bold text-[#1a446c] hover:underline dark:text-sky-400"
               >
                 Mở không gian lớp →

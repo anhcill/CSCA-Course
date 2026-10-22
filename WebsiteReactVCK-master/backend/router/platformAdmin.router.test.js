@@ -14,6 +14,7 @@ test("admin can approve a Management class and its enrollment", async (t) => {
   process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
   const { pool } = await import("../db/connect.js");
   pool.query = (sql, params) => db.query(sql, params);
+  pool.connect = async () => ({ query: (sql, params) => db.query(sql, params), release() {} });
   const router = (await import("./platformAdmin.router.js")).default;
   const invoke = async (path, id, userId) => {
     const handler = router.stack.find((layer) => layer.route?.path === path).route.stack.at(-1).handle;
@@ -53,6 +54,43 @@ test("admin can approve a Management class and its enrollment", async (t) => {
   assert.equal(policyResponse.body.data.allowFileDownload, false);
   assert.equal((await db.query("SELECT allow_file_download FROM live_classes WHERE id=$1", [cls.id])).rows[0].allow_file_download, false);
 
+  const assignTeacher = router.stack.find((layer) => (
+    layer.route?.path === "/classes/:id/teacher" && layer.route.methods.patch
+  )).route.stack.at(-1).handle;
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role,is_locked) VALUES ('assigned-teacher','assigned-teacher@example.test','creator',false) RETURNING id",
+  )).rows[0];
+  const assignmentResponse = { statusCode: 200, body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; return this; },
+  };
+  await assignTeacher({
+    params: { id: cls.id }, body: { teacherId: teacher.id }, user: admin, ip: "127.0.0.1",
+  }, assignmentResponse);
+  assert.equal(assignmentResponse.statusCode, 200, JSON.stringify(assignmentResponse.body));
+  assert.equal(String(assignmentResponse.body.data.teacherId), String(teacher.id));
+  assert.deepEqual((await db.query(
+    "SELECT instructor_id,teacher_display_name FROM live_classes WHERE id=$1",
+    [cls.id],
+  )).rows[0], { instructor_id: teacher.id, teacher_display_name: "assigned-teacher" });
+  assert.equal((await db.query(
+    "SELECT status FROM class_teachers WHERE live_class_id=$1 AND teacher_id=$2",
+    [cls.id, teacher.id],
+  )).rows[0].status, "active");
+  const unassignmentResponse = { statusCode: 200, body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; return this; },
+  };
+  await assignTeacher({
+    params: { id: cls.id }, body: { teacherId: null }, user: admin, ip: "127.0.0.1",
+  }, unassignmentResponse);
+  assert.equal(unassignmentResponse.statusCode, 200, JSON.stringify(unassignmentResponse.body));
+  assert.equal(unassignmentResponse.body.data.teacherId, null);
+  assert.equal((await db.query(
+    "SELECT status FROM class_teachers WHERE live_class_id=$1 AND teacher_id=$2",
+    [cls.id, teacher.id],
+  )).rows[0].status, "revoked");
+
   const updatePermission = router.stack.find((layer) => layer.route?.path === "/permissions/:id" && layer.route.methods.patch).route.stack.at(-1).handle;
   const permission = (await db.query("SELECT id FROM lms_permissions WHERE code='lms.class.manage'")).rows[0];
   const response = () => ({ statusCode: 200, body: null,
@@ -67,4 +105,8 @@ test("admin can approve a Management class and its enrollment", async (t) => {
   await updatePermission({ params: { id: permission.id }, body: { admin: false }, user: admin }, denyAdminReduction);
   assert.equal(denyAdminReduction.statusCode, 409);
   assert.equal(denyAdminReduction.body.errorCode, "ADMIN_FULL_ACCESS");
+  const denyStudentPermission = response();
+  await updatePermission({ params: { id: permission.id }, body: { student: true }, user: admin }, denyStudentPermission);
+  assert.equal(denyStudentPermission.statusCode, 409);
+  assert.equal(denyStudentPermission.body.errorCode, "STUDENT_PERMISSION_NOT_APPLICABLE");
 });

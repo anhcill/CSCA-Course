@@ -73,7 +73,7 @@ export default function AttendanceSessionHeader({
       ) : policy?.canMarkAttendance ? (
         <div className="flex items-center gap-2.5 rounded-2xl border border-sky-200 bg-sky-50/80 dark:border-sky-900/60 dark:bg-sky-950/30 px-3.5 py-2.5 text-xs font-semibold text-sky-800 dark:text-sky-200">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-sky-600" />
-          <span>Buổi học hợp lệ để điểm danh. Vui lòng rà soát kỹ trước khi bấm "Chốt & khóa điểm danh".</span>
+          <span>Buổi học hợp lệ để điểm danh. Vui lòng rà soát kỹ trước khi bấm &quot;Chốt & khóa điểm danh&quot;.</span>
         </div>
       ) : policy?.reason ? (
         <div className="flex items-center gap-2.5 rounded-2xl border border-rose-200 bg-rose-50/80 dark:border-rose-900/60 dark:bg-rose-950/30 px-3.5 py-2.5 text-xs font-semibold text-rose-800 dark:text-rose-200">

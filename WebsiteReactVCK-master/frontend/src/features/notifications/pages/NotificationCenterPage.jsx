@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Check, RefreshCw, Bell } from "lucide-react";
-import { fetchNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "../../api/lmsClient";
+import {
+  deleteNotification,
+  fetchNotifications,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+  markNotificationAsUnread,
+} from "../../api/lmsClient";
 import { useAuthContext } from "../../../context/AuthContext";
 import { resolveLmsDestination } from "../../../utils/lmsNavigation";
 
@@ -257,27 +263,24 @@ export default function NotificationCenterPage() {
   const navigate = useNavigate();
   const { authUser } = useAuthContext();
 
-  const [items, setItems] = useState(DEFAULT_MOCK_NOTIFICATIONS);
+  const [items, setItems] = useState(DEFAULT_MOCK_NOTIFICATIONS.slice(0, 0));
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [activeCategory, setActiveCategory] = useState("all"); // Top horizontal pills
   const [activeQuickFilter, setActiveQuickFilter] = useState("all"); // Right sidebar quick filter
   const [markingAll, setMarkingAll] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const result = await fetchNotifications({ page: 1, limit: 50 });
       const apiList = result?.data?.notifications;
-      if (Array.isArray(apiList) && apiList.length > 0) {
-        const normalized = apiList.map(normalizeApiNotification);
-        // Merge real notifications with mock items ensuring demo richness
-        setItems(normalized);
-      } else {
-        setItems(DEFAULT_MOCK_NOTIFICATIONS);
-      }
+      setItems(Array.isArray(apiList) ? apiList.map(normalizeApiNotification) : []);
     } catch (err) {
-      console.warn("Using default rich notification list", err);
-      setItems(DEFAULT_MOCK_NOTIFICATIONS);
+      console.warn("Unable to load notifications", err);
+      setItems([]);
+      setLoadError(err?.message || "Không thể tải thông báo");
     } finally {
       setLoading(false);
     }
@@ -411,11 +414,17 @@ export default function NotificationCenterPage() {
       )
     );
     window.dispatchEvent(new CustomEvent("csca:notifications-updated"));
-    if (notification.isFromApi && nextRead) {
+    if (notification.isFromApi) {
       try {
-        await markNotificationAsRead(notification.id);
+        if (nextRead) await markNotificationAsRead(notification.id);
+        else await markNotificationAsUnread(notification.id);
       } catch (err) {
-        console.warn("Unable to update read state on server", err);
+        setItems((prev) => prev.map((it) => (
+          it.id === notification.id
+            ? { ...it, is_read: notification.is_read, is_new: !notification.is_read }
+            : it
+        )));
+        toast.error(err?.message || "Không thể cập nhật trạng thái thông báo");
       }
     }
   };
@@ -431,10 +440,15 @@ export default function NotificationCenterPage() {
   };
 
   // Delete notification
-  const handleDeleteItem = (id) => {
-    setItems((prev) => prev.filter((it) => it.id !== id));
-    window.dispatchEvent(new CustomEvent("csca:notifications-updated"));
-    toast.success("Đã xóa thông báo khỏi danh sách", { duration: 1500 });
+  const handleDeleteItem = async (id) => {
+    try {
+      await deleteNotification(id);
+      setItems((prev) => prev.filter((it) => it.id !== id));
+      window.dispatchEvent(new CustomEvent("csca:notifications-updated"));
+      toast.success("Đã xóa thông báo", { duration: 1500 });
+    } catch (err) {
+      toast.error(err?.message || "Không thể xóa thông báo");
+    }
   };
 
   // Mark all as read
@@ -499,7 +513,15 @@ export default function NotificationCenterPage() {
             />
 
             {/* Notification items grouped by timeline */}
-            {groupedItems.length === 0 ? (
+            {loadError ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50/90 p-8 text-center shadow-xs">
+                <h3 className="text-sm font-bold text-rose-800">Không thể tải thông báo</h3>
+                <p className="mt-1 text-xs text-rose-600">{loadError}</p>
+                <button type="button" onClick={loadData} className="mt-4 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700">
+                  Thử lại
+                </button>
+              </div>
+            ) : groupedItems.length === 0 ? (
               <div className="rounded-2xl border border-white/85 bg-white/90 p-12 text-center shadow-xs backdrop-blur-md">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
                   <Bell className="h-6 w-6" />

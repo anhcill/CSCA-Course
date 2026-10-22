@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { KeyRound, Mail, ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useForgotPassword from '../../hooks/useForgotPassword';
 
 const ForgotPasswordForm = ({ onSwitchMode, onResetPassword }) => {
-  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);

@@ -39,7 +39,15 @@ router.get("/", adminOnly, async (req, res) => {
     }
     if (teacherId && /^\d+$/.test(teacherId)) {
       values.push(Number(teacherId));
-      filters.push(`lc.instructor_id = $${values.length}`);
+      filters.push(`(
+        (lc.instructor_id = $${values.length} AND NOT EXISTS (
+          SELECT 1 FROM class_teachers former
+          WHERE former.live_class_id = lc.id AND former.teacher_id = $${values.length}
+        )) OR EXISTS (
+          SELECT 1 FROM class_teachers ct
+          WHERE ct.live_class_id = lc.id AND ct.teacher_id = $${values.length} AND ct.status = 'active'
+        )
+      )`);
     }
     if (status && ["scheduled", "live", "completed", "cancelled", "rescheduled"].includes(status)) {
       // Session storage uses `ended`; the UI uses the learner-friendly `completed`.
@@ -57,6 +65,39 @@ router.get("/", adminOnly, async (req, res) => {
         lc.title AS live_class_title,
         c.id AS course_id, c.title AS course_title,
         u.id AS teacher_id, COALESCE(u.username, u.email) AS teacher_name, u.email AS teacher_email,
+        ARRAY(
+          SELECT DISTINCT assigned.teacher_id
+          FROM (
+            SELECT lc.instructor_id AS teacher_id
+            WHERE lc.instructor_id IS NOT NULL AND NOT EXISTS (
+              SELECT 1 FROM class_teachers former
+              WHERE former.live_class_id = lc.id AND former.teacher_id = lc.instructor_id
+            )
+            UNION ALL
+            SELECT ct.teacher_id FROM class_teachers ct
+            WHERE ct.live_class_id = lc.id AND ct.status = 'active'
+          ) assigned
+          WHERE assigned.teacher_id IS NOT NULL
+        ) AS teacher_ids,
+        ARRAY(
+          SELECT COALESCE(assigned_user.username, assigned_user.email)
+          FROM users assigned_user
+          WHERE assigned_user.id = ANY(ARRAY(
+            SELECT DISTINCT assigned.teacher_id
+            FROM (
+              SELECT lc.instructor_id AS teacher_id
+              WHERE lc.instructor_id IS NOT NULL AND NOT EXISTS (
+                SELECT 1 FROM class_teachers former
+                WHERE former.live_class_id = lc.id AND former.teacher_id = lc.instructor_id
+              )
+              UNION ALL
+              SELECT ct.teacher_id FROM class_teachers ct
+              WHERE ct.live_class_id = lc.id AND ct.status = 'active'
+            ) assigned
+            WHERE assigned.teacher_id IS NOT NULL
+          ))
+          ORDER BY COALESCE(assigned_user.username, assigned_user.email)
+        ) AS teacher_names,
         (SELECT COUNT(*)::int FROM class_enrollments ce WHERE ce.live_class_id = cs.live_class_id AND ce.status = 'active') AS enrolled_count,
         (SELECT COUNT(*)::int
          FROM class_session_change_logs cl
@@ -82,10 +123,14 @@ router.get("/", adminOnly, async (req, res) => {
         if (sA.status === "cancelled" || sB.status === "cancelled") continue;
 
         if (isOverlapping(sA.start_time, sA.end_time, sB.start_time, sB.end_time)) {
-          if (sA.teacher_id && sB.teacher_id && sA.teacher_id === sB.teacher_id) {
+          const teacherIdsA = (sA.teacher_ids || (sA.teacher_id ? [sA.teacher_id] : [])).map(String);
+          const teacherIdsB = new Set((sB.teacher_ids || (sB.teacher_id ? [sB.teacher_id] : [])).map(String));
+          const sharedTeacherId = teacherIdsA.find((id) => teacherIdsB.has(id));
+          if (sharedTeacherId) {
+            const teacherName = (sA.teacher_names || []).join(", ") || sA.teacher_name || "được phân công";
             conflicts.push({
               type: "teacher_conflict",
-              message: `Giáo viên ${sA.teacher_name} bị trùng lịch dạy giữa lớp "${sA.live_class_title}" và "${sB.live_class_title}"`,
+              message: `Giáo viên ${teacherName} bị trùng lịch dạy giữa lớp "${sA.live_class_title}" và "${sB.live_class_title}"`,
               sessionA: { id: sA.id, title: sA.title, classTitle: sA.live_class_title, start: sA.start_time, end: sA.end_time },
               sessionB: { id: sB.id, title: sB.title, classTitle: sB.live_class_title, start: sB.start_time, end: sB.end_time },
             });
@@ -114,7 +159,17 @@ router.get("/", adminOnly, async (req, res) => {
     const teachersRes = await query(`
       SELECT DISTINCT u.id, COALESCE(u.username, u.email) AS full_name, u.email
       FROM users u
-      JOIN live_classes lc ON lc.instructor_id = u.id
+      JOIN (
+        SELECT lc.instructor_id AS teacher_id
+        FROM live_classes lc
+        WHERE lc.instructor_id IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM class_teachers former
+          WHERE former.live_class_id = lc.id AND former.teacher_id = lc.instructor_id
+        )
+        UNION
+        SELECT ct.teacher_id FROM class_teachers ct WHERE ct.status = 'active'
+      ) assigned ON assigned.teacher_id = u.id
+      WHERE u.role = 'creator'
       ORDER BY COALESCE(u.username, u.email) ASC
     `);
 

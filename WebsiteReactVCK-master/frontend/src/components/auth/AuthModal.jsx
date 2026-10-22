@@ -3,9 +3,7 @@ import {
   motion,
   AnimatePresence,
   useMotionValue,
-  useTransform,
 } from "framer-motion";
-import { useTranslation } from "react-i18next";
 import LoginForm from "./LoginForm";
 import RegisterForm from "./RegisterForm";
 import VerifyEmailForm from "./VerifyEmailForm";
@@ -169,13 +167,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = "login" }) => {
   const [mode, setMode] = useState(initialMode);
   const [registrationData, setRegistrationData] = useState(null);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState(null);
-  const { t } = useTranslation();
-
   const dragX = useMotionValue(0);
-  // keep these in case child panels need them
-  const _dragProgress = useTransform(dragX, [0, 200], [1, 0]);
-  const _dragOpacity = useTransform(_dragProgress, [0, 0.5, 1], [0.3, 1, 0.3]);
-  const _dragScale = useTransform(_dragProgress, [0, 0.5, 1], [0.95, 1, 0.95]);
 
   // sync mode when initialMode prop changes
   useEffect(() => {

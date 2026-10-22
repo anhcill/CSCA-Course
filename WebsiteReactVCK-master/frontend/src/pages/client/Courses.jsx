@@ -1,9 +1,8 @@
 // --- START OF FILE Courses.jsx ---
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { HiOutlineStar, HiMiniStar, HiStar } from "react-icons/hi2";
+import { HiStar } from "react-icons/hi2";
 import toast from 'react-hot-toast';
-import { Link } from 'react-router-dom';
-import { GraduationCap, BookOpen, Sparkles, Trophy, ArrowRight, Lock } from 'lucide-react';
+import { GraduationCap, BookOpen, Sparkles, Trophy, Lock } from 'lucide-react';
 import useGetCourse from '../../hooks/useGetCourse';
 import useGetProgress from '../../hooks/useGetProgress';
 import { useTheme } from '../../context/ThemeContext';
@@ -111,15 +110,6 @@ const Courses = () => {
   const filterProgress = authUser ? progress?.filter((item) => {
     return item.userId === authUser?._id;
   }) : [];
-
-  const openRatingForm = (course) => {
-    const courseId = course._id || course.id;
-    if (filterProgress?.find((item) => item.courseId === courseId)?.progressPercentage < 70 || filterProgress?.find((item) => item.courseId === courseId)?.progressPercentage === undefined) {
-      return toast.error(t('needToCompleteCourse'));
-    }
-    setSelectedCourseForRating(course);
-    setRatingFormVisible(true);
-  };
 
   const closeRatingForm = () => {
     setRatingFormVisible(false);

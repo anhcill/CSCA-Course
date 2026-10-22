@@ -1,13 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { marked } from "marked";
 import { useTheme } from '../../context/ThemeContext';
 import NoteLesson from './NoteLesson.jsx';
 import Comments from './Comments.jsx';
 import { useTranslation } from 'react-i18next';
 import { 
-  FileText, 
   Download, 
-  Eye, 
   CheckCircle2, 
   XCircle, 
   HelpCircle, 
@@ -16,7 +14,6 @@ import {
   Award, 
   RotateCcw,
   Sparkles,
-  Headphones,
   Check
 } from 'lucide-react';
 import toast from 'react-hot-toast';

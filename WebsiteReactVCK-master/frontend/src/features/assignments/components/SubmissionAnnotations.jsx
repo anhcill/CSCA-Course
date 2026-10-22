@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useState } from "react";
 import { input, secondary } from "../../teacher/components/workflowStyles";
 

@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import {
   Binary,
-  CheckCircle2,
-  FileSpreadsheet,
   Plus,
   Trash2,
   X,

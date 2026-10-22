@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAuthContext } from '../context/AuthContext';
 import useCRUD_Schedule from '../hooks/useCRUD_Schedule';
@@ -11,8 +11,8 @@ const CreateScheduleButton = ({ onScheduleCreated }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const { authUser } = useAuthContext();
-  const { lessons, loading: loadingLesson, error: errorLesson } = useGetAllLessons()
-  const { schedule, loading, error: scheduleError, createSchedule } = useCRUD_Schedule();
+  const { lessons } = useGetAllLessons()
+  const { error: scheduleError, createSchedule } = useCRUD_Schedule();
 
   if (error || scheduleError) {
     return <Error message={error || scheduleError} />;

@@ -39,6 +39,7 @@ test("LMS workflows execute against isolated PostgreSQL migrations", async (t) =
   const courses=(await import("../router/course.router.js")).default;
   const attendance=(await import("../router/attendance.router.js")).default;
   const reports=(await import("../router/report.router.js")).default;
+  const teachers=(await import("../router/teacher.router.js")).default;
   const support=(await import("../router/support.router.js")).default;
   const reminders=(await import("./assignmentDeadlineNotification.service.js")).processAssignmentDeadlineReminders;
   const invoke=async(router,method,path,{user,params={},query={},body={}}={})=>{
@@ -157,8 +158,16 @@ test("LMS workflows execute against isolated PostgreSQL migrations", async (t) =
     assert.equal((await one("SELECT status FROM class_attendance WHERE session_id=$1",[session.id])).status,"present");
   });
   await t.test("gradebook exports obey session scope, freeze results and require reopening before grading",async()=>{
+    const courseWideAssignment=await one("INSERT INTO assignments(title,course_id,instructor_id,max_score) VALUES ('Course-wide Task',$1,$2,10) RETURNING *",[course.id,teacher.id]);
+    await db.query("INSERT INTO assignment_submissions(assignment_id,user_id,content_text,status,submitted_at) VALUES ($1,$2,'Course-wide answer','submitted',NOW())",[courseWideAssignment.id,student.id]);
+    let r=await invoke(reports,"get","/gradebook",{user:teacher,query:{classId:cls.id}});
+    assert.ok(r.body.data.activities.some((item)=>item.id===`assignment-${courseWideAssignment.id}`),"class gradebook includes course-wide assignments visible to its learners");
+    r=await invoke(teachers,"put","/classes/:classId/grades",{user:teacher,params:{classId:cls.id},body:{studentId:student.id,activityId:`assignment-${courseWideAssignment.id}`,score:7,reason:"Verified course-wide assignment score"}});
+    assert.equal(r.statusCode,200,JSON.stringify(r.body));
+    const courseWideCell=(await buildGradebook(db,cls.id)).rows[0].cells.find((cell)=>cell.activityId===`assignment-${courseWideAssignment.id}`);
+    assert.equal(courseWideCell.value,70,"course-wide score is reflected in the class gradebook");
     await db.query("INSERT INTO assignments(title,live_class_id,class_session_id,instructor_id) VALUES ('Session Two Task',$1,$2,$3)",[cls.id,session2.id,teacher.id]);
-    let r=await invoke(reports,"get","/gradebook/export",{user:teacher,query:{classId:cls.id,sessionId:session.id,format:"csv"}});
+    r=await invoke(reports,"get","/gradebook/export",{user:teacher,query:{classId:cls.id,sessionId:session.id,format:"csv"}});
     assert.equal(r.statusCode,200,JSON.stringify(r.body));assert.ok(r.body.includes("Essay 1"));assert.ok(!r.body.includes("Session Two Task"));
     r=await invoke(reports,"get","/gradebook/export",{user:stranger,query:{classId:cls.id}});
     assert.equal(r.statusCode,403);
@@ -172,6 +181,12 @@ test("LMS workflows execute against isolated PostgreSQL migrations", async (t) =
     await db.query("UPDATE class_teachers SET teaching_role='lead' WHERE live_class_id=$1 AND teacher_id=$2",[cls.id,teacher.id]);
     r=await invoke(reports,"get","/gradebook",{user:teacher,query:{classId:cls.id}});
     assert.deepEqual(r.body.data.capabilities,{canManagePolicy:true,canFinalize:true,canReopen:false});
+    const pendingCourseWide=await one("INSERT INTO assignments(title,course_id,instructor_id,max_score) VALUES ('Pending Course Task',$1,$2,10) RETURNING *",[course.id,teacher.id]);
+    await db.query("INSERT INTO assignment_submissions(assignment_id,user_id,content_text,status,submitted_at) VALUES ($1,$2,'Needs grading','submitted',NOW())",[pendingCourseWide.id,student.id]);
+    r=await invoke(reports,"post","/gradebook/finalize",{user:teacher,body:{classId:cls.id}});
+    assert.equal(r.statusCode,409,"course-wide submissions from class learners must block finalization until graded");
+    r=await invoke(teachers,"put","/classes/:classId/grades",{user:teacher,params:{classId:cls.id},body:{studentId:student.id,activityId:`assignment-${pendingCourseWide.id}`,score:8,reason:"Completing pending course-wide grading"}});
+    assert.equal(r.statusCode,200,JSON.stringify(r.body));
     r=await invoke(reports,"post","/gradebook/finalize",{user:teacher,body:{classId:cls.id}});
     assert.equal(r.statusCode,200,JSON.stringify(r.body));
     r=await invoke(assignments,"post","/",{user:teacher,body:{title:"Late new task",courseId:course.id,liveClassId:cls.id,classSessionId:session.id,maxScore:10}});

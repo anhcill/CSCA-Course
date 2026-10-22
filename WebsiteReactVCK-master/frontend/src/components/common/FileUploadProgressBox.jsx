@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import {
   AlertTriangle,
   CheckCircle2,
@@ -12,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const formatBytes = (bytes) => {
   const b = Number(bytes) || 0;
   if (!b) return "0 B";

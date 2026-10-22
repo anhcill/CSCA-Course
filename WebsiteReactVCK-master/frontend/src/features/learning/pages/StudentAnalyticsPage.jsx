@@ -17,6 +17,7 @@ import {
   Area,
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -25,8 +26,9 @@ import {
 } from "recharts";
 import { fetchStudentAnalytics } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
+import { ErrorState } from "../../../components/common/StateView";
 
-// Fallback authentic CSCA production dataset exactly as requested by user
+/* Legacy preview dataset retained only as design reference; it is never rendered as learner data.
 const DEFAULT_ANALYTICS_DATA = {
   summary: {
     overallScorePct: 3,
@@ -293,6 +295,26 @@ const DEFAULT_ANALYTICS_DATA = {
     },
   ],
 };
+*/
+
+const EMPTY_ANALYTICS_DATA = {
+  summary: {
+    overallScorePct: 0,
+    score10Scale: "0.0",
+    totalEarnedScore: 0,
+    totalMaxScore: 0,
+    gradedCount: 0,
+    reviewPriorityCount: 0,
+    progressPct: 0,
+    completedCoursesCount: 0,
+    totalCoursesCount: 0,
+    tierLabel: "Chưa có dữ liệu",
+  },
+  distribution: [],
+  trend: [],
+  weakItems: [],
+  detailedSubmissions: [],
+};
 
 // Tooltip for Distribution Bar Chart
 function DistributionTooltip({ active, payload, label }) {
@@ -331,21 +353,21 @@ function TrendTooltip({ active, payload }) {
 }
 
 export default function StudentAnalyticsPage() {
-  const [analyticsData, setAnalyticsData] = useState(DEFAULT_ANALYTICS_DATA);
+  const [analyticsData, setAnalyticsData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [filterTab, setFilterTab] = useState("all");
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const res = await fetchStudentAnalytics();
-      if (res?.success && res?.data) {
-        setAnalyticsData(res.data);
-      } else {
-        setAnalyticsData(DEFAULT_ANALYTICS_DATA);
-      }
-    } catch {
-      setAnalyticsData(DEFAULT_ANALYTICS_DATA);
+      if (!res?.success || !res?.data) throw new Error(res?.message || "Không thể tải kết quả học tập.");
+      setAnalyticsData(res.data);
+    } catch (requestError) {
+      setAnalyticsData(null);
+      setError(requestError.message || "Không thể tải kết quả học tập.");
     } finally {
       setLoading(false);
     }
@@ -355,11 +377,11 @@ export default function StudentAnalyticsPage() {
     loadData();
   }, [loadData]);
 
-  const summary = analyticsData?.summary || DEFAULT_ANALYTICS_DATA.summary;
-  const distribution = analyticsData?.distribution || DEFAULT_ANALYTICS_DATA.distribution;
-  const trend = analyticsData?.trend || DEFAULT_ANALYTICS_DATA.trend;
-  const weakItems = analyticsData?.weakItems || DEFAULT_ANALYTICS_DATA.weakItems;
-  const detailedSubmissions = analyticsData?.detailedSubmissions || DEFAULT_ANALYTICS_DATA.detailedSubmissions;
+  const summary = analyticsData?.summary || EMPTY_ANALYTICS_DATA.summary;
+  const distribution = analyticsData?.distribution || EMPTY_ANALYTICS_DATA.distribution;
+  const trend = analyticsData?.trend || EMPTY_ANALYTICS_DATA.trend;
+  const weakItems = analyticsData?.weakItems || EMPTY_ANALYTICS_DATA.weakItems;
+  const detailedSubmissions = analyticsData?.detailedSubmissions || EMPTY_ANALYTICS_DATA.detailedSubmissions;
 
   // Filter detailed submissions
   const filteredSubmissions = useMemo(() => {
@@ -384,6 +406,14 @@ export default function StudentAnalyticsPage() {
 
   if (loading && !analyticsData) {
     return <Loading loading={true} text="Đang đồng bộ kết quả học tập..." fullScreen={false} className="min-h-[60vh] py-16" />;
+  }
+
+  if (error) {
+    return (
+      <div className="px-4 py-12 sm:px-8">
+        <ErrorState title="Chưa thể tải kết quả học tập" message={error} onRetry={loadData} />
+      </div>
+    );
   }
 
   return (
@@ -494,6 +524,16 @@ export default function StudentAnalyticsPage() {
             </p>
           </div>
         </section>
+
+        {detailedSubmissions.length === 0 && (
+          <section className="rounded-2xl border border-dashed border-white/90 bg-white/85 px-5 py-10 text-center shadow-sm backdrop-blur-md">
+            <FileText className="mx-auto h-9 w-9 text-sky-400" />
+            <h2 className="mt-3 text-sm font-black text-[#102f63]">Chưa có bài nào được chấm điểm</h2>
+            <p className="mx-auto mt-1 max-w-lg text-xs leading-5 text-[#487291]">
+              Biểu đồ và phân tích sẽ xuất hiện sau khi giảng viên chấm bài tập hoặc hệ thống ghi nhận kết quả quiz của bạn.
+            </p>
+          </section>
+        )}
 
         {/* ================= 3. CHỦ ĐỀ & BÀI CẦN LUYỆN TẬP THÊM ================= */}
         {weakItems.length > 0 && (
@@ -607,7 +647,7 @@ export default function StudentAnalyticsPage() {
                   <Tooltip content={<DistributionTooltip />} cursor={{ fill: "rgba(241, 245, 249, 0.5)" }} />
                   <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={36}>
                     {distribution.map((entry, index) => (
-                      <cell key={`cell-${index}`} fill={entry.count > 0 ? entry.fill : "#d1d5db"} />
+                      <Cell key={`cell-${index}`} fill={entry.count > 0 ? entry.fill : "#d1d5db"} />
                     ))}
                   </Bar>
                 </BarChart>

@@ -1,8 +1,7 @@
-/* eslint-disable react/prop-types */
 import { Link } from 'react-router-dom';
 import {
-  Flame, Award, Shield, CheckCircle2, TrendingUp, Users, BookOpen,
-  CalendarDays, ExternalLink, Sparkles
+  Flame, Award, Shield, CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 import { TOP_CONTRIBUTORS, TRENDING_TAGS } from '../communityData';
 

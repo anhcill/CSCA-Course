@@ -192,7 +192,41 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
                   'cover_image_url', lc.cover_image_url,
                   'coverImageUrl', lc.cover_image_url,
                   'instructor_id', lc.instructor_id,
-                  'instructor_name', COALESCE(NULLIF(lc.teacher_display_name, ''), instructor.username, instructor.email)
+                  'instructor_name', COALESCE(NULLIF(lc.teacher_display_name, ''), instructor.username, instructor.email),
+                  'progress_total', (
+                    SELECT COUNT(*)
+                    FROM class_sessions class_session
+                    WHERE class_session.live_class_id = lc.id
+                      AND class_session.status <> 'cancelled'
+                  ),
+                  'progress_completed', (
+                    SELECT COUNT(*)
+                    FROM class_sessions class_session
+                    WHERE class_session.live_class_id = lc.id
+                      AND class_session.status <> 'cancelled'
+                      AND (class_session.status = 'ended' OR class_session.end_time <= NOW())
+                  ),
+                  'progress_source', 'sessions',
+                  'progress_percent', CASE
+                    WHEN (
+                      SELECT COUNT(*)
+                      FROM class_sessions class_session
+                      WHERE class_session.live_class_id = lc.id
+                        AND class_session.status <> 'cancelled'
+                    ) > 0 THEN ROUND(100.0 * (
+                      SELECT COUNT(*)
+                      FROM class_sessions class_session
+                      WHERE class_session.live_class_id = lc.id
+                        AND class_session.status <> 'cancelled'
+                        AND (class_session.status = 'ended' OR class_session.end_time <= NOW())
+                    ) / (
+                      SELECT COUNT(*)
+                      FROM class_sessions class_session
+                      WHERE class_session.live_class_id = lc.id
+                        AND class_session.status <> 'cancelled'
+                    ))
+                    ELSE 0
+                  END
                 )
                 ORDER BY lc.created_at DESC, lc.id DESC
               )

@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -18,22 +17,16 @@ import {
   Laptop,
   Smartphone,
   ShieldCheck,
-  BookOpen,
   Calendar,
   X,
   ChevronDown,
-  Upload,
-  Link as LinkIcon,
   Eye,
   EyeOff,
-  AlertTriangle,
   Loader2,
   School,
   Users,
   ClipboardCheck,
   ArrowRight,
-  Sparkles,
-  ExternalLink,
   Settings,
   GraduationCap,
   Wallet,
@@ -640,7 +633,7 @@ export default function TeacherSettingsPage() {
               </div>
             ) : (
               <div className="space-y-2.5">
-                {classesList.slice(0, 3).map((cls, idx) => {
+                {classesList.slice(0, 3).map((cls) => {
                   const cover = getClassCoverImage(cls, cls.id);
                   return (
                     <Link

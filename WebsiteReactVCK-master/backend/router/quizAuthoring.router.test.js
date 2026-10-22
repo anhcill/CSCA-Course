@@ -7,6 +7,7 @@ import {
   createQuizAuthoringRouter,
   createQuizOcrRateLimiter,
   normalizeQuizMetadata,
+  usesLegacyQuizCreateContract,
   validateQuizOcrImage,
 } from "./quizAuthoring.router.js";
 import { QuizOcrError } from "../services/quizOcr.service.js";
@@ -19,7 +20,7 @@ const withServer = async (router, callback) => {
   const app = express();
   app.use(express.json());
   app.use(cookieParser());
-  app.use("/api/assignments", router);
+  app.use("/api/assignments", ...(Array.isArray(router) ? router : [router]));
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   const { port } = server.address();
@@ -80,6 +81,28 @@ test("metadata normalization treats timezone-less authoring values as Vietnam ti
   });
   assert.equal(metadata.availableFrom.toISOString(), "2026-10-19T05:02:00.000Z");
   assert.equal(metadata.availableUntil.toISOString(), "2026-10-19T06:02:00.000Z");
+});
+
+test("flat question create payloads fall through to the legacy quiz builder", async () => {
+  assert.equal(usesLegacyQuizCreateContract({ questions: [] }), true);
+  assert.equal(usesLegacyQuizCreateContract({ questions: [], items: [] }), false);
+
+  const authoringRouter = createQuizAuthoringRouter({
+    authMiddlewares: [teacherAuth],
+    db: { getClient: async () => { throw new Error("authoring database must not be called"); } },
+  });
+  const legacyRouter = express.Router();
+  legacyRouter.post("/teacher/quizzes", (req, res) => res.status(201).json({ success: true, source: "legacy" }));
+
+  await withServer([authoringRouter, legacyRouter], async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/assignments/teacher/quizzes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Flat quiz", questions: [{ questionText: "Question" }] }),
+    });
+    assert.equal(response.status, 201);
+    assert.equal((await response.json()).source, "legacy");
+  });
 });
 
 test("validateQuizOcrImage rejects a forged MIME type", () => {

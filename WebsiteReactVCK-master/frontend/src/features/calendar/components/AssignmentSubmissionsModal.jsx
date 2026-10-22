@@ -1,11 +1,8 @@
-/* eslint-disable react/prop-types */
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   Award,
-  BookOpen,
-  CalendarDays,
   CheckCircle2,
   Clock,
   ExternalLink,
@@ -50,12 +47,16 @@ export default function AssignmentSubmissionsModal({
   isTeacher = false,
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [studentsData, setStudentsData] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterTab, setFilterTab] = useState("all"); // "all" | "submitted" | "unsubmitted" | "needs_grading" | "graded"
 
   const isQuiz = event?.eventType === "QUIZ_DUE";
+  const isAdminView = location.pathname.startsWith("/admin/");
+  const quizReportPath = isAdminView ? "/admin/quizzes" : "/lms/teacher/quizzes";
+  const gradingPath = isAdminView ? "/admin/assignments/review" : "/lms/teacher/assignments/review";
   const dueDateObj = event?.due_date ? new Date(event.due_date) : null;
   const isOverdue = dueDateObj ? dueDateObj.getTime() < Date.now() : false;
 
@@ -81,21 +82,21 @@ export default function AssignmentSubmissionsModal({
               ? reportRes.data.students
               : [];
             const mapped = rawStudents.map((s) => {
-              const isSubmitted = s.attempt_status === "submitted";
-              const isGraded = isSubmitted && s.score !== null && s.score !== undefined;
+              const isSubmitted = s.status === "submitted";
+              const isGraded = isSubmitted && (!s.hasEssay || Boolean(s.essayGrade));
               return {
-                id: s.user_id,
-                name: s.full_name || s.username || "Học viên",
+                id: s.userId,
+                name: s.fullName || s.username || "Học viên",
                 username: s.username,
                 email: s.email,
-                avatar: s.avatar_url,
+                avatar: s.avatarUrl,
                 hasSubmitted: isSubmitted,
                 status: isGraded ? "graded" : isSubmitted ? "submitted" : "unsubmitted",
                 score: s.score,
-                maxScore: s.max_score || event.max_score || 10,
-                submittedAt: s.submitted_at,
-                attemptNumber: s.attempt_number,
-                attemptId: s.attempt_id,
+                maxScore: s.maxScore || event.max_score || 10,
+                submittedAt: s.submittedAt,
+                attemptNumber: s.attemptNumber,
+                attemptId: s.attemptId,
               };
             });
             setStudentsData(mapped);
@@ -118,12 +119,12 @@ export default function AssignmentSubmissionsModal({
             // Ghép danh sách lớp với danh sách nộp bài
             const submissionByUser = new Map();
             submissions.forEach((sub) => {
-              submissionByUser.set(String(sub.user_id), sub);
+              submissionByUser.set(String(sub.userId), sub);
             });
 
             const merged = roster.map((member) => {
               const sub = submissionByUser.get(String(member.id));
-              const hasSubmitted = Boolean(sub && (sub.status === "submitted" || sub.status === "graded"));
+              const hasSubmitted = Boolean(sub && ["submitted", "late", "graded"].includes(sub.status));
               const isGraded = Boolean(sub && (sub.score !== null && sub.score !== undefined || sub.status === "graded"));
               return {
                 id: member.id,
@@ -134,10 +135,10 @@ export default function AssignmentSubmissionsModal({
                 hasSubmitted,
                 status: isGraded ? "graded" : hasSubmitted ? "submitted" : "unsubmitted",
                 score: sub?.score ?? null,
-                maxScore: sub?.max_score || event.max_score || 10,
-                submittedAt: sub?.submitted_at || null,
+                maxScore: sub?.maxScore || event.max_score || 10,
+                submittedAt: sub?.submittedAt || null,
                 submissionId: sub?.id,
-                fileAssets: sub?.file_assets || (sub?.file_name ? [{ fileName: sub.file_name, fileUrl: sub.file_url }] : []),
+                fileAssets: sub?.fileAssets || (sub?.fileName ? [{ fileName: sub.fileName, fileUrl: sub.fileUrl }] : []),
               };
             });
             setStudentsData(merged);
@@ -146,18 +147,18 @@ export default function AssignmentSubmissionsModal({
             const mapped = submissions.map((sub) => {
               const isGraded = sub.score !== null && sub.score !== undefined || sub.status === "graded";
               return {
-                id: sub.user_id,
-                name: sub.student_name || sub.student_username || "Học viên",
-                username: sub.student_username,
-                email: sub.student_email,
-                avatar: sub.student_avatar,
+                id: sub.userId,
+                name: sub.studentName || "Học viên",
+                username: sub.studentName,
+                email: sub.studentEmail,
+                avatar: sub.studentAvatar,
                 hasSubmitted: true,
                 status: isGraded ? "graded" : "submitted",
                 score: sub.score,
-                maxScore: sub.max_score || event.max_score || 10,
-                submittedAt: sub.submitted_at,
+                maxScore: sub.maxScore || event.max_score || 10,
+                submittedAt: sub.submittedAt,
                 submissionId: sub.id,
-                fileAssets: sub.file_assets || (sub.file_name ? [{ fileName: sub.file_name, fileUrl: sub.file_url }] : []),
+                fileAssets: sub.fileAssets || (sub.fileName ? [{ fileName: sub.fileName, fileUrl: sub.fileUrl }] : []),
               };
             });
             setStudentsData(mapped);
@@ -224,25 +225,25 @@ export default function AssignmentSubmissionsModal({
   const handleOpenGrading = (student) => {
     onClose();
     if (isQuiz) {
-      navigate(`/lms/teacher/quizzes/${event.id}/report`);
+      navigate(`${quizReportPath}?reportQuizId=${encodeURIComponent(event.id)}`);
     } else {
       const query = new URLSearchParams();
       if (event.id) query.set("assignmentId", event.id);
       if (event.live_class_id) query.set("classId", event.live_class_id);
-      if (student?.id) query.set("studentId", student.id);
-      navigate(`/lms/teacher/grading?${query.toString()}`);
+      if (student?.submissionId) query.set("submissionId", student.submissionId);
+      navigate(`${gradingPath}?${query.toString()}`);
     }
   };
 
   const handleOpenGeneralGrading = () => {
     onClose();
     if (isQuiz) {
-      navigate(`/lms/teacher/quizzes/${event.id}/report`);
+      navigate(`${quizReportPath}?reportQuizId=${encodeURIComponent(event.id)}`);
     } else {
       const query = new URLSearchParams();
       if (event.id) query.set("assignmentId", event.id);
       if (event.live_class_id) query.set("classId", event.live_class_id);
-      navigate(`/lms/teacher/grading?${query.toString()}`);
+      navigate(`${gradingPath}?${query.toString()}`);
     }
   };
 
@@ -526,7 +527,7 @@ export default function AssignmentSubmissionsModal({
                   type="button"
                   onClick={() => {
                     onClose();
-                    navigate(isQuiz ? `/lms/quizzes/${event.id}` : "/lms/assignments");
+                    navigate(isQuiz ? `/lms/quizzes/${event.id}` : `/lms/assignment/${event.id}/submit`);
                   }}
                   className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
                 >

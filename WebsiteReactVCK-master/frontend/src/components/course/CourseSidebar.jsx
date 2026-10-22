@@ -1,11 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FaChevronUp, FaChevronDown } from "react-icons/fa";
 import { LuTvMinimalPlay } from "react-icons/lu";
 import { FolderDown, BookOpen, Video } from "lucide-react";
 import YouTube from 'react-youtube';
-import { useAuthContext } from '../../context/AuthContext';
-import useGetProgress from '../../hooks/useGetProgress';
-import useGetLessons from '../../hooks/useGetLesson';
 import { useTranslation } from 'react-i18next';
 import TestLastCourse from './TestLastCourse';
 
@@ -19,20 +16,13 @@ const CourseSidebar = ({
   isMobileMenuOpen,
   setIsMobileMenuOpen,
   openLessons,
-  setOpenLessons,
   openTests,
-  setOpenTests,
   toggleLessons,
   toggleTests,
   activeTab,
   setActiveTab,
 }) => {
   const { t } = useTranslation();
-  const { authUser } = useAuthContext();
-  const { progress } = useGetProgress();
-  const { lessons } = useGetLessons();
-  const userProgress = progress?.find((item) => item.userId === authUser?._id);
-
   const [localVideoDurations, setLocalVideoDurations] = useState(initialVideoDurations || {});
   const isMounted = useRef(false);
 
@@ -55,7 +45,7 @@ const CourseSidebar = ({
                       resolve();
                       player.destroy();
                     },
-                    'onError': (event) => {
+                    'onError': () => {
                       durations[lesson._id] = 0;
                       resolve();
                       player.destroy();

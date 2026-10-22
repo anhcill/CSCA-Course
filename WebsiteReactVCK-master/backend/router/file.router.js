@@ -380,7 +380,10 @@ router.get("/teacher/files", protectRoute, requireTeacher, async (req, res) => {
          AND ($1::boolean OR (
            fi.uploaded_by = $2
            OR (fi.effective_live_class_id IS NOT NULL AND (
-             lc.instructor_id = $2
+             (lc.instructor_id = $2 AND NOT EXISTS (
+               SELECT 1 FROM class_teachers former
+               WHERE former.live_class_id = lc.id AND former.teacher_id = $2
+             ))
              OR EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active')
            ))
            OR (fi.course_id IS NOT NULL AND EXISTS (SELECT 1 FROM courses c2 WHERE c2.id = fi.course_id AND c2.author_id = $2))
@@ -420,7 +423,8 @@ router.get("/teacher/classes-lookup", protectRoute, requireTeacher, async (req, 
            WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
          ) OR (
            lc.instructor_id = $2 AND NOT EXISTS (
-             SELECT 1 FROM class_teachers assigned WHERE assigned.live_class_id = lc.id
+             SELECT 1 FROM class_teachers assigned
+             WHERE assigned.live_class_id = lc.id AND assigned.teacher_id = $2
            )
          ))
        ORDER BY lc.created_at DESC`,
@@ -668,7 +672,10 @@ router.get("/teacher/files/reusable", protectRoute, requireTeacher, requirePermi
          AND COALESCE(f.course_id, source_lc.course_id) = $1
          AND ($2::boolean OR f.uploaded_by = $3 OR (
            f.live_class_id IS NOT NULL AND (
-             source_lc.instructor_id = $3
+             (source_lc.instructor_id = $3 AND NOT EXISTS (
+               SELECT 1 FROM class_teachers former
+               WHERE former.live_class_id = source_lc.id AND former.teacher_id = $3
+             ))
              OR EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = source_lc.id AND ct.teacher_id = $3 AND ct.status = 'active')
            )
          ) OR EXISTS (SELECT 1 FROM courses owned WHERE owned.id = COALESCE(f.course_id, source_lc.course_id) AND owned.author_id = $3))

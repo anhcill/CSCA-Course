@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
+import { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { FaUser, FaTrash } from 'react-icons/fa';
 import useGetLessons from '../../hooks/useGetLesson';
-import useGetAllCourses from '../../hooks/useGetAllCourse';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../../context/AuthContext';
 import Loading from '../Loading';
@@ -14,7 +13,6 @@ const Comments = ({ courseId, lessonId }) => {
     const { authUser, loading } = useContext(AuthContext);
     const { lessons } = useGetLessons();
     const [selectedLessonIndex, setSelectedLessonIndex] = useState('all');
-    const { courses } = useGetAllCourses();
     const { t } = useTranslation();
 
 
@@ -39,7 +37,7 @@ const Comments = ({ courseId, lessonId }) => {
         if (courseId) {
             fetchComments();
         }
-    }, [courseId]); // Thêm fetchComments vào dependencies nếu cần
+    }, [courseId, fetchComments]);
 
     // Add new comment
     const handleSubmit = useCallback(async (e) => {
@@ -83,7 +81,7 @@ const Comments = ({ courseId, lessonId }) => {
             console.error('Error posting comment:', error.response?.data || error);
             toast.error('Không thể thêm bình luận');
         }
-    }, [authUser?._id, courseId, lessonId, newComment, comments]);
+    }, [authUser, courseId, lessonId, newComment, comments]);
 
     // Delete comment
     const handleDelete = useCallback(async (commentId) => {

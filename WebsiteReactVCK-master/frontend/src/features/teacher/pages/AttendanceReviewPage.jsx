@@ -1,25 +1,14 @@
-/* eslint-disable react/prop-types */
-import { useCallback, useEffect, useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  AlertCircle,
   ArrowLeft,
-  CalendarDays,
   CheckCircle2,
-  Clock,
-  Eye,
   FileCheck,
-  FileSpreadsheet,
   FileText,
-  Filter,
-  GraduationCap,
   RotateCw,
-  Search,
-  ShieldAlert,
   ShieldCheck,
   User,
-  Users,
   X,
   XCircle,
 } from "lucide-react";
@@ -28,7 +17,7 @@ import {
   fetchAttendanceReviewQueue,
   fetchFinalizedAttendanceSheet,
   fetchFinalizedAttendanceSheets,
-  fetchTeacherDashboardStats,
+  fetchTeacherClassesLookup,
   reviewAttendanceAmendment,
   reviewFinalizedAttendanceSheet,
 } from "../../api/lmsClient";
@@ -326,6 +315,8 @@ function FinalizedSheetsPanel() {
 
 export default function AttendanceReviewPage() {
   const { authUser } = useAuthContext();
+  const location = useLocation();
+  const isAdminView = location.pathname.startsWith("/admin/");
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState("");
   const [status, setStatus] = useState("pending");
@@ -339,8 +330,8 @@ export default function AttendanceReviewPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchTeacherDashboardStats({ limit: 1 })
-      .then((r) => setClasses(r.data.classes || []))
+    fetchTeacherClassesLookup()
+      .then((r) => setClasses(Array.isArray(r?.data) ? r.data : []))
       .catch((e) => setError(e.message));
   }, []);
 
@@ -386,18 +377,6 @@ export default function AttendanceReviewPage() {
     }
   };
 
-  const stats = useMemo(() => {
-    let pendingCount = 0;
-    let approvedCount = 0;
-    let rejectedCount = 0;
-    rows.forEach((r) => {
-      if (r.status === "pending") pendingCount++;
-      else if (r.status === "approved") approvedCount++;
-      else if (r.status === "rejected") rejectedCount++;
-    });
-    return { pendingCount, approvedCount, rejectedCount, total: rows.length };
-  }, [rows]);
-
   return (
     <div className="min-h-full p-2.5 sm:p-4 lg:p-6 text-slate-900 dark:text-slate-100 transition-colors">
       <div className="mx-auto max-w-5xl space-y-4 sm:space-y-5">
@@ -405,7 +384,7 @@ export default function AttendanceReviewPage() {
         {/* ================= 1. NÚT ĐIỀU HƯỚNG QUAY LẠI ================= */}
         <div className="flex items-center justify-between">
           <Link
-            to="/lms/teach/attendance"
+            to={isAdminView ? "/admin/attendance-report" : "/lms/teach/attendance"}
             className="inline-flex items-center gap-2 rounded-2xl border border-white/80 bg-white/85 px-3.5 py-1.5 text-xs font-bold text-[#102f63] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700"
           >
             <ArrowLeft className="h-3.5 w-3.5" /> Quay lại Sổ điểm danh

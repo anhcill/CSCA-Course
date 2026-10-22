@@ -20,6 +20,8 @@ export const parseQuizAnswerKey = (value) => {
   const duplicateQuestionNumbers = [];
 
   // Primary pattern: match question-answer pairs with lookbehind for delimiters/preceding answers
+  // The escapes keep this dense compatibility regex readable across JS runtimes.
+  // eslint-disable-next-line no-useless-escape
   const numberedPattern = /(?<=(?:^|[\s,;|/•\(\[\{\-–—\.]|[a-f]))(?:(?:câu|cau|bài|bai|question|q)\s*|\bc\s*(?=\d))?\(?\[?(\d{1,3})\)?\]?\s*[:.\-–—:=/_~)]*\s*[\(\[]?\s*([a-f])[\)\]]?(?:\.|\b|(?=\d))(?=$|[\s,;|/•\)\]\}\-–—:]|\d)/giu;
 
   let match;

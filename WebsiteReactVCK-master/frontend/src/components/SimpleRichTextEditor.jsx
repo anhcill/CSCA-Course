@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { formatSelectedText } from '../utils/textEditorUtils';
 import { EyeIcon, CodeBracketIcon, PhotoIcon } from '@heroicons/react/24/outline'; // Or any icon library you prefer
 import { marked } from 'marked';
@@ -66,7 +66,7 @@ const SimpleRichTextEditor = ({ value, onChange }) => {
         // Kiểm tra URL hợp lệ
         try {
             new URL(imageUrl);
-        } catch (e) {
+        } catch {
             alert('URL không hợp lệ! Vui lòng nhập lại.');
             return;
         }

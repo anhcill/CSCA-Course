@@ -1,19 +1,13 @@
-/* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   BookOpen,
-  CalendarDays,
-  CheckCircle2,
-  Clock,
   Clock3,
   ExternalLink,
   FileText,
-  GraduationCap,
   Layers,
   PlayCircle,
-  Sparkles,
   Video,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";

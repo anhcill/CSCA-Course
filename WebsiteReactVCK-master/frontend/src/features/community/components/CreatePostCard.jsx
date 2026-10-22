@@ -1,8 +1,6 @@
-/* eslint-disable react/prop-types */
 import { useState } from 'react';
 import {
-  HelpCircle, BookOpen, Award, Users, MessageCircle, Image, Tag,
-  Send, Sparkles, X, ChevronDown, CheckCircle2
+  Image, Tag, Send, Sparkles, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { COMMUNITY_TOPICS } from '../communityData';

@@ -1,4 +1,3 @@
-import React from "react";
 import { Play, ExternalLink, Clock, CalendarDays, Video } from "lucide-react";
 
 const formatDateTime = (value) => {

@@ -41,6 +41,7 @@ test("chapters group legacy sessions and enforce the session/class binding", asy
 
   await db.exec(await fs.readFile("database/migrations/036_class_chapters.sql", "utf8"));
   await db.exec(await fs.readFile("database/migrations/050_session_curriculum_assignments.sql", "utf8"));
+  await db.exec(await fs.readFile("database/migrations/059_class_card_presentation.sql", "utf8"));
   const legacyRow = (await db.query("SELECT chapter_id FROM class_sessions WHERE id = $1", [legacy.id])).rows[0];
   assert.ok(legacyRow.chapter_id);
   assert.equal((await db.query("SELECT is_system_default FROM class_chapters WHERE id=$1", [legacyRow.chapter_id])).rows[0].is_system_default, true);

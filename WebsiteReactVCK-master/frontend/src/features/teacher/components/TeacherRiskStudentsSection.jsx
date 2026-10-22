@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, ExternalLink, Filter } from "lucide-react";
 import { EmptyState } from "../../../components/common/StateView";

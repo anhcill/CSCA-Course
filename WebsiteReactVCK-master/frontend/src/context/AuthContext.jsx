@@ -1,5 +1,5 @@
-/* eslint-disable react/prop-types */
 import axios from 'axios';
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import toast from "react-hot-toast";
 import { useTranslation } from 'react-i18next';

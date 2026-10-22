@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Link2, ShieldCheck, Video, X } from "lucide-react";

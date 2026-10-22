@@ -1,7 +1,7 @@
 import express from "express";
 import protectRoute from "../middleware/protectRoute.js";
 import requireAdmin from "../middleware/requireAdmin.js";
-import { query } from "../db/connect.js";
+import { getClient, query } from "../db/connect.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 
 const router = express.Router();
@@ -62,6 +62,9 @@ router.patch("/permissions/:id", ...adminOnly, async (req, res) => {
   }
   const uiRole = keys[0];
   const role = roleMap[uiRole];
+  if (role === "user" && req.body[uiRole]) {
+    return errorResponse(res, 409, "Các quyền trong ma trận này là thao tác quản trị/giảng dạy, không áp dụng cho học viên", "STUDENT_PERMISSION_NOT_APPLICABLE");
+  }
   try {
     const permission = (await query("SELECT id, code, is_system FROM lms_permissions WHERE id = $1", [permissionId])).rows[0];
     if (!permission) return errorResponse(res, 404, "Không tìm thấy permission", "NOT_FOUND");
@@ -110,6 +113,7 @@ router.get("/classes", ...adminOnly, async (req, res) => {
               COALESCE(lc.management_course_source_id, c.external_course_id) AS management_course_source_id,
               COALESCE(c.title, c.name) AS course_title,
               c.external_course_id, COALESCE(u.username, u.email) AS system_teacher_name,
+              CASE WHEN u.role = 'creator' THEN u.id ELSE NULL END AS assigned_teacher_id,
               COUNT(DISTINCT ce.user_id) FILTER (WHERE ce.status = 'active')::int AS student_count,
               COUNT(DISTINCT ce.user_id) FILTER (WHERE ce.status = 'active' AND EXISTS (
                 SELECT 1 FROM lms_access_grants g
@@ -133,6 +137,7 @@ router.get("/classes", ...adminOnly, async (req, res) => {
       managementCourseId: row.management_course_source_id || "MOLY_CRS_Pending",
       teacherName: row.teacher_display_name || row.system_teacher_name || "Chưa phân công",
       systemTeacherName: row.system_teacher_name || null,
+      teacherId: row.assigned_teacher_id === null ? null : String(row.assigned_teacher_id),
       coverImageUrl: row.cover_image_url || null,
       studentCount: Number(row.student_count || 0),
       entitlementCount: Number(row.entitlement_count || 0),
@@ -192,6 +197,100 @@ router.patch("/classes/:id/presentation", ...adminOnly, async (req, res) => {
   } catch (error) {
     console.error("Error updating class presentation:", error);
     return errorResponse(res, 500, "Không thể cập nhật thẻ lớp học", "INTERNAL_ERROR");
+  }
+});
+
+// PATCH /api/v1/admin/classes/:id/teacher — set or clear the class lead teacher.
+router.patch("/classes/:id/teacher", ...adminOnly, async (req, res) => {
+  const classId = parseId(req.params.id);
+  const teacherId = req.body?.teacherId === null || req.body?.teacherId === ""
+    ? null
+    : parseId(req.body?.teacherId);
+  if (!classId || (req.body?.teacherId !== null && req.body?.teacherId !== "" && !teacherId)) {
+    return errorResponse(res, 422, "Thông tin phân công giáo viên không hợp lệ", "VALIDATION_ERROR");
+  }
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const current = (await client.query(
+      `SELECT lc.id, lc.instructor_id, lc.teacher_display_name,
+              COALESCE(u.username, u.email) AS teacher_name
+       FROM live_classes lc
+       LEFT JOIN users u ON u.id = lc.instructor_id
+       WHERE lc.id = $1 FOR UPDATE OF lc`,
+      [classId],
+    )).rows[0];
+    if (!current) {
+      await client.query("ROLLBACK");
+      return errorResponse(res, 404, "Không tìm thấy lớp học", "NOT_FOUND");
+    }
+
+    let teacher = null;
+    if (teacherId) {
+      teacher = (await client.query(
+        `SELECT id, COALESCE(username, email) AS name
+         FROM users
+         WHERE id = $1 AND role = 'creator' AND is_locked = FALSE`,
+        [teacherId],
+      )).rows[0];
+      if (!teacher) {
+        await client.query("ROLLBACK");
+        return errorResponse(res, 422, "Tài khoản giảng viên không tồn tại hoặc đã bị khóa", "VALIDATION_ERROR");
+      }
+    }
+
+    await client.query(
+      `UPDATE class_teachers
+       SET status = 'revoked', updated_at = NOW()
+       WHERE live_class_id = $1 AND (teaching_role = 'lead' OR teacher_id = $3)
+         AND ($2::bigint IS NULL OR teacher_id <> $2)`,
+      [classId, teacherId, current.instructor_id],
+    );
+    if (teacherId) {
+      await client.query(
+        `INSERT INTO class_teachers
+           (live_class_id, teacher_id, teaching_role, status, can_manage_curriculum)
+         VALUES ($1, $2, 'lead', 'active', TRUE)
+         ON CONFLICT (live_class_id, teacher_id) DO UPDATE
+         SET teaching_role = 'lead', status = 'active', can_manage_curriculum = TRUE,
+             updated_at = NOW()`,
+        [classId, teacherId],
+      );
+    }
+    const updated = (await client.query(
+      `UPDATE live_classes
+       SET instructor_id = $2, teacher_display_name = $3, updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, instructor_id, teacher_display_name`,
+      [classId, teacherId, teacher?.name || null],
+    )).rows[0];
+    await recordAuditEvent({
+      db: client,
+      actorId: req.user.id,
+      action: teacherId ? "class.teacher_assigned" : "class.teacher_unassigned",
+      entityType: "live_class",
+      entityId: classId,
+      beforeState: { teacherId: current.instructor_id, teacherName: current.teacher_display_name || current.teacher_name },
+      afterState: { teacherId: updated.instructor_id, teacherName: updated.teacher_display_name },
+      metadata: { ip: req.ip },
+    });
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      data: {
+        id: String(classId),
+        teacherId: updated.instructor_id === null ? null : String(updated.instructor_id),
+        teacherName: updated.teacher_display_name || "",
+      },
+      message: teacherId ? "Đã phân công giáo viên phụ trách lớp" : "Đã gỡ giáo viên phụ trách lớp",
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Error assigning class teacher:", error);
+    return errorResponse(res, 500, "Không thể cập nhật giáo viên phụ trách", "INTERNAL_ERROR");
+  } finally {
+    client.release();
   }
 });
 

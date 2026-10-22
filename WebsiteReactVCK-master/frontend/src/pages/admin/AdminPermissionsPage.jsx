@@ -190,7 +190,7 @@ export default function AdminPermissionsPage() {
                 <th className="py-3.5 px-4 text-center">Phạm Vi (Scope)</th>
                 <th className="py-3.5 px-4 text-center">Quản Trị Viên (Admin)</th>
                 <th className="py-3.5 px-4 text-center">Giáo Viên (Teacher)</th>
-                <th className="py-3.5 px-4 text-center">Học Viên (Student)</th>
+                <th className="py-3.5 px-4 text-center">Học Viên</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-200">
@@ -251,20 +251,9 @@ export default function AdminPermissionsPage() {
                       </button>
                     </td>
 
-                    {/* Student Toggle */}
+                    {/* Student accounts consume learning content; these operational permissions do not apply. */}
                     <td className="py-4 px-4 text-center">
-                      <button
-                        onClick={() => handleToggle(perm.id, "student")}
-                        disabled={savingId === `${perm.id}_student`}
-                        className={`inline-flex items-center justify-center w-8 h-8 rounded-xl transition ${
-                          perm.student
-                            ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                            : "bg-gray-100 dark:bg-gray-800 text-gray-400 border border-gray-200 dark:border-gray-700"
-                        } hover:scale-105`}
-                        title="Nhấn để bật/tắt quyền cho Học viên"
-                      >
-                        {perm.student ? <FiCheck className="w-4 h-4 stroke-[3]" /> : <FiX className="w-4 h-4" />}
-                      </button>
+                      <span className="inline-flex rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-400 dark:border-slate-700 dark:bg-slate-800">Không áp dụng</span>
                     </td>
                   </tr>
                 ))

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAuthContext } from '../context/AuthContext'
 
@@ -46,8 +46,6 @@ const useSignup = () => {
             setAuthUser(data)
             return data;
 
-        } catch (error) {
-            throw error;
         } finally {
             setLoading(false)
         }

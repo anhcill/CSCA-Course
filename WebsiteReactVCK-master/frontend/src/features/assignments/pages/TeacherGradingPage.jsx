@@ -1,6 +1,5 @@
-/* eslint-disable react/prop-types */
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useLocation, useSearchParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import PropTypes from "prop-types";
 import {
@@ -8,29 +7,17 @@ import {
   ArrowRight,
   Award,
   BookOpen,
-  CalendarDays,
   CheckCircle2,
   Clock,
   Download,
   ExternalLink,
-  Eye,
   FileCheck,
   FileSpreadsheet,
   FileText,
-  Filter,
-  GraduationCap,
-  HelpCircle,
-  ImageIcon,
   Mic,
-  MessageSquare,
-  RotateCcw,
   Search,
-  SlidersHorizontal,
   Sparkles,
   User,
-  Users,
-  Volume2,
-  X,
 } from "lucide-react";
 import { fetchSubmissions, gradeSubmission } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
@@ -218,10 +205,13 @@ function getTypeBadge(type) {
 }
 
 export default function TeacherGradingPage() {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const requestedAssignmentId = searchParams.get("assignmentId") || "all";
   const requestedClassId = searchParams.get("classId") || "";
   const requestedSessionId = searchParams.get("sessionId") || "";
+  const requestedSubmissionId = searchParams.get("submissionId") || "";
+  const isAdminView = location.pathname.startsWith("/admin/");
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSub, setSelectedSub] = useState(null);
@@ -270,14 +260,17 @@ export default function TeacherGradingPage() {
         sessionId: requestedSessionId || undefined,
       });
       const rows = res.success && Array.isArray(res.data) ? res.data : [];
+      const initialSubmission = requestedSubmissionId
+        ? rows.find((row) => String(row.id) === String(requestedSubmissionId)) || rows[0]
+        : rows[0];
       setSubmissions(rows);
-      setSelectedSub(rows[0] || null);
-      setScore(rows[0]?.score || 0);
-      setFeedback(rows[0]?.feedbackText || "");
-      setAnnotations(rows[0]?.annotations || []);
+      setSelectedSub(initialSubmission || null);
+      setScore(initialSubmission?.score ?? 0);
+      setFeedback(initialSubmission?.feedbackText || "");
+      setAnnotations(initialSubmission?.annotations || []);
       setChangeReason("");
-      setRubricScores(rows[0]?.rubric?.map((criterion) => {
-        const saved = (rows[0]?.rubricScores || []).find((item) => item.criterionId === criterion.id);
+      setRubricScores(initialSubmission?.rubric?.map((criterion) => {
+        const saved = (initialSubmission?.rubricScores || []).find((item) => item.criterionId === criterion.id);
         return { criterionId: criterion.id, score: saved?.score ?? 0, feedback: saved?.feedback || "" };
       }) || []);
     } catch (err) {
@@ -288,7 +281,7 @@ export default function TeacherGradingPage() {
     } finally {
       setLoading(false);
     }
-  }, [requestedAssignmentId, requestedClassId, requestedSessionId]);
+  }, [requestedAssignmentId, requestedClassId, requestedSessionId, requestedSubmissionId]);
 
   useEffect(() => {
     loadSubmissions();
@@ -320,7 +313,7 @@ export default function TeacherGradingPage() {
     if (filterStatus === "graded") list = list.filter((s) => s.status === "graded");
 
     if (filterClass !== "all") {
-      list = list.filter((s) => s.classId === filterClass);
+      list = list.filter((s) => String(s.classId) === String(filterClass));
     }
 
     if (filterType !== "all") {
@@ -470,13 +463,13 @@ export default function TeacherGradingPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <Link
-              to="/lms/teach"
+              to={isAdminView ? "/admin/dashboard" : "/lms/teach"}
               className="inline-flex items-center gap-2 rounded-2xl border border-white/80 bg-white/90 px-3.5 py-2 text-xs font-bold text-[#102f63] shadow-sm backdrop-blur transition hover:bg-white hover:text-blue-700"
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Tổng quan
             </Link>
             <Link
-              to="/lms/teach/student-progress"
+              to={isAdminView ? "/admin/student-progress" : "/lms/teach/student-progress"}
               className="inline-flex items-center gap-2 rounded-2xl border border-white/80 bg-white/90 px-3.5 py-2 text-xs font-bold text-[#102f63] shadow-sm backdrop-blur transition hover:bg-white hover:text-blue-700"
             >
               <FileSpreadsheet className="h-3.5 w-3.5" /> Sổ điểm lớp

@@ -1,6 +1,5 @@
-/* eslint-disable react/prop-types */
 import { Link } from "react-router-dom";
-import { ArrowRight, CalendarDays, Clock, Sparkles, Video } from "lucide-react";
+import { ArrowRight, CalendarDays, Clock, Video } from "lucide-react";
 import { isSessionRescheduled } from "../../../calendar/sessionScheduleChange.js";
 
 const formatDateTime = (value) => {

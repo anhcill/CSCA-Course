@@ -12,6 +12,7 @@ import {
   resetPassword,
   getCurrentUser,
   getTrustedDevices,
+  getCurrentLmsPermissions,
   updateOwnProfile,
   updateStudentProfile,
   startGoogleLogin,
@@ -50,6 +51,7 @@ router.post("/reset-password", sensitiveAuthRateLimit, resetPassword);
 // Current user
 router.get("/me", protectRoute, getCurrentUser);
 router.get("/me/devices", protectRoute, getTrustedDevices);
+router.get("/me/lms-permissions", protectRoute, getCurrentLmsPermissions);
 router.patch("/me", protectRoute, updateOwnProfile);
 router.patch("/me/student-profile", protectRoute, updateStudentProfile);
 router.post("/welcome-seen", protectRoute, markWelcomeSeen);

@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FiBookOpen, FiMenu, FiSun, FiMoon, FiUser, FiHome, FiLogOut } from 'react-icons/fi';
@@ -10,6 +9,7 @@ import Logo from '../Logo';
 import VNFlag from '../../assets/VN.png';
 import UKFlag from '../../assets/UK.png';
 import { getAvatarUrl, handleAvatarError } from '../../utils/avatar';
+import NotificationBell from '../../features/notifications/components/NotificationBell';
 
 const AdminNavbar = ({ toggleSidebar, collapsed = false }) => {
   const { t, i18n } = useTranslation();
@@ -41,14 +41,14 @@ const AdminNavbar = ({ toggleSidebar, collapsed = false }) => {
   };
 
   return (
-    <nav className="fixed top-0 left-0 w-full h-16 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-gray-200 dark:border-slate-800 shadow-sm transition-colors">
+    <nav className="fixed left-0 top-0 z-50 h-16 w-full border-b border-white/80 bg-[#e8f5fd]/88 shadow-[0_8px_30px_rgba(34,88,128,0.09)] backdrop-blur-xl transition-colors dark:border-slate-800 dark:bg-slate-900/95">
       <div className="w-full h-full flex items-center justify-between">
         {/* Left: Sidebar toggle + Logo - Khớp chiều rộng với Sidebar bên dưới */}
         <div className={`flex h-full items-center gap-3 px-3 transition-[width] duration-300 ease-in-out lg:border-r border-gray-200 dark:border-slate-800 ${collapsed ? 'lg:w-20 lg:justify-center' : 'lg:w-64'}`}>
           <button
             type="button"
             onClick={toggleSidebar}
-            className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-300 transition"
+            className="rounded-xl border border-white/80 bg-[#d9effc] p-2 text-[#17365f] shadow-sm transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             title="Bật/Tắt Menu Sidebar"
             aria-label="Toggle Sidebar"
           >
@@ -68,6 +68,7 @@ const AdminNavbar = ({ toggleSidebar, collapsed = false }) => {
 
         {/* Right: Theme Toggle, Language Selector, User Profile */}
         <div className="flex items-center space-x-2 sm:space-x-3 px-4 sm:px-6">
+          <NotificationBell variant="bare" />
           {/* Dark Mode Toggle */}
           <button
             type="button"

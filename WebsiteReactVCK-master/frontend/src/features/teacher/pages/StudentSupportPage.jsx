@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -9,21 +9,15 @@ import {
   Plus,
   Filter,
   CheckCircle2,
-  Clock,
   Calendar,
-  AlertCircle,
   User,
   X,
   Pencil,
-  Sparkles,
-  School,
-  GraduationCap,
   CalendarDays,
-  Check,
   AlertTriangle,
 } from "lucide-react";
 import {
-  fetchTeacherDashboardStats,
+  fetchTeacherClassesLookup,
   fetchSupportCases,
   saveSupportCase,
 } from "../../api/lmsClient";
@@ -71,9 +65,9 @@ export default function StudentSupportPage() {
 
   // Load teacher's managed classes
   useEffect(() => {
-    fetchTeacherDashboardStats({ limit: 1 })
+    fetchTeacherClassesLookup()
       .then((r) => {
-        const classList = r?.data?.classes || [];
+        const classList = Array.isArray(r?.data) ? r.data : [];
         setClasses(classList);
         setClassId((curr) => curr || String(classList[0]?.id || ""));
       })

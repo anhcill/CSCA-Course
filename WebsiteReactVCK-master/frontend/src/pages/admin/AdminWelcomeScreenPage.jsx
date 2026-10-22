@@ -5,7 +5,6 @@ import {
   FiRefreshCw,
   FiRotateCcw,
   FiSave,
-  FiCheck,
   FiMonitor,
   FiSmartphone,
   FiTablet,

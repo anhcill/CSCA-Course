@@ -338,7 +338,7 @@ export default function TeacherSchedulePage() {
             </div>
 
             <Link
-              to="/lms/teacher/attendance"
+              to="/lms/teach/attendance"
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/85 dark:bg-slate-800/85 hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition border border-white/90 dark:border-slate-700 shadow-2xs hover:shadow-sm"
             >
               <IconChecklist className="w-4 h-4 text-[#1a446c] dark:text-sky-400" />
@@ -559,7 +559,7 @@ export default function TeacherSchedulePage() {
 
                     {/* Attendance Direct Link */}
                     <button
-                      onClick={() => navigate(`/lms/teacher/attendance?sessionId=${s.id}`)}
+                      onClick={() => navigate(`/lms/teach/attendance?sessionId=${s.id}`)}
                       className="px-3.5 sm:px-4 py-2.5 rounded-2xl bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition border border-white/90 dark:border-slate-700 shadow-2xs hover:shadow-sm flex items-center gap-1.5"
                     >
                       <IconChecklist className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -842,7 +842,7 @@ export default function TeacherSchedulePage() {
                   onClick={() => {
                     const sId = rosterSession.id;
                     setRosterSession(null);
-                    navigate(`/lms/teacher/attendance?sessionId=${sId}`);
+                    navigate(`/lms/teach/attendance?sessionId=${sId}`);
                   }}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition shadow-md shadow-emerald-700/20"
                 >

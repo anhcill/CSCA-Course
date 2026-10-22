@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  BookOpen,
   Languages,
   LoaderCircle,
   Pencil,

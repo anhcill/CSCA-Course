@@ -1,10 +1,9 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { SiReact, SiTypescript, SiJavascript } from "react-icons/si";
-import { FaPlay, FaPause } from "react-icons/fa";
 
 const CodePreview = () => {
-    const [isPlaying, setIsPlaying] = React.useState(true);
+    const [isPlaying] = React.useState(true);
     const [activeTab, setActiveTab] = React.useState('jsx');
 
     const codeExamples = {

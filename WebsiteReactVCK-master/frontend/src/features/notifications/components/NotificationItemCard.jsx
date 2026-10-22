@@ -1,7 +1,6 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Calendar,
-  CalendarDays,
   FolderOpen,
   UserRound,
   Bell,
@@ -13,7 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-export const getNotificationVisualConfig = (item) => {
+const getNotificationVisualConfig = (item) => {
   const type = String(
     item.icon_type || item.event_type || item.type || item.category || "system"
   ).toLowerCase();

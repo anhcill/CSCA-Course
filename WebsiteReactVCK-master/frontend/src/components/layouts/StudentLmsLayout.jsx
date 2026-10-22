@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   BarChart3,
   Bell,
@@ -11,7 +11,6 @@ import {
   FileCheck2,
   FolderOpen,
   Home,
-  Library,
   LogOut,
   Menu,
   MessageSquare,
@@ -34,7 +33,7 @@ const STUDENT_NAV = [
   { label: "Từ vựng", path: "/lms/vocabulary", icon: BookA },
   { label: "Công thức", path: "/lms/formulas", icon: Binary },
   { label: "Tài liệu", path: "/lms/files", icon: FolderOpen },
-  { label: "Thảo luận", path: "/post", icon: MessageSquare },
+  { label: "Thảo luận", path: "/lms/discussions", icon: MessageSquare },
   { label: "Thông báo", path: "/lms/notifications", icon: Bell },
   { label: "Kết quả học tập", path: "/lms/analytics", icon: BarChart3 },
   { label: "Bản ghi buổi học", path: "/lms/recordings", icon: Video },
@@ -137,7 +136,6 @@ function Sidebar({ onNavigate, unreadCount = 0 }) {
 
 export default function StudentLmsLayout({ children }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const { authUser } = useAuthContext();
   const { logout } = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -245,7 +243,7 @@ export default function StudentLmsLayout({ children }) {
                 {profileMenuOpen && (
                   <div role="menu" className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-white/80 bg-white p-2 shadow-xl">
                     <Link to="/lms/settings" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-700"><Settings className="h-4 w-4" /> Cài đặt</Link>
-                    <Link to="/profile" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-700"><UserRound className="h-4 w-4" /> Hồ sơ cá nhân</Link>
+                    <Link to="/lms/settings" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-700"><UserRound className="h-4 w-4" /> Hồ sơ cá nhân</Link>
                     <button type="button" onClick={() => { setProfileMenuOpen(false); logout(); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-rose-600 hover:bg-rose-50"><LogOut className="h-4 w-4" /> Đăng xuất</button>
                   </div>
                 )}

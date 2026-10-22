@@ -37,6 +37,7 @@ import useCUDUser from "../../../hooks/useCUDUser";
 import AvatarModal from "../../../components/AvatarModal";
 import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
 import { fetchMyTrustedDevices } from "../../api/accountSecurityClient";
+import { fetchNotificationPreferences, updateNotificationPreferences } from "../../api/lmsClient";
 
 import { CSCA_WALLPAPERS } from "../../../utils/classWallpapers";
 
@@ -132,30 +133,36 @@ export default function StudentSettingsPage() {
   };
 
   // Notification Preferences State
-  const [notifications, setNotifications] = useState(() => {
-    const saved = localStorage.getItem("csca_notification_prefs");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        // fallback
-      }
-    }
-    return {
-      courses: true,
-      assignments: true,
-      calendar: true,
-      news: false,
-    };
+  const [notifications, setNotifications] = useState({
+    courses: true,
+    assignments: true,
+    calendar: true,
+    announcements: true,
   });
 
-  const handleToggleNotification = (key) => {
-    setNotifications((prev) => {
-      const updated = { ...prev, [key]: !prev[key] };
-      localStorage.setItem("csca_notification_prefs", JSON.stringify(updated));
+  useEffect(() => {
+    let active = true;
+    fetchNotificationPreferences()
+      .then((response) => {
+        if (active) setNotifications((current) => ({ ...current, ...(response?.data || {}) }));
+      })
+      .catch((error) => console.warn("Unable to load notification preferences", error));
+    return () => { active = false; };
+  }, []);
+
+  const handleToggleNotification = async (key) => {
+    const previous = notifications;
+    const updated = { ...previous, [key]: !previous[key] };
+    setNotifications(updated);
+    try {
+      const response = await updateNotificationPreferences({ [key]: updated[key] });
+      setNotifications((current) => ({ ...current, ...(response?.data || {}) }));
       toast.success("Đã lưu tùy chọn thông báo", { duration: 1500 });
-      return updated;
-    });
+      window.dispatchEvent(new CustomEvent("csca:notifications-updated"));
+    } catch (error) {
+      setNotifications(previous);
+      toast.error(error?.message || "Không thể lưu tùy chọn thông báo");
+    }
   };
 
   // Language state
@@ -736,15 +743,15 @@ export default function StudentSettingsPage() {
                 <button
                   type="button"
                   role="switch"
-                  aria-checked={notifications.news}
-                  onClick={() => handleToggleNotification("news")}
+                  aria-checked={notifications.announcements}
+                  onClick={() => handleToggleNotification("announcements")}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                    notifications.news ? "bg-blue-600" : "bg-slate-200"
+                    notifications.announcements ? "bg-blue-600" : "bg-slate-200"
                   }`}
                 >
                   <span
                     className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      notifications.news ? "translate-x-5" : "translate-x-0"
+                      notifications.announcements ? "translate-x-5" : "translate-x-0"
                     }`}
                   />
                 </button>

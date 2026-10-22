@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { ErrorState, LoadingState } from "../../../components/common/StateView";
-import { fetchMyEnrolledCourses, fetchMyLiveSchedule, fetchNotifications } from "../../api/lmsClient";
+import { fetchMyEnrolledCourses, fetchMyLiveSchedule, fetchNotifications, markNotificationAsRead } from "../../api/lmsClient";
 import { getClassCoverImage } from "../../../utils/classWallpapers";
 
 const QUICK_LINKS = [
@@ -35,13 +35,6 @@ const TONES = {
 const getProgress = (course) => {
   const value = Number(course?.progress_percent ?? course?.progressPercent ?? 0);
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
-};
-
-const coursePath = (course) => {
-  if (course?.classes && Array.isArray(course.classes) && course.classes.length === 1) {
-    return `/lms/courses/${course.course_id}/classes/${course.classes[0].id}/learn`;
-  }
-  return `/lms/courses/${course.course_id}/classes`;
 };
 
 const isToday = (dateValue) => {
@@ -429,6 +422,16 @@ export default function StudentDashboardPage() {
                     <Link
                       key={item.id}
                       to={targetUrl}
+                      onClick={() => {
+                        if (!item.is_read) {
+                          setNotifications((current) => current.map((notification) => (
+                            notification.id === item.id ? { ...notification, is_read: true } : notification
+                          )));
+                          markNotificationAsRead(item.id)
+                            .then(() => window.dispatchEvent(new CustomEvent("csca:notifications-updated")))
+                            .catch((error) => console.warn("Unable to mark notification as read", error));
+                        }
+                      }}
                       className="group flex w-full items-start gap-2 rounded-xl px-1.5 py-1.5 transition-colors hover:bg-slate-50/80"
                     >
                       <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg ${tone.icon} transition-transform group-hover:scale-105`}>

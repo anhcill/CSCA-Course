@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { useEffect, useState } from "react";
 
 const inVietnam = (instant) => {

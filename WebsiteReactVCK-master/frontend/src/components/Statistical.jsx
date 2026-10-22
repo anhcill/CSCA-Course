@@ -1,4 +1,3 @@
-import React from "react";
 import useGetCourse from "../hooks/useGetCourse";
 import useGetLesson from "../hooks/useGetLesson";
 import useGetExercise from "../hooks/useGetExercise";

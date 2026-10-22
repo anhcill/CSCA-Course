@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -24,12 +24,8 @@ export default function TeacherSalarySection({ salaryData, onRefresh, refreshing
   const [showFormulaModal, setShowFormulaModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  if (!salaryData || !salaryData.summary) {
-    return null;
-  }
-
-  const { summary, classes = [] } = salaryData;
-  const hourlyRate = Number(summary.hourlyRate || 0);
+  const { summary, classes = [] } = salaryData || {};
+  const hourlyRate = Number(summary?.hourlyRate || 0);
 
   const formatVnd = (amount) => {
     return Number(amount || 0).toLocaleString("vi-VN") + " ₫";
@@ -72,6 +68,10 @@ export default function TeacherSalarySection({ salaryData, onRefresh, refreshing
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
       .slice(0, 4);
   }, [classes]);
+
+  if (!summary) {
+    return null;
+  }
 
   return (
     <div className="space-y-2.5">

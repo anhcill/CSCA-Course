@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react';
-import { Plus, Trash2, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus, Trash2, Search, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import {
-  getStoredFormulaSessions, saveFormulaSessions
-} from '../../features/learning/data/mockFormulaData';
-import { deleteFormulaApi } from '../../features/api/lmsClient';
+  batchImportFormulasApi,
+  deleteFormulaApi,
+  fetchAdminFormulas,
+} from '../../features/api/lmsClient';
+import { ErrorState, LoadingState } from '../../components/common/StateView';
 
 const PRESET_SYMBOLS = [
   { label: 'Phân số', code: '\\frac{a}{b}' },
@@ -21,12 +23,16 @@ const PRESET_SYMBOLS = [
 ];
 
 export default function AdminFormulaPage() {
-  const [sessions, setSessions] = useState(() => getStoredFormulaSessions());
+  const [formulas, setFormulas] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const [newFormula, setNewFormula] = useState({
-    sessionId: sessions[0]?.sessionId || '',
+    subject: 'MATH',
+    chapterName: 'Kho công thức chuẩn',
     nameVi: '',
     nameZh: '',
     pinyin: '',
@@ -36,62 +42,54 @@ export default function AdminFormulaPage() {
     conditions: '',
   });
 
-  // Flat list of all formulas across sessions
-  const allFormulas = useMemo(() => {
-    return sessions.flatMap((s) =>
-      s.formulas.map((f) => ({
-        ...f,
-        sessionId: s.sessionId,
-        chapter: s.chapter,
-        sessionTitle: s.sessionTitle,
-        subject: s.subject,
-        subjectLabel: s.subjectLabel,
-      }))
-    );
-  }, [sessions]);
+  const loadFormulas = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetchAdminFormulas({
+        subject: selectedSubject,
+        search: searchQuery,
+        limit: 100,
+      });
+      if (!response?.success || !Array.isArray(response.data?.formulas)) {
+        throw new Error(response?.message || 'Không thể tải kho công thức.');
+      }
+      setFormulas(response.data.formulas);
+    } catch (loadError) {
+      setFormulas([]);
+      setError(loadError?.message || 'Không thể tải kho công thức.');
+    } finally {
+      setLoading(false);
+    }
+  }, [searchQuery, selectedSubject]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(loadFormulas, 250);
+    return () => window.clearTimeout(timer);
+  }, [loadFormulas]);
 
   // Filtered formulas
   const filteredFormulas = useMemo(() => {
-    return allFormulas.filter((f) => {
-      if (selectedSubject !== 'ALL' && f.subject !== selectedSubject) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        return (
-          f.nameVi.toLowerCase().includes(q) ||
-          (f.nameZh && f.nameZh.toLowerCase().includes(q)) ||
-          f.latex.toLowerCase().includes(q) ||
-          f.chapter.toLowerCase().includes(q)
-        );
-      }
-      return true;
-    });
-  }, [allFormulas, selectedSubject, searchQuery]);
+    return formulas;
+  }, [formulas]);
 
   const handleDelete = async (formulaId) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa công thức này khỏi hệ thống?')) return;
-    const updated = sessions.map((s) => ({
-      ...s,
-      formulas: s.formulas.filter((f) => f.id !== formulaId),
-    }));
-    saveFormulaSessions(updated);
-    setSessions(updated);
-    toast.success('Đã xóa công thức thành công!');
     try {
       await deleteFormulaApi(formulaId);
-    } catch {
-      // LocalStorage fallback already updated
+      setFormulas((current) => current.filter((formula) => formula.id !== formulaId));
+      toast.success('Đã xóa công thức thành công!');
+    } catch (deleteError) {
+      toast.error(deleteError?.message || 'Không thể xóa công thức.');
     }
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!newFormula.nameVi.trim() || !newFormula.latex.trim()) {
       toast.error('Vui lòng nhập tên công thức và mã LaTeX!');
       return;
     }
-
-    const targetSession = sessions.find((s) => s.sessionId === newFormula.sessionId) || sessions[0];
-    if (!targetSession) return;
 
     const variables = newFormula.variablesStr
       ? newFormula.variablesStr.split(',').map((item) => {
@@ -100,23 +98,31 @@ export default function AdminFormulaPage() {
         }).filter((v) => v.symbol)
       : [];
 
-    const created = {
-      id: `fm-adm-${Date.now()}`,
-      nameVi: newFormula.nameVi,
-      nameZh: newFormula.nameZh,
-      pinyin: newFormula.pinyin,
-      latex: newFormula.latex,
-      description: newFormula.description,
-      conditions: newFormula.conditions,
-      variables,
-      isStarred: false,
-    };
-
-    targetSession.formulas.unshift(created);
-    saveFormulaSessions(sessions);
-    setSessions([...sessions]);
-    toast.success('Đã tạo mới công thức thành công!');
-    setShowAddModal(false);
+    setSaving(true);
+    try {
+      await batchImportFormulasApi([{
+        subject: newFormula.subject,
+        chapterName: newFormula.chapterName.trim(),
+        nameVi: newFormula.nameVi.trim(),
+        nameZh: newFormula.nameZh.trim(),
+        pinyin: newFormula.pinyin.trim(),
+        latex: newFormula.latex.trim(),
+        description: newFormula.description.trim(),
+        conditions: newFormula.conditions.trim(),
+        variables,
+      }]);
+      toast.success('Đã tạo mới công thức thành công!');
+      setShowAddModal(false);
+      setNewFormula({
+        subject: 'MATH', chapterName: 'Kho công thức chuẩn', nameVi: '', nameZh: '',
+        pinyin: '', latex: '', description: '', variablesStr: '', conditions: '',
+      });
+      await loadFormulas();
+    } catch (saveError) {
+      toast.error(saveError?.message || 'Không thể lưu công thức.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Preview KaTeX live
@@ -194,6 +200,8 @@ export default function AdminFormulaPage() {
         </div>
       </div>
 
+      {error && <ErrorState title="Không thể tải kho công thức" message={error} onRetry={loadFormulas} />}
+
       {/* Formulas Table */}
       <div className="overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
         <div className="overflow-x-auto">
@@ -208,7 +216,11 @@ export default function AdminFormulaPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredFormulas.map((f) => {
+              {loading ? (
+                <tr><td colSpan={5} className="p-8"><LoadingState message="Đang tải kho công thức..." /></td></tr>
+              ) : filteredFormulas.length === 0 ? (
+                <tr><td colSpan={5} className="p-10 text-center text-sm text-slate-500">Không có công thức phù hợp.</td></tr>
+              ) : filteredFormulas.map((f) => {
                 let html = '';
                 try {
                   html = katex.renderToString(f.latex, { displayMode: false, throwOnError: false });
@@ -224,9 +236,9 @@ export default function AdminFormulaPage() {
                     </td>
                     <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
                       <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-300 mb-1">
-                        {f.subjectLabel}
+                        {f.subjectLabel || f.subject}
                       </span>
-                      <p className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate max-w-[200px]">{f.chapter}</p>
+                      <p className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate max-w-[200px]">{f.chapterName || 'Kho công thức chuẩn'}</p>
                     </td>
                     <td className="py-3.5 px-4 text-center font-serif">
                       <div
@@ -274,20 +286,28 @@ export default function AdminFormulaPage() {
 
             <form onSubmit={handleSave} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Gắn vào buổi học / chương
-                </label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Môn học *</label>
                 <select
-                  value={newFormula.sessionId}
-                  onChange={(e) => setNewFormula({ ...newFormula, sessionId: e.target.value })}
+                  value={newFormula.subject}
+                  onChange={(e) => setNewFormula({ ...newFormula, subject: e.target.value })}
                   className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm text-slate-900 dark:text-white outline-none focus:border-blue-500"
                 >
-                  {sessions.map((s) => (
-                    <option key={s.sessionId} value={s.sessionId}>
-                      {s.subjectLabel} - {s.chapter} ({s.sessionTitle})
-                    </option>
-                  ))}
+                  <option value="MATH">Toán học</option>
+                  <option value="PHYSICS">Vật lý</option>
+                  <option value="CHEMISTRY">Hóa học</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Chương / nhóm công thức *</label>
+                <input
+                  required
+                  maxLength={255}
+                  value={newFormula.chapterName}
+                  onChange={(e) => setNewFormula({ ...newFormula, chapterName: e.target.value })}
+                  placeholder="VD: Phương trình bậc hai"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm text-slate-900 dark:text-white outline-none focus:border-blue-500"
+                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -377,9 +397,11 @@ export default function AdminFormulaPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-md shadow-blue-600/30"
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-md shadow-blue-600/30 disabled:opacity-50"
                 >
-                  Lưu công thức
+                  {saving && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                  {saving ? 'Đang lưu...' : 'Lưu công thức'}
                 </button>
               </div>
             </form>

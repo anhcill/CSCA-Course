@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useContext, useMemo } from "react";
+import { useEffect, useState, useRef, useContext } from "react";
 import ReactPlayer from "react-player";
 import useGetExercise from "../../hooks/useGetExercise.js";
 import { toast, ToastContainer } from "react-toastify";
@@ -17,28 +17,24 @@ const WatchCard = ({ lesson, onLessonComplete, handleLessonSelect }) => {
   const { exercises } = useGetExercise();
   const [attempts, setAttempts] = useState(0); // Số lần trả lời sai
   const playerRef = useRef(null); // Tham chiếu ReactPlayer
-  const [videoDuration, setVideoDuration] = useState(0); // Tổng thời gian video
+  const [, setVideoDuration] = useState(0); // Tổng thời gian video
   const [questionTimes, setQuestionTimes] = useState([]); // Thời gian xuất hiện các câu hỏi
   const [isPlaying, setIsPlaying] = useState(false); // Trạng thái phát video
   const [displayedQuestions, setDisplayedQuestions] = useState(new Set()); // Các câu hỏi đã hiển thị
   const [videoCompleted, setVideoCompleted] = useState(false); // Đánh dấu video đã được xem hết
   const [isLessonCompleted, setIsLessonCompleted] = useState(false); // Đánh dấu bài học đã hoàn thành
-  const [questionTimePoints, setQuestionTimePoints] = useState([]); // Lưu thời điểm của các câu hỏi
+  const [, setQuestionTimePoints] = useState([]); // Lưu thời điểm của các câu hỏi
   const { lessons, loading: lessonsLoading } = useGetAllLessson();
-  const { authUser, loading: loadingAuthUser } = useContext(AuthContext);
+  const { authUser } = useContext(AuthContext);
   const { createProgress, updateProgress } = useCU_Progress();
-  const { progress, loading, error, refetch } = useGetProgress();
-  const [formProgress, setFormProgress] = useState({
+  const { progress } = useGetProgress();
+  const [, setFormProgress] = useState({
     userId: authUser?._id,
     courseId: lesson?.courseId,
     completedLessons: [],
     progressPercentage: 0,
   });
   const navigate = useNavigate();
-
-  const handleRefresh = () => {
-    window.location.reload();
-  };
 
   const allLessons = lessons?.filter(
     (lessonNew) => lessonNew.courseId === lesson?.courseId

@@ -10,7 +10,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
-const DashboardChart = React.memo(({ stats }) => {
+const DashboardChart = React.memo(function DashboardChart({ stats }) {
   // Tính toán data một lần duy nhất khi stats thay đổi
   const data = React.useMemo(() => [
     {
@@ -56,4 +56,4 @@ const DashboardChart = React.memo(({ stats }) => {
   );
 });
 
-export default DashboardChart; 
+export default DashboardChart;

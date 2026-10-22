@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { FaCheckCircle, FaGraduationCap, FaUserGraduate, FaBriefcase } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import { useAuthContext } from '../../context/AuthContext'; // Import AuthContext

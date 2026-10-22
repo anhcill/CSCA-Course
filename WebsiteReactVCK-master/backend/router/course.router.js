@@ -544,7 +544,9 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       const selectedClassResult = await query(
         `SELECT lc.id, lc.title, lc.description, lc.instructor_id, lc.max_students,
                 lc.allow_file_download,
-                COALESCE(u.username, u.email) AS instructor_name
+                COALESCE(NULLIF(lc.teacher_display_name, ''), u.username, u.email) AS instructor_name,
+                (SELECT COUNT(*)::int FROM class_enrollments ce
+                 WHERE ce.live_class_id = lc.id AND ce.status = 'active') AS student_count
          FROM live_classes lc
          LEFT JOIN users u ON u.id = lc.instructor_id
          WHERE lc.id = $1 AND lc.course_id = $2 AND lc.status = 'active'
@@ -674,7 +676,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       query(
         `SELECT lc.id, lc.title, lc.description, lc.instructor_id, lc.max_students,
                 lc.allow_file_download,
-                COALESCE(u.username, u.email) AS instructor_name,
+                COALESCE(NULLIF(lc.teacher_display_name, ''), u.username, u.email) AS instructor_name,
                 COUNT(ce.id) FILTER (WHERE ce.status = 'active')::int AS enrolled_count
          FROM live_classes lc
          LEFT JOIN users u ON u.id = lc.instructor_id
@@ -719,8 +721,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
            LIMIT 1
          ) grade ON TRUE
          WHERE COALESCE(a.course_id, lc.course_id) = $1 AND ${assignmentVisibility}${assignmentClassScope}
-         ORDER BY COALESCE(a.due_date, '9999-12-31'::timestamptz), a.created_at DESC
-         LIMIT 8`,
+         ORDER BY COALESCE(a.due_date, '9999-12-31'::timestamptz), a.created_at DESC`,
         assignmentParams,
       ),
       query(
@@ -741,8 +742,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
          LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.user_id = $2
          WHERE q.course_id = $1 AND ${quizVisibility}${quizClassScope}
          ORDER BY CASE WHEN q.activity_scope = 'homework' THEN 0 WHEN quiz_session.start_time >= NOW() THEN 1 WHEN quiz_session.start_time IS NULL THEN 2 ELSE 3 END,
-                  COALESCE(q.due_date, quiz_session.start_time) ASC NULLS LAST, q.created_at DESC
-         LIMIT 8`,
+                  COALESCE(q.due_date, quiz_session.start_time) ASC NULLS LAST, q.created_at DESC`,
         assignmentParams,
       ),
       query(
@@ -814,8 +814,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         const leftTime = left.session_start ? new Date(left.session_start).getTime() : new Date(left.due_date || "9999-12-31").getTime();
         const rightTime = right.session_start ? new Date(right.session_start).getTime() : new Date(right.due_date || "9999-12-31").getTime();
         return leftTime - rightTime;
-      })
-      .slice(0, 8);
+      });
     const totalLessons = Number(progress.total_lessons) || 0;
     const completedLessons = Number(progress.completed_lessons) || 0;
     const sessionProgress = sessionProgressResult?.rows?.[0] || { total_sessions: 0, completed_sessions: 0 };
@@ -845,7 +844,8 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
           ...session,
           provider: getMeetingProvider(meetingUrl),
         })),
-        assignments: taskRows,
+        assignments: taskRows.slice(0, 8),
+        allAssignments: taskRows,
         quizCount: Number(quizCountResult.rows[0]?.count) || 0,
         files: filesResult.rows.map((file) => {
           const contextClassId = selectedClassId

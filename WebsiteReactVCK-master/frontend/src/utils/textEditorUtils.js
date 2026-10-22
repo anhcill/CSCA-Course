@@ -49,13 +49,13 @@ export const formatSelectedText = (text, start, end, tag, value) => {
 
     // Tạo pattern để match các thẻ HTML
     const pattern = new RegExp(
-      `<(\/?)(${allowedTags.join("|")})([^>]*)>`,
+      `<(/?)(${allowedTags.join("|")})([^>]*)>`,
       "gi"
     );
 
     // Thay thế các thẻ HTML bằng placeholder tạm thời
     const placeholders = [];
-    let tempText = text.replace(pattern, (match, p1, p2, p3, offset) => {
+    let tempText = text.replace(pattern, (match) => {
       placeholders.push(match);
       return `__HTML${placeholders.length - 1}__`;
     });

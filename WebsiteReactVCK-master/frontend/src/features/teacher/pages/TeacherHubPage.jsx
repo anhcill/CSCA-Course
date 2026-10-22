@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -11,7 +10,6 @@ import {
   Clock,
   GraduationCap,
   Library,
-  MessageSquare,
   RefreshCw,
   Search,
   Sparkles,
@@ -23,7 +21,7 @@ import {
 import { useAuthContext } from "../../../context/AuthContext";
 import { fetchTeacherDashboardStats, getLiveSessionAccess } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
-import { EmptyState, ErrorState, PermissionDeniedState } from "../../../components/common/StateView";
+import { ErrorState, PermissionDeniedState } from "../../../components/common/StateView";
 import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 import { getClassCoverImage } from "../../../utils/classWallpapers";
 
@@ -179,7 +177,7 @@ export default function TeacherHubPage() {
               label: "Bài chờ chấm",
               value: loading ? "..." : data.stats.pendingGradingCount,
               icon: ClipboardCheck,
-              to: "/lms/teacher/grading",
+              to: "/lms/teacher/assignments/review",
               iconStyle: "bg-amber-50 text-amber-600",
               subtext: "Nhấn để chấm ngay →",
             },
@@ -482,7 +480,7 @@ export default function TeacherHubPage() {
                     Bài nộp chờ chấm ({data.pendingSubmissions.length})
                   </h3>
                   <Link
-                    to="/lms/teacher/grading"
+                    to="/lms/teacher/assignments/review"
                     className="text-[11px] font-bold text-sky-700 hover:underline"
                   >
                     Xem tất cả
@@ -498,7 +496,7 @@ export default function TeacherHubPage() {
                     {data.pendingSubmissions.slice(0, 4).map((sub) => (
                       <Link
                         key={sub.id}
-                        to={`/lms/teacher/grading?submissionId=${sub.id}`}
+                        to={`/lms/teacher/assignments/review?submissionId=${sub.id}`}
                         className="group flex items-center justify-between gap-2 py-2.5 hover:bg-slate-50/80 px-1 rounded-xl transition"
                       >
                         <div className="min-w-0">

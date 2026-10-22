@@ -1,5 +1,4 @@
 // --- START OF FILE Pagination.jsx ---
-import React from 'react';
 import { FiChevronsLeft, FiChevronLeft, FiChevronRight, FiChevronsRight } from 'react-icons/fi';
 
 const Pagination = ({ currentPage, totalPages, onPageChange }) => {

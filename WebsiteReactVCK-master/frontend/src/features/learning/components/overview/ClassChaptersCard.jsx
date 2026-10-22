@@ -1,7 +1,6 @@
-/* eslint-disable react/prop-types */
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { BookOpen, CalendarDays, ChevronRight, Layers, RefreshCw, Video } from "lucide-react";
+import { CalendarDays, ChevronRight, Layers, RefreshCw } from "lucide-react";
 import { fetchClassChapters } from "../../../api/lmsClient";
 import { subscribeToCalendarChanges } from "../../../calendar/calendarSync";
 

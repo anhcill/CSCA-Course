@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Clock, MapPin, Moon, Sun, Sunset } from "lucide-react";
 
 const TIME_RANGES = {
@@ -85,7 +85,6 @@ export default function ScheduleWeeklyTimetable({
   currentDate,
   events = [],
   onSelectEvent,
-  onJoinSession,
 }) {
   const [rangeKey, setRangeKey] = useState("evening_only");
   const selectedRange = TIME_RANGES[rangeKey] || TIME_RANGES.evening_only;

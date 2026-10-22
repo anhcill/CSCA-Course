@@ -152,7 +152,7 @@ const submitAttempt = async ({ client, attempt, questions, autoSubmitted = false
   return { attempt: updated.rows[0], computed };
 };
 
-const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
+const getStudentAttempt = async ({ client, quiz, userId, questions, startNewAttempt = false }) => {
   const active = await client.query(
     `SELECT * FROM quiz_attempts
      WHERE quiz_id=$1 AND user_id=$2 AND status='in_progress'
@@ -187,13 +187,16 @@ const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
   const reachedLimit = submitted.rows.length >= Number(quiz.attempt_limit || 1);
   const cannotStartNew = finalized || reachedLimit || !availability.isOpen;
 
-  if (cannotStartNew && submitted.rows.length > 0) {
+  // Opening a completed quiz must remain a read-only review action. A new
+  // attempt is created only after the learner explicitly asks for another try.
+  if ((!startNewAttempt || cannotStartNew) && submitted.rows.length > 0) {
     const latest = submitted.rows[0] || null;
     return {
       attempt: latest,
       computed: latest ? buildQuizResult(attemptQuestions(latest, questions), latest.answers_json || {}) : null,
       created: false,
       timedOut: false,
+      canStartNewAttempt: !cannotStartNew,
     };
   }
 
@@ -255,7 +258,7 @@ const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
      VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING *`,
     [quiz.id, userId, attemptNumber, expiresAt?.toISOString() || null, JSON.stringify(snapshot)],
   )).rows[0];
-  return { attempt, computed: null, created: true, timedOut: false };
+  return { attempt, computed: null, created: true, timedOut: false, canStartNewAttempt: false };
 };
 
 const lockStudentAttempt = async (client, attemptId, userId) => {
@@ -421,7 +424,13 @@ router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireA
     if (questions.length === 0) throw Object.assign(new Error("Đề thi chưa có câu hỏi"), { status: 404 });
     const accommodation = await getAccommodation(client, quizId, req.user.id);
     const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation);
-    const state = await getStudentAttempt({ client, quiz: effectiveQuiz, userId: req.user.id, questions });
+    const state = await getStudentAttempt({
+      client,
+      quiz: effectiveQuiz,
+      userId: req.user.id,
+      questions,
+      startNewAttempt: req.query?.newAttempt === "1" || req.query?.newAttempt === "true",
+    });
     await client.query("COMMIT");
     committed = true;
     const effectiveQuestions = attemptQuestions(state.attempt, questions);
@@ -442,6 +451,7 @@ router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireA
         attempt: serializeAttempt(state.attempt),
         result,
         isOverdueUnsubmitted,
+        canStartNewAttempt: Boolean(state.canStartNewAttempt),
       },
     });
   } catch (error) {

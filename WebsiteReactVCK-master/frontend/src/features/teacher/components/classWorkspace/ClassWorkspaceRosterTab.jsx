@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Search, UserCheck, Users } from "lucide-react";
+import { Search, Users } from "lucide-react";
 
 const riskBadge = {
   danger: { label: "Báo động", cls: "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 ring-rose-200 dark:ring-rose-800" },

@@ -1,10 +1,8 @@
-/* eslint-disable react/prop-types */
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock3, Heart,
-  MessageSquare, Share2, Bookmark, Send, ShieldCheck, GraduationCap,
-  Sparkles, ExternalLink, Pin
+  MessageSquare, Share2, Bookmark, Send, Pin
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Meta from '../../components/Meta.jsx';

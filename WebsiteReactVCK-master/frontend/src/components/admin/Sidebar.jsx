@@ -89,11 +89,6 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
         { title: 'Ngân hàng câu hỏi', icon: <FiList className="w-4 h-4 shrink-0" />, path: '/admin/question-bank' },
         { title: 'Quản lý công thức', icon: <Sigma className="w-4 h-4 shrink-0" />, path: '/admin/formulas' },
         {
-          title: 'Chấm bài',
-          icon: <FiCheckSquare className="w-4 h-4 shrink-0" />,
-          path: '/admin/grading',
-        },
-        {
           title: 'Đăng đề & Quiz',
           icon: <FiList className="w-4 h-4 shrink-0" />,
           path: '/admin/quizzes',
@@ -144,7 +139,7 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
 
   return (
     <aside
-      className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-4rem)] min-h-0 w-64 flex-col overflow-hidden border-r border-gray-200 bg-white shadow-xl transition-[transform,width] duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 lg:translate-x-0 lg:shadow-none ${
+      className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-4rem)] min-h-0 w-64 flex-col overflow-hidden border-r border-white/80 bg-[#edf8ff]/92 shadow-[12px_0_35px_rgba(35,87,126,0.08)] backdrop-blur-xl transition-[transform,width] duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 lg:translate-x-0 ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       } ${
         collapsed ? 'lg:w-20' : 'lg:w-64'

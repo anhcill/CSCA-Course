@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import useGetCourse from '../../hooks/useGetCourse';
 import { FaCheckCircle } from 'react-icons/fa';
 import { Link } from 'react-router-dom';

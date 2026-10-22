@@ -1,16 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Code, Component, Package, Layers, Cpu, GitBranch, Sparkles } from 'lucide-react';
+import { useState } from 'react';
+import { Component, Cpu, GitBranch, Sparkles } from 'lucide-react';
 
 const PremiumReactShowcase = () => {
-  const [isHovered, setIsHovered] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-
-  useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   const handleMouseMove = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -166,7 +158,7 @@ const PremiumReactShowcase = () => {
       </div>
 
       {/* Enhanced Custom Animations */}
-      <style jsx>{`
+      <style>{`
         @keyframes twinkle {
           0%, 100% { opacity: 0; transform: scale(0.5); }
           50% { opacity: 1; transform: scale(1); }

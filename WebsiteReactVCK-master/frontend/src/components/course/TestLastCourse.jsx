@@ -1,19 +1,16 @@
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import useGetExercises from '../../hooks/useGetExercise'
-import useGetAllCourses from '../../hooks/useGetAllCourse'
 import { useAuthContext } from '../../context/AuthContext'
 import ReactMarkdown from 'react-markdown'
 import useGetProgress from '../../hooks/useGetProgress'
 import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next';
-import useCU_Progress from '../../hooks/useCU_Progress'
 import useTest from '../../hooks/useTest';
 import toast from 'react-hot-toast';
 
 const TestLastCourse = ({ filteredLessons }) => {
     const { t } = useTranslation()
     const { id } = useParams()
-    const { courses } = useGetAllCourses()
     const { exercises } = useGetExercises()
     const { authUser } = useAuthContext()
     const [showModal, setShowModal] = useState(false)
@@ -24,7 +21,7 @@ const TestLastCourse = ({ filteredLessons }) => {
     const [quizStarted, setQuizStarted] = useState(false)
     const [userAnswers, setUserAnswers] = useState([])
     const { progress } = useGetProgress()
-    const { createTest, getTestByUserAndCourse, updateTest } = useTest()
+    const { createTest } = useTest()
 
     const filterProgress = progress.filter((p) => p.userId === authUser?._id)
     const filterProgressCourse = filterProgress.filter((p) => p.courseId === id)
@@ -109,8 +106,6 @@ const TestLastCourse = ({ filteredLessons }) => {
     }
 
     const getResultMessage = () => {
-        const totalQuestions = randomExercises.length;
-
         if (score >= 6) {
             return {
                 text: t('quiz.congratulations'),

@@ -117,6 +117,8 @@ const safeUser = (row) => ({
   hasPassword: Boolean(row.has_password ?? row.password_hash),
   welcomeSeenAt: row.welcome_seen_at || null,
   hasSeenWelcome: Boolean(row.welcome_seen_at),
+  isManagementManaged: Boolean(row.is_management_managed),
+  lmsAccountStatus: row.lms_account_status || "unmanaged",
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -171,6 +173,7 @@ const getUser = async (userId, db = { query }) => {
     `SELECT u.id, u.username, u.email, u.role, u.gender, u.avatar_url, u.is_locked,
             u.locked_reason, u.locked_at, u.device_limit_attempts, u.device_limit_last_attempt_at,
             u.is_vip, u.email_verified, u.oauth_provider, u.password_hash,
+            u.is_management_managed, u.lms_account_status,
             COALESCE(u.hourly_rate, 0)::numeric(12,2) AS hourly_rate,
             u.created_at, u.updated_at, sp.full_name
      FROM users u LEFT JOIN student_profiles sp ON sp.user_id = u.id WHERE u.id = $1`,
@@ -180,12 +183,128 @@ const getUser = async (userId, db = { query }) => {
 };
 
 const ensureAnotherAdmin = async (userId, db = { query }) => {
-  const result = await db.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin' AND id <> $1", [userId]);
-  return Number(result.rows[0]?.count || 0) > 0;
+  // Serialize admin role/delete changes so two concurrent requests cannot both
+  // remove what each transaction believes is a non-final administrator.
+  const result = await db.query("SELECT id, is_locked FROM users WHERE role = 'admin' ORDER BY id FOR UPDATE");
+  return result.rows.some((row) => Number(row.id) !== Number(userId) && !row.is_locked);
+};
+
+const reconcileRoleTransition = async ({ userId, beforeRole, nextRole, db }) => {
+  if (beforeRole === nextRole) return null;
+
+  const summary = {
+    revokedTeacherAssignments: 0,
+    releasedPrimaryClasses: 0,
+    releasedChapterAssignments: 0,
+    revokedClassEnrollments: 0,
+    revokedCourseEnrollments: 0,
+    revokedAccessGrants: 0,
+  };
+
+  if (nextRole === "user") {
+    const teacherAssignments = await db.query(
+      `UPDATE class_teachers
+       SET status = 'revoked', can_manage_curriculum = FALSE, updated_at = NOW()
+       WHERE teacher_id = $1 AND status = 'active'`,
+      [userId],
+    );
+    summary.revokedTeacherAssignments = teacherAssignments.rowCount || 0;
+
+    const primaryClasses = await db.query(
+      `UPDATE live_classes lc
+       SET instructor_id = (
+             SELECT ct.teacher_id
+             FROM class_teachers ct
+             JOIN users replacement ON replacement.id = ct.teacher_id AND replacement.role = 'creator'
+             WHERE ct.live_class_id = lc.id AND ct.status = 'active' AND ct.teacher_id <> $1
+             ORDER BY CASE ct.teaching_role WHEN 'lead' THEN 0 WHEN 'co_teacher' THEN 1 ELSE 2 END,
+                      ct.updated_at DESC, ct.id DESC
+             LIMIT 1
+           ),
+           updated_at = NOW()
+       WHERE lc.instructor_id = $1
+       RETURNING lc.id, lc.instructor_id`,
+      [userId],
+    );
+    summary.releasedPrimaryClasses = primaryClasses.rowCount || 0;
+    for (const liveClass of primaryClasses.rows) {
+      if (!liveClass.instructor_id) continue;
+      await db.query(
+        `UPDATE class_teachers
+         SET teaching_role = 'lead', updated_at = NOW()
+         WHERE live_class_id = $1 AND teacher_id = $2 AND status = 'active'`,
+        [liveClass.id, liveClass.instructor_id],
+      );
+    }
+
+    const chapters = await db.query(
+      `UPDATE class_chapters cc
+       SET assigned_teacher_id = lc.instructor_id, updated_at = NOW()
+       FROM live_classes lc
+       WHERE cc.live_class_id = lc.id AND cc.assigned_teacher_id = $1`,
+      [userId],
+    );
+    summary.releasedChapterAssignments = chapters.rowCount || 0;
+  }
+
+  if (beforeRole === "user" && nextRole !== "user") {
+    const classEnrollments = await db.query(
+      `UPDATE class_enrollments
+       SET status = 'revoked', ended_at = COALESCE(ended_at, NOW())
+       WHERE user_id = $1 AND status = 'active'`,
+      [userId],
+    );
+    summary.revokedClassEnrollments = classEnrollments.rowCount || 0;
+
+    const courseEnrollments = await db.query(
+      "UPDATE enrollments SET status = 'revoked' WHERE user_id = $1 AND status = 'active'",
+      [userId],
+    );
+    summary.revokedCourseEnrollments = courseEnrollments.rowCount || 0;
+
+    const grants = await db.query(
+      `UPDATE lms_access_grants
+       SET access_status = 'revoked', revoked_at = COALESCE(revoked_at, NOW()),
+           reason = 'ADMIN_ROLE_CHANGE', source_updated_at = NOW()
+       WHERE user_id = $1 AND access_status = 'active'`,
+      [userId],
+    );
+    summary.revokedAccessGrants = grants.rowCount || 0;
+  }
+
+  return summary;
+};
+
+const enforceStudentDeviceLimit = async (userId, actorId, db) => {
+  const deviceResult = await db.query(
+    `SELECT id
+     FROM trusted_login_devices
+     WHERE user_id = $1 AND revoked_at IS NULL
+     ORDER BY last_seen_at DESC, id DESC
+     FOR UPDATE`,
+    [userId],
+  );
+  const revokedDeviceIds = deviceResult.rows.slice(getTrustedDeviceLimitForRole("user")).map((row) => row.id);
+  if (!revokedDeviceIds.length) return [];
+
+  await db.query(
+    `UPDATE user_sessions
+     SET revoked_at = COALESCE(revoked_at, NOW())
+     WHERE trusted_device_id = ANY($1::bigint[]) AND revoked_at IS NULL`,
+    [revokedDeviceIds],
+  );
+  await db.query(
+    `UPDATE trusted_login_devices
+     SET revoked_at = NOW(), revoked_by = $1
+     WHERE id = ANY($2::bigint[]) AND revoked_at IS NULL`,
+    [actorId, revokedDeviceIds],
+  );
+  return revokedDeviceIds;
 };
 
 const handleDbError = (res, error, fallback) => {
   if (error?.code === "23505") return sendError(res, 409, "Dữ liệu đã tồn tại", "CONFLICT");
+  if (error?.code === "23503") return sendError(res, 409, "Không thể xóa dữ liệu đang được lớp học hoặc lịch sử nghiệp vụ sử dụng", "RESOURCE_IN_USE");
   console.error(fallback, error);
   return sendError(res, 500, fallback, "INTERNAL_ERROR");
 };
@@ -901,6 +1020,7 @@ router.get("/users", ...adminOnly, async (req, res) => {
               u.is_locked, u.locked_reason, u.locked_at,
               u.device_limit_attempts, u.device_limit_last_attempt_at,
               u.is_vip, u.email_verified, u.oauth_provider,
+              u.is_management_managed, u.lms_account_status,
               (u.password_hash IS NOT NULL) AS has_password,
               COALESCE(u.hourly_rate, 0)::numeric(12,2) AS hourly_rate,
               u.created_at, u.updated_at, COALESCE(sp.full_name, u.username) AS full_name,
@@ -923,6 +1043,7 @@ router.get("/users", ...adminOnly, async (req, res) => {
 
 // POST /api/admin/users — explicit allow-list; password hash never leaves the server.
 router.post("/users", ...adminOnly, async (req, res) => {
+  const client = await getClient();
   try {
     const username = normalizeText(req.body.username, 50, { required: true });
     const email = normalizeText(req.body.email, 255, { required: true }).toLowerCase();
@@ -935,17 +1056,35 @@ router.post("/users", ...adminOnly, async (req, res) => {
     const avatarUrl = req.body.avatarUrl === undefined ? null : normalizeText(req.body.avatarUrl, 1000);
     const hourlyRate = req.body.hourlyRate !== undefined ? Math.max(0, Number(req.body.hourlyRate) || 0) : 0;
     const hash = await bcrypt.hash(password, 12);
-    const result = await query(
-      `INSERT INTO users (username, email, password_hash, gender, avatar_url, role, hourly_rate, email_verified, is_locked)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, FALSE)
-       RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked, is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
-      [username, email, hash, gender, avatarUrl, role, hourlyRate],
+    const fullName = normalizeText(req.body.fullName, 120);
+    await client.query("BEGIN");
+    const result = await client.query(
+      `INSERT INTO users
+         (username, email, password_hash, gender, avatar_url, role, hourly_rate,
+          email_verified, is_locked, is_management_managed, lms_account_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, FALSE, $8, $9)
+       RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked,
+                 is_vip, email_verified, oauth_provider, password_hash,
+                 is_management_managed, lms_account_status, created_at, updated_at`,
+      [username, email, hash, gender, avatarUrl, role, hourlyRate, role === "user", role === "user" ? "active" : "unmanaged"],
     );
-    await recordAuditEvent({ actorId: req.user.id, action: "user.created", entityType: "user", entityId: result.rows[0].id, afterState: auditUserState(result.rows[0]), metadata: { ip: req.ip } });
+    if (fullName) {
+      await client.query(
+        `INSERT INTO student_profiles (user_id, full_name) VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name`,
+        [result.rows[0].id, fullName],
+      );
+      result.rows[0].full_name = fullName;
+    }
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "user.created", entityType: "user", entityId: result.rows[0].id, afterState: auditUserState(result.rows[0]), metadata: { ip: req.ip } });
+    await client.query("COMMIT");
     return res.status(201).json({ success: true, data: safeUser(result.rows[0]), message: "Tạo tài khoản thành công" });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     if (["REQUIRED", "INVALID_TEXT"].includes(error.message)) return sendError(res, 422, "Thông tin tài khoản không hợp lệ", "VALIDATION_ERROR");
     return handleDbError(res, error, "Không thể tạo tài khoản");
+  } finally {
+    client.release();
   }
 });
 
@@ -960,6 +1099,10 @@ router.patch("/users/:id/lock", ...adminOnly, async (req, res) => {
     await client.query("BEGIN");
     const before = await getUser(userId, client);
     if (!before) { await client.query("ROLLBACK"); return sendError(res, 404, "Không tìm thấy người dùng", "NOT_FOUND"); }
+    if (before.role === "admin" && req.body.isLocked && !(await ensureAnotherAdmin(userId, client))) {
+      await client.query("ROLLBACK");
+      return sendError(res, 409, "Phải còn ít nhất một quản trị viên đang hoạt động", "LAST_ADMIN_PROTECTED");
+    }
     const result = await client.query(
       `UPDATE users
        SET is_locked = $1,
@@ -971,7 +1114,8 @@ router.patch("/users/:id/lock", ...adminOnly, async (req, res) => {
        WHERE id = $2
        RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked,
                  locked_reason, locked_at, device_limit_attempts, device_limit_last_attempt_at,
-                 is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
+                 is_vip, email_verified, oauth_provider, password_hash,
+                 is_management_managed, lms_account_status, created_at, updated_at`,
       [req.body.isLocked, userId],
     );
     if (req.body.isLocked) {
@@ -1006,6 +1150,11 @@ router.patch("/users/:id", ...adminOnly, async (req, res) => {
       await client.query("ROLLBACK");
       return sendError(res, 409, "Không thể hạ cấp quản trị viên cuối cùng", "LAST_ADMIN_PROTECTED");
     }
+    if (before.role === "admin" && nextRole === "admin" && req.body.isLocked === true
+      && !(await ensureAnotherAdmin(userId, client))) {
+      await client.query("ROLLBACK");
+      return sendError(res, 409, "Phải còn ít nhất một quản trị viên đang hoạt động", "LAST_ADMIN_PROTECTED");
+    }
     const fields = [];
     const values = [];
     const add = (sql, value) => { values.push(value); fields.push(`${sql} = $${values.length}`); };
@@ -1017,6 +1166,10 @@ router.patch("/users/:id", ...adminOnly, async (req, res) => {
     }
     if (req.body.avatarUrl !== undefined) add("avatar_url", normalizeText(req.body.avatarUrl, 1000));
     if (req.body.role !== undefined) add("role", nextRole);
+    if (nextRole !== "user" && before.role === "user") {
+      add("is_management_managed", false);
+      add("lms_account_status", "unmanaged");
+    }
     if (req.body.hourlyRate !== undefined) {
       const parsedRate = Number(req.body.hourlyRate);
       if (!Number.isFinite(parsedRate) || parsedRate < 0) {
@@ -1040,26 +1193,67 @@ router.patch("/users/:id", ...adminOnly, async (req, res) => {
       if (newPassword.length < 6) { await client.query("ROLLBACK"); return sendError(res, 422, "Mật khẩu phải có ít nhất 6 ký tự", "VALIDATION_ERROR"); }
       add("password_hash", await bcrypt.hash(newPassword, 12));
     }
+    const fullName = req.body.fullName === undefined ? undefined : normalizeText(req.body.fullName, 120);
     let after = before;
+    let roleTransitionSummary = null;
     if (fields.length) {
       values.push(userId);
       const result = await client.query(
         `UPDATE users SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${values.length}
          RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked,
                    locked_reason, locked_at, device_limit_attempts, device_limit_last_attempt_at,
-                   is_vip, email_verified, oauth_provider, password_hash, created_at, updated_at`,
+                   is_vip, email_verified, oauth_provider, password_hash,
+                   is_management_managed, lms_account_status, created_at, updated_at`,
         values,
       );
       after = result.rows[0];
-      if (req.body.isLocked === true || req.body.newPassword !== undefined) {
+      roleTransitionSummary = await reconcileRoleTransition({
+        userId,
+        beforeRole: before.role,
+        nextRole,
+        db: client,
+      });
+      if (req.body.isLocked === true || req.body.newPassword !== undefined || nextRole !== before.role) {
         await client.query(
           `UPDATE user_sessions SET revoked_at = COALESCE(revoked_at, NOW())
            WHERE user_id = $1 AND revoked_at IS NULL`,
           [userId],
         );
       }
+      if (nextRole === "user") {
+        await client.query(
+          `UPDATE users
+           SET is_management_managed = TRUE, lms_account_status = 'active',
+               device_limit_attempts = 0, device_limit_last_attempt_at = NULL
+           WHERE id = $1`,
+          [userId],
+        );
+        after.is_management_managed = true;
+        after.lms_account_status = "active";
+        await enforceStudentDeviceLimit(userId, req.user.id, client);
+      } else if (before.role === "user") {
+        after.is_management_managed = false;
+        after.lms_account_status = "unmanaged";
+      }
     }
-    await recordAuditEvent({ db: client, actorId: req.user.id, action: before.is_locked !== after.is_locked ? (after.is_locked ? "user.locked" : "user.unlocked") : "user.updated", entityType: "user", entityId: userId, beforeState: auditUserState(before), afterState: auditUserState(after), metadata: { ip: req.ip } });
+    if (fullName !== undefined) {
+      await client.query(
+        `INSERT INTO student_profiles (user_id, full_name) VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name`,
+        [userId, fullName || null],
+      );
+      after.full_name = fullName || after.username;
+    }
+    await recordAuditEvent({
+      db: client,
+      actorId: req.user.id,
+      action: before.is_locked !== after.is_locked ? (after.is_locked ? "user.locked" : "user.unlocked") : "user.updated",
+      entityType: "user",
+      entityId: userId,
+      beforeState: auditUserState(before),
+      afterState: auditUserState(after),
+      metadata: { ip: req.ip, ...(roleTransitionSummary ? { roleTransition: roleTransitionSummary } : {}) },
+    });
     await client.query("COMMIT");
     return res.json({ success: true, data: safeUser(after), message: "Cập nhật người dùng thành công" });
   } catch (error) {

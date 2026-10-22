@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { FiBarChart2, FiChevronDown, FiChevronRight, FiDownload, FiRefreshCw } from "react-icons/fi";

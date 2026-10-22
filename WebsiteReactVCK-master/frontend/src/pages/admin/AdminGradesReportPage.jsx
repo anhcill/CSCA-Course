@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart,
@@ -17,11 +17,8 @@ import {
   FiAward,
   FiBook,
   FiCheckCircle,
-  FiChevronDown,
-  FiChevronRight,
   FiDownload,
   FiEye,
-  FiFilter,
   FiRefreshCw,
   FiSearch,
   FiTrendingUp,
@@ -30,7 +27,7 @@ import {
   FiXCircle,
 } from "react-icons/fi";
 import { fetchAdminGradebookSummary, adminGradebookExportUrl } from "../../features/api/lmsClient";
-import { panel, input, secondary, button } from "../../features/teacher/components/workflowStyles";
+import { panel, input, secondary } from "../../features/teacher/components/workflowStyles";
 
 const emptyData = {
   kpis: {
@@ -486,7 +483,7 @@ export default function AdminGradesReportPage() {
                   <td colSpan={8} className="px-5 py-12 text-center text-slate-500">
                     <p className="font-semibold">Chưa có báo cáo điểm nào phù hợp</p>
                     <p className="text-xs mt-1">
-                      Khi giáo viên bấm "Cập nhật điểm" trên lớp phụ trách, dữ liệu sẽ tự động xuất hiện tại đây.
+                      Khi giáo viên bấm &quot;Cập nhật điểm&quot; trên lớp phụ trách, dữ liệu sẽ tự động xuất hiện tại đây.
                     </p>
                   </td>
                 </tr>

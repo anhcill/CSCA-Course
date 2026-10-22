@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useEffect, useState } from "react";
 import { History, X, Clock, User, ArrowRight, AlertCircle, RefreshCw } from "lucide-react";
 import { fetchSessionChangeHistory } from "../../api/lmsClient";

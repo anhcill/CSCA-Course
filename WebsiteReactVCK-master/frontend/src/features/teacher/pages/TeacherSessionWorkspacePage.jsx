@@ -71,6 +71,7 @@ export default function TeacherSessionWorkspacePage() {
   const classBasePath = isAdminView
     ? `/admin/classes/${classId}` : `/lms/teach/classes/${classId}`;
   const assessmentBasePath = isAdminView ? "/admin" : "/lms/teacher";
+  const gradingPath = isAdminView ? "/admin/assignments/review" : "/lms/teacher/assignments/review";
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = tabs.some((tab) => tab.id === searchParams.get("tab")) ? searchParams.get("tab") : "overview";
@@ -426,7 +427,7 @@ export default function TeacherSessionWorkspacePage() {
             classId={classId}
             sessionId={sessionId}
             classBasePath={classBasePath}
-            assessmentBasePath={assessmentBasePath}
+            gradingPath={gradingPath}
             setSearchParams={setSearchParams}
             navigate={navigate}
             setIsCreateHomeworkOpen={setIsCreateHomeworkOpen}
@@ -550,7 +551,7 @@ export default function TeacherSessionWorkspacePage() {
             }}
           />
         )}
-        {activeTab === "tasks" && <TeacherSessionTasks tasks={tasks} classId={classId} sessionId={sessionId} onCreateHomework={() => setIsCreateHomeworkOpen(true)} onCreateSessionQuiz={() => navigate(`${assessmentBasePath}/quizzes?classId=${classId}&sessionId=${sessionId}&scope=session&new=1`)} onOpenGrading={(assignmentId) => navigate(`${assessmentBasePath}/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${assignmentId}`)} />}
+        {activeTab === "tasks" && <TeacherSessionTasks tasks={tasks} classId={classId} sessionId={sessionId} onCreateHomework={() => setIsCreateHomeworkOpen(true)} onCreateSessionQuiz={() => navigate(`${assessmentBasePath}/quizzes?classId=${classId}&sessionId=${sessionId}&scope=session&new=1`)} onOpenGrading={(assignmentId) => navigate(`${gradingPath}?classId=${classId}&sessionId=${sessionId}&assignmentId=${assignmentId}`)} />}
         {activeTab === "files" && (
           <TeacherSessionFiles
             files={files}
@@ -594,7 +595,7 @@ function TeacherOverviewTab({
   announcements,
   classId,
   sessionId,
-  assessmentBasePath,
+  gradingPath,
   setSearchParams,
   navigate,
   setIsCreateHomeworkOpen,
@@ -667,7 +668,7 @@ function TeacherOverviewTab({
                     ) : (
                       <button
                         type="button"
-                        onClick={() => navigate(`${assessmentBasePath}/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${task.id}`)}
+                        onClick={() => navigate(`${gradingPath}?classId=${classId}&sessionId=${sessionId}&assignmentId=${task.id}`)}
                         className="shrink-0 rounded-xl border border-emerald-300/80 bg-emerald-50/60 px-3 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300"
                       >
                         Chấm bài

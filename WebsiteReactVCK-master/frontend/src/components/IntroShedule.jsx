@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   FaArrowDown,
   FaCheckCircle,
@@ -15,7 +14,7 @@ const IntroSchedule = ({ handleShowCalendar }) => {
   const { t } = useTranslation();
 
   // Custom hover effect for feature cards
-  const FeatureCard = ({ icon: Icon, title, description, delay }) => (
+  const FeatureCard = ({ icon: Icon, title, description }) => (
     <div className="group relative p-6 rounded-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
       <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       <div className="relative">

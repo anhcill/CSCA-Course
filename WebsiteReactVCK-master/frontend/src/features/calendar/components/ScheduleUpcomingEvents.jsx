@@ -1,5 +1,3 @@
-/* eslint-disable react/prop-types */
-import React from "react";
 import { Link } from "react-router-dom";
 import { CalendarCheck, FileText, CheckCircle2, Users, Award, ExternalLink } from "lucide-react";
 
@@ -35,7 +33,7 @@ export default function ScheduleUpcomingEvents({
         </h3>
         {isTeacher ? (
           <Link
-            to="/lms/teacher/grading"
+            to="/lms/teacher/assignments/review"
             className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 transition hover:text-blue-700 hover:underline dark:text-sky-400"
           >
             <span>Chấm bài</span>
@@ -151,7 +149,7 @@ export default function ScheduleUpcomingEvents({
             return (
               <Link
                 key={`${item.eventType}-${item.id}-${idx}`}
-                to={isTeacher ? `/lms/teacher/grading?assignmentId=${item.id}` : "/lms/assignments"}
+                to={isTeacher ? `/lms/teacher/assignments/review?assignmentId=${item.id}` : "/lms/assignments"}
                 className="flex items-center justify-between gap-3 rounded-2xl p-2 transition hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent hover:border-slate-100 dark:hover:border-slate-800 group"
               >
                 {content}

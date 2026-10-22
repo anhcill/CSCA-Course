@@ -157,6 +157,7 @@ function AppRoutes() {
       <Route path="/lms/recordings" element={<StudentRecordingsPage />} />
       <Route path="/lms/materials" element={<StudentFilesPage />} />
       <Route path="/lms/notifications" element={<NotificationCenterPage />} />
+      <Route path="/lms/discussions" element={<Post />} />
       <Route path="/lms/settings" element={<StudentSettingsPage />} />
       <Route path="/lms/courses/:courseId" element={<CourseClassListPage />} />
       <Route path="/lms/courses/:courseId/classes" element={<CourseClassListPage />} />
@@ -210,14 +211,13 @@ function AppRoutes() {
       <Route path="/lms/teacher/files" element={<Navigate to="/lms/teach/files" replace />} />
       <Route path="/lms/teach/settings" element={<TeacherSettingsPage />} />
       <Route path="/lms/teacher/settings" element={<Navigate to="/lms/teach/settings" replace />} />
-      <Route path="/lms/teacher/grading" element={<TeacherGradingPage />} />
+      <Route path="/lms/teacher/assignments/review" element={<TeacherGradingPage />} />
       <Route path="/lms/teacher/quizzes" element={<TeacherQuizPage />} />
       <Route path="/lms/teacher/quizzes/new" element={<MoliQuizEditorPage />} />
       <Route path="/lms/teacher/quizzes/:quizId/edit" element={<MoliQuizEditorPage />} />
       <Route path="/lms/teach/quizzes/new" element={<MoliQuizEditorPage />} />
       <Route path="/lms/teach/quizzes/:quizId/edit" element={<MoliQuizEditorPage />} />
       <Route path="/lms/admin/curriculum" element={<Navigate to="/admin/curriculum" replace />} />
-      <Route path="/lms/admin/grading" element={<Navigate to="/lms/teacher/quizzes" replace />} />
       <Route path="/lms/admin/courses" element={<Navigate to="/admin/courses" replace />} />
       <Route path="/lms/admin/classes" element={<Navigate to="/admin/classes" replace />} />
       <Route path="/lms/admin/calendar" element={<Navigate to="/admin/calendar" replace />} />
@@ -232,10 +232,10 @@ function AppRoutes() {
         <Route path="lessons/:lessonId/exercises" element={<Navigate to="/admin/curriculum" replace />} />
         <Route path="curriculum" element={<AdminCurriculumPage />} />
         <Route path="files" element={<TeacherFilesPage />} />
-        <Route path="grading" element={<TeacherGradingPage />} />
         <Route path="quizzes" element={<TeacherQuizPage />} />
         <Route path="quizzes/new" element={<MoliQuizEditorPage />} />
         <Route path="quizzes/:quizId/edit" element={<MoliQuizEditorPage />} />
+        <Route path="assignments/review" element={<TeacherGradingPage />} />
         <Route path="attendance-review" element={<AttendanceReviewPage />} />
         <Route path="attendance-report" element={<AttendanceReportPage />} />
         <Route path="grades-report" element={<AdminGradesReportPage />} />

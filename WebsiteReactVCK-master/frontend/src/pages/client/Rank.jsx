@@ -1,11 +1,10 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import LeaderboardCard from "../../components/LeaderboardCard";
 import { Link } from "react-router-dom";
 import useGetProgress from "../../hooks/useGetProgress";
 import useGetUsers from "../../hooks/useGetUsers";
 import { useTheme } from "../../context/ThemeContext";
 import { useTranslation } from 'react-i18next';
-import { useAuthContext } from "../../context/AuthContext";
 import Meta from '../../components/Meta.jsx';
 import Loading from '../../components/Loading';
 
@@ -14,21 +13,14 @@ const Rank = () => {
   const { users, loading: usersLoading } = useGetUsers();
   const { isDarkMode } = useTheme();
   const { t } = useTranslation();
-  const { authUser } = useAuthContext(); // Keep authUser context for potential future use, but not for filtering leaderboard
-
-  const userArray = Array.isArray(users) ? users : Object.values(users || {});
-  const progressArray = Array.isArray(progress) ? progress : Object.values(progress || {});
-  const topRanking = progressArray.sort((a, b) => b.completedLessons.length - a.completedLessons.length);
-
-  const userMap = new Map(userArray.map((user) => [user._id, {
-    username: user.username,
-    avatarUrl: user.avatarUrl
-  }]));
-
   const topUsers = useMemo(() => {
-    if (!topRanking || !userMap) {
-      return [];
-    }
+    const userArray = Array.isArray(users) ? users : Object.values(users || {});
+    const progressArray = Array.isArray(progress) ? progress : Object.values(progress || {});
+    const topRanking = [...progressArray].sort((a, b) => b.completedLessons.length - a.completedLessons.length);
+    const userMap = new Map(userArray.map((user) => [user._id, {
+      username: user.username,
+      avatarUrl: user.avatarUrl
+    }]));
     const combinedProgressMap = new Map();
     topRanking.forEach(ranking => {
       const userId = ranking.userId;
@@ -45,7 +37,7 @@ const Rank = () => {
     const combinedProgressArray = Array.from(combinedProgressMap.values());
     combinedProgressArray.sort((a, b) => b.completedLessons.length - a.completedLessons.length);
 
-    const finalTopUsers = combinedProgressArray.map((combinedRanking, index) => {
+    const finalTopUsers = combinedProgressArray.map((combinedRanking) => {
       const user = userMap.get(combinedRanking.userId);
       if (!user) return null; // Only check if user exists, remove authUser exclusion
 
@@ -62,7 +54,7 @@ const Rank = () => {
       .slice(0, 10); // Limit to top 10 users
 
     return finalTopUsers;
-  }, [topRanking, userMap]);
+  }, [progress, users]);
 
 
   const loading = progressLoading || usersLoading;

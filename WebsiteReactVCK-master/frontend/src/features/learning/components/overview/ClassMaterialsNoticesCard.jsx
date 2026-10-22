@@ -1,13 +1,6 @@
 import { Link } from "react-router-dom";
 import { Download, Eye, FileSpreadsheet, FileText, Files } from "lucide-react";
 
-const formatFileSize = (bytes) => {
-  const value = Number(bytes) || 0;
-  return value < 1024 * 1024
-    ? `${Math.max(1, Math.round(value / 1024))} KB`
-    : `${(value / (1024 * 1024)).toFixed(1)} MB`;
-};
-
 const kindForFile = (mime, name = "") => {
   const val = (String(mime || "") + " " + String(name || "")).toLowerCase();
   if (val.includes("pdf")) return "pdf";
@@ -68,7 +61,7 @@ export default function ClassMaterialsNoticesCard({
 
             return (
               <a
-                key={file.id}
+                key={file.instanceId || file.id}
                 href={viewUrl}
                 target="_blank"
                 rel="noreferrer"

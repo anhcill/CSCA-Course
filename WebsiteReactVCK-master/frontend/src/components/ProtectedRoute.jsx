@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { Navigate } from 'react-router-dom';
 import { useAuthContext } from '../context/AuthContext';
 import Loading from './Loading';

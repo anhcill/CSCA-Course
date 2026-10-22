@@ -1,14 +1,10 @@
-/* eslint-disable react/prop-types */
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   CheckCircle2,
   FileText,
   List,
-  Plus,
-  Sparkles,
-  Trash2,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -27,6 +23,7 @@ export default function CreateAssignmentModal({
   onCreated,
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -51,7 +48,8 @@ export default function CreateAssignmentModal({
       scope: homeworkOnly ? "homework" : "session",
     });
     if (sessionId) params.set("sessionId", String(sessionId));
-    navigate(`/lms/teacher/quizzes?${params.toString()}`);
+    const quizPath = location.pathname.startsWith("/admin/") ? "/admin/quizzes" : "/lms/teacher/quizzes";
+    navigate(`${quizPath}?${params.toString()}`);
   };
 
   const handleDeleteAttachment = async () => {
@@ -140,15 +138,17 @@ export default function CreateAssignmentModal({
         },
       });
 
-      if (!response?.success || !response?.data?.fileUrl) {
+      const uploadedFile = response?.data;
+      const uploadedFileUrl = uploadedFile?.viewUrl || uploadedFile?.downloadUrl || uploadedFile?.fileUrl;
+      if (!response?.success || !uploadedFile?.id || !uploadedFileUrl) {
         throw new Error(response?.message || "Tải lên tệp đính kèm thất bại");
       }
 
-      setAttachmentUrl(response.data.fileUrl);
+      setAttachmentUrl(uploadedFileUrl);
       setSelectedFile({
-        id: response.data.id,
-        name: response.data.fileName || file.name,
-        size: file.size,
+        id: uploadedFile.id,
+        name: uploadedFile.name || uploadedFile.fileName || file.name,
+        size: uploadedFile.sizeBytes || file.size,
       });
       setUploadProgress({
         status: "success",

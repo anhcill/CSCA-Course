@@ -11,7 +11,6 @@ import {
   FiDownload,
   FiEye,
   FiEdit3,
-  FiImage,
   FiUploadCloud,
   FiX,
   FiRefreshCw,
@@ -24,6 +23,8 @@ import {
   fetchPendingMembershipApprovals, reviewAdminMembership,
   updateAdminClassFileDownloadPolicy,
   updateAdminClassPresentation,
+  updateAdminClassTeacher,
+  fetchAdminUsers,
   uploadImageToCloudinary,
 } from "../../features/api/lmsClient";
 import {
@@ -46,7 +47,9 @@ export default function AdminClassesPage() {
   const [molyClassIdInput, setMolyClassIdInput] = useState("");
   const [molyCourseIdInput, setMolyCourseIdInput] = useState("");
   const [presentationModalClass, setPresentationModalClass] = useState(null);
-  const [teacherNameInput, setTeacherNameInput] = useState("");
+  const [teachers, setTeachers] = useState([]);
+  const [teachersLoading, setTeachersLoading] = useState(true);
+  const [teacherIdInput, setTeacherIdInput] = useState("");
   const [coverImageUrlInput, setCoverImageUrlInput] = useState("");
   const [savingPresentation, setSavingPresentation] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -75,6 +78,25 @@ export default function AdminClassesPage() {
     loadClasses();
   }, [loadClasses]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setTeachersLoading(true);
+    fetchAdminUsers({ role: "creator", status: "active", limit: 100 })
+      .then((response) => {
+        if (!cancelled) setTeachers(Array.isArray(response?.data) ? response.data : []);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setTeachers([]);
+          toast.error(error?.message || "Không thể tải danh sách giảng viên.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTeachersLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   const openMappingModal = (cls) => {
     setMappingModalClass(cls);
     setMolyClassIdInput(cls.managementClassId.startsWith("MOLY_CLS_Pending") ? "" : cls.managementClassId);
@@ -83,7 +105,7 @@ export default function AdminClassesPage() {
 
   const openPresentationModal = (cls) => {
     setPresentationModalClass(cls);
-    setTeacherNameInput(cls.teacherName === "Chưa phân công" ? "" : cls.teacherName || "");
+    setTeacherIdInput(cls.teacherId || "");
     setCoverImageUrlInput(cls.coverImageUrl || "");
   };
 
@@ -115,13 +137,20 @@ export default function AdminClassesPage() {
     if (!presentationModalClass) return;
     setSavingPresentation(true);
     try {
-      await updateAdminClassPresentation(presentationModalClass.id, {
-        teacherName: teacherNameInput.trim(),
-        coverImageUrl: coverImageUrlInput.trim(),
-      });
+      const selectedTeacher = teachers.find((teacher) => String(teacher.id) === String(teacherIdInput));
+      const teacherName = selectedTeacher
+        ? selectedTeacher.fullName || selectedTeacher.username || selectedTeacher.email
+        : "";
+      await Promise.all([
+        updateAdminClassTeacher(presentationModalClass.id, teacherIdInput || null),
+        updateAdminClassPresentation(presentationModalClass.id, {
+          teacherName,
+          coverImageUrl: coverImageUrlInput.trim(),
+        }),
+      ]);
       await loadClasses();
       setPresentationModalClass(null);
-      toast.success("Đã cập nhật tên giáo viên và ảnh lớp.");
+      toast.success("Đã cập nhật giáo viên phụ trách và ảnh lớp.");
     } catch (error) {
       toast.error(error?.message || "Không thể cập nhật thẻ lớp.");
     } finally {
@@ -465,14 +494,23 @@ export default function AdminClassesPage() {
 
             <div className="space-y-5 p-6">
               <div>
-                <label className="mb-1.5 block text-xs font-bold text-gray-700 dark:text-gray-300">Tên giáo viên hiển thị trên thẻ lớp</label>
-                <input
-                  value={teacherNameInput}
-                  onChange={(event) => setTeacherNameInput(event.target.value)}
-                  maxLength={255}
-                  placeholder={presentationModalClass.systemTeacherName || "Ví dụ: TS. Nguyễn Minh Anh"}
+                <label className="mb-1.5 block text-xs font-bold text-gray-700 dark:text-gray-300">Giáo viên phụ trách lớp</label>
+                <select
+                  value={teacherIdInput}
+                  onChange={(event) => setTeacherIdInput(event.target.value)}
+                  disabled={teachersLoading || savingPresentation}
                   className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-sky-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                />
+                >
+                  <option value="">Chưa phân công</option>
+                  {teachers.map((teacher) => (
+                    <option key={teacher.id} value={teacher.id}>
+                      {teacher.fullName || teacher.username || teacher.email} · {teacher.email}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-[11px] text-gray-500">
+                  Chọn tài khoản giảng viên thật để họ có quyền vào lớp, đăng bài và quản lý buổi học.
+                </p>
               </div>
 
               <div>
@@ -553,7 +591,9 @@ export default function AdminClassesPage() {
                       {presentationModalClass.name}
                     </h4>
                     <p className="text-xs text-sky-200">
-                      GV: {teacherNameInput.trim() || presentationModalClass.teacherName || "Chưa phân công"}
+                      GV: {teachers.find((teacher) => String(teacher.id) === String(teacherIdInput))?.fullName
+                        || teachers.find((teacher) => String(teacher.id) === String(teacherIdInput))?.username
+                        || "Chưa phân công"}
                     </p>
                   </div>
                 </div>

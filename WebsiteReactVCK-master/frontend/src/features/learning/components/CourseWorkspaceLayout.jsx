@@ -86,7 +86,7 @@ export default function CourseWorkspaceLayout() {
     );
   }
 
-  const { course = {}, selectedClass = {}, progress = {} } = workspace;
+  const { course = {}, selectedClass = {} } = workspace;
   const basePath = `/lms/courses/${courseId}/classes/${classId}`;
   const isOverviewPage =
     location.pathname === basePath ||
@@ -98,7 +98,6 @@ export default function CourseWorkspaceLayout() {
     (location.pathname.includes(`${basePath}/assignments/`) && location.pathname.includes("/submit"));
   const isFocusedView = isSessionWorkspace || isSubmittingOrQuiz;
 
-  const percent = Math.max(0, Math.min(100, Number(progress?.percent || 0)));
   const classDisplayName = formatClassTitle(selectedClass.title);
 
   return (

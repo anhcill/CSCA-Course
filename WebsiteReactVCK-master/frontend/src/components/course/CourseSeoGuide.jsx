@@ -1,4 +1,4 @@
-import { CheckCircle2, GraduationCap, Trophy, Laptop, Award, ShieldCheck, Sparkles } from 'lucide-react';
+import { GraduationCap, Trophy, Laptop, Award, ShieldCheck, Sparkles } from 'lucide-react';
 
 export default function CourseSeoGuide() {
   const highlights = [

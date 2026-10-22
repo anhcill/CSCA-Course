@@ -451,6 +451,13 @@ const authoringEnabled = (req, res, next) => {
   return next("route");
 };
 
+// The existing teacher builder still posts the flat `questions` contract,
+// while the MOLI editor posts structured `items`. Let the legacy router own
+// flat payloads so both editors can share the public endpoint safely.
+export const usesLegacyQuizCreateContract = (payload) => (
+  Array.isArray(payload?.questions) && !Array.isArray(payload?.items)
+);
+
 export const createQuizAuthoringRouter = ({
   db = { query, getClient },
   authMiddlewares = [protectRoute, requireTeacher, requirePermission("lms.quiz.manage")],
@@ -473,7 +480,8 @@ export const createQuizAuthoringRouter = ({
     }
   });
 
-  router.post("/teacher/quizzes", ...secured, async (req, res) => {
+  router.post("/teacher/quizzes", ...secured, async (req, res, next) => {
+    if (usesLegacyQuizCreateContract(req.body)) return next("route");
     const client = await db.getClient();
     let committed = false;
     try {

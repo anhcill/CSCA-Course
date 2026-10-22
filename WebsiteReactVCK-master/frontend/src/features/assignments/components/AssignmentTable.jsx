@@ -1,7 +1,5 @@
-import React from "react";
 import {
   AlertCircle,
-  Calendar,
   CheckCircle2,
   Clock,
   FileText,

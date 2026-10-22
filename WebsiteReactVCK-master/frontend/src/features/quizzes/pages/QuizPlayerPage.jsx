@@ -76,9 +76,10 @@ export default function QuizPlayerPage() {
   const [showMobilePalette, setShowMobilePalette] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
+  const [canStartNewAttempt, setCanStartNewAttempt] = useState(false);
 
   // Core quiz and attempt states
-  const [quiz, setQuiz] = useState(MOCK_STUDENT_QUIZ_PLAYER_DATA);
+  const [quiz, setQuiz] = useState(null);
   const [attemptId, setAttemptId] = useState(null);
   const [answers, setAnswers] = useState({});
   const [flagged, setFlagged] = useState({});
@@ -98,12 +99,13 @@ export default function QuizPlayerPage() {
   const [paletteFilter, setPaletteFilter] = useState('all'); // 'all' | 'unanswered' | 'flagged'
 
   const autosaveTimeoutRef = useRef(null);
+  const answersRef = useRef({});
   const reviewSectionRef = useRef(null);
 
   // Flattened questions list for index-based palette and count
   const flattenedQuestions = useMemo(() => {
     const list = [];
-    (quiz.items || []).forEach((item, itemIdx) => {
+    (quiz?.items || []).forEach((item, itemIdx) => {
       if (item.kind === 'reading_group') {
         (item.questions || item.subQuestions || []).forEach((sq, subIdx) => {
           list.push({
@@ -141,15 +143,25 @@ export default function QuizPlayerPage() {
       }
     });
     return list;
-  }, [quiz.items]);
+  }, [quiz?.items]);
 
   // Load quiz data on mount
-  const loadQuiz = useCallback(() => {
+  const loadQuiz = useCallback(({ newAttempt = false } = {}) => {
     let isMounted = true;
     setLoading(true);
     setLoadError(null);
+    if (newAttempt) {
+      setIsSubmitted(false);
+      setSubmitResult(null);
+      setCanStartNewAttempt(false);
+      setAnswers({});
+      answersRef.current = {};
+      setFlagged({});
+      setCurrentItemIndex(0);
+      setActiveSubIndex(0);
+    }
 
-    fetchStudentQuizStart(quizId)
+    fetchStudentQuizStart(quizId, { newAttempt })
       .then((res) => {
         if (!isMounted) return;
         const data = res?.data || res;
@@ -164,6 +176,7 @@ export default function QuizPlayerPage() {
             return;
           }
           setQuiz(loadedQuiz);
+          setCanStartNewAttempt(Boolean(data.canStartNewAttempt));
 
           const attempt = data.attempt || {};
           const loadedAttemptId = attempt.id || `local-${quizId}`;
@@ -172,7 +185,7 @@ export default function QuizPlayerPage() {
           // Restore answers from server + localStorage backup
           const localCache = localStorage.getItem(`csca_quiz_answers_${quizId}_${loadedAttemptId}`);
           let mergedAnswers = attempt.answers || {};
-          if (localCache) {
+          if (attempt.status === 'in_progress' && localCache) {
             try {
               const parsed = JSON.parse(localCache);
               mergedAnswers = { ...mergedAnswers, ...parsed };
@@ -188,6 +201,7 @@ export default function QuizPlayerPage() {
               }
             });
           }
+          answersRef.current = mergedAnswers;
           setAnswers(mergedAnswers);
 
           // If attempt is already submitted OR result payload is present, display the result screen!
@@ -278,12 +292,12 @@ export default function QuizPlayerPage() {
             message: 'Đề thi không tồn tại hoặc đã bị gỡ khỏi hệ thống.',
           });
         } else {
-          // If demo / preview or offline preview
-          if (quizId === 'demo' || quizId === 'preview' || (typeof window !== 'undefined' && !window.location.host.includes('.'))) {
-            console.warn('API start quiz failed or not connected, using fallback practice data:', err);
+          // Mock content is reserved for explicit preview routes; localhost must expose real API failures.
+          if (quizId === 'demo' || quizId === 'preview') {
             setQuiz(MOCK_STUDENT_QUIZ_PLAYER_DATA);
             setAttemptId(`local-preview-${quizId}`);
-            setAnswers(MOCK_STUDENT_QUIZ_PLAYER_DATA.savedAnswers || {});
+            answersRef.current = MOCK_STUDENT_QUIZ_PLAYER_DATA.savedAnswers || {};
+            setAnswers(answersRef.current);
             setTimeLeft(MOCK_STUDENT_QUIZ_PLAYER_DATA.serverRemainingSeconds || 3600);
           } else {
             setLoadError({
@@ -306,6 +320,10 @@ export default function QuizPlayerPage() {
   useEffect(() => {
     loadQuiz();
   }, [loadQuiz]);
+
+  useEffect(() => () => {
+    if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+  }, []);
 
   const handleAutoSubmitRef = useRef(null);
   const handleSelectAnswerRef = useRef(null);
@@ -370,10 +388,12 @@ export default function QuizPlayerPage() {
   // Autosave answer change
   const triggerAutosave = useCallback(
     (questionId, value) => {
+      const currentAnswers = { ...answersRef.current, [questionId]: value };
+      answersRef.current = currentAnswers;
+
       // 1. Immediately save to localStorage
       try {
         const cacheKey = `csca_quiz_answers_${quizId}_${attemptId || 'active'}`;
-        const currentAnswers = { ...answers, [questionId]: value };
         localStorage.setItem(cacheKey, JSON.stringify(currentAnswers));
         setAutosaveStatus('local');
       } catch {
@@ -387,8 +407,7 @@ export default function QuizPlayerPage() {
         try {
           setAutosaveStatus('saving');
           await saveQuizAttemptAnswer(attemptId, {
-            questionId,
-            answer: value,
+            answers: currentAnswers,
             clientTimestamp: new Date().toISOString(),
           });
           setAutosaveStatus('saved');
@@ -399,14 +418,13 @@ export default function QuizPlayerPage() {
         }
       }, 600);
     },
-    [answers, attemptId, quizId]
+    [attemptId, quizId]
   );
 
   const handleSelectAnswer = (questionId, value) => {
-    setAnswers((prev) => ({
-      ...prev,
-      [questionId]: value,
-    }));
+    const nextAnswers = { ...answersRef.current, [questionId]: value };
+    answersRef.current = nextAnswers;
+    setAnswers(nextAnswers);
     triggerAutosave(questionId, value);
   };
 
@@ -440,19 +458,22 @@ export default function QuizPlayerPage() {
     try {
       let result;
       if (attemptId && !attemptId.startsWith('local-')) {
+        const currentAnswers = answersRef.current;
         const res = await submitQuizAttempt(attemptId, {
-          answers,
+          answers: currentAnswers,
           clientTimestamp: new Date().toISOString(),
         });
         result = res?.data || res;
+        localStorage.removeItem(`csca_quiz_answers_${quizId}_${attemptId}`);
       }
 
       if (!result) {
         // Fallback simulated evaluation for preview
+        const currentAnswers = answersRef.current;
         let correctCount = 0;
         const objectiveQuestions = flattenedQuestions.filter((fq) => !isEssayQuestion(fq.question));
         objectiveQuestions.forEach((fq) => {
-          const ans = answers[fq.id];
+          const ans = currentAnswers[fq.id];
           const correct = fq.question.correctAnswer || fq.question.correctAnswerKey;
           if (ans && correct && ans === correct) {
             correctCount += 1;
@@ -466,12 +487,17 @@ export default function QuizPlayerPage() {
           passingScore: quiz.passingScore || 60,
           passed: score >= ((quiz.passingScore || 60) / 10),
           reviewPolicy: quiz.reviewPolicy || 'after_submit',
-          answers,
+          answers: currentAnswers,
         };
       }
 
       setSubmitResult(result);
       setIsSubmitted(true);
+      const closesAtValue = quiz.availableUntil || quiz.dueDate;
+      const stillOpen = !closesAtValue || new Date(closesAtValue).getTime() > Date.now();
+      setCanStartNewAttempt(
+        stillOpen && Number(result.attemptNumber || 1) < Number(quiz.attemptLimit || 1)
+      );
     } catch (err) {
       console.error('Submit quiz failed:', err);
       alert('Không thể kết nối máy chủ nộp bài. Dữ liệu đã được lưu an toàn trong máy bạn.');
@@ -491,7 +517,7 @@ export default function QuizPlayerPage() {
 
   const unansweredCount = flattenedQuestions.length - answeredCount;
 
-  const currentItem = quiz.items?.[currentItemIndex];
+  const currentItem = quiz?.items?.[currentItemIndex];
 
   // Jump to specific item and sub-index from palette
   const handleJumpToQuestion = (target) => {
@@ -747,6 +773,16 @@ export default function QuizPlayerPage() {
                   </a>
                 )}
               </div>
+            )}
+
+            {!isOverdue && canStartNewAttempt && (
+              <button
+                type="button"
+                onClick={() => loadQuiz({ newAttempt: true })}
+                className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                Làm lượt tiếp theo
+              </button>
             )}
 
             {/* Teacher Essay Evaluation Card */}

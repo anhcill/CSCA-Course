@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { FaTrash, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
@@ -13,7 +13,7 @@ const NoteLesson = ({ courseId, lessonId, userData }) => {
     const { t } = useTranslation();
 
     // Lấy danh sách ghi chú
-    const fetchNotes = async () => {
+    const fetchNotes = useCallback(async () => {
         if (!userData?._id || !lessonId) {
             console.log('Missing required data for fetchNotes:', { 
                 userId: userData?._id, 
@@ -30,7 +30,7 @@ const NoteLesson = ({ courseId, lessonId, userData }) => {
             console.error('Error fetching notes:', error.response?.data || error.message);
             toast.error(error.response?.data?.message || 'Không thể tải ghi chú');
         }
-    };
+    }, [lessonId, userData?._id]);
 
     useEffect(() => {
         if (userData && lessonId) {
@@ -41,7 +41,7 @@ const NoteLesson = ({ courseId, lessonId, userData }) => {
             // });
             fetchNotes();
         }
-    }, [lessonId, userData]);
+    }, [fetchNotes, lessonId, userData]);
 
     // Thêm ghi chú mới
     const handleAddNote = async (e) => {
@@ -136,11 +136,6 @@ const NoteLesson = ({ courseId, lessonId, userData }) => {
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const handleEdit = (note) => {
-        setEditingNote(note._id);
-        setEditContent(note.content);
     };
 
     // Format date

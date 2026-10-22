@@ -50,24 +50,54 @@ router.get("/gradebook/my-result", protectRoute, requireActiveStudentLmsAccess, 
   finally {db.release();}
 });
 
-router.get("/student-analytics", protectRoute, async (req, res) => {
+router.get("/student-analytics", protectRoute, requireActiveStudentLmsAccess, async (req, res) => {
   const db = await getClient();
   try {
     const userId = req.user.id;
 
     // 1. Get real course enrollments
     const coursesRes = await db.query(
-      `SELECT COUNT(DISTINCT g.course_id)::int AS count
-       FROM lms_access_grants g
-       WHERE g.user_id = $1 AND g.access_status = 'active'
-         AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())`,
+      `WITH accessible_courses AS (
+         SELECT DISTINCT g.course_id
+         FROM lms_access_grants g
+         WHERE g.user_id = $1 AND g.access_status = 'active'
+           AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+       ), course_progress AS (
+         SELECT ac.course_id,
+                CASE WHEN lesson_totals.total_count > 0
+                  THEN lesson_totals.total_count ELSE session_totals.total_count END AS total_count,
+                CASE WHEN lesson_totals.total_count > 0
+                  THEN lesson_totals.completed_count ELSE session_totals.completed_count END AS completed_count
+         FROM accessible_courses ac
+         CROSS JOIN LATERAL (
+           SELECT COUNT(l.id)::int AS total_count,
+                  COUNT(lp.id) FILTER (WHERE lp.is_completed = TRUE)::int AS completed_count
+           FROM lessons l
+           LEFT JOIN lesson_progress lp ON lp.lesson_id = l.id AND lp.course_id = l.course_id AND lp.user_id = $1
+           WHERE l.course_id = ac.course_id AND l.is_published = TRUE
+         ) lesson_totals
+         CROSS JOIN LATERAL (
+           SELECT COUNT(cs.id)::int AS total_count,
+                  COUNT(cs.id) FILTER (WHERE cs.status = 'ended' OR cs.end_time <= NOW())::int AS completed_count
+           FROM class_sessions cs
+           JOIN live_classes lc ON lc.id = cs.live_class_id
+           JOIN class_enrollments ce ON ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
+           WHERE lc.course_id = ac.course_id AND lc.status = 'active' AND cs.status <> 'cancelled'
+         ) session_totals
+       )
+       SELECT COUNT(*)::int AS count,
+              COUNT(*) FILTER (WHERE total_count > 0 AND completed_count >= total_count)::int AS completed_count,
+              COALESCE(ROUND(AVG(CASE WHEN total_count > 0 THEN completed_count * 100.0 / total_count ELSE 0 END)), 0)::int AS progress_pct
+       FROM course_progress`,
       [userId]
     );
     const activeCoursesCount = coursesRes.rows[0]?.count || 0;
+    const completedCoursesCount = coursesRes.rows[0]?.completed_count || 0;
+    const learningProgressPct = coursesRes.rows[0]?.progress_pct || 0;
 
     // 2. Query assignments & submissions (lấy bài nộp có điểm mới nhất)
     const assignmentRows = (await db.query(
-      `SELECT a.id, a.title, 'TỰ LUẬN' AS type, a.max_score, COALESCE(c.title, c.name, 'Khóa học csca tháng 10') AS course_title,
+      `SELECT a.id, a.title, 'TỰ LUẬN' AS type, a.max_score, COALESCE(c.title, c.name, 'Khóa học') AS course_title,
               s.id AS submission_id, sg.score, s.submitted_at, s.status AS submission_status,
               sess.title AS session_title
        FROM assignments a
@@ -92,7 +122,7 @@ router.get("/student-analytics", protectRoute, async (req, res) => {
     const quizRows = (await db.query(
       `SELECT q.id, q.title, 'TRẮC NGHIỆM' AS type,
               (SELECT COALESCE(SUM(points), 0) FROM quiz_questions WHERE quiz_id = q.id) AS max_score,
-              COALESCE(c.title, c.name, 'Khóa học csca tháng 10') AS course_title,
+              COALESCE(c.title, c.name, 'Khóa học') AS course_title,
               qa.id AS submission_id, qa.score, qa.submitted_at, qa.status AS submission_status,
               sess.title AS session_title
        FROM quizzes q
@@ -119,23 +149,24 @@ router.get("/student-analytics", protectRoute, async (req, res) => {
         const pct = Math.round((score / maxScore) * 100);
         const score10 = Math.round((score / maxScore) * 100) / 10;
         return {
-          id: String(item.id || `item-${idx}`),
+          id: `${item.type === "TRẮC NGHIỆM" ? "quiz" : "assignment"}-${item.id || idx}`,
           title: item.title,
           type: item.type || "TRẮC NGHIỆM",
-          courseTitle: item.course_title || "Khóa học csca tháng 10",
-          sessionTitle: item.session_title || "01 — Buổi học",
+          courseTitle: item.course_title || "Khóa học",
+          sessionTitle: item.session_title || "Chưa gắn buổi học",
           score,
           maxScore,
           percentage: pct,
           score10,
-          submittedAt: item.submitted_at ? new Date(item.submitted_at).toLocaleDateString("vi-VN") : "20/10/2026",
-          rawDate: item.submitted_at || new Date().toISOString(),
+          submittedAt: item.submitted_at ? new Date(item.submitted_at).toLocaleDateString("vi-VN") : "—",
+          rawDate: item.submitted_at || null,
           status: pct < 50 ? "weak" : pct < 70 ? "average" : pct < 85 ? "good" : "excellent",
           statusLabel: pct < 50 ? "Cần luyện tập (< 50%)" : pct < 70 ? "Trung bình (50% - 69%)" : pct < 85 ? "Khá (70% - 84%)" : "Giỏi / Xuất sắc (≥ 85%)",
           suggestion: pct < 70 ? "Xem lại tài liệu buổi học và làm lại bài để nâng cao điểm số và bù lấp lỗ hổng kiến thức." : "Làm tốt lắm, tiếp tục phát huy ở các chuyên đề nâng cao tiếp theo.",
         };
       });
     } else {
+      /* Historical demo data intentionally disabled. Empty analytics must reflect the database.
       // Authentic CSCA production dataset exactly as requested by user
       detailedList = [
         {
@@ -269,6 +300,9 @@ router.get("/student-analytics", protectRoute, async (req, res) => {
       ];
     }
 
+      */
+    }
+
     // Calculations
     const totalEarned = detailedList.reduce((acc, cur) => acc + cur.score, 0);
     const totalMax = detailedList.reduce((acc, cur) => acc + cur.maxScore, 0);
@@ -291,7 +325,7 @@ router.get("/student-analytics", protectRoute, async (req, res) => {
     ];
 
     // Trend over time (sorted by date)
-    const sortedForTrend = [...detailedList].sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate));
+    const sortedForTrend = [...detailedList].sort((a, b) => new Date(a.rawDate || 0) - new Date(b.rawDate || 0));
     const trend = sortedForTrend.map((item) => ({
       name: item.title.length > 14 ? item.title.slice(0, 14) + "..." : item.title,
       fullName: item.title,
@@ -312,10 +346,18 @@ router.get("/student-analytics", protectRoute, async (req, res) => {
           totalMaxScore: totalMax,
           gradedCount,
           reviewPriorityCount,
-          progressPct: 15,
-          completedCoursesCount: 0,
-          totalCoursesCount: Math.max(activeCoursesCount, 1),
-          tierLabel: overallPct >= 85 ? "Xuất sắc" : overallPct >= 70 ? "Khá" : overallPct >= 50 ? "Trung bình" : "Cần cải thiện & Luyện tập thêm",
+          progressPct: learningProgressPct,
+          completedCoursesCount,
+          totalCoursesCount: activeCoursesCount,
+          tierLabel: gradedCount === 0
+            ? "Chưa có dữ liệu"
+            : overallPct >= 85
+              ? "Xuất sắc"
+              : overallPct >= 70
+                ? "Khá"
+                : overallPct >= 50
+                  ? "Trung bình"
+                  : "Cần cải thiện & Luyện tập thêm",
         },
         distribution,
         trend,
@@ -352,7 +394,7 @@ const getScopedBook = async (req, db, classId) => {
   if (req.query.courseId && Number(req.query.courseId) !== Number(book.classInfo.course_id)) throw workflowError("Khóa học không khớp lớp.", 422);
   return { book, final };
 };
-router.get("/gradebook", handler(async (req, res, db, classId) => {
+router.get("/gradebook", requirePermission("lms.student.view"), handler(async (req, res, db, classId) => {
   const { book, final } = await getScopedBook(req, db, classId);
   const capabilities = await gradebookCapabilities(db, classId, req.user);
   const history = await db.query(`SELECT f.id, f.finalized_at, f.reopened_at, f.reopen_reason, u.username AS finalized_by_name
@@ -365,7 +407,7 @@ router.get("/gradebook", handler(async (req, res, db, classId) => {
   await db.query("COMMIT");
   res.json({ success: true, data: { ...book, finalization: final ? { id: final.id, finalizedAt: final.finalized_at } : null, history: history.rows, capabilities, lastReport } });
 }));
-router.post("/gradebook/report-to-admin", handler(async (req, res, db, classId) => {
+router.post("/gradebook/report-to-admin", requirePermission("lms.student.view"), handler(async (req, res, db, classId) => {
   const snapshot = await buildGradebook(db, classId);
   const studentCount = snapshot.rows.length;
   const validScores = snapshot.rows.map((r) => r.total).filter((t) => t !== null && t !== undefined).map(Number);
@@ -440,7 +482,12 @@ router.post("/gradebook/finalize", handler(async (req, res, db, classId) => {
   await requireGradebookCapability("canFinalize")(req, res, db, classId);
   await assertGradebookOpen(db, classId);
   const pending = await db.query(`SELECT 1 FROM assignment_submissions s JOIN assignments a ON a.id=s.assignment_id
-    WHERE a.live_class_id=$1 AND (s.status <> 'graded' OR s.return_requested)
+    JOIN live_classes pending_class ON pending_class.id=$1
+    WHERE (a.live_class_id=$1 OR (a.live_class_id IS NULL AND a.course_id=pending_class.course_id))
+      AND EXISTS (SELECT 1 FROM class_enrollments pending_enrollment
+        WHERE pending_enrollment.live_class_id=$1 AND pending_enrollment.user_id=s.user_id
+          AND pending_enrollment.status='active')
+      AND (s.status <> 'graded' OR s.return_requested)
     UNION ALL SELECT 1 FROM attendance_amendment_requests r JOIN class_sessions cs ON cs.id=r.session_id
     WHERE cs.live_class_id=$1 AND r.status='pending'
     UNION ALL SELECT 1 FROM quiz_attempts qa JOIN quizzes q ON q.id=qa.quiz_id

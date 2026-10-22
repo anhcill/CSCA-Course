@@ -36,7 +36,7 @@ const particleVariants = {
 };
 
 // Memoized CourseCard component
-const CourseCard = React.memo(({ course }) => {
+const CourseCard = React.memo(function CourseCard({ course }) {
   const { t } = useTranslation();
   const { lessons } = useGetAllLessons(course._id);
 
@@ -146,7 +146,7 @@ const CourseMetric = ({ icon, value, className }) => (
 );
 
 // Memoized ScrollProgress component
-const ScrollProgress = React.memo(({ activeIndex, visible, totalCourses }) => {
+const ScrollProgress = React.memo(function ScrollProgress({ activeIndex, visible, totalCourses }) {
   if (!visible) return null;
 
   return (

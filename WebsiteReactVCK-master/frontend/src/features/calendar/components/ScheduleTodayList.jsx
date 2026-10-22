@@ -1,6 +1,4 @@
-/* eslint-disable react/prop-types */
-import React from "react";
-import { CalendarCheck, Clock, MapPin, Play, Video } from "lucide-react";
+import { CalendarCheck, MapPin, Play } from "lucide-react";
 
 const WEEKDAY_NAMES_MAP = {
   1: "Thứ 2",

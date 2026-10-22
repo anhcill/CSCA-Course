@@ -1,71 +1,69 @@
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Settings,
-  Mail,
   Bell,
   Calendar,
   CalendarDays,
 } from "lucide-react";
 import toast from "react-hot-toast";
-
-const STORAGE_KEY = "csca_notification_settings";
+import { fetchNotificationPreferences, updateNotificationPreferences } from "../../api/lmsClient";
 
 const DEFAULT_SETTINGS = {
-  email: true,
   system: true,
-  assignment: true,
-  exam: true,
+  assignments: true,
+  calendar: true,
+  grades: true,
 };
 
 const SETTINGS_LIST = [
-  {
-    id: "email",
-    label: "Nhận thông báo qua email",
-    icon: Mail,
-  },
   {
     id: "system",
     label: "Thông báo trên hệ thống",
     icon: Bell,
   },
   {
-    id: "assignment",
+    id: "assignments",
     label: "Thông báo bài tập mới",
     icon: Calendar,
   },
   {
-    id: "exam",
-    label: "Thông báo lịch thi",
+    id: "calendar",
+    label: "Thông báo lịch học và lịch thi",
     icon: CalendarDays,
   },
+  { id: "grades", label: "Thông báo điểm số", icon: Bell },
 ];
 
 export default function NotificationSettingsWidget() {
-  const [settings, setSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-    } catch {
-      // fallback
-    }
-    return DEFAULT_SETTINGS;
-  });
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [savingKey, setSavingKey] = useState("");
 
-  const handleToggle = (id, label) => {
-    setSettings((prev) => {
-      const nextValue = !prev[id];
-      const updated = { ...prev, [id]: nextValue };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch (err) {
-        console.warn("Unable to save settings to localStorage", err);
-      }
-      toast.success(
-        nextValue ? `Đã bật: ${label}` : `Đã tắt: ${label}`,
-        { id: `setting-${id}`, duration: 1800 }
-      );
-      return updated;
-    });
+  useEffect(() => {
+    let active = true;
+    fetchNotificationPreferences()
+      .then((response) => {
+        if (active) setSettings((current) => ({ ...current, ...(response?.data || {}) }));
+      })
+      .catch((error) => console.warn("Unable to load notification preferences", error));
+    return () => { active = false; };
+  }, []);
+
+  const handleToggle = async (id, label) => {
+    const previous = settings;
+    const nextValue = !previous[id];
+    setSettings({ ...previous, [id]: nextValue });
+    setSavingKey(id);
+    try {
+      const response = await updateNotificationPreferences({ [id]: nextValue });
+      setSettings((current) => ({ ...current, ...(response?.data || {}) }));
+      window.dispatchEvent(new CustomEvent("csca:notifications-updated"));
+      toast.success(nextValue ? `Đã bật: ${label}` : `Đã tắt: ${label}`, { id: `setting-${id}`, duration: 1800 });
+    } catch (error) {
+      setSettings(previous);
+      toast.error(error?.message || "Không thể lưu cài đặt thông báo");
+    } finally {
+      setSavingKey("");
+    }
   };
 
   return (
@@ -97,6 +95,7 @@ export default function NotificationSettingsWidget() {
                 type="button"
                 role="switch"
                 aria-checked={isOn}
+                disabled={savingKey === item.id}
                 onClick={() => handleToggle(item.id, item.label)}
                 className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
                   isOn ? "bg-[#1d63a8]" : "bg-slate-300"

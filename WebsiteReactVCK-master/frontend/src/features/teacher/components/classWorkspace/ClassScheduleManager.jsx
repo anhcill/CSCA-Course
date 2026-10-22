@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { CalendarClock, Pencil, Plus, Save, Trash2, X } from "lucide-react";

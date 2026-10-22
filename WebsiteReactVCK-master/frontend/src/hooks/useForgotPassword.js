@@ -4,15 +4,11 @@ const useForgotPassword = () => {
   const { requestPasswordReset } = useAuthContext();
 
   const forgotPassword = async (email) => {
-    try {
-      const result = await requestPasswordReset(email);
-      return { success: true, data: result };
-    } catch (error) {
-      throw error;
-    }
+    const result = await requestPasswordReset(email);
+    return { success: true, data: result };
   };
 
   return { forgotPassword };
 };
 
-export default useForgotPassword; 
+export default useForgotPassword;

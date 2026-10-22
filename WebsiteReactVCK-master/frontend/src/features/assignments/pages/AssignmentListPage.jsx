@@ -33,58 +33,6 @@ function itemStatus(item) {
   return item.status === "late" || (dueAt && dueAt <= now) ? "overdue" : "todo";
 }
 
-// Fallback demo items ONLY when database has 0 assignments
-const DEFAULT_MOCK_ITEMS = [
-  {
-    id: "demo-1",
-    title: "Bài tập chương 3 – Kinh tế vi mô",
-    subTypeLabel: "Bài tập cá nhân",
-    courseTitle: "Kinh tế vi mô",
-    courseCode: "ECO101",
-    dueDateFormatted: "20/10/2026",
-    dueTimeFormatted: "23:59",
-    normalizedStatus: "todo",
-    scoreDisplay: "-",
-    isQuiz: false,
-    icon: FileText,
-    iconStyle: "bg-blue-50 text-blue-600",
-    created_at: "2026-10-18T10:00:00Z",
-    dueTimestamp: new Date("2026-10-20T23:59:00Z").getTime(),
-  },
-  {
-    id: "demo-2",
-    title: "Thảo luận nhóm – Kỹ năng học tập",
-    subTypeLabel: "Bài tập nhóm",
-    courseTitle: "Kỹ năng học tập",
-    courseCode: "SKI001",
-    dueDateFormatted: "22/10/2026",
-    dueTimeFormatted: "23:59",
-    normalizedStatus: "todo",
-    scoreDisplay: "-",
-    isQuiz: false,
-    icon: FileText,
-    iconStyle: "bg-emerald-50 text-emerald-600",
-    created_at: "2026-10-16T09:00:00Z",
-    dueTimestamp: new Date("2026-10-22T23:59:00Z").getTime(),
-  },
-  {
-    id: "demo-3",
-    title: "Kiểm tra giữa kỳ – Tiếng Trung HSK2",
-    subTypeLabel: "Kiểm tra trên máy",
-    courseTitle: "Tiếng Trung HSK2",
-    courseCode: "CHN202",
-    dueDateFormatted: "24/10/2026",
-    dueTimeFormatted: "14:00",
-    normalizedStatus: "todo",
-    scoreDisplay: "-",
-    isQuiz: true,
-    icon: Calendar,
-    iconStyle: "bg-rose-50 text-rose-500",
-    created_at: "2026-10-14T08:00:00Z",
-    dueTimestamp: new Date("2026-10-24T14:00:00Z").getTime(),
-  },
-];
-
 export default function AssignmentListPage() {
   const navigate = useNavigate();
   const { courseId, classId } = useParams();
@@ -104,7 +52,7 @@ export default function AssignmentListPage() {
     try {
       const [assignmentsRes, scheduleRes] = await Promise.allSettled([
         fetchAssignments({ courseId, classId }),
-        fetchMyLiveSchedule(),
+        fetchMyLiveSchedule({ courseId, classId }),
       ]);
 
       if (assignmentsRes.status === "fulfilled" && assignmentsRes.value?.success) {
@@ -168,18 +116,11 @@ export default function AssignmentListPage() {
       };
     });
 
-    // Khi có dữ liệu thật: KHÔNG ghép mock items mà dùng 100% dữ liệu thật
-    if (formattedReal.length > 0) {
-      // BÀI NÀO MỚI ĐĂNG THÌ ĐẨY LÊN ĐẦU
-      return formattedReal.sort((a, b) => {
-        const timeA = new Date(a.created_at || 0).getTime();
-        const timeB = new Date(b.created_at || 0).getTime();
-        return timeB - timeA;
-      });
-    }
-
-    // Chỉ dùng mock items nếu database chưa có bài tập nào
-    return DEFAULT_MOCK_ITEMS;
+    return formattedReal.sort((a, b) => {
+      const timeA = new Date(a.created_at || 0).getTime();
+      const timeB = new Date(b.created_at || 0).getTime();
+      return timeB - timeA;
+    });
   }, [rawAssignments]);
 
   // Đếm số lượng theo danh mục cho thanh lọc (dựa trên dữ liệu thật)
@@ -353,7 +294,7 @@ export default function AssignmentListPage() {
   }, [allFormattedItems, sessions]);
 
   // Xử lý điều hướng khi bấm nút trên bảng hoặc box Hạn nộp
-  const handleAction = (item, actionType) => {
+  const handleAction = (item) => {
     const raw = item?.raw || item;
     if (raw) {
       const isQuiz = itemType(raw) === "quiz" || item.isQuiz;
@@ -373,12 +314,7 @@ export default function AssignmentListPage() {
       return;
     }
 
-    // Với item demo
-    if (item.isQuiz) {
-      navigate(`/lms/quizzes/gallery`);
-    } else {
-      navigate(`/lms/my-learning`);
-    }
+    navigate("/lms/assignments");
   };
 
   // Xử lý điều hướng khi bấm box Lịch kiểm tra

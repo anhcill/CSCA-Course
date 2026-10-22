@@ -1,4 +1,3 @@
-import React from 'react';
 import { XCircle, AlertCircle, RefreshCcw } from 'lucide-react';
 
 const Error = ({

@@ -18,7 +18,6 @@ import {
   Target,
   TrendingUp,
   Trophy,
-  Users,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Loading from '../../components/Loading';

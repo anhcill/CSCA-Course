@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { Link } from 'react-router-dom';
 import { 
   AlertCircle, 
@@ -22,10 +21,6 @@ export function LoadingState({
   message = 'Đang tải dữ liệu...',
   fullScreen = false,
   className = '',
-  // Giữ lại các props cũ để tương thích ngược hoàn toàn
-  type,
-  count,
-  variant,
 }) {
   return (
     <div className={`w-full py-8 flex items-center justify-center ${className}`} aria-live="polite" aria-busy="true">

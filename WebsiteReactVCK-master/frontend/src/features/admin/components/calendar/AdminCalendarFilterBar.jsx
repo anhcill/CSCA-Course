@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { Filter, RefreshCw } from "lucide-react";
 
 export default function AdminCalendarFilterBar({

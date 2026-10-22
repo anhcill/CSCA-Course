@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiSearch } from "react-icons/fi";
 import { useTranslation } from "react-i18next";
@@ -13,7 +13,7 @@ const SearchNavbar = () => {
   const searchRef = useRef(null);
 
   // Sử dụng custom hook để lấy danh sách khóa học
-  const { courses, loading, error } = useGetAllCourses();
+  const { courses, loading } = useGetAllCourses();
 
   // Handle click outside to close results
   useEffect(() => {

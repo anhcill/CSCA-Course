@@ -170,7 +170,10 @@ export const createFormulaRouter = ({
       if (req.user.role === "admin") {
         // Full visibility for LMS platform admins
       } else if (req.user.role === "creator") {
-        filters.push(`(lc.instructor_id = $1 OR EXISTS (
+        filters.push(`((lc.instructor_id = $1 AND NOT EXISTS (
+          SELECT 1 FROM class_teachers former
+          WHERE former.live_class_id = lc.id AND former.teacher_id = $1
+        )) OR EXISTS (
           SELECT 1 FROM class_teachers ct
           WHERE ct.live_class_id = lc.id AND ct.teacher_id = $1 AND ct.status = 'active'
         ) OR EXISTS (

@@ -1,5 +1,3 @@
-import React from "react";
-
 export default function ScheduleMottoCard() {
   return (
     <div className="relative overflow-hidden rounded-3xl border border-white/80 bg-white shadow-[0_8px_30px_rgba(32,78,120,0.06)] backdrop-blur-md">

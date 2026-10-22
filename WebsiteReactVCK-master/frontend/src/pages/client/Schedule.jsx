@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import IntroSchedule from '../../components/IntroShedule';
 import { useTranslation } from 'react-i18next';
 import CreateScheduleButton from '../../components/CreateScheduleButton';
@@ -20,15 +20,15 @@ const MonthlySchedule = () => {
     }
     return false; // Default to false if authUser is not yet available
   });
-  const { schedule, loading, error, createSchedule, updateSchedule, deleteSchedule, getScheduleByUserId } = useCRUD_Schedule()
-  const { lessons, loading: loadingLessons, error: errorLessons } = useGetAllLessons()
+  const { loading, getScheduleByUserId } = useCRUD_Schedule()
+  const { lessons, loading: loadingLessons } = useGetAllLessons()
   const userSelections = localStorage.getItem(`userSelections-${authUser?._id}`); // User-specific key for userSelections
   const userSelectionStr = userSelections ? JSON.parse(userSelections) : null;
   const courseIdNe = userSelectionStr?.[1]?.courses?.[0];
   const lessonByCourse = lessons.filter((lesson) =>
     courseIdNe ? lesson.courseId === courseIdNe : false
   );
-  const { progress, loading: loadinProgress, error: errorProgress, refetch: fetchProgress } = useGetProgress()
+  const { progress } = useGetProgress()
 
   const progressUser = progress.filter((pro) => pro.userId === authUser?._id)
 
@@ -38,7 +38,7 @@ const MonthlySchedule = () => {
     if (authUser) { // Conditionally set localStorage only if authUser is available
       localStorage.setItem(`showCalendar-${authUser?._id}`, showCalendar); // User-specific key for showCalendar
     }
-  }, [showCalendar, authUser?._id]);
+  }, [showCalendar, authUser]);
 
   // Đặt state currentMonth trước
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -79,7 +79,7 @@ const MonthlySchedule = () => {
     if (showCalendar && authUser) { // Conditionally fetch schedule only if showCalendar and authUser are available
       fetchSchedule();
     }
-  }, [showCalendar, getScheduleByUserId, authUser?._id]); // authUser?._id is important here
+  }, [showCalendar, getScheduleByUserId, authUser, events.length]);
 
   const nextMonth = () => {
     setCurrentMonth(prevMonth => {

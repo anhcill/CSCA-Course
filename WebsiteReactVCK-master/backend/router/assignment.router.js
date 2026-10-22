@@ -65,7 +65,7 @@ const parseOptionalId = (value) => {
 // resource. Arbitrary relative paths and non-HTTPS external links are denied.
 const isSafeAssignmentAttachmentUrl = (value) => {
   if (typeof value !== "string" || !value.trim()) return false;
-  if (/^\/api\/files\/\d+\/download$/.test(value)) return true;
+  if (/^\/api\/files\/\d+\/download(?:\?(?:classId=\d+|download=1)(?:&download=1)?)?$/.test(value)) return true;
   try {
     return new URL(value).protocol === "https:";
   } catch {
@@ -226,7 +226,10 @@ const canManageCourseQuestionBank = async ({ courseId, user, db = { query } }) =
        c.author_id = $2 OR EXISTS (
          SELECT 1 FROM live_classes lc
          WHERE lc.course_id = c.id AND (
-           lc.instructor_id = $2 OR EXISTS (
+           (lc.instructor_id = $2 AND NOT EXISTS (
+             SELECT 1 FROM class_teachers former
+             WHERE former.live_class_id = lc.id AND former.teacher_id = $2
+           )) OR EXISTS (
              SELECT 1 FROM class_teachers ct
              WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
            )
@@ -1614,6 +1617,11 @@ const requireSubmissionUploader = (req, res, next) => {
   return requireRole("user")(req, res, next);
 };
 
+const requireStudentOrAssignmentGrader = (req, res, next) => {
+  if (req.user?.role === "user") return next();
+  return requireTeacher(req, res, () => requirePermission("lms.assignment.grade")(req, res, next));
+};
+
 // POST /api/assignments/submission-assets/upload-url — server-owned upload target.
 router.post("/submission-assets/upload-url", protectRoute, requireSubmissionUploader, async (req, res) => {
   try {
@@ -1676,7 +1684,7 @@ router.post("/submission-assets/:assetId/confirm", protectRoute, requireSubmissi
 });
 
 // GET /api/assignments/submission-assets/:assetId/access — owner, admin, or assigned teacher only.
-router.get("/submission-assets/:assetId/access", protectRoute, async (req, res) => {
+router.get("/submission-assets/:assetId/access", protectRoute, requireStudentOrAssignmentGrader, async (req, res) => {
   try {
     if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
       return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
@@ -1684,18 +1692,20 @@ router.get("/submission-assets/:assetId/access", protectRoute, async (req, res) 
     const assetId = parsePositiveId(req.params.assetId);
     if (!assetId) return validationError(res, "assetId không hợp lệ");
     const result = await query(
-      `SELECT sa.id, sa.user_id, sa.storage_key, sa.status, a.instructor_id, a.live_class_id
+      `SELECT sa.id, sa.user_id, sa.storage_key, sa.status,
+              COALESCE(s.assignment_id, sa.assignment_id) AS assignment_id
        FROM submission_assets sa
        LEFT JOIN assignment_submissions s ON s.file_asset_id = sa.id OR s.audio_asset_id = sa.id OR sa.id = ANY(s.file_asset_ids)
-       LEFT JOIN assignments a ON a.id = COALESCE(s.assignment_id, sa.assignment_id)
        WHERE sa.id = $1`,
       [assetId],
     );
     const asset = result.rows[0];
     if (!asset) return notFound(res, "Không tìm thấy tệp bài nộp");
-    const allowed = req.user.role === "admin"
-      || String(asset.user_id) === String(req.user.id)
-      || req.user.role === "creator";
+    let allowed = req.user.role === "admin" || String(asset.user_id) === String(req.user.id);
+    if (!allowed && req.user.role === "creator" && asset.assignment_id) {
+      const assignment = await getAssignment(asset.assignment_id);
+      allowed = Boolean(assignment && await canGradeAssignment(assignment, req.user));
+    }
     if (!allowed) return forbidden(res, "Bạn không có quyền xem tệp bài nộp này");
     if (asset.status !== "ready") return conflict(res, "Tệp chưa sẵn sàng", "ASSET_NOT_READY");
     const signed = await generateSubmissionPlaybackSignedUrl({ r2Key: asset.storage_key });
@@ -1708,7 +1718,7 @@ router.get("/submission-assets/:assetId/access", protectRoute, async (req, res) 
 });
 
 // GET /api/assignments/:assignmentId/submissions — teacher/admin grading queue.
-router.get("/:assignmentId/submissions", protectRoute, requireTeacher, async (req, res) => {
+router.get("/:assignmentId/submissions", protectRoute, requireTeacher, requirePermission("lms.assignment.grade"), async (req, res) => {
   try {
     const { assignmentId } = req.params;
     const classId = parseOptionalId(req.query.classId);
@@ -1844,8 +1854,8 @@ router.post("/", protectRoute, requireTeacher, requirePermission("lms.assignment
     const { title, description, maxScore, dueDate, attachmentUrl } = req.body;
     const assignmentType = normalizeAssignmentType(req.body.assignmentType || req.body.type);
     const courseId = parseOptionalId(req.body.courseId);
-    const liveClassId = parseOptionalId(req.body.liveClassId);
-    const classSessionId = parseOptionalId(req.body.classSessionId);
+    const liveClassId = parseOptionalId(req.body.liveClassId ?? req.body.classId);
+    const classSessionId = parseOptionalId(req.body.classSessionId ?? req.body.sessionId);
     if (!title || typeof title !== "string" || title.trim().length > 255) return validationError(res, "Tiêu đề bài tập không hợp lệ");
     if (!["homework", "essay", "hskk", "quiz"].includes(assignmentType)) return validationError(res, "Loại bài tập không hợp lệ");
     if (!courseId && !liveClassId) return validationError(res, "Bài tập phải thuộc ít nhất một khóa học hoặc lớp trực tuyến");
@@ -2077,7 +2087,7 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
       await client.query("DELETE FROM grading_drafts WHERE submission_id = $1", [old.id]);
       await recordAuditEvent({ db: client, actorId: req.user.id, action: "submission.resubmitted", entityType: "assignment_submission", entityId: old.id, beforeState: { revision: old.revision }, afterState: { revision: old.revision + 1 } });
       await notifyWorkflow(client, { userId: assignment.instructor_id, title: "Học viên đã nộp lại bài", message: assignment.title,
-        link: `/lms/teacher/grading?assignmentId=${assignmentId}`, key: `resubmission:${old.id}:${old.revision + 1}`, actorId: req.user.id });
+        link: `/lms/teacher/assignments/review?assignmentId=${assignmentId}`, key: `resubmission:${old.id}:${old.revision + 1}`, actorId: req.user.id });
     } else result = await client.query(
       `INSERT INTO assignment_submissions (assignment_id, user_id, content_text, file_asset_id, file_asset_ids, audio_asset_id, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -2099,7 +2109,7 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
 });
 
 // POST /api/assignments/submissions/:submissionId/grade — transactional grade + history + notification.
-router.get("/submissions/:submissionId/history", protectRoute, async (req, res) => {
+router.get("/submissions/:submissionId/history", protectRoute, requireStudentOrAssignmentGrader, async (req, res) => {
   try {
     const submissionId = parsePositiveId(req.params.submissionId);
     if (!submissionId) return validationError(res, "Mã bài nộp không hợp lệ");
@@ -2455,7 +2465,7 @@ const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
   return { attempt: created.rows[0], computed: null, created: true, timedOut: false };
 };
 
-const quizResponse = ({ quiz, questions, attempt, computed, now = new Date() }) => {
+const quizResponse = ({ quiz, questions, attempt, computed, now = new Date(), allowTeacherReview = false }) => {
   const isSubmitted = attempt?.status === "submitted";
   const reviewAvailable = isSubmitted && reviewIsAvailable(quiz, now);
   const result = isSubmitted && computed
@@ -2471,7 +2481,7 @@ const quizResponse = ({ quiz, questions, attempt, computed, now = new Date() }) 
         mcScore: computed.score - (computed.essayGrade?.score || 0),
       }
     : null;
-  const canViewSolution = isSubmitted || !attempt;
+  const canViewSolution = allowTeacherReview || reviewAvailable;
   const descriptionFields = parseQuizDescriptionMetadata(quiz.description);
   return {
     id: quiz.id,
@@ -2548,7 +2558,7 @@ router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
     if (!(await ensureQuizAccess(quiz, req.user))) return forbidden(res, "Bạn chưa được cấp quyền làm đề thi này");
     const questions = await getQuizQuestions(quizId);
     if (questions.length === 0) return notFound(res, "Đề thi chưa có câu hỏi");
-    if (req.user.role !== "user") return res.json({ success: true, data: quizResponse({ quiz, questions, attempt: null, computed: null }) });
+    if (req.user.role !== "user") return res.json({ success: true, data: quizResponse({ quiz, questions, attempt: null, computed: null, allowTeacherReview: true }) });
     const accommodation = await getAssessmentAccommodation({ assessmentType: "quiz", assessmentId: quizId, userId: req.user.id, db: client });
     const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation);
     await client.query("BEGIN");
@@ -2668,7 +2678,7 @@ router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), requir
     });
     await client.query("COMMIT");
     const reviewAvailable = reviewIsAvailable(quiz);
-    return res.json({ success: true, data: { score: computed.score, maxScore: computed.maxScore, percentage: computed.percentage, passed, review: reviewAvailable ? computed.review : [], reviewAvailable, essay: computed.essay, essayGrade: computed.essayGrade, mcScore: computed.score - (computed.essayGrade?.score || 0), solutionUrl: (quiz.solution_file_id && quiz.solution_status === "ready") ? `/api/files/${quiz.solution_file_id}/download` : null, hasSolution: Boolean(quiz.solution_file_id), attemptId: attempt.id, attemptNumber: attempt.attempt_number, alreadySubmitted, autoSubmitted: Boolean(attempt.auto_submitted), gamification, message: attempt.auto_submitted ? "Đã hết thời gian. Hệ thống đã nộp phần đáp án đã lưu." : (passed ? "Chúc mừng, bạn đã đạt yêu cầu!" : "Bạn chưa đạt điểm yêu cầu.") } });
+    return res.json({ success: true, data: { score: computed.score, maxScore: computed.maxScore, percentage: computed.percentage, passed, review: reviewAvailable ? computed.review : [], reviewAvailable, essay: computed.essay, essayGrade: computed.essayGrade, mcScore: computed.score - (computed.essayGrade?.score || 0), solutionUrl: (reviewAvailable && quiz.solution_file_id && quiz.solution_status === "ready") ? `/api/files/${quiz.solution_file_id}/download` : null, hasSolution: Boolean(quiz.solution_file_id), attemptId: attempt.id, attemptNumber: attempt.attempt_number, alreadySubmitted, autoSubmitted: Boolean(attempt.auto_submitted), gamification, message: attempt.auto_submitted ? "Đã hết thời gian. Hệ thống đã nộp phần đáp án đã lưu." : (passed ? "Chúc mừng, bạn đã đạt yêu cầu!" : "Bạn chưa đạt điểm yêu cầu.") } });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     if (error.message === "QUIZ_NOT_OPEN" || error.message === "QUIZ_CLOSED") return quizWindowError(res, error);

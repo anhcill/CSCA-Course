@@ -1,7 +1,6 @@
-import React from "react";
 import { FaCrown } from "react-icons/fa";
 
-const LeaderboardCard = ({ rank, name, points, isTopRank, avatarUrl }) => {
+const LeaderboardCard = ({ rank, name, points, avatarUrl }) => {
   const rankStyles = {
     1: "bg-yellow-400 text-black",
     2: "bg-gray-300 text-black",

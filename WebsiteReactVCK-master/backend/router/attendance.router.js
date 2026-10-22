@@ -491,7 +491,7 @@ router.post("/session/:sessionId/my-check-in", protectRoute, async (req, res) =>
 });
 
 // GET /api/attendance/session/:sessionId — real roster and current attendance.
-router.get("/session/:sessionId", protectRoute, requireTeacher, async (req, res) => {
+router.get("/session/:sessionId", protectRoute, requireTeacher, requirePermission("lms.attendance.manage"), async (req, res) => {
   try {
     const sessionId = parsePositiveId(req.params.sessionId);
     if (!sessionId) return validationError(res, "sessionId không hợp lệ");
@@ -709,7 +709,7 @@ router.get("/amendments", protectRoute, requireTeacher, requirePermission("lms.a
   }
 });
 
-router.get("/session/:sessionId/amendments", protectRoute, requireTeacher, async (req, res) => {
+router.get("/session/:sessionId/amendments", protectRoute, requireTeacher, requirePermission("lms.attendance.manage"), async (req, res) => {
   try {
     const sessionId = parsePositiveId(req.params.sessionId);
     if (!sessionId) return validationError(res, "sessionId không hợp lệ");

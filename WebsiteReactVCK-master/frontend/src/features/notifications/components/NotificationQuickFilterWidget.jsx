@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Filter,
   Inbox,
@@ -9,7 +8,7 @@ import {
   Settings,
 } from "lucide-react";
 
-export const QUICK_FILTERS = [
+const QUICK_FILTERS = [
   {
     id: "all",
     label: "Tất cả thông báo",

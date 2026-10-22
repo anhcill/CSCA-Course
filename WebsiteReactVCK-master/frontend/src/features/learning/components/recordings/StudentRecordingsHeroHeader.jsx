@@ -1,5 +1,3 @@
-import React from "react";
-
 export default function StudentRecordingsHeroHeader() {
   return (
     <div className="pt-0.5 pb-2">

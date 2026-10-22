@@ -1,4 +1,4 @@
-/* eslint-disable react/prop-types */
+
 import { Video, User, History, Settings2, CalendarClock } from "lucide-react";
 import { Link } from "react-router-dom";
 
