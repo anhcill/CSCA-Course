@@ -290,14 +290,14 @@ export default function TeacherLmsLayout({ children }) {
 
       {/* Main Content Area */}
       <main className="min-h-screen lg:pl-[260px]">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-end gap-2 border-b border-white/70 bg-[#e9f5fd]/82 px-4 shadow-[0_8px_28px_rgba(38,91,132,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 sm:px-6">
+        <header className="fixed left-0 right-0 top-0 z-30 flex h-16 items-center justify-end gap-2 bg-transparent px-4 sm:px-6 lg:left-[260px]">
           {!permissionsReady && (
             <span className="mr-auto hidden text-xs font-semibold text-slate-500 sm:inline">Đang đồng bộ quyền truy cập...</span>
           )}
           <button
             type="button"
             onClick={cycleWallpaper}
-            className="rounded-xl border border-white/80 bg-[#dff1ff]/85 p-2 text-[#17365f] shadow-sm backdrop-blur transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+            className="rounded-xl border border-white/85 bg-[#e4f4ff]/85 p-2 text-[#17365f] shadow-[0_5px_18px_rgba(32,91,135,0.18)] backdrop-blur-md transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
             title="Đổi ảnh nền"
             aria-label="Đổi ảnh nền"
           >
@@ -308,15 +308,15 @@ export default function TeacherLmsLayout({ children }) {
             <button
               type="button"
               onClick={() => setProfileMenuOpen((open) => !open)}
-              className="flex items-center gap-2 rounded-2xl border border-white/80 bg-[#dff1ff]/78 py-1.5 pl-1.5 pr-2.5 text-left shadow-[0_6px_22px_rgba(30,86,128,0.14)] backdrop-blur-xl transition hover:bg-white dark:border-slate-700 dark:bg-slate-900/85"
+              className="relative flex items-center gap-2.5 overflow-hidden rounded-xl border border-white/90 bg-[#d9efff]/85 px-2 py-1.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_7px_22px_rgba(24,75,118,0.18)] backdrop-blur-xl transition before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white before:to-transparent hover:bg-[#e8f6ff] dark:border-slate-700 dark:bg-slate-900/85"
               aria-expanded={profileMenuOpen}
             >
-              <img src={getAvatarUrl(authUser)} onError={handleAvatarError} alt="" className="h-8 w-8 rounded-xl object-cover" />
-              <span className="hidden max-w-36 sm:block">
+              <img src={getAvatarUrl(authUser)} onError={handleAvatarError} alt="" className="h-8 w-8 rounded-full border-2 border-white object-cover shadow-sm" />
+              <span className="hidden min-w-0 text-left sm:block">
                 <span className="block truncate text-xs font-black text-[#102f63] dark:text-white">{authUser?.fullName || authUser?.username}</span>
-                <span className="block text-[10px] font-semibold text-blue-600 dark:text-sky-400">{isAdmin ? 'Quản trị viên' : 'Giảng viên'}</span>
+                <span className="block text-[10px] text-slate-500 dark:text-sky-400">{isAdmin ? 'Quản trị viên' : 'Giảng viên'}</span>
               </span>
-              <ChevronDown className="h-3.5 w-3.5 text-[#487291]" />
+              <ChevronDown className="h-4 w-4 text-[#17365f]" />
             </button>
             {profileMenuOpen && (
               <div className="absolute right-0 mt-2 w-56 overflow-hidden rounded-2xl border border-[#c4def0] bg-[#eef8ff]/95 p-2 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95">
