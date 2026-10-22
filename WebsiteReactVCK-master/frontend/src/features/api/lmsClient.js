@@ -956,6 +956,27 @@ export const fetchClassFiles = async (classId, { sessionId } = {}) => {
   return request(`/teacher/classes/${encodeURIComponent(classId)}/files${params.size ? `?${params.toString()}` : ""}`);
 };
 
+export const fetchReusableTeacherFiles = async ({ classId, sessionId, search } = {}) => {
+  const params = new URLSearchParams();
+  if (classId) params.set("classId", classId);
+  if (sessionId) params.set("sessionId", sessionId);
+  if (search) params.set("search", search);
+  return request(`/teacher/files/reusable?${params.toString()}`);
+};
+
+export const attachTeacherFile = async (fileId, { classId, sessionId } = {}) => request(
+  `/teacher/files/${encodeURIComponent(fileId)}/placements`,
+  {
+    method: "POST",
+    body: JSON.stringify({ classId, sessionId: sessionId || undefined }),
+  },
+);
+
+export const detachTeacherFile = async (placementId) => request(
+  `/teacher/file-placements/${encodeURIComponent(placementId)}`,
+  { method: "DELETE" },
+);
+
 export const fetchStudentFiles = async ({ courseId, classId, sessionId, date, search } = {}) => {
   const params = new URLSearchParams();
   if (courseId) params.set("courseId", courseId);

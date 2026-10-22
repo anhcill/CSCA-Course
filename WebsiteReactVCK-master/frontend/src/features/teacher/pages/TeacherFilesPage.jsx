@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -25,12 +24,17 @@ import {
   ArrowRight,
   Sparkles,
   ExternalLink,
+  Library,
+  Link2,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import {
+  attachTeacherFile,
   deleteClassFile,
+  detachTeacherFile,
   fetchTeacherClassesLookup,
   fetchTeacherFiles,
+  fetchReusableTeacherFiles,
   uploadClassFile,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
@@ -197,6 +201,11 @@ export default function TeacherFilesPage() {
   const [selectedUploadFile, setSelectedUploadFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [uploadMode, setUploadMode] = useState("upload");
+  const [reusableFiles, setReusableFiles] = useState([]);
+  const [reusableLoading, setReusableLoading] = useState(false);
+  const [reuseSearch, setReuseSearch] = useState("");
+  const [attachingFileId, setAttachingFileId] = useState(null);
 
   // Load lookup data & file list
   const loadData = useCallback(async () => {
@@ -468,6 +477,50 @@ export default function TeacherFilesPage() {
     setSearchParams(next);
   };
 
+  const loadReusableFiles = useCallback(async ({ search = "" } = {}) => {
+    if (!uploadClassId) {
+      setReusableFiles([]);
+      return;
+    }
+    setReusableLoading(true);
+    try {
+      const response = await fetchReusableTeacherFiles({
+        classId: uploadClassId,
+        sessionId: uploadSessionId || undefined,
+        search,
+      });
+      setReusableFiles(Array.isArray(response?.data) ? response.data : []);
+    } catch (err) {
+      setReusableFiles([]);
+      toast.error(err.message || "Không thể tải kho tài liệu dùng lại.");
+    } finally {
+      setReusableLoading(false);
+    }
+  }, [uploadClassId, uploadSessionId]);
+
+  useEffect(() => {
+    if (isUploadOpen && uploadMode === "reuse" && uploadClassId) {
+      loadReusableFiles();
+    }
+  }, [isUploadOpen, loadReusableFiles, uploadClassId, uploadMode, uploadSessionId]);
+
+  const handleAttachReusableFile = async (file) => {
+    if (!uploadClassId) return toast.error("Vui lòng chọn lớp học.");
+    setAttachingFileId(file.id);
+    try {
+      await attachTeacherFile(file.id, {
+        classId: uploadClassId,
+        sessionId: uploadSessionId || undefined,
+      });
+      toast.success(`Đã dùng lại "${file.name}" mà không tải file trùng.`);
+      await Promise.all([loadData(), loadReusableFiles({ search: reuseSearch })]);
+    } catch (err) {
+      toast.error(err.message || "Không thể dùng lại tài liệu này.");
+    } finally {
+      setAttachingFileId(null);
+    }
+  };
+
   // Upload file action with progress and error state
   const handleExecuteUpload = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -548,12 +601,14 @@ export default function TeacherFilesPage() {
   };
 
   // Delete file action
-  const handleDeleteFile = async (fileId, fileName) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa tài liệu "${fileName}"?`)) return;
+  const handleDeleteFile = async (file) => {
+    const actionLabel = file.placementId ? "gỡ khỏi lớp/buổi học này" : "xóa file gốc";
+    if (!window.confirm(`Bạn có chắc chắn muốn ${actionLabel} tài liệu "${file.name}"?`)) return;
     try {
-      await deleteClassFile(fileId);
-      toast.success("Đã xóa tài liệu thành công.");
-      setFiles((curr) => curr.filter((f) => String(f.id) !== String(fileId)));
+      if (file.placementId) await detachTeacherFile(file.placementId);
+      else await deleteClassFile(file.id);
+      toast.success(file.placementId ? "Đã gỡ liên kết tài liệu." : "Đã xóa tài liệu thành công.");
+      setFiles((curr) => curr.filter((item) => item.instanceId !== file.instanceId));
     } catch (err) {
       toast.error(err.message || "Không thể xóa tài liệu.");
     }
@@ -1004,9 +1059,9 @@ export default function TeacherFilesPage() {
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {systemGeneralFiles.map((file) => (
                       <FileCard
-                        key={file.id}
+                        key={file.instanceId || file.id}
                         file={file}
-                        onDelete={() => handleDeleteFile(file.id, file.name)}
+                        onDelete={() => handleDeleteFile(file)}
                       />
                     ))}
                   </div>
@@ -1122,9 +1177,9 @@ export default function TeacherFilesPage() {
                   <div className="p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {activeClassGeneralFiles.map((file) => (
                       <FileCard
-                        key={file.id}
+                        key={file.instanceId || file.id}
                         file={file}
-                        onDelete={() => handleDeleteFile(file.id, file.name)}
+                        onDelete={() => handleDeleteFile(file)}
                       />
                     ))}
                   </div>
@@ -1231,9 +1286,9 @@ export default function TeacherFilesPage() {
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {session.files.map((file) => (
                               <FileCard
-                                key={file.id}
+                                key={file.instanceId || file.id}
                                 file={file}
-                                onDelete={() => handleDeleteFile(file.id, file.name)}
+                                onDelete={() => handleDeleteFile(file)}
                               />
                             ))}
                           </div>
@@ -1291,9 +1346,9 @@ export default function TeacherFilesPage() {
                 <div className="p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {groupFiles.map((file) => (
                     <FileCard
-                      key={file.id}
+                      key={file.instanceId || file.id}
                       file={file}
-                      onDelete={() => handleDeleteFile(file.id, file.name)}
+                      onDelete={() => handleDeleteFile(file)}
                     />
                   ))}
                 </div>
@@ -1321,7 +1376,7 @@ export default function TeacherFilesPage() {
                     const config = kindConfig[kind] || kindConfig.other;
                     const Icon = config.icon;
                     return (
-                      <tr key={file.id} className="hover:bg-sky-50/40 transition">
+                      <tr key={file.instanceId || file.id} className="hover:bg-sky-50/40 transition">
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2.5 min-w-0 max-w-xs">
                             <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${config.badge}`}>
@@ -1368,7 +1423,7 @@ export default function TeacherFilesPage() {
                             </a>
                             <button
                               type="button"
-                              onClick={() => handleDeleteFile(file.id, file.name)}
+                              onClick={() => handleDeleteFile(file)}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
                               title="Xóa tài liệu"
                             >
@@ -1397,23 +1452,50 @@ export default function TeacherFilesPage() {
                 </span>
                 <div>
                   <h3 className="text-base font-black text-[#102f63]">
-                    Đăng tải tài liệu học tập
+                    Thêm tài liệu học tập
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Gắn tài liệu vào Lớp và Ngày học cụ thể
+                    Tải file mới hoặc dùng lại file đã có trong kho
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setIsUploadOpen(false)}
+                onClick={() => {
+                  setIsUploadOpen(false);
+                  setUploadMode("upload");
+                  setReuseSearch("");
+                }}
                 className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleExecuteUpload} className="space-y-4">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => setUploadMode("upload")}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${uploadMode === "upload" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                <UploadCloud className="h-4 w-4" /> Tải file mới
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadMode("reuse")}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${uploadMode === "reuse" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                <Library className="h-4 w-4" /> Chọn từ kho
+              </button>
+            </div>
+
+            <form
+              onSubmit={uploadMode === "upload" ? handleExecuteUpload : (event) => {
+                event.preventDefault();
+                loadReusableFiles({ search: reuseSearch });
+              }}
+              className="space-y-4"
+            >
               {/* Chọn Lớp học */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1425,6 +1507,8 @@ export default function TeacherFilesPage() {
                   onChange={(e) => {
                     setUploadClassId(e.target.value);
                     setUploadSessionId("");
+                    setReuseSearch("");
+                    setReusableFiles([]);
                   }}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
                 >
@@ -1451,7 +1535,11 @@ export default function TeacherFilesPage() {
                 </div>
                 <select
                   value={uploadSessionId}
-                  onChange={(e) => setUploadSessionId(e.target.value)}
+                  onChange={(e) => {
+                    setUploadSessionId(e.target.value);
+                    setReuseSearch("");
+                    setReusableFiles([]);
+                  }}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
                 >
                   <option value="">Tài liệu chung của lớp (không gắn ngày cụ thể)</option>
@@ -1478,6 +1566,8 @@ export default function TeacherFilesPage() {
                 )}
               </div>
 
+              {uploadMode === "upload" ? (
+                <>
               {/* Quyền hiển thị */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1568,6 +1658,60 @@ export default function TeacherFilesPage() {
                   }}
                 />
               )}
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={reuseSearch}
+                      onChange={(event) => setReuseSearch(event.target.value)}
+                      placeholder="Tìm tài liệu đã tải lên..."
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs outline-none focus:border-blue-500 focus:bg-white"
+                    />
+                  </div>
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {reusableLoading ? (
+                      <p className="py-8 text-center text-xs font-semibold text-slate-500">Đang tải kho tài liệu...</p>
+                    ) : reusableFiles.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center">
+                        <Library className="mx-auto h-7 w-7 text-slate-300" />
+                        <p className="mt-2 text-xs font-bold text-slate-700">Không còn tài liệu phù hợp</p>
+                        <p className="mt-1 text-[11px] text-slate-400">Chỉ hiển thị tài liệu cùng khóa học và bạn có quyền sử dụng.</p>
+                      </div>
+                    ) : reusableFiles.map((file) => {
+                      const kind = kindForFile(file.mimeType, file.name);
+                      const config = kindConfig[kind] || kindConfig.other;
+                      const Icon = config.icon;
+                      const attaching = String(attachingFileId || "") === String(file.id);
+                      return (
+                        <article key={file.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3 transition hover:border-blue-300 hover:bg-blue-50/30">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${config.badge}`}>
+                              <Icon className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-bold text-[#102f63]" title={file.name}>{file.name}</p>
+                              <p className="truncate text-[10px] text-slate-500">
+                                {file.sourceClassTitle || file.courseTitle || "Kho chung"}
+                                {file.sourceSessionTitle ? ` · ${file.sourceSessionTitle}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={Boolean(attachingFileId)}
+                            onClick={() => handleAttachReusableFile(file)}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            <Link2 className="h-3.5 w-3.5" /> {attaching ? "Đang gắn..." : "Dùng lại"}
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Action buttons */}
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
@@ -1578,25 +1722,29 @@ export default function TeacherFilesPage() {
                     setIsUploadOpen(false);
                     setUploadProgress(null);
                     setSelectedUploadFile(null);
+                    setUploadMode("upload");
+                    setReuseSearch("");
                   }}
                   disabled={isUploading}
                   className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
                 >
                   {uploadProgress?.status === "success" ? "Đóng" : "Hủy"}
                 </button>
-                <button
-                  type="submit"
-                  disabled={isUploading || !selectedUploadFile || uploadProgress?.status === "success"}
-                  className="rounded-xl bg-[#102f63] hover:bg-blue-700 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
-                >
-                  {isUploading
-                    ? "Đang tải lên..."
-                    : uploadProgress?.status === "error"
-                    ? "Thử tải lại"
-                    : uploadProgress?.status === "success"
-                    ? "Đã tải xong ✓"
-                    : "Bắt đầu tải lên"}
-                </button>
+                {uploadMode === "upload" && (
+                  <button
+                    type="submit"
+                    disabled={isUploading || !selectedUploadFile || uploadProgress?.status === "success"}
+                    className="rounded-xl bg-[#102f63] hover:bg-blue-700 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
+                  >
+                    {isUploading
+                      ? "Đang tải lên..."
+                      : uploadProgress?.status === "error"
+                      ? "Thử tải lại"
+                      : uploadProgress?.status === "success"
+                      ? "Đã tải xong ✓"
+                      : "Bắt đầu tải lên"}
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -1624,6 +1772,11 @@ function FileCard({ file, onDelete }) {
             <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${config.pill}`}>
               {config.label}
             </span>
+            {file.isReused && (
+              <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-blue-700">
+                Dùng lại
+              </span>
+            )}
           </div>
 
           {file.sizeBytes || file.size ? (
@@ -1681,7 +1834,7 @@ function FileCard({ file, onDelete }) {
               type="button"
               onClick={onDelete}
               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-              title="Xóa tài liệu"
+              title={file.placementId ? "Gỡ tài liệu khỏi vị trí này" : "Xóa file gốc"}
             >
               <Trash2 className="h-4 w-4" />
             </button>

@@ -65,6 +65,25 @@ const parseId = (value) => {
 };
 
 const safeFilename = (value) => typeof value === "string" && value.trim() && value.trim().length <= 255;
+const FILE_INSTANCES_CTE = `
+  WITH file_instances AS (
+    SELECT f.id AS file_id, NULL::bigint AS placement_id,
+           f.live_class_id AS effective_live_class_id,
+           f.class_session_id AS effective_class_session_id,
+           f.visibility AS effective_visibility,
+           f.created_at AS attached_at,
+           f.*
+    FROM lms_learning_files f
+    UNION ALL
+    SELECT f.id AS file_id, p.id AS placement_id,
+           p.live_class_id AS effective_live_class_id,
+           p.class_session_id AS effective_class_session_id,
+           p.visibility AS effective_visibility,
+           p.created_at AS attached_at,
+           f.*
+    FROM lms_learning_file_placements p
+    JOIN lms_learning_files f ON f.id = p.file_id
+  )`;
 const INLINE_VIEW_MIME_TYPES = new Set([
   "application/pdf",
   "image/gif",
@@ -205,15 +224,39 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
      WHERE f.id = $1 AND f.status = 'ready'`,
     [fileId],
   );
-  const file = result.rows[0];
-  if (!file) return { error: "not_found" };
+  const sourceFile = result.rows[0];
+  if (!sourceFile) return { error: "not_found" };
+  const placement = requestedClassId ? (await query(
+    `SELECT p.id, p.live_class_id, p.class_session_id, p.visibility,
+            lc.course_id AS placement_course_id, lc.instructor_id,
+            COALESCE(lc.allow_file_download, TRUE) AS allow_file_download
+     FROM lms_learning_file_placements p
+     JOIN live_classes lc ON lc.id = p.live_class_id
+     WHERE p.file_id = $1 AND p.live_class_id = $2 AND lc.status = 'active'
+     ORDER BY p.class_session_id NULLS FIRST, p.id
+     LIMIT 1`,
+    [fileId, requestedClassId],
+  )).rows[0] : null;
+  const file = placement ? {
+    ...sourceFile,
+    live_class_id: placement.live_class_id,
+    class_session_id: placement.class_session_id,
+    class_course_id: placement.placement_course_id,
+    visibility: placement.visibility,
+    allow_file_download: placement.allow_file_download,
+    placement_id: placement.id,
+  } : sourceFile;
+  if (requestedClassId
+      && String(sourceFile.live_class_id || "") !== String(requestedClassId)
+      && !placement
+      && sourceFile.visibility !== "COURSE") {
+    return { error: "forbidden" };
+  }
   if (user.role === "admin") return { file };
   if (user.role === "creator") {
-    const scope = file.live_class_id
-      ? await classAccess(file.live_class_id, user)
-      : await courseAccess(file.course_id, user);
+    const scope = file.live_class_id ? await classAccess(file.live_class_id, user) : await courseAccess(file.course_id, user);
     if (scope.error || !scope.canManage) return { error: "forbidden" };
-    if (file.visibility === "PRIVATE" && String(file.uploaded_by) !== String(user.id)) return { error: "forbidden" };
+    if (!placement && file.visibility === "PRIVATE" && String(file.uploaded_by) !== String(user.id)) return { error: "forbidden" };
     return { file };
   }
   if (user.role !== "user") return { error: "forbidden" };
@@ -257,12 +300,19 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
 
 const serializeFile = (row, { enforceDownloadPolicy = false, contextClassId = null } = {}) => {
   const canDownload = !enforceDownloadPolicy || row.allow_file_download !== false;
-  const classQuery = contextClassId ? `?classId=${encodeURIComponent(contextClassId)}` : "";
-  const downloadQuery = contextClassId
-    ? `?classId=${encodeURIComponent(contextClassId)}&download=1`
+  // Course-wide files must not inherit their source class in generated URLs;
+  // learners from another class in the same course would otherwise be denied.
+  const resolvedContextClassId = contextClassId
+    || (enforceDownloadPolicy && row.visibility === "CLASS_ONLY" ? row.live_class_id : null);
+  const classQuery = resolvedContextClassId ? `?classId=${encodeURIComponent(resolvedContextClassId)}` : "";
+  const downloadQuery = resolvedContextClassId
+    ? `?classId=${encodeURIComponent(resolvedContextClassId)}&download=1`
     : "?download=1";
   return {
     id: String(row.id),
+    instanceId: row.placement_id ? `placement-${row.placement_id}` : `file-${row.id}`,
+    placementId: row.placement_id ? String(row.placement_id) : null,
+    isReused: Boolean(row.placement_id),
     name: row.original_name,
     sizeBytes: Number(row.size_bytes),
     mimeType: row.mime_type,
@@ -279,6 +329,10 @@ const serializeFile = (row, { enforceDownloadPolicy = false, contextClassId = nu
     sessionEndTime: row.session_end_time || null,
     chapterId: row.chapter_id ? String(row.chapter_id) : null,
     chapterTitle: row.chapter_title || null,
+    sourceClassId: row.source_live_class_id ? String(row.source_live_class_id) : null,
+    sourceClassTitle: row.source_class_title || null,
+    sourceSessionId: row.source_class_session_id ? String(row.source_class_session_id) : null,
+    sourceSessionTitle: row.source_session_title || null,
     visibility: row.visibility,
     canDownload,
     viewUrl: `/api/files/${row.id}/download${classQuery}`,
@@ -297,39 +351,51 @@ router.get("/teacher/files", protectRoute, requireTeacher, async (req, res) => {
   try {
     const isAdmin = req.user.role === "admin";
     const files = await query(
-      `SELECT f.*, u.username AS uploaded_by_name, u.email AS uploader_email,
+      `${FILE_INSTANCES_CTE}
+       SELECT fi.file_id AS id, fi.placement_id,
+              fi.original_name, fi.storage_key, fi.storage_provider, fi.mime_type, fi.size_bytes,
+              fi.uploaded_by, fi.status, fi.created_at, fi.updated_at,
+              fi.effective_live_class_id AS live_class_id,
+              fi.course_id, fi.effective_class_session_id AS class_session_id,
+              fi.effective_visibility AS visibility,
+              fi.live_class_id AS source_live_class_id,
+              fi.class_session_id AS source_class_session_id,
+              source_lc.title AS source_class_title, source_cs.title AS source_session_title,
+              u.username AS uploaded_by_name, u.email AS uploader_email,
               COALESCE(c.title, c.name, c_lc.title, c_lc.name) AS course_title,
               COALESCE(c.category, c_lc.category) AS course_category,
               lc.title AS class_title, lc.course_id AS class_course_id,
               cs.title AS session_title, cs.start_time AS session_start_time, cs.end_time AS session_end_time,
               ch.id AS chapter_id, ch.title AS chapter_title
-       FROM lms_learning_files f
-       JOIN users u ON u.id = f.uploaded_by
-       LEFT JOIN courses c ON c.id = f.course_id
-       LEFT JOIN live_classes lc ON lc.id = f.live_class_id
+       FROM file_instances fi
+       LEFT JOIN users u ON u.id = fi.uploaded_by
+       LEFT JOIN courses c ON c.id = fi.course_id
+       LEFT JOIN live_classes lc ON lc.id = fi.effective_live_class_id
        LEFT JOIN courses c_lc ON c_lc.id = lc.course_id
-       LEFT JOIN class_sessions cs ON cs.id = f.class_session_id
+       LEFT JOIN class_sessions cs ON cs.id = fi.effective_class_session_id
        LEFT JOIN class_chapters ch ON ch.id = cs.chapter_id
-       WHERE f.status = 'ready'
+       LEFT JOIN live_classes source_lc ON source_lc.id = fi.live_class_id
+       LEFT JOIN class_sessions source_cs ON source_cs.id = fi.class_session_id
+       WHERE fi.status = 'ready'
          AND ($1::boolean OR (
-           f.uploaded_by = $2
-           OR (f.live_class_id IS NOT NULL AND (
+           fi.uploaded_by = $2
+           OR (fi.effective_live_class_id IS NOT NULL AND (
              lc.instructor_id = $2
              OR EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active')
            ))
-           OR (f.course_id IS NOT NULL AND EXISTS (SELECT 1 FROM courses c2 WHERE c2.id = f.course_id AND c2.author_id = $2))
+           OR (fi.course_id IS NOT NULL AND EXISTS (SELECT 1 FROM courses c2 WHERE c2.id = fi.course_id AND c2.author_id = $2))
          ))
-         AND ($3::bigint IS NULL OR COALESCE(f.course_id, lc.course_id) = $3)
-         AND ($4::bigint IS NULL OR f.live_class_id = $4)
-         AND ($5::bigint IS NULL OR f.class_session_id = $5)
+         AND ($3::bigint IS NULL OR COALESCE(fi.course_id, lc.course_id) = $3)
+         AND ($4::bigint IS NULL OR fi.effective_live_class_id = $4)
+         AND ($5::bigint IS NULL OR fi.effective_class_session_id = $5)
          AND ($6::date IS NULL OR (cs.start_time IS NOT NULL AND cs.start_time::date = $6::date))
          AND ($7::text IS NULL OR (
-           f.original_name ILIKE '%' || $7 || '%'
+           fi.original_name ILIKE '%' || $7 || '%'
            OR COALESCE(c.title, c.name, c_lc.title, c_lc.name, '') ILIKE '%' || $7 || '%'
            OR COALESCE(lc.title, '') ILIKE '%' || $7 || '%'
            OR COALESCE(cs.title, '') ILIKE '%' || $7 || '%'
          ))
-       ORDER BY COALESCE(cs.start_time, f.created_at) DESC, f.id DESC`,
+       ORDER BY COALESCE(cs.start_time, fi.attached_at) DESC, fi.file_id DESC`,
       [isAdmin, req.user.id, courseId, classId, sessionId, date, search],
     );
     return res.json({ success: true, data: files.rows.map(serializeFile) });
@@ -526,27 +592,208 @@ router.get("/teacher/classes/:classId/files", protectRoute, requireTeacher, asyn
       if (session.rows.length === 0) return errorResponse(res, 404, "Không tìm thấy buổi học của lớp này", "NOT_FOUND");
     }
     const files = await query(
-      `SELECT f.*, u.username AS uploaded_by_name, u.email AS uploader_email,
+      `${FILE_INSTANCES_CTE}
+       SELECT fi.file_id AS id, fi.placement_id,
+              fi.original_name, fi.storage_key, fi.storage_provider, fi.mime_type, fi.size_bytes,
+              fi.uploaded_by, fi.status, fi.created_at, fi.updated_at,
+              fi.effective_live_class_id AS live_class_id,
+              fi.course_id, fi.effective_class_session_id AS class_session_id,
+              fi.effective_visibility AS visibility,
+              fi.live_class_id AS source_live_class_id,
+              fi.class_session_id AS source_class_session_id,
+              source_lc.title AS source_class_title, source_cs.title AS source_session_title,
+              u.username AS uploaded_by_name, u.email AS uploader_email,
               COALESCE(c.title, c.name) AS course_title, c.category AS course_category,
               lc.title AS class_title,
               cs.title AS session_title, cs.start_time AS session_start_time, cs.end_time AS session_end_time,
               ch.id AS chapter_id, ch.title AS chapter_title
-       FROM lms_learning_files f
-       JOIN users u ON u.id = f.uploaded_by
-       LEFT JOIN live_classes lc ON lc.id = f.live_class_id
-       LEFT JOIN courses c ON c.id = COALESCE(f.course_id, lc.course_id)
-       LEFT JOIN class_sessions cs ON cs.id = f.class_session_id
+       FROM file_instances fi
+       LEFT JOIN users u ON u.id = fi.uploaded_by
+       LEFT JOIN live_classes lc ON lc.id = fi.effective_live_class_id
+       LEFT JOIN courses c ON c.id = COALESCE(fi.course_id, lc.course_id)
+       LEFT JOIN class_sessions cs ON cs.id = fi.effective_class_session_id
        LEFT JOIN class_chapters ch ON ch.id = cs.chapter_id
-       WHERE f.live_class_id = $1 AND f.status = 'ready'
-         AND ($2::bigint IS NULL OR f.class_session_id = $2)
-         AND ($3::boolean OR f.visibility <> 'PRIVATE' OR f.uploaded_by = $4)
-       ORDER BY COALESCE(cs.start_time, f.created_at) DESC, f.id DESC`,
+       LEFT JOIN live_classes source_lc ON source_lc.id = fi.live_class_id
+       LEFT JOIN class_sessions source_cs ON source_cs.id = fi.class_session_id
+       WHERE fi.effective_live_class_id = $1 AND fi.status = 'ready'
+         AND ($2::bigint IS NULL OR fi.effective_class_session_id = $2)
+         AND ($3::boolean OR fi.effective_visibility <> 'PRIVATE' OR fi.uploaded_by = $4)
+       ORDER BY COALESCE(cs.start_time, fi.attached_at) DESC, fi.file_id DESC`,
       [classId, sessionId, req.user.role === "admin", req.user.id],
     );
     return res.json({ success: true, data: files.rows.map(serializeFile) });
   } catch (error) {
     console.error("Error listing class files:", error);
     return errorResponse(res, 500, "Không thể tải tài liệu lớp học", "INTERNAL_ERROR");
+  }
+});
+
+// GET /api/teacher/files/reusable — files that can be linked to a target class/session.
+router.get("/teacher/files/reusable", protectRoute, requireTeacher, requirePermission("lms.file.manage"), async (req, res) => {
+  const classId = parseId(req.query.classId);
+  const sessionId = req.query.sessionId === undefined || req.query.sessionId === "" ? null : parseId(req.query.sessionId);
+  const search = typeof req.query.search === "string" && req.query.search.trim() ? req.query.search.trim() : null;
+  if (!classId) return errorResponse(res, 422, "classId không hợp lệ", "VALIDATION_ERROR");
+  if (req.query.sessionId !== undefined && req.query.sessionId !== "" && !sessionId) {
+    return errorResponse(res, 422, "sessionId không hợp lệ", "VALIDATION_ERROR");
+  }
+  try {
+    const targetAccess = await classAccess(classId, req.user);
+    if (targetAccess.error === "not_found") return errorResponse(res, 404, "Không tìm thấy lớp học", "NOT_FOUND");
+    if (targetAccess.error || !targetAccess.canManage) return errorResponse(res, 403, "Bạn không có quyền gắn tài liệu vào lớp này", "FORBIDDEN");
+    if (sessionId) {
+      const session = await query(
+        "SELECT 1 FROM class_sessions WHERE id = $1 AND live_class_id = $2 AND status <> 'cancelled'",
+        [sessionId, classId],
+      );
+      if (!session.rows.length) return errorResponse(res, 422, "Buổi học không thuộc lớp đã chọn hoặc đã bị hủy", "VALIDATION_ERROR");
+    }
+
+    const isAdmin = req.user.role === "admin";
+    const files = await query(
+      `SELECT f.*, u.username AS uploaded_by_name, u.email AS uploader_email,
+              COALESCE(c.title, c.name, source_course.title, source_course.name) AS course_title,
+              COALESCE(c.category, source_course.category) AS course_category,
+              source_lc.title AS source_class_title,
+              source_cs.title AS source_session_title,
+              source_lc.course_id AS class_course_id,
+              (SELECT COUNT(*)::int FROM lms_learning_file_placements usage WHERE usage.file_id = f.id) AS reuse_count
+       FROM lms_learning_files f
+       LEFT JOIN users u ON u.id = f.uploaded_by
+       LEFT JOIN live_classes source_lc ON source_lc.id = f.live_class_id
+       LEFT JOIN class_sessions source_cs ON source_cs.id = f.class_session_id
+       LEFT JOIN courses c ON c.id = f.course_id
+       LEFT JOIN courses source_course ON source_course.id = source_lc.course_id
+       WHERE f.status = 'ready'
+         AND COALESCE(f.course_id, source_lc.course_id) = $1
+         AND ($2::boolean OR f.uploaded_by = $3 OR (
+           f.live_class_id IS NOT NULL AND (
+             source_lc.instructor_id = $3
+             OR EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = source_lc.id AND ct.teacher_id = $3 AND ct.status = 'active')
+           )
+         ) OR EXISTS (SELECT 1 FROM courses owned WHERE owned.id = COALESCE(f.course_id, source_lc.course_id) AND owned.author_id = $3))
+         AND ($2::boolean OR f.visibility <> 'PRIVATE' OR f.uploaded_by = $3)
+         AND ($4::text IS NULL OR f.original_name ILIKE '%' || $4 || '%')
+         AND NOT (
+           f.live_class_id = $5
+           AND (($6::bigint IS NULL AND f.class_session_id IS NULL) OR f.class_session_id = $6)
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM lms_learning_file_placements existing
+           WHERE existing.file_id = f.id AND existing.live_class_id = $5
+             AND (($6::bigint IS NULL AND existing.class_session_id IS NULL) OR existing.class_session_id = $6)
+         )
+       ORDER BY f.created_at DESC, f.id DESC
+       LIMIT 200`,
+      [targetAccess.liveClass.course_id, isAdmin, req.user.id, search, classId, sessionId],
+    );
+    return res.json({
+      success: true,
+      data: files.rows.map((row) => ({
+        ...serializeFile(row),
+        reuseCount: Number(row.reuse_count || 0),
+      })),
+    });
+  } catch (error) {
+    console.error("Error listing reusable learning files:", error);
+    return errorResponse(res, 500, "Không thể tải kho tài liệu dùng lại", "INTERNAL_ERROR");
+  }
+});
+
+// POST /api/teacher/files/:fileId/placements — link one stored file to another class/session.
+router.post("/teacher/files/:fileId/placements", protectRoute, requireTeacher, requirePermission("lms.file.manage"), async (req, res) => {
+  const fileId = parseId(req.params.fileId);
+  const classId = parseId(req.body?.classId);
+  const sessionId = req.body?.sessionId === undefined || req.body?.sessionId === "" ? null : parseId(req.body.sessionId);
+  if (!fileId || !classId) return errorResponse(res, 422, "Tài liệu hoặc lớp học không hợp lệ", "VALIDATION_ERROR");
+  if (req.body?.sessionId !== undefined && req.body?.sessionId !== "" && !sessionId) {
+    return errorResponse(res, 422, "sessionId không hợp lệ", "VALIDATION_ERROR");
+  }
+  try {
+    const targetAccess = await classAccess(classId, req.user);
+    if (targetAccess.error === "not_found") return errorResponse(res, 404, "Không tìm thấy lớp học", "NOT_FOUND");
+    if (targetAccess.error || !targetAccess.canManage) return errorResponse(res, 403, "Bạn không có quyền gắn tài liệu vào lớp này", "FORBIDDEN");
+    if (sessionId) {
+      const session = await query(
+        "SELECT 1 FROM class_sessions WHERE id = $1 AND live_class_id = $2 AND status <> 'cancelled'",
+        [sessionId, classId],
+      );
+      if (!session.rows.length) return errorResponse(res, 422, "Buổi học không thuộc lớp đã chọn hoặc đã bị hủy", "VALIDATION_ERROR");
+    }
+
+    const file = (await query(
+      `SELECT f.*, source_lc.course_id AS source_class_course_id
+       FROM lms_learning_files f
+       LEFT JOIN live_classes source_lc ON source_lc.id = f.live_class_id
+       WHERE f.id = $1 AND f.status = 'ready'`,
+      [fileId],
+    )).rows[0];
+    if (!file) return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
+    const sourceAccess = file.live_class_id
+      ? await classAccess(file.live_class_id, req.user)
+      : await courseAccess(file.course_id, req.user);
+    const ownsFile = String(file.uploaded_by || "") === String(req.user.id);
+    if (req.user.role !== "admin" && !ownsFile && (sourceAccess.error || !sourceAccess.canManage)) {
+      return errorResponse(res, 403, "Bạn không có quyền dùng lại tài liệu này", "FORBIDDEN");
+    }
+    if (file.visibility === "PRIVATE" && req.user.role !== "admin" && !ownsFile) {
+      return errorResponse(res, 403, "Tài liệu riêng tư chỉ người tải lên mới được dùng lại", "FORBIDDEN");
+    }
+    const sourceCourseId = file.course_id || file.source_class_course_id;
+    if (String(sourceCourseId) !== String(targetAccess.liveClass.course_id)) {
+      return errorResponse(res, 409, "Chỉ có thể dùng lại tài liệu giữa các lớp thuộc cùng một khóa học", "COURSE_SCOPE_MISMATCH");
+    }
+    const directDuplicate = String(file.live_class_id || "") === String(classId)
+      && String(file.class_session_id || "") === String(sessionId || "");
+    if (directDuplicate) return errorResponse(res, 409, "Tài liệu đã có ở vị trí này", "FILE_ALREADY_ATTACHED");
+
+    const result = await query(
+      `INSERT INTO lms_learning_file_placements(file_id, live_class_id, class_session_id, attached_by, visibility)
+       VALUES ($1, $2, $3, $4, 'CLASS_ONLY')
+       ON CONFLICT DO NOTHING
+       RETURNING id, file_id, live_class_id, class_session_id, visibility, created_at`,
+      [fileId, classId, sessionId, req.user.id],
+    );
+    if (!result.rows.length) return errorResponse(res, 409, "Tài liệu đã được gắn vào vị trí này", "FILE_ALREADY_ATTACHED");
+    await recordAuditEvent({
+      actorId: req.user.id,
+      action: "learning_file.attached",
+      entityType: "learning_file_placement",
+      entityId: result.rows[0].id,
+      afterState: result.rows[0],
+      metadata: { ip: req.ip, fileId, classId, sessionId },
+    });
+    return res.status(201).json({ success: true, data: { placementId: String(result.rows[0].id) }, message: "Đã dùng lại tài liệu" });
+  } catch (error) {
+    console.error("Error attaching reusable learning file:", error);
+    return errorResponse(res, 500, "Không thể gắn tài liệu đã chọn", "INTERNAL_ERROR");
+  }
+});
+
+router.delete("/teacher/file-placements/:placementId", protectRoute, requireTeacher, requirePermission("lms.file.manage"), async (req, res) => {
+  const placementId = parseId(req.params.placementId);
+  if (!placementId) return errorResponse(res, 422, "placementId không hợp lệ", "VALIDATION_ERROR");
+  try {
+    const placement = (await query(
+      "SELECT id, file_id, live_class_id, class_session_id FROM lms_learning_file_placements WHERE id = $1",
+      [placementId],
+    )).rows[0];
+    if (!placement) return errorResponse(res, 404, "Không tìm thấy liên kết tài liệu", "NOT_FOUND");
+    const access = await classAccess(placement.live_class_id, req.user);
+    if (access.error || !access.canManage) return errorResponse(res, 403, "Bạn không có quyền gỡ tài liệu khỏi lớp này", "FORBIDDEN");
+    await query("DELETE FROM lms_learning_file_placements WHERE id = $1", [placementId]);
+    await recordAuditEvent({
+      actorId: req.user.id,
+      action: "learning_file.detached",
+      entityType: "learning_file_placement",
+      entityId: placementId,
+      beforeState: placement,
+      metadata: { ip: req.ip },
+    });
+    return res.json({ success: true, message: "Đã gỡ tài liệu khỏi lớp hoặc buổi học" });
+  } catch (error) {
+    console.error("Error detaching reusable learning file:", error);
+    return errorResponse(res, 500, "Không thể gỡ tài liệu", "INTERNAL_ERROR");
   }
 });
 
@@ -668,15 +915,24 @@ router.get("/student/files", protectRoute, async (req, res) => {
       }
     }
     const result = await query(
-      `SELECT DISTINCT f.*,
+      `${FILE_INSTANCES_CTE}
+       SELECT DISTINCT fi.file_id AS id, fi.placement_id,
+              fi.original_name, fi.storage_key, fi.storage_provider, fi.mime_type, fi.size_bytes,
+              fi.uploaded_by, fi.status, fi.created_at, fi.updated_at,
+              fi.effective_live_class_id AS live_class_id,
+              fi.course_id, fi.effective_class_session_id AS class_session_id,
+              fi.effective_visibility AS visibility,
+              fi.live_class_id AS source_live_class_id,
+              fi.class_session_id AS source_class_session_id,
+              source_lc.title AS source_class_title, source_cs.title AS source_session_title,
               CASE
-                WHEN f.visibility = 'CLASS_ONLY' AND f.live_class_id IS NOT NULL
+                WHEN fi.effective_visibility = 'CLASS_ONLY' AND fi.effective_live_class_id IS NOT NULL
                   THEN COALESCE(lc.allow_file_download, TRUE)
                 WHEN $3::bigint IS NOT NULL THEN COALESCE((
                   SELECT policy_class.allow_file_download
                   FROM live_classes policy_class
                   JOIN class_enrollments policy_enrollment ON policy_enrollment.live_class_id = policy_class.id
-                  WHERE policy_class.id = $3 AND policy_class.course_id = COALESCE(f.course_id, lc.course_id)
+                  WHERE policy_class.id = $3 AND policy_class.course_id = COALESCE(fi.course_id, lc.course_id)
                     AND policy_class.status = 'active' AND policy_enrollment.user_id = $1
                     AND policy_enrollment.status = 'active'
                 ), TRUE)
@@ -684,53 +940,55 @@ router.get("/student/files", protectRoute, async (req, res) => {
                   SELECT 1
                   FROM live_classes policy_class
                   JOIN class_enrollments policy_enrollment ON policy_enrollment.live_class_id = policy_class.id
-                  WHERE policy_class.course_id = COALESCE(f.course_id, lc.course_id)
+                  WHERE policy_class.course_id = COALESCE(fi.course_id, lc.course_id)
                     AND policy_class.status = 'active' AND policy_enrollment.user_id = $1
                     AND policy_enrollment.status = 'active' AND policy_class.allow_file_download = FALSE
                 )
               END AS allow_file_download,
-              COALESCE(cs.start_time, f.created_at) AS sort_time,
+              COALESCE(cs.start_time, fi.attached_at) AS sort_time,
               COALESCE(c.title, c.name, c_lc.title, c_lc.name) AS course_title,
               COALESCE(c.category, c_lc.category) AS course_category,
               lc.title AS class_title, lc.course_id AS class_course_id,
               cs.title AS session_title, cs.start_time AS session_start_time, cs.end_time AS session_end_time,
               ch.id AS chapter_id, ch.title AS chapter_title,
               u.username AS uploaded_by_name, u.email AS uploader_email
-       FROM lms_learning_files f
-       LEFT JOIN courses c ON c.id = f.course_id
-       LEFT JOIN live_classes lc ON lc.id = f.live_class_id
+       FROM file_instances fi
+       LEFT JOIN courses c ON c.id = fi.course_id
+       LEFT JOIN live_classes lc ON lc.id = fi.effective_live_class_id
        LEFT JOIN courses c_lc ON c_lc.id = lc.course_id
-       LEFT JOIN class_sessions cs ON cs.id = f.class_session_id
+       LEFT JOIN class_sessions cs ON cs.id = fi.effective_class_session_id
        LEFT JOIN class_chapters ch ON ch.id = cs.chapter_id
-       LEFT JOIN users u ON u.id = f.uploaded_by
-       WHERE f.status = 'ready'
-         AND ($2::bigint IS NULL OR COALESCE(f.course_id, lc.course_id) = $2)
-         AND ($3::bigint IS NULL OR f.live_class_id IS NULL OR f.live_class_id = $3)
-         AND ($4::bigint IS NULL OR f.class_session_id = $4)
+       LEFT JOIN users u ON u.id = fi.uploaded_by
+       LEFT JOIN live_classes source_lc ON source_lc.id = fi.live_class_id
+       LEFT JOIN class_sessions source_cs ON source_cs.id = fi.class_session_id
+       WHERE fi.status = 'ready'
+         AND ($2::bigint IS NULL OR COALESCE(fi.course_id, lc.course_id) = $2)
+         AND ($3::bigint IS NULL OR fi.effective_live_class_id IS NULL OR fi.effective_live_class_id = $3)
+         AND ($4::bigint IS NULL OR fi.effective_class_session_id = $4)
          AND ($5::date IS NULL OR (cs.start_time IS NOT NULL AND cs.start_time::date = $5::date))
          AND ($6::text IS NULL OR (
-           f.original_name ILIKE '%' || $6 || '%'
+           fi.original_name ILIKE '%' || $6 || '%'
            OR COALESCE(c.title, c.name, c_lc.title, c_lc.name, '') ILIKE '%' || $6 || '%'
            OR COALESCE(lc.title, '') ILIKE '%' || $6 || '%'
            OR COALESCE(cs.title, '') ILIKE '%' || $6 || '%'
          ))
-         AND f.visibility IN ('CLASS_ONLY', 'COURSE')
+         AND fi.effective_visibility IN ('CLASS_ONLY', 'COURSE')
          AND (
            $7::boolean = TRUE
            OR (
              EXISTS (
                SELECT 1 FROM lms_access_grants g
-               WHERE g.course_id = CASE WHEN f.live_class_id IS NOT NULL THEN lc.course_id ELSE f.course_id END
+               WHERE g.course_id = CASE WHEN fi.effective_live_class_id IS NOT NULL THEN lc.course_id ELSE fi.course_id END
                  AND g.user_id = $1 AND g.access_status = 'active'
                  AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
              )
-             AND (f.visibility = 'COURSE' OR (f.visibility = 'CLASS_ONLY'
-               AND f.live_class_id IS NOT NULL AND lc.status = 'active'
+             AND (fi.effective_visibility = 'COURSE' OR (fi.effective_visibility = 'CLASS_ONLY'
+               AND fi.effective_live_class_id IS NOT NULL AND lc.status = 'active'
                AND EXISTS (SELECT 1 FROM class_enrollments ce
-                           WHERE ce.live_class_id = f.live_class_id AND ce.user_id = $1 AND ce.status = 'active')))
+                           WHERE ce.live_class_id = fi.effective_live_class_id AND ce.user_id = $1 AND ce.status = 'active')))
            )
          )
-       ORDER BY sort_time DESC, f.id DESC`,
+       ORDER BY sort_time DESC, id DESC`,
       [req.user.id, courseId, classId, sessionId, date, search, req.user.role === 'admin'],
     );
     return res.json({
@@ -769,6 +1027,18 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
     const access = await canDeleteFile(fileId, req.user);
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
     if (access.error) return errorResponse(res, 403, "Bạn không có quyền xóa tài liệu", "FORBIDDEN");
+    const placements = await query(
+      "SELECT COUNT(*)::int AS count FROM lms_learning_file_placements WHERE file_id = $1",
+      [fileId],
+    );
+    if (Number(placements.rows[0]?.count || 0) > 0) {
+      return errorResponse(
+        res,
+        409,
+        "Tài liệu đang được dùng lại ở lớp hoặc buổi học khác. Hãy gỡ các liên kết trước khi xóa file gốc.",
+        "FILE_IN_USE",
+      );
+    }
 
     let r2Deleted = false;
     const storageKey = access.file?.storage_key;

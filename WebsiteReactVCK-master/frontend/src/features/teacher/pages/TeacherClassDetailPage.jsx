@@ -4,12 +4,15 @@ import { ArrowLeft, BookOpen, Files } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuthContext } from "../../../context/AuthContext";
 import {
+  attachTeacherFile,
   deleteClassFile,
+  detachTeacherFile,
   fetchClassDetails,
   fetchClassChapters,
   fetchClassFiles,
   fetchLiveClassSchedules,
   fetchLiveClassSessions,
+  fetchReusableTeacherFiles,
   uploadClassFile,
 } from "../../api/lmsClient";
 import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
@@ -105,14 +108,38 @@ export default function TeacherClassDetailPage() {
     }
   };
 
-  const handleDeleteFile = async (fileId) => {
-    if (!window.confirm("Xóa tài liệu này khỏi lớp?")) return;
+  const handleDeleteFile = async (file) => {
+    const actionLabel = file.placementId ? "gỡ tài liệu khỏi vị trí này" : "xóa file gốc";
+    if (!window.confirm(`Bạn có chắc muốn ${actionLabel}?`)) return;
     try {
-      await deleteClassFile(fileId);
-      toast.success("Đã xóa tài liệu.");
-      setFiles((current) => current.filter((f) => String(f.id) !== String(fileId)));
+      if (file.placementId) await detachTeacherFile(file.placementId);
+      else await deleteClassFile(file.id);
+      toast.success(file.placementId ? "Đã gỡ liên kết tài liệu." : "Đã xóa tài liệu.");
+      setFiles((current) => current.filter((item) => item.instanceId !== file.instanceId));
     } catch (err) {
       toast.error(err.message || "Không thể xóa tài liệu.");
+    }
+  };
+
+  const handleLoadReusableFiles = async ({ sessionId, search } = {}) => {
+    try {
+      const response = await fetchReusableTeacherFiles({ classId, sessionId, search });
+      return Array.isArray(response?.data) ? response.data : [];
+    } catch (err) {
+      toast.error(err.message || "Không thể tải kho tài liệu dùng lại.");
+      return [];
+    }
+  };
+
+  const handleReuseFile = async (file, sessionId) => {
+    try {
+      await attachTeacherFile(file.id, { classId, sessionId: sessionId || undefined });
+      toast.success(`Đã dùng lại "${file.name}" mà không tải file trùng.`);
+      await loadData();
+      return true;
+    } catch (err) {
+      toast.error(err.message || "Không thể dùng lại tài liệu này.");
+      return false;
     }
   };
 
@@ -167,9 +194,10 @@ export default function TeacherClassDetailPage() {
           <ClassWorkspaceFilesTab
             files={files}
             sessions={sessions}
-            classId={classId}
             onUploadFile={handleUploadFile}
             onDeleteFile={handleDeleteFile}
+            onLoadReusableFiles={handleLoadReusableFiles}
+            onReuseFile={handleReuseFile}
             isUploading={isUploadingFile}
           />
         </section>

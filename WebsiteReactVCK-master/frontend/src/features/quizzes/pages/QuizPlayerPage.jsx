@@ -7,7 +7,6 @@ import {
   FiChevronRight,
   FiAlertCircle,
   FiAlertTriangle,
-  FiAward,
   FiFlag,
   FiMaximize,
   FiMinimize,
@@ -99,6 +98,7 @@ export default function QuizPlayerPage() {
   const [paletteFilter, setPaletteFilter] = useState('all'); // 'all' | 'unanswered' | 'flagged'
 
   const autosaveTimeoutRef = useRef(null);
+  const reviewSectionRef = useRef(null);
 
   // Flattened questions list for index-based palette and count
   const flattenedQuestions = useMemo(() => {
@@ -632,9 +632,17 @@ export default function QuizPlayerPage() {
   if (isSubmitted && submitResult) {
     const isOverdue = Boolean(submitResult.isOverdueUnsubmitted);
     const isPassed = isOverdue ? false : (submitResult.passed ?? (submitResult.score >= (submitResult.passingScore || 6)));
+    const reviewItems = Array.isArray(submitResult.review) ? submitResult.review : [];
+    const closesAtValue = quiz.availableUntil || quiz.dueDate;
+    const closesAt = closesAtValue ? new Date(closesAtValue) : null;
+    const isClosed = Boolean(closesAt && !Number.isNaN(closesAt.getTime()) && closesAt.getTime() <= Date.now());
+    const policyAllowsReview = quiz.reviewPolicy === 'after_submit'
+      || (quiz.reviewPolicy === 'after_close' && isClosed);
     const showAnswers = Boolean(
-      isOverdue ||
-      (submitResult.reviewAvailable ?? (submitResult.review && submitResult.review.length > 0) ?? (quiz.reviewPolicy === 'after_submit'))
+      isOverdue
+      || submitResult.reviewAvailable === true
+      || reviewItems.length > 0
+      || policyAllowsReview
     );
     const hasEssayQuestions = flattenedQuestions.some((fq) => isEssayQuestion(fq.question));
     const paperUrl = submitResult.paperUrl || quiz.paperUrl || null;
@@ -851,7 +859,17 @@ export default function QuizPlayerPage() {
               </p>
             )}
 
-            <div className="flex items-center justify-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              {showAnswers && (
+                <button
+                  type="button"
+                  onClick={() => reviewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-emerald-700"
+                >
+                  <FiBookOpen className="text-sm" />
+                  Xem đáp án & lời giải
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => (courseId && classId ? navigate(`/lms/courses/${courseId}/classes/${classId}/assignments`) : navigate('/lms/assignments'))}
@@ -864,7 +882,10 @@ export default function QuizPlayerPage() {
 
           {/* Detailed Question Review (if reviewPolicy allows) */}
           {showAnswers && (
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 shadow-sm">
+            <div
+              ref={reviewSectionRef}
+              className="scroll-mt-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 shadow-sm"
+            >
               <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center gap-2">
                 {isOverdue ? (
                   <>
@@ -1113,7 +1134,7 @@ export default function QuizPlayerPage() {
                       )}
 
                       {/* Explanation */}
-                      {explanation && (
+                      {explanation ? (
                         <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-xs text-blue-900 dark:text-blue-200 space-y-1">
                           <span className="font-bold uppercase tracking-wide text-[10px] text-blue-700 dark:text-blue-300">
                             💡 {manualGrade ? 'Hướng dẫn giải / Đáp án mẫu:' : 'Lời giải chi tiết:'}
@@ -1121,6 +1142,13 @@ export default function QuizPlayerPage() {
                           <div>
                             <RichMathText value={explanation} />
                           </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-200">
+                          <span className="font-bold">
+                            {manualGrade ? 'Chưa có hướng dẫn giải cho câu tự luận này.' : `Đáp án đúng: ${correctAns || '—'}.`}
+                          </span>{' '}
+                          Giáo viên chưa cập nhật lời giải chi tiết cho câu này.
                         </div>
                       )}
                     </div>

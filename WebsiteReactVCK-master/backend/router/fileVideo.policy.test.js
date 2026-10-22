@@ -46,8 +46,22 @@ test("file visibility and video upload intent enforce teacher and learner scope"
     "INSERT INTO live_classes(title,course_id,instructor_id) VALUES ('B',$1,$2) RETURNING id",
     [course.id, otherTeacher.id],
   )).rows[0];
+  const otherCourse = (await db.query(
+    "INSERT INTO courses(name,slug,author_id) VALUES ('Other policy','other-policy-course',$1) RETURNING id",
+    [teacher.id],
+  )).rows[0];
+  const otherCourseClass = (await db.query(
+    "INSERT INTO live_classes(title,course_id,instructor_id) VALUES ('Other course class',$1,$2) RETURNING id",
+    [otherCourse.id, teacher.id],
+  )).rows[0];
+  const classBSession = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status)
+     VALUES ($1,'Reusable session',NOW(),NOW() + interval '1 hour','scheduled') RETURNING id`,
+    [classB.id],
+  )).rows[0];
   await db.query("UPDATE live_classes SET allow_file_download=FALSE WHERE id=$1", [classB.id]);
   await db.query("INSERT INTO class_teachers(live_class_id,teacher_id,status) VALUES ($1,$2,'active')", [classA.id, teacher.id]);
+  await db.query("INSERT INTO class_teachers(live_class_id,teacher_id,status) VALUES ($1,$2,'active')", [classB.id, teacher.id]);
   for (const [learner, cls] of [[learnerA, classA], [learnerB, classB]]) {
     await db.query("INSERT INTO class_enrollments(user_id,live_class_id) VALUES ($1,$2)", [learner.id, cls.id]);
     await db.query(
@@ -106,16 +120,119 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   });
   assert.equal(forbiddenCourseImage.statusCode, 403);
 
-  const listedA = await invoke(fileRouter, "get", "/student/files", { user: learnerA });
+  const managedLearnerA = { ...learnerA, is_management_managed: true, lms_account_status: "active" };
+  const managedLearnerB = { ...learnerB, is_management_managed: true, lms_account_status: "active" };
+  const listedA = await invoke(fileRouter, "get", "/student/files", { user: managedLearnerA });
   assert.equal(listedA.statusCode, 200, JSON.stringify(listedA.body));
   assert.deepEqual(new Set(listedA.body.data.map((file) => file.id)), new Set([String(classOnly.id), String(courseWide.id)]));
-  assert.ok(listedA.body.data.every((file) => file.downloadUrl.endsWith("/download?download=1")));
-  const listedB = await invoke(fileRouter, "get", "/student/files", { user: learnerB });
+  assert.match(listedA.body.data.find((file) => file.id === String(classOnly.id)).downloadUrl, new RegExp(`classId=${classA.id}&download=1$`));
+  assert.ok(listedA.body.data.find((file) => file.id === String(courseWide.id)).downloadUrl.endsWith("/download?download=1"));
+  const listedB = await invoke(fileRouter, "get", "/student/files", { user: managedLearnerB });
   assert.deepEqual(new Set(listedB.body.data.map((file) => file.id)), new Set([String(courseWide.id), String(otherClass.id)]));
   assert.ok(listedB.body.data.every((file) => file.canDownload === false));
   assert.ok(listedB.body.data.every((file) => file.downloadUrl === null));
-  assert.ok(listedB.body.data.every((file) => file.viewUrl.endsWith("/download")));
+  assert.match(listedB.body.data.find((file) => file.id === String(otherClass.id)).viewUrl, new RegExp(`classId=${classB.id}$`));
+  assert.ok(listedB.body.data.find((file) => file.id === String(courseWide.id)).viewUrl.endsWith("/download"));
   await db.query("UPDATE courses SET is_published=TRUE WHERE id=$1", [course.id]);
+
+  const reusableFiles = await invoke(fileRouter, "get", "/teacher/files/reusable", {
+    user: teacher, query: { classId: classB.id, sessionId: classBSession.id },
+  });
+  assert.equal(reusableFiles.statusCode, 200, JSON.stringify(reusableFiles.body));
+  assert.ok(reusableFiles.body.data.some((file) => file.id === String(classOnly.id)));
+  const unauthorizedAttach = await invoke(fileRouter, "post", "/teacher/files/:fileId/placements", {
+    user: otherTeacher,
+    params: { fileId: classOnly.id },
+    body: { classId: classB.id, sessionId: classBSession.id },
+  });
+  assert.equal(unauthorizedAttach.statusCode, 403);
+  assert.equal(unauthorizedAttach.body.errorCode, "FORBIDDEN");
+  await db.query("INSERT INTO class_teachers(live_class_id,teacher_id,status) VALUES ($1,$2,'active')", [classA.id, otherTeacher.id]);
+  const privateReusableFiles = await invoke(fileRouter, "get", "/teacher/files/reusable", {
+    user: otherTeacher, query: { classId: classB.id },
+  });
+  assert.equal(privateReusableFiles.statusCode, 200, JSON.stringify(privateReusableFiles.body));
+  assert.ok(!privateReusableFiles.body.data.some((file) => file.id === String(privateFile.id)));
+  const privateAttach = await invoke(fileRouter, "post", "/teacher/files/:fileId/placements", {
+    user: otherTeacher,
+    params: { fileId: privateFile.id },
+    body: { classId: classB.id },
+  });
+  assert.equal(privateAttach.statusCode, 403);
+  assert.equal(privateAttach.body.errorCode, "FORBIDDEN");
+  const crossCourseAttach = await invoke(fileRouter, "post", "/teacher/files/:fileId/placements", {
+    user: teacher,
+    params: { fileId: classOnly.id },
+    body: { classId: otherCourseClass.id },
+  });
+  assert.equal(crossCourseAttach.statusCode, 409);
+  assert.equal(crossCourseAttach.body.errorCode, "COURSE_SCOPE_MISMATCH");
+  const attach = await invoke(fileRouter, "post", "/teacher/files/:fileId/placements", {
+    user: teacher,
+    params: { fileId: classOnly.id },
+    body: { classId: classB.id, sessionId: classBSession.id },
+  });
+  assert.equal(attach.statusCode, 201, JSON.stringify(attach.body));
+  const placementId = attach.body.data.placementId;
+  const duplicateAttach = await invoke(fileRouter, "post", "/teacher/files/:fileId/placements", {
+    user: teacher,
+    params: { fileId: classOnly.id },
+    body: { classId: classB.id, sessionId: classBSession.id },
+  });
+  assert.equal(duplicateAttach.statusCode, 409);
+  assert.equal(duplicateAttach.body.errorCode, "FILE_ALREADY_ATTACHED");
+  const reusedInSession = await invoke(fileRouter, "get", "/student/files", {
+    user: managedLearnerB,
+    query: { classId: classB.id, sessionId: classBSession.id },
+  });
+  assert.equal(reusedInSession.statusCode, 200, JSON.stringify(reusedInSession.body));
+  assert.equal(reusedInSession.body.data.length, 1);
+  assert.equal(reusedInSession.body.data[0].id, String(classOnly.id));
+  assert.equal(reusedInSession.body.data[0].placementId, String(placementId));
+  assert.equal(reusedInSession.body.data[0].isReused, true);
+  assert.equal(reusedInSession.body.data[0].canDownload, false);
+  assert.equal(reusedInSession.body.data[0].downloadUrl, null);
+  assert.match(reusedInSession.body.data[0].viewUrl, new RegExp(`classId=${classB.id}$`));
+  const reusedWorkspace = await invoke(courseRouter, "get", "/:courseId/workspace", {
+    user: managedLearnerB,
+    params: { courseId: course.id },
+    query: { classId: classB.id },
+  });
+  assert.equal(reusedWorkspace.statusCode, 200, JSON.stringify(reusedWorkspace.body));
+  const reusedWorkspaceFile = reusedWorkspace.body.data.files.find((file) => file.placementId === String(placementId));
+  assert.equal(reusedWorkspaceFile?.id, String(classOnly.id));
+  assert.equal(reusedWorkspaceFile?.isReused, true);
+  assert.equal(reusedWorkspaceFile?.canDownload, false);
+  const reusedInline = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: managedLearnerB,
+    params: { fileId: classOnly.id },
+    query: { classId: classB.id },
+  });
+  assert.equal(reusedInline.statusCode, 200);
+  assert.match(reusedInline.body, /CHỈ XEM/);
+  const reusedForcedDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: managedLearnerB,
+    params: { fileId: classOnly.id },
+    query: { classId: classB.id, download: "1" },
+  });
+  assert.equal(reusedForcedDownload.statusCode, 403);
+  assert.equal(reusedForcedDownload.body.errorCode, "FILE_DOWNLOAD_DISABLED");
+  const blockedSourceDelete = await invoke(fileRouter, "delete", "/teacher/files/:fileId", {
+    user: teacher, params: { fileId: classOnly.id },
+  });
+  assert.equal(blockedSourceDelete.statusCode, 409);
+  assert.equal(blockedSourceDelete.body.errorCode, "FILE_IN_USE");
+  const detach = await invoke(fileRouter, "delete", "/teacher/file-placements/:placementId", {
+    user: teacher, params: { placementId },
+  });
+  assert.equal(detach.statusCode, 200, JSON.stringify(detach.body));
+  const afterDetach = await invoke(fileRouter, "get", "/student/files", {
+    user: managedLearnerB,
+    query: { classId: classB.id, sessionId: classBSession.id },
+  });
+  assert.equal(afterDetach.statusCode, 200, JSON.stringify(afterDetach.body));
+  assert.equal(afterDetach.body.data.length, 0);
+  assert.equal((await db.query("SELECT status FROM lms_learning_files WHERE id=$1", [classOnly.id])).rows[0].status, "ready");
   const workspace = await invoke(courseRouter, "get", "/:courseId/workspace", {
     user: { ...learnerA, is_management_managed: true, lms_account_status: "active" },
     params: { courseId: course.id }, query: { classId: classA.id },
@@ -242,11 +359,10 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   const playback = (user) => invoke(videoRouter, "get", "/playback-url", {
     user, query: { lessonId: lesson.id },
   });
-  const managedLearner = { ...learnerA, is_management_managed: true, lms_account_status: "active" };
-  assert.equal((await playback(managedLearner)).statusCode, 200);
+  assert.equal((await playback(managedLearnerA)).statusCode, 200);
   assert.equal((await playback(learnerA)).statusCode, 403);
   await db.query("UPDATE lms_access_grants SET access_status='revoked',revoked_at=NOW() WHERE user_id=$1 AND course_id=$2", [learnerA.id, course.id]);
-  assert.equal((await playback(managedLearner)).statusCode, 403, "legacy enrollment must not preserve video access");
+  assert.equal((await playback(managedLearnerA)).statusCode, 403, "legacy enrollment must not preserve video access");
   assert.equal((await playback(admin)).statusCode, 200);
   const legacy = (await db.query(
     "INSERT INTO video_assets(r2_key,mime_type,status) VALUES ('videos/legacy.mp4','video/mp4','ready') RETURNING id",

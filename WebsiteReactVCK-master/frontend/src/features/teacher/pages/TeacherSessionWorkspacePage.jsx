@@ -3,12 +3,13 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Bell, BookOpen, Binary, CalendarDays, CheckCircle2, ClipboardList, Clock,
-  Download, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Languages, Play, Trash2, Trophy, UploadCloud, Users, Video,
+  Download, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Languages, Library, Link2, Play, Search, Trash2, Trophy, UploadCloud, Users, Video, X,
 } from "lucide-react";
 import {
-  batchImportSessionVocabulary, createClassAnnouncement, createSessionVocabulary, deleteClassFile,
+  attachTeacherFile, batchImportSessionVocabulary, createClassAnnouncement, createSessionVocabulary, deleteClassFile,
+  detachTeacherFile,
   deleteSessionVocabulary, fetchClassAnnouncements, fetchClassDetails, fetchClassFiles,
-  fetchLiveClassSessions, fetchSessionFormulas, fetchSessionVocabulary, getLiveSessionAccess, suggestSessionVocabulary,
+  fetchLiveClassSessions, fetchReusableTeacherFiles, fetchSessionFormulas, fetchSessionVocabulary, getLiveSessionAccess, suggestSessionVocabulary,
   updateSessionVocabulary, uploadClassFile, createSessionFormulaApi, deleteFormulaApi,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
@@ -83,6 +84,11 @@ export default function TeacherSessionWorkspacePage() {
   const [isCreateHomeworkOpen, setIsCreateHomeworkOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
   const [uploadFile, setUploadFile] = useState(null);
+  const [isReuseOpen, setIsReuseOpen] = useState(false);
+  const [reusableFiles, setReusableFiles] = useState([]);
+  const [reuseLoading, setReuseLoading] = useState(false);
+  const [reuseSearch, setReuseSearch] = useState("");
+  const [attachingFileId, setAttachingFileId] = useState(null);
   const [currentVocabSession, setCurrentVocabSession] = useState(null);
   const [currentFormulaSession, setCurrentFormulaSession] = useState(null);
 
@@ -234,14 +240,47 @@ export default function TeacherSessionWorkspacePage() {
     if (file) executeUploadFile(file);
   };
 
-  const handleDeleteFile = async (fileId) => {
+  const handleDeleteFile = async (file) => {
     if (!window.confirm("Xóa tài liệu khỏi buổi học này?")) return;
     try {
-      await deleteClassFile(fileId);
-      setFiles((current) => current.filter((file) => String(file.id) !== String(fileId)));
-      toast.success("Đã xóa tài liệu.");
+      if (file.placementId) await detachTeacherFile(file.placementId);
+      else await deleteClassFile(file.id);
+      setFiles((current) => current.filter((item) => item.instanceId !== file.instanceId));
+      toast.success(file.placementId ? "Đã gỡ tài liệu khỏi buổi học." : "Đã xóa tài liệu.");
     } catch (requestError) {
       toast.error(requestError.message || "Không thể xóa tài liệu.");
+    }
+  };
+
+  const loadReusableFiles = useCallback(async (search = "") => {
+    setReuseLoading(true);
+    try {
+      const response = await fetchReusableTeacherFiles({ classId, sessionId, search });
+      setReusableFiles(Array.isArray(response?.data) ? response.data : []);
+    } catch (requestError) {
+      setReusableFiles([]);
+      toast.error(requestError.message || "Không thể tải kho tài liệu dùng lại.");
+    } finally {
+      setReuseLoading(false);
+    }
+  }, [classId, sessionId]);
+
+  const openReuseLibrary = async () => {
+    setReuseSearch("");
+    setIsReuseOpen(true);
+    await loadReusableFiles();
+  };
+
+  const handleAttachReusableFile = async (file) => {
+    setAttachingFileId(file.id);
+    try {
+      await attachTeacherFile(file.id, { classId, sessionId });
+      toast.success(`Đã dùng lại "${file.name}" trong buổi học này.`);
+      await Promise.all([loadData(), loadReusableFiles(reuseSearch)]);
+    } catch (requestError) {
+      toast.error(requestError.message || "Không thể dùng lại tài liệu này.");
+    } finally {
+      setAttachingFileId(null);
     }
   };
 
@@ -265,8 +304,6 @@ export default function TeacherSessionWorkspacePage() {
   const classInfo = classData.classInfo || {};
   const meetingWindow = getMeetingWindowState(session);
   const canJoin = isAdminView || meetingWindow.isOpen;
-  const tabClass = (isActive) => `inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition ${isActive ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400/20" : "text-slate-600 hover:bg-emerald-50/80 hover:text-emerald-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-emerald-300"}`;
-
   return (
     <div className="mx-auto max-w-6xl space-y-5 pb-12 transition-colors duration-200">
       <Link
@@ -519,6 +556,7 @@ export default function TeacherSessionWorkspacePage() {
             files={files}
             isUploading={isUploading}
             onUpload={handleUpload}
+            onReuse={openReuseLibrary}
             onDelete={handleDeleteFile}
             uploadFile={uploadFile}
             uploadProgress={uploadProgress}
@@ -532,6 +570,18 @@ export default function TeacherSessionWorkspacePage() {
         {activeTab === "announcements" && <TeacherSessionAnnouncements announcements={announcements} onCreate={handleCreateAnnouncement} />}
         {activeTab === "results" && <TeacherSessionResults tasks={tasks} />}
         {isCreateHomeworkOpen && <CreateAssignmentModal isOpen classId={classId} sessionId={sessionId} sessionTitle={session.title} homeworkOnly onClose={() => setIsCreateHomeworkOpen(false)} onCreated={loadData} />}
+        {isReuseOpen && (
+          <ReusableFileModal
+            files={reusableFiles}
+            loading={reuseLoading}
+            search={reuseSearch}
+            attachingFileId={attachingFileId}
+            onSearchChange={setReuseSearch}
+            onSearch={() => loadReusableFiles(reuseSearch)}
+            onAttach={handleAttachReusableFile}
+            onClose={() => setIsReuseOpen(false)}
+          />
+        )}
       </div>
     </div>
   );
@@ -704,7 +754,7 @@ function TeacherOverviewTab({
                   const cfg = kindConfig[k] || kindConfig.other;
                   const Icon = cfg.icon;
                   return (
-                    <div key={file.id} className="flex items-center justify-between gap-2 rounded-2xl border border-white/80 bg-white/85 p-2.5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-800/60">
+                    <div key={file.instanceId || file.id} className="flex items-center justify-between gap-2 rounded-2xl border border-white/80 bg-white/85 p-2.5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-800/60">
                       <div className="flex min-w-0 items-center gap-2">
                         <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-[11px] font-bold ${cfg.badge}`}>
                           <Icon className="h-3.5 w-3.5" />
@@ -714,9 +764,9 @@ function TeacherOverviewTab({
                           <p className="text-[10px] text-slate-400">{formatBytes(file.size_bytes)}</p>
                         </div>
                       </div>
-                      {file.file_url && (
+                      {(file.downloadUrl || file.viewUrl || file.file_url) && (
                         <a
-                          href={file.file_url}
+                          href={file.downloadUrl || file.viewUrl || file.file_url}
                           target="_blank"
                           rel="noreferrer"
                           download
@@ -802,6 +852,7 @@ function TeacherSessionFiles({
   files,
   isUploading,
   onUpload,
+  onReuse,
   onDelete,
   uploadFile,
   uploadProgress,
@@ -825,11 +876,21 @@ function TeacherSessionFiles({
             </p>
           </div>
         </div>
-        <label className={`inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-500/20 transition active:scale-95 ${isUploading ? "pointer-events-none opacity-50" : ""}`}>
-          <UploadCloud className="h-4 w-4" />
-          <span>{isUploading ? "Đang tải lên..." : "Tải tài liệu mới"}</span>
-          <input type="file" className="hidden" disabled={isUploading} onChange={onUpload} />
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onReuse}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700 shadow-sm transition hover:bg-blue-600 hover:text-white"
+          >
+            <Library className="h-4 w-4" />
+            Chọn từ kho
+          </button>
+          <label className={`inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-500/20 transition active:scale-95 ${isUploading ? "pointer-events-none opacity-50" : ""}`}>
+            <UploadCloud className="h-4 w-4" />
+            <span>{isUploading ? "Đang tải lên..." : "Tải tài liệu mới"}</span>
+            <input type="file" className="hidden" disabled={isUploading} onChange={onUpload} />
+          </label>
+        </div>
       </div>
 
       {/* Ô thông báo tiến độ & cảnh báo lỗi chi tiết */}
@@ -852,7 +913,7 @@ function TeacherSessionFiles({
 
             return (
               <article
-                key={file.id}
+                key={file.instanceId || file.id}
                 className="group relative flex flex-col justify-between gap-3 rounded-2xl border border-white/80 bg-white/88 p-4.5 shadow-2xs backdrop-blur-md transition-all hover:border-emerald-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-700/60"
               >
                 <div className="flex items-start gap-3">
@@ -876,6 +937,11 @@ function TeacherSessionFiles({
                       {file.uploadedAt && (
                         <span>• {new Date(file.uploadedAt).toLocaleDateString("vi-VN")}</span>
                       )}
+                      {file.isReused && (
+                        <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                          Dùng lại từ kho
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -895,12 +961,12 @@ function TeacherSessionFiles({
 
                   <button
                     type="button"
-                    onClick={() => onDelete(file.id)}
+                    onClick={() => onDelete(file)}
                     className="inline-flex items-center gap-1 rounded-xl p-1.5 text-xs font-medium text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 transition"
                     title="Xóa tài liệu khỏi buổi học"
                   >
                     <Trash2 className="h-4 w-4" />
-                    <span className="text-[11px]">Xóa</span>
+                    <span className="text-[11px]">{file.placementId ? "Gỡ" : "Xóa"}</span>
                   </button>
                 </div>
               </article>
@@ -915,6 +981,106 @@ function TeacherSessionFiles({
         />
       )}
     </section>
+  );
+}
+
+function ReusableFileModal({
+  files,
+  loading,
+  search,
+  attachingFileId,
+  onSearchChange,
+  onSearch,
+  onAttach,
+  onClose,
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#102f63]/45 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/90 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white">
+              <Library className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-base font-black text-[#102f63]">Chọn tài liệu đã có</h2>
+              <p className="mt-0.5 text-xs text-slate-500">File chỉ được lưu một lần; buổi học này dùng chung liên kết an toàn.</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="Đóng kho tài liệu">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSearch();
+          }}
+          className="flex gap-2 border-b border-slate-100 p-4"
+        >
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Tìm theo tên tài liệu..."
+              className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs outline-none focus:border-blue-500"
+            />
+          </div>
+          <button type="submit" className="rounded-xl bg-[#102f63] px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700">
+            Tìm kiếm
+          </button>
+        </form>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <p className="py-10 text-center text-xs font-semibold text-slate-500">Đang tải kho tài liệu...</p>
+          ) : files.length === 0 ? (
+            <div className="py-10 text-center">
+              <Library className="mx-auto h-8 w-8 text-slate-300" />
+              <p className="mt-3 text-sm font-bold text-slate-700">Không còn tài liệu phù hợp để gắn</p>
+              <p className="mt-1 text-xs text-slate-400">Kho chỉ hiển thị tài liệu cùng khóa học mà bạn có quyền sử dụng.</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {files.map((file) => {
+                const kind = kindForFile(file.mimeType, file.name);
+                const config = kindConfig[kind] || kindConfig.other;
+                const Icon = config.icon;
+                const attaching = String(attachingFileId || "") === String(file.id);
+                return (
+                  <article key={file.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3.5 transition hover:border-blue-300 hover:bg-blue-50/30">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${config.badge}`}>
+                        <Icon className="h-4.5 w-4.5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-[#102f63]" title={file.name}>{file.name}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                          {file.sourceClassTitle || file.courseTitle || "Kho tài liệu chung"}
+                          {file.sourceSessionTitle ? ` · ${file.sourceSessionTitle}` : ""}
+                          {file.reuseCount ? ` · đã dùng lại ${file.reuseCount} lần` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={Boolean(attachingFileId)}
+                      onClick={() => onAttach(file)}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      <Link2 className="h-3.5 w-3.5" />
+                      {attaching ? "Đang gắn..." : "Dùng tài liệu"}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -618,26 +618,26 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     let fileVisibility = "TRUE";
     if (isLearner) {
       fileParams.push(req.user.id);
-      fileVisibility = `f.visibility IN ('CLASS_ONLY', 'COURSE') AND EXISTS (
+      fileVisibility = `fi.effective_visibility IN ('CLASS_ONLY', 'COURSE') AND EXISTS (
         SELECT 1 FROM lms_access_grants g
-        WHERE g.user_id = $2 AND g.course_id = COALESCE(f.course_id, lc.course_id)
+        WHERE g.user_id = $2 AND g.course_id = COALESCE(fi.course_id, lc.course_id)
           AND g.access_status = 'active' AND g.valid_from <= NOW()
           AND (g.valid_until IS NULL OR g.valid_until > NOW())
-      ) AND (f.visibility = 'COURSE' OR (f.visibility = 'CLASS_ONLY'
-        AND f.live_class_id IS NOT NULL AND lc.status = 'active' AND EXISTS (
+      ) AND (fi.effective_visibility = 'COURSE' OR (fi.effective_visibility = 'CLASS_ONLY'
+        AND fi.effective_live_class_id IS NOT NULL AND lc.status = 'active' AND EXISTS (
           SELECT 1 FROM class_enrollments ce
-          WHERE ce.live_class_id = f.live_class_id AND ce.user_id = $2 AND ce.status = 'active'
+          WHERE ce.live_class_id = fi.effective_live_class_id AND ce.user_id = $2 AND ce.status = 'active'
         )))`;
     } else if (!isAdmin) {
       fileParams.push(req.user.id);
-      fileVisibility = `(f.visibility <> 'PRIVATE' OR f.uploaded_by = $2) AND
-        (f.live_class_id IS NULL OR ((lc.instructor_id = $2 AND NOT EXISTS (
+      fileVisibility = `(fi.effective_visibility <> 'PRIVATE' OR fi.uploaded_by = $2) AND
+        (fi.effective_live_class_id IS NULL OR ((lc.instructor_id = $2 AND NOT EXISTS (
           SELECT 1 FROM class_teachers former WHERE former.live_class_id = lc.id AND former.teacher_id = $2
         )) OR EXISTS (
           SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $2 AND ct.status = 'active'
         )))`;
     }
-    const fileClassScope = selectedClassId ? ` AND (f.live_class_id IS NULL OR f.live_class_id = $${fileParams.length + 1})` : "";
+    const fileClassScope = selectedClassId ? ` AND (fi.effective_live_class_id IS NULL OR fi.effective_live_class_id = $${fileParams.length + 1})` : "";
     if (selectedClassId) fileParams.push(selectedClassId);
 
     const [sectionsResult, lessonsResult, progressResult, classesResult, sessionsResult, assignmentsResult, quizRowsResult, quizCountResult, filesResult, sessionProgressResult] = await Promise.all([
@@ -754,15 +754,36 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         [courseId],
       ),
       query(
-        `SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at,
-                f.visibility, f.live_class_id, COALESCE(lc.allow_file_download, TRUE) AS allow_file_download,
+        `WITH file_instances AS (
+           SELECT f.id AS file_id, NULL::bigint AS placement_id,
+                  f.live_class_id AS effective_live_class_id,
+                  f.class_session_id AS effective_class_session_id,
+                  f.visibility AS effective_visibility,
+                  f.created_at AS attached_at,
+                  f.*
+           FROM lms_learning_files f
+           UNION ALL
+           SELECT f.id AS file_id, p.id AS placement_id,
+                  p.live_class_id AS effective_live_class_id,
+                  p.class_session_id AS effective_class_session_id,
+                  p.visibility AS effective_visibility,
+                  p.created_at AS attached_at,
+                  f.*
+           FROM lms_learning_file_placements p
+           JOIN lms_learning_files f ON f.id = p.file_id
+         )
+         SELECT fi.file_id AS id, fi.placement_id, fi.original_name, fi.mime_type, fi.size_bytes,
+                fi.attached_at AS created_at, fi.effective_visibility AS visibility,
+                fi.effective_live_class_id AS live_class_id,
+                fi.effective_class_session_id AS class_session_id,
+                COALESCE(lc.allow_file_download, TRUE) AS allow_file_download,
                 COALESCE(u.username, u.email, 'Giáo viên') AS uploaded_by
-         FROM lms_learning_files f
-         LEFT JOIN live_classes lc ON lc.id = f.live_class_id
-         LEFT JOIN users u ON u.id = f.uploaded_by
-         WHERE f.status = 'ready' AND COALESCE(f.course_id, lc.course_id) = $1
+         FROM file_instances fi
+         LEFT JOIN live_classes lc ON lc.id = fi.effective_live_class_id
+         LEFT JOIN users u ON u.id = fi.uploaded_by
+         WHERE fi.status = 'ready' AND COALESCE(fi.course_id, lc.course_id) = $1
            AND ${fileVisibility}${fileClassScope}
-         ORDER BY f.created_at DESC, f.id DESC
+         ORDER BY fi.attached_at DESC, fi.file_id DESC
          LIMIT 8`,
                 fileParams,
       ),
@@ -827,7 +848,8 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         assignments: taskRows,
         quizCount: Number(quizCountResult.rows[0]?.count) || 0,
         files: filesResult.rows.map((file) => {
-          const contextClassId = selectedClassId || file.live_class_id || null;
+          const contextClassId = selectedClassId
+            || (file.visibility === "CLASS_ONLY" ? file.live_class_id : null);
           const allowFileDownload = !isLearner
             || (file.visibility === "CLASS_ONLY"
               ? file.allow_file_download !== false
@@ -840,6 +862,9 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
             : "?download=1";
           return {
             id: String(file.id),
+            instanceId: file.placement_id ? `placement-${file.placement_id}` : `file-${file.id}`,
+            placementId: file.placement_id ? String(file.placement_id) : null,
+            isReused: Boolean(file.placement_id),
             name: file.original_name,
             mimeType: file.mime_type,
             sizeBytes: Number(file.size_bytes),

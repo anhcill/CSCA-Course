@@ -1,4 +1,3 @@
-/* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -18,11 +17,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Sparkles,
-  ChevronRight,
   GraduationCap,
 } from "lucide-react";
 import { fetchStudentFiles, fetchStudentClassesLookup } from "../../api/lmsClient";
-import { EmptyState, ErrorState, LoadingState } from "../../../components/common/StateView";
+import { ErrorState } from "../../../components/common/StateView";
 
 const mimeType = (file) => String(file.mimeType || file.mime_type || "").toLowerCase();
 const fileSize = (value) => {
@@ -836,7 +834,7 @@ export default function StudentFilesPage() {
 
                   <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                     {systemGeneralFiles.map((file) => (
-                      <StudentFileCard key={file.id} file={file} onDownload={download} />
+                      <StudentFileCard key={file.instanceId || file.id} file={file} onDownload={download} />
                     ))}
                   </div>
                 </div>
@@ -932,7 +930,7 @@ export default function StudentFilesPage() {
                   </div>
                   <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                     {activeClassGeneralFiles.map((file) => (
-                      <StudentFileCard key={file.id} file={file} onDownload={download} />
+                      <StudentFileCard key={file.instanceId || file.id} file={file} onDownload={download} />
                     ))}
                   </div>
                 </section>
@@ -1012,7 +1010,7 @@ export default function StudentFilesPage() {
                         {session.files.length > 0 ? (
                           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                             {session.files.map((file) => (
-                              <StudentFileCard key={file.id} file={file} onDownload={download} />
+                              <StudentFileCard key={file.instanceId || file.id} file={file} onDownload={download} />
                             ))}
                           </div>
                         ) : (
@@ -1057,7 +1055,7 @@ export default function StudentFilesPage() {
                 {/* Danh sách file của ngày */}
                 <div className="p-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {groupFiles.map((file) => (
-                    <StudentFileCard key={file.id} file={file} onDownload={download} />
+                    <StudentFileCard key={file.instanceId || file.id} file={file} onDownload={download} />
                   ))}
                 </div>
               </section>
@@ -1067,7 +1065,7 @@ export default function StudentFilesPage() {
           /* ================= CARDS GRID VIEW ================= */
           <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
             {visibleFiles.map((file) => (
-              <StudentFileCard key={file.id} file={file} onDownload={download} />
+              <StudentFileCard key={file.instanceId || file.id} file={file} onDownload={download} />
             ))}
           </section>
         )}
