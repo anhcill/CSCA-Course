@@ -160,3 +160,61 @@ test("teacher dashboard reports provider without disclosing meeting URLs", async
   assert.equal(res.body.data.todaySessions[0].hasMeetingLink, true);
   assert.equal(Object.hasOwn(res.body.data.todaySessions[0], "meetUrl"), false);
 });
+
+test("session history is visible only to users who can view the class", async (t) => {
+  const oldQuery = pool.query;
+  let historyQueryCount = 0;
+  pool.query = async (sql, params = []) => {
+    if (sql.includes("FROM class_sessions cs WHERE cs.id = $1")) {
+      return {
+        rows: [{
+          id: 41,
+          live_class_id: 8,
+          title: "Protected lesson",
+          status: "scheduled",
+          start_time: new Date("2027-01-02T09:00:00Z"),
+          end_time: new Date("2027-01-02T10:00:00Z"),
+        }],
+      };
+    }
+    if (sql.includes("FROM live_classes lc")) {
+      return {
+        rows: [{
+          id: 8,
+          title: "Protected class",
+          course_id: 2,
+          instructor_id: 5,
+          status: "active",
+          course_is_published: true,
+        }],
+      };
+    }
+    if (sql.includes("FROM class_teachers")) {
+      return params[1] === 11 ? { rows: [{ status: "active" }] } : { rows: [] };
+    }
+    if (sql.includes("FROM class_session_change_logs")) {
+      historyQueryCount += 1;
+      return { rows: [{ id: 1, session_id: 41, reason: "Rescheduled" }] };
+    }
+    return { rows: [] };
+  };
+  t.after(() => { pool.query = oldQuery; });
+
+  const denied = response();
+  await routeFor("get", "/sessions/:sessionId/history").stack.at(-1).handle(
+    { user: { id: 12, role: "creator" }, params: { sessionId: 41 } },
+    denied,
+  );
+  assert.equal(denied.statusCode, 403);
+  assert.equal(denied.body.errorCode, "FORBIDDEN");
+  assert.equal(historyQueryCount, 0);
+
+  const allowed = response();
+  await routeFor("get", "/sessions/:sessionId/history").stack.at(-1).handle(
+    { user: { id: 11, role: "creator" }, params: { sessionId: 41 } },
+    allowed,
+  );
+  assert.equal(allowed.statusCode, 200);
+  assert.equal(allowed.body.data.history.length, 1);
+  assert.equal(historyQueryCount, 1);
+});

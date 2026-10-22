@@ -160,25 +160,21 @@ export default function SessionDetailModal({
                 </div>
               )}
 
-              {basePath && (
-                <Link
-                  to={`${basePath}/materials`}
-                  onClick={onClose}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
-                >
-                  <FileText className="h-4 w-4 text-blue-600 dark:text-sky-400" /> Tài liệu buổi học
-                </Link>
-              )}
+              <Link
+                to={basePath ? `${basePath}/materials` : (session.live_class_id ? `/lms/materials?classId=${session.live_class_id}` : "/lms/materials")}
+                onClick={onClose}
+                className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              >
+                <FileText className="h-4 w-4 text-blue-600 dark:text-sky-400" /> Tài liệu buổi học
+              </Link>
 
-              {basePath && (
-                <Link
-                  to={`${basePath}/assignments`}
-                  onClick={onClose}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
-                >
-                  <CalendarDays className="h-4 w-4 text-amber-600 dark:text-amber-400" /> Bài tập & Quiz
-                </Link>
-              )}
+              <Link
+                to={basePath ? `${basePath}/assignments` : (session.live_class_id ? `/lms/assignments?classId=${session.live_class_id}` : "/lms/assignments")}
+                onClick={onClose}
+                className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              >
+                <CalendarDays className="h-4 w-4 text-amber-600 dark:text-amber-400" /> Bài tập & Quiz
+              </Link>
 
               {isTeacher && session.live_class_id && (
                 <Link

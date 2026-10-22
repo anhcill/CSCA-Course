@@ -38,39 +38,10 @@ import AvatarModal from "../../../components/AvatarModal";
 import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
 import { fetchMyTrustedDevices } from "../../api/accountSecurityClient";
 
+import { CSCA_WALLPAPERS } from "../../../utils/classWallpapers";
+
 // Default wallpapers list with aesthetic names for CSCA students
-const DEFAULT_WALLPAPERS = [
-  {
-    id: "spring-campus",
-    title: "Thanh Sơn Thủy Đình",
-    subtitle: "Khuôn viên xuân phong",
-    url: "/student-campus-spring.webp",
-  },
-  {
-    id: "imperial-lake",
-    title: "Cung Đình Hồ Sen",
-    subtitle: "Lầu đình hoa đào & hồ sen",
-    url: "/wallpapers/imperial-lake.jpg",
-  },
-  {
-    id: "ink-scroll",
-    title: "Thư Họa Mặc Thủy",
-    subtitle: "Cuộn thư, bút lông & sơn thủy",
-    url: "/wallpapers/ink-scroll.jpg",
-  },
-  {
-    id: "antique-map",
-    title: "Bản Đồ Cổ & La Bàn",
-    subtitle: "Hải trình khám phá tri thức",
-    url: "/wallpapers/antique-map.jpg",
-  },
-  {
-    id: "calligraphy-seal",
-    title: "Thư Pháp & Chu Sa",
-    subtitle: "Nét mặc phong vân & nghiên mực",
-    url: "/wallpapers/calligraphy-seal.jpg",
-  },
-];
+const DEFAULT_WALLPAPERS = CSCA_WALLPAPERS;
 
 const formatDeviceTime = (value) => {
   if (!value) return "Chưa có dữ liệu";
@@ -104,6 +75,8 @@ export default function StudentSettingsPage() {
     fullName: "",
     studentCode: "",
     email: "",
+    phone: "",
+    classCode: "",
     department: "",
     program: "",
   });
@@ -112,12 +85,25 @@ export default function StudentSettingsPage() {
   useEffect(() => {
     if (authUser) {
       const study = authUser.studentProfile || {};
-      const fallbackCode = authUser.studentCode || (authUser.id ? `CSCA-${String(authUser.id).padStart(4, "0")}` : "CSCA-2026-HV01");
+      const code =
+        authUser.studentCode ||
+        study.studentCode ||
+        authUser.externalStudentId ||
+        (authUser.id ? `CSCA-${String(authUser.id).padStart(3, "0")}` : "CSCA-001");
+      const phone = authUser.phone || authUser.managementPhone || "Chưa cập nhật";
+      const cls =
+        authUser.classCode ||
+        authUser.managementClassSourceId ||
+        authUser.enrolledClasses?.[0]?.classCode ||
+        "Chưa phân lớp";
+      const dept = authUser.department || study.targetMajor || "Ban Đào Tạo CSCA";
       setStudentInfo({
-        fullName: study.fullName || authUser.fullName || authUser.username || "Nguyễn Hà",
-        studentCode: study.studentCode || fallbackCode,
-        email: authUser.email || "nguyenha@student.csca.edu.vn",
-        department: study.targetMajor || "Ban Tự Nhiên (Toán - Lý - Hóa)",
+        fullName: authUser.fullName || study.fullName || authUser.username || "Học viên CSCA",
+        studentCode: code,
+        email: authUser.email || "student@csca.edu.vn",
+        phone: phone,
+        classCode: cls,
+        department: dept,
         program: study.targetProgram || "Luyện thi Học bổng CSCA - Cử nhân",
       });
     }
@@ -465,13 +451,29 @@ export default function StudentSettingsPage() {
                 {/* Mã học viên */}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <span className="font-medium text-slate-500">Mã học viên</span>
-                  <span className="font-semibold text-slate-700">{studentInfo.studentCode}</span>
+                  <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 font-mono font-bold text-blue-700 border border-blue-200">
+                    {studentInfo.studentCode}
+                  </span>
+                </div>
+
+                {/* Số điện thoại */}
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="font-medium text-slate-500">Số điện thoại</span>
+                  <span className="font-semibold text-slate-700">{studentInfo.phone}</span>
                 </div>
 
                 {/* Email */}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <span className="font-medium text-slate-500">Email</span>
                   <span className="font-semibold text-slate-700">{studentInfo.email}</span>
+                </div>
+
+                {/* Mã lớp */}
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="font-medium text-slate-500">Mã lớp</span>
+                  <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 font-mono font-bold text-slate-800 border border-slate-200">
+                    {studentInfo.classCode}
+                  </span>
                 </div>
 
                 {/* Khoa / Ban chuyên môn */}

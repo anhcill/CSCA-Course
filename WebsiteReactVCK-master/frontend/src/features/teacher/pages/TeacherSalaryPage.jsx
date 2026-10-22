@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { Wallet } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { fetchTeacherSalarySummary } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
@@ -12,6 +11,22 @@ export default function TeacherSalaryPage() {
   const [salaryData, setSalaryData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const [currentWallpaper, setCurrentWallpaper] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("csca_lms_wallpaper") || "/student-campus-spring.webp";
+    }
+    return "/student-campus-spring.webp";
+  });
+
+  useEffect(() => {
+    const handleWallpaperChange = (event) => {
+      const newWp = event?.detail || localStorage.getItem("csca_lms_wallpaper") || "/student-campus-spring.webp";
+      setCurrentWallpaper(newWp);
+    };
+    window.addEventListener("csca_wallpaper_changed", handleWallpaperChange);
+    return () => window.removeEventListener("csca_wallpaper_changed", handleWallpaperChange);
+  }, []);
 
   const loadSalary = useCallback(async () => {
     setLoading(true);
@@ -43,38 +58,47 @@ export default function TeacherSalaryPage() {
   }
 
   return (
-    <div className="min-h-full bg-slate-50 dark:bg-slate-950 px-4 py-5 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      <div className="mx-auto max-w-7xl space-y-4">
-        {/* Header riêng cho trang Bảng lương */}
-        <section className="overflow-hidden rounded-2xl border border-emerald-100 dark:border-emerald-950/60 bg-gradient-to-r from-emerald-50/70 via-white to-teal-50/40 dark:from-slate-900 dark:via-slate-900/95 dark:to-emerald-950/20 p-4 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 shadow-xs ring-1 ring-emerald-200 dark:ring-emerald-800">
-                <Wallet className="h-3 w-3" /> Thu Nhập Giảng Dạy
-              </span>
-              <h1 className="text-lg font-black tracking-tight text-slate-950 dark:text-white sm:text-xl">
-                Bảng Lương Giảng Viên
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Theo dõi chi tiết số buổi đã dạy, thù lao tạm tính tích lũy và tổng lương dự kiến theo từng lớp học.
-              </p>
-            </div>
-          </div>
-        </section>
+    <div
+      className="relative min-h-[calc(100vh-6.5rem)] -mx-4 -mt-2 p-2.5 sm:p-3.5 xl:px-4 xl:py-3 text-slate-900 dark:text-slate-100 transition-colors duration-200"
+      style={{
+        backgroundImage: `linear-gradient(to bottom, rgba(222,241,255,0.06) 0%, rgba(230,244,253,0.14) 50%, rgba(237,246,252,0.22) 100%), url('${currentWallpaper}')`,
+        backgroundPosition: "center top",
+        backgroundRepeat: "no-repeat",
+        backgroundSize: "cover",
+        backgroundAttachment: "fixed",
+      }}
+    >
+      <div className="mx-auto max-w-[1440px] space-y-2.5">
+        {/* Floating Hero Title directly on wallpaper - matching Student style */}
+        <div className="pt-0.5 pb-1">
+          <h1 className="font-['Dancing_Script',cursive] text-4xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs sm:text-5xl">
+            Bảng Lương Giảng Viên
+          </h1>
+          <p className="mt-1 text-xs font-semibold italic text-slate-800 sm:text-sm">
+            “Tận tâm truyền thụ tri thức, xứng đáng với mọi cống hiến.”
+          </p>
+          <p className="mt-0.5 font-['Ma_Shan_Zheng',cursive] text-sm tracking-wider text-slate-600 sm:text-base">
+            —— 学而不厌，诲人不倦。
+          </p>
+        </div>
 
         {loading ? (
-          <Loading
-            loading={true}
-            text="Đang tính toán bảng lương..."
-            fullScreen={false}
-            className="py-12"
-          />
+          <div className="rounded-2xl border border-white/80 bg-white/90 p-12 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
+            <Loading
+              loading={true}
+              text="Đang tính toán bảng lương giảng viên..."
+              fullScreen={false}
+              className="py-12"
+            />
+          </div>
         ) : error ? (
-          <ErrorState
-            title="Chưa thể tải dữ liệu bảng lương"
-            message={error}
-            onRetry={loadSalary}
-          />
+          <div className="rounded-2xl border border-white/80 bg-white/90 p-8 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
+            <ErrorState
+              title="Chưa thể tải dữ liệu bảng lương"
+              message={error}
+              onRetry={loadSalary}
+            />
+          </div>
         ) : (
           <TeacherSalarySection
             salaryData={salaryData}

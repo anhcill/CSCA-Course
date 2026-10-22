@@ -13,6 +13,7 @@ import CourseRatingForm from '../../components/course/CourseRatingForm';
 import CourseSeoGuide from '../../components/course/CourseSeoGuide.jsx';
 import Meta from '../../components/Meta.jsx';
 import Loading from '../../components/Loading';
+import { getClassCoverImage } from '../../utils/classWallpapers';
 
 const CATEGORIES = [
   { id: 'ALL', label: 'Tất Cả Khóa Học', icon: BookOpen },
@@ -215,7 +216,7 @@ const Courses = () => {
           <div>
             <div className="relative pb-[56.25%] overflow-hidden bg-slate-900">
               <img
-                src={course.imageCourse || course.thumbnail_url || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80'}
+                src={course.imageCourse || course.thumbnail_url || getClassCoverImage(course, course.slug || course.id)}
                 alt={name}
                 className="absolute inset-0 w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100"
               />

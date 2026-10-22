@@ -17,6 +17,9 @@ import {
   FiEyeOff,
   FiGrid,
   FiX,
+  FiBookOpen,
+  FiDownload,
+  FiInfo,
 } from 'react-icons/fi';
 import RichMathText from '../../../components/common/RichMathText.jsx';
 import { EmptyState, ErrorState, PermissionDeniedState } from '../../../components/common/StateView.jsx';
@@ -188,16 +191,26 @@ export default function QuizPlayerPage() {
           setAnswers(mergedAnswers);
 
           // If attempt is already submitted OR result payload is present, display the result screen!
+          const isOverdueUnsubmitted = Boolean(
+            data.isOverdueUnsubmitted ||
+            data.result?.isOverdueUnsubmitted ||
+            data.quiz?.isOverdueUnsubmitted ||
+            attempt.status === 'closed_unsubmitted'
+          );
+
           const isAttemptSubmitted = Boolean(
             data.result ||
             attempt.status === 'submitted' ||
+            isOverdueUnsubmitted ||
             (attempt.remainingSeconds !== undefined && attempt.remainingSeconds <= 0 && attempt.submittedAt)
           );
 
           if (isAttemptSubmitted) {
             const rawScore = Number(data.result?.score ?? attempt.score ?? 0);
             const rawMaxScore = Number(data.result?.maxScore ?? attempt.max_score ?? loadedQuiz.maxScore ?? 10);
-            const passed = data.result?.passed ?? (attempt.passed ?? (rawScore >= (loadedQuiz.passingScore || 6)));
+            const passed = isOverdueUnsubmitted
+              ? false
+              : (data.result?.passed ?? (attempt.passed ?? (rawScore >= (loadedQuiz.passingScore || 6))));
             setIsSubmitted(true);
             setSubmitResult(data.result || {
               attemptId: loadedAttemptId,
@@ -207,8 +220,11 @@ export default function QuizPlayerPage() {
               passed,
               passingScore: loadedQuiz.passingScore || 6,
               reviewPolicy: loadedQuiz.reviewPolicy || 'after_submit',
-              reviewAvailable: Boolean(data.result?.reviewAvailable ?? (loadedQuiz.reviewPolicy === 'after_submit')),
+              reviewAvailable: true,
               review: data.result?.review || [],
+              solutionUrl: data.result?.solutionUrl || loadedQuiz.solutionUrl || null,
+              paperUrl: loadedQuiz.paperUrl || null,
+              isOverdueUnsubmitted,
               alreadySubmitted: true,
             });
             return;
@@ -527,7 +543,37 @@ export default function QuizPlayerPage() {
     return (
       <div className="fixed inset-0 z-[1000] flex h-dvh items-center justify-center overflow-y-auto bg-slate-100 p-4 dark:bg-slate-950">
         <div className="max-w-lg w-full">
-          {loadError.type === 'not_open' ? (
+          {loadError.type === 'expired' ? (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-rose-100 dark:border-rose-900/60 p-8 shadow-2xl text-center space-y-5">
+              <div className="w-16 h-16 rounded-3xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto text-3xl shadow-xs">
+                📖
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                  {loadError.title}
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-sm mx-auto leading-relaxed">
+                  {loadError.message}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(backPath)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition-colors"
+                >
+                  Quay lại danh sách bài tập
+                </button>
+                <button
+                  type="button"
+                  onClick={loadQuiz}
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors shadow-sm flex items-center gap-1.5"
+                >
+                  <FiBookOpen className="text-sm" /> Xem đề & Tra cứu đáp án
+                </button>
+              </div>
+            </div>
+          ) : loadError.type === 'not_open' ? (
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-sky-100 dark:border-sky-900/60 p-8 shadow-2xl text-center space-y-5">
               <div className="w-16 h-16 rounded-3xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto text-3xl shadow-xs">
                 ⏰
@@ -584,12 +630,15 @@ export default function QuizPlayerPage() {
 
   // POST-SUBMIT COMPLETION SCREEN
   if (isSubmitted && submitResult) {
-    const isPassed = submitResult.passed ?? (submitResult.score >= (submitResult.passingScore || 6));
+    const isOverdue = Boolean(submitResult.isOverdueUnsubmitted);
+    const isPassed = isOverdue ? false : (submitResult.passed ?? (submitResult.score >= (submitResult.passingScore || 6)));
     const showAnswers = Boolean(
-      submitResult.reviewAvailable ??
-      (submitResult.review && submitResult.review.length > 0) ??
-      (quiz.reviewPolicy === 'after_submit')
+      isOverdue ||
+      (submitResult.reviewAvailable ?? (submitResult.review && submitResult.review.length > 0) ?? (quiz.reviewPolicy === 'after_submit'))
     );
+    const hasEssayQuestions = flattenedQuestions.some((fq) => isEssayQuestion(fq.question));
+    const paperUrl = submitResult.paperUrl || quiz.paperUrl || null;
+    const solutionUrl = submitResult.solutionUrl || quiz.solutionUrl || null;
 
     return (
       <div className="fixed inset-0 z-[1000] h-dvh overflow-y-auto bg-slate-50 px-4 py-10 dark:bg-slate-950 sm:px-6">
@@ -598,17 +647,23 @@ export default function QuizPlayerPage() {
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 shadow-xl text-center space-y-5">
             <div
               className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto text-3xl font-bold ${
-                isPassed
+                isOverdue
+                  ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                  : isPassed
                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
                   : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
               }`}
             >
-              {isPassed ? '✓' : '!'}
+              {isOverdue ? <FiBookOpen className="text-3xl" /> : isPassed ? '✓' : '!'}
             </div>
 
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Kết quả bài thi
+              <span
+                className={`text-xs font-bold uppercase tracking-wider ${
+                  isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'
+                }`}
+              >
+                {isOverdue ? 'Chế độ Ôn tập & Tra cứu đề thi (Quá hạn nộp bài)' : 'Kết quả bài thi'}
               </span>
               <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1">
                 {quiz.title}
@@ -618,8 +673,17 @@ export default function QuizPlayerPage() {
             <div className="flex items-center justify-center gap-8 py-4 border-y border-slate-100 dark:border-slate-800 max-w-md mx-auto">
               <div>
                 <span className="text-xs text-slate-400">Tổng điểm</span>
-                <p className="text-3xl font-black text-blue-600 dark:text-blue-400">
-                  {submitResult.score} <span className="text-sm font-medium text-slate-400">/ {submitResult.maxScore || 10}</span>
+                <p
+                  className={`text-3xl font-black ${
+                    isOverdue
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : 'text-blue-600 dark:text-blue-400'
+                  }`}
+                >
+                  {submitResult.score}{' '}
+                  <span className="text-sm font-medium text-slate-400">
+                    / {submitResult.maxScore || 10} {isOverdue ? '(Chưa nộp)' : ''}
+                  </span>
                 </p>
               </div>
               <div className="w-px h-10 bg-slate-200 dark:bg-slate-800"></div>
@@ -627,51 +691,151 @@ export default function QuizPlayerPage() {
                 <span className="text-xs text-slate-400">Trạng thái</span>
                 <p
                   className={`text-lg font-bold ${
-                    isPassed ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                    isOverdue
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : isPassed
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-amber-600 dark:text-amber-400'
                   }`}
                 >
-                  {isPassed ? 'ĐẠT YÊU CẦU' : 'CHƯA ĐẠT'}
+                  {isOverdue ? 'QUÁ HẠN NỘP BÀI' : isPassed ? 'ĐẠT YÊU CẦU' : 'CHƯA ĐẠT'}
                 </p>
               </div>
             </div>
 
+            {isOverdue && (
+              <div className="p-4 bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 rounded-2xl text-left text-xs space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-2 font-bold text-rose-800 dark:text-rose-300">
+                  <FiInfo className="shrink-0 text-base" />
+                  <span>Thông tin tra cứu đề & Đáp án chính thức</span>
+                </div>
+                <p className="text-rose-700 dark:text-rose-400 leading-relaxed text-[11px]">
+                  Bài kiểm tra này đã kết thúc thời gian mở làm bài trực tuyến và chưa ghi nhận lượt nộp của bạn. Hệ thống đã mở toàn bộ đề thi, lời giải chi tiết và đáp án chuẩn để bạn tự do tra cứu, đối chiếu và ôn tập củng cố kiến thức bất kỳ lúc nào.
+                </p>
+              </div>
+            )}
+
+            {/* Quick Action: Download Paper or Solution if available */}
+            {(paperUrl || solutionUrl) && (
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                {paperUrl && (
+                  <a
+                    href={paperUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 transition shadow-2xs"
+                  >
+                    <FiDownload className="text-sm" /> Tải đề bài gốc (PDF/Tệp đính kèm)
+                  </a>
+                )}
+                {solutionUrl && (
+                  <a
+                    href={solutionUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white transition shadow-2xs"
+                  >
+                    <FiDownload className="text-sm" /> Tải file Lời giải & Đáp án chính thức
+                  </a>
+                )}
+              </div>
+            )}
+
+            {/* Teacher Essay Evaluation Card */}
             {submitResult.essayGrade && (
-              <div className="text-left bg-gradient-to-r from-indigo-50/80 to-purple-50/80 dark:from-indigo-950/40 dark:to-purple-950/40 border border-indigo-200 dark:border-indigo-900/60 rounded-2xl p-4 sm:p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-2">
-                    <FiAward className="text-indigo-600 dark:text-indigo-400 text-lg" /> Đánh giá phần thi Tự luận của Giáo viên
-                  </span>
+              <div className="text-left bg-gradient-to-br from-indigo-50/90 via-purple-50/60 to-white dark:from-indigo-950/50 dark:via-purple-950/30 dark:to-slate-900 border border-indigo-200 dark:border-indigo-900/60 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-100 dark:border-indigo-900/50 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-xs">
+                      ✍️
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-2">
+                        Kết quả & Đánh giá Tự luận của Giáo viên
+                      </h3>
+                      <p className="text-[11px] text-indigo-700 dark:text-indigo-400">
+                        {submitResult.essayGrade.graderName ? `Giáo viên chấm: ${submitResult.essayGrade.graderName}` : 'Giáo viên bộ môn'}
+                        {submitResult.essayGrade.gradedAt && (
+                          <span className="ml-2 font-normal text-slate-500">
+                            • Chấm lúc: {new Date(submitResult.essayGrade.gradedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
                   {typeof submitResult.essayGrade.score === 'number' && (
-                    <span className="px-3 py-1 rounded-full text-xs font-black bg-indigo-600 text-white shadow-xs">
-                      Tự luận: {submitResult.essayGrade.score} đ
-                    </span>
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">Điểm tự luận</span>
+                      <span className="px-3.5 py-1 rounded-xl text-sm font-black bg-indigo-600 text-white shadow-xs inline-block">
+                        {submitResult.essayGrade.score} đ
+                      </span>
+                    </div>
                   )}
                 </div>
+
                 {submitResult.essayGrade.feedback && (
-                  <div className="text-xs text-indigo-950 dark:text-indigo-200 space-y-1">
-                    <span className="font-bold text-[10px] uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
-                      Nhận xét tổng quát:
+                  <div className="text-xs text-indigo-950 dark:text-indigo-200 space-y-1.5">
+                    <span className="font-bold text-[10px] uppercase tracking-wider text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                      💬 Nhận xét tổng quát toàn bài thi:
                     </span>
-                    <div className="p-3 bg-white/90 dark:bg-slate-900/90 rounded-xl border border-indigo-100 dark:border-indigo-900 text-slate-800 dark:text-slate-100 font-medium">
+                    <div className="p-4 bg-white/95 dark:bg-slate-900/95 rounded-2xl border border-indigo-100 dark:border-indigo-900 text-slate-800 dark:text-slate-100 font-medium leading-relaxed shadow-2xs">
                       <RichMathText value={submitResult.essayGrade.feedback} />
                     </div>
                   </div>
                 )}
+
                 {Array.isArray(submitResult.essayGrade.attachments) && submitResult.essayGrade.attachments.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {submitResult.essayGrade.attachments.map((att, aIdx) => (
-                      <a
-                        key={att.assetId || aIdx}
-                        href={att.url || `/api/assignments/submission-assets/${att.assetId}/access`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 shadow-xs transition-colors"
-                      >
-                        📎 {att.name || `Tệp đính kèm ${aIdx + 1}`}
-                      </a>
-                    ))}
+                  <div className="space-y-2 pt-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                      📎 Tệp / Ảnh sửa bài giáo viên gửi kèm ({submitResult.essayGrade.attachments.length}):
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {submitResult.essayGrade.attachments.map((att, aIdx) => {
+                        const url = att.url || `/api/assignments/submission-assets/${att.assetId}/access`;
+                        const isImg = (att.name || '').match(/\.(jpe?g|png|webp|gif)$/i) || att.assetKind === 'image' || url.match(/\.(jpe?g|png|webp|gif)/i);
+                        return (
+                          <a
+                            key={att.assetId || aIdx}
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="group flex items-center gap-3 p-2.5 rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 hover:border-indigo-400 hover:shadow-md transition shadow-2xs"
+                          >
+                            {isImg ? (
+                              <img
+                                src={url}
+                                alt={att.name || 'Ảnh sửa bài'}
+                                className="w-12 h-12 rounded-xl object-cover border border-slate-100 dark:border-slate-800 shrink-0 group-hover:scale-105 transition-transform"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 flex items-center justify-center text-xl shrink-0">
+                                📄
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1 text-left">
+                              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 transition-colors">
+                                {att.name || `Tệp đính kèm ${aIdx + 1}`}
+                              </p>
+                              <p className="text-[10px] text-indigo-500 font-medium">Bấm để mở / tải về ↗</p>
+                            </div>
+                          </a>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {!submitResult.essayGrade && hasEssayQuestions && !isOverdue && (
+              <div className="text-left bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-4 space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-300 text-xs">
+                  <span>⏳ Phần thi tự luận đang chờ Giáo viên chấm điểm</span>
+                </div>
+                <p className="text-amber-700 dark:text-amber-400 text-[11px] leading-relaxed">
+                  Điểm số hiển thị phía trên là điểm phần câu hỏi trắc nghiệm khách quan. Sau khi giáo viên hoàn tất chấm bài tự luận, nhận xét chi tiết và tệp sửa bài sẽ được cập nhật đầy đủ tại đây!
+                </p>
               </div>
             )}
 
@@ -702,8 +866,17 @@ export default function QuizPlayerPage() {
           {showAnswers && (
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 shadow-sm">
               <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center gap-2">
-                <FiCheckCircle className="text-emerald-500" />
-                Đối chiếu đáp án & Lời giải chi tiết
+                {isOverdue ? (
+                  <>
+                    <FiBookOpen className="text-rose-500" />
+                    Tra cứu Đề thi, Đáp án & Lời giải chi tiết
+                  </>
+                ) : (
+                  <>
+                    <FiCheckCircle className="text-emerald-500" />
+                    Đối chiếu đáp án & Lời giải chi tiết
+                  </>
+                )}
               </h2>
 
               <div className="space-y-6">
@@ -719,7 +892,11 @@ export default function QuizPlayerPage() {
                   const manualGrade = isEssayQuestion(q.question);
                   const essayAnswer = manualGrade ? essayAnswerFor(answers, q.id) : null;
                   const correctAns = reviewItem?.correctAnswer || q.question.correctAnswer || q.question.correctAnswerKey;
-                  const isCorrect = manualGrade ? null : (reviewItem && reviewItem.isCorrect !== undefined ? reviewItem.isCorrect : Boolean(studentAns && correctAns && studentAns === correctAns));
+                  const isCorrect = isOverdue
+                    ? null
+                    : manualGrade
+                    ? null
+                    : (reviewItem && reviewItem.isCorrect !== undefined ? reviewItem.isCorrect : Boolean(studentAns && correctAns && studentAns === correctAns));
                   const explanation = reviewItem?.explanation || q.question.explanation;
 
                   // Resolve student essay content & attachments from all available sources
@@ -747,7 +924,9 @@ export default function QuizPlayerPage() {
                     <div
                       key={q.id}
                       className={`p-5 rounded-2xl border transition-all ${
-                        manualGrade
+                        isOverdue
+                          ? 'border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40'
+                          : manualGrade
                           ? isEssayGraded
                             ? 'border-indigo-200 dark:border-indigo-950/60 bg-indigo-50/15 dark:bg-indigo-950/10'
                             : 'border-amber-200 dark:border-amber-950/60 bg-amber-50/20 dark:bg-amber-950/10'
@@ -760,7 +939,17 @@ export default function QuizPlayerPage() {
                         <span className="font-bold text-xs text-slate-500">
                           Câu {idx + 1}
                         </span>
-                        {manualGrade ? (
+                        {isOverdue ? (
+                          manualGrade ? (
+                            <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                              [Tự luận] Chưa nộp bài ({q.points || 1} đ)
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                              Đáp án chuẩn: {correctAns || '—'} (+{q.points || 1} đ)
+                            </span>
+                          )
+                        ) : manualGrade ? (
                           isEssayGraded ? (
                             <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
                               Đã chấm: {earnedEssayPoints}/{q.points || reviewItem?.points || 1} đ
@@ -785,7 +974,14 @@ export default function QuizPlayerPage() {
                         <RichMathText value={q.question.questionText} />
                       </div>
 
-                      {manualGrade && (
+                      {manualGrade && isOverdue && (
+                        <div className="mb-4 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-800/50 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                          <FiInfo className="text-base text-slate-500 shrink-0" />
+                          <span>Câu hỏi tự luận: Chưa ghi nhận bài làm trực tuyến của bạn. Bạn hãy đối chiếu hướng dẫn giải chi tiết bên dưới nhé.</span>
+                        </div>
+                      )}
+
+                      {manualGrade && !isOverdue && (
                         <div className="mb-4 space-y-3 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white/70 dark:bg-slate-950/40 p-4">
                           <div>
                             <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
@@ -836,12 +1032,12 @@ export default function QuizPlayerPage() {
                       )}
 
                       {/* Display teacher feedback & correction files if graded */}
-                      {manualGrade && isEssayGraded && (
+                      {manualGrade && !isOverdue && isEssayGraded && (
                         <div className="space-y-3 mb-4">
                           {essayFeedback && (
                             <div className="p-4 rounded-2xl bg-purple-50/80 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/60 text-xs text-purple-950 dark:text-purple-200 space-y-1.5 shadow-xs">
                               <span className="font-bold uppercase tracking-wider text-[10px] text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
-                                ✍️ Lời nhận xét & Chữa bài của giáo viên:
+                                ✍️ Lời nhận xét & Chữa câu này của giáo viên:
                               </span>
                               <div className="text-sm text-purple-900 dark:text-purple-100 font-normal">
                                 <RichMathText value={essayFeedback} />
@@ -854,7 +1050,7 @@ export default function QuizPlayerPage() {
                               <span className="text-[10px] font-bold uppercase tracking-wide text-purple-700 dark:text-purple-300 flex items-center gap-1">
                                 📎 Tệp / Ảnh sửa bài của giáo viên ({teacherCorrectionAttachments.length}):
                               </span>
-                              <div className="flex flex-wrap gap-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 {teacherCorrectionAttachments.map((att, aIdx) => {
                                   const url = att.url || `/api/assignments/submission-assets/${att.assetId}/access`;
                                   const isImg = (att.name || '').match(/\.(jpe?g|png|webp|gif)$/i) || att.assetKind === 'image' || url.match(/\.(jpe?g|png|webp|gif)/i);
@@ -864,9 +1060,22 @@ export default function QuizPlayerPage() {
                                       href={url}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800 bg-white dark:bg-slate-900 text-xs font-semibold text-purple-700 dark:text-purple-300 hover:bg-purple-100/50 transition-colors shadow-xs"
+                                      className="group relative flex items-center gap-2.5 rounded-xl border border-purple-200 dark:border-purple-800 bg-white dark:bg-slate-900 p-2 text-xs font-semibold text-purple-700 hover:border-purple-400 dark:hover:border-purple-500 transition-all shadow-xs"
                                     >
-                                      {isImg ? '🖼️' : '📄'} {att.name || `Tệp sửa bài ${aIdx + 1}`}
+                                      {isImg ? (
+                                        <img
+                                          src={url}
+                                          alt={att.name || 'Ảnh sửa bài'}
+                                          className="w-12 h-12 object-cover rounded-lg border border-purple-100 dark:border-purple-900"
+                                          loading="lazy"
+                                        />
+                                      ) : (
+                                        <span className="w-12 h-12 flex items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-950 text-purple-600 text-lg">📄</span>
+                                      )}
+                                      <div className="pr-2 text-left min-w-0 flex-1">
+                                        <p className="truncate font-medium text-slate-700 dark:text-slate-200">{att.name || `Tệp sửa bài ${aIdx + 1}`}</p>
+                                        <p className="text-[10px] text-purple-500 group-hover:underline">Mở / Tải tệp</p>
+                                      </div>
                                     </a>
                                   );
                                 })}
@@ -888,12 +1097,14 @@ export default function QuizPlayerPage() {
                                 className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
                                   isActualCorrect
                                     ? 'border-emerald-500 bg-emerald-100/60 dark:bg-emerald-950/60 font-bold text-emerald-900 dark:text-emerald-200'
-                                    : isChosen
+                                    : !isOverdue && isChosen
                                     ? 'border-red-400 bg-red-100/60 dark:bg-red-950/60 text-red-900 dark:text-red-200 line-through'
                                     : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
                                 }`}
                               >
-                                <span className="font-bold">{opt.key}.</span>
+                                <span className={`font-bold ${isActualCorrect ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
+                                  {isActualCorrect ? '✓ ' : ''}{opt.key}.
+                                </span>
                                 <RichMathText value={opt.text} />
                               </div>
                             );

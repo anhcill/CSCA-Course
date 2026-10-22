@@ -357,7 +357,7 @@ export default function ClassroomPage() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-[calc(100vh-72px)] bg-[#f6f9fd] dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans transition-colors duration-200">
+    <div className={`flex flex-col lg:flex-row ${classId ? "min-h-[calc(100vh-140px)] rounded-3xl border border-white/80 bg-white/92 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md" : "min-h-[calc(100vh-72px)] bg-[#f6f9fd] dark:bg-slate-950"} text-slate-900 dark:text-slate-100 overflow-hidden font-sans transition-colors duration-200`}>
       {/* Left / Main Classroom Media Area */}
       <div className="flex-1 flex flex-col h-full overflow-y-auto">
         {/* Course 100% Completion Celebration Banner */}
@@ -368,14 +368,14 @@ export default function ClassroomPage() {
         )}
 
         {/* Top Header Bar */}
-        <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+        <div className="bg-white/90 dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-4">
             <Link
               to={`/lms/courses/${courseId}/classes/${classId}`}
               className="text-slate-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-sky-400 text-xs font-semibold transition flex items-center gap-1"
             >
               <span>←</span>
-              <span>Chi Tiết Khóa</span>
+              <span>Tổng quan lớp</span>
             </Link>
             <div className="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 hidden sm:block"></div>
             <h1 className="text-base md:text-lg font-bold text-slate-900 dark:text-white truncate max-w-[220px] md:max-w-md">
@@ -400,8 +400,9 @@ export default function ClassroomPage() {
         </div>
 
         {classId && (
-          <div className="border-b border-blue-100 bg-blue-50 px-6 py-3 text-sm text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-sky-200">
-            Buổi học của lớp được sắp theo chương. <Link to={`/lms/courses/${courseId}/classes/${classId}`} className="font-bold underline underline-offset-2">Xem các chương và buổi học →</Link>
+          <div className="border-b border-sky-100 bg-sky-50/70 px-6 py-2.5 text-xs text-[#244866] flex items-center justify-between">
+            <span>Buổi học trực tuyến của lớp được tổ chức theo chương và lịch học.</span>
+            <Link to={`/lms/courses/${courseId}/classes/${classId}`} className="font-bold text-sky-700 underline underline-offset-2 hover:text-sky-900">Xem lộ trình & buổi học →</Link>
           </div>
         )}
 

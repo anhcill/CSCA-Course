@@ -35,6 +35,9 @@ export default function TeacherQuizGradingModal({
   student,
   essayMaxScore = 3,
   onGraded,
+  onPrevious,
+  onNext,
+  positionLabel = "",
 }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -103,6 +106,10 @@ export default function TeacherQuizGradingModal({
     }))
     .filter((item) => item.questionType === "essay" || item.questionType === "translation"), [attemptDetail]);
 
+  useEffect(() => {
+    if (!loading && attemptDetail && essayQuestions.length === 0) setActiveTab("mc");
+  }, [attemptDetail, essayQuestions.length, loading]);
+
   const normalizedEssay = useMemo(() => normalizeEssayResponse(essay, essayQuestions), [essay, essayQuestions]);
   const attachments = normalizedEssay.attachments;
   const essayGroups = useMemo(() => essayQuestions.map((question) => ({
@@ -134,6 +141,13 @@ export default function TeacherQuizGradingModal({
   const mcCorrectCount = useMemo(() => mcOnlyReview.filter((r) => r.isCorrect).length, [mcOnlyReview]);
   const mcUnansweredCount = useMemo(() => mcOnlyReview.filter((r) => !r.studentAnswer || (Array.isArray(r.studentAnswer) && r.studentAnswer.length === 0)).length, [mcOnlyReview]);
   const mcIncorrectCount = mcOnlyReview.length - mcCorrectCount - mcUnansweredCount;
+  const questionEssayMaxScore = useMemo(
+    () => essayQuestions.reduce((sum, question) => sum + (Number(question.points) || 0), 0),
+    [essayQuestions],
+  );
+  const effectiveEssayMaxScore = questionEssayMaxScore > 0
+    ? Math.round(questionEssayMaxScore * 100) / 100
+    : Number(essayMaxScore || 0);
 
   // Answer keys (A, B, C, D)
   const answerKeys = useMemo(() => {
@@ -148,7 +162,7 @@ export default function TeacherQuizGradingModal({
     return keys.size ? [...keys].sort() : ["A", "B", "C", "D"];
   }, [mcOnlyReview]);
 
-  const totalPossibleScore = attemptDetail?.computed?.maxScore || student?.maxScore || (mcMaxScore + Number(essayMaxScore || 0));
+  const totalPossibleScore = attemptDetail?.computed?.maxScore || student?.maxScore || (mcMaxScore + effectiveEssayMaxScore);
   const projectedTotalScore = Math.min(totalPossibleScore, Math.round((mcScore + Number(essayScore || 0)) * 100) / 100);
 
   // Handle per-question score update
@@ -264,15 +278,14 @@ export default function TeacherQuizGradingModal({
     toast.success("Đã gỡ tệp đính kèm bài chữa");
   };
 
-  const handleSave = async (e) => {
-    e.preventDefault();
+  const saveGrade = async ({ moveNext = false } = {}) => {
     const numericScore = Number(essayScore);
     if (isNaN(numericScore) || numericScore < 0) {
       toast.error("Điểm tự luận phải là số lớn hơn hoặc bằng 0!");
       return;
     }
-    if (numericScore > Number(essayMaxScore || 10)) {
-      toast.error(`Điểm tự luận không được vượt quá ${essayMaxScore} điểm!`);
+    if (numericScore > effectiveEssayMaxScore) {
+      toast.error(`Điểm tự luận không được vượt quá ${effectiveEssayMaxScore} điểm!`);
       return;
     }
 
@@ -292,7 +305,8 @@ export default function TeacherQuizGradingModal({
             essayGrade: res.data.essayGrade,
           });
         }
-        onClose();
+        if (moveNext && onNext) onNext();
+        else onClose();
       } else {
         throw new Error(res?.message || "Không thể lưu điểm");
       }
@@ -303,25 +317,31 @@ export default function TeacherQuizGradingModal({
     }
   };
 
+  const handleSave = (event) => {
+    event.preventDefault();
+    saveGrade();
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-fadeIn">
-      <div className="relative flex flex-col w-full max-w-6xl h-[92vh] max-h-[900px] rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/65 backdrop-blur-md animate-fadeIn">
+      <div className="relative flex flex-col w-full max-w-6xl h-[92vh] max-h-[900px] rounded-3xl border border-white/80 bg-white/95 shadow-[0_24px_70px_rgba(32,78,120,0.25)] backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-900/95 overflow-hidden">
         {/* HEADER */}
-        <header className="flex shrink-0 items-center justify-between border-b border-slate-200 dark:border-slate-800 px-5 py-3.5 bg-slate-50/80 dark:bg-slate-950/60">
+        <header className="flex shrink-0 items-center justify-between border-b border-sky-100/70 bg-gradient-to-r from-sky-50/70 via-white to-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-600/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 shadow-2xs dark:bg-blue-950/60 dark:text-sky-300">
               <FiFileText className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-black text-slate-900 dark:text-white">
+                <h2 className="text-base font-black text-[#102f63] dark:text-white">
                   Chấm bài thi & Bài làm tự luận
                 </h2>
-                <span className="rounded-full bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 font-bold px-2 py-0.5 text-[10px]">
+                <span className="rounded-full bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 font-bold px-2.5 py-0.5 text-[10px]">
                   Lượt {student?.attemptNumber || 1}
                 </span>
+                {positionLabel && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">Bài {positionLabel}</span>}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
                 <span className="font-semibold text-slate-700 dark:text-slate-300">{student?.fullName}</span>
@@ -341,12 +361,16 @@ export default function TeacherQuizGradingModal({
           </div>
 
           <div className="flex items-center gap-2">
+            <div className="hidden items-center gap-1 sm:flex">
+              <button type="button" onClick={onPrevious} disabled={!onPrevious || saving} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-black text-slate-600 hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" title="Bài trước">←</button>
+              <button type="button" onClick={onNext} disabled={!onNext || saving} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-black text-slate-600 hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" title="Bài tiếp theo">→</button>
+            </div>
             {/* Tab switchers */}
-            <div className="flex rounded-xl bg-slate-200/70 dark:bg-slate-800/80 p-1">
+            <div className="flex rounded-2xl border border-slate-200/80 bg-slate-100/80 dark:bg-slate-800/80 p-1">
               <button
                 type="button"
                 onClick={() => setActiveTab("essay")}
-                className={`rounded-lg px-3 py-1.5 text-xs font-black transition flex items-center gap-1.5 ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-black transition flex items-center gap-1.5 ${
                   activeTab === "essay"
                     ? "bg-white text-violet-700 shadow-xs dark:bg-slate-900 dark:text-violet-300"
                     : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
@@ -360,7 +384,7 @@ export default function TeacherQuizGradingModal({
               <button
                 type="button"
                 onClick={() => setActiveTab("mc")}
-                className={`rounded-lg px-3 py-1.5 text-xs font-black transition flex items-center gap-1.5 ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-black transition flex items-center gap-1.5 ${
                   activeTab === "mc"
                     ? "bg-white text-violet-700 shadow-xs dark:bg-slate-900 dark:text-violet-300"
                     : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
@@ -376,7 +400,7 @@ export default function TeacherQuizGradingModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
+              className="rounded-2xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
               title="Đóng modal"
             >
               <FiX className="h-5 w-5" />
@@ -772,7 +796,7 @@ export default function TeacherQuizGradingModal({
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-xs font-black text-slate-800 dark:text-slate-200">
-                        Tổng điểm phần Tự luận <span className="text-rose-500">*</span> (Tối đa {essayMaxScore}đ)
+                        Tổng điểm phần Tự luận <span className="text-rose-500">*</span> (Tối đa {effectiveEssayMaxScore}đ)
                       </label>
                       <span className="text-[10px] text-slate-400">
                         (Tự động cộng từ các câu)
@@ -782,7 +806,7 @@ export default function TeacherQuizGradingModal({
                       <input
                         type="number"
                         min="0"
-                        max={essayMaxScore}
+                        max={effectiveEssayMaxScore}
                         step="0.25"
                         value={essayScore}
                         onChange={(e) => setEssayScore(e.target.value)}
@@ -791,14 +815,14 @@ export default function TeacherQuizGradingModal({
                         required
                       />
                       <span className="font-bold text-xs text-slate-400 shrink-0">
-                        / {essayMaxScore} đ
+                        / {effectiveEssayMaxScore} đ
                       </span>
                     </div>
 
                     {/* Quick chips */}
                     <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                       <span className="text-[10px] font-semibold text-slate-400">Chọn nhanh:</span>
-                      {[0, 1, 1.5, 2, 2.5, Number(essayMaxScore)].filter((s, i, a) => s <= essayMaxScore && a.indexOf(s) === i).map((pt) => (
+                      {[0, 1, 1.5, 2, 2.5, effectiveEssayMaxScore].filter((s, i, a) => s <= effectiveEssayMaxScore && a.indexOf(s) === i).map((pt) => (
                         <button
                           key={pt}
                           type="button"
@@ -863,14 +887,24 @@ export default function TeacherQuizGradingModal({
                   )}
 
                   {/* Submit Button */}
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-violet-600/30 hover:from-violet-500 hover:to-indigo-500 active:scale-[0.99] transition disabled:opacity-60"
-                  >
-                    <FiCheckCircle className="h-4 w-4" />
-                    {saving ? "Đang lưu điểm..." : "Lưu điểm & Công bố kết quả"}
-                  </button>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-sky-700 px-4 py-3 text-sm font-black text-white shadow-lg shadow-sky-700/25 transition hover:bg-sky-600 active:scale-[0.99] disabled:opacity-60"
+                    >
+                      <FiCheckCircle className="h-4 w-4" />
+                      {saving ? "Đang lưu điểm..." : "Lưu & đóng"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving || !onNext}
+                      onClick={() => saveGrade({ moveNext: true })}
+                      className="flex items-center justify-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-black text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-300"
+                    >
+                      Lưu & chấm bài tiếp →
+                    </button>
+                  </div>
                 </form>
 
                 <p className="text-[11px] text-slate-400 text-center">

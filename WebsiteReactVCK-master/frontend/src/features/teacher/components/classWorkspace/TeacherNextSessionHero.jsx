@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { CalendarDays, CheckCircle2, Clock, Play, Plus, Radio } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock, Play, Plus, Radio, Sparkles } from "lucide-react";
 
 const formatDateTime = (value) => {
   if (!value) return "Chưa có lịch";
@@ -23,51 +23,83 @@ export default function TeacherNextSessionHero({
   const isLive = String(nextSession?.status || "").toLowerCase() === "live";
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 p-3 text-white shadow-sm sm:px-4 sm:py-3">
-      <div className="flex flex-col justify-between gap-2.5 lg:flex-row lg:items-center">
-        <div className="min-w-0 max-w-3xl">
+    <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition">
+      {/* Background ambient decorative glows */}
+      <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl" />
+
+      <div className="relative flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+        <div className="min-w-0 max-w-3xl space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-[10px] sm:text-[11px] font-black uppercase tracking-wider backdrop-blur">
-              <Radio className="h-3 w-3" /> Buổi dạy tiếp theo
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs">
+              <Radio className="h-3 w-3 text-sky-600" /> Buổi dạy tiếp theo
             </span>
-            {isLive && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold animate-pulse">Đang diễn ra</span>}
+            {isLive ? (
+              <span className="rounded-full bg-rose-50 border border-rose-200 px-2.5 py-0.5 text-xs font-bold text-rose-700 animate-pulse">
+                Đang diễn ra
+              </span>
+            ) : (
+              <span className="rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-800">
+                <Sparkles className="w-3 h-3 text-amber-500 inline mr-1" /> Sắp diễn ra
+              </span>
+            )}
           </div>
+
           {nextSession ? (
             <>
-              <h1 className="mt-1 text-base sm:text-lg font-black tracking-tight text-white leading-tight truncate">{nextSession.title}</h1>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-blue-100">
-                <span className="inline-flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5 text-blue-200" /> {formatDateTime(nextSession.start_time || nextSession.startTime)}
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63] leading-tight truncate">
+                {nextSession.title}
+              </h1>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm font-semibold text-[#244866]">
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="h-4 w-4 text-sky-600 shrink-0" />
+                  {formatDateTime(nextSession.start_time || nextSession.startTime)}
                 </span>
-                <span className="text-blue-300/80">•</span>
-                <span>Lớp: {classTitle || "Lớp học"}</span>
+                <span className="text-slate-300">•</span>
+                <span>Lớp: <strong className="text-[#102f63] font-bold">{classTitle || "Lớp học"}</strong></span>
               </div>
             </>
           ) : (
             <>
-              <h1 className="mt-1 text-base sm:text-lg font-black text-white">Chưa có buổi dạy sắp tới</h1>
-              <p className="mt-0.5 text-xs text-blue-100">Thiết lập lịch cố định hoặc thêm buổi bù để học viên thấy lịch ngay.</p>
+              <h1 className="text-xl sm:text-2xl font-black text-[#102f63]">Chưa có buổi dạy sắp tới</h1>
+              <p className="text-xs text-slate-500">Thiết lập lịch cố định hoặc thêm buổi bù để học viên thấy lịch ngay.</p>
             </>
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {nextSession ? (
             <>
-              <button type="button" onClick={() => onOpenSession(nextSession)} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs font-black text-blue-700 shadow-xs transition hover:bg-blue-50">
-                <Play className="h-3.5 w-3.5" /> Mở không gian buổi học
+              <button
+                type="button"
+                onClick={() => onOpenSession(nextSession)}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition hover:brightness-105 active:scale-95"
+              >
+                <Play className="h-3.5 w-3.5 fill-current" /> Mở không gian buổi học
               </button>
-              <button type="button" onClick={() => onOpenAttendance(nextSession)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Điểm danh
+              <button
+                type="button"
+                onClick={() => onOpenAttendance(nextSession)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" /> Điểm danh
               </button>
             </>
           ) : (
-            <button type="button" onClick={onCreateSession} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs font-black text-blue-700 shadow-xs transition hover:bg-blue-50">
+            <button
+              type="button"
+              onClick={onCreateSession}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+            >
               <Plus className="h-3.5 w-3.5" /> Tạo lịch buổi học
             </button>
           )}
-          <button type="button" onClick={onOpenSchedule} className="inline-flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20">
-            <CalendarDays className="h-3.5 w-3.5" /> Lịch của lớp
+          <button
+            type="button"
+            onClick={onOpenSchedule}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+          >
+            <CalendarDays className="h-3.5 w-3.5 text-blue-600" /> Lịch của lớp
           </button>
         </div>
       </div>

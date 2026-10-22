@@ -110,9 +110,36 @@ const Profile = () => {
             </div>
             <div className="text-center md:text-left">
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-200">我的留学之路</p>
-              <h1 className="mt-1 text-2xl font-black sm:text-3xl">{displayName}</h1>
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-2 md:justify-start">
+                <h1 className="text-2xl font-black sm:text-3xl">{displayName}</h1>
+                {(authUser.studentCode || authUser.teacherCode || authUser.externalStudentId) && (
+                  <span className="rounded-lg border border-white/30 bg-white/20 px-2.5 py-0.5 font-mono text-xs font-bold tracking-wide backdrop-blur">
+                    {authUser.studentCode || authUser.teacherCode || authUser.externalStudentId}
+                  </span>
+                )}
+              </div>
               <p className="mt-1 text-xs text-teal-100 sm:text-sm">Hành trình học tập và kế hoạch du học Trung Quốc của bạn</p>
               <div className="mt-3 flex flex-wrap justify-center gap-1.5 md:justify-start">
+                {authUser.classCode && (
+                  <span className="rounded-full border border-cyan-200/50 bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur">
+                    Lớp: {authUser.classCode}
+                  </span>
+                )}
+                {authUser.phone && (
+                  <span className="rounded-full border border-cyan-200/50 bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">
+                    SĐT: {authUser.phone}
+                  </span>
+                )}
+                {authUser.position && (
+                  <span className="rounded-full border border-cyan-200/50 bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">
+                    {authUser.position}
+                  </span>
+                )}
+                {authUser.department && (
+                  <span className="rounded-full border border-cyan-200/50 bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">
+                    {authUser.department}
+                  </span>
+                )}
                 {heroChips.length ? heroChips.map((chip) => <span key={chip} className="rounded-full border border-cyan-200/50 bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">{chip}</span>) : <span className="rounded-full border border-white/30 px-3 py-1 text-xs">Hoàn thiện kế hoạch du học để bắt đầu hành trình</span>}
               </div>
               <p className="mt-2.5 text-xs text-teal-100/90">Thành viên từ {authUser.createdAt ? new Date(authUser.createdAt).toLocaleDateString('vi-VN') : '—'} · {authUser.emailVerified ? 'Email đã xác minh' : 'Email chưa xác minh'}</p>

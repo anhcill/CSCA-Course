@@ -21,7 +21,7 @@ import {
   updateAdminSection,
   updateCourseStatus,
   updateLessonLearningLink,
-  uploadImageToR2,
+  uploadImageToCloudinary,
 } from "../../api/lmsClient";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
 import { useAuthContext } from "../../../context/AuthContext";
@@ -79,7 +79,7 @@ export default function AdminCurriculumPage() {
     }
     try {
       setUploadingThumbnail(true);
-      const res = await uploadImageToR2(file, { folder: "courses" });
+      const res = await uploadImageToCloudinary(file, { folder: "csca/courses" });
       setCourseForm((prev) => ({ ...prev, thumbnailUrl: res.publicUrl }));
       toast.success("Tải ảnh bìa thành công!");
     } catch (err) {

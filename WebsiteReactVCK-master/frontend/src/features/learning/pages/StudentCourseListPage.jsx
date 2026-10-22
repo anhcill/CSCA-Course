@@ -1,61 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Compass, GraduationCap, RefreshCw, Search, ShieldCheck, Sparkles, Users } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  CheckCircle2,
+  Compass,
+  GraduationCap,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import { fetchMyEnrolledCourses } from "../../api/lmsClient";
+import { getClassCoverImage } from "../../../utils/classWallpapers";
 
-const COURSE_THEMES = [
-  {
-    // Blue / Indigo / Sky
-    headerBg: "bg-gradient-to-br from-blue-600 via-indigo-600 to-sky-500",
-    patternGlow: "bg-sky-400/20",
-    tagBg: "bg-white/20 text-white backdrop-blur-md border border-white/25",
-    barColor: "bg-gradient-to-r from-blue-500 via-indigo-500 to-sky-400",
-    btnBg: "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-500/20",
-    badgeActive: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-sky-300 ring-1 ring-blue-200/50 dark:ring-blue-800/50",
-    borderHover: "hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-blue-500/10",
-  },
-  {
-    // Purple / Fuchsia / Pink
-    headerBg: "bg-gradient-to-br from-purple-600 via-fuchsia-600 to-pink-500",
-    patternGlow: "bg-pink-400/20",
-    tagBg: "bg-white/20 text-white backdrop-blur-md border border-white/25",
-    barColor: "bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-400",
-    btnBg: "bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 text-white shadow-purple-500/20",
-    badgeActive: "bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 ring-1 ring-purple-200/50 dark:ring-purple-800/50",
-    borderHover: "hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-purple-500/10",
-  },
-  {
-    // Emerald / Teal / Cyan
-    headerBg: "bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-500",
-    patternGlow: "bg-emerald-400/20",
-    tagBg: "bg-white/20 text-white backdrop-blur-md border border-white/25",
-    barColor: "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-400",
-    btnBg: "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-500/20",
-    badgeActive: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 ring-1 ring-emerald-200/50 dark:ring-emerald-800/50",
-    borderHover: "hover:border-emerald-400 dark:hover:border-emerald-500 hover:shadow-emerald-500/10",
-  },
-  {
-    // Amber / Orange / Rose
-    headerBg: "bg-gradient-to-br from-amber-500 via-orange-600 to-rose-500",
-    patternGlow: "bg-amber-400/20",
-    tagBg: "bg-white/20 text-white backdrop-blur-md border border-white/25",
-    barColor: "bg-gradient-to-r from-amber-500 via-orange-500 to-rose-400",
-    btnBg: "bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-orange-500/20",
-    badgeActive: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 ring-1 ring-amber-200/50 dark:ring-amber-800/50",
-    borderHover: "hover:border-amber-400 dark:hover:border-amber-500 hover:shadow-amber-500/10",
-  },
-  {
-    // Rose / Pink / Purple
-    headerBg: "bg-gradient-to-br from-rose-600 via-pink-600 to-purple-600",
-    patternGlow: "bg-rose-400/20",
-    tagBg: "bg-white/20 text-white backdrop-blur-md border border-white/25",
-    barColor: "bg-gradient-to-r from-rose-500 via-pink-500 to-purple-400",
-    btnBg: "bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white shadow-rose-500/20",
-    badgeActive: "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 ring-1 ring-rose-200/50 dark:ring-rose-800/50",
-    borderHover: "hover:border-rose-400 dark:hover:border-rose-500 hover:shadow-rose-500/10",
-  },
+const TONES = [
+  { bar: "bg-sky-500", badge: "bg-sky-50 text-sky-700", button: "bg-sky-600 hover:bg-sky-700" },
+  { bar: "bg-emerald-500", badge: "bg-emerald-50 text-emerald-700", button: "bg-emerald-600 hover:bg-emerald-700" },
+  { bar: "bg-amber-500", badge: "bg-amber-50 text-amber-700", button: "bg-amber-500 hover:bg-amber-600" },
+  { bar: "bg-rose-500", badge: "bg-rose-50 text-rose-700", button: "bg-rose-500 hover:bg-rose-600" },
 ];
 
 const getProgress = (course) => {
@@ -87,265 +53,169 @@ export default function StudentCourseListPage() {
     setError("");
     try {
       const response = await fetchMyEnrolledCourses();
-      if (!response?.success) throw new Error(response?.message || "Không thể tải khóa học của bạn.");
+      if (!response?.success) throw new Error(response?.message || "Không thể tải lớp học của bạn.");
       setCourses(Array.isArray(response.data) ? response.data : []);
     } catch (requestError) {
       setCourses([]);
-      setError(requestError.message || "Không thể tải khóa học của bạn.");
+      setError(requestError.message || "Không thể tải lớp học của bạn.");
     } finally {
       setLoading(false);
     }
   }, []);
 
+  useEffect(() => { loadCourses(); }, [loadCourses]);
   useEffect(() => {
-    loadCourses();
-  }, [loadCourses]);
-
-  useEffect(() => {
-    const requestedSearch = new URLSearchParams(location.search).get("search") || "";
-    setSearch(requestedSearch);
+    setSearch(new URLSearchParams(location.search).get("search") || "");
   }, [location.search]);
 
   const visibleCourses = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase();
     return courses.filter((course) => {
       const progress = getProgress(course);
-      const matchesFilter = filter === "all" || (filter === "progress" && progress > 0 && progress < 100) || (filter === "completed" && progress === 100);
+      const matchesFilter = filter === "all"
+        || (filter === "progress" && progress > 0 && progress < 100)
+        || (filter === "completed" && progress === 100);
       return matchesFilter && matchesSearch(course, keyword);
     });
   }, [courses, filter, search]);
 
-  if (loading) {
-    return <Loading loading={true} text="Đang tải khóa học..." fullScreen={false} className="min-h-[65vh] py-16" />;
-  }
+  const classCards = useMemo(() => visibleCourses.flatMap((course) => {
+    const classes = Array.isArray(course.classes) ? course.classes : [];
+    return classes.map((liveClass) => ({ course, liveClass }));
+  }), [visibleCourses]);
 
+  const totalClasses = useMemo(() => courses.reduce(
+    (total, course) => total + (Array.isArray(course.classes) ? course.classes.length : 0),
+    0,
+  ), [courses]);
+
+  if (loading) return <Loading loading={true} text="Đang tải lớp học..." fullScreen={false} className="min-h-[65vh] py-16" />;
   if (error) {
-    return (
-      <div className="bg-[#f6f9fd] dark:bg-slate-950 px-4 py-12 sm:px-8">
-        <ErrorState title="Chưa thể tải khóa học" message={error} onRetry={loadCourses} />
-      </div>
-    );
+    return <div className="px-4 py-12 sm:px-8"><ErrorState title="Chưa thể tải lớp học" message={error} onRetry={loadCourses} /></div>;
   }
 
   return (
-    <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 pb-12 pt-6 sm:px-8 lg:px-10 transition-colors duration-200">
-      <div className="mx-auto max-w-[1480px] space-y-4">
-        <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-4 shadow-sm dark:shadow-none sm:px-6">
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-950 dark:text-white">
-              Khóa học của tôi
-            </h1>
-            <div className="relative w-full max-w-xs sm:max-w-sm">
-              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+    <div className="min-h-full px-3 pb-12 pt-3 sm:px-5 lg:px-6">
+      <div className="mx-auto max-w-[1480px]">
+        <section className="relative min-h-[178px] overflow-hidden px-3 py-5 sm:px-5">
+          <div className="relative z-10 max-w-xl">
+            <p className="font-['Dancing_Script',cursive] text-[44px] font-bold leading-none text-[#102f63] sm:text-[52px]">Khóa học</p>
+            <p className="mt-3 text-sm font-semibold italic text-[#244866]">“Học không chỉ để biết, mà để trưởng thành.”</p>
+            <p className="mt-2 font-['Ma_Shan_Zheng',cursive] text-xl text-[#17365f]">学而不止 · 行而致远</p>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-white/80 bg-white/80 p-3 shadow-[0_12px_35px_rgba(49,91,125,0.1)] backdrop-blur-md sm:p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-2">
+              {[
+                ["all", `Tất cả (${totalClasses})`],
+                ["progress", "Đang học"],
+                ["completed", "Đã hoàn thành"],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setFilter(id)}
+                  className={`rounded-xl px-4 py-2 text-xs font-bold transition ${filter === id ? "bg-sky-600 text-white shadow-md shadow-sky-600/20" : "bg-white/80 text-slate-600 hover:bg-sky-50 hover:text-sky-700"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="relative w-full lg:max-w-sm">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                aria-label="Tìm khóa học"
-                placeholder="Tìm tên khóa học..."
-                className="h-10 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 pl-10 pr-4 text-xs sm:text-sm text-slate-700 dark:text-slate-200 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-400 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-blue-500/10"
+                aria-label="Tìm lớp học"
+                placeholder="Tìm lớp, khóa học, giáo viên..."
+                className="h-10 w-full rounded-xl border border-white bg-white/90 pl-10 pr-4 text-xs text-slate-700 shadow-sm outline-none placeholder:text-slate-400 focus:border-sky-300 focus:ring-4 focus:ring-sky-500/10"
               />
             </div>
           </div>
         </section>
 
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="mb-4 mt-5 flex items-end justify-between gap-4 px-1">
           <div>
-            <h2 className="text-lg font-black text-slate-950 dark:text-white">Danh sách khóa học</h2>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{courses.length} khóa học trong tài khoản của bạn.</p>
+            <h1 className="text-lg font-black text-[#102f63]">Các lớp của tôi</h1>
+            <p className="mt-1 text-xs text-[#487291]">Mỗi thẻ là một lớp học bạn đang được xếp.</p>
           </div>
-          <div className="flex w-fit items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1">
-            {[
-              ["all", "Tất cả"],
-              ["progress", "Đang học"],
-              ["completed", "Đã hoàn thành"],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setFilter(id)}
-                className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
-                  filter === id
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <button type="button" onClick={loadCourses} className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 hover:text-sky-900">
+            <RefreshCw className="h-3.5 w-3.5" /> Làm mới
+          </button>
         </div>
 
         {courses.length === 0 ? (
-          <div className="rounded-[22px] border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-14 text-center shadow-sm">
-            <ShieldCheck className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500" />
-            <h2 className="mt-4 text-lg font-black text-slate-900 dark:text-white">Bạn chưa có khóa học nào</h2>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-              Khóa học sẽ tự xuất hiện sau khi bộ phận quản lý xác nhận quyền học và xếp lớp cho bạn.
-            </p>
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-              <Link
-                to="/courses"
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
-              >
-                <Compass className="h-4 w-4" /> Khám phá khóa học
-              </Link>
-              <button
-                type="button"
-                onClick={loadCourses}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-200 transition hover:border-blue-200 dark:hover:border-slate-600 hover:text-blue-700 dark:hover:text-white"
-              >
-                <RefreshCw className="h-3.5 w-3.5" /> Tải lại danh sách
-              </button>
-            </div>
+          <div className="rounded-3xl border border-dashed border-white bg-white/80 px-6 py-14 text-center shadow-sm backdrop-blur">
+            <ShieldCheck className="mx-auto h-10 w-10 text-sky-400" />
+            <h2 className="mt-4 text-lg font-black text-slate-900">Bạn chưa có khóa học nào</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Khóa học sẽ xuất hiện sau khi bộ phận quản lý cấp quyền và xếp lớp cho bạn.</p>
+            <Link to="/courses" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-sky-700">
+              <Compass className="h-4 w-4" /> Khám phá khóa học
+            </Link>
           </div>
-        ) : visibleCourses.length === 0 ? (
-          <div className="rounded-[22px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-14 text-center shadow-sm">
-            <Search className="mx-auto h-8 w-8 text-slate-400 dark:text-slate-500" />
-            <h2 className="mt-4 text-lg font-black text-slate-900 dark:text-white">Không tìm thấy khóa học</h2>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Thử đổi từ khóa hoặc bộ lọc.</p>
+        ) : classCards.length === 0 ? (
+          <div className="rounded-3xl border border-white/80 bg-white/80 px-6 py-14 text-center shadow-sm backdrop-blur">
+            <GraduationCap className="mx-auto h-10 w-10 text-sky-400" />
+            <h2 className="mt-4 text-lg font-black text-slate-900">Chưa có lớp phù hợp</h2>
+            <p className="mt-2 text-sm text-slate-500">Bạn có khóa học nhưng chưa được xếp lớp, hoặc không có lớp khớp bộ lọc hiện tại.</p>
           </div>
         ) : (
-          <section className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {visibleCourses.map((course, index) => {
-              const theme = COURSE_THEMES[index % COURSE_THEMES.length];
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {classCards.map(({ course, liveClass }, index) => {
               const progress = getProgress(course);
               const completed = progress === 100;
-              const hasStarted = progress > 0;
+              const started = progress > 0;
+              const tone = TONES[index % TONES.length];
+              const cover = getClassCoverImage(liveClass || course, course.course_id || course.id);
               const progressTotal = Number(course.progress_total || 0);
               const progressCompleted = Number(course.progress_completed || 0);
-              const progressUnit = course.progress_source === "sessions" ? "buổi học" : "bài học";
-              const classes = Array.isArray(course.classes) ? course.classes : [];
+              const progressUnit = course.progress_source === "sessions" ? "buổi" : "bài";
 
               return (
-                <div
-                  key={course.course_id}
-                  className={`group relative flex flex-col justify-between overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl ${theme.borderHover}`}
+                <Link
+                  key={`${course.course_id}-${liveClass.id}`}
+                  to={`/lms/courses/${course.course_id}/classes/${liveClass.id}`}
+                  className="group overflow-hidden rounded-3xl border border-white/85 bg-white shadow-[0_12px_32px_rgba(45,87,122,0.12)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_rgba(45,87,122,0.2)]"
                 >
-                  <div>
-                    {/* Top Vibrant Header Banner */}
-                    <div className={`relative min-h-[120px] overflow-hidden ${theme.headerBg} p-4 sm:p-5 flex flex-col justify-between`}>
-                      <div className="absolute -right-6 -top-8 h-36 w-36 rounded-full bg-white/15 blur-2xl transition-transform duration-500 group-hover:scale-125" />
-                      <div className={`absolute -left-10 -bottom-10 h-32 w-32 rounded-full ${theme.patternGlow} blur-2xl`} />
-
-                      <div className="relative flex items-center justify-between gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20 text-white shadow-sm backdrop-blur-md transition-transform duration-300 group-hover:scale-110">
-                          <BookOpen className="h-4.5 w-4.5" />
-                        </span>
-                        <span className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wider ${theme.tagBg} shadow-xs`}>
-                          {course.category || "CSCA"}
-                        </span>
-                      </div>
-                      <h3 className="relative mt-3 line-clamp-2 text-base sm:text-lg font-black leading-snug text-white drop-shadow-xs">
-                        {course.title}
-                      </h3>
-                    </div>
-
-                    {/* Card Body */}
-                    <div className="space-y-3 p-4 sm:p-5">
-                      {course.description && (
-                        <p className="line-clamp-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300 sm:text-sm">
-                          {course.description}
-                        </p>
-                      )}
-
-                      <div className="pt-1">
-                        <div className="flex items-center justify-between text-xs font-semibold">
-                          <span className="text-slate-500 dark:text-slate-400">
-                            {progressTotal > 0 ? `${progressCompleted}/${progressTotal} ${progressUnit}` : "Tiến độ học tập"}
-                          </span>
-                          <span className={`font-black ${completed ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-sky-400"}`}>
-                            {progress}%
-                          </span>
-                        </div>
-                        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 ring-1 ring-black/5 dark:ring-white/5">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${completed ? "bg-gradient-to-r from-emerald-500 to-teal-400" : theme.barColor}`}
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-1">
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold ${
-                            completed
-                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 ring-1 ring-emerald-200/60 dark:ring-emerald-800/60"
-                              : hasStarted
-                              ? theme.badgeActive
-                              : "bg-slate-100 text-slate-600 dark:bg-slate-800/80 dark:text-slate-300"
-                          }`}
-                        >
-                          {completed ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                          ) : hasStarted ? (
-                            <Sparkles className="h-3.5 w-3.5 animate-pulse" />
-                          ) : (
-                            <BookOpen className="h-3.5 w-3.5 text-slate-400" />
-                          )}
-                          {completed ? "Đã hoàn thành" : hasStarted ? "Đang học" : "Chưa bắt đầu"}
-                        </span>
-                      </div>
-
-                      <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-1.5 text-xs font-black text-slate-800 dark:text-slate-100">
-                            <Users className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
-                            Lớp của bạn
-                          </span>
-                          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">
-                            {classes.length} lớp
-                          </span>
-                        </div>
-
-                        {classes.length === 0 ? (
-                          <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
-                            Bạn đã có khóa học nhưng chưa được xếp lớp.
-                          </p>
-                        ) : (
-                          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {classes.map((liveClass) => {
-                              const displayTitle = liveClass.title?.startsWith("Lớp")
-                                ? liveClass.title
-                                : `Lớp ${liveClass.title}`;
-                              return (
-                                <Link
-                                  key={liveClass.id}
-                                  to={`/lms/courses/${course.course_id}/classes/${liveClass.id}`}
-                                  className="group/class flex items-center gap-3 py-2.5 first:pt-1 last:pb-0"
-                                >
-                                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover/class:bg-blue-600 group-hover/class:text-white dark:bg-blue-950/60 dark:text-sky-400">
-                                    <GraduationCap className="h-4 w-4" />
-                                  </span>
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-xs font-black text-slate-900 transition group-hover/class:text-blue-600 dark:text-white dark:group-hover/class:text-sky-400">
-                                      {displayTitle}
-                                    </span>
-                                    <span className="mt-0.5 block truncate text-[11px] text-slate-500 dark:text-slate-400">
-                                      GV: {liveClass.instructor_name || "Chưa phân công"}
-                                    </span>
-                                  </span>
-                                  <span className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold ${theme.btnBg}`}>
-                                    Vào lớp <ArrowRight className="h-3 w-3 transition group-hover/class:translate-x-0.5" />
-                                  </span>
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+                  <div className="relative h-40 overflow-hidden bg-sky-100">
+                    <img src={cover} alt={liveClass.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#102f63]/75 via-transparent to-white/5" />
+                    <span className={`absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black shadow-sm ${completed ? "bg-violet-100 text-violet-700" : started ? tone.badge : "bg-white/90 text-slate-600"}`}>
+                      {completed ? <CheckCircle2 className="h-3 w-3" /> : <Sparkles className="h-3 w-3" />}
+                      {completed ? "Đã hoàn thành" : started ? "Đang học" : "Sắp bắt đầu"}
+                    </span>
+                    <div className="absolute inset-x-3 bottom-3">
+                      <p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-white/80">{course.title}</p>
+                      <h2 className="mt-1 line-clamp-1 text-lg font-black text-white drop-shadow">{liveClass.title}</h2>
                     </div>
                   </div>
 
-                  {/* Card Footer */}
-                  <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 dark:border-slate-800/80 dark:bg-slate-900/40 sm:px-5">
-                    <Link
-                      to="/lms/live-schedule"
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400 transition"
-                    >
-                      <CalendarDays className="h-3.5 w-3.5" /> Xem lịch
-                    </Link>
+                  <div className="p-4">
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-50 text-sky-600"><UserRound className="h-4 w-4" /></span>
+                      <span className="min-w-0">
+                        <span className="block text-[10px] text-slate-400">Giáo viên</span>
+                        <span className="block truncate font-bold text-slate-700">{liveClass.instructor_name || "Chưa phân công"}</span>
+                      </span>
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between text-[11px] font-semibold">
+                        <span className="text-slate-500">{progressTotal > 0 ? `${progressCompleted}/${progressTotal} ${progressUnit} học` : "Tiến độ học tập"}</span>
+                        <span className="font-black text-[#17365f]">{progress}%</span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <div className={`h-full rounded-full ${completed ? "bg-emerald-500" : tone.bar}`} style={{ width: `${progress}%` }} />
+                      </div>
+                    </div>
+
+                    <span className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold text-white transition ${tone.button}`}>
+                      <BookOpen className="h-4 w-4" /> {completed ? "Xem lại lớp học" : "Vào lớp học"} <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                    </span>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </section>

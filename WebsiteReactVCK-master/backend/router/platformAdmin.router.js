@@ -105,11 +105,11 @@ router.get("/classes", ...adminOnly, async (req, res) => {
   try {
     const result = await query(
       `SELECT lc.id, lc.title, lc.status, lc.management_approval_status,
-              lc.allow_file_download,
+              lc.allow_file_download, lc.teacher_display_name, lc.cover_image_url,
               lc.management_class_source_id,
               COALESCE(lc.management_course_source_id, c.external_course_id) AS management_course_source_id,
               COALESCE(c.title, c.name) AS course_title,
-              c.external_course_id, u.username AS teacher_name,
+              c.external_course_id, COALESCE(u.username, u.email) AS system_teacher_name,
               COUNT(DISTINCT ce.user_id) FILTER (WHERE ce.status = 'active')::int AS student_count,
               COUNT(DISTINCT ce.user_id) FILTER (WHERE ce.status = 'active' AND EXISTS (
                 SELECT 1 FROM lms_access_grants g
@@ -131,7 +131,9 @@ router.get("/classes", ...adminOnly, async (req, res) => {
       courseTitle: row.course_title || null,
       managementClassId: row.management_class_source_id || "MOLY_CLS_Pending",
       managementCourseId: row.management_course_source_id || "MOLY_CRS_Pending",
-      teacherName: row.teacher_name || "Chưa phân công",
+      teacherName: row.teacher_display_name || row.system_teacher_name || "Chưa phân công",
+      systemTeacherName: row.system_teacher_name || null,
+      coverImageUrl: row.cover_image_url || null,
       studentCount: Number(row.student_count || 0),
       entitlementCount: Number(row.entitlement_count || 0),
       mappingStatus: row.management_class_source_id && row.management_course_source_id ? "MAPPED" : "PENDING",
@@ -142,6 +144,54 @@ router.get("/classes", ...adminOnly, async (req, res) => {
   } catch (error) {
     console.error("Error listing LMS class mappings:", error);
     return errorResponse(res, 500, "Không thể tải danh sách lớp học", "INTERNAL_ERROR");
+  }
+});
+
+// PATCH /api/v1/admin/classes/:id/presentation — learner-facing teacher and cover.
+router.patch("/classes/:id/presentation", ...adminOnly, async (req, res) => {
+  const classId = parseId(req.params.id);
+  const teacherName = typeof req.body?.teacherName === "string" ? req.body.teacherName.trim() : "";
+  const coverImageUrl = typeof req.body?.coverImageUrl === "string" ? req.body.coverImageUrl.trim() : "";
+  if (!classId || teacherName.length > 255 || coverImageUrl.length > 1000) {
+    return errorResponse(res, 422, "Thông tin hiển thị lớp không hợp lệ", "VALIDATION_ERROR");
+  }
+  if (coverImageUrl && !/^https:\/\//i.test(coverImageUrl)) {
+    return errorResponse(res, 422, "Ảnh nền lớp phải dùng liên kết HTTPS", "VALIDATION_ERROR");
+  }
+  try {
+    const current = (await query(
+      "SELECT id, title, teacher_display_name, cover_image_url FROM live_classes WHERE id = $1",
+      [classId],
+    )).rows[0];
+    if (!current) return errorResponse(res, 404, "Không tìm thấy lớp học", "NOT_FOUND");
+    const updated = (await query(
+      `UPDATE live_classes
+       SET teacher_display_name = $1, cover_image_url = $2, updated_at = NOW()
+       WHERE id = $3
+       RETURNING id, title, teacher_display_name, cover_image_url`,
+      [teacherName || null, coverImageUrl || null, classId],
+    )).rows[0];
+    await recordAuditEvent({
+      actorId: req.user.id,
+      action: "class.presentation_updated",
+      entityType: "live_class",
+      entityId: classId,
+      beforeState: current,
+      afterState: updated,
+      metadata: { ip: req.ip },
+    });
+    return res.json({
+      success: true,
+      data: {
+        id: String(updated.id),
+        teacherName: updated.teacher_display_name || "",
+        coverImageUrl: updated.cover_image_url || "",
+      },
+      message: "Đã cập nhật thẻ lớp học",
+    });
+  } catch (error) {
+    console.error("Error updating class presentation:", error);
+    return errorResponse(res, 500, "Không thể cập nhật thẻ lớp học", "INTERNAL_ERROR");
   }
 });
 

@@ -14,6 +14,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
+import { getClassCoverImage } from "../../../utils/classWallpapers";
 
 const CATEGORIES = [
   { id: "ALL", label: "Tất Cả", icon: BookOpen },
@@ -90,7 +91,7 @@ const CourseCard = ({ course, featured = false }) => {
       {/* Thumbnail */}
       <div className={`relative overflow-hidden bg-slate-950 ${featured ? "md:w-1/2 aspect-video md:aspect-auto" : "aspect-video"}`}>
         <img
-          src={course.thumbnail_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80"}
+          src={getClassCoverImage(course, course.slug || course.id)}
           alt={course.title}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"

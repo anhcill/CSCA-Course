@@ -4,6 +4,7 @@ import protectRoute from "../middleware/protectRoute.js";
 import requireRole from "../middleware/requireRole.js";
 import requireActiveStudentLmsAccess from "../middleware/requireActiveStudentLmsAccess.js";
 import { sendCourseEnrollmentEmail } from "../services/brevoEmail.service.js";
+import { getDeterministicClassCover } from "../utils/classWallpapers.js";
 
 const router = express.Router();
 
@@ -188,8 +189,10 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
                   'id', lc.id,
                   'title', lc.title,
                   'description', lc.description,
+                  'cover_image_url', lc.cover_image_url,
+                  'coverImageUrl', lc.cover_image_url,
                   'instructor_id', lc.instructor_id,
-                  'instructor_name', COALESCE(instructor.username, instructor.email)
+                  'instructor_name', COALESCE(NULLIF(lc.teacher_display_name, ''), instructor.username, instructor.email)
                 )
                 ORDER BY lc.created_at DESC, lc.id DESC
               )
@@ -281,7 +284,11 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
           progress_completed: progressCompleted,
           progress_source: usesLessonProgress ? "lessons" : "sessions",
           progress_percent,
-          classes: Array.isArray(row.classes) ? row.classes : [],
+          classes: (Array.isArray(row.classes) ? row.classes : []).map(cls => ({
+            ...cls,
+            cover_image_url: cls.cover_image_url || getDeterministicClassCover(cls.id || cls.title),
+          })),
+          thumbnail_url: row.thumbnail_url || getDeterministicClassCover(row.course_id || row.title),
         };
       });
 

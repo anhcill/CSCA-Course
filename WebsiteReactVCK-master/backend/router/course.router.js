@@ -640,7 +640,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     const fileClassScope = selectedClassId ? ` AND (f.live_class_id IS NULL OR f.live_class_id = $${fileParams.length + 1})` : "";
     if (selectedClassId) fileParams.push(selectedClassId);
 
-    const [sectionsResult, lessonsResult, progressResult, classesResult, sessionsResult, assignmentsResult, quizRowsResult, quizCountResult, filesResult] = await Promise.all([
+    const [sectionsResult, lessonsResult, progressResult, classesResult, sessionsResult, assignmentsResult, quizRowsResult, quizCountResult, filesResult, sessionProgressResult] = await Promise.all([
       query(
         `SELECT s.id, s.title, s.sort_order,
                 COUNT(l.id)::int AS lesson_count,
@@ -764,7 +764,23 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
            AND ${fileVisibility}${fileClassScope}
          ORDER BY f.created_at DESC, f.id DESC
          LIMIT 8`,
-        fileParams,
+                fileParams,
+      ),
+      query(
+        `SELECT COUNT(cs.id)::int AS total_sessions,
+                COUNT(cs.id) FILTER (
+                  WHERE cs.status = 'ended' OR cs.end_time <= NOW()
+                     OR EXISTS (
+                       SELECT 1 FROM class_attendance ca
+                       WHERE ca.session_id = cs.id AND ca.user_id = $2 AND ca.status = 'present'
+                     )
+                )::int AS completed_sessions
+         FROM class_sessions cs
+         JOIN live_classes lc ON lc.id = cs.live_class_id
+         JOIN class_enrollments ce ON ce.live_class_id = lc.id AND ce.user_id = $2 AND ce.status = 'active'
+         WHERE lc.course_id = $1 AND lc.status = 'active' AND cs.status <> 'cancelled'
+           AND ($3::bigint IS NULL OR lc.id = $3)`,
+        [courseId, req.user.id, selectedClassId],
       ),
     ]);
 
@@ -781,14 +797,24 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       .slice(0, 8);
     const totalLessons = Number(progress.total_lessons) || 0;
     const completedLessons = Number(progress.completed_lessons) || 0;
+    const sessionProgress = sessionProgressResult?.rows?.[0] || { total_sessions: 0, completed_sessions: 0 };
+    const totalSessions = Number(sessionProgress.total_sessions) || 0;
+    const completedSessions = Number(sessionProgress.completed_sessions) || 0;
+
+    const usesLessonProgress = totalLessons > 0;
+    const totalUnits = usesLessonProgress ? totalLessons : totalSessions;
+    const completedUnits = usesLessonProgress ? completedLessons : completedSessions;
+    const progressPercent = totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 100) : 0;
+
     return res.json({
       success: true,
       data: {
         course: { ...course, author_id: undefined },
         progress: {
-          totalLessons,
-          completedLessons,
-          percent: totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0,
+          totalLessons: totalUnits,
+          completedLessons: completedUnits,
+          percent: progressPercent,
+          unitType: usesLessonProgress ? 'lessons' : 'sessions',
         },
         sections: sectionsResult.rows,
         lessons: lessonsResult.rows,

@@ -1,15 +1,18 @@
+import { useMemo } from "react";
 import { useOutletContext, useParams } from "react-router-dom";
+import ClassWorkspaceHero from "../components/overview/ClassWorkspaceHero";
 import ClassPendingTasksCard from "../components/overview/ClassPendingTasksCard";
 import ClassProgressCard from "../components/overview/ClassProgressCard";
 import ClassChaptersCard from "../components/overview/ClassChaptersCard";
 
 export default function CourseWorkspaceOverviewPage() {
   const { courseId, classId } = useParams();
-  const workspace = useOutletContext();
+  const workspace = useOutletContext() || {};
   const {
     progress = {},
     assignments = [],
-    selectedClass = {}
+    selectedClass = {},
+    upcomingSessions = [],
   } = workspace;
 
   const basePath = `/lms/courses/${courseId}/classes/${classId}`;
@@ -17,35 +20,52 @@ export default function CourseWorkspaceOverviewPage() {
   const completedLessons = Number(progress.completedLessons || 0);
   const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
 
+  // Upcoming sessions
+  const activeUpcomingSessions = useMemo(
+    () =>
+      (upcomingSessions || [])
+        .filter((session) => session.status !== "cancelled" && new Date(session.end_time).getTime() > Date.now())
+        .sort((left, right) => new Date(left.start_time).getTime() - new Date(right.start_time).getTime()),
+    [upcomingSessions]
+  );
+  const nextSession = activeUpcomingSessions[0] || (upcomingSessions && upcomingSessions[upcomingSessions.length - 1]) || null;
+  const isTodaySession = Boolean(
+    nextSession?.start_time && new Date(nextSession.start_time).toDateString() === new Date().toDateString()
+  );
+
   // Việc cần hoàn thành (Bài tập / Quiz chưa làm hoặc trễ hạn)
   const pendingTasks = assignments
     .filter((item) => ["todo", "late"].includes(item.status))
     .slice(0, 4);
 
   return (
-    <div className="space-y-6 pb-10 transition-colors duration-200">
+    <div className="space-y-5 pb-10">
+      {/* Gộp thông tin Lớp, Giảng viên và Buổi học tiếp theo vào 1 Hero Card duy nhất */}
+      <ClassWorkspaceHero
+        classTitle={selectedClass.title}
+        instructorName={selectedClass.instructor_name}
+        percent={percent}
+        nextSession={nextSession}
+        isTodaySession={isTodaySession}
+        otherSessions={activeUpcomingSessions.slice(1, 3)}
+        basePath={basePath}
+      />
+
+      {/* Danh sách các chương và buổi học của lớp */}
       <ClassChaptersCard classId={classId} basePath={basePath} />
 
-      {/* MAIN 2 COLUMNS: Việc cần làm & Tiến độ học tập */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <ClassPendingTasksCard
-          pendingTasks={pendingTasks}
-          basePath={basePath}
-        />
+      {/* 2 Cột: Việc cần hoàn thành & Tiến độ học tập */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <ClassPendingTasksCard pendingTasks={pendingTasks} basePath={basePath} />
 
         <ClassProgressCard
           percent={percent}
           completedLessons={completedLessons}
           totalLessons={totalLessons}
+          unitType={progress.unitType || "sessions"}
+          basePath={basePath}
         />
       </div>
-
-      {selectedClass.description && (
-        <section className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-          <h2 className="mb-2 font-bold text-slate-900 dark:text-white">Thông báo lớp {selectedClass.title || ""}</h2>
-          <p className="whitespace-pre-line">{selectedClass.description}</p>
-        </section>
-      )}
     </div>
   );
 }

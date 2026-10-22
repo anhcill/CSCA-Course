@@ -210,7 +210,7 @@ export const createVocabularyRouter = ({
     [sessionId, userId || null],
   )).rows;
 
-  router.get("/vocabulary/sessions", authenticate, learnerOnly, async (req, res) => {
+  router.get("/vocabulary/sessions", authenticate, vocabularyRoles, async (req, res) => {
     try {
       const courseId = req.query.courseId ? parsePositiveId(req.query.courseId) : null;
       const classId = req.query.classId ? parsePositiveId(req.query.classId) : null;
@@ -223,17 +223,25 @@ export const createVocabularyRouter = ({
 
       const values = [req.user.id];
       const filters = [
-        "ce.user_id = $1",
-        "ce.status = 'active'",
         "cs.status <> 'cancelled'",
         "lc.status <> 'cancelled'",
-        `(lc.course_id IS NULL OR EXISTS (
-          SELECT 1 FROM lms_access_grants grant_row
-          WHERE grant_row.user_id = $1 AND grant_row.course_id = lc.course_id
-            AND grant_row.access_status = 'active' AND grant_row.valid_from <= NOW()
-            AND (grant_row.valid_until IS NULL OR grant_row.valid_until > NOW())
-        ))`,
       ];
+      if (req.user.role === "admin") {
+        // Full visibility for LMS platform admins
+      } else if (req.user.role === "creator") {
+        filters.push(`(lc.instructor_id = $1 OR EXISTS (
+          SELECT 1 FROM class_teachers ct
+          WHERE ct.live_class_id = lc.id AND ct.teacher_id = $1 AND ct.status = 'active'
+        ) OR EXISTS (
+          SELECT 1 FROM class_enrollments ce
+          WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
+        ))`);
+      } else {
+        filters.push(`EXISTS (
+          SELECT 1 FROM class_enrollments ce
+          WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
+        )`);
+      }
       if (courseId) {
         values.push(courseId);
         filters.push(`lc.course_id = $${values.length}`);
@@ -254,7 +262,6 @@ export const createVocabularyRouter = ({
                 COUNT(sv.id) FILTER (WHERE progress.is_starred = TRUE)::int AS starred_words
          FROM class_sessions cs
          JOIN live_classes lc ON lc.id = cs.live_class_id
-         JOIN class_enrollments ce ON ce.live_class_id = lc.id
          JOIN session_vocabularies sv ON sv.session_id = cs.id
          LEFT JOIN courses c ON c.id = lc.course_id
          LEFT JOIN class_chapters cc ON cc.id = cs.chapter_id
@@ -354,7 +361,7 @@ export const createVocabularyRouter = ({
     }
   });
 
-  router.post("/sessions/:sessionId/vocabulary/submit", authenticate, learnerOnly, async (req, res) => {
+  router.post("/sessions/:sessionId/vocabulary/submit", authenticate, vocabularyRoles, async (req, res) => {
     const sessionId = parsePositiveId(req.params.sessionId);
     if (!sessionId) return errorResponse(res, 422, "sessionId không hợp lệ", "VALIDATION_ERROR");
     let masteredIds;
@@ -453,7 +460,7 @@ export const createVocabularyRouter = ({
     }
   });
 
-  router.post("/vocabulary/:vocabId/toggle-star", authenticate, learnerOnly, async (req, res) => {
+  router.post("/vocabulary/:vocabId/toggle-star", authenticate, vocabularyRoles, async (req, res) => {
     const vocabId = parsePositiveId(req.params.vocabId);
     if (!vocabId) return errorResponse(res, 422, "vocabId không hợp lệ", "VALIDATION_ERROR");
     try {

@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { BookOpenCheck, ClipboardList, FilePenLine, GraduationCap, Search } from "lucide-react";
-import { fetchAssignments } from "../../api/lmsClient";
-import { EmptyState, ErrorState, LoadingState } from "../../../components/common/StateView";
-import { parseQuizDescription } from "../../teacher/utils/quizAnswerKey";
+import { useNavigate, useParams } from "react-router-dom";
+import { Calendar, FileText } from "lucide-react";
+import { fetchAssignments, fetchMyLiveSchedule } from "../../api/lmsClient";
+import Loading from "../../../components/Loading.jsx";
+import { ErrorState } from "../../../components/common/StateView";
+
+import AssignmentHeroHeader from "../components/AssignmentHeroHeader";
+import AssignmentFilterBar from "../components/AssignmentFilterBar";
+import AssignmentTable from "../components/AssignmentTable";
+import AssignmentWeekDeadlines from "../components/AssignmentWeekDeadlines";
+import AssignmentUpcomingExams from "../components/AssignmentUpcomingExams";
 
 function itemType(item) {
   const value = String(item.type || item.assignment_type || "homework").toLowerCase();
@@ -13,142 +19,82 @@ function itemType(item) {
   return "homework";
 }
 
-function quizScope(item) {
-  return (item.activity_scope || item.activityScope) === "homework" ? "homework" : "session";
-}
-
-function isEssayQuiz(item) {
-  if (itemType(item) !== "quiz") return false;
-  const essayConfig = item.essayConfig || parseQuizDescription(item.description).essayConfig;
-  return Boolean(essayConfig?.enabled);
-}
-
-function timestamp(value) {
-  if (!value) return null;
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
 function itemStatus(item) {
   const type = itemType(item);
   const submissionStatus = String(item.submission_status || "").toLowerCase();
   const submitted = Boolean(item.submitted_at) || submissionStatus === "submitted" || item.status === "submitted";
 
-  if (item.can_resubmit) return "revision";
   if (item.score !== undefined && item.score !== null) return "graded";
-  if (submitted) return item.status === "late" ? "submittedLate" : "submitted";
+  if (submitted) return "submitted";
   if (type === "quiz" && submissionStatus === "in_progress") return "inProgress";
 
   const now = Date.now();
-  if (type === "quiz") {
-    const startsAt = timestamp(item.available_from || (quizScope(item) === "session" ? item.session_start : null));
-    const endsAt = timestamp(item.available_until || (quizScope(item) === "session" ? item.session_end : item.due_date));
-    if (startsAt && startsAt > now) return "upcoming";
-    if (endsAt && endsAt <= now) return "overdue";
-  }
-
-  const dueAt = timestamp(item.due_date);
+  const dueAt = item.due_date ? new Date(item.due_date).getTime() : null;
   return item.status === "late" || (dueAt && dueAt <= now) ? "overdue" : "todo";
 }
 
-function statusBucket(status) {
-  if (["todo", "upcoming", "inProgress", "revision"].includes(status)) return "todo";
-  if (["submitted", "submittedLate"].includes(status)) return "submitted";
-  if (status === "overdue") return "late";
-  return status;
-}
-
-function deadlineText(value) {
-  const dueAt = timestamp(value);
-  if (!dueAt) return "Không giới hạn thời gian";
-  const distance = dueAt - Date.now();
-  if (distance <= 0) return "Đã hết hạn";
-  const days = Math.floor(distance / 86400000);
-  const hours = Math.floor((distance % 86400000) / 3600000);
-  return days ? `Còn ${days} ngày ${hours} giờ` : `Còn ${Math.max(1, hours)} giờ`;
-}
-
-function formatDateTime(value) {
-  const parsed = timestamp(value);
-  return parsed
-    ? new Date(parsed).toLocaleString("vi-VN", {
-        dateStyle: "short",
-        timeStyle: "short",
-        timeZone: "Asia/Ho_Chi_Minh",
-      })
-    : "Chưa xác định";
-}
-
-function quizAttemptInfo(item) {
-  const limit = Math.max(1, Number(item.attempt_limit || item.attemptLimit || 1));
-  const used = Math.max(0, Number(item.attempt_count || item.attemptCount || item.attempt_number || 0));
-  return { limit, used, remaining: Math.max(0, limit - used) };
-}
-
-function activityTimestamp(item) {
-  return timestamp(item.graded_at || item.submitted_at || item.updated_at || item.created_at) || 0;
-}
-
-const typeStyle = {
-  quiz: { icon: ClipboardList, className: "bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300" },
-  essay: { label: "Bài tự luận", icon: FilePenLine, className: "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300" },
-  speaking: { label: "Khẩu ngữ HSKK", icon: GraduationCap, className: "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300" },
-  homework: { label: "Bài tập về nhà", icon: FilePenLine, className: "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-300" },
-};
-
-const statusStyle = {
-  todo: { label: "Cần hoàn thành", className: "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-900/40" },
-  upcoming: { label: "Chưa đến giờ mở", className: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-700" },
-  inProgress: { label: "Đang làm dở", className: "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-900/60" },
-  revision: { label: "Cần sửa và nộp lại", className: "bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 ring-orange-200 dark:ring-orange-900/50" },
-  submitted: { label: "Đã nộp · chờ chấm", className: "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-300 ring-blue-100 dark:ring-blue-900/40" },
-  submittedLate: { label: "Đã nộp muộn · chờ chấm", className: "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-300 ring-blue-200 dark:ring-blue-900/50" },
-  graded: { label: "Đã chấm điểm", className: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-900/40" },
-  overdue: { label: "Quá hạn · chưa nộp", className: "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-900/40" },
-};
-
-function actionFor(item, type, status) {
-  if (status === "graded") {
-    if (type === "quiz") {
-      const { remaining } = quizAttemptInfo(item);
-      const closesAt = timestamp(item.available_until || item.due_date || item.session_end);
-      if (remaining > 0 && (!closesAt || closesAt > Date.now())) {
-        return { label: `Làm lại · còn ${remaining} lượt`, tone: "primary" };
-      }
-      return { label: "Xem lại bài thi", tone: "success" };
-    }
-    if (type === "speaking") return { label: "Xem kết quả", tone: "success" };
-    return { label: "Xem bài & nhận xét", tone: "success" };
-  }
-  if (status === "submitted" || status === "submittedLate") {
-    return { label: type === "quiz" ? "Xem lại bài thi" : "Xem bài đã nộp", tone: "muted" };
-  }
-  if (status === "revision") return { label: "Sửa và nộp lại", tone: "warning" };
-  if (status === "inProgress") return { label: "Tiếp tục làm bài", tone: "primary" };
-  if (status === "upcoming") return { label: "Chưa đến giờ", tone: "disabled", disabled: true };
-  if (status === "overdue" && type === "quiz") return { label: "Đã hết hạn", tone: "disabled", disabled: true };
-  if (status === "overdue") return { label: "Nộp bài muộn", tone: "warning" };
-  if (type === "quiz") return { label: quizScope(item) === "homework" ? "Làm quiz về nhà" : "Làm quiz tại lớp", tone: "primary" };
-  if (type === "essay") return { label: "Làm bài tự luận", tone: "primary" };
-  if (type === "speaking") return { label: "Mở bài tập", tone: "primary" };
-  return { label: "Làm bài tập", tone: "primary" };
-}
-
-const actionStyle = {
-  primary: "bg-blue-600 text-white shadow-sm shadow-blue-200 dark:shadow-none hover:bg-blue-700",
-  success: "bg-emerald-600 text-white hover:bg-emerald-700",
-  warning: "bg-orange-600 text-white hover:bg-orange-700",
-  muted: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700",
-  disabled: "cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500",
-};
+// Fallback demo items ONLY when database has 0 assignments
+const DEFAULT_MOCK_ITEMS = [
+  {
+    id: "demo-1",
+    title: "Bài tập chương 3 – Kinh tế vi mô",
+    subTypeLabel: "Bài tập cá nhân",
+    courseTitle: "Kinh tế vi mô",
+    courseCode: "ECO101",
+    dueDateFormatted: "20/10/2026",
+    dueTimeFormatted: "23:59",
+    normalizedStatus: "todo",
+    scoreDisplay: "-",
+    isQuiz: false,
+    icon: FileText,
+    iconStyle: "bg-blue-50 text-blue-600",
+    created_at: "2026-10-18T10:00:00Z",
+    dueTimestamp: new Date("2026-10-20T23:59:00Z").getTime(),
+  },
+  {
+    id: "demo-2",
+    title: "Thảo luận nhóm – Kỹ năng học tập",
+    subTypeLabel: "Bài tập nhóm",
+    courseTitle: "Kỹ năng học tập",
+    courseCode: "SKI001",
+    dueDateFormatted: "22/10/2026",
+    dueTimeFormatted: "23:59",
+    normalizedStatus: "todo",
+    scoreDisplay: "-",
+    isQuiz: false,
+    icon: FileText,
+    iconStyle: "bg-emerald-50 text-emerald-600",
+    created_at: "2026-10-16T09:00:00Z",
+    dueTimestamp: new Date("2026-10-22T23:59:00Z").getTime(),
+  },
+  {
+    id: "demo-3",
+    title: "Kiểm tra giữa kỳ – Tiếng Trung HSK2",
+    subTypeLabel: "Kiểm tra trên máy",
+    courseTitle: "Tiếng Trung HSK2",
+    courseCode: "CHN202",
+    dueDateFormatted: "24/10/2026",
+    dueTimeFormatted: "14:00",
+    normalizedStatus: "todo",
+    scoreDisplay: "-",
+    isQuiz: true,
+    icon: Calendar,
+    iconStyle: "bg-rose-50 text-rose-500",
+    created_at: "2026-10-14T08:00:00Z",
+    dueTimestamp: new Date("2026-10-24T14:00:00Z").getTime(),
+  },
+];
 
 export default function AssignmentListPage() {
+  const navigate = useNavigate();
   const { courseId, classId } = useParams();
-  const [assignments, setAssignments] = useState([]);
+
+  const [rawAssignments, setRawAssignments] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [statusFilter, setStatusFilter] = useState("todo");
-  const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all"); // "all" | "homework" | "quiz" | "submitted" | "overdue"
+  const [searchQuery, setSearchQuery] = useState("");
 
   const loadAssignments = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -156,11 +102,24 @@ export default function AssignmentListPage() {
       setErrorMessage("");
     }
     try {
-      const result = await fetchAssignments({ courseId, classId });
-      setAssignments(result?.success && Array.isArray(result.data) ? result.data : []);
+      const [assignmentsRes, scheduleRes] = await Promise.allSettled([
+        fetchAssignments({ courseId, classId }),
+        fetchMyLiveSchedule(),
+      ]);
+
+      if (assignmentsRes.status === "fulfilled" && assignmentsRes.value?.success) {
+        setRawAssignments(Array.isArray(assignmentsRes.value.data) ? assignmentsRes.value.data : []);
+      } else if (assignmentsRes.status === "rejected") {
+        throw assignmentsRes.reason;
+      }
+
+      if (scheduleRes.status === "fulfilled" && scheduleRes.value?.success) {
+        setSessions(Array.isArray(scheduleRes.value.data) ? scheduleRes.value.data : []);
+      }
+
       setErrorMessage("");
     } catch (error) {
-      console.error("Unable to load assignments", error);
+      console.error("Unable to load assignments and schedules", error);
       if (!silent) setErrorMessage("Không thể tải danh sách bài tập. Vui lòng thử lại sau.");
     } finally {
       if (!silent) setLoading(false);
@@ -171,256 +130,334 @@ export default function AssignmentListPage() {
     loadAssignments();
   }, [loadAssignments]);
 
-  useEffect(() => {
-    const refresh = () => loadAssignments({ silent: true });
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
-    const timer = window.setInterval(refresh, 30000);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
-  }, [loadAssignments]);
+  // Xử lý dữ liệu thật từ API
+  const allFormattedItems = useMemo(() => {
+    const formattedReal = rawAssignments.map((assignment) => {
+      const isQuiz = itemType(assignment) === "quiz";
+      const status = itemStatus(assignment);
+      const due = assignment.due_date ? new Date(assignment.due_date) : null;
 
-  // Older API responses may contain one row per quiz attempt. Collapse them so
-  // every assignment/quiz always occupies exactly one card in the list.
-  const uniqueAssignments = useMemo(() => {
-    const groups = new Map();
-    assignments.forEach((assignment) => {
-      const key = `${itemType(assignment)}:${assignment.id}`;
-      const current = groups.get(key) || [];
-      current.push(assignment);
-      groups.set(key, current);
+      let normalizedStatus = "todo";
+      if (status === "graded") normalizedStatus = "completed";
+      else if (status === "submitted" || status === "submittedLate") normalizedStatus = "grading";
+      else if (status === "overdue") normalizedStatus = "overdue";
+
+      const scoreDisplay =
+        assignment.score !== undefined && assignment.score !== null
+          ? `${Number(assignment.score).toFixed(2)}/${Number(assignment.max_score || 10).toFixed(2)}`
+          : "-";
+
+      return {
+        id: assignment.id,
+        raw: assignment,
+        title: assignment.title,
+        subTypeLabel: isQuiz ? "Kiểm tra trên máy" : "Bài tập cá nhân",
+        courseTitle: assignment.course_title || "Khóa học CSCA",
+        courseCode: assignment.course_code || assignment.class_title || "CSCA",
+        dueDateFormatted: due ? due.toLocaleDateString("vi-VN") : "Không thời hạn",
+        dueTimeFormatted: due
+          ? due.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+          : "",
+        normalizedStatus,
+        scoreDisplay,
+        isQuiz,
+        icon: isQuiz ? Calendar : FileText,
+        iconStyle: isQuiz ? "bg-rose-50 text-rose-500" : "bg-blue-50 text-blue-600",
+        created_at: assignment.created_at || assignment.due_date || new Date().toISOString(),
+        dueTimestamp: due ? due.getTime() : null,
+      };
     });
 
-    return Array.from(groups.values()).map((group) => {
-      const latest = [...group].sort((left, right) => {
-        const attemptDelta = Number(right.attempt_number || 0) - Number(left.attempt_number || 0);
-        return attemptDelta || activityTimestamp(right) - activityTimestamp(left);
-      })[0];
-      if (itemType(latest) !== "quiz") return latest;
+    // Khi có dữ liệu thật: KHÔNG ghép mock items mà dùng 100% dữ liệu thật
+    if (formattedReal.length > 0) {
+      // BÀI NÀO MỚI ĐĂNG THÌ ĐẨY LÊN ĐẦU
+      return formattedReal.sort((a, b) => {
+        const timeA = new Date(a.created_at || 0).getTime();
+        const timeB = new Date(b.created_at || 0).getTime();
+        return timeB - timeA;
+      });
+    }
 
-      const inferredAttemptCount = Math.max(
-        group.length,
-        ...group.map((item) => Number(item.attempt_count || item.attempt_number || 0))
-      );
-      return { ...latest, attempt_count: inferredAttemptCount };
+    // Chỉ dùng mock items nếu database chưa có bài tập nào
+    return DEFAULT_MOCK_ITEMS;
+  }, [rawAssignments]);
+
+  // Đếm số lượng theo danh mục cho thanh lọc (dựa trên dữ liệu thật)
+  const counts = useMemo(() => {
+    let homework = 0;
+    let quiz = 0;
+    let submitted = 0;
+    let overdue = 0;
+
+    allFormattedItems.forEach((it) => {
+      if (it.isQuiz) quiz += 1;
+      else homework += 1;
+
+      if (it.normalizedStatus === "completed" || it.normalizedStatus === "grading") {
+        submitted += 1;
+      } else if (it.normalizedStatus === "overdue") {
+        overdue += 1;
+      }
     });
-  }, [assignments]);
 
-  const counts = useMemo(() => uniqueAssignments.reduce((result, assignment) => {
-    result[statusBucket(itemStatus(assignment))] += 1;
-    return result;
-  }, { todo: 0, submitted: 0, graded: 0, late: 0 }), [uniqueAssignments]);
+    return {
+      all: allFormattedItems.length,
+      homework,
+      quiz,
+      submitted,
+      overdue,
+    };
+  }, [allFormattedItems]);
 
-  const visibleAssignments = useMemo(() => uniqueAssignments.filter((assignment) => {
-    const matchesStatus = statusFilter === "all" || statusBucket(itemStatus(assignment)) === statusFilter;
-    const needle = search.trim().toLocaleLowerCase();
-    const matchesSearch = !needle || [assignment.title, assignment.description, assignment.course_title].some((value) => String(value || "").toLocaleLowerCase().includes(needle));
-    return matchesStatus && matchesSearch;
-  }).sort((left, right) => {
-    const leftStatus = statusBucket(itemStatus(left));
-    const rightStatus = statusBucket(itemStatus(right));
+  // Lọc theo tabs & tìm kiếm
+  const visibleItems = useMemo(() => {
+    return allFormattedItems.filter((it) => {
+      if (activeFilter === "homework" && it.isQuiz) return false;
+      if (activeFilter === "quiz" && !it.isQuiz) return false;
+      if (activeFilter === "submitted" && it.normalizedStatus !== "completed" && it.normalizedStatus !== "grading") return false;
+      if (activeFilter === "overdue" && it.normalizedStatus !== "overdue") return false;
 
-    if (statusFilter === "all") {
-      const statusPriority = { todo: 0, submitted: 1, graded: 2, late: 3 };
-      const statusDelta = statusPriority[leftStatus] - statusPriority[rightStatus];
-      if (statusDelta) return statusDelta;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const inTitle = String(it.title || "").toLowerCase().includes(q);
+        const inCourse = String(it.courseTitle || "").toLowerCase().includes(q);
+        const inCode = String(it.courseCode || "").toLowerCase().includes(q);
+        if (!inTitle && !inCourse && !inCode) return false;
+      }
+
+      return true;
+    });
+  }, [allFormattedItems, activeFilter, searchQuery]);
+
+  // NỐI DỮ LIỆU THẬT CHO BOX 1: "Hạn nộp trong tuần này"
+  const weekDeadlines = useMemo(() => {
+    const withDue = allFormattedItems.filter((item) => item.dueTimestamp);
+    const now = Date.now();
+
+    // Ưu tiên các bài chưa hoàn thành hoặc quá hạn cần xử lý
+    const pending = withDue.filter(
+      (item) => item.normalizedStatus === "todo" || item.normalizedStatus === "overdue"
+    );
+
+    const targetList = pending.length > 0 ? pending : withDue;
+    const sorted = [...targetList].sort((a, b) => (a.dueTimestamp || 0) - (b.dueTimestamp || 0));
+
+    const dayNames = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+
+    return sorted.slice(0, 5).map((item) => {
+      const due = new Date(item.dueTimestamp);
+      const dayLabel = dayNames[due.getDay()];
+      const dateLabel = `${String(due.getDate()).padStart(2, "0")}/${String(due.getMonth() + 1).padStart(2, "0")}`;
+
+      const diffMs = item.dueTimestamp - now;
+      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+      let remaining = "";
+      let isUrgent = false;
+
+      if (item.normalizedStatus === "completed") {
+        remaining = "Đã nộp";
+      } else if (diffMs < 0) {
+        remaining = "Quá hạn";
+        isUrgent = true;
+      } else if (diffDays === 0 || (diffHours >= 0 && diffHours <= 12)) {
+        remaining = diffHours <= 1 ? "Còn < 1 giờ" : `Còn ${diffHours} giờ`;
+        isUrgent = true;
+      } else if (diffDays === 1) {
+        remaining = "Ngày mai";
+        isUrgent = true;
+      } else {
+        remaining = `Còn ${diffDays} ngày`;
+        isUrgent = diffDays <= 3;
+      }
+
+      return {
+        id: `dl-${item.id}`,
+        dayLabel,
+        dateLabel,
+        title: item.title,
+        course: item.courseTitle ? `${item.courseTitle}${item.courseCode ? ` - ${item.courseCode}` : ""}` : "CSCA",
+        remaining,
+        isUrgent,
+        rawItem: item,
+      };
+    });
+  }, [allFormattedItems]);
+
+  // NỐI DỮ LIỆU THẬT CHO BOX 2: "Lịch kiểm tra sắp tới"
+  const upcomingExams = useMemo(() => {
+    const list = [];
+    const now = Date.now();
+
+    // 1. Lấy từ các bài thi / quiz thật của học viên
+    const quizItems = allFormattedItems.filter(
+      (item) => item.isQuiz || (item.title && /thi|kiểm tra|test|quiz/i.test(item.title))
+    );
+
+    quizItems.forEach((q) => {
+      const date = q.dueTimestamp ? new Date(q.dueTimestamp) : new Date(q.created_at);
+      const dayNum = String(date.getDate()).padStart(2, "0");
+      const monthLabel = `THG ${date.getMonth() + 1}`;
+      const isNear = q.dueTimestamp && q.dueTimestamp - now <= 3 * 24 * 60 * 60 * 1000 && q.dueTimestamp >= now;
+
+      list.push({
+        id: `exam-quiz-${q.id}`,
+        dayNum,
+        monthLabel,
+        color: isNear || q.normalizedStatus === "overdue" ? "red" : "blue",
+        title: q.title,
+        course: q.courseTitle || "CSCA",
+        time: q.dueTimeFormatted ? `Hạn: ${q.dueTimeFormatted}` : "Kiểm tra online",
+        badge: "Online",
+        badgeType: "online",
+        timestamp: date.getTime(),
+        rawItem: q,
+        type: "quiz",
+      });
+    });
+
+    // 2. Lấy từ các buổi học trực tuyến có kiểm tra từ Live Schedule
+    sessions.forEach((s) => {
+      const date = new Date(s.start_time);
+      const dayNum = String(date.getDate()).padStart(2, "0");
+      const monthLabel = `THG ${date.getMonth() + 1}`;
+      const startTime = date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+      const endTime = s.end_time
+        ? new Date(s.end_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+        : "";
+      const isLiveExam = /thi|kiểm tra|test|exam|tổng kết/i.test(s.title || "");
+      const isNear = date.getTime() >= now && date.getTime() - now <= 3 * 24 * 60 * 60 * 1000;
+
+      list.push({
+        id: `exam-session-${s.id}`,
+        dayNum,
+        monthLabel,
+        color: isNear || isLiveExam ? "red" : "blue",
+        title: s.title || "Buổi học & Kiểm tra",
+        course: s.class_title || s.course_title || "CSCA",
+        time: endTime ? `${startTime} - ${endTime}` : startTime,
+        badge: "Trực tiếp",
+        badgeType: "live",
+        timestamp: date.getTime(),
+        rawSession: s,
+        type: "session",
+      });
+    });
+
+    // Sắp xếp theo thời gian gần nhất
+    const upcoming = list.filter((item) => item.timestamp >= now - 24 * 60 * 60 * 1000);
+    const sorted = (upcoming.length >= 3 ? upcoming : list).sort((a, b) => a.timestamp - b.timestamp);
+
+    return sorted.slice(0, 5);
+  }, [allFormattedItems, sessions]);
+
+  // Xử lý điều hướng khi bấm nút trên bảng hoặc box Hạn nộp
+  const handleAction = (item, actionType) => {
+    const raw = item?.raw || item;
+    if (raw) {
+      const isQuiz = itemType(raw) === "quiz" || item.isQuiz;
+      if (courseId && classId) {
+        navigate(
+          isQuiz
+            ? `/lms/courses/${courseId}/classes/${classId}/quizzes/${raw.id}`
+            : `/lms/courses/${courseId}/classes/${classId}/assignments/${raw.id}/submit`
+        );
+      } else {
+        navigate(
+          isQuiz
+            ? `/lms/quiz/${raw.id}`
+            : `/lms/assignment/${raw.id}/submit`
+        );
+      }
+      return;
     }
 
-    if ((statusFilter === "todo" || statusFilter === "all") && leftStatus === "todo" && rightStatus === "todo") {
-      const leftDeadline = timestamp(left.available_from || left.session_start || left.due_date) ?? Number.POSITIVE_INFINITY;
-      const rightDeadline = timestamp(right.available_from || right.session_start || right.due_date) ?? Number.POSITIVE_INFINITY;
-      return leftDeadline - rightDeadline;
+    // Với item demo
+    if (item.isQuiz) {
+      navigate(`/lms/quizzes/gallery`);
+    } else {
+      navigate(`/lms/my-learning`);
     }
-
-    if (leftStatus === "late" && rightStatus === "late") {
-      return (timestamp(right.due_date || right.session_end) || 0) - (timestamp(left.due_date || left.session_end) || 0);
-    }
-
-    return activityTimestamp(right) - activityTimestamp(left);
-  }), [search, statusFilter, uniqueAssignments]);
-
-  const buildPath = (assignment) => {
-    const isQuiz = itemType(assignment) === "quiz";
-    if (courseId && classId) return isQuiz ? `/lms/courses/${courseId}/classes/${classId}/quizzes/${assignment.id}` : `/lms/courses/${courseId}/classes/${classId}/assignments/${assignment.id}/submit`;
-    return isQuiz ? `/lms/quiz/${assignment.id}` : `/lms/assignment/${assignment.id}/submit`;
   };
 
+  // Xử lý điều hướng khi bấm box Lịch kiểm tra
+  const handleExamClick = (examItem) => {
+    if (examItem.type === "quiz" && examItem.rawItem) {
+      handleAction(examItem.rawItem, "open");
+    } else if (examItem.type === "session" && examItem.rawSession) {
+      navigate(`/lms/live-room/${examItem.rawSession.id}`);
+    } else {
+      navigate("/lms/calendar");
+    }
+  };
+
+  if (loading) {
+    return (
+      <Loading
+        loading={true}
+        text="Đang tải danh sách bài tập & kiểm tra..."
+        fullScreen={false}
+        className="min-h-[50vh] py-16"
+      />
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <div className="py-12">
+        <ErrorState
+          title="Chưa thể tải bài tập"
+          message={errorMessage}
+          onRetry={loadAssignments}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-full bg-[#f6f9fd] dark:bg-slate-950 px-4 py-6 sm:px-6 lg:px-8 transition-colors duration-200">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="min-h-full p-2.5 sm:p-3.5 xl:px-4 xl:py-3">
+      <div className="mx-auto max-w-[1440px]">
+        {/* Bố cục 2 cột:
+            Cột trái: Tiêu đề, Thanh lọc, Bảng danh sách bài tập
+            Cột phải: 2 Box Widget kết nối dữ liệu thật */}
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_255px] xl:grid-cols-[minmax(0,1fr)_270px]">
+          {/* Cột trái */}
+          <div className="space-y-2.5 min-w-0">
+            {/* Chữ Bài tập & Kiểm tra trực tiếp trên nền sơn thủy */}
+            <AssignmentHeroHeader />
 
-        <section className="flex flex-col gap-3 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm dark:shadow-none md:flex-row md:items-center md:justify-between">
-          <div className="-mx-1 flex overflow-x-auto px-1 pb-1 md:mx-0 md:px-0 md:pb-0">
-            {[
-              ["todo", "Cần làm", counts.todo],
-              ["submitted", "Đã nộp", counts.submitted],
-              ["graded", "Đã chấm", counts.graded],
-              ["late", "Quá hạn", counts.late],
-              ["all", "Tất cả", uniqueAssignments.length],
-            ].map(([value, label, count]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setStatusFilter(value)}
-                aria-pressed={statusFilter === value}
-                className={`min-h-10 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                  statusFilter === value
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                {label}{" "}
-                <span
-                  className={`ml-1 rounded-md px-1.5 py-0.5 text-[10px] ${
-                    statusFilter === value ? "bg-white/20" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            ))}
-          </div>
-          <label className="relative block w-full md:w-72">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Tìm bài tập hoặc khóa học..."
-              aria-label="Tìm bài tập hoặc khóa học"
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 py-2.5 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-200 outline-none transition placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-400 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-800"
+            {/* Thanh công cụ lọc & tìm kiếm */}
+            <AssignmentFilterBar
+              activeFilter={activeFilter}
+              onFilterChange={setActiveFilter}
+              counts={counts}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
             />
-          </label>
-        </section>
 
-        {loading ? (
-          <LoadingState message="Đang tải bài tập..." count={3} />
-        ) : errorMessage ? (
-          <ErrorState title="Không tải được bài tập" message={errorMessage} onRetry={loadAssignments} />
-        ) : visibleAssignments.length === 0 ? (
-          <EmptyState icon={BookOpenCheck} title="Không có bài tập phù hợp" description="Các bài tập mới sẽ xuất hiện tại đây." />
-        ) : (
-          <section className="space-y-3">
-            {visibleAssignments.map((assignment) => {
-              const type = itemType(assignment);
-              const displayDescription = type === "quiz"
-                ? parseQuizDescription(assignment.description).text
-                : assignment.description;
-              const typeConfig = typeStyle[type];
-              const status = itemStatus(assignment);
-              const essayQuiz = isEssayQuiz(assignment);
-              const statusConfig = status === "graded" && essayQuiz
-                ? { ...statusStyle.graded, label: "Đã nộp · xem điểm & nhận xét" }
-                : statusStyle[status];
-              const Icon = typeConfig.icon;
-              const isHomeworkQuiz = type === "quiz" && quizScope(assignment) === "homework";
-              const typeLabel = type === "quiz" ? (isHomeworkQuiz ? "Quiz về nhà" : "Quiz tại lớp") : typeConfig.label;
-              const attemptInfo = type === "quiz" ? quizAttemptInfo(assignment) : null;
-              const action = actionFor(assignment, type, status);
-              const submittedAt = assignment.submitted_at ? formatDateTime(assignment.submitted_at) : null;
-              return (
-                <article
-                  key={assignment.id}
-                  className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm dark:shadow-none transition hover:-translate-y-0.5 hover:shadow-md dark:hover:border-slate-700 sm:p-5"
-                >
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center">
-                    <div className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4">
-                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12 ${typeConfig.className}`}>
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${typeConfig.className}`}>
-                            {typeLabel}
-                          </span>
-                          {essayQuiz && (
-                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
-                              Có phần tự luận
-                            </span>
-                          )}
-                          {attemptInfo && (
-                            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 dark:bg-sky-950/60 dark:text-sky-300">
-                              {attemptInfo.limit === 1 ? "Chỉ làm 1 lần" : `Được làm ${attemptInfo.limit} lần`}
-                            </span>
-                          )}
-                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${statusConfig.className}`}>
-                            {statusConfig.label}
-                            {status === "graded" ? ` · ${assignment.score}/${assignment.max_score || 10}` : ""}
-                          </span>
-                          {assignment.course_title && (
-                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                              {assignment.course_title}
-                            </span>
-                          )}
-                        </div>
-                        <h2 className="mt-2 break-words text-base font-bold text-slate-900 dark:text-white">{assignment.title}</h2>
-                        {displayDescription && (
-                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{displayDescription}</p>
-                        )}
-                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                          {type === "quiz" && !isHomeworkQuiz ? (
-                            <>
-                              <span className="font-semibold text-violet-700 dark:text-violet-300">
-                                {status === "upcoming" ? "Mở lúc" : status === "overdue" ? "Đã kết thúc" : "Buổi học"}: {formatDateTime(
-                                  status === "overdue"
-                                    ? assignment.available_until || assignment.session_end
-                                    : status === "upcoming"
-                                      ? assignment.available_from || assignment.session_start
-                                      : assignment.session_start
-                                )}
-                              </span>
-                              {assignment.session_title && <span>Buổi: {assignment.session_title}</span>}
-                              {assignment.class_title && <span>Lớp: {assignment.class_title}</span>}
-                            </>
-                          ) : (
-                            <>
-                              {type === "quiz" && status === "upcoming" && assignment.available_from && (
-                                <span className="font-semibold text-violet-700 dark:text-violet-300">Mở lúc: {formatDateTime(assignment.available_from)}</span>
-                              )}
-                              <span>Hạn nộp: {assignment.due_date ? formatDateTime(assignment.due_date) : "Không giới hạn"}</span>
-                              {!submittedAt && status !== "graded" && (
-                                <span className={`font-semibold ${status === "overdue" ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"}`}>
-                                  {deadlineText(assignment.due_date)}
-                                </span>
-                              )}
-                            </>
-                          )}
-                          {submittedAt && <span className="font-semibold text-blue-600 dark:text-sky-400">Đã nộp: {submittedAt}</span>}
-                          {attemptInfo && (
-                            <span className="font-semibold text-violet-700 dark:text-violet-300">
-                              Lượt làm: {attemptInfo.used}/{attemptInfo.limit}
-                            </span>
-                          )}
-                          {Number(assignment.max_score) > 0 && status !== "graded" && <span>Thang điểm: {assignment.max_score}</span>}
-                        </div>
-                      </div>
-                    </div>
-                    {action.disabled ? (
-                      <span
-                        aria-disabled="true"
-                        className={`inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-xl px-4 py-2.5 text-xs font-bold md:w-auto ${actionStyle[action.tone]}`}
-                      >
-                        {action.label}
-                      </span>
-                    ) : (
-                      <Link
-                        to={buildPath(assignment)}
-                        className={`inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-xl px-4 py-2.5 text-center text-xs font-bold transition md:w-auto ${actionStyle[action.tone]}`}
-                      >
-                        {action.label}
-                      </Link>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
-          </section>
-        )}
+            {/* Bảng danh sách bài tập chuẩn theo mockup, nối 100% dữ liệu thật */}
+            <AssignmentTable
+              items={visibleItems}
+              onAction={handleAction}
+            />
+          </div>
+
+          {/* Cột phải: 2 Widget kết nối dữ liệu thật */}
+          <div className="space-y-4">
+            {/* Widget 1: Hạn nộp trong tuần này */}
+            <AssignmentWeekDeadlines
+              deadlines={weekDeadlines}
+              onAction={handleAction}
+            />
+
+            {/* Widget 2: Lịch kiểm tra sắp tới */}
+            <AssignmentUpcomingExams
+              exams={upcomingExams}
+              onExamClick={handleExamClick}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

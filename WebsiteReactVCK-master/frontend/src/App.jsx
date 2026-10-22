@@ -48,6 +48,7 @@ const AdminSyncPage = lazy(() => import("./pages/admin/AdminSyncPage.jsx"));
 const AdminAuditLogPage = lazy(() => import("./pages/admin/AdminAuditLogPage.jsx"));
 const AdminCalendarPage = lazy(() => import("./features/admin/pages/AdminCalendarPage.jsx"));
 const ClassroomPage = lazy(() => import("./features/learning/pages/ClassroomPage.jsx"));
+const StudentDashboardPage = lazy(() => import("./features/learning/pages/StudentDashboardPage.jsx"));
 const StudentCourseListPage = lazy(() => import("./features/learning/pages/StudentCourseListPage.jsx"));
 const CourseClassListPage = lazy(() => import("./features/learning/pages/CourseClassListPage.jsx"));
 const CourseWorkspaceLayout = lazy(() => import("./features/learning/components/CourseWorkspaceLayout.jsx"));
@@ -88,7 +89,21 @@ const QuizMathGalleryPage = lazy(() => import("./features/quizzes/pages/QuizMath
 const StudentVocabularyHubPage = lazy(() => import("./features/learning/pages/StudentVocabularyHubPage.jsx"));
 const StudentFormulaHubPage = lazy(() => import("./features/learning/pages/StudentFormulaHubPage.jsx"));
 const StudentSettingsPage = lazy(() => import("./features/learning/pages/StudentSettingsPage.jsx"));
+const TeacherSettingsPage = lazy(() => import("./features/teacher/pages/TeacherSettingsPage.jsx"));
 const AdminFormulaPage = lazy(() => import("./pages/admin/AdminFormulaPage.jsx"));
+
+// Preload vocabulary & formula modules during idle time so navigation is instant
+if (typeof window !== "undefined") {
+  const preloadLearningModules = () => {
+    import("./features/learning/pages/StudentVocabularyHubPage.jsx").catch(() => {});
+    import("./features/learning/pages/StudentFormulaHubPage.jsx").catch(() => {});
+  };
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(preloadLearningModules, { timeout: 1500 });
+  } else {
+    setTimeout(preloadLearningModules, 800);
+  }
+}
 
 const isTeacherLmsPath = (p) => (
   p === "/lms/teach" || p.startsWith("/lms/teach/") || p === "/lms/teacher-hub" ||
@@ -126,10 +141,10 @@ function AppRoutes() {
       <Route path="/shedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
 
       {/* === Student LMS === */}
-      <Route path="/lms" element={<Navigate to="/lms/my-learning" replace />} />
+      <Route path="/lms" element={<Navigate to="/lms/dashboard" replace />} />
       <Route path="/lms/my-learning" element={<StudentCourseListPage />} />
       <Route path="/lms/catalog" element={<Navigate to="/lms/my-learning" replace />} />
-      <Route path="/lms/dashboard" element={<Navigate to="/lms/my-learning" replace />} />
+      <Route path="/lms/dashboard" element={<StudentDashboardPage />} />
       <Route path="/lms/analytics" element={<StudentAnalyticsPage />} />
       <Route path="/lms/live-schedule" element={<ClassCalendarPage />} />
       <Route path="/lms/live-room/:sessionId" element={<LiveClassRoomPage />} />
@@ -163,6 +178,7 @@ function AppRoutes() {
       <Route path="/lms/courses/:slug" element={<Navigate to="/lms/my-learning" replace />} />
       <Route path="/lms/learn/:courseId" element={<CourseClassRedirect />} />
       <Route path="/lms/assignment/:id/submit" element={<AssignmentSubmitPage />} />
+      <Route path="/lms/assignments/:id/submit" element={<AssignmentSubmitPage />} />
       <Route path="/lms/quizzes/gallery" element={<QuizMathGalleryPage />} />
       <Route path="/lms/quiz/:quizId" element={<MoliQuizPlayerPage />} />
       <Route path="/lms/quizzes/:quizId" element={<MoliQuizPlayerPage />} />
@@ -192,6 +208,8 @@ function AppRoutes() {
       <Route path="/lms/teacher/curriculum" element={<Navigate to="/lms/teach/classes" replace />} />
       <Route path="/lms/teach/files" element={<TeacherFilesPage />} />
       <Route path="/lms/teacher/files" element={<Navigate to="/lms/teach/files" replace />} />
+      <Route path="/lms/teach/settings" element={<TeacherSettingsPage />} />
+      <Route path="/lms/teacher/settings" element={<Navigate to="/lms/teach/settings" replace />} />
       <Route path="/lms/teacher/grading" element={<TeacherGradingPage />} />
       <Route path="/lms/teacher/quizzes" element={<TeacherQuizPage />} />
       <Route path="/lms/teacher/quizzes/new" element={<MoliQuizEditorPage />} />

@@ -15,6 +15,7 @@ import {
   BookMarked
 } from "lucide-react";
 import { LoadingState, EmptyState, ErrorState } from "../../../components/common/StateView";
+import { getClassCoverImage } from "../../../utils/classWallpapers";
 
 // MOCK_UI_ONLY: Dữ liệu mẫu minh họa Gamification & Buổi học Live sắp tới khi backend chưa nối đủ
 const MOCK_UI_ONLY = {
@@ -377,10 +378,7 @@ export default function MyLearningPage() {
                   {/* Thumbnail */}
                   <div className="relative aspect-video overflow-hidden bg-slate-950">
                     <img
-                      src={
-                        course.thumbnail_url ||
-                        "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80"
-                      }
+                      src={getClassCoverImage(course, course.course_id || course.id)}
                       alt={course.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                     />

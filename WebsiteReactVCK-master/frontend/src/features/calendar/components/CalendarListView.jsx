@@ -16,7 +16,8 @@ const formatDateTime = (isoString) => {
 export default function CalendarListView({
   events = [],
   onSelectEvent,
-  onJoinSession
+  onJoinSession,
+  isTeacher = false
 }) {
   if (events.length === 0) {
     return (
@@ -84,6 +85,16 @@ export default function CalendarListView({
                         {ev.class_title}
                       </span>
                     )}
+                    {!isSession && ev.total_students > 0 && (
+                      <span className="rounded-full bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:text-sky-300">
+                        Đã nộp: {ev.submitted_count || 0}/{ev.total_students}
+                      </span>
+                    )}
+                    {!isSession && (ev.submitted_count || 0) > (ev.graded_count || 0) && (
+                      <span className="rounded-full bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                        Cần chấm: {(ev.submitted_count || 0) - (ev.graded_count || 0)}
+                      </span>
+                    )}
                   </div>
 
                   <h3 className="mt-0.5 text-sm font-black text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-sky-400">
@@ -125,7 +136,7 @@ export default function CalendarListView({
                     onClick={() => onSelectEvent(ev)}
                     className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
                   >
-                    Chi tiết
+                    {!isSession && isTeacher ? "Xem bài nộp" : "Chi tiết"}
                   </button>
                 )}
               </div>

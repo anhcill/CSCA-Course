@@ -251,8 +251,12 @@ const parseTeacher = (payload, occurredAt) => {
   return {
     teacherSourceId: sourceId(payload.teacherSourceId || payload.externalTeacherId, "teacherSourceId"),
     legacyTeacherSourceIds: legacyIds.map((id) => sourceId(id, "legacyTeacherSourceIds")),
+    teacherCode: optionalText(payload.teacherCode || payload.employeeCode, 50, "teacherCode"),
     fullName: text(payload.fullName, 160, "fullName"),
     email: email(payload.email),
+    phone: optionalText(payload.phone, 50, "phone"),
+    position: optionalText(payload.position, 100, "position"),
+    department: optionalText(payload.department, 100, "department"),
     status: enumValue(payload.accountStatus, ACCOUNT_STATUSES, "active", "accountStatus"),
     sourceUpdatedAt: sourceDate(payload, occurredAt),
   };
@@ -297,10 +301,14 @@ const syncTeacher = async (client, event) => {
            email = $1, management_staff_source_id = $2, management_display_name = $3,
            is_management_managed = TRUE, lms_account_status = $4,
            management_source_updated_at = $5, is_locked = $6,
-           role = (CASE WHEN role = 'admin' THEN 'admin' ELSE 'creator' END)::user_role
-       WHERE id = $7
-       RETURNING id, role, management_staff_source_id, management_display_name, lms_account_status`,
-      [input.email, input.teacherSourceId, input.fullName, input.status, input.sourceUpdatedAt, locked, user.id],
+           role = (CASE WHEN role = 'admin' THEN 'admin' ELSE 'creator' END)::user_role,
+           teacher_code = COALESCE($7, teacher_code),
+           management_phone = COALESCE($8, management_phone),
+           position = COALESCE($9, position),
+           department = COALESCE($10, department)
+       WHERE id = $11
+       RETURNING id, role, management_staff_source_id, management_display_name, lms_account_status, teacher_code, position, department, management_phone`,
+      [input.email, input.teacherSourceId, input.fullName, input.status, input.sourceUpdatedAt, locked, input.teacherCode, input.phone, input.position, input.department, user.id],
     );
     return { action: "teacher.synced", entityType: "user", entityId: Number(user.id), data: updated.rows[0] };
   }
@@ -310,10 +318,11 @@ const syncTeacher = async (client, event) => {
     `INSERT INTO users
        (username, email, password_hash, role, email_verified, is_locked,
         management_staff_source_id, management_display_name, is_management_managed,
-        lms_account_status, management_source_updated_at, lms_provisioned_at)
-     VALUES ($1, $2, NULL, 'creator', FALSE, $3, $4, $5, TRUE, $6, $7, NOW())
-     RETURNING id, role, management_staff_source_id, management_display_name, lms_account_status`,
-    [username, input.email, locked, input.teacherSourceId, input.fullName, input.status, input.sourceUpdatedAt],
+        lms_account_status, management_source_updated_at, lms_provisioned_at,
+        teacher_code, management_phone, position, department)
+     VALUES ($1, $2, NULL, 'creator', FALSE, $3, $4, $5, TRUE, $6, $7, NOW(), $8, $9, $10, $11)
+     RETURNING id, role, management_staff_source_id, management_display_name, lms_account_status, teacher_code, position, department, management_phone`,
+    [username, input.email, locked, input.teacherSourceId, input.fullName, input.status, input.sourceUpdatedAt, input.teacherCode, input.phone, input.position, input.department],
   );
   return { action: "teacher.synced", entityType: "user", entityId: Number(created.rows[0].id), data: created.rows[0] };
 };
@@ -838,9 +847,13 @@ const parseStudent = (payload, occurredAt) => {
   return {
     studentSourceId: sourceId(payload.studentSourceId || payload.externalStudentId, "studentSourceId"),
     legacyStudentSourceIds: legacyIds.map((id) => sourceId(id, "legacyStudentSourceIds")),
+    studentCode: optionalText(payload.studentCode, 50, "studentCode"),
+    classCode: optionalText(payload.classCode, 100, "classCode"),
+    classSourceId: optionalText(payload.classSourceId, 128, "classSourceId"),
     fullName: text(payload.fullName, 120, "fullName"),
     email: email(payload.email),
     phone: optionalText(payload.phone, 50, "phone"),
+    department: optionalText(payload.department, 100, "department"),
     accountStatus: enumValue(payload.accountStatus, ACCOUNT_STATUSES, "pending_payment", "accountStatus"),
     sourceUpdatedAt: sourceDate(payload, occurredAt),
   };
@@ -848,13 +861,15 @@ const parseStudent = (payload, occurredAt) => {
 
 const syncStudent = async (client, event) => {
   const input = parseStudent(event.payload, event.occurredAt);
-  const sourceIds = [input.studentSourceId, ...input.legacyStudentSourceIds].map(lower);
+  const effectiveStudentCode = input.studentCode || input.studentSourceId;
+  const effectiveClassId = input.classSourceId || input.classCode;
+  const sourceIds = [input.studentSourceId, ...input.legacyStudentSourceIds, input.studentCode].filter(Boolean).map(lower);
   const bySource = await client.query(
     `SELECT id, role, email, external_student_id, management_source_updated_at
      FROM users WHERE LOWER(external_student_id) = ANY($1::text[])
      ORDER BY CASE WHEN LOWER(external_student_id) = LOWER($2) THEN 0 ELSE 1 END, id
      LIMIT 1 FOR UPDATE`,
-    [sourceIds, input.studentSourceId],
+    [sourceIds, effectiveStudentCode],
   );
   let user = bySource.rows[0];
   if (!user) {
@@ -864,7 +879,7 @@ const syncStudent = async (client, event) => {
       [input.email],
     );
     user = byEmail.rows[0] || null;
-    if (user?.external_student_id && lower(user.external_student_id) !== lower(input.studentSourceId) &&
+    if (user?.external_student_id && lower(user.external_student_id) !== lower(effectiveStudentCode) &&
         !input.legacyStudentSourceIds.some((id) => lower(id) === lower(user.external_student_id))) {
       throw new SyncValidationError("Email đã liên kết với học viên Management khác");
     }
@@ -884,32 +899,39 @@ const syncStudent = async (client, event) => {
            oauth_provider = CASE WHEN LOWER(email) <> LOWER($1) THEN 'local'::oauth_provider ELSE oauth_provider END,
            email_verified = CASE WHEN LOWER(email) <> LOWER($1) THEN FALSE ELSE email_verified END,
            email = $1, external_student_id = $2, management_phone = $3,
+           management_display_name = $4,
+           management_class_source_id = COALESCE($5, management_class_source_id),
+           department = COALESCE($6, department),
            is_management_managed = TRUE,
-           lms_account_status = CASE WHEN role IN ('creator', 'admin') THEN lms_account_status ELSE $4 END,
-           management_source_updated_at = $5, lms_provisioned_at = COALESCE(lms_provisioned_at, NOW())
-       WHERE id = $6
+           lms_account_status = CASE WHEN role IN ('creator', 'admin') THEN lms_account_status ELSE $7 END,
+           management_source_updated_at = $8, lms_provisioned_at = COALESCE(lms_provisioned_at, NOW())
+       WHERE id = $9
        RETURNING id, external_student_id, lms_account_status`,
-      [input.email, input.studentSourceId, input.phone, input.accountStatus, input.sourceUpdatedAt, user.id],
+      [input.email, effectiveStudentCode, input.phone, input.fullName, effectiveClassId, input.department, input.accountStatus, input.sourceUpdatedAt, user.id],
     );
     row = updated.rows[0];
   } else {
-    const username = await createManagedUsername(client, "student", input.studentSourceId, { email: input.email, fullName: input.fullName });
+    const username = await createManagedUsername(client, "student", effectiveStudentCode, { email: input.email, fullName: input.fullName });
     const created = await client.query(
       `INSERT INTO users
          (username, email, password_hash, email_verified, external_student_id,
-          management_phone, is_management_managed, lms_account_status,
+          management_phone, management_display_name, management_class_source_id,
+          department, is_management_managed, lms_account_status,
           management_source_updated_at, lms_provisioned_at)
-       VALUES ($1, $2, NULL, FALSE, $3, $4, TRUE, $5, $6, NOW())
+       VALUES ($1, $2, NULL, FALSE, $3, $4, $5, $6, $7, TRUE, $8, $9, NOW())
        RETURNING id, external_student_id, lms_account_status`,
-      [username, input.email, input.studentSourceId, input.phone, input.accountStatus, input.sourceUpdatedAt],
+      [username, input.email, effectiveStudentCode, input.phone, input.fullName, effectiveClassId, input.department, input.accountStatus, input.sourceUpdatedAt],
     );
     row = created.rows[0];
   }
   await client.query(
-    `INSERT INTO student_profiles (user_id, full_name)
-     VALUES ($1, $2)
-     ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, updated_at = NOW()`,
-    [row.id, input.fullName],
+    `INSERT INTO student_profiles (user_id, full_name, student_code)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (user_id) DO UPDATE SET
+       full_name = EXCLUDED.full_name,
+       student_code = COALESCE(EXCLUDED.student_code, student_profiles.student_code),
+       updated_at = NOW()`,
+    [row.id, input.fullName, effectiveStudentCode],
   );
   return { action: "student.synced", entityType: "user", entityId: Number(row.id), data: row };
 };

@@ -3,7 +3,7 @@ import multer from "multer";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
-import requireActiveStudentLmsAccess from "../middleware/requireActiveStudentLmsAccess.js";
+import requireActiveStudentLmsAccess, { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
 import { query } from "../db/connect.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import {
@@ -403,24 +403,39 @@ router.get("/teacher/classes-lookup", protectRoute, requireTeacher, async (req, 
 });
 
 // GET /api/student/classes-lookup
-router.get("/student/classes-lookup", protectRoute, requireActiveStudentLmsAccess, async (req, res) => {
+router.get("/student/classes-lookup", protectRoute, async (req, res) => {
+  if (req.user.role !== "user" && req.user.role !== "admin" && req.user.role !== "creator") {
+    return errorResponse(res, 403, "Chỉ học viên và quản trị viên mới dùng endpoint này", "FORBIDDEN");
+  }
+  if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
+    return errorResponse(res, 403, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực", "LMS_ACCESS_NOT_GRANTED");
+  }
   try {
-    const classesRes = await query(
-      `SELECT lc.id, lc.title, lc.status, lc.course_id, lc.allow_file_download,
-              COALESCE(c.title, c.name) AS course_title, c.category AS course_category
-       FROM live_classes lc
-       JOIN class_enrollments ce ON ce.live_class_id = lc.id
-       LEFT JOIN courses c ON c.id = lc.course_id
-       WHERE lc.status = 'active'
-         AND ce.user_id = $1 AND ce.status = 'active'
-         AND EXISTS (
-           SELECT 1 FROM lms_access_grants g
-           WHERE g.user_id = $1 AND g.course_id = lc.course_id AND g.access_status = 'active'
-             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-         )
-       ORDER BY lc.created_at DESC`,
-      [req.user.id],
-    );
+    const classesRes = req.user.role === "admin"
+      ? await query(
+          `SELECT lc.id, lc.title, lc.status, lc.course_id, lc.allow_file_download,
+                  COALESCE(c.title, c.name) AS course_title, c.category AS course_category
+           FROM live_classes lc
+           LEFT JOIN courses c ON c.id = lc.course_id
+           WHERE lc.status = 'active'
+           ORDER BY lc.created_at DESC`,
+        )
+      : await query(
+          `SELECT lc.id, lc.title, lc.status, lc.course_id, lc.allow_file_download,
+                  COALESCE(c.title, c.name) AS course_title, c.category AS course_category
+           FROM live_classes lc
+           JOIN class_enrollments ce ON ce.live_class_id = lc.id
+           LEFT JOIN courses c ON c.id = lc.course_id
+           WHERE lc.status = 'active'
+             AND ce.user_id = $1 AND ce.status = 'active'
+             AND EXISTS (
+               SELECT 1 FROM lms_access_grants g
+               WHERE g.user_id = $1 AND g.course_id = lc.course_id AND g.access_status = 'active'
+                 AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+             )
+           ORDER BY lc.created_at DESC`,
+          [req.user.id],
+        );
 
     const classIds = classesRes.rows.map((r) => r.id);
     let sessions = [];
@@ -604,8 +619,13 @@ router.post("/teacher/files/:fileId/confirm", protectRoute, requireTeacher, requ
 });
 
 // GET /api/student/files
-router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async (req, res) => {
-  if (req.user.role !== "user") return errorResponse(res, 403, "Chỉ học viên mới dùng endpoint này", "FORBIDDEN");
+router.get("/student/files", protectRoute, async (req, res) => {
+  if (req.user.role !== "user" && req.user.role !== "admin" && req.user.role !== "creator") {
+    return errorResponse(res, 403, "Chỉ học viên và quản trị viên mới dùng endpoint này", "FORBIDDEN");
+  }
+  if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
+    return errorResponse(res, 403, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực", "LMS_ACCESS_NOT_GRANTED");
+  }
   try {
     const courseId = req.query.courseId === undefined ? null : parseId(req.query.courseId);
     if (req.query.courseId !== undefined && !courseId) {
@@ -639,7 +659,7 @@ router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async 
            )`,
         [classId, req.user.id, courseId],
       );
-      if (classAccessResult.rows.length === 0) {
+      if (req.user.role !== "admin" && classAccessResult.rows.length === 0) {
         return errorResponse(res, 403, "Bạn không có quyền xem tài liệu của lớp này", "FORBIDDEN");
       }
       if (sessionId) {
@@ -695,18 +715,23 @@ router.get("/student/files", protectRoute, requireActiveStudentLmsAccess, async 
            OR COALESCE(cs.title, '') ILIKE '%' || $6 || '%'
          ))
          AND f.visibility IN ('CLASS_ONLY', 'COURSE')
-         AND EXISTS (
-           SELECT 1 FROM lms_access_grants g
-           WHERE g.course_id = CASE WHEN f.live_class_id IS NOT NULL THEN lc.course_id ELSE f.course_id END
-             AND g.user_id = $1 AND g.access_status = 'active'
-             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+         AND (
+           $7::boolean = TRUE
+           OR (
+             EXISTS (
+               SELECT 1 FROM lms_access_grants g
+               WHERE g.course_id = CASE WHEN f.live_class_id IS NOT NULL THEN lc.course_id ELSE f.course_id END
+                 AND g.user_id = $1 AND g.access_status = 'active'
+                 AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+             )
+             AND (f.visibility = 'COURSE' OR (f.visibility = 'CLASS_ONLY'
+               AND f.live_class_id IS NOT NULL AND lc.status = 'active'
+               AND EXISTS (SELECT 1 FROM class_enrollments ce
+                           WHERE ce.live_class_id = f.live_class_id AND ce.user_id = $1 AND ce.status = 'active')))
+           )
          )
-         AND (f.visibility = 'COURSE' OR (f.visibility = 'CLASS_ONLY'
-           AND f.live_class_id IS NOT NULL AND lc.status = 'active'
-           AND EXISTS (SELECT 1 FROM class_enrollments ce
-                       WHERE ce.live_class_id = f.live_class_id AND ce.user_id = $1 AND ce.status = 'active')))
        ORDER BY sort_time DESC, f.id DESC`,
-      [req.user.id, courseId, classId, sessionId, date, search],
+      [req.user.id, courseId, classId, sessionId, date, search, req.user.role === 'admin'],
     );
     return res.json({
       success: true,

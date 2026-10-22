@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -10,14 +10,27 @@ import {
   FiExternalLink,
   FiDownload,
   FiEye,
+  FiEdit3,
+  FiImage,
+  FiUploadCloud,
   FiX,
   FiRefreshCw,
+  FiShuffle,
+  FiCheck,
+  FiTrash2,
 } from "react-icons/fi";
 import {
   fetchAdminClasses, updateAdminClassMapping, reviewAdminClass,
   fetchPendingMembershipApprovals, reviewAdminMembership,
   updateAdminClassFileDownloadPolicy,
+  updateAdminClassPresentation,
+  uploadImageToCloudinary,
 } from "../../features/api/lmsClient";
+import {
+  CSCA_WALLPAPERS,
+  getClassCoverImage,
+  getRandomWallpaper,
+} from "../../utils/classWallpapers";
 import Loading from "../../components/Loading.jsx";
 
 export default function AdminClassesPage() {
@@ -32,6 +45,12 @@ export default function AdminClassesPage() {
   const [mappingModalClass, setMappingModalClass] = useState(null);
   const [molyClassIdInput, setMolyClassIdInput] = useState("");
   const [molyCourseIdInput, setMolyCourseIdInput] = useState("");
+  const [presentationModalClass, setPresentationModalClass] = useState(null);
+  const [teacherNameInput, setTeacherNameInput] = useState("");
+  const [coverImageUrlInput, setCoverImageUrlInput] = useState("");
+  const [savingPresentation, setSavingPresentation] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const coverInputRef = useRef(null);
 
   const loadClasses = useCallback(async () => {
     setLoading(true);
@@ -60,6 +79,54 @@ export default function AdminClassesPage() {
     setMappingModalClass(cls);
     setMolyClassIdInput(cls.managementClassId.startsWith("MOLY_CLS_Pending") ? "" : cls.managementClassId);
     setMolyCourseIdInput(cls.managementCourseId.startsWith("MOLY_CRS_Pending") ? "" : cls.managementCourseId);
+  };
+
+  const openPresentationModal = (cls) => {
+    setPresentationModalClass(cls);
+    setTeacherNameInput(cls.teacherName === "Chưa phân công" ? "" : cls.teacherName || "");
+    setCoverImageUrlInput(cls.coverImageUrl || "");
+  };
+
+  const handleCoverUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Vui lòng chọn một tệp ảnh.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Ảnh lớp không được vượt quá 10MB.");
+      return;
+    }
+    setUploadingCover(true);
+    try {
+      const uploaded = await uploadImageToCloudinary(file, { folder: "csca/classes" });
+      setCoverImageUrlInput(uploaded.publicUrl);
+      toast.success("Đã tải ảnh nền lớp.");
+    } catch (error) {
+      toast.error(error?.message || "Không thể tải ảnh lớp.");
+    } finally {
+      setUploadingCover(false);
+      if (coverInputRef.current) coverInputRef.current.value = "";
+    }
+  };
+
+  const handleSavePresentation = async () => {
+    if (!presentationModalClass) return;
+    setSavingPresentation(true);
+    try {
+      await updateAdminClassPresentation(presentationModalClass.id, {
+        teacherName: teacherNameInput.trim(),
+        coverImageUrl: coverImageUrlInput.trim(),
+      });
+      await loadClasses();
+      setPresentationModalClass(null);
+      toast.success("Đã cập nhật tên giáo viên và ảnh lớp.");
+    } catch (error) {
+      toast.error(error?.message || "Không thể cập nhật thẻ lớp.");
+    } finally {
+      setSavingPresentation(false);
+    }
   };
 
   const handleSaveMapping = async () => {
@@ -294,12 +361,22 @@ export default function AdminClassesPage() {
                 filteredClasses.map((cls) => (
                   <tr key={cls.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition">
                     <td className="py-4 px-5">
-                      <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-[11px] block">
-                        {cls.code}
-                      </span>
-                      <span className="font-bold text-gray-900 dark:text-white mt-0.5 block">
-                        {cls.name}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={getClassCoverImage(cls)}
+                          alt={cls.name}
+                          className="h-10 w-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700 shrink-0 shadow-xs"
+                          loading="lazy"
+                        />
+                        <div className="min-w-0">
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-[11px] block">
+                            {cls.code}
+                          </span>
+                          <span className="font-bold text-gray-900 dark:text-white mt-0.5 block truncate">
+                            {cls.name}
+                          </span>
+                        </div>
+                      </div>
                     </td>
                     <td className="py-4 px-4 font-medium text-gray-900 dark:text-white">
                       {cls.teacherName}
@@ -344,6 +421,13 @@ export default function AdminClassesPage() {
                       </button>
                     </td>
                     <td className="py-4 px-5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => openPresentationModal(cls)}
+                        className="mr-2 inline-flex items-center gap-1.5 rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700 transition hover:bg-sky-100 dark:bg-sky-950/40 dark:text-sky-300"
+                      >
+                        <FiEdit3 className="h-3.5 w-3.5" /> Thẻ lớp
+                      </button>
                       <Link
                         to={`/admin/classes/${cls.id}`}
                         className="mr-2 inline-flex items-center gap-1.5 rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
@@ -366,7 +450,186 @@ export default function AdminClassesPage() {
         </div>
       </div>
 
-      {/* Mapping Configuration Modal */}
+      {presentationModalClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white/95 px-6 py-4 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/95">
+              <div>
+                <h3 className="text-lg font-black text-gray-900 dark:text-white">Thẻ lớp — {presentationModalClass.name}</h3>
+                <p className="mt-0.5 text-xs text-gray-500">Thông tin hiển thị trên thẻ lớp học viên. Nếu chưa cài ảnh riêng, hệ thống tự động gán ảnh ngẫu nhiên từ học viện.</p>
+              </div>
+              <button type="button" onClick={() => setPresentationModalClass(null)} className="rounded-xl bg-gray-100 p-2 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700">
+                <FiX className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5 p-6">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-gray-700 dark:text-gray-300">Tên giáo viên hiển thị trên thẻ lớp</label>
+                <input
+                  value={teacherNameInput}
+                  onChange={(event) => setTeacherNameInput(event.target.value)}
+                  maxLength={255}
+                  placeholder={presentationModalClass.systemTeacherName || "Ví dụ: TS. Nguyễn Minh Anh"}
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-sky-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-700 dark:text-gray-300">Ảnh nền của lớp</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const randomWp = getRandomWallpaper();
+                        setCoverImageUrlInput(randomWp.cloudinaryUrl);
+                        toast.success(`Đã chọn ngẫu nhiên: ${randomWp.title}`);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 hover:bg-sky-100 dark:bg-sky-950/40 dark:text-sky-300"
+                    >
+                      <FiShuffle className="h-3 w-3" /> Đổi ngẫu nhiên
+                    </button>
+                    {coverImageUrlInput && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCoverImageUrlInput("");
+                          toast.success("Đã khôi phục ảnh ngẫu nhiên mặc định.");
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-300"
+                      >
+                        <FiTrash2 className="h-3 w-3" /> Gỡ ảnh riêng
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    value={coverImageUrlInput}
+                    onChange={(event) => setCoverImageUrlInput(event.target.value)}
+                    placeholder="Dán link ảnh hoặc tải ảnh lên bên cạnh"
+                    className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-sky-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                  />
+                  <input ref={coverInputRef} type="file" accept="image/*" onChange={handleCoverUpload} className="hidden" />
+                  <button
+                    type="button"
+                    onClick={() => coverInputRef.current?.click()}
+                    disabled={uploadingCover}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-sky-700 disabled:opacity-60"
+                  >
+                    <FiUploadCloud className="h-4 w-4" /> {uploadingCover ? "Đang tải..." : "Tải ảnh"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Preview Box */}
+              <div>
+                <div className="mb-2 flex items-center justify-between text-xs">
+                  <span className="font-bold text-gray-600 dark:text-gray-400">Xem trước hiển thị học viên</span>
+                  {coverImageUrlInput ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
+                      <FiCheck className="h-3 w-3" /> Ảnh riêng của lớp (Admin cài đặt)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800">
+                      Ảnh ngẫu nhiên học viện (Tự động)
+                    </span>
+                  )}
+                </div>
+                <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-slate-900 shadow-md dark:border-gray-800">
+                  <img
+                    src={coverImageUrlInput || getClassCoverImage(presentationModalClass)}
+                    alt="Xem trước ảnh lớp"
+                    className="h-44 w-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-black/20 to-transparent" />
+                  <div className="absolute inset-x-4 bottom-3">
+                    <span className="rounded bg-sky-500/80 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider backdrop-blur-xs">
+                      {presentationModalClass.code}
+                    </span>
+                    <h4 className="mt-1 text-base font-black text-white drop-shadow">
+                      {presentationModalClass.name}
+                    </h4>
+                    <p className="text-xs text-sky-200">
+                      GV: {teacherNameInput.trim() || presentationModalClass.teacherName || "Chưa phân công"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Wallpaper Picker Gallery (15 aesthetic oriental landscape wallpapers) */}
+              <div>
+                <label className="mb-2 block text-xs font-bold text-gray-700 dark:text-gray-300">
+                  Hoặc chọn nhanh từ bộ sưu tập 15 ảnh nền học viện CSCA:
+                </label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-52 overflow-y-auto p-1.5 rounded-2xl border border-gray-200 bg-gray-50/70 dark:border-gray-800 dark:bg-gray-800/50">
+                  {CSCA_WALLPAPERS.map((wp) => {
+                    const isSelected = coverImageUrlInput === wp.cloudinaryUrl || coverImageUrlInput === wp.url;
+                    return (
+                      <button
+                        key={wp.id}
+                        type="button"
+                        onClick={() => {
+                          setCoverImageUrlInput(wp.cloudinaryUrl);
+                          toast.success(`Đã chọn ảnh: ${wp.title}`);
+                        }}
+                        className={`group relative overflow-hidden rounded-xl border text-left transition duration-200 ${
+                          isSelected
+                            ? "border-sky-500 ring-2 ring-sky-500 shadow-md"
+                            : "border-gray-200 hover:border-sky-300 dark:border-gray-700"
+                        }`}
+                      >
+                        <div className="relative aspect-video w-full overflow-hidden bg-slate-200 dark:bg-gray-700">
+                          <img
+                            src={wp.cloudinaryUrl || wp.url}
+                            alt={wp.title}
+                            className="h-full w-full object-cover transition duration-300 group-hover:scale-110"
+                            loading="lazy"
+                          />
+                          {isSelected && (
+                            <div className="absolute inset-0 bg-sky-600/40 flex items-center justify-center">
+                              <span className="rounded-full bg-white p-1 text-sky-600 shadow">
+                                <FiCheck className="h-3 w-3 stroke-[3]" />
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-1 bg-white dark:bg-gray-900">
+                          <p className="truncate text-[10px] font-bold text-gray-800 dark:text-gray-200">
+                            {wp.title}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 z-10 flex justify-end gap-3 border-t border-gray-200 bg-white/95 px-6 py-4 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/95">
+              <button
+                type="button"
+                onClick={() => setPresentationModalClass(null)}
+                className="rounded-xl bg-gray-100 px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePresentation}
+                disabled={savingPresentation || uploadingCover}
+                className="rounded-xl bg-sky-600 px-5 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-60 shadow-md"
+              >
+                {savingPresentation ? "Đang lưu..." : "Lưu thẻ lớp"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+            {/* Mapping Configuration Modal */}
       {mappingModalClass && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">

@@ -135,13 +135,16 @@ const parseProvision = (body) => {
   const fullName = normalizedText(body.fullName, 160);
   const email = normalizedEmail(body.email);
   const phone = body.phone === null || body.phone === undefined ? null : normalizedText(body.phone, 50);
+  const studentCode = body.studentCode === null || body.studentCode === undefined ? null : normalizedText(body.studentCode, 50);
+  const classCode = body.classCode === null || body.classCode === undefined ? null : normalizedText(body.classCode, 100);
+  const department = body.department === null || body.department === undefined ? null : normalizedText(body.department, 100);
   const accountStatus = parseStatus(body.accountStatus, ACCOUNT_STATUS_MAP);
   const paymentStatus = normalizedText(body.paymentStatus, 40);
   const courseSourceIds = parseCourseSourceIds(body.courseSourceIds);
   const classSourceId = normalizedText(body.classSourceId, 128);
   const sourceUpdatedAt = parseDate(body.sourceUpdatedAt);
   if (!externalStudentId || !fullName || !email || !accountStatus || !paymentStatus || !courseSourceIds || !classSourceId || !sourceUpdatedAt) return null;
-  return { externalStudentId, externalPartyId, fullName, email, phone, accountStatus, paymentStatus, courseSourceIds, classSourceId, sourceUpdatedAt };
+  return { externalStudentId, externalPartyId, fullName, email, phone, studentCode, classCode, department, accountStatus, paymentStatus, courseSourceIds, classSourceId, sourceUpdatedAt };
 };
 
 const parseAccess = (body) => {
@@ -326,6 +329,8 @@ router.post("/students/provision", requireManagementIntegration, async (req, res
         errorBody("Email đang thuộc tài khoản LMS khác", "STUDENT_EMAIL_CONFLICT"));
     }
 
+    const effectiveStudentId = payload.studentCode || payload.externalStudentId;
+
     if (user) {
       if (shouldApplySourceUpdate(user.management_source_updated_at, payload.sourceUpdatedAt)) {
         const updated = await client.query(
@@ -338,40 +343,56 @@ router.post("/students/provision", requireManagementIntegration, async (req, res
                management_party_id = $3,
                management_phone = $4,
                management_class_source_id = $5,
+               department = COALESCE($6, department),
+               management_display_name = $7,
                is_management_managed = TRUE,
-               lms_account_status = $6,
-               lms_last_payment_status = $7,
-               management_source_updated_at = $8,
+               lms_account_status = $8,
+               lms_last_payment_status = $9,
+               management_source_updated_at = $10,
                lms_provisioned_at = COALESCE(lms_provisioned_at, NOW())
-           WHERE id = $9
+           WHERE id = $11
            RETURNING id, lms_account_status, is_management_managed`,
-          [payload.email, payload.externalStudentId, payload.externalPartyId, payload.phone, payload.classSourceId,
+          [payload.email, effectiveStudentId, payload.externalPartyId, payload.phone, payload.classSourceId,
+            payload.department, payload.fullName,
             payload.accountStatus, payload.paymentStatus, payload.sourceUpdatedAt, user.id],
         );
         user = { ...user, ...updated.rows[0] };
         await client.query(
-          `INSERT INTO student_profiles (user_id, full_name)
-           VALUES ($1, $2)
-           ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, updated_at = NOW()`,
-          [user.id, payload.fullName],
+          `INSERT INTO student_profiles (user_id, full_name, student_code)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (user_id) DO UPDATE SET
+             full_name = EXCLUDED.full_name,
+             student_code = COALESCE(EXCLUDED.student_code, student_profiles.student_code),
+             updated_at = NOW()`,
+          [user.id, payload.fullName, effectiveStudentId],
         );
       }
     } else {
-      const username = await createManagedUsername(client, "student", payload.externalStudentId, { email: payload.email, fullName: payload.fullName });
+      const username = await createManagedUsername(client, "student", effectiveStudentId, { email: payload.email, fullName: payload.fullName });
       const created = await client.query(
         `INSERT INTO users
            (username, email, password_hash, email_verified, external_student_id,
             management_party_id, management_phone, management_class_source_id,
+            department, management_display_name,
             is_management_managed, lms_account_status, lms_last_payment_status,
             management_source_updated_at, lms_provisioned_at)
-         VALUES ($1, $2, NULL, FALSE, $3, $4, $5, $6, TRUE, $7, $8, $9, NOW())
+         VALUES ($1, $2, NULL, FALSE, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $11, NOW())
          RETURNING id, lms_account_status, is_management_managed`,
-        [username, payload.email, payload.externalStudentId,
-          payload.externalPartyId, payload.phone, payload.classSourceId, payload.accountStatus,
-          payload.paymentStatus, payload.sourceUpdatedAt],
+        [username, payload.email, effectiveStudentId,
+          payload.externalPartyId, payload.phone, payload.classSourceId,
+          payload.department, payload.fullName,
+          payload.accountStatus, payload.paymentStatus, payload.sourceUpdatedAt],
       );
       user = created.rows[0];
-      await client.query("INSERT INTO student_profiles (user_id, full_name) VALUES ($1, $2)", [user.id, payload.fullName]);
+      await client.query(
+        `INSERT INTO student_profiles (user_id, full_name, student_code)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id) DO UPDATE SET
+           full_name = EXCLUDED.full_name,
+           student_code = COALESCE(EXCLUDED.student_code, student_profiles.student_code),
+           updated_at = NOW()`,
+        [user.id, payload.fullName, effectiveStudentId],
+      );
     }
 
     const body = {

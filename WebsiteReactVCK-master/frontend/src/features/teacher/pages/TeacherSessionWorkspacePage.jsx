@@ -93,18 +93,26 @@ export default function TeacherSessionWorkspacePage() {
     setLoading(true);
     setError("");
     try {
-      const [detailResponse, sessionsResponse, filesResponse, announcementsResponse, vocabularyResponse, formulaResponse] = await Promise.all([
+      const [detailResponse, sessionsResponse] = await Promise.all([
         fetchClassDetails(classId),
         fetchLiveClassSessions(classId),
-        fetchClassFiles(classId, { sessionId }),
-        fetchClassAnnouncements({ classId, sessionId }),
-        fetchSessionVocabulary(sessionId),
-        fetchSessionFormulas(sessionId),
       ]);
       const foundSession = sessionsResponse?.success && Array.isArray(sessionsResponse.data)
         ? sessionsResponse.data.find((item) => String(item.id) === String(sessionId))
         : null;
       if (!detailResponse?.data || !foundSession) throw new Error("Không tìm thấy không gian buổi học.");
+
+      const [filesResult, announcementsResult, vocabularyResult, formulaResult] = await Promise.allSettled([
+        fetchClassFiles(classId, { sessionId }),
+        fetchClassAnnouncements({ classId, sessionId }),
+        fetchSessionVocabulary(sessionId),
+        fetchSessionFormulas(sessionId),
+      ]);
+      const filesResponse = filesResult.status === "fulfilled" ? filesResult.value : null;
+      const announcementsResponse = announcementsResult.status === "fulfilled" ? announcementsResult.value : null;
+      const vocabularyResponse = vocabularyResult.status === "fulfilled" ? vocabularyResult.value : null;
+      const formulaResponse = formulaResult.status === "fulfilled" ? formulaResult.value : null;
+
       setClassData(detailResponse.data);
       setSession(foundSession);
       setFiles(Array.isArray(filesResponse?.data) ? filesResponse.data : []);
@@ -260,50 +268,118 @@ export default function TeacherSessionWorkspacePage() {
   const tabClass = (isActive) => `inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition ${isActive ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400/20" : "text-slate-600 hover:bg-emerald-50/80 hover:text-emerald-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-emerald-300"}`;
 
   return (
-    <div className="min-h-full bg-slate-50 px-4 py-6 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <Link to={classBasePath} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400"><ArrowLeft className="h-4 w-4" /> Quay lại lớp và lịch dạy</Link>
-        <section className="overflow-hidden rounded-2xl border border-blue-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 px-4 py-3.5 text-white sm:px-5 sm:py-4">
-            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-              <div className="min-w-0">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-black"><Video className="h-3.5 w-3.5" /> Không gian buổi dạy</span>
-                <h1 className="mt-2 line-clamp-2 text-xl font-black leading-tight sm:text-2xl">{session.title}</h1>
-                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-blue-100">
-                  <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {formatDateTime(session.start_time)}</span>
-                  <span>Lớp: {classInfo.title || "Lớp học"}</span>
-                </div>
-              </div>
-              <div className="flex shrink-0 flex-wrap gap-2">
-                {canJoin ? <button type="button" onClick={handleJoin} className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-50"><Play className="h-3.5 w-3.5" /> {isAdminView ? "Mở link phòng học" : "Vào phòng dạy"}</button> : <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/15 px-3.5 py-2 text-xs font-bold">{meetingWindow.isClosed ? "Phòng đã đóng sau 30 phút" : "Mở trước giờ dạy 15 phút"}</span>}
-                <a href={googleCalendarEventUrl({ title: session.title, startTime: session.start_time, endTime: session.end_time, details: "Buổi dạy CSCA Academy" })} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><CalendarDays className="h-3.5 w-3.5" /> Google Calendar</a>
-                <a href={classCalendarIcsUrl(classId)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><FileText className="h-3.5 w-3.5" /> Tải .ics</a>
-                <button type="button" onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold transition hover:bg-white/20"><CheckCircle2 className="h-3.5 w-3.5" /> Điểm danh</button>
-              </div>
+    <div className="mx-auto max-w-6xl space-y-5 pb-12 transition-colors duration-200">
+      <Link
+        to={classBasePath}
+        className="inline-flex items-center gap-2 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" /> Quay lại lớp và lịch dạy
+      </Link>
+
+      {/* Hero Banner: Oriental Scholar Glassmorphic Theme (Matching SessionDetailPage) */}
+      <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition">
+        <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl" />
+
+        <div className="relative flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs">
+                <Video className="h-3.5 w-3.5 text-sky-600" /> Không gian buổi dạy
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-bold text-emerald-700 shadow-2xs">
+                Lớp: {classInfo.title || "Lớp học"}
+              </span>
             </div>
+
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63]">
+              {session.title}
+            </h1>
+
+            <p className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#244866]">
+              <Clock className="h-4 w-4 text-sky-600 shrink-0" />
+              {formatDateTime(session.start_time)}
+            </p>
           </div>
-          <nav className="flex gap-1 overflow-x-auto border-t border-slate-100 bg-white p-1.5 dark:border-slate-800 dark:bg-slate-900 sm:px-4 sm:py-2" aria-label="Chức năng của buổi dạy">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              const count = tab.id === "vocabulary" ? sessionVocabs.length
-                : tab.id === "formulas" ? sessionFormulas.length
-                : tab.id === "tasks" ? tasks.length
-                : tab.id === "files" ? files.length
-                : tab.id === "students" ? students.length
-                : null;
-              return (
-                <button key={tab.id} type="button" onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })} className={tabClass(activeTab === tab.id)}>
-                  <Icon className="h-4 w-4" /> {tab.label}
-                  {count !== null && (
-                    <span className="ml-1 rounded-full px-1.5 py-0.2 text-[10px] bg-black/10 dark:bg-white/20">
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </section>
+
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {canJoin ? (
+              <button
+                type="button"
+                onClick={handleJoin}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition hover:brightness-105 active:scale-95 animate-pulse"
+              >
+                <Play className="h-4 w-4 fill-current" /> {isAdminView ? "Mở link phòng học" : "Vào phòng dạy"}
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#487291] shadow-2xs">
+                {meetingWindow.isClosed ? "Phòng đã đóng sau giờ học" : "Phòng mở trước giờ dạy 15 phút"}
+              </span>
+            )}
+
+            <a
+              href={googleCalendarEventUrl({ title: session.title, startTime: session.start_time, endTime: session.end_time, details: "Buổi dạy CSCA Academy" })}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+            >
+              <CalendarDays className="h-3.5 w-3.5 text-blue-600" /> Google Calendar
+            </a>
+            <a
+              href={classCalendarIcsUrl(classId)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+            >
+              <FileText className="h-3.5 w-3.5 text-blue-600" /> Tải .ics
+            </a>
+            <button
+              type="button"
+              onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" /> Điểm danh
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Frosted sub-navigation tabs (Matching SessionDetailPage) */}
+      <nav className="flex gap-1.5 overflow-x-auto rounded-2xl border border-white/85 bg-white/80 p-1.5 shadow-2xs backdrop-blur-md" aria-label="Chức năng của buổi dạy">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const count = tab.id === "vocabulary" ? sessionVocabs.length
+            : tab.id === "formulas" ? sessionFormulas.length
+            : tab.id === "tasks" ? tasks.length
+            : tab.id === "files" ? files.length
+            : tab.id === "students" ? students.length
+            : null;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })}
+              className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all duration-200 ${
+                activeTab === tab.id
+                  ? "bg-[#102f63] text-white shadow-md shadow-[#102f63]/25 ring-1 ring-[#102f63]/20"
+                  : "text-[#244866] hover:bg-white/90 hover:text-[#102f63]"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              <span>{tab.label}</span>
+              {count !== null && (
+                <span className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                  activeTab === tab.id
+                    ? "bg-white/20 text-white"
+                    : "bg-slate-100 text-[#487291]"
+                }`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="space-y-4">
         {activeTab === "overview" && (
           <TeacherOverviewTab
             session={session}
@@ -319,8 +395,58 @@ export default function TeacherSessionWorkspacePage() {
             setIsCreateHomeworkOpen={setIsCreateHomeworkOpen}
           />
         )}
-        {activeTab === "students" && <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800"><div><h2 className="font-black">Học viên của buổi học</h2><p className="mt-1 text-xs text-slate-500">Điểm danh và theo dõi chuyên cần theo đúng buổi này.</p></div><button type="button" onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)} className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white">Mở điểm danh</button></div><div className="divide-y divide-slate-100 dark:divide-slate-800">{students.map((student) => <div key={student.id} className="flex items-center justify-between p-4 text-sm"><span className="font-bold">{student.name || student.email}</span><span className="text-xs text-slate-500">{student.email}</span></div>)}</div></section>}
-        {activeTab === "content" && <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-base font-black">Nội dung buổi dạy</h2><p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{session.description || "Chuẩn bị nội dung, slide và hoạt động học tập cho buổi này tại đây."}</p><Link to={`${classBasePath}/curriculum`} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white"><BookOpen className="h-4 w-4" /> Xem giáo trình khóa học</Link></section>}
+        {activeTab === "students" && (
+          <section className="rounded-3xl border border-white/80 bg-white/92 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+              <div>
+                <h2 className="text-base font-black text-[#102f63] dark:text-white flex items-center gap-2">
+                  <Users className="h-4 w-4 text-blue-600" />
+                  Học Viên Ghi Danh Của Buổi Học ({students.length})
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">Điểm danh và theo dõi chuyên cần theo đúng buổi học này.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)}
+                className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-500/20 transition hover:from-blue-700 hover:to-indigo-700"
+              >
+                Mở sổ điểm danh
+              </button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {students.map((student) => (
+                <div
+                  key={student.id}
+                  className="flex items-center justify-between rounded-2xl border border-white/80 bg-white/85 p-3.5 shadow-2xs dark:border-slate-800 dark:bg-slate-800/60"
+                >
+                  <span className="text-xs font-bold text-[#102f63] dark:text-white">{student.name || student.email}</span>
+                  <span className="text-[11px] font-mono text-slate-400">{student.email}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        {activeTab === "content" && (
+          <section className="rounded-3xl border border-white/80 bg-white/92 p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 space-y-3">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-sky-300 shadow-2xs">
+                <BookOpen className="h-4 w-4" />
+              </span>
+              <h2 className="text-base font-black text-[#102f63] dark:text-white">Nội Dung Giảng Dạy Buổi Này</h2>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
+              {session.description || "Chuẩn bị nội dung, slide và hoạt động học tập cho buổi này tại đây."}
+            </p>
+            <div className="pt-2">
+              <Link
+                to={`${classBasePath}/curriculum`}
+                className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700"
+              >
+                <BookOpen className="h-4 w-4" /> Xem chi tiết giáo trình khóa học
+              </Link>
+            </div>
+          </section>
+        )}
         {activeTab === "vocabulary" && (
           <TeacherSessionVocabularyTab
             session={session}
@@ -405,8 +531,8 @@ export default function TeacherSessionWorkspacePage() {
         )}
         {activeTab === "announcements" && <TeacherSessionAnnouncements announcements={announcements} onCreate={handleCreateAnnouncement} />}
         {activeTab === "results" && <TeacherSessionResults tasks={tasks} />}
+        {isCreateHomeworkOpen && <CreateAssignmentModal isOpen classId={classId} sessionId={sessionId} sessionTitle={session.title} homeworkOnly onClose={() => setIsCreateHomeworkOpen(false)} onCreated={loadData} />}
       </div>
-      {isCreateHomeworkOpen && <CreateAssignmentModal isOpen classId={classId} sessionId={sessionId} sessionTitle={session.title} homeworkOnly onClose={() => setIsCreateHomeworkOpen(false)} onCreated={loadData} />}
     </div>
   );
 }
@@ -425,23 +551,22 @@ function TeacherOverviewTab({
 }) {
   return (
     <div className="space-y-4">
-
       {/* 2. Main content grid */}
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left column (2 cols): Tasks + Content */}
         <div className="space-y-4 lg:col-span-2">
           {/* Card: Bài tập & Quiz của buổi */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+          <div className="rounded-3xl border border-white/80 bg-white/92 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
               <div>
-                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Bài tập & Quiz của buổi</h2>
+                <h2 className="text-sm font-black text-[#102f63] dark:text-white">Bài tập & Quiz của buổi</h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Theo dõi nộp bài và chấm điểm của học viên</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setIsCreateHomeworkOpen(true)}
-                  className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-blue-500"
+                  className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 transition hover:from-blue-700 hover:to-indigo-700"
                 >
                   + Giao bài tập
                 </button>
@@ -464,7 +589,7 @@ function TeacherOverviewTab({
                 {tasks.slice(0, 4).map((task) => (
                   <article
                     key={`${task.type}-${task.id}`}
-                    className="flex flex-col justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3.5 transition hover:bg-slate-100/70 dark:border-slate-800 dark:bg-slate-950/40 dark:hover:bg-slate-800/40 sm:flex-row sm:items-center"
+                    className="flex flex-col justify-between gap-3 rounded-2xl border border-white/80 bg-white/85 p-3.5 shadow-2xs backdrop-blur-md transition hover:bg-white dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800/90 sm:flex-row sm:items-center"
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -475,7 +600,7 @@ function TeacherOverviewTab({
                         }`}>
                           {task.type === "quiz" ? "QUIZ" : "BÀI TẬP"}
                         </span>
-                        <h3 className="truncate text-xs font-bold text-slate-900 dark:text-white">{task.title}</h3>
+                        <h3 className="truncate text-xs font-bold text-[#102f63] dark:text-white">{task.title}</h3>
                       </div>
                       <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                         Đã nộp: {task.submittedCount || 0}/{task.totalCount || 0}
@@ -493,7 +618,7 @@ function TeacherOverviewTab({
                       <button
                         type="button"
                         onClick={() => navigate(`${assessmentBasePath}/grading?classId=${classId}&sessionId=${sessionId}&assignmentId=${task.id}`)}
-                        className="shrink-0 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300"
+                        className="shrink-0 rounded-xl border border-emerald-300/80 bg-emerald-50/60 px-3 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300"
                       >
                         Chấm bài
                       </button>
@@ -505,11 +630,11 @@ function TeacherOverviewTab({
           </div>
 
           {/* Card: Nội dung buổi học */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+          <div className="rounded-3xl border border-white/80 bg-white/92 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4 text-blue-600 dark:text-sky-400" />
-                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Nội dung buổi dạy</h2>
+                <h2 className="text-sm font-black text-[#102f63] dark:text-white">Nội dung buổi dạy</h2>
               </div>
               <button
                 type="button"
@@ -528,9 +653,9 @@ function TeacherOverviewTab({
         {/* Right column (1 col): Announcements + Files */}
         <div className="space-y-4">
           {/* Card: Thông báo */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+          <div className="rounded-3xl border border-white/80 bg-white/92 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
-              <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Thông báo ({announcements.length})</h2>
+              <h2 className="text-sm font-black text-[#102f63] dark:text-white">Thông báo ({announcements.length})</h2>
               <button
                 type="button"
                 onClick={() => setSearchParams({ tab: "announcements" })}
@@ -544,9 +669,9 @@ function TeacherOverviewTab({
             ) : (
               <div className="mt-3 space-y-2.5">
                 {announcements.slice(0, 3).map((item) => (
-                  <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                  <div key={item.id} className="rounded-2xl border border-white/80 bg-white/85 p-3 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-800/60">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="truncate text-xs font-bold text-slate-900 dark:text-white">{item.title}</h3>
+                      <h3 className="truncate text-xs font-bold text-[#102f63] dark:text-white">{item.title}</h3>
                       <span className="shrink-0 text-[10px] text-slate-400">
                         {item.status === "scheduled" ? "Hẹn giờ" : item.created_at ? new Date(item.created_at).toLocaleDateString("vi-VN") : ""}
                       </span>
@@ -559,9 +684,9 @@ function TeacherOverviewTab({
           </div>
 
           {/* Card: Tài liệu */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+          <div className="rounded-3xl border border-white/80 bg-white/92 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
-              <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Tài liệu học tập ({files.length})</h2>
+              <h2 className="text-sm font-black text-[#102f63] dark:text-white">Tài liệu học tập ({files.length})</h2>
               <button
                 type="button"
                 onClick={() => setSearchParams({ tab: "files" })}
@@ -579,13 +704,13 @@ function TeacherOverviewTab({
                   const cfg = kindConfig[k] || kindConfig.other;
                   const Icon = cfg.icon;
                   return (
-                    <div key={file.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/70 p-2.5 dark:border-slate-800 dark:bg-slate-950/40">
+                    <div key={file.id} className="flex items-center justify-between gap-2 rounded-2xl border border-white/80 bg-white/85 p-2.5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-800/60">
                       <div className="flex min-w-0 items-center gap-2">
                         <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-[11px] font-bold ${cfg.badge}`}>
                           <Icon className="h-3.5 w-3.5" />
                         </span>
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-bold text-slate-900 dark:text-white">{file.name}</p>
+                          <p className="truncate text-xs font-bold text-[#102f63] dark:text-white">{file.name}</p>
                           <p className="text-[10px] text-slate-400">{formatBytes(file.size_bytes)}</p>
                         </div>
                       </div>
@@ -616,17 +741,62 @@ function TeacherOverviewTab({
 function TeacherSessionTasks({ tasks, onCreateHomework, onCreateSessionQuiz, onOpenGrading }) {
   const inSessionQuizzes = tasks.filter((task) => task.type === "quiz" && task.activityScope !== "homework");
   const homeworks = tasks.filter((task) => task.type !== "quiz" || task.activityScope === "homework");
-  return <section className="space-y-4">
-    <div className="grid gap-4 lg:grid-cols-2">
-      <article className="rounded-2xl border border-violet-200 bg-violet-50/70 p-5 dark:border-violet-900/60 dark:bg-violet-950/20"><span className="rounded-full bg-violet-600 px-2.5 py-1 text-[10px] font-black text-white">TRONG BUỔI HỌC</span><h2 className="mt-3 font-black">Quiz trắc nghiệm tại lớp</h2><p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">Học viên làm ngay trong không gian buổi học. Hệ thống chấm tự động.</p><button type="button" onClick={onCreateSessionQuiz} className="mt-4 rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white transition hover:bg-violet-500">Tạo Quiz buổi học</button></article>
-      <article className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 dark:border-emerald-900/60 dark:bg-emerald-950/20"><span className="rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-black text-white">BÀI TẬP VỀ NHÀ</span><h2 className="mt-3 font-black">Giao file tự luận hoặc Quiz về nhà</h2><p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">Có hạn nộp; bài file đi vào Cổng chấm tổng, Quiz được chấm tự động.</p><button type="button" onClick={onCreateHomework} className="mt-4 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white transition hover:bg-emerald-500">Giao bài tập về nhà</button></article>
-    </div>
-    <TaskGroup title="Quiz làm trong buổi" tasks={inSessionQuizzes} empty="Chưa có Quiz cho buổi học này." />
-    <TaskGroup title="Bài tập về nhà của buổi" tasks={homeworks} empty="Chưa giao bài tập về nhà." onOpenGrading={onOpenGrading} />
-  </section>;
+  return (
+    <section className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <article className="rounded-3xl border border-violet-200/80 bg-gradient-to-br from-violet-50/90 via-purple-50/40 to-white/95 p-5 shadow-[0_12px_35px_rgba(109,40,217,0.06)] backdrop-blur-xl dark:border-violet-900/60 dark:bg-violet-950/20 sm:p-6">
+          <span className="rounded-full bg-violet-600 px-2.5 py-1 text-[10px] font-black text-white shadow-2xs">TRONG BUỔI HỌC</span>
+          <h2 className="mt-3 text-base font-black text-[#102f63] dark:text-white">Quiz trắc nghiệm tại lớp</h2>
+          <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">Học viên làm ngay trong không gian buổi học. Hệ thống chấm tự động.</p>
+          <button type="button" onClick={onCreateSessionQuiz} className="mt-4 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-violet-500/20 transition hover:bg-violet-500">Tạo Quiz buổi học</button>
+        </article>
+        <article className="rounded-3xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/90 via-teal-50/40 to-white/95 p-5 shadow-[0_12px_35px_rgba(5,150,105,0.06)] backdrop-blur-xl dark:border-emerald-900/60 dark:bg-emerald-950/20 sm:p-6">
+          <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-black text-white shadow-2xs">BÀI TẬP VỀ NHÀ</span>
+          <h2 className="mt-3 text-base font-black text-[#102f63] dark:text-white">Giao file tự luận hoặc Quiz về nhà</h2>
+          <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">Có hạn nộp; bài file đi vào Cổng chấm tổng, Quiz được chấm tự động.</p>
+          <button type="button" onClick={onCreateHomework} className="mt-4 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-500">Giao bài tập về nhà</button>
+        </article>
+      </div>
+      <TaskGroup title="Quiz làm trong buổi" tasks={inSessionQuizzes} empty="Chưa có Quiz cho buổi học này." />
+      <TaskGroup title="Bài tập về nhà của buổi" tasks={homeworks} empty="Chưa giao bài tập về nhà." onOpenGrading={onOpenGrading} />
+    </section>
+  );
 }
 
-function TaskGroup({ title, tasks, empty, onOpenGrading }) { return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="mb-3 flex items-center justify-between"><h2 className="font-black">{title}</h2><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">{tasks.length}</span></div>{tasks.length ? <div className="space-y-2.5">{tasks.map((task) => <article key={`${task.type}-${task.id}`} className="flex flex-col justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/30 sm:flex-row sm:items-center"><div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${task.type === "quiz" ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"}`}>{task.type === "quiz" ? "QUIZ TỰ CHẤM" : "NỘP FILE / TỰ LUẬN"}</span><h3 className="mt-2 text-sm font-black">{task.title}</h3><p className="mt-1 text-xs text-slate-500">Đã nộp: {task.submittedCount || 0}/{task.totalCount || 0}{task.pendingGradingCount ? ` · Cần chấm: ${task.pendingGradingCount}` : ""}</p></div>{task.type === "quiz" ? <span className="text-xs font-bold text-violet-700 dark:text-violet-300">Chấm tự động</span> : <button type="button" onClick={() => onOpenGrading?.(task.id)} className="rounded-xl border border-emerald-300 bg-white px-3.5 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300">Mở Cổng chấm</button>}</article>)}</div> : <p className="py-5 text-center text-xs text-slate-500">{empty}</p>}</section>; }
+function TaskGroup({ title, tasks, empty, onOpenGrading }) {
+  return (
+    <section className="rounded-3xl border border-white/80 bg-white/92 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+      <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+        <h2 className="text-base font-black text-[#102f63] dark:text-white">{title}</h2>
+        <span className="rounded-full border border-sky-200/80 bg-sky-50 px-2.5 py-1 text-[10px] font-bold text-sky-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">{tasks.length}</span>
+      </div>
+      {tasks.length ? (
+        <div className="space-y-2.5">
+          {tasks.map((task) => (
+            <article key={`${task.type}-${task.id}`} className="flex flex-col justify-between gap-3 rounded-2xl border border-white/80 bg-white/85 p-4 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-800/60 sm:flex-row sm:items-center">
+              <div>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${task.type === "quiz" ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"}`}>
+                  {task.type === "quiz" ? "QUIZ TỰ CHẤM" : "NỘP FILE / TỰ LUẬN"}
+                </span>
+                <h3 className="mt-2 text-sm font-black text-[#102f63] dark:text-white">{task.title}</h3>
+                <p className="mt-1 text-xs text-slate-500">Đã nộp: {task.submittedCount || 0}/{task.totalCount || 0}{task.pendingGradingCount ? ` · Cần chấm: ${task.pendingGradingCount}` : ""}</p>
+              </div>
+              {task.type === "quiz" ? (
+                <span className="text-xs font-bold text-violet-700 dark:text-violet-300">Chấm tự động</span>
+              ) : (
+                <button type="button" onClick={() => onOpenGrading?.(task.id)} className="rounded-xl border border-emerald-300 bg-white px-3.5 py-2 text-xs font-bold text-emerald-700 shadow-2xs transition hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300">
+                  Mở Cổng chấm
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="py-5 text-center text-xs text-slate-500">{empty}</p>
+      )}
+    </section>
+  );
+}
 
 function TeacherSessionFiles({
   files,
@@ -640,14 +810,14 @@ function TeacherSessionFiles({
 }) {
   return (
     <section className="space-y-4">
-      {/* Header banner with soft emerald tint */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-2xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-white dark:border-emerald-900/40 dark:bg-gradient-to-r dark:from-emerald-950/30 dark:via-slate-900 dark:to-slate-900 p-4.5 shadow-2xs">
+      {/* Header banner with frosted glass */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-3xl border border-white/80 bg-white/92 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-800/50">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-800/50 shadow-2xs">
             <FolderOpen className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+            <h2 className="text-sm sm:text-base font-black text-[#102f63] dark:text-white">
               Tài liệu học tập của buổi
             </h2>
             <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
@@ -655,7 +825,7 @@ function TeacherSessionFiles({
             </p>
           </div>
         </div>
-        <label className={`inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm ring-1 ring-emerald-500/30 transition active:scale-95 ${isUploading ? "pointer-events-none opacity-50" : ""}`}>
+        <label className={`inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-500/20 transition active:scale-95 ${isUploading ? "pointer-events-none opacity-50" : ""}`}>
           <UploadCloud className="h-4 w-4" />
           <span>{isUploading ? "Đang tải lên..." : "Tải tài liệu mới"}</span>
           <input type="file" className="hidden" disabled={isUploading} onChange={onUpload} />
@@ -683,7 +853,7 @@ function TeacherSessionFiles({
             return (
               <article
                 key={file.id}
-                className="group relative flex flex-col justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white p-4.5 shadow-2xs transition-all hover:border-emerald-400 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-700/60"
+                className="group relative flex flex-col justify-between gap-3 rounded-2xl border border-white/80 bg-white/88 p-4.5 shadow-2xs backdrop-blur-md transition-all hover:border-emerald-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-700/60"
               >
                 <div className="flex items-start gap-3">
                   <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${kindInfo.badge}`}>
@@ -691,7 +861,7 @@ function TeacherSessionFiles({
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3
-                      className="truncate text-sm font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition"
+                      className="truncate text-sm font-bold text-[#102f63] dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition"
                       title={file.name}
                     >
                       {file.name}
@@ -748,11 +918,87 @@ function TeacherSessionFiles({
   );
 }
 
-function TeacherSessionResults({ tasks }) { return tasks.length ? <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500 dark:bg-slate-800 dark:text-slate-400"><tr><th className="p-4">Nhiệm vụ</th><th className="p-4 text-center">Đã nộp</th><th className="p-4 text-center">Điểm TB</th></tr></thead><tbody>{tasks.map((task) => <tr key={`${task.type}-${task.id}`} className="border-t border-slate-100 dark:border-slate-800"><td className="p-4 font-bold">{task.title}</td><td className="p-4 text-center">{task.submittedCount || 0}/{task.totalCount || 0}</td><td className="p-4 text-center font-black text-blue-600">{task.avgScore ?? "—"}</td></tr>)}</tbody></table></section> : <EmptyState icon={GraduationCap} title="Chưa có kết quả" description="Kết quả của các nhiệm vụ trong buổi học sẽ tổng hợp tại đây." />; }
+function TeacherSessionResults({ tasks }) {
+  return tasks.length ? (
+    <section className="overflow-x-auto rounded-3xl border border-white/80 bg-white/92 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
+      <table className="w-full text-left text-xs">
+        <thead className="bg-sky-50/50 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800">
+          <tr>
+            <th className="p-4 font-black">Nhiệm vụ</th>
+            <th className="p-4 text-center font-black">Đã nộp</th>
+            <th className="p-4 text-center font-black">Điểm TB</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          {tasks.map((task) => (
+            <tr key={`${task.type}-${task.id}`} className="hover:bg-white/60 transition">
+              <td className="p-4 font-bold text-[#102f63] dark:text-white">{task.title}</td>
+              <td className="p-4 text-center">{task.submittedCount || 0}/{task.totalCount || 0}</td>
+              <td className="p-4 text-center font-black text-blue-600">{task.avgScore ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  ) : (
+    <EmptyState icon={GraduationCap} title="Chưa có kết quả" description="Kết quả của các nhiệm vụ trong buổi học sẽ tổng hợp tại đây." />
+  );
+}
 
 function TeacherSessionAnnouncements({ announcements, onCreate }) {
   const [form, setForm] = useState({ title: "", message: "", linkUrl: "", attachmentUrl: "", scheduledAt: "" });
   const [saving, setSaving] = useState(false);
-  const submit = async (event) => { event.preventDefault(); if (!form.title.trim() || !form.message.trim()) return toast.error("Nhập tiêu đề và nội dung thông báo."); setSaving(true); try { await onCreate({ ...form, title: form.title.trim(), message: form.message.trim(), scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : undefined }); setForm({ title: "", message: "", linkUrl: "", attachmentUrl: "", scheduledAt: "" }); } finally { setSaving(false); } };
-  return <section className="space-y-5"><form onSubmit={submit} className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/60 dark:bg-blue-950/20"><div className="flex items-center gap-2"><Bell className="h-5 w-5 text-blue-600" /><div><h2 className="font-black">Gửi thông báo cho buổi học</h2><p className="mt-1 text-xs text-slate-500">Gửi ngay hoặc hẹn giờ; có thể đính kèm liên kết/tài liệu đã tải lên.</p></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Tiêu đề thông báo" /><input type="datetime-local" value={form.scheduledAt} onChange={(event) => setForm({ ...form, scheduledAt: event.target.value })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" /></div><textarea value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })} className="mt-3 min-h-28 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Nội dung học viên sẽ nhận" /><div className="mt-3 grid gap-3 sm:grid-cols-2"><input value={form.linkUrl} onChange={(event) => setForm({ ...form, linkUrl: event.target.value })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Liên kết cần mở (không bắt buộc)" /><input value={form.attachmentUrl} onChange={(event) => setForm({ ...form, attachmentUrl: event.target.value })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Liên kết tài liệu đính kèm (không bắt buộc)" /></div><button disabled={saving} className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">{saving ? "Đang lưu..." : form.scheduledAt ? "Lên lịch gửi" : "Gửi ngay"}</button></form><div className="space-y-3">{announcements.length ? announcements.map((item) => <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex justify-between gap-3"><h3 className="text-sm font-black">{item.title}</h3><span className="text-[10px] font-black text-slate-500">{item.status === "scheduled" ? `Hẹn ${new Date(item.scheduledAt).toLocaleString("vi-VN")}` : item.status === "sent" ? "Đã gửi" : item.status}</span></div><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">{item.message}</p></article>) : <EmptyState icon={Bell} title="Chưa có thông báo" description="Thông báo gửi cho buổi này sẽ được lưu tại đây." />}</div></section>;
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!form.title.trim() || !form.message.trim()) return toast.error("Nhập tiêu đề và nội dung thông báo.");
+    setSaving(true);
+    try {
+      await onCreate({ ...form, title: form.title.trim(), message: form.message.trim(), scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : undefined });
+      setForm({ title: "", message: "", linkUrl: "", attachmentUrl: "", scheduledAt: "" });
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section className="space-y-5">
+      <form onSubmit={submit} className="rounded-3xl border border-white/80 bg-white/92 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-sky-300 shadow-2xs">
+            <Bell className="h-4 w-4" />
+          </div>
+          <div>
+            <h2 className="text-base font-black text-[#102f63] dark:text-white">Gửi thông báo cho buổi học</h2>
+            <p className="mt-0.5 text-xs text-slate-500">Gửi ngay hoặc hẹn giờ; có thể đính kèm liên kết/tài liệu đã tải lên.</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="rounded-2xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900" placeholder="Tiêu đề thông báo" />
+          <input type="datetime-local" value={form.scheduledAt} onChange={(event) => setForm({ ...form, scheduledAt: event.target.value })} className="rounded-2xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900" />
+        </div>
+        <textarea value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })} className="mt-3 min-h-28 w-full rounded-2xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900" placeholder="Nội dung học viên sẽ nhận" />
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <input value={form.linkUrl} onChange={(event) => setForm({ ...form, linkUrl: event.target.value })} className="rounded-2xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900" placeholder="Liên kết cần mở (không bắt buộc)" />
+          <input value={form.attachmentUrl} onChange={(event) => setForm({ ...form, attachmentUrl: event.target.value })} className="rounded-2xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900" placeholder="Liên kết tài liệu đính kèm (không bắt buộc)" />
+        </div>
+        <button disabled={saving} className="mt-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-500/20 transition hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50">
+          {saving ? "Đang lưu..." : form.scheduledAt ? "Lên lịch gửi" : "Gửi ngay"}
+        </button>
+      </form>
+      <div className="space-y-3">
+        {announcements.length ? (
+          announcements.map((item) => (
+            <article key={item.id} className="rounded-2xl border border-white/80 bg-white/85 p-5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex justify-between gap-3">
+                <h3 className="text-sm font-black text-[#102f63] dark:text-white">{item.title}</h3>
+                <span className="text-[10px] font-bold text-slate-500">{item.status === "scheduled" ? `Hẹn ${new Date(item.scheduledAt).toLocaleString("vi-VN")}` : item.status === "sent" ? "Đã gửi" : item.status}</span>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600 dark:text-slate-300">{item.message}</p>
+            </article>
+          ))
+        ) : (
+          <EmptyState icon={Bell} title="Chưa có thông báo" description="Thông báo gửi cho buổi này sẽ được lưu tại đây." />
+        )}
+      </div>
+    </section>
+  );
 }

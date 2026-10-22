@@ -26,42 +26,47 @@ export default function TeacherRiskStudentsSection({
   setRiskFilter,
 }) {
   return (
-    <section className="bg-white dark:bg-slate-900/80 border border-amber-200 dark:border-amber-500/30 rounded-3xl p-6 sm:p-8 space-y-5 shadow-sm">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-amber-200 dark:border-amber-500/20 pb-4">
+    <section className="relative overflow-hidden rounded-3xl border border-white/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl p-5 sm:p-6 space-y-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)]">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800 pb-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" /> Học viên cần hỗ trợ
+          <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <span className="p-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="w-4 h-4" />
+            </span>
+            <span>Học Viên Cần Hỗ Trợ & Theo Dõi</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Cảnh báo được tính từ chuyên cần, tiến độ, điểm và bài quá hạn.
+            Cảnh báo tự động tính từ tỷ lệ chuyên cần, tiến độ học, điểm trung bình và bài nộp quá hạn.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={classFilter}
             onChange={(e) => setClassFilter(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-slate-200"
+            className="rounded-xl border border-white/90 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-2xs outline-none focus:border-sky-300"
           >
-            <option value="all">Tất cả lớp</option>
+            <option value="all">Tất cả lớp phụ trách</option>
             {classOptions.map((item) => (
               <option key={item.id} value={item.id}>{item.code || item.title}</option>
             ))}
           </select>
-          <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-1">
-            <Filter className="w-3.5 h-3.5 text-slate-500 ml-1" />
+
+          <div className="flex items-center gap-1 bg-white/80 dark:bg-slate-800/80 border border-white/90 dark:border-slate-700 rounded-xl p-1 shadow-2xs">
+            <Filter className="w-3.5 h-3.5 text-slate-400 ml-1" />
             {[
               ["all", "Tất cả"],
-              ["danger", "Báo động"],
-              ["warning", "Theo dõi"],
+              ["danger", "Báo động 🔴"],
+              ["warning", "Theo dõi ⚠️"],
             ].map(([value, label]) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setRiskFilter(value)}
-                className={`px-2 py-1 rounded-lg text-[11px] font-bold ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
                   riskFilter === value
-                    ? "bg-amber-500/20 text-amber-700 dark:text-amber-300"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    ? "bg-[#1a446c] text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 {label}
@@ -75,50 +80,59 @@ export default function TeacherRiskStudentsSection({
         <EmptyState
           icon={CheckCircle2}
           title="Không có cảnh báo trong bộ lọc"
-          description="Hiện chưa có học viên nào thỏa điều kiện cảnh báo."
+          description="Hiện tất cả học viên đều duy trì chuyên cần và tiến độ học tập ổn định!"
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
           {filteredRiskStudents.map((student) => (
             <article
               key={`${student.classId}-${student.id}`}
-              className={`rounded-2xl p-4 border shadow-sm ${
+              className={`rounded-2xl p-4 border backdrop-blur-md shadow-2xs transition hover:shadow-md ${
                 student.riskLevel === "danger"
-                  ? "bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-500/30"
-                  : "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-500/30"
+                  ? "bg-rose-50/70 dark:bg-rose-950/20 border-rose-200/80 dark:border-rose-500/30 ring-1 ring-rose-400/20"
+                  : "bg-amber-50/70 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-500/30 ring-1 ring-amber-400/20"
               }`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">{student.name}</h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{student.className}</p>
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">{student.className}</p>
                 </div>
-                <span className="text-[10px] uppercase font-black text-amber-700 dark:text-amber-300">
+                <span
+                  className={`text-[10px] uppercase font-black px-2 py-0.5 rounded-full border ${
+                    student.riskLevel === "danger"
+                      ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/25"
+                      : "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25"
+                  }`}
+                >
                   {riskLabel[student.riskLevel]}
                 </span>
               </div>
-              <p className="text-xs text-slate-700 dark:text-slate-300 bg-white/80 dark:bg-slate-950/80 rounded-xl p-3 mt-3 border border-slate-200/50 dark:border-transparent">
+
+              <p className="text-xs text-slate-700 dark:text-slate-300 bg-white/80 dark:bg-slate-950/80 rounded-xl p-3 mt-3 border border-slate-200/50 dark:border-slate-800">
                 {student.riskReason || "Cần theo dõi thêm"}
               </p>
-              <div className="grid grid-cols-3 gap-2 text-center text-[10px] mt-3">
+
+              <div className="grid grid-cols-3 gap-2 text-center text-[10px] mt-3 bg-white/50 dark:bg-slate-900/40 rounded-xl p-2 border border-slate-200/40 dark:border-slate-800/50">
                 <div>
                   <p className="text-slate-500">Điểm</p>
-                  <p className="font-mono font-bold text-slate-900 dark:text-white mt-1">{student.gpa === null ? "—" : `${student.gpa}/10`}</p>
+                  <p className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">{student.gpa === null ? "—" : `${student.gpa}/10`}</p>
                 </div>
                 <div>
                   <p className="text-slate-500">Chuyên cần</p>
-                  <p className="font-mono font-bold text-slate-900 dark:text-white mt-1">{student.attendanceRate || "—"}</p>
+                  <p className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">{student.attendanceRate || "—"}</p>
                 </div>
                 <div>
                   <p className="text-slate-500">Vắng</p>
-                  <p className="font-mono font-bold text-rose-600 dark:text-rose-300 mt-1">{student.missedSessionsCount}</p>
+                  <p className="font-mono font-bold text-rose-600 dark:text-rose-400 mt-0.5">{student.missedSessionsCount}</p>
                 </div>
               </div>
-              <div className="flex items-center justify-between mt-4">
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">Hoạt động: {formatRelative(student.lastActive)}</span>
+
+              <div className="flex items-center justify-between mt-3.5 pt-2 border-t border-slate-200/40 dark:border-slate-800/60">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Hoạt động: {formatRelative(student.lastActive)}</span>
                 <Link
                   to={`/lms/teach/support?classId=${student.classId}&studentId=${student.id}`}
-                  className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                  className="inline-flex items-center gap-1 text-xs text-[#1a446c] dark:text-sky-400 font-bold hover:underline"
                 >
                   Theo dõi hỗ trợ <ExternalLink className="w-3.5 h-3.5" />
                 </Link>

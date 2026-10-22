@@ -205,3 +205,43 @@ test("a shortened server deadline auto-submits saved answers and rejects a late 
   assert.equal(stored.status, "submitted");
   assert.equal(stored.auto_submitted, true);
 });
+
+test("overdue unsubmitted quiz allows learner to review questions, answers and explanations without being locked out", async (t) => {
+  const db = await loadDatabase();
+  t.after(() => db.close());
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('overdue-teacher','overdue-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const learner = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('overdue-learner','overdue-learner@example.test','user') RETURNING id",
+  )).rows[0];
+  const course = (await db.query(
+    "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Overdue course','overdue-course',$1,TRUE) RETURNING id",
+    [teacher.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - interval '1 day',NOW())`,
+    [learner.id, course.id],
+  );
+  const quiz = (await db.query(
+    `INSERT INTO quizzes(title,course_id,instructor_id,status,duration_minutes,passing_score,attempt_limit,available_until,review_policy)
+     VALUES ('Overdue quiz',$1,$2,'PUBLISHED',30,60,1,NOW() - interval '1 hour','after_submit') RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO quiz_questions(quiz_id,question_text,question_type,options_json,correct_answer,explanation,points,sort_order)
+     VALUES ($1,'Câu hỏi quá hạn','single_choice',$2::jsonb,'B','Giải thích chi tiết cho câu hỏi',2,1) RETURNING id`,
+    [quiz.id, JSON.stringify([{ key: "A", text: "Sai" }, { key: "B", text: "Đúng" }])],
+  );
+
+  // Learner never submitted attempt for this quiz
+  const response = await invoke("get", "/quizzes/:quizId/start", { user: learner, params: { quizId: quiz.id } });
+  assert.equal(response.statusCode, 200, JSON.stringify(response.body));
+  assert.equal(response.body.data.isOverdueUnsubmitted, true);
+  assert.equal(response.body.data.result.reviewAvailable, true);
+  assert.equal(response.body.data.result.review.length, 1);
+  assert.equal(response.body.data.result.review[0].correctAnswer, "B");
+  assert.equal(response.body.data.result.review[0].explanation, "Giải thích chi tiết cho câu hỏi");
+  assert.equal(response.body.data.quiz.items.length, 1);
+});

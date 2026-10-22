@@ -9,29 +9,32 @@ const formatDateTime = (value) => {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
   });
 };
 
 export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
   return (
-    <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm dark:shadow-none flex flex-col justify-between">
+    <section className="flex flex-col justify-between rounded-3xl border border-white/80 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
       <div>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
           <div>
-            <h3 className="text-lg font-black text-slate-950 dark:text-white">Việc cần hoàn thành</h3>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Quiz theo buổi học gần nhất, bài tập theo hạn nộp của lớp.</p>
+            <h3 className="text-base sm:text-lg font-black text-[#102f63]">Việc cần hoàn thành</h3>
+            <p className="mt-0.5 text-xs text-[#487291]">Quiz và bài tập cần làm theo hạn nộp của lớp.</p>
           </div>
-          <Link to="/lms/assignments" className="text-xs font-bold text-blue-600 dark:text-sky-400 hover:underline">
+          <Link
+            to={`${basePath}/assignments`}
+            className="rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700 hover:bg-sky-100 transition"
+          >
             Xem tất cả
           </Link>
         </div>
 
         {pendingTasks.length === 0 ? (
-          <div className="my-8 rounded-2xl border border-dashed border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-6 text-center">
-            <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600 dark:text-emerald-400" />
-            <p className="mt-3 text-sm font-bold text-slate-900 dark:text-white">Tất cả bài tập đã hoàn thành!</p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Bạn không có bài tập hoặc quiz nào còn tồn đọng.</p>
+          <div className="my-6 rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/50 p-6 text-center">
+            <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600" />
+            <p className="mt-3 text-sm font-bold text-[#102f63]">Tất cả bài tập đã hoàn thành!</p>
+            <p className="mt-1 text-xs text-[#487291]">Bạn không có bài tập hoặc quiz nào còn tồn đọng.</p>
           </div>
         ) : (
           <div className="mt-4 space-y-2.5">
@@ -39,44 +42,62 @@ export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
               const isQuiz = item.type === "quiz";
               const isLate = item.status === "late";
               const sessionText = item.session_start
-                ? new Date(item.session_start).toLocaleString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+                ? new Date(item.session_start).toLocaleString("vi-VN", {
+                    weekday: "short",
+                    day: "2-digit",
+                    month: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
                 : "Chưa xác định buổi học";
               const sessionId = item.class_session_id || item.classSessionId || item.session_id || item.sessionId;
               const targetUrl = sessionId
                 ? `${basePath}/sessions/${sessionId}?tab=tasks`
-                : (isQuiz ? `${basePath}/quizzes/${item.id}` : `${basePath}/assignments/${item.id}/submit`);
+                : isQuiz
+                ? `${basePath}/quizzes/${item.id}`
+                : `${basePath}/assignments/${item.id}/submit`;
 
               return (
                 <Link
                   key={`${item.type}-${item.id}`}
                   to={targetUrl}
-                  className="group flex items-center justify-between gap-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3.5 transition hover:border-blue-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800"
+                  className="group flex items-center justify-between gap-3 rounded-2xl border border-white/90 bg-white/70 p-3.5 shadow-2xs backdrop-blur-sm transition hover:border-sky-300 hover:bg-sky-50/60"
                 >
-                  <div className="flex items-start gap-3 min-w-0">
+                  <div className="flex min-w-0 items-start gap-3">
                     <span
-                      className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
                         isQuiz
-                          ? "bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300"
-                          : "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-sky-300"
+                          ? "bg-purple-100 text-purple-700"
+                          : "bg-sky-100 text-sky-700"
                       }`}
                     >
                       {isQuiz ? <FileQuestion className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-sky-400">
+                      <p className="truncate text-xs sm:text-sm font-bold text-[#102f63] group-hover:text-sky-700">
                         {item.title}
                       </p>
-                      <div className="mt-1 flex items-center gap-2 text-xs">
-                        <span className={isQuiz ? "font-bold text-violet-700 dark:text-violet-300" : isLate ? "font-bold text-rose-600 dark:text-rose-400" : "text-slate-500 dark:text-slate-400"}>
-                          {isQuiz ? `Buổi học: ${sessionText}` : `${isLate ? "Quá hạn: " : "Hạn nộp: "}${formatDateTime(item.due_date)}`}
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                        <span
+                          className={
+                            isQuiz
+                              ? "font-bold text-violet-700"
+                              : isLate
+                              ? "font-bold text-rose-600"
+                              : "text-[#487291]"
+                          }
+                        >
+                          {isQuiz
+                            ? `Buổi: ${sessionText}`
+                            : `${isLate ? "Quá hạn: " : "Hạn nộp: "}${formatDateTime(item.due_date)}`}
                         </span>
                         {item.max_score && (
-                          <span className="text-slate-400 dark:text-slate-500">· {item.max_score} điểm</span>
+                          <span className="text-slate-400 font-medium">· {item.max_score} điểm</span>
                         )}
                       </div>
                     </div>
                   </div>
-                  <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 text-xs font-bold text-blue-600 dark:text-sky-400 group-hover:bg-blue-600 group-hover:text-white transition">
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700 transition group-hover:bg-sky-600 group-hover:text-white">
                     {sessionId ? "Mở buổi" : "Làm bài"} <ArrowRight className="h-3 w-3" />
                   </span>
                 </Link>
@@ -86,10 +107,10 @@ export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
         )}
       </div>
 
-      <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-[#487291]">
         <span>Cần xem lại kết quả bài nộp?</span>
-        <Link to="/lms/assignments" className="font-semibold text-blue-600 dark:text-sky-400 hover:underline">
-          Xem bảng điểm cá nhân
+        <Link to={`${basePath}/results`} className="font-bold text-sky-700 hover:text-sky-900 hover:underline">
+          Xem bảng điểm cá nhân →
         </Link>
       </div>
     </section>

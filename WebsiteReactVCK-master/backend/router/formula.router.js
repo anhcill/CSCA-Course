@@ -154,7 +154,7 @@ export const createFormulaRouter = ({
     [sessionId, userId || null],
   )).rows;
 
-  router.get("/lms/formulas/sessions", authenticate, learnerOnly, async (req, res) => {
+  router.get("/lms/formulas/sessions", authenticate, formulaRoles, async (req, res) => {
     try {
       const { subject, search } = parseListOptions(req.query);
       const courseId = req.query.courseId ? parseFormulaId(req.query.courseId) : null;
@@ -164,17 +164,25 @@ export const createFormulaRouter = ({
 
       const values = [req.user.id];
       const filters = [
-        "ce.user_id = $1",
-        "ce.status = 'active'",
         "cs.status <> 'cancelled'",
         "lc.status <> 'cancelled'",
-        `(lc.course_id IS NULL OR EXISTS (
-          SELECT 1 FROM lms_access_grants grant_row
-          WHERE grant_row.user_id = $1 AND grant_row.course_id = lc.course_id
-            AND grant_row.access_status = 'active' AND grant_row.valid_from <= NOW()
-            AND (grant_row.valid_until IS NULL OR grant_row.valid_until > NOW())
-        ))`,
       ];
+      if (req.user.role === "admin") {
+        // Full visibility for LMS platform admins
+      } else if (req.user.role === "creator") {
+        filters.push(`(lc.instructor_id = $1 OR EXISTS (
+          SELECT 1 FROM class_teachers ct
+          WHERE ct.live_class_id = lc.id AND ct.teacher_id = $1 AND ct.status = 'active'
+        ) OR EXISTS (
+          SELECT 1 FROM class_enrollments ce
+          WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
+        ))`);
+      } else {
+        filters.push(`EXISTS (
+          SELECT 1 FROM class_enrollments ce
+          WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
+        )`);
+      }
       if (subject) {
         values.push(subject);
         filters.push(`sf.subject = $${values.length}`);
@@ -202,7 +210,6 @@ export const createFormulaRouter = ({
                 (bookmark.id IS NOT NULL) AS is_starred, bookmark.personal_note
          FROM class_sessions cs
          JOIN live_classes lc ON lc.id = cs.live_class_id
-         JOIN class_enrollments ce ON ce.live_class_id = lc.id
          JOIN session_formulas sf ON sf.session_id = cs.id
          LEFT JOIN courses c ON c.id = lc.course_id
          LEFT JOIN class_chapters cc ON cc.id = cs.chapter_id
@@ -263,7 +270,7 @@ export const createFormulaRouter = ({
     }
   });
 
-  router.post("/lms/formulas/:formulaId/toggle-star", authenticate, learnerOnly, async (req, res) => {
+  router.post("/lms/formulas/:formulaId/toggle-star", authenticate, formulaRoles, async (req, res) => {
     const formulaId = parseFormulaId(req.params.formulaId);
     if (!formulaId) return errorResponse(res, 422, "formulaId không hợp lệ", "VALIDATION_ERROR");
     const personalNote = req.body?.personalNote === undefined ? null : String(req.body.personalNote || "").trim();

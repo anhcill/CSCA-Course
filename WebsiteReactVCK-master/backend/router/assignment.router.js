@@ -336,6 +336,9 @@ const serializeAssignment = (row) => {
   resubmit_until: row.resubmit_until || null,
   can_resubmit: canResubmit(row),
   annotations: parseJsonArray(row.annotations),
+  total_students: Number(row.total_students || 0),
+  submitted_count: Number(row.submitted_count || 0),
+  graded_count: Number(row.graded_count || 0),
     status: row.status,
   };
 };
@@ -473,6 +476,23 @@ router.get("/", protectRoute, async (req, res) => {
                 assignment_session.start_time AS session_start, assignment_session.end_time AS session_end,
                  NULL::timestamptz AS available_from, NULL::timestamptz AS available_until, lc.title AS class_title,
                  NULL::integer AS attempt_limit, NULL::bigint AS attempt_count, NULL::integer AS attempt_number,
+                 (
+                   CASE
+                     WHEN a.live_class_id IS NOT NULL THEN (
+                       SELECT COUNT(*)::int FROM class_enrollments ce WHERE ce.live_class_id = a.live_class_id AND ce.status = 'active'
+                     )
+                     WHEN a.course_id IS NOT NULL THEN (
+                       SELECT COUNT(*)::int FROM lms_access_grants g WHERE g.course_id = a.course_id AND g.access_status = 'active' AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+                     )
+                     ELSE 0
+                   END
+                 ) AS total_students,
+                 (
+                   SELECT COUNT(DISTINCT s_sub.user_id)::int FROM assignment_submissions s_sub WHERE s_sub.assignment_id = a.id AND s_sub.status IN ('submitted', 'graded')
+                 ) AS submitted_count,
+                 (
+                   SELECT COUNT(DISTINCT s_sub.user_id)::int FROM assignment_submissions s_sub WHERE s_sub.assignment_id = a.id AND s_sub.status = 'graded'
+                 ) AS graded_count,
                  CASE WHEN sg.score IS NOT NULL THEN 'graded'
                      WHEN s.id IS NOT NULL THEN s.status
                       WHEN COALESCE(assignment_accommodation.due_at, a.due_date) IS NOT NULL AND COALESCE(assignment_accommodation.due_at, a.due_date) < NOW() THEN 'late'
@@ -501,13 +521,32 @@ router.get("/", protectRoute, async (req, res) => {
                 qa.id AS submission_id, qa.status AS submission_status, qa.submitted_at,
                 NULL::text AS content_text, NULL::bigint AS file_asset_id, NULL::bigint AS audio_asset_id,
                 NULL::varchar AS file_name, NULL::varchar AS audio_name,
-                qa.score, NULL::text AS feedback_text, qa.submitted_at AS graded_at,
+                qa.score,
+                COALESCE(qa.answers_json->'_essayGrade'->>'feedback', qa.answers_json->'essayGrade'->>'feedback', NULL)::text AS feedback_text,
+                qa.submitted_at AS graded_at,
                 q.class_session_id, q.activity_scope, quiz_session.title AS session_title,
                 quiz_session.start_time AS session_start, quiz_session.end_time AS session_end,
                  q.available_from, q.available_until, quiz_lc.title AS class_title,
                  COALESCE(quiz_accommodation.attempt_limit_override, q.attempt_limit, 1)::integer AS attempt_limit,
                  COALESCE(quiz_attempt_stats.attempt_count, 0)::bigint AS attempt_count,
                  qa.attempt_number::integer AS attempt_number,
+                 (
+                   CASE
+                     WHEN q.live_class_id IS NOT NULL THEN (
+                       SELECT COUNT(*)::int FROM class_enrollments ce WHERE ce.live_class_id = q.live_class_id AND ce.status = 'active'
+                     )
+                     WHEN COALESCE(q.course_id, l.course_id) IS NOT NULL THEN (
+                       SELECT COUNT(*)::int FROM lms_access_grants g WHERE g.course_id = COALESCE(q.course_id, l.course_id) AND g.access_status = 'active' AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+                     )
+                     ELSE 0
+                   END
+                 ) AS total_students,
+                 (
+                   SELECT COUNT(DISTINCT qa_sub.user_id)::int FROM quiz_attempts qa_sub WHERE qa_sub.quiz_id = q.id AND qa_sub.status = 'submitted'
+                 ) AS submitted_count,
+                 (
+                   SELECT COUNT(DISTINCT qa_sub.user_id)::int FROM quiz_attempts qa_sub WHERE qa_sub.quiz_id = q.id AND qa_sub.status = 'submitted'
+                 ) AS graded_count,
                  CASE WHEN qa.status = 'submitted' THEN 'graded'
                       WHEN q.activity_scope = 'homework' AND COALESCE(quiz_accommodation.due_at, q.due_date) IS NOT NULL AND COALESCE(quiz_accommodation.due_at, q.due_date) < NOW() THEN 'late'
                      ELSE 'todo' END AS status
@@ -1139,7 +1178,10 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
     const currentAnswers = attempt.answers_json || {};
     const gradedAt = new Date().toISOString();
     const gradesByQuestion = req.body.gradesByQuestion && typeof req.body.gradesByQuestion === "object" ? req.body.gradesByQuestion : {};
-    const teacherAttachments = Array.isArray(req.body.teacherAttachments) ? req.body.teacherAttachments : [];
+    const questionAttachments = Object.values(gradesByQuestion).flatMap((g) => (Array.isArray(g?.attachments) ? g.attachments : []));
+    const teacherAttachments = Array.isArray(req.body.teacherAttachments) && req.body.teacherAttachments.length > 0
+      ? req.body.teacherAttachments
+      : questionAttachments;
 
     const updatedAnswers = {
       ...currentAnswers,

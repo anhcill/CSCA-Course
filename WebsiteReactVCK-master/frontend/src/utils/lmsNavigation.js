@@ -5,12 +5,11 @@ import { hasStudentLmsAccess } from "./lmsAccess.js";
 // compatibility list here so old events do not lead a learner to a dead route.
 const LEGACY_DESTINATIONS = Object.freeze({
   "/lms/live-classes": "/lms/live-schedule",
-  "/lms/my-learning": "/lms/dashboard",
   "/lms/leaderboard": "/rank",
   "/lms/certificates": "/profile",
 });
 
-const STUDENT_DESTINATION = /^\/(?:lms\/(?:dashboard|catalog|analytics|live-schedule|assignments(?:\/[^/]+\/submit)?|assignment\/[^/]+\/submit|files|notifications|quiz\/[^/]+|courses\/[^/]+(?:\/classes(?:\/[^/]+(?:\/(?:learn|assignments(?:\/[^/]+\/submit)?|quizzes\/[^/]+|schedule|files|results))?)?)?)|profile|rank)$/;
+const STUDENT_DESTINATION = /^\/(?:lms\/(?:my-learning|dashboard|catalog|analytics|live-schedule|calendar|recordings|vocabulary|formulas|materials|assignments(?:\/[^/]+\/submit)?|assignment\/[^/]+\/submit|files|notifications|settings|quizzes(?:\/[^/]+)?|quiz\/[^/]+|courses\/[^/]+(?:\/classes(?:\/[^/]+(?:\/(?:learn|assignments(?:\/[^/]+\/submit)?|quizzes\/[^/]+|schedule|calendar|files|materials|results))?)?)?)|profile|rank)$/;
 const TEACHER_DESTINATION = /^\/lms\/(?:teacher-hub|teacher(?:\/|$)|admin\/(?:curriculum|grading)$)/;
 const ADMIN_DESTINATION = /^\/admin(?:\/|$)/;
 

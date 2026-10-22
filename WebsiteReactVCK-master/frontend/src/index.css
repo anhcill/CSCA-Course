@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=Dancing+Script:wght@600;700&family=Inter:wght@400;500;600;700;800&family=Ma+Shan+Zheng&display=swap');
 @import './styles/darkMode.css';
 @tailwind base;
 @tailwind components;
@@ -103,6 +103,15 @@ a {
 }
 
 .scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 
@@ -248,18 +257,22 @@ html:not(.dark) [class*="from-blue-600"][class*="to-violet-600"] {
   box-shadow: 0 12px 30px rgba(22, 62, 89, 0.2) !important;
 }
 
-/* Chữ trong Hero Banner: trắng sáng rõ ràng */
-html:not(.dark) [class*="bg-gradient-"] h1,
-html:not(.dark) [class*="bg-gradient-"] h2,
-html:not(.dark) [class*="bg-gradient-"] h3,
-html:not(.dark) [class*="bg-gradient-"] .text-white {
+/* Chữ trong Hero Banner tối màu: trắng sáng rõ ràng */
+html:not(.dark) [class*="from-indigo-"] h1,
+html:not(.dark) [class*="from-indigo-"] h2,
+html:not(.dark) [class*="from-indigo-"] h3,
+html:not(.dark) [class*="from-slate-900"] h1,
+html:not(.dark) [class*="from-slate-900"] h2,
+html:not(.dark) [class*="from-slate-900"] h3,
+html:not(.dark) [class*="from-slate-950"] h1,
+html:not(.dark) [class*="from-slate-950"] h2,
+html:not(.dark) [class*="from-slate-950"] h3 {
   color: #ffffff !important;
 }
 
-html:not(.dark) [class*="bg-gradient-"] p,
-html:not(.dark) [class*="bg-gradient-"] .text-blue-100,
-html:not(.dark) [class*="bg-gradient-"] .text-blue-200,
-html:not(.dark) [class*="bg-gradient-"] .text-indigo-200 {
+html:not(.dark) [class*="from-indigo-"] p,
+html:not(.dark) [class*="from-slate-900"] p,
+html:not(.dark) [class*="from-slate-950"] p {
   color: #d1e7f6 !important;
 }
 
@@ -472,6 +485,37 @@ html:not(.dark) select:focus,
 html:not(.dark) textarea:focus {
   border-color: #2b76a4 !important;
   box-shadow: 0 0 0 3px rgba(43, 118, 164, 0.2) !important;
+}
+
+/* Student dashboard owns its scenic background and glass surfaces. */
+html:not(.dark) .student-lms--dashboard > header {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html:not(.dark) .student-lms--dashboard > aside {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.82) !important;
+}
+
+html:not(.dark) .student-lms--dashboard > aside nav {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html:not(.dark) .student-dashboard-page h1,
+html:not(.dark) .student-dashboard-page h2,
+html:not(.dark) .student-dashboard-page h3,
+html:not(.dark) .student-dashboard-page p,
+html:not(.dark) .student-dashboard-page a,
+html:not(.dark) .student-dashboard-page span {
+  text-shadow: none;
 }
 
 /* ==========================================================================

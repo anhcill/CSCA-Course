@@ -112,6 +112,9 @@ CREATE TABLE IF NOT EXISTS users (
   is_vip          BOOLEAN        NOT NULL DEFAULT FALSE,
   vip_expires_at  TIMESTAMPTZ,
   last_login_at   TIMESTAMPTZ,
+  teacher_code    TEXT,
+  department      TEXT,
+  position        TEXT,
   created_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
@@ -189,6 +192,7 @@ CREATE TABLE IF NOT EXISTS student_profiles (
   hsk_level                 SMALLINT,
   hskk_level                VARCHAR(20),
   study_goal                VARCHAR(500),
+  student_code              TEXT,
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT chk_student_education_level CHECK (

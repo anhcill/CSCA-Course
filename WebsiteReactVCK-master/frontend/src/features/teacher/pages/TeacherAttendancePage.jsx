@@ -1,8 +1,26 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocation, useParams, useSearchParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
-import { ArrowLeft, CheckCircle2, ClipboardEdit, ShieldCheck } from "lucide-react";
-import { createAttendanceAmendment, fetchAttendanceAmendments, fetchAttendanceRoster, fetchMyLiveSchedule, markAttendance } from "../../api/lmsClient";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardEdit,
+  GraduationCap,
+  Lock,
+  Plus,
+  ShieldCheck,
+  UserCheck,
+  UserX,
+  Users,
+} from "lucide-react";
+import {
+  createAttendanceAmendment,
+  fetchAttendanceAmendments,
+  fetchAttendanceRoster,
+  fetchMyLiveSchedule,
+  markAttendance,
+} from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import AttendanceSessionHeader from "../components/AttendanceSessionHeader";
@@ -45,7 +63,12 @@ export default function TeacherAttendancePage() {
   const [amendments, setAmendments] = useState([]);
   const [canReviewAmendments, setCanReviewAmendments] = useState(false);
   const [showAmendmentForm, setShowAmendmentForm] = useState(false);
-  const [amendmentForm, setAmendmentForm] = useState({ userId: "", requestedStatus: "present", requestedNote: "", reason: "" });
+  const [amendmentForm, setAmendmentForm] = useState({
+    userId: "",
+    requestedStatus: "present",
+    requestedNote: "",
+    reason: "",
+  });
   const [savingAmendment, setSavingAmendment] = useState(false);
 
   // Attendance state: { [userId]: { status: 'present'|'absent'|'excused', note: string } }
@@ -99,11 +122,13 @@ export default function TeacherAttendancePage() {
         throw new Error(res?.message || "Không thể tải sổ điểm danh.");
       }
       const roster = res.data?.students || [];
-      setAttendancePolicy(res.data.attendancePolicy || {
-        canMarkAttendance: false,
-        isLocked: false,
-        reason: "Không thể xác minh quyền điểm danh của buổi học này.",
-      });
+      setAttendancePolicy(
+        res.data.attendancePolicy || {
+          canMarkAttendance: false,
+          isLocked: false,
+          reason: "Không thể xác minh quyền điểm danh của buổi học này.",
+        }
+      );
       setStudents(roster);
       setAttendanceRecords(
         Object.fromEntries(
@@ -148,7 +173,9 @@ export default function TeacherAttendancePage() {
     }
   }, [selectedSessionId, sessionsLoaded]);
 
-  useEffect(() => { loadAmendments(); }, [loadAmendments]);
+  useEffect(() => {
+    loadAmendments();
+  }, [loadAmendments]);
 
   const handleSessionChange = (e) => {
     const newId = e.target.value;
@@ -280,17 +307,48 @@ export default function TeacherAttendancePage() {
     return { total, present, absent, excused, rate };
   }, [students, attendanceRecords]);
 
-  return (
-    <div className="min-h-full bg-slate-50 dark:bg-slate-950 px-4 py-6 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      <div className="mx-auto max-w-6xl space-y-4">
-        <Link
-          to={isAdminView ? `/admin/classes/${classId}` : "/lms/teach"}
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400 transition"
-        >
-          <ArrowLeft className="h-4 w-4" /> {isAdminView ? "Quay lại lớp học" : "Quay lại trang Giảng dạy"}
-        </Link>
+  // Current session object
+  const currentSession = useMemo(() => {
+    return sessions.find((s) => String(s.id) === String(selectedSessionId));
+  }, [sessions, selectedSessionId]);
 
-        {/* Top Control Bar & Stats */}
+  return (
+    <div className="min-h-full px-3 pb-12 pt-3 sm:px-5 lg:px-6 text-slate-900 dark:text-slate-100">
+      <div className="mx-auto max-w-6xl space-y-5">
+        {/* Navigation Back Link */}
+        <div className="flex items-center justify-between">
+          <Link
+            to={isAdminView ? `/admin/classes/${classId}` : "/lms/teach"}
+            className="inline-flex items-center gap-2 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] dark:text-slate-300 shadow-2xs backdrop-blur transition hover:bg-white hover:text-blue-700 dark:hover:bg-slate-800"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {isAdminView ? "Quay lại quản lý lớp" : "Quay lại Bàn làm việc"}
+          </Link>
+
+          {currentSession && (
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-sky-200/80 bg-sky-50/80 dark:border-slate-700 dark:bg-slate-800/80 px-3 py-1 text-[11px] font-bold text-sky-800 dark:text-sky-300 shadow-2xs backdrop-blur">
+              <CalendarDays className="h-3 w-3 text-sky-600" />
+              {currentSession.title}
+            </span>
+          )}
+        </div>
+
+        {/* 1. Hero Title Banner (Matching Student LMS Calligraphy Style) */}
+        <section className="relative min-h-[140px] overflow-hidden px-2 py-4 sm:px-4">
+          <div className="relative z-10 max-w-2xl">
+            <h1 className="font-['Dancing_Script',cursive] text-[42px] font-bold leading-none text-[#102f63] dark:text-sky-200 sm:text-[48px]">
+              Sổ điểm danh giảng dạy
+            </h1>
+            <p className="mt-2.5 text-sm font-semibold italic text-[#244866] dark:text-slate-300">
+              “Kỷ luật là nền tảng của tự do, chuyên cần là chìa khóa của thành công.”
+            </p>
+            <p className="mt-1.5 font-['Ma_Shan_Zheng',cursive] text-xl text-[#17365f] dark:text-sky-300">
+              持之以恒 · 循序渐进
+            </p>
+          </div>
+        </section>
+
+        {/* 2. Top Control Bar & Stats */}
         <AttendanceSessionHeader
           sessions={sessions}
           selectedSessionId={selectedSessionId}
@@ -300,43 +358,58 @@ export default function TeacherAttendancePage() {
           loading={loadingSessions}
         />
 
-          {sessions.length > 0 && !sessions.some(isAttendanceToday) && <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">Không có buổi học hôm nay. Bạn vẫn có thể xem bản điểm danh cũ và gửi phiếu chỉnh sửa để duyệt.</p>}
+        {sessions.length > 0 && !sessions.some(isAttendanceToday) && (
+          <div className="flex items-center gap-2 rounded-2xl border border-amber-200/80 bg-amber-50/80 dark:border-amber-900/60 dark:bg-amber-950/30 px-4 py-2.5 text-xs font-semibold text-amber-800 dark:text-amber-200 shadow-2xs backdrop-blur">
+            <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+            <span>Hôm nay không có buổi học mới. Bạn vẫn có thể xem lại dữ liệu cũ hoặc tạo phiếu chỉnh sửa để quản trị viên duyệt.</span>
+          </div>
+        )}
 
-        {/* Table & Bulk Actions */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
+        {/* 3. Table & Bulk Actions Container */}
+        <div className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/85 p-4 sm:p-6 space-y-4 shadow-[0_12px_35px_rgba(49,91,125,0.1)] backdrop-blur-md">
+          {/* Header Row: Title & Bulk Action Buttons */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">Danh Sách Học Viên</h2>
+              <h2 className="text-base font-black text-[#102f63] dark:text-white flex items-center gap-2">
+                <Users className="h-4.5 w-4.5 text-blue-600 dark:text-sky-400" />
+                Danh Sách Học Viên ({students.length})
+              </h2>
+              <p className="text-xs text-[#487291] dark:text-slate-400 mt-0.5">
+                Đánh dấu trạng thái chuyên cần và nhập ghi chú cho từng học viên
+              </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => handleMarkAll("present")}
                 disabled={!canMarkAttendance}
-                className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 transition"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60 text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/50 disabled:cursor-not-allowed disabled:opacity-50 transition shadow-2xs"
               >
+                <UserCheck className="h-3.5 w-3.5" />
                 Tất cả có mặt
               </button>
               <button
                 type="button"
                 onClick={() => handleMarkAll("absent")}
                 disabled={!canMarkAttendance}
-                className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 transition"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60 text-xs font-bold hover:bg-rose-100 dark:hover:bg-rose-900/50 disabled:cursor-not-allowed disabled:opacity-50 transition shadow-2xs"
               >
+                <UserX className="h-3.5 w-3.5" />
                 Tất cả vắng
               </button>
             </div>
           </div>
 
+          {/* Body: Loading / Error / Empty / Table */}
           {loadingRoster ? (
-            <Loading loading={true} text="Đang tải danh sách điểm danh..." fullScreen={false} className="py-12" />
+            <Loading loading={true} text="Đang đồng bộ sổ điểm danh..." fullScreen={false} className="py-14" />
           ) : errorMsg ? (
             <ErrorState title="Lỗi điểm danh" message={errorMsg} onRetry={loadRoster} />
           ) : !selectedSessionId ? (
-            <EmptyState title="Chưa có buổi học hôm nay" message="Chỉ có thể điểm danh trong đúng ngày diễn ra buổi học." />
+            <EmptyState title="Chưa có buổi học được chọn" message="Vui lòng chọn buổi học để bắt đầu điểm danh." />
           ) : students.length === 0 ? (
-            <EmptyState title="Không có học viên" message="Lớp học này chưa có học viên nào được xếp lớp." />
+            <EmptyState title="Không có học viên" message="Lớp học này hiện chưa có học viên nào được ghi danh." />
           ) : (
             <AttendanceStudentTable
               students={students}
@@ -349,25 +422,214 @@ export default function TeacherAttendancePage() {
 
           {/* Bottom Save Bar */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <span className="text-xs text-slate-500">
-              Có mặt: <strong className="text-emerald-600">{stats.present}</strong> · Vắng: <strong className="text-rose-600">{stats.absent}</strong> · Có phép: <strong className="text-amber-600">{stats.excused}</strong>
-            </span>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="inline-flex items-center gap-1 text-slate-600 dark:text-slate-300 font-semibold">
+                Có mặt: <strong className="font-black text-emerald-600 dark:text-emerald-400">{stats.present}</strong>
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">·</span>
+              <span className="inline-flex items-center gap-1 text-slate-600 dark:text-slate-300 font-semibold">
+                Vắng: <strong className="font-black text-rose-600 dark:text-rose-400">{stats.absent}</strong>
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">·</span>
+              <span className="inline-flex items-center gap-1 text-slate-600 dark:text-slate-300 font-semibold">
+                Có phép: <strong className="font-black text-amber-600 dark:text-amber-400">{stats.excused}</strong>
+              </span>
+            </div>
+
             <button
               type="button"
               onClick={handleSaveAttendance}
               disabled={saving || !canMarkAttendance || students.length === 0}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
+              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 px-7 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition hover:shadow-lg"
             >
-              <CheckCircle2 className="h-4 w-4" /> {saving ? "Đang chốt..." : "Chốt & khóa điểm danh"}
+              {attendancePolicy?.isLocked ? (
+                <>
+                  <Lock className="h-4 w-4" />
+                  Điểm danh đã chốt
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  {saving ? "Đang chốt sổ..." : "Chốt & khóa điểm danh"}
+                </>
+              )}
             </button>
           </div>
         </div>
 
+        {/* 4. Amendment Section (Phiếu Chỉnh Sửa Điểm Danh - Frosted Glass Card) */}
         {selectedSessionId && attendancePolicy?.isLocked && (
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="flex gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300"><ShieldCheck className="h-4 w-4" /></span><div><h2 className="font-black text-slate-950 dark:text-white">Phiếu chỉnh sửa điểm danh</h2><p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Bản điểm danh ban đầu luôn được giữ lại. Mọi thay đổi phải có lý do, người duyệt và thời điểm duyệt.</p></div></div><button type="button" onClick={() => setShowAmendmentForm((current) => !current)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700 hover:bg-violet-100 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300"><ClipboardEdit className="h-3.5 w-3.5" /> Tạo phiếu chỉnh sửa</button></div>
-            {showAmendmentForm && <form onSubmit={handleCreateAmendment} className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50 md:grid-cols-2"><label className="text-xs font-bold text-slate-700 dark:text-slate-200">Học viên<select required value={amendmentForm.userId} onChange={(event) => { const student = students.find((item) => String(item.id) === event.target.value); setAmendmentForm((current) => ({ ...current, userId: event.target.value, requestedStatus: student?.attendance_status || "present", requestedNote: student?.attendance_note || "" })); }} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Chọn học viên...</option>{students.map((student) => <option key={student.id} value={student.id}>{student.name || student.email} · hiện tại: {student.attendance_status || "—"}</option>)}</select></label><label className="text-xs font-bold text-slate-700 dark:text-slate-200">Trạng thái mới<select value={amendmentForm.requestedStatus} onChange={(event) => setAmendmentForm((current) => ({ ...current, requestedStatus: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="present">Có mặt</option><option value="absent">Vắng</option><option value="excused">Có phép</option></select></label><label className="text-xs font-bold text-slate-700 dark:text-slate-200">Ghi chú mới<input value={amendmentForm.requestedNote} onChange={(event) => setAmendmentForm((current) => ({ ...current, requestedNote: event.target.value }))} maxLength={255} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label><label className="text-xs font-bold text-slate-700 dark:text-slate-200">Lý do <span className="text-rose-500">*</span><input required minLength={10} value={amendmentForm.reason} onChange={(event) => setAmendmentForm((current) => ({ ...current, reason: event.target.value }))} maxLength={2000} placeholder="Nêu căn cứ điều chỉnh..." className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label><div className="md:col-span-2 flex justify-end gap-2"><button type="button" onClick={() => setShowAmendmentForm(false)} className="rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</button><button type="submit" disabled={savingAmendment} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-black text-white hover:bg-violet-500 disabled:opacity-50">{savingAmendment ? "Đang gửi..." : "Gửi duyệt"}</button></div></form>}
-            <div className="mt-4 space-y-2">{amendments.length === 0 ? <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-500 dark:bg-slate-950">Chưa có phiếu chỉnh sửa nào cho buổi học này.</p> : amendments.map((item) => <article key={item.id} className="rounded-2xl border border-slate-100 p-3 text-xs dark:border-slate-800"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-black text-slate-900 dark:text-white">{item.studentName}</p><p className="mt-1 text-slate-500">{item.originalStatus} → <b className="text-violet-700 dark:text-violet-300">{item.requestedStatus}</b>{item.reason ? ` · ${item.reason}` : ""}</p><p className="mt-1 text-[11px] text-slate-400">Gửi {item.requestedAt ? new Date(item.requestedAt).toLocaleString("vi-VN") : ""}{item.reviewedAt ? ` · xử lý ${new Date(item.reviewedAt).toLocaleString("vi-VN")}` : ""}</p></div><div className="flex items-center gap-2"><span className={`rounded-full px-2 py-1 text-[10px] font-black ${item.status === "approved" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" : item.status === "rejected" ? "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300" : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"}`}>{item.status === "pending" ? "CHỜ DUYỆT" : item.status === "approved" ? "ĐÃ DUYỆT" : "TỪ CHỐI"}</span>{canReviewAmendments && item.status === "pending" && <Link to={isAdminView ? "/admin/attendance-review" : "/lms/teach/attendance-review"} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Mở trang duyệt phiếu</Link>}</div></div></article>)}</div>
+          <section className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/85 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.1)] backdrop-blur-md space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 shadow-2xs">
+                  <ShieldCheck className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-black text-[#102f63] dark:text-white">
+                    Phiếu Chỉnh Sửa Điểm Danh
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    Bản điểm danh ban đầu luôn được lưu giữ. Mọi thay đổi sau khi chốt cần nêu rõ lý do để quản trị viên phê duyệt.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAmendmentForm((current) => !current)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 dark:border-violet-800/60 dark:bg-violet-950/40 px-3.5 py-2 text-xs font-bold text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50 shadow-2xs transition"
+              >
+                <ClipboardEdit className="h-3.5 w-3.5" />
+                {showAmendmentForm ? "Ẩn phiếu tạo" : "Tạo phiếu chỉnh sửa"}
+              </button>
+            </div>
+
+            {/* Amendment Form Modal/Dropdown */}
+            {showAmendmentForm && (
+              <form
+                onSubmit={handleCreateAmendment}
+                className="grid gap-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-4 md:grid-cols-2 shadow-2xs"
+              >
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Học viên cần điều chỉnh <span className="text-rose-500">*</span>
+                  <select
+                    required
+                    value={amendmentForm.userId}
+                    onChange={(event) => {
+                      const student = students.find((item) => String(item.id) === event.target.value);
+                      setAmendmentForm((current) => ({
+                        ...current,
+                        userId: event.target.value,
+                        requestedStatus: student?.attendance_status || "present",
+                        requestedNote: student?.attendance_note || "",
+                      }));
+                    }}
+                    className="mt-1.5 w-full rounded-xl border border-white dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-200 shadow-2xs outline-none focus:border-sky-300"
+                  >
+                    <option value="">Chọn học viên...</option>
+                    {students.map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {student.username || student.name || student.email} · hiện tại: {student.attendance_status || "—"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Trạng thái đề xuất mới <span className="text-rose-500">*</span>
+                  <select
+                    value={amendmentForm.requestedStatus}
+                    onChange={(event) => setAmendmentForm((current) => ({ ...current, requestedStatus: event.target.value }))}
+                    className="mt-1.5 w-full rounded-xl border border-white dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-200 shadow-2xs outline-none focus:border-sky-300"
+                  >
+                    <option value="present">Có mặt</option>
+                    <option value="absent">Vắng</option>
+                    <option value="excused">Có phép</option>
+                  </select>
+                </label>
+
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Ghi chú mới
+                  <input
+                    value={amendmentForm.requestedNote}
+                    onChange={(event) => setAmendmentForm((current) => ({ ...current, requestedNote: event.target.value }))}
+                    maxLength={255}
+                    placeholder="VD: Học viên vào muộn có báo trước..."
+                    className="mt-1.5 w-full rounded-xl border border-white dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-200 shadow-2xs outline-none focus:border-sky-300"
+                  />
+                </label>
+
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Lý do điều chỉnh <span className="text-rose-500">*</span>
+                  <input
+                    required
+                    minLength={10}
+                    value={amendmentForm.reason}
+                    onChange={(event) => setAmendmentForm((current) => ({ ...current, reason: event.target.value }))}
+                    maxLength={2000}
+                    placeholder="Nêu căn cứ điều chỉnh (tối thiểu 10 ký tự)..."
+                    className="mt-1.5 w-full rounded-xl border border-white dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-200 shadow-2xs outline-none focus:border-sky-300"
+                  />
+                </label>
+
+                <div className="md:col-span-2 flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAmendmentForm(false)}
+                    className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200/80 dark:text-slate-300 dark:hover:bg-slate-800 transition"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingAmendment}
+                    className="rounded-xl bg-violet-600 hover:bg-violet-700 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
+                  >
+                    {savingAmendment ? "Đang gửi phiếu..." : "Gửi phiếu duyệt"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* List of Existing Amendments */}
+            <div className="space-y-2.5">
+              {amendments.length === 0 ? (
+                <p className="rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 p-4 text-center text-xs text-slate-500 dark:text-slate-400">
+                  Chưa có phiếu chỉnh sửa nào cho buổi học này.
+                </p>
+              ) : (
+                amendments.map((item) => (
+                  <article
+                    key={item.id}
+                    className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white/70 dark:bg-slate-800/50 p-3.5 text-xs shadow-2xs"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="font-black text-slate-900 dark:text-white text-sm">
+                          {item.studentName}
+                        </p>
+                        <p className="mt-1 text-slate-600 dark:text-slate-300">
+                          {item.originalStatus} →{" "}
+                          <b className="text-violet-700 dark:text-violet-300 font-bold">{item.requestedStatus}</b>
+                          {item.reason ? ` · ${item.reason}` : ""}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          Gửi lúc: {item.requestedAt ? new Date(item.requestedAt).toLocaleString("vi-VN") : ""}
+                          {item.reviewedAt ? ` · Xử lý: ${new Date(item.reviewedAt).toLocaleString("vi-VN")}` : ""}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-[10px] font-black ${
+                            item.status === "approved"
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                              : item.status === "rejected"
+                              ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                          }`}
+                        >
+                          {item.status === "pending"
+                            ? "CHỜ DUYỆT"
+                            : item.status === "approved"
+                            ? "ĐÃ DUYỆT"
+                            : "TỪ CHỐI"}
+                        </span>
+                        {canReviewAmendments && item.status === "pending" && (
+                          <Link
+                            to={isAdminView ? "/admin/attendance-review" : "/lms/teach/attendance-review"}
+                            className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition"
+                          >
+                            Mở duyệt phiếu
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
           </section>
         )}
       </div>

@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { Binary, Plus, Trash2 } from 'lucide-react';
+import {
+  Binary,
+  CheckCircle2,
+  FileSpreadsheet,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
@@ -60,24 +67,14 @@ export default function TeacherSessionFormulaTab({
         }).filter((v) => v.symbol)
       : [];
 
+    const payload = {
+      ...newFormula,
+      variables,
+    };
+
     if (onAddFormula) {
-      try {
-        await onAddFormula({
-          nameVi: newFormula.nameVi,
-          nameZh: newFormula.nameZh,
-          pinyin: newFormula.pinyin,
-          latex: newFormula.latex,
-          description: newFormula.description,
-          conditions: newFormula.conditions,
-          exampleProblem: newFormula.exampleProblem,
-          exampleSolution: newFormula.exampleSolution,
-          variables,
-        });
-      } catch (requestError) {
-        toast.error(requestError.message || 'Không thể thêm công thức.');
-        return;
-      }
-      toast.success('Đã thêm công thức mới vào buổi dạy!');
+      await onAddFormula(payload);
+      toast.success('Đã thêm công thức mới vào buổi dạy thành công! 📐');
       setShowAddModal(false);
       setNewFormula({
         nameVi: '',
@@ -101,31 +98,31 @@ export default function TeacherSessionFormulaTab({
       throwOnError: false,
     });
   } catch {
-    previewHtml = '<span class="text-rose-500">Mã LaTeX chưa hợp lệ</span>';
+    previewHtml = '<span class="text-rose-500 font-semibold">Mã LaTeX chưa hợp lệ</span>';
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Top Banner & Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-white/80 bg-white/92 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-600/20">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-sky-300 shadow-2xs">
               <Binary className="h-4 w-4" />
             </span>
-            <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-              {session?.title ? `Quản lý Công thức: ${session.title}` : 'Quản lý Công thức của Buổi dạy'}
+            <h2 className="text-base sm:text-lg font-black text-[#102f63] dark:text-white">
+              {session?.title ? `Quản Lý Công Thức: ${session.title}` : 'Quản Lý Công Thức Buổi Dạy'}
             </h2>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Tổng cộng <span className="font-bold text-blue-600 dark:text-sky-400">{formulas.length} công thức</span>. Học viên sẽ tra cứu các công thức này trong không gian buổi học và sổ tay ôn tập.
+            Tổng cộng <span className="font-bold text-blue-600 dark:text-sky-400 font-mono">{formulas.length} công thức</span>. Học viên sẽ tra cứu các công thức này trong không gian buổi học và sổ tay ôn tập.
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => setShowAddModal(true)}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 hover:bg-blue-700 px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition shrink-0"
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 hover:bg-blue-700 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-500/25 transition shrink-0"
         >
           <Plus className="h-4 w-4" />
           <span>Thêm công thức mới</span>
@@ -134,7 +131,7 @@ export default function TeacherSessionFormulaTab({
 
       {/* Formulas List */}
       {formulas.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 p-12 text-center bg-white/40 dark:bg-slate-900/40">
+        <div className="rounded-3xl border border-dashed border-white/80 bg-white/80 p-12 text-center backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/60">
           <Binary className="h-10 w-10 text-slate-400 mx-auto mb-3" />
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
             Chưa có công thức nào cho buổi học này
@@ -144,7 +141,7 @@ export default function TeacherSessionFormulaTab({
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           {formulas.map((formula) => {
             let formulaHtml = '';
             try {
@@ -159,11 +156,11 @@ export default function TeacherSessionFormulaTab({
             return (
               <div
                 key={formula.id}
-                className="overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-3"
+                className="overflow-hidden rounded-3xl border border-white/85 bg-white/92 p-5 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-xl transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/90 space-y-3"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
                   <div>
-                    <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    <h3 className="text-base font-black text-[#102f63] dark:text-white">
                       {formula.nameVi}
                     </h3>
                     {formula.nameZh && (
@@ -185,17 +182,30 @@ export default function TeacherSessionFormulaTab({
                   )}
                 </div>
 
-                <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 p-4 text-center overflow-x-auto">
+                <div className="rounded-2xl border border-sky-100 dark:border-slate-800 bg-white/90 dark:bg-slate-950/80 p-4 text-center overflow-x-auto shadow-inner">
                   <div
-                    className="text-lg font-serif select-all"
+                    className="text-lg font-serif select-all text-slate-900 dark:text-white"
                     dangerouslySetInnerHTML={{ __html: formulaHtml }}
                   />
                 </div>
 
                 {formula.description && (
-                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                     {formula.description}
                   </p>
+                )}
+
+                {Array.isArray(formula.variables) && formula.variables.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1 text-xs">
+                    {formula.variables.map((v, idx) => (
+                      <span
+                        key={idx}
+                        className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      >
+                        <strong className="font-mono text-blue-700 dark:text-sky-300">{v.symbol}</strong>: {v.meaning}
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
             );
@@ -205,27 +215,27 @@ export default function TeacherSessionFormulaTab({
 
       {/* Add Formula Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm overflow-y-auto">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-white/80 bg-white/95 p-6 shadow-2xl backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600 text-white">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
                   <Plus className="h-4 w-4" />
                 </span>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Thêm Công thức Trọng tâm
+                <h3 className="text-base font-black text-[#102f63] dark:text-white">
+                  Thêm Công Thức Trọng Tâm
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
-                ✕
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="space-y-4">
+            <form onSubmit={handleSave} className="space-y-3.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -237,7 +247,7 @@ export default function TeacherSessionFormulaTab({
                     placeholder="VD: Thể tích khối nón cụt"
                     value={newFormula.nameVi}
                     onChange={(e) => setNewFormula({ ...newFormula, nameVi: e.target.value })}
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm text-slate-900 dark:text-white outline-none focus:border-blue-500"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200/90 bg-white text-xs font-bold text-slate-800 outline-none focus:border-blue-500 shadow-2xs dark:bg-slate-800 dark:text-white"
                   />
                 </div>
                 <div>
@@ -249,7 +259,7 @@ export default function TeacherSessionFormulaTab({
                     placeholder="VD: 圆台体积公式"
                     value={newFormula.nameZh}
                     onChange={(e) => setNewFormula({ ...newFormula, nameZh: e.target.value })}
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm text-slate-900 dark:text-white outline-none focus:border-blue-500"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200/90 bg-white text-xs font-bold text-slate-800 outline-none focus:border-blue-500 shadow-2xs dark:bg-slate-800 dark:text-white"
                   />
                 </div>
               </div>
@@ -260,13 +270,13 @@ export default function TeacherSessionFormulaTab({
                   Mã biểu thức LaTeX *
                 </label>
                 {/* Math presets bar */}
-                <div className="flex flex-wrap gap-1.5 mb-2 p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-[11px]">
+                <div className="flex flex-wrap gap-1.5 mb-2 p-1.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 text-[11px]">
                   {PRESET_SYMBOLS.map((s, idx) => (
                     <button
                       key={idx}
                       type="button"
                       onClick={() => handleInsertSymbol(s.code)}
-                      className="px-2 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/40 text-slate-700 dark:text-slate-200 font-mono transition"
+                      className="px-2 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/40 text-slate-700 dark:text-slate-200 font-mono font-bold shadow-2xs transition"
                     >
                       {s.label}
                     </button>
@@ -278,17 +288,17 @@ export default function TeacherSessionFormulaTab({
                   placeholder="VD: V = \frac{1}{3} \pi h (R^2 + Rr + r^2)"
                   value={newFormula.latex}
                   onChange={(e) => setNewFormula({ ...newFormula, latex: e.target.value })}
-                  className="w-full p-3 font-mono text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500"
+                  className="w-full p-3 font-mono text-xs sm:text-sm rounded-xl border border-slate-200/90 bg-white text-slate-900 outline-none focus:border-blue-500 shadow-2xs dark:bg-slate-800 dark:text-white"
                 />
               </div>
 
               {/* Live Preview Box */}
-              <div className="rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-blue-50/30 dark:bg-slate-850 p-4 text-center">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-sky-400 block mb-2">
+              <div className="rounded-2xl border border-sky-200/80 bg-sky-50/50 p-3.5 text-center dark:border-blue-900/60 dark:bg-slate-850">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-sky-400 block mb-1">
                   Xem trước KaTeX hiển thị (Live Preview)
                 </span>
                 <div
-                  className="overflow-x-auto py-2 text-lg sm:text-xl font-serif"
+                  className="overflow-x-auto py-1 text-lg font-serif select-all"
                   dangerouslySetInnerHTML={{ __html: previewHtml }}
                 />
               </div>
@@ -303,7 +313,7 @@ export default function TeacherSessionFormulaTab({
                   placeholder="VD: R: Bán kính lớn, r: Bán kính nhỏ, h: Chiều cao"
                   value={newFormula.variablesStr}
                   onChange={(e) => setNewFormula({ ...newFormula, variablesStr: e.target.value })}
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm text-slate-900 dark:text-white outline-none focus:border-blue-500"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200/90 bg-white text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 shadow-2xs dark:bg-slate-800 dark:text-white"
                 />
               </div>
 
@@ -317,49 +327,21 @@ export default function TeacherSessionFormulaTab({
                   placeholder="VD: R > r > 0, h > 0"
                   value={newFormula.conditions}
                   onChange={(e) => setNewFormula({ ...newFormula, conditions: e.target.value })}
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm text-slate-900 dark:text-white outline-none focus:border-blue-500"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200/90 bg-white text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 shadow-2xs dark:bg-slate-800 dark:text-white"
                 />
               </div>
 
-              {/* Example problem & solution */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Đề bài ví dụ minh họa
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="VD: Cho nón cụt có R=4, r=2, h=6..."
-                    value={newFormula.exampleProblem}
-                    onChange={(e) => setNewFormula({ ...newFormula, exampleProblem: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Hướng dẫn giải (LaTeX)
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="VD: V = 56\pi"
-                    value={newFormula.exampleSolution}
-                    onChange={(e) => setNewFormula({ ...newFormula, exampleSolution: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50"
+                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-md shadow-blue-600/30"
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-md shadow-blue-500/25"
                 >
                   Lưu công thức
                 </button>

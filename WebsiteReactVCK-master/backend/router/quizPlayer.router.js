@@ -197,10 +197,53 @@ const getStudentAttempt = async ({ client, quiz, userId, questions }) => {
     };
   }
 
-  if (finalized && submitted.rows.length === 0) throw Object.assign(new Error("Sổ điểm đã chốt; không thể bắt đầu lượt mới"), { status: 409, code: "GRADEBOOK_FINALIZED" });
+  if (finalized && submitted.rows.length === 0) {
+    const computed = buildQuizResult(questions, {});
+    return {
+      attempt: {
+        id: `unsubmitted-${quiz.id}`,
+        quiz_id: quiz.id,
+        user_id: userId,
+        attempt_number: 0,
+        status: "closed_unsubmitted",
+        answers_json: {},
+        score: 0,
+        max_score: computed.maxScore,
+        started_at: null,
+        submitted_at: null,
+        auto_submitted: false,
+      },
+      computed,
+      created: false,
+      timedOut: false,
+      isOverdueUnsubmitted: true,
+    };
+  }
 
   if (!availability.isOpen) {
-    const error = new Error(availability.reason === "not_open" ? "QUIZ_NOT_OPEN" : "QUIZ_CLOSED");
+    if (availability.reason === "closed") {
+      const computed = buildQuizResult(questions, {});
+      return {
+        attempt: {
+          id: `unsubmitted-${quiz.id}`,
+          quiz_id: quiz.id,
+          user_id: userId,
+          attempt_number: 0,
+          status: "closed_unsubmitted",
+          answers_json: {},
+          score: 0,
+          max_score: computed.maxScore,
+          started_at: null,
+          submitted_at: null,
+          auto_submitted: false,
+        },
+        computed,
+        created: false,
+        timedOut: false,
+        isOverdueUnsubmitted: true,
+      };
+    }
+    const error = new Error("QUIZ_NOT_OPEN");
     error.availability = availability;
     throw error;
   }
@@ -275,9 +318,9 @@ const serializeAttempt = (attempt) => attempt ? {
   autoSubmitted: Boolean(attempt.auto_submitted),
 } : null;
 
-const serializeQuiz = (quiz, questions, attempt) => {
+const serializeQuiz = (quiz, questions, attempt, isOverdueUnsubmitted = false) => {
   const description = parseQuizDescriptionMetadata(quiz.description);
-  const reviewAvailable = attempt?.status === "submitted" && reviewIsAvailable(quiz);
+  const reviewAvailable = isOverdueUnsubmitted || (attempt?.status === "submitted" && reviewIsAvailable(quiz));
   return {
     id: String(quiz.id),
     quizId: String(quiz.id),
@@ -303,12 +346,13 @@ const serializeQuiz = (quiz, questions, attempt) => {
       : null,
     hasSolution: Boolean(quiz.solution_file_id),
     accommodation: quiz.accommodation || null,
+    isOverdueUnsubmitted,
   };
 };
 
-const resultPayload = ({ quiz, attempt, computed, alreadySubmitted = false, gamification = null }) => {
-  const reviewAvailable = reviewIsAvailable(quiz);
-  const passed = computed.percentage >= Number(quiz.passing_score);
+const resultPayload = ({ quiz, attempt, computed, alreadySubmitted = false, gamification = null, isOverdueUnsubmitted = false }) => {
+  const reviewAvailable = isOverdueUnsubmitted || reviewIsAvailable(quiz);
+  const passed = isOverdueUnsubmitted ? false : computed.percentage >= Number(quiz.passing_score);
   return {
     attemptId: String(attempt.id),
     attemptNumber: Number(attempt.attempt_number || 1),
@@ -330,6 +374,7 @@ const resultPayload = ({ quiz, attempt, computed, alreadySubmitted = false, gami
     alreadySubmitted,
     autoSubmitted: Boolean(attempt.auto_submitted),
     gamification,
+    isOverdueUnsubmitted,
   };
 };
 
@@ -380,15 +425,23 @@ router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireA
     await client.query("COMMIT");
     committed = true;
     const effectiveQuestions = attemptQuestions(state.attempt, questions);
-    const result = state.attempt?.status === "submitted" && state.computed
-      ? resultPayload({ quiz: effectiveQuiz, attempt: state.attempt, computed: state.computed, alreadySubmitted: true })
+    const isOverdueUnsubmitted = Boolean(state.isOverdueUnsubmitted);
+    const result = ((state.attempt?.status === "submitted" || isOverdueUnsubmitted) && state.computed)
+      ? resultPayload({
+          quiz: effectiveQuiz,
+          attempt: state.attempt,
+          computed: state.computed,
+          alreadySubmitted: true,
+          isOverdueUnsubmitted,
+        })
       : null;
     return res.json({
       success: true,
       data: {
-        quiz: serializeQuiz(effectiveQuiz, effectiveQuestions, state.attempt),
+        quiz: serializeQuiz(effectiveQuiz, effectiveQuestions, state.attempt, isOverdueUnsubmitted),
         attempt: serializeAttempt(state.attempt),
         result,
+        isOverdueUnsubmitted,
       },
     });
   } catch (error) {

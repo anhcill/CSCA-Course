@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useOutletContext } from "react-router-dom";
 import toast from "react-hot-toast";
+import { Plus } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { isTeacherRole } from "../../../constants/roles";
-import { fetchMyLiveSchedule, getLiveSessionAccess } from "../../api/lmsClient";
+import { fetchMyLiveSchedule, fetchAssignments, getLiveSessionAccess } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { ErrorState } from "../../../components/common/StateView";
 
-import CalendarViewHeader from "../components/CalendarViewHeader";
-import CalendarWeekView from "../components/CalendarWeekView";
-import CalendarDayView from "../components/CalendarDayView";
+import ScheduleControlBar from "../components/ScheduleControlBar";
+import ScheduleWeeklyTimetable from "../components/ScheduleWeeklyTimetable";
+import ScheduleMiniCalendar from "../components/ScheduleMiniCalendar";
+import ScheduleUpcomingEvents from "../components/ScheduleUpcomingEvents";
+import ScheduleTodayList from "../components/ScheduleTodayList";
+import ScheduleMottoCard from "../components/ScheduleMottoCard";
+
 import CalendarMonthView from "../components/CalendarMonthView";
 import CalendarListView from "../components/CalendarListView";
 import SessionDetailModal from "../components/SessionDetailModal";
+import AssignmentSubmissionsModal from "../components/AssignmentSubmissionsModal";
 import CreateScheduleModal from "../components/CreateScheduleModal";
 import { subscribeToCalendarChanges } from "../calendarSync";
 import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
@@ -36,8 +42,9 @@ export default function ClassCalendarPage() {
   const canManageFixedSchedule = authUser?.role === "admin";
 
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState("week"); // "week" | "day" | "month" | "list"
+  const [viewMode, setViewMode] = useState("week"); // "week" | "month" | "list"
   const [sessions, setSessions] = useState([]);
+  const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -55,17 +62,22 @@ export default function ClassCalendarPage() {
       setErrorMessage("");
     }
     try {
-      const scheduleRes = await fetchMyLiveSchedule({ courseId, classId });
+      const [scheduleRes, assignmentsRes] = await Promise.all([
+        fetchMyLiveSchedule({ courseId, classId }),
+        fetchAssignments({ courseId, classId }).catch((err) => {
+          console.warn("fetchAssignments warning:", err);
+          return { data: [] };
+        }),
+      ]);
+
       if (!scheduleRes?.success) throw new Error(scheduleRes?.message || "Không thể tải lịch học");
       const nextSessions = scheduleRes?.success && Array.isArray(scheduleRes.data) ? scheduleRes.data : [];
       setSessions(nextSessions);
 
-      // A common source of confusion was opening the current week on Sunday
-      // while the next generated lesson is Monday. First open now goes to the
-      // closest real lesson, without overriding dates the user later chooses.
+      const nextAssignments = Array.isArray(assignmentsRes?.data) ? assignmentsRes.data : [];
+      setAssignments(nextAssignments);
+
       if (!didPositionInitialCalendar.current) {
-        const nextSession = nextSessions.find((session) => new Date(session.end_time).getTime() > Date.now());
-        if (nextSession?.start_time) setCurrentDate(new Date(nextSession.start_time));
         didPositionInitialCalendar.current = true;
       }
     } catch (err) {
@@ -80,8 +92,6 @@ export default function ClassCalendarPage() {
     loadData();
   }, [loadData]);
 
-  // Server data is authoritative: this keeps schedules created or changed by
-  // another admin/teacher visible without requiring the learner to reload.
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === "visible") loadData({ silent: true });
@@ -103,7 +113,6 @@ export default function ClassCalendarPage() {
     };
   }, [loadData]);
 
-  // Hợp nhất sessions và các deadline bài tập/quiz từ workspace nếu có
   const allEvents = useMemo(() => {
     const sessionEvents = sessions.map((s) => ({
       ...s,
@@ -111,26 +120,41 @@ export default function ClassCalendarPage() {
       uiState: getSessionUiState(s),
     }));
 
+    // Gộp bài tập & quiz từ API thật và outletContext nếu có
+    const combinedAssignments = [
+      ...(Array.isArray(assignments) ? assignments : []),
+      ...(Array.isArray(outletContext?.assignments) ? outletContext.assignments : []),
+    ];
+
+    const seenKeys = new Set();
     const assignmentEvents = [];
-    if (outletContext?.assignments && Array.isArray(outletContext.assignments)) {
-      outletContext.assignments.forEach((a) => {
-        if (a.due_date) {
-          assignmentEvents.push({
-            id: a.id,
-            title: a.title,
-            due_date: a.due_date,
-            eventType: a.type === "quiz" ? "QUIZ_DUE" : "ASSIGNMENT_DUE",
-            status: a.status,
-            max_score: a.max_score,
-          });
-        }
-      });
-    }
+
+    combinedAssignments.forEach((a) => {
+      const uniqueKey = `${a.type || "assignment"}-${a.id}`;
+      if (!seenKeys.has(uniqueKey) && a.due_date) {
+        seenKeys.add(uniqueKey);
+        assignmentEvents.push({
+          id: a.id,
+          title: a.title,
+          due_date: a.due_date,
+          eventType: a.type === "quiz" ? "QUIZ_DUE" : "ASSIGNMENT_DUE",
+          status: a.status,
+          max_score: a.max_score,
+          course_id: a.course_id,
+          course_title: a.course_title,
+          live_class_id: a.live_class_id,
+          class_title: a.class_title,
+          description: a.description,
+          total_students: a.total_students,
+          submitted_count: a.submitted_count,
+          graded_count: a.graded_count,
+        });
+      }
+    });
 
     return [...sessionEvents, ...assignmentEvents];
-  }, [sessions, outletContext]);
+  }, [sessions, assignments, outletContext]);
 
-  // Xử lý vào phòng học trực tuyến an toàn theo giờ server
   const handleJoinSession = async (session) => {
     const now = Date.now();
     const start = new Date(session.start_time).getTime();
@@ -158,6 +182,26 @@ export default function ClassCalendarPage() {
     }
   };
 
+  const handlePrev = () => {
+    const d = new Date(currentDate);
+    if (viewMode === "week") d.setDate(d.getDate() - 7);
+    else if (viewMode === "month") d.setMonth(d.getMonth() - 1);
+    else d.setDate(d.getDate() - 7);
+    setCurrentDate(d);
+  };
+
+  const handleNext = () => {
+    const d = new Date(currentDate);
+    if (viewMode === "week") d.setDate(d.getDate() + 7);
+    else if (viewMode === "month") d.setMonth(d.getMonth() + 1);
+    else d.setDate(d.getDate() + 7);
+    setCurrentDate(d);
+  };
+
+  const handleToday = () => {
+    setCurrentDate(new Date());
+  };
+
   if (loading) {
     return <Loading loading={true} text="Đang tải lịch học & nhiệm vụ..." fullScreen={false} className="min-h-[50vh] py-16" />;
   }
@@ -176,56 +220,111 @@ export default function ClassCalendarPage() {
     : basePath;
 
   return (
-    <div className="space-y-4 pb-12 transition-colors duration-200">
-      {/* Header điều hướng lịch */}
-      <CalendarViewHeader
-        currentDate={currentDate}
-        onDateChange={setCurrentDate}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        isTeacher={isTeacher}
-        canManageFixedSchedule={canManageFixedSchedule}
-        onCreateClick={() => setShowCreateModal(true)}
-      />
+    <div className="min-h-full p-3 sm:p-4 xl:px-4 xl:py-3">
+      <div className="mx-auto max-w-[1440px]">
+        {/* Nút thêm lịch dành riêng cho Giáo viên / Admin */}
+        {(canManageFixedSchedule || isTeacher) && (
+          <div className="mb-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Thêm buổi học
+            </button>
+          </div>
+        )}
 
-      {/* Hiển thị theo viewMode */}
-      {viewMode === "week" && (
-        <CalendarWeekView
-          currentDate={currentDate}
-          events={allEvents}
-          onSelectEvent={setSelectedEvent}
-          onJoinSession={handleJoinSession}
-        />
-      )}
+        {/* Bố cục 2 cột chính:
+            Cột trái (Lịch học + Thanh điều khiển + Bảng tuần)
+            Cột phải (Lịch tháng mini + Sự kiện sắp tới + Lịch học hôm nay + Góc châm ngôn)
+            Các box bên phải được đẩy lên trên cùng ngang hàng với tiêu đề Lịch học */}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_310px] xl:grid-cols-[minmax(0,1fr)_330px]">
+          {/* Cột trái */}
+          <div className="space-y-3 min-w-0">
+            {/* Chữ Lịch học gắn trực tiếp lên nền, không dùng khung thẻ nền */}
+            <div className="pt-0.5 pb-1">
+              <h1 className="font-['Dancing_Script',cursive] text-4xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs sm:text-5xl">
+                Lịch học
+              </h1>
+              <p className="mt-1 text-xs font-semibold italic text-slate-800 sm:text-sm">
+                {isTeacher ? "“Dạy học tận tâm, khai mở tri thức.”" : "“Học có kế hoạch, tương lai rộng mở.”"}
+              </p>
+              <p className="mt-0.5 font-['Ma_Shan_Zheng',cursive] text-sm tracking-wider text-slate-600 sm:text-base">
+                {isTeacher ? "—— 师者，所以传道受业解惑也。" : "—— 凡事预则立，不预则废。"}
+              </p>
+            </div>
 
-      {viewMode === "day" && (
-        <CalendarDayView
-          currentDate={currentDate}
-          events={allEvents}
-          onSelectEvent={setSelectedEvent}
-          onJoinSession={handleJoinSession}
-        />
-      )}
+            <ScheduleControlBar
+              currentDate={currentDate}
+              onPrev={handlePrev}
+              onNext={handleNext}
+              onToday={handleToday}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+            />
 
-      {viewMode === "month" && (
-        <CalendarMonthView
-          currentDate={currentDate}
-          events={allEvents}
-          onSelectEvent={setSelectedEvent}
-          onSelectDate={(date) => {
-            setCurrentDate(date);
-            setViewMode("day");
-          }}
-        />
-      )}
+            {viewMode === "week" && (
+              <ScheduleWeeklyTimetable
+                currentDate={currentDate}
+                events={allEvents}
+                onSelectEvent={setSelectedEvent}
+                onJoinSession={handleJoinSession}
+              />
+            )}
 
-      {viewMode === "list" && (
-        <CalendarListView
-          events={allEvents}
-          onSelectEvent={setSelectedEvent}
-          onJoinSession={handleJoinSession}
-        />
-      )}
+            {viewMode === "month" && (
+              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md">
+                <CalendarMonthView
+                  currentDate={currentDate}
+                  events={allEvents}
+                  onSelectEvent={setSelectedEvent}
+                  onSelectDate={(date) => {
+                    setCurrentDate(date);
+                    setViewMode("week");
+                  }}
+                />
+              </div>
+            )}
+
+            {viewMode === "list" && (
+              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md">
+                <CalendarListView
+                  events={allEvents}
+                  onSelectEvent={setSelectedEvent}
+                  onJoinSession={handleJoinSession}
+                  isTeacher={isTeacher}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Cột phải: 4 card widget bắt đầu ngay từ trên cùng */}
+          <div className="space-y-4">
+            {/* Widget 1: Lịch tháng mini */}
+            <ScheduleMiniCalendar
+              currentDate={currentDate}
+              onDateChange={setCurrentDate}
+              events={allEvents}
+            />
+
+            {/* Widget 2: Sự kiện sắp tới */}
+            <ScheduleUpcomingEvents events={allEvents} onSelectEvent={setSelectedEvent} isTeacher={isTeacher} />
+
+            {/* Widget 3: Lịch học hôm nay */}
+            <ScheduleTodayList
+              currentDate={currentDate}
+              events={allEvents}
+              onJoinSession={handleJoinSession}
+              isTeacher={isTeacher}
+            />
+
+            {/* Widget 4: Góc châm ngôn truyền cảm hứng */}
+            <ScheduleMottoCard />
+          </div>
+        </div>
+      </div>
 
       {/* Modal chi tiết buổi học */}
       {selectedEvent && selectedEvent.eventType === "SESSION" && (
@@ -238,7 +337,16 @@ export default function ClassCalendarPage() {
         />
       )}
 
-      {/* Teachers may only add a supplemental session; fixed schedules belong to admins. */}
+      {/* Modal chi tiết hạn nộp & danh sách bài nộp (Học viên & Giảng viên) */}
+      {selectedEvent && (selectedEvent.eventType === "ASSIGNMENT_DUE" || selectedEvent.eventType === "QUIZ_DUE") && (
+        <AssignmentSubmissionsModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+          isTeacher={isTeacher}
+        />
+      )}
+
+      {/* Modal tạo lịch (Admin / Giáo viên) */}
       {showCreateModal && (
         <CreateScheduleModal
           classId={classId}

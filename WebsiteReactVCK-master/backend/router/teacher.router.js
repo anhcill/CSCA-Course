@@ -7,6 +7,7 @@ import { getMeetingProvider } from "../services/liveClass.service.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import { assertGradebookOpen, assertManagedClass, notifyWorkflow, workflowError } from "../services/lmsWorkflow.service.js";
 import { getTeacherSalaryDetail } from "../services/salary.service.js";
+import { getDeterministicClassCover } from "../utils/classWallpapers.js";
 
 const router = express.Router();
 
@@ -100,6 +101,10 @@ const serializeClass = (row) => ({
   code: `LIVE-${row.id}`,
   title: row.title,
   description: row.description || "",
+  coverImageUrl: row.cover_image_url || getDeterministicClassCover(row.id || row.title),
+  cover_image_url: row.cover_image_url || getDeterministicClassCover(row.id || row.title),
+  teacherDisplayName: row.teacher_display_name || null,
+  teacher_display_name: row.teacher_display_name || null,
   courseId: row.course_id,
   courseTitle: row.course_title || null,
   status: row.status,
@@ -155,12 +160,21 @@ const serializeSubmission = (row) => ({
 
 const buildDashboardClassesQuery = (scope) => `
   SELECT lc.id, lc.title, lc.course_id, lc.instructor_id, lc.description, lc.status,
+         lc.cover_image_url,
+         COALESCE(NULLIF(lc.teacher_display_name, ''), u_inst.username, u_inst.email) AS teacher_display_name,
          COALESCE(c.title, c.name) AS course_title,
          roster.enrolled_count,
          session_stats.total_sessions,
          session_stats.completed_sessions,
          session_stats.attendance_rate,
-         progress.progress_pct,
+         COALESCE(
+           CASE
+             WHEN session_stats.total_sessions > 0
+               THEN ROUND((100.0 * session_stats.completed_sessions / session_stats.total_sessions), 1)
+             ELSE progress.progress_pct
+           END,
+           0
+         ) AS progress_pct,
          schedules.schedule,
          next_session.start_time AS next_session_start,
          next_session.title AS next_session_title,
@@ -168,18 +182,19 @@ const buildDashboardClassesQuery = (scope) => `
          next_session.meet_url AS next_meet_url
   FROM live_classes lc
   LEFT JOIN courses c ON c.id = lc.course_id
+  LEFT JOIN users u_inst ON u_inst.id = lc.instructor_id
   LEFT JOIN LATERAL (
     SELECT COUNT(*) FILTER (WHERE ce.status = 'active')::int AS enrolled_count
     FROM class_enrollments ce
     WHERE ce.live_class_id = lc.id
   ) roster ON true
   LEFT JOIN LATERAL (
-    SELECT COUNT(*) FILTER (WHERE cs.status <> 'cancelled')::int AS total_sessions,
-           COUNT(*) FILTER (WHERE cs.status = 'ended' OR cs.end_time <= NOW())::int AS completed_sessions,
-           COALESCE(ROUND(
+    SELECT COUNT(DISTINCT cs.id) FILTER (WHERE cs.status <> 'cancelled')::int AS total_sessions,
+           COUNT(DISTINCT cs.id) FILTER (WHERE cs.status = 'ended' OR cs.end_time <= NOW())::int AS completed_sessions,
+           ROUND(
              100.0 * COUNT(ca.id) FILTER (WHERE ca.status = 'present') /
              NULLIF(COUNT(ca.id) FILTER (WHERE ca.status IN ('present', 'absent', 'excused')), 0), 1
-           ), 0) AS attendance_rate
+           ) AS attendance_rate
     FROM class_sessions cs
     LEFT JOIN class_attendance ca ON ca.session_id = cs.id
     WHERE cs.live_class_id = lc.id AND cs.status <> 'cancelled'
@@ -315,7 +330,13 @@ const buildPendingQuery = (scope, statusFilter = "all", page = 1, limit = 8) => 
     scope.clause,
     "s.status IN ('submitted', 'late')",
     "NOT s.return_requested",
-    "(a.live_class_id = lc.id OR (a.live_class_id IS NULL AND lc.course_id IS NOT NULL AND a.course_id = lc.course_id))",
+    `(a.live_class_id = lc.id OR (
+      a.live_class_id IS NULL AND lc.course_id IS NOT NULL AND a.course_id = lc.course_id
+      AND EXISTS (
+        SELECT 1 FROM class_enrollments ce_sub
+        WHERE ce_sub.live_class_id = lc.id AND ce_sub.user_id = s.user_id AND ce_sub.status = 'active'
+      )
+    ))`,
   ];
   if (statusFilter === "late") filters.push("s.status = 'late'");
   if (statusFilter === "submitted") filters.push("s.status = 'submitted'");
@@ -369,7 +390,15 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("
         `SELECT COUNT(DISTINCT s.id)::int AS count
          FROM assignment_submissions s
          JOIN assignments a ON a.id = s.assignment_id
-         JOIN live_classes lc ON (a.live_class_id = lc.id OR (a.live_class_id IS NULL AND lc.course_id IS NOT NULL AND a.course_id = lc.course_id))
+         JOIN live_classes lc ON (
+           a.live_class_id = lc.id OR (
+             a.live_class_id IS NULL AND lc.course_id IS NOT NULL AND a.course_id = lc.course_id
+             AND EXISTS (
+               SELECT 1 FROM class_enrollments ce_sub
+               WHERE ce_sub.live_class_id = lc.id AND ce_sub.user_id = s.user_id AND ce_sub.status = 'active'
+             )
+           )
+         )
          WHERE ${scope.clause} AND s.status IN ('submitted', 'late') AND NOT s.return_requested`,
         pendingCountParams,
       ),
@@ -388,9 +417,10 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("
     ]);
 
     const classes = classesResult.rows.map(serializeClass);
-    const averageAttendance = classes.length > 0
-      ? Number((classes.reduce((sum, item) => sum + (item.attendanceRate || 0), 0) / classes.length).toFixed(1))
-      : 0;
+    const classesWithAttendance = classes.filter((item) => item.attendanceRate !== null);
+    const averageAttendance = classesWithAttendance.length > 0
+      ? Number((classesWithAttendance.reduce((sum, item) => sum + item.attendanceRate, 0) / classesWithAttendance.length).toFixed(1))
+      : 100;
     const totalStudentsResult = await query(
       `SELECT COUNT(DISTINCT ce.user_id)::int AS count
        FROM class_enrollments ce
@@ -872,8 +902,8 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, requirePerm
         baseParams,
       ),
       query(
-        `SELECT COUNT(cs.id) FILTER (WHERE cs.status <> 'cancelled')::int AS total_sessions,
-                COUNT(cs.id) FILTER (WHERE cs.status = 'ended' OR cs.end_time <= NOW())::int AS completed_sessions,
+        `SELECT COUNT(DISTINCT cs.id) FILTER (WHERE cs.status <> 'cancelled')::int AS total_sessions,
+                COUNT(DISTINCT cs.id) FILTER (WHERE cs.status = 'ended' OR cs.end_time <= NOW())::int AS completed_sessions,
                 ROUND(100.0 * COUNT(ca.id) FILTER (WHERE ca.status = 'present') /
                   NULLIF(COUNT(ca.id) FILTER (WHERE ca.status IN ('present', 'absent', 'excused')), 0), 1) AS attendance_rate,
                 COALESCE(ROUND(AVG(student_progress.progress_pct), 1), 0) AS progress_pct,

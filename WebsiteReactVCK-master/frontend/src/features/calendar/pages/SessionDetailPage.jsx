@@ -238,125 +238,156 @@ export default function SessionDetailPage() {
   const isJoinable = meetingWindow.isOpen;
   const isEnded = meetingWindow.isClosed;
   const completeTasks = tasks.filter((task) => ["submitted", "graded"].includes(task.status));
-  const tabClass = (isActive) => `inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all duration-200 ${isActive ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-500/20" : "text-slate-600 hover:bg-blue-50/80 hover:text-blue-700 dark:text-slate-400 dark:hover:bg-slate-800/80 dark:hover:text-sky-300"}`;
+  const tabClass = (isActive) =>
+    `inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all duration-200 ${
+      isActive
+        ? "bg-[#102f63] text-white shadow-md shadow-[#102f63]/25 ring-1 ring-[#102f63]/20"
+        : "text-[#244866] hover:bg-white/90 hover:text-[#102f63]"
+    }`;
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 pb-12 transition-colors duration-200">
-      <Link to={basePath} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-sky-400">
-        <ArrowLeft className="h-4 w-4" /> Quay lại lớp và lịch học
+      <Link
+        to={basePath}
+        className="inline-flex items-center gap-2 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" /> Quay lại lớp và lịch học
       </Link>
 
-      <section className="overflow-hidden rounded-2xl border border-blue-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 px-4 py-3.5 text-white sm:px-6 sm:py-4">
-          <div className="flex flex-col justify-between gap-3.5 lg:flex-row lg:items-center">
-            <div className="min-w-0 space-y-1 sm:space-y-1.5">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-bold backdrop-blur">
-                <Video className="h-3 w-3" /> Không gian buổi học
-              </span>
-              <h1 className="text-lg font-bold tracking-tight sm:text-xl">{session.title}</h1>
-              <p className="inline-flex items-center gap-1.5 text-xs text-blue-100 sm:text-sm">
-                <Clock className="h-3.5 w-3.5 text-blue-200 shrink-0" /> {formatDateTime(session.start_time)}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {isJoinable ? (
-                <button
-                  type="button"
-                  onClick={handleJoin}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-xs font-bold text-blue-700 shadow-sm transition hover:bg-blue-50"
-                >
-                  <Play className="h-3.5 w-3.5" /> Vào lớp học
-                </button>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-xs font-semibold">
-                  {isEnded ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
-                  {isEnded ? "Phòng đã đóng sau giờ học 30 phút" : "Phòng mở trước 15 phút"}
-                </span>
-              )}
-              <a
-                href={googleCalendarEventUrl({
-                  title: session.title,
-                  startTime: session.start_time,
-                  endTime: session.end_time,
-                  details: "Buổi học CSCA Academy",
-                })}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs font-medium transition hover:bg-white/20"
-              >
-                <CalendarDays className="h-3.5 w-3.5" /> Thêm Google Calendar
-              </a>
-              <a
-                href={classCalendarIcsUrl(classId)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs font-medium transition hover:bg-white/20"
-              >
-                <FileText className="h-3.5 w-3.5" /> Tải lịch .ics
-              </a>
-              {isTeacher && (
-                <Link
-                  to={`/lms/teach/classes/${classId}/attendance?sessionId=${session.id}`}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs font-medium transition hover:bg-white/20"
-                >
-                  <Users className="h-3.5 w-3.5" /> Điểm danh
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* Hero Banner: Oriental Scholar Glassmorphic Theme */}
+      <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition">
+        {/* Background ambient subtle decorative glows */}
+        <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl" />
 
-        {!isTeacher && checkIn && String(checkIn.status || checkIn.attendance_status || "").toLowerCase() !== "present" && (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-800/50 sm:px-6">
-            <div className="flex items-center gap-2.5">
-              <CheckCircle2 className={`h-4 w-4 ${checkIn.status === "present" ? "text-emerald-500" : "text-slate-400"}`} />
-              <div>
-                <span className="text-xs font-bold text-slate-900 dark:text-white">Báo có mặt buổi học: </span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {checkIn.status === "absent" ? "Giáo viên ghi vắng mặt" : checkIn.status === "excused" ? "Giáo viên ghi có phép" : checkIn.reason || "Bạn chưa báo có mặt"}
+        <div className="relative flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs">
+                <Video className="h-3.5 w-3.5 text-sky-600" /> Không gian buổi học
+              </span>
+              {session.provider && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-bold text-emerald-700 shadow-2xs">
+                  {session.provider}
                 </span>
-              </div>
+              )}
             </div>
-            {checkIn.canCheckIn && !checkIn.status && (
-              <button type="button" disabled={checkingIn} onClick={handleCheckIn} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-60">
-                {checkingIn ? "Đang ghi nhận..." : "Tôi có mặt"}
+
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63]">
+              {session.title}
+            </h1>
+
+            <p className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#244866]">
+              <Clock className="h-4 w-4 text-sky-600 shrink-0" />
+              {formatDateTime(session.start_time)}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {isJoinable ? (
+              <button
+                type="button"
+                onClick={handleJoin}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition hover:brightness-105 active:scale-95 animate-pulse"
+              >
+                <Play className="h-4 w-4 fill-current" /> Vào lớp học
               </button>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#487291] shadow-2xs">
+                {isEnded ? <CheckCircle2 className="h-3.5 w-3.5 text-slate-400" /> : <Lock className="h-3.5 w-3.5 text-amber-500" />}
+                {isEnded ? "Phòng đã đóng sau giờ học" : "Phòng mở trước 15 phút"}
+              </span>
+            )}
+            <a
+              href={googleCalendarEventUrl({
+                title: session.title,
+                startTime: session.start_time,
+                endTime: session.end_time,
+                details: "Buổi học CSCA Academy",
+              })}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+            >
+              <CalendarDays className="h-3.5 w-3.5 text-blue-600" /> Thêm Google Calendar
+            </a>
+            <a
+              href={classCalendarIcsUrl(classId)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+            >
+              <FileText className="h-3.5 w-3.5 text-blue-600" /> Tải lịch .ics
+            </a>
+            {isTeacher && (
+              <Link
+                to={`/lms/teach/classes/${classId}/attendance?sessionId=${session.id}`}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+              >
+                <Users className="h-3.5 w-3.5 text-blue-600" /> Điểm danh
+              </Link>
             )}
           </div>
-        )}
-
-        <nav className="flex gap-1.5 overflow-x-auto border-t border-slate-100 bg-white p-1.5 dark:border-slate-800 dark:bg-slate-900 sm:px-4 sm:py-2" aria-label="Chức năng của buổi học">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const count = tab.id === "vocabulary" ? sessionVocabs.length
-              : tab.id === "formulas" ? sessionFormulas.length
-              : tab.id === "tasks" ? tasks.length
-              : tab.id === "materials" ? files.length
-              : tab.id === "announcements" ? announcements.length
-              : tab.id === "results" ? completeTasks.length
-              : null;
-
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })}
-                className={tabClass(activeTab === tab.id)}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{tab.label}</span>
-                {count !== null && (
-                  <span className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                    activeTab === tab.id
-                      ? "bg-white/20 text-white"
-                      : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                  }`}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
+        </div>
       </section>
+
+      {/* Check-in attendance bar */}
+      {!isTeacher && checkIn && String(checkIn.status || checkIn.attendance_status || "").toLowerCase() !== "present" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50/70 via-white to-amber-50/40 p-3.5 sm:px-5 shadow-2xs backdrop-blur-sm">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className={`h-4 w-4 shrink-0 ${checkIn.status === "present" ? "text-emerald-500" : "text-amber-500"}`} />
+            <div>
+              <span className="text-xs font-bold text-[#102f63]">Báo có mặt buổi học: </span>
+              <span className="text-xs text-[#244866]">
+                {checkIn.status === "absent" ? "Giáo viên ghi vắng mặt" : checkIn.status === "excused" ? "Giáo viên ghi có phép" : checkIn.reason || "Bạn chưa báo có mặt"}
+              </span>
+            </div>
+          </div>
+          {checkIn.canCheckIn && !checkIn.status && (
+            <button
+              type="button"
+              disabled={checkingIn}
+              onClick={handleCheckIn}
+              className="rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm shadow-emerald-600/25 hover:bg-emerald-500 active:scale-95 disabled:opacity-60 transition"
+            >
+              {checkingIn ? "Đang ghi nhận..." : "Tôi có mặt"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Frosted glass sub-navigation tabs */}
+      <nav className="flex gap-1.5 overflow-x-auto rounded-2xl border border-white/85 bg-white/80 p-1.5 shadow-2xs backdrop-blur-md" aria-label="Chức năng của buổi học">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const count = tab.id === "vocabulary" ? sessionVocabs.length
+            : tab.id === "formulas" ? sessionFormulas.length
+            : tab.id === "tasks" ? tasks.length
+            : tab.id === "materials" ? files.length
+            : tab.id === "announcements" ? announcements.length
+            : tab.id === "results" ? completeTasks.length
+            : null;
+
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })}
+              className={tabClass(activeTab === tab.id)}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              <span>{tab.label}</span>
+              {count !== null && (
+                <span className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                  activeTab === tab.id
+                    ? "bg-white/20 text-white"
+                    : "bg-slate-100 text-[#487291]"
+                }`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
 
       {resourcesLoading ? <Loading loading text="Đang đồng bộ học liệu của buổi..." fullScreen={false} className="min-h-40 py-10" /> : <>
         {activeTab === "overview" && (
@@ -447,16 +478,16 @@ function StudentOverviewTab({
 
   return (
     <div className="space-y-4">
-      {/* 2. Main content grid */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* Main content grid */}
+      <div className="grid gap-5 lg:grid-cols-3">
         {/* Left column (2 cols): Progress + Tasks */}
-        <div className="space-y-4 lg:col-span-2">
+        <div className="space-y-5 lg:col-span-2">
           {/* Progress Banner */}
-          <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/70 via-indigo-50/30 to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 sm:p-5">
+          <div className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 dark:text-sky-400">Tiến độ bài học</span>
-                <h2 className="mt-0.5 text-base font-extrabold text-slate-900 dark:text-white">
+                <span className="text-[11px] font-black uppercase tracking-wider text-sky-700">Tiến độ bài học</span>
+                <h2 className="mt-0.5 text-base font-extrabold text-[#102f63]">
                   {isAllComplete
                     ? "🎉 Xuất sắc! Bạn đã hoàn thành tất cả nhiệm vụ buổi này!"
                     : tasks.length === 0
@@ -464,34 +495,34 @@ function StudentOverviewTab({
                     : `Bạn còn ${tasks.length - completeTasks.length} nhiệm vụ cần hoàn thành`}
                 </h2>
               </div>
-              <span className="text-xl font-black text-blue-600 dark:text-sky-400">{progressPct}%</span>
+              <span className="text-2xl font-black text-[#102f63]">{progressPct}%</span>
             </div>
-            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-800">
+            <div className="mt-3.5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full rounded-full bg-blue-600 transition-all duration-500 dark:bg-sky-500"
+                className="h-full rounded-full bg-gradient-to-r from-[#17365f] via-[#102f63] to-sky-600 transition-all duration-500 shadow-2xs"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
           </div>
 
-          {/* Tasks List */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+          {/* Tasks List Card */}
+          <div className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
+            <div className="flex items-center justify-between border-b border-sky-100/70 pb-3">
               <div>
-                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Bài tập & Quiz cần làm</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Các hoạt động học tập được giao trong buổi này</p>
+                <h2 className="text-base font-black text-[#102f63]">Bài tập & Quiz cần làm</h2>
+                <p className="text-xs text-[#487291]">Các hoạt động học tập được giao trong buổi này</p>
               </div>
               <button
                 type="button"
                 onClick={() => setSearchParams({ tab: "tasks" })}
-                className="text-xs font-bold text-blue-600 hover:underline dark:text-sky-400"
+                className="text-xs font-bold text-sky-700 hover:text-blue-800 transition"
               >
                 Xem tất cả ({tasks.length}) →
               </button>
             </div>
 
             {tasks.length === 0 ? (
-              <p className="py-6 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
+              <p className="py-6 text-center text-xs font-medium text-[#487291]">
                 Chưa có bài tập hoặc quiz nào trong buổi này.
               </p>
             ) : (
@@ -503,27 +534,29 @@ function StudentOverviewTab({
                     <Link
                       key={`${task.type}-${task.id}`}
                       to={taskHref(basePath, task)}
-                      className="flex flex-col justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3.5 transition hover:border-blue-200 hover:bg-slate-100/70 dark:border-slate-800 dark:bg-slate-950/40 dark:hover:border-slate-700 dark:hover:bg-slate-800/40 sm:flex-row sm:items-center"
+                      className="flex flex-col justify-between gap-3 rounded-2xl border border-sky-100/70 bg-white/70 p-4 transition-all hover:border-sky-300 hover:bg-white hover:shadow-md sm:flex-row sm:items-center"
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
                             task.type === "quiz"
-                              ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
-                              : "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-sky-300"
+                              ? isHomeworkQuiz
+                                ? "bg-amber-50 text-amber-700 border border-amber-200/80"
+                                : "bg-violet-50 text-violet-700 border border-violet-200/80"
+                              : "bg-sky-50 text-sky-700 border border-sky-200/80"
                           }`}>
                             {isHomeworkQuiz ? "QUIZ VỀ NHÀ" : task.type === "quiz" ? "QUIZ BUỔI HỌC" : "BÀI TẬP"}
                           </span>
-                          <h3 className="truncate text-xs font-bold text-slate-900 dark:text-white">{task.title}</h3>
+                          <h3 className="truncate text-xs sm:text-sm font-bold text-[#102f63]">{task.title}</h3>
                         </div>
-                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        <p className="mt-1 text-[11px] text-[#487291]">
                           {task.due_date ? `Hạn nộp: ${formatDateTime(task.due_date)}` : "Chưa có hạn nộp cụ thể"}
                         </p>
                       </div>
-                      <span className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold ${
+                      <span className={`shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
                         isDone
-                          ? "border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300"
-                          : "bg-blue-600 text-white shadow-sm hover:bg-blue-500"
+                          ? "border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-2xs"
+                          : "bg-[#102f63] text-white hover:bg-blue-800 shadow-xs"
                       }`}>
                         {task.status === "graded" ? "Đã có điểm" : task.status === "submitted" ? "Đã nộp" : "Làm bài"}
                       </span>
@@ -536,36 +569,36 @@ function StudentOverviewTab({
         </div>
 
         {/* Right column (1 col): Materials + Announcements */}
-        <div className="space-y-4">
+        <div className="space-y-5">
           {/* Card: Tài liệu */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
-              <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Tài liệu học tập ({files.length})</h2>
+          <div className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
+            <div className="flex items-center justify-between border-b border-sky-100/70 pb-3">
+              <h2 className="text-sm font-black text-[#102f63]">Tài liệu học tập ({files.length})</h2>
               <button
                 type="button"
                 onClick={() => setSearchParams({ tab: "materials" })}
-                className="text-xs font-bold text-blue-600 hover:underline dark:text-sky-400"
+                className="text-xs font-bold text-sky-700 hover:text-blue-800 transition"
               >
                 Xem tất cả →
               </button>
             </div>
             {files.length === 0 ? (
-              <p className="py-5 text-center text-xs text-slate-400">Chưa có tài liệu nào cho buổi học này.</p>
+              <p className="py-6 text-center text-xs text-[#487291]">Chưa có tài liệu nào cho buổi học này.</p>
             ) : (
-              <div className="mt-3 space-y-2">
+              <div className="mt-3.5 space-y-2">
                 {files.slice(0, 3).map((file) => {
                   const k = kindForFile(file.mimeType || file.mime_type, file.name);
                   const cfg = kindConfig[k] || kindConfig.other;
                   const Icon = cfg.icon;
                   return (
-                    <div key={file.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/70 p-2.5 dark:border-slate-800 dark:bg-slate-950/40">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-[11px] font-bold ${cfg.badge}`}>
-                          <Icon className="h-3.5 w-3.5" />
+                    <div key={file.id} className="flex items-center justify-between gap-2 rounded-xl border border-sky-100/70 bg-white/70 p-2.5 transition hover:bg-white">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[11px] font-bold ${cfg.badge}`}>
+                          <Icon className="h-4 w-4" />
                         </span>
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-bold text-slate-900 dark:text-white">{file.name}</p>
-                          <p className="text-[10px] text-slate-400">{formatBytes(file.size_bytes)}</p>
+                          <p className="truncate text-xs font-bold text-[#102f63]">{file.name}</p>
+                          <p className="text-[10px] text-[#487291]">{formatBytes(file.size_bytes)}</p>
                         </div>
                       </div>
                       {file.file_url && (
@@ -574,10 +607,10 @@ function StudentOverviewTab({
                           target="_blank"
                           rel="noreferrer"
                           download
-                          className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-sky-50 hover:text-blue-700 transition"
                           title="Tải về"
                         >
-                          <Download className="h-3.5 w-3.5" />
+                          <Download className="h-4 w-4" />
                         </a>
                       )}
                     </div>
@@ -588,30 +621,30 @@ function StudentOverviewTab({
           </div>
 
           {/* Card: Thông báo */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
-              <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">Thông báo ({announcements.length})</h2>
+          <div className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
+            <div className="flex items-center justify-between border-b border-sky-100/70 pb-3">
+              <h2 className="text-sm font-black text-[#102f63]">Thông báo ({announcements.length})</h2>
               <button
                 type="button"
                 onClick={() => setSearchParams({ tab: "announcements" })}
-                className="text-xs font-bold text-blue-600 hover:underline dark:text-sky-400"
+                className="text-xs font-bold text-sky-700 hover:text-blue-800 transition"
               >
                 Xem tất cả →
               </button>
             </div>
             {announcements.length === 0 ? (
-              <p className="py-5 text-center text-xs text-slate-400">Chưa có thông báo nào trong buổi này.</p>
+              <p className="py-6 text-center text-xs text-[#487291]">Chưa có thông báo nào trong buổi này.</p>
             ) : (
-              <div className="mt-3 space-y-2.5">
+              <div className="mt-3.5 space-y-2.5">
                 {announcements.slice(0, 3).map((item) => (
-                  <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                  <div key={item.id} className="rounded-xl border border-sky-100/70 bg-white/70 p-3 transition hover:bg-white">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="truncate text-xs font-bold text-slate-900 dark:text-white">{item.title}</h3>
-                      <span className="shrink-0 text-[10px] text-slate-400">
+                      <h3 className="truncate text-xs font-bold text-[#102f63]">{item.title}</h3>
+                      <span className="shrink-0 text-[10px] text-[#487291]">
                         {item.created_at ? new Date(item.created_at).toLocaleDateString("vi-VN") : ""}
                       </span>
                     </div>
-                    <p className="mt-1 line-clamp-2 text-[11px] text-slate-600 dark:text-slate-300">{item.message}</p>
+                    <p className="mt-1 line-clamp-2 text-[11px] text-[#244866]">{item.message}</p>
                   </div>
                 ))}
               </div>
@@ -626,7 +659,39 @@ function StudentOverviewTab({
 
 function SessionTaskList({ tasks, basePath }) {
   if (!tasks.length) return <EmptyState icon={ClipboardList} title="Chưa có bài tập hoặc Quiz" description="Bài tập và Quiz giáo viên giao cho buổi này sẽ xuất hiện tại đây." />;
-  return <section className="space-y-3">{tasks.map((task) => { const isHomeworkQuiz = task.type === "quiz" && (task.activity_scope || task.activityScope) === "homework"; return <Link key={`${task.type}-${task.id}`} to={taskHref(basePath, task)} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-sky-700"><div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${task.type === "quiz" ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300" : "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-sky-300"}`}>{isHomeworkQuiz ? "QUIZ VỀ NHÀ" : task.type === "quiz" ? "QUIZ TRONG BUỔI" : "BÀI TẬP VỀ NHÀ"}</span><h2 className="mt-2 text-sm font-black text-slate-900 dark:text-white">{task.title}</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{task.type === "quiz" && !isHomeworkQuiz ? "Làm trực tuyến và chấm điểm tự động trong buổi học" : `Hạn nộp: ${task.due_date ? formatDateTime(task.due_date) : "Giáo viên sẽ thông báo"}`}</p></div><span className="shrink-0 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white">{task.status === "graded" ? "Xem kết quả" : task.status === "submitted" ? "Đã nộp" : "Mở bài"}</span></Link>; })}</section>;
+  return (
+    <section className="space-y-3">
+      {tasks.map((task) => {
+        const isHomeworkQuiz = task.type === "quiz" && (task.activity_scope || task.activityScope) === "homework";
+        return (
+          <Link
+            key={`${task.type}-${task.id}`}
+            to={taskHref(basePath, task)}
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition hover:shadow-lg hover:border-sky-300"
+          >
+            <div>
+              <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${
+                task.type === "quiz"
+                  ? isHomeworkQuiz
+                    ? "bg-amber-50 text-amber-700 border border-amber-200/80"
+                    : "bg-violet-50 text-violet-700 border border-violet-200/80"
+                  : "bg-sky-50 text-sky-700 border border-sky-200/80"
+              }`}>
+                {isHomeworkQuiz ? "QUIZ VỀ NHÀ" : task.type === "quiz" ? "QUIZ TRONG BUỔI" : "BÀI TẬP VỀ NHÀ"}
+              </span>
+              <h2 className="mt-2 text-sm sm:text-base font-black text-[#102f63]">{task.title}</h2>
+              <p className="mt-1 text-xs text-[#487291]">
+                {task.type === "quiz" && !isHomeworkQuiz ? "Làm trực tuyến và chấm điểm tự động trong buổi học" : `Hạn nộp: ${task.due_date ? formatDateTime(task.due_date) : "Giáo viên sẽ thông báo"}`}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-xl bg-[#102f63] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-800 transition">
+              {task.status === "graded" ? "Xem kết quả" : task.status === "submitted" ? "Đã nộp" : "Mở bài"}
+            </span>
+          </Link>
+        );
+      })}
+    </section>
+  );
 }
 
 function SessionFileList({ files }) {
@@ -660,21 +725,21 @@ function SessionFileList({ files }) {
   return (
     <section className="space-y-4">
       {/* Header banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-blue-200/80 bg-gradient-to-r from-blue-50/90 via-sky-50/40 to-white dark:border-blue-900/40 dark:bg-gradient-to-r dark:from-blue-950/30 dark:via-slate-900 dark:to-slate-900 p-4 sm:p-5 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-600/25 ring-2 ring-blue-500/20">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#17365f] to-[#102f63] text-white shadow-md shadow-blue-950/20">
             <FolderOpen className="h-5 w-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+              <h2 className="text-sm sm:text-base font-black text-[#102f63]">
                 Tài liệu & Học liệu đính kèm
               </h2>
-              <span className="rounded-full bg-blue-100 dark:bg-blue-950/80 px-2.5 py-0.5 text-[11px] font-black text-blue-800 dark:text-sky-300 ring-1 ring-blue-200/80 dark:ring-blue-800/50">
+              <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-black text-sky-700 ring-1 ring-sky-200">
                 {files.length} tệp
               </span>
             </div>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-0.5 text-xs text-[#487291]">
               Bấm vào tên tài liệu để mở xem; nút tải chỉ hiện khi lớp cho phép.
             </p>
           </div>
@@ -690,7 +755,7 @@ function SessionFileList({ files }) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Tìm tài liệu..."
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 py-1.5 pl-8 pr-3 text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
+                className="w-full rounded-xl border border-sky-100 bg-white/90 py-1.5 pl-8 pr-3 text-xs text-[#102f63] outline-none focus:border-sky-500"
               />
             </div>
           </div>
@@ -711,10 +776,10 @@ function SessionFileList({ files }) {
               key={k}
               type="button"
               onClick={() => setSelectedKind(k)}
-              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+              className={`rounded-xl px-3 py-1 text-xs font-bold transition ${
                 selectedKind === k
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  ? "bg-[#102f63] text-white shadow-xs"
+                  : "bg-white/80 text-[#244866] hover:bg-white"
               }`}
             >
               {label}
@@ -725,11 +790,11 @@ function SessionFileList({ files }) {
 
       {/* Grid of File Cards */}
       {filteredFiles.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
+        <div className="rounded-3xl border border-dashed border-sky-200 bg-white/60 p-8 text-center text-xs text-[#487291]">
           Không tìm thấy tài liệu phù hợp với tìm kiếm.
         </div>
       ) : (
-        <div className="grid gap-3.5 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           {filteredFiles.map((file) => {
             const kind = kindForFile(file.mimeType || file.mime_type, file.name);
             const kindInfo = kindConfig[kind] || kindConfig.other;
@@ -741,7 +806,7 @@ function SessionFileList({ files }) {
             return (
               <div
                 key={file.id}
-                className={`group relative flex flex-col justify-between rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/95 p-4.5 sm:p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg dark:hover:shadow-blue-950/30 ${kindInfo.glow}`}
+                className="group relative flex flex-col justify-between rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_8px_24px_rgba(49,91,125,0.06)] backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
               >
                 <div className="flex items-start gap-3.5">
                   <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-xs transition-transform duration-200 group-hover:scale-105 ${kindInfo.badge}`}>
@@ -753,18 +818,18 @@ function SessionFileList({ files }) {
                         {kindInfo.label}
                       </span>
                       {(file.sizeBytes || file.size_bytes) ? (
-                        <span className="font-semibold text-slate-500 dark:text-slate-400">
+                        <span className="font-semibold text-[#487291]">
                           {formatBytes(file.sizeBytes || file.size_bytes)}
                         </span>
                       ) : null}
                       {file.uploadedAt && (
-                        <span className="text-slate-400 dark:text-slate-500">
+                        <span className="text-[#487291]">
                           • {new Date(file.uploadedAt).toLocaleDateString("vi-VN")}
                         </span>
                       )}
                     </div>
 
-                    <h3 className="text-sm sm:text-[15px] font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug group-hover:text-blue-600 dark:group-hover:text-sky-400 transition-colors" title={file.name}>
+                    <h3 className="text-sm font-bold text-[#102f63] line-clamp-2 leading-snug group-hover:text-blue-700 transition-colors" title={file.name}>
                       {viewUrl ? (
                         <a href={viewUrl} target="_blank" rel="noreferrer" className="hover:underline">
                           {file.name}
@@ -774,14 +839,14 @@ function SessionFileList({ files }) {
                       )}
                     </h3>
 
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                    <p className="text-[11px] text-[#487291]">
                       {file.uploadedBy ? `Đăng bởi: ${file.uploadedBy}` : (file.sessionTitle || "Tài liệu học tập")}
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-3">
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium truncate max-w-[150px] sm:max-w-[200px]">
+                <div className="mt-4 flex items-center justify-between border-t border-sky-100/70 pt-3">
+                  <span className="text-[11px] text-[#487291] font-medium truncate max-w-[150px] sm:max-w-[200px]">
                     {file.sessionTitle || "Buổi học này"}
                   </span>
 
@@ -791,13 +856,13 @@ function SessionFileList({ files }) {
                         href={downloadUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 px-3.5 py-1.5 text-xs font-bold shadow-sm shadow-blue-600/25 transition active:scale-95"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#102f63] text-white hover:bg-blue-800 px-3.5 py-1.5 text-xs font-bold shadow-xs transition active:scale-95"
                       >
                         <Download className="h-3.5 w-3.5" />
                         <span>Tải tài liệu</span>
                       </a>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+                      <span className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-700">
                         <Eye className="h-3.5 w-3.5" />
                         <span>Chỉ xem</span>
                       </span>
@@ -815,10 +880,48 @@ function SessionFileList({ files }) {
 
 function SessionAnnouncementList({ announcements }) {
   if (!announcements.length) return <EmptyState icon={Bell} title="Chưa có thông báo" description="Thông báo của giáo viên về đúng buổi học này sẽ xuất hiện ở đây." />;
-  return <section className="space-y-3">{announcements.map((announcement) => <article key={announcement.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex flex-wrap items-start justify-between gap-2"><h2 className="text-sm font-black text-slate-900 dark:text-white">{announcement.title}</h2><span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700 dark:bg-blue-950/60 dark:text-sky-300">{announcement.sentAt ? new Date(announcement.sentAt).toLocaleString("vi-VN") : "Đã gửi"}</span></div><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{announcement.message}</p><div className="mt-4 flex flex-wrap gap-3">{announcement.linkUrl && <a href={announcement.linkUrl} className="text-xs font-black text-blue-600 dark:text-sky-400">Mở liên kết</a>}{announcement.attachmentUrl && <a href={announcement.attachmentUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-blue-600 dark:text-sky-400">Tải tài liệu đính kèm</a>}</div></article>)}</section>;
+  return (
+    <section className="space-y-3">
+      {announcements.map((announcement) => (
+        <article key={announcement.id} className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <h2 className="text-sm font-black text-[#102f63]">{announcement.title}</h2>
+            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-black text-sky-700">
+              {announcement.sentAt ? new Date(announcement.sentAt).toLocaleString("vi-VN") : "Đã gửi"}
+            </span>
+          </div>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#244866]">{announcement.message}</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {announcement.linkUrl && <a href={announcement.linkUrl} className="text-xs font-black text-sky-700 hover:underline">Mở liên kết</a>}
+            {announcement.attachmentUrl && <a href={announcement.attachmentUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-sky-700 hover:underline">Tải tài liệu đính kèm</a>}
+          </div>
+        </article>
+      ))}
+    </section>
+  );
 }
 
 function SessionResults({ tasks, basePath }) {
   if (!tasks.length) return <EmptyState icon={Trophy} title="Chưa có kết quả" description="Kết quả của Quiz và bài tập sau khi nộp sẽ hiển thị tại đây." />;
-  return <section className="space-y-3">{tasks.map((task) => <Link key={`${task.type}-${task.id}`} to={taskHref(basePath, task)} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div><h2 className="text-sm font-black text-slate-900 dark:text-white">{task.title}</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{task.status === "graded" ? "Đã chấm điểm" : "Đã nộp, đang chờ chấm"}</p></div><span className="text-sm font-black text-emerald-600 dark:text-emerald-300">{task.score !== null && task.score !== undefined ? `${task.score}/${task.max_score || 10}` : "—"}</span></Link>)}</section>;
+  return (
+    <section className="space-y-3">
+      {tasks.map((task) => (
+        <Link
+          key={`${task.type}-${task.id}`}
+          to={taskHref(basePath, task)}
+          className="flex items-center justify-between rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition hover:shadow-lg"
+        >
+          <div>
+            <h2 className="text-sm font-black text-[#102f63]">{task.title}</h2>
+            <p className="mt-1 text-xs text-[#487291]">
+              {task.status === "graded" ? "Đã chấm điểm" : "Đã nộp, đang chờ chấm"}
+            </p>
+          </div>
+          <span className="text-base font-black text-emerald-600">
+            {task.score !== null && task.score !== undefined ? `${task.score}/${task.max_score || 10}` : "—"}
+          </span>
+        </Link>
+      ))}
+    </section>
+  );
 }

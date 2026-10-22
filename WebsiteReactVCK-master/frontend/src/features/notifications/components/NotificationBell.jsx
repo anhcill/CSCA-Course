@@ -23,7 +23,7 @@ const typeMeta = (type) => {
   return { icon: "🔔", label: "Hệ thống" };
 };
 
-export default function NotificationBell() {
+export default function NotificationBell({ variant = "default" }) {
   const navigate = useNavigate();
   const menuRef = useRef(null);
   const { authUser } = useAuthContext();
@@ -52,6 +52,9 @@ export default function NotificationBell() {
 
   useEffect(() => {
     loadNotifications();
+    const handleUpdate = () => loadNotifications();
+    window.addEventListener("csca:notifications-updated", handleUpdate);
+    return () => window.removeEventListener("csca:notifications-updated", handleUpdate);
   }, [loadNotifications]);
 
   useEffect(() => {
@@ -68,6 +71,7 @@ export default function NotificationBell() {
       await markNotificationAsRead(notification.id);
       setNotifications((items) => items.map((item) => (item.id === notification.id ? { ...item, is_read: true } : item)));
       setUnreadCount((count) => Math.max(0, count - 1));
+      window.dispatchEvent(new CustomEvent("csca:notifications-updated"));
     } catch {
       // A read-state failure must not stop the learner from opening the item.
     }
@@ -90,6 +94,7 @@ export default function NotificationBell() {
       await markAllNotificationsAsRead();
       setNotifications((items) => items.map((item) => ({ ...item, is_read: true })));
       setUnreadCount(0);
+      window.dispatchEvent(new CustomEvent("csca:notifications-updated"));
     } catch {
       // Keep the current state if the server rejected the change.
     }
@@ -98,25 +103,49 @@ export default function NotificationBell() {
   const palette = isDarkMode
     ? {
       button: "border border-slate-700 bg-slate-900 text-slate-200 hover:border-slate-600 hover:bg-slate-800 hover:text-white",
-      menu: "border-slate-700 bg-slate-900 text-slate-100 shadow-slate-950/45",
-      header: "border-slate-800 bg-slate-950/80",
+      menu: "border-slate-800 bg-slate-900 text-slate-100 shadow-2xl",
+      header: "bg-slate-900 text-slate-100",
+      border: "border-slate-800",
       muted: "text-slate-400",
-      item: "hover:bg-slate-800/80",
-      unread: "bg-blue-500/10",
-      icon: "border-slate-700 bg-slate-950",
-      footer: "border-slate-800 bg-slate-950/60",
-      mark: "text-blue-300 hover:text-blue-200",
+      item: "hover:bg-slate-800/60",
+      read: "bg-slate-900",
+      unread: "bg-slate-900",
+      unreadDot: "bg-sky-400",
+      icon: "border-slate-700/80 bg-slate-800 text-slate-200",
+      footer: "bg-slate-900",
+      mark: "text-sky-400 hover:text-sky-300",
+      title: "text-slate-100",
+    }
+    : variant === "bare"
+    ? {
+      button: "border border-white/85 bg-[#e4f4ff]/85 text-[#17365f] shadow-[0_5px_18px_rgba(32,91,135,0.18)] backdrop-blur-md hover:bg-white hover:text-blue-700",
+      menu: "border-[#bcdbf3] bg-[#edf6fd] text-[#102f63] shadow-[0_22px_55px_rgba(20,60,95,0.22)] backdrop-blur-xl",
+      header: "bg-[#edf6fd] text-[#102f63]",
+      border: "border-[#d8ebf9]",
+      muted: "text-[#487291]",
+      item: "hover:bg-[#e1f0fb]",
+      read: "bg-[#edf6fd]",
+      unread: "bg-[#edf6fd]",
+      unreadDot: "bg-sky-600",
+      icon: "border-[#bcdbf3] bg-[#dbeffc] text-sky-800 shadow-xs",
+      footer: "bg-[#edf6fd]",
+      mark: "text-sky-700 hover:text-sky-900",
+      title: "text-[#102f63]",
     }
     : {
-      button: "border border-slate-200 bg-white text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700",
-      menu: "border-slate-200 bg-white text-slate-900 shadow-slate-900/15",
-      header: "border-slate-100 bg-slate-50/80",
+      button: "border border-slate-200 bg-white text-slate-600 shadow-sm hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700",
+      menu: "border-slate-200 bg-white text-slate-900 shadow-2xl",
+      header: "bg-white text-slate-900",
+      border: "border-slate-100",
       muted: "text-slate-500",
       item: "hover:bg-slate-50",
-      unread: "bg-blue-50/70",
-      icon: "border-slate-100 bg-white",
-      footer: "border-slate-100 bg-slate-50/70",
-      mark: "text-blue-600 hover:text-blue-700",
+      read: "bg-white",
+      unread: "bg-white",
+      unreadDot: "bg-sky-600",
+      icon: "border-slate-200/80 bg-slate-50 text-slate-700 shadow-xs",
+      footer: "bg-white",
+      mark: "text-sky-600 hover:text-sky-700",
+      title: "text-slate-900",
     };
 
   return (
@@ -124,43 +153,91 @@ export default function NotificationBell() {
       <button
         type="button"
         onClick={() => setOpen((visible) => !visible)}
-        className={`relative rounded-xl p-2.5 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 ${palette.button}`}
+        className={`relative rounded-xl p-2 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 ${palette.button}`}
         title="Trung tâm thông báo"
         aria-label={unreadCount ? `Thông báo, ${unreadCount} chưa đọc` : "Trung tâm thông báo"}
         aria-expanded={open}
       >
-        <Bell className="h-[18px] w-[18px]" />
-        {unreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white shadow-sm">{unreadCount > 9 ? "9+" : unreadCount}</span>}
+        <Bell className="h-4 w-4" />
+        {unreadCount > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white shadow-sm">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
       </button>
 
       {open && (
-        <div className={`absolute right-0 z-[60] mt-3 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border shadow-2xl ${palette.menu}`}>
-          <div className={`flex items-center justify-between border-b p-4 ${palette.header}`}>
+        <div className={`absolute right-0 z-[60] mt-3 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border shadow-2xl ${palette.border} ${palette.menu}`}>
+          <div className={`flex items-center justify-between border-b ${palette.border} p-4 ${palette.header}`}>
             <div>
-              <p className="text-sm font-black">Thông báo</p>
-              <p className={`mt-0.5 text-[11px] ${palette.muted}`}>{unreadCount ? `${unreadCount} thông báo chưa đọc` : "Bạn đã đọc hết thông báo"}</p>
+              <p className={`text-sm font-black ${palette.title}`}>Thông báo</p>
+              <p className={`mt-0.5 text-[11px] ${palette.muted}`}>
+                {unreadCount ? `${unreadCount} thông báo chưa đọc` : "Bạn đã đọc hết thông báo"}
+              </p>
             </div>
-            {unreadCount > 0 && <button type="button" onClick={markAll} className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition ${palette.mark}`}><CheckCheck className="h-3.5 w-3.5" /> Đọc tất cả</button>}
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={markAll}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition ${palette.mark}`}
+              >
+                <CheckCheck className="h-3.5 w-3.5" /> Đọc tất cả
+              </button>
+            )}
           </div>
 
-          <div className="max-h-[min(29rem,65vh)] overflow-y-auto">
-            {loading ? <Loading loading={true} text="Đang tải thông báo..." fullScreen={false} className="py-8" /> : notifications.length === 0 ? <div className={`px-5 py-10 text-center text-xs ${palette.muted}`}>Chưa có thông báo mới.</div> : notifications.map((notification) => {
-              const meta = typeMeta(notification.type);
-              const destination = resolveLmsDestination(notification.link_url, authUser);
-              return <button key={notification.id} type="button" onClick={() => openNotification(notification)} className={`flex w-full items-start gap-3 border-b border-slate-100 p-4 text-left transition last:border-b-0 dark:border-slate-800 ${palette.item} ${notification.is_read ? "" : palette.unread}`}>
-                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-base ${palette.icon}`}>{meta.icon}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2"><span className={`text-[10px] font-bold ${palette.muted}`}>{meta.label}</span>{!notification.is_read && <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />}</span>
-                  <span className="mt-1 block truncate text-xs font-bold">{notification.title}</span>
-                  <span className={`mt-1 block line-clamp-2 text-[11px] leading-4 ${palette.muted}`}>{notification.message}</span>
-                  <span className={`mt-1.5 block text-[10px] ${palette.muted}`}>{formatTime(notification.created_at)}</span>
-                </span>
-                {destination && <ChevronRight className={`mt-3 h-4 w-4 shrink-0 ${palette.muted}`} />}
-              </button>;
-            })}
+          <div className="max-h-[min(29rem,65vh)] overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            {loading ? (
+              <Loading loading={true} text="Đang tải thông báo..." fullScreen={false} className="py-8" />
+            ) : notifications.length === 0 ? (
+              <div className={`px-5 py-10 text-center text-xs ${palette.muted}`}>Chưa có thông báo mới.</div>
+            ) : (
+              notifications.map((notification) => {
+                const meta = typeMeta(notification.type);
+                const destination = resolveLmsDestination(notification.link_url, authUser);
+                return (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    onClick={() => openNotification(notification)}
+                    className={`flex w-full items-start gap-3 border-b ${palette.border} p-4 text-left transition last:border-b-0 ${palette.item} ${notification.is_read ? palette.read : palette.unread}`}
+                  >
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-base ${palette.icon}`}>
+                      {meta.icon}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-bold ${palette.muted}`}>{meta.label}</span>
+                        {!notification.is_read && (
+                          <span className={`h-1.5 w-1.5 rounded-full ${palette.unreadDot}`} />
+                        )}
+                      </span>
+                      <span className={`mt-1 block truncate text-xs ${notification.is_read ? "font-semibold opacity-85" : "font-extrabold"} ${palette.title}`}>
+                        {notification.title}
+                      </span>
+                      <span className={`mt-1 block line-clamp-2 text-[11px] leading-4 ${palette.muted}`}>
+                        {notification.message}
+                      </span>
+                      <span className={`mt-1.5 block text-[10px] ${palette.muted}`}>
+                        {formatTime(notification.created_at)}
+                      </span>
+                    </span>
+                    {destination && <ChevronRight className={`mt-3 h-4 w-4 shrink-0 ${palette.muted}`} />}
+                  </button>
+                );
+              })
+            )}
           </div>
 
-          <div className={`border-t p-2.5 text-center ${palette.footer}`}><Link to="/lms/notifications" onClick={() => setOpen(false)} className={`inline-flex items-center gap-1 text-xs font-bold ${palette.mark}`}>Xem tất cả thông báo <ChevronRight className="h-3.5 w-3.5" /></Link></div>
+          <div className={`border-t ${palette.border} p-3 text-center ${palette.footer}`}>
+            <Link
+              to="/lms/notifications"
+              onClick={() => setOpen(false)}
+              className={`inline-flex items-center gap-1 text-xs font-bold transition ${palette.mark}`}
+            >
+              Xem tất cả thông báo <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </div>
       )}
     </div>

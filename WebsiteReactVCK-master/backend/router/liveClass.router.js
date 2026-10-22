@@ -14,6 +14,7 @@ import {
 } from "../services/liveClass.service.js";
 import { enqueueManagementCalendarDelivery } from "../services/managementCalendarDelivery.service.js";
 import { buildClassCalendarIcs } from "../services/calendarIcs.service.js";
+import { getDeterministicClassCover } from "../utils/classWallpapers.js";
 
 const router = express.Router();
 
@@ -239,6 +240,9 @@ const enqueueManagementCalendarEvents = async (client, {
 
 const safeClass = (row) => {
   const { meet_url: _meetUrl, passcode: _passcode, ...data } = row;
+  const cover = data.cover_image_url || data.coverImageUrl || getDeterministicClassCover(data.id || data.title);
+  data.cover_image_url = cover;
+  data.coverImageUrl = cover;
   return data;
 };
 
@@ -277,6 +281,7 @@ const getClassById = async (classId) => {
     `SELECT lc.id, lc.title, lc.course_id, lc.instructor_id, lc.description,
             lc.max_students, lc.status, lc.created_at, lc.updated_at,
             lc.management_class_source_id, lc.management_approval_status,
+            lc.teacher_display_name, lc.cover_image_url,
             COALESCE(c.title, c.name) AS course_title,
             COALESCE(c.is_published, true) AS course_is_published
      FROM live_classes lc
@@ -501,15 +506,16 @@ router.get("/", protectRoute, requireManagedLearner, async (req, res) => {
     const result = await query(
       `SELECT lc.id, lc.title, lc.course_id, lc.instructor_id, lc.description,
               lc.max_students, lc.status, lc.created_at, lc.updated_at,
+              lc.teacher_display_name, lc.cover_image_url,
               COALESCE(c.title, c.name) AS course_title,
               COUNT(ce.id) FILTER (WHERE ce.status = 'active')::int AS enrolled_count
        FROM live_classes lc
        LEFT JOIN courses c ON c.id = lc.course_id
        LEFT JOIN class_enrollments ce ON ce.live_class_id = lc.id
        WHERE lc.status = 'active'
-         AND (lc.course_id IS NULL OR COALESCE(c.is_published, false) = true)
+         AND (${req.user.role === 'admin' ? 'TRUE' : '(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true)'})
          AND ${visibility.clause}
-       GROUP BY lc.id, c.title, c.name
+       GROUP BY lc.id, c.title, c.name, lc.teacher_display_name, lc.cover_image_url
        ORDER BY lc.created_at DESC`,
       visibility.params,
     );
@@ -656,7 +662,7 @@ router.get("/my-schedule", protectRoute, requireManagedLearner, async (req, res)
        LEFT JOIN class_enrollments ce2 ON ce2.live_class_id = lc.id
        WHERE lc.status = 'active'
          AND cs.status <> 'cancelled'
-         AND (lc.course_id IS NULL OR COALESCE(c.is_published, false) = true)
+         AND (${req.user.role === 'admin' ? 'TRUE' : '(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true)'})
          AND ${visibility.clause}
          ${courseScope}
          ${classScope}
@@ -2060,6 +2066,11 @@ router.get("/sessions/:sessionId/history", protectRoute, requireManagedLearner, 
     );
     if (sessionRes.rows.length === 0) return notFound(res, "Không tìm thấy buổi học");
     const session = sessionRes.rows[0];
+    const liveClass = await getClassById(session.live_class_id);
+    if (!liveClass) return notFound(res, "Không tìm thấy lớp học");
+    if (!(await canViewClass(liveClass, req.user))) {
+      return forbidden(res, "Bạn không có quyền xem lịch sử thay đổi của buổi học này");
+    }
 
     const logsRes = await query(
       `SELECT cl.id, cl.session_id, cl.schedule_id, cl.scope,

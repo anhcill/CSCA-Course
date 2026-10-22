@@ -10,6 +10,7 @@ import {
   fetchCourseRatings,
 } from "../../api/lmsClient";
 import { LoadingState, ErrorState } from "../../../components/common/StateView";
+import { getClassCoverImage } from "../../../utils/classWallpapers";
 import { useAuthContext } from "../../../context/AuthContext";
 import { hasStudentLmsAccess } from "../../../utils/lmsAccess";
 
@@ -222,7 +223,7 @@ export default function CourseDetailPage() {
       {/* Thumbnail / Video Preview */}
       <div className="relative h-48 rounded-2xl overflow-hidden bg-slate-950 group border border-slate-800/80">
         <img
-          src={course.thumbnail_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80"}
+          src={getClassCoverImage(course, course.slug || course.id)}
           alt={course.title}
           className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
         />
@@ -637,7 +638,7 @@ export default function CourseDetailPage() {
                   >
                     <div className="h-32 bg-slate-950 overflow-hidden relative">
                       <img
-                        src={relCourse.thumbnail_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80"}
+                        src={getClassCoverImage(relCourse, relCourse.slug || relCourse.id)}
                         alt={relCourse.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                       />

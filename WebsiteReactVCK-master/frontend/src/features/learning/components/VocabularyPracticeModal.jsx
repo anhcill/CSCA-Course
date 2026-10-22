@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { Lottie } from 'lottie-react';
 import {
   X, Volume2, RotateCcw, Check, Sparkles, Trophy,
   Eye, EyeOff, Layers, HelpCircle,
@@ -70,6 +69,7 @@ export default function VocabularyPracticeModal({
   isOpen,
   onClose,
   session,
+  vocabularies,
   onComplete,
 }) {
   const reduceMotion = useReducedMotion();
@@ -85,8 +85,12 @@ export default function VocabularyPracticeModal({
   const [selectedQuizOption, setSelectedQuizOption] = useState(null);
   const [quizAnswerChecked, setQuizAnswerChecked] = useState(false);
 
-  // Vocabulary list for practice
-  const words = useMemo(() => session?.vocabularies || [], [session]);
+  // Vocabulary list for practice: support both session.vocabularies and vocabularies array
+  const words = useMemo(() => {
+    if (Array.isArray(vocabularies) && vocabularies.length > 0) return vocabularies;
+    if (session?.vocabularies && Array.isArray(session.vocabularies)) return session.vocabularies;
+    return [];
+  }, [session, vocabularies]);
   const currentWord = words[currentIndex];
 
   // Reset state when session opens
@@ -226,7 +230,7 @@ export default function VocabularyPracticeModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex h-dvh w-screen items-center justify-center bg-slate-950/80 p-3 backdrop-blur-md sm:p-4"
+      className="fixed inset-0 z-[9999] flex h-dvh w-screen items-center justify-center bg-slate-900/60 p-3 backdrop-blur-md sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Luyện tập từ vựng"
@@ -243,10 +247,10 @@ export default function VocabularyPracticeModal({
             </span>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-sky-400">
-                {session.chapter}
+                {session?.chapter || session?.sessionTitle || "Từ vựng buổi học"}
               </p>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[280px] sm:max-w-md">
-                {session.sessionTitle}
+                {session?.sessionTitle || session?.chapter || session?.classTitle || "Luyện tập Flashcard"}
               </h3>
             </div>
           </div>
@@ -529,16 +533,11 @@ export default function VocabularyPracticeModal({
               >
                 <CelebrationFireworks reduceMotion={reduceMotion} />
 
-                {/* Lottie Owl Animation */}
-                <div className="relative z-10 w-44 h-44 sm:w-52 sm:h-52 my-1">
-                  <Lottie
-                    src="/owl.json"
-                    autoplay
-                    loop
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                  <div className="absolute -top-1 -right-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-lg shadow-amber-500/30 animate-bounce">
-                    <Trophy className="h-5 w-5" />
+                {/* Celebration Mascot Badge */}
+                <div className="relative z-10 w-28 h-28 my-3 flex items-center justify-center rounded-3xl bg-gradient-to-br from-amber-400 via-amber-300 to-yellow-200 text-white shadow-xl shadow-amber-400/30">
+                  <Trophy className="h-14 w-14 drop-shadow-md text-amber-900/80 animate-bounce" />
+                  <div className="absolute -top-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md animate-pulse">
+                    <Sparkles className="h-4 w-4" />
                   </div>
                 </div>
 

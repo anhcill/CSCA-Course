@@ -92,6 +92,7 @@ export const adminGradebookExportUrl = ({ format = "xlsx", classId = null, from 
   return `${API_BASE}/admin/gradebook/export?${params.toString()}`;
 };
 export const fetchMyFinalGrade = (classId) => request(`/reports/gradebook/my-result?classId=${encodeURIComponent(classId)}`);
+export const fetchStudentAnalytics = () => request("/reports/student-analytics");
 export const saveGradebookPolicy = (classId, policy) => request("/reports/gradebook/policy", { method: "PUT", body: JSON.stringify({ classId, policy }) });
 export const finalizeGradebook = (classId) => request("/reports/gradebook/finalize", { method: "POST", body: JSON.stringify({ classId }) });
 export const reopenGradebook = (classId, reason) => request("/reports/gradebook/reopen", { method: "POST", body: JSON.stringify({ classId, reason }) });
@@ -911,6 +912,11 @@ export const updateAdminClassFileDownloadPolicy = async (classId, allowFileDownl
   { method: "PATCH", body: JSON.stringify({ allowFileDownload }) },
 );
 
+export const updateAdminClassPresentation = async (classId, presentation) => request(
+  `/v1/admin/classes/${encodeURIComponent(classId)}/presentation`,
+  { method: "PATCH", body: JSON.stringify(presentation) },
+);
+
 export const reviewAdminClass = (classId, decision) => request(
   `/v1/admin/classes/${encodeURIComponent(classId)}/approval`,
   { method: "POST", body: JSON.stringify({ decision }) },
@@ -1245,6 +1251,60 @@ export const uploadImageToR2 = async (file, { folder = "general", onProgress } =
   });
 
   return uploadResponse.data;
+};
+
+export const uploadImageToCloudinary = async (file, { folder = "csca/courses", onProgress } = {}) => {
+  onProgress?.({ stage: "init", percent: 5, message: "Đang chuẩn bị ảnh...", loaded: 0, total: file.size });
+
+  const signatureResponse = await request("/files/cloudinary-signature", {
+    method: "POST",
+    body: JSON.stringify({ folder, resourceType: "image" }),
+  });
+  const signature = signatureResponse?.data;
+  if (!signature?.uploadUrl || !signature?.signature) {
+    throw new LmsApiError("Máy chủ không trả về cấu hình tải ảnh Cloudinary");
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("api_key", signature.apiKey);
+  formData.append("timestamp", String(signature.timestamp));
+  formData.append("folder", signature.folder);
+  formData.append("signature", signature.signature);
+
+  const result = await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", signature.uploadUrl, true);
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total <= 0) return;
+      const rawPercent = Math.round((event.loaded / event.total) * 100);
+      onProgress?.({
+        stage: "uploading",
+        percent: Math.min(95, Math.round(10 + (event.loaded / event.total) * 85)),
+        rawPercent,
+        loaded: event.loaded,
+        total: event.total,
+        message: `Đang tải ảnh (${rawPercent}%)...`,
+      });
+    };
+    xhr.onload = () => {
+      let body;
+      try {
+        body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        reject(new LmsApiError("Cloudinary trả về dữ liệu không hợp lệ"));
+        return;
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && body?.secure_url) resolve(body);
+      else reject(new LmsApiError(body?.error?.message || `Tải ảnh thất bại (Mã: ${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new LmsApiError("Lỗi kết nối Cloudinary khi tải ảnh"));
+    xhr.ontimeout = () => reject(new LmsApiError("Hết thời gian chờ khi tải ảnh lên Cloudinary"));
+    xhr.send(formData);
+  });
+
+  onProgress?.({ stage: "done", percent: 100, message: "Đã tải ảnh thành công!", loaded: file.size, total: file.size });
+  return { publicUrl: result.secure_url, publicId: result.public_id };
 };
 
 // ============================================================================

@@ -18,7 +18,6 @@ import QuestionEditor from '../components/QuestionEditor.jsx';
 import ReadingPassageGroup from '../components/ReadingPassageGroup.jsx';
 import FillBlankGroup from '../components/FillBlankGroup.jsx';
 import PdfImportPanel from '../components/pdf-import/PdfImportPanel.jsx';
-import { MOCK_QUIZ_EDITOR_DATA } from '../constants/mockQuizData.js';
 import {
   fetchTeacherQuizEditor,
   createTeacherQuiz,
@@ -41,6 +40,25 @@ const buildQuizPayload = (quiz) => editorDateFields.reduce((result, field) => ({
   [field]: vietnamDateTimeInputToIso(quiz?.[field]),
 }), { ...quiz });
 
+const createBlankQuiz = () => ({
+  title: 'Đề thi mới',
+  description: '',
+  courseId: '',
+  liveClassId: '',
+  classSessionId: '',
+  activityScope: 'session',
+  durationMinutes: 45,
+  passingScore: 60,
+  attemptLimit: 1,
+  availableFrom: '',
+  availableUntil: '',
+  dueDate: '',
+  reviewPolicy: 'after_submit',
+  shuffleQuestions: false,
+  status: 'DRAFT',
+  items: [],
+});
+
 export default function QuizEditorPage() {
   const { quizId } = useParams();
   const navigate = useNavigate();
@@ -52,6 +70,7 @@ export default function QuizEditorPage() {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [banner, setBanner] = useState(null); // { type: 'success' | 'error' | 'info', message: string }
   const [classList, setClassList] = useState([]);
   const [classesLoading, setClassesLoading] = useState(true);
@@ -71,29 +90,7 @@ export default function QuizEditorPage() {
     });
   };
 
-  const [quizMeta, setQuizMeta] = useState(() => {
-    if (isNew) {
-      return {
-        title: 'Đề thi mới',
-        description: '',
-        courseId: '',
-        liveClassId: '',
-        classSessionId: '',
-        activityScope: 'session',
-        durationMinutes: 45,
-        passingScore: 60,
-        attemptLimit: 1,
-        availableFrom: '',
-        availableUntil: '',
-        dueDate: '',
-        reviewPolicy: 'after_submit',
-        shuffleQuestions: false,
-        status: 'DRAFT',
-        items: [],
-      };
-    }
-    return MOCK_QUIZ_EDITOR_DATA;
-  });
+  const [quizMeta, setQuizMeta] = useState(createBlankQuiz);
 
   const [activeTab, setActiveTab] = useState('meta');
   const [selectedItemIndex, setSelectedItemIndex] = useState(0);
@@ -153,6 +150,7 @@ export default function QuizEditorPage() {
 
     let isMounted = true;
     setLoading(true);
+    setLoadError('');
     fetchTeacherQuizEditor(quizId)
       .then((res) => {
         if (!isMounted) return;
@@ -167,10 +165,11 @@ export default function QuizEditorPage() {
       })
       .catch((err) => {
         if (!isMounted) return;
-        console.warn('Cannot fetch teacher quiz from API, using mock preview data:', err);
+        console.error('Cannot fetch teacher quiz from API:', err);
+        setLoadError(err?.message || `Không thể tải đề #${quizId} từ máy chủ LMS.`);
         setBanner({
-          type: 'info',
-          message: `Máy chủ LMS chưa có dữ liệu đề #${quizId}, đang tải giao diện xem trước (Mock Data).`,
+          type: 'error',
+          message: err?.message || `Không thể tải đề #${quizId}. Trang đã khóa lưu để tránh ghi đè dữ liệu thật.`,
         });
       })
       .finally(() => {
@@ -305,12 +304,31 @@ export default function QuizEditorPage() {
   );
 
   const validateQuiz = ({ requireTarget = false } = {}) => {
+    if (loadError) {
+      alert('Không thể lưu vì dữ liệu đề chưa tải thành công. Hãy quay lại danh sách và mở lại đề.');
+      return false;
+    }
     if (!quizMeta.title.trim()) {
       alert('Vui lòng nhập tiêu đề cho đề thi.');
       return false;
     }
     if (quizMeta.items.length === 0) {
       alert('Đề thi cần có ít nhất 1 câu hỏi hoặc 1 nhóm bài tập.');
+      return false;
+    }
+    if (!Number.isInteger(Number(quizMeta.durationMinutes)) || Number(quizMeta.durationMinutes) < 1 || Number(quizMeta.durationMinutes) > 240) {
+      alert('Thời lượng làm bài phải từ 1 đến 240 phút.');
+      setActiveTab('meta');
+      return false;
+    }
+    if (!Number.isFinite(Number(quizMeta.passingScore)) || Number(quizMeta.passingScore) < 0 || Number(quizMeta.passingScore) > 100) {
+      alert('Điểm đạt phải nằm trong khoảng 0 đến 100%.');
+      setActiveTab('meta');
+      return false;
+    }
+    if (!Number.isInteger(Number(quizMeta.attemptLimit)) || Number(quizMeta.attemptLimit) < 1 || Number(quizMeta.attemptLimit) > 5) {
+      alert('Số lượt làm tối đa phải từ 1 đến 5.');
+      setActiveTab('meta');
       return false;
     }
     if (requireTarget && (!quizMeta.courseId || !quizMeta.liveClassId || !quizMeta.classSessionId)) {
@@ -323,6 +341,14 @@ export default function QuizEditorPage() {
       const availableUntil = vietnamDateTimeInputToIso(quizMeta.availableUntil);
       if (!availableFrom || !availableUntil || new Date(availableFrom) > new Date(availableUntil)) {
         alert('Thời gian bắt đầu mở đề không thể sau thời gian đóng đề.');
+        return false;
+      }
+    }
+    if (requireTarget && quizMeta.activityScope === 'homework') {
+      const dueDate = vietnamDateTimeInputToIso(quizMeta.dueDate);
+      if (!dueDate || new Date(dueDate).getTime() <= Date.now()) {
+        alert('Bài tập về nhà cần có hạn nộp trong tương lai.');
+        setActiveTab('meta');
         return false;
       }
     }
@@ -421,11 +447,20 @@ export default function QuizEditorPage() {
   };
 
   const currentItem = quizMeta.items[selectedItemIndex];
+  const questionCount = quizMeta.items.reduce((total, item) => (
+    total + (item.kind === 'question' ? 1 : (Array.isArray(item.questions) ? item.questions.length : 0))
+  ), 0);
+  const maxScore = quizMeta.items.reduce((total, item) => {
+    if (item.kind === 'question') return total + (Number(item.points) || 0);
+    return total + (item.questions || []).reduce((sum, question) => sum + (Number(question.points) || 0), 0);
+  }, 0);
+  const targetReady = Boolean(quizMeta.courseId && quizMeta.liveClassId && quizMeta.classSessionId);
+  const scheduleReady = quizMeta.activityScope !== 'homework' || Boolean(quizMeta.dueDate);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-16">
+    <div className="min-h-screen bg-transparent pb-16">
       {/* Top Sticky Header */}
-      <header className="sticky top-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3.5">
+      <header className="sticky top-0 z-20 border-b border-white/80 bg-[#e9f6ff]/92 px-4 py-3.5 shadow-[0_8px_28px_rgba(32,78,120,0.1)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95 sm:px-6">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
@@ -438,8 +473,8 @@ export default function QuizEditorPage() {
             </button>
             <div>
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 text-xs font-semibold rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
-                  MOLI Quiz Authoring
+                <span className="rounded bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-900/40 dark:text-sky-300">
+                  Trình soạn đề CSCA
                 </span>
                 <span className="text-xs text-slate-500">
                   {isNew ? 'Tạo đề mới' : `Chỉnh sửa #${quizId}`}
@@ -473,7 +508,7 @@ export default function QuizEditorPage() {
             <button
               type="button"
               onClick={() => setIsPdfImportOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 dark:text-purple-300 dark:bg-purple-950/50 hover:bg-purple-100 rounded-lg transition-colors border border-purple-200 dark:border-purple-900"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-100 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-300"
             >
               <FiUpload size={13} />
               Import PDF/DOCX
@@ -481,7 +516,7 @@ export default function QuizEditorPage() {
             <button
               type="button"
               onClick={handleSaveDraft}
-              disabled={saving || loading}
+              disabled={saving || loading || Boolean(loadError)}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-50"
             >
               <FiSave size={13} />
@@ -490,7 +525,7 @@ export default function QuizEditorPage() {
             <button
               type="button"
               onClick={handlePublish}
-              disabled={saving || loading}
+              disabled={saving || loading || Boolean(loadError)}
               className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors disabled:opacity-50"
             >
               <FiCheckCircle size={13} />
@@ -533,6 +568,21 @@ export default function QuizEditorPage() {
         </div>
       )}
 
+      <section className="mx-auto grid max-w-7xl grid-cols-2 gap-3 px-4 pt-4 sm:grid-cols-4 sm:px-6" aria-label="Mức độ hoàn thiện đề">
+        {[
+          { label: 'Phạm vi', value: targetReady ? 'Đã chọn' : 'Chưa đủ', detail: targetReady ? `${selectedClass?.title || selectedClass?.name || 'Lớp đã chọn'}` : 'Chọn lớp và buổi học', ready: targetReady },
+          { label: 'Nội dung', value: `${questionCount} câu`, detail: questionCount > 0 ? `${Math.round(maxScore * 100) / 100} điểm tối đa` : 'Thêm câu hỏi để tiếp tục', ready: questionCount > 0 },
+          { label: 'Thời hạn', value: scheduleReady ? 'Hợp lệ' : 'Còn thiếu', detail: quizMeta.activityScope === 'homework' ? 'Bài về nhà cần hạn nộp' : 'Theo thời gian buổi học', ready: scheduleReady },
+          { label: 'Trạng thái', value: quizMeta.status === 'PUBLISHED' ? 'Đã xuất bản' : 'Bản nháp', detail: quizMeta.status === 'PUBLISHED' ? 'Học viên đã có thể nhận đề' : 'Chưa hiển thị cho học viên', ready: quizMeta.status === 'PUBLISHED' },
+        ].map((item) => (
+          <div key={item.label} className="rounded-2xl border border-white/85 bg-white/90 px-4 py-3 shadow-[0_8px_24px_rgba(32,78,120,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{item.label}</p>
+            <p className={`mt-1 text-sm font-black ${item.ready ? 'text-sky-700 dark:text-sky-300' : 'text-amber-600 dark:text-amber-400'}`}>{item.value}</p>
+            <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400" title={item.detail}>{item.detail}</p>
+          </div>
+        ))}
+      </section>
+
       {/* Main Workspace */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
         {/* Navigation Tabs */}
@@ -563,7 +613,7 @@ export default function QuizEditorPage() {
 
         {/* TAB 1: METADATA & CLASS TARGETS */}
         {activeTab === 'meta' && (
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6">
+          <div className="space-y-6 rounded-3xl border border-white/85 bg-white/92 p-6 shadow-[0_14px_40px_rgba(32,78,120,0.1)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/92 sm:p-8">
             <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800 pb-3">
               Thông tin đề thi & Phạm vi áp dụng
             </h2>
@@ -672,6 +722,8 @@ export default function QuizEditorPage() {
                 </label>
                 <input
                   type="number"
+                  min="1"
+                  max="240"
                   value={quizMeta.durationMinutes}
                   onChange={(e) => setQuizMeta({ ...quizMeta, durationMinutes: Number(e.target.value) })}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-xs"
@@ -683,6 +735,8 @@ export default function QuizEditorPage() {
                 </label>
                 <input
                   type="number"
+                  min="0"
+                  max="100"
                   value={quizMeta.passingScore}
                   onChange={(e) => setQuizMeta({ ...quizMeta, passingScore: Number(e.target.value) })}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-xs"
@@ -694,6 +748,8 @@ export default function QuizEditorPage() {
                 </label>
                 <input
                   type="number"
+                  min="1"
+                  max="5"
                   value={quizMeta.attemptLimit}
                   onChange={(e) => setQuizMeta({ ...quizMeta, attemptLimit: Number(e.target.value) })}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-xs"
@@ -726,7 +782,7 @@ export default function QuizEditorPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Hạn nộp khuyến nghị (Due Date)
+                  Hạn nộp {quizMeta.activityScope === 'homework' ? <span className="text-red-500">*</span> : '(không bắt buộc)'}
                 </label>
                 <input
                   type="datetime-local"

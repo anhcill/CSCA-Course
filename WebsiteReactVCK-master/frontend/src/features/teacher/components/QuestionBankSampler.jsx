@@ -2,15 +2,101 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
+import { Compass, Sparkles, ArrowRight } from "lucide-react";
 import { sampleQuestionBank } from "../../api/lmsClient";
-import { input,secondary } from "./workflowStyles";
-export default function QuestionBankSampler({ courseId, onAdd }){
-  const [blueprint,setBlueprint]=useState({easy:0,medium:0,hard:0});
-  const [tag,setTag]=useState(""),[busy,setBusy]=useState(false);
-  const sample=async()=>{
+
+export default function QuestionBankSampler({ courseId, onAdd }) {
+  const [blueprint, setBlueprint] = useState({ easy: 0, medium: 0, hard: 0 });
+  const [tag, setTag] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const sample = async () => {
+    const totalSelected = (blueprint.easy || 0) + (blueprint.medium || 0) + (blueprint.hard || 0);
+    if (totalSelected === 0) {
+      return toast.error("Vui lòng nhập số lượng câu hỏi cần rút (tối thiểu 1 câu).");
+    }
+
     setBusy(true);
-    try{const r=await sampleQuestionBank({courseId:Number(courseId),blueprint,tag});onAdd(r.data);toast.success(`Đã thêm ${r.data.length} câu theo cấu trúc.`);}
-    catch(e){toast.error(e.message);}finally{setBusy(false);}
+    try {
+      const r = await sampleQuestionBank({
+        courseId: Number(courseId),
+        blueprint,
+        tag: tag.trim(),
+      });
+      if (onAdd && Array.isArray(r.data)) {
+        onAdd(r.data);
+      }
+      toast.success(`Đã rút thành công ${r.data?.length || 0} câu hỏi ngẫu nhiên theo ma trận.`);
+    } catch (e) {
+      toast.error(e.message || "Không thể rút câu hỏi.");
+    } finally {
+      setBusy(false);
+    }
   };
-  return <div className="mt-3 space-y-2 border-t pt-3 dark:border-slate-700"><Link className="text-xs font-semibold text-blue-600" to="/lms/teach/question-bank">Mở trang quản lý ngân hàng →</Link><p className="text-xs text-slate-500">Rút ngẫu nhiên theo cấu trúc:</p><div className="grid grid-cols-3 gap-2">{Object.entries({easy:"Dễ",medium:"Vừa",hard:"Khó"}).map(([k,v])=><label className="text-xs" key={k}>{v}<input className={input} type="number" min="0" max="100" value={blueprint[k]} onChange={(e)=>setBlueprint({...blueprint,[k]:Number(e.target.value)})}/></label>)}</div><input aria-label="Chủ đề rút câu" className={input} value={tag} onChange={(e)=>setTag(e.target.value)} placeholder="Thẻ chủ đề (tùy chọn)"/><button type="button" className={secondary+" w-full"} disabled={!courseId||busy} onClick={sample}>{busy?"Đang rút câu...":"Thêm các câu ngẫu nhiên"}</button></div>;
+
+  return (
+    <div className="space-y-3.5 text-xs text-slate-700">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-semibold text-slate-600 flex items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+          <span>Thiết lập ma trận số lượng câu hỏi ngẫu nhiên cần rút:</span>
+        </p>
+        <Link
+          className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 transition"
+          to="/lms/teach/question-bank"
+        >
+          <span>Quản lý kho câu hỏi</span>
+          <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2.5">
+        {[
+          { key: "easy", label: "Dễ (Nhận biết)", badge: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+          { key: "medium", label: "Vừa (Vận dụng)", badge: "bg-amber-50 text-amber-700 border-amber-200" },
+          { key: "hard", label: "Khó (Vận dụng cao)", badge: "bg-rose-50 text-rose-700 border-rose-200" },
+        ].map(({ key, label, badge }) => (
+          <div key={key} className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-2.5 space-y-1">
+            <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold border ${badge}`}>
+              {label}
+            </span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={blueprint[key]}
+              onChange={(e) =>
+                setBlueprint({ ...blueprint, [key]: Math.max(0, parseInt(e.target.value, 10) || 0) })
+              }
+              className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-center text-xs font-mono font-bold text-slate-800 outline-none focus:border-blue-500"
+              placeholder="0"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <label className="block text-[11px] font-bold text-slate-500 mb-1">
+          Lọc theo thẻ chủ đề (tùy chọn):
+        </label>
+        <input
+          aria-label="Chủ đề rút câu"
+          value={tag}
+          onChange={(e) => setTag(e.target.value)}
+          placeholder="Ví dụ: Hàm số, BĐT, Hình học (bỏ trống để rút tất cả)..."
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-500"
+        />
+      </div>
+
+      <button
+        type="button"
+        disabled={!courseId || busy}
+        onClick={sample}
+        className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[#102f63] hover:bg-blue-700 py-2.5 text-xs font-bold text-white shadow-xs disabled:opacity-50 transition"
+      >
+        <Compass className="h-4 w-4" />
+        <span>{busy ? "Đang rút câu hỏi..." : "Rút câu hỏi tự động theo cấu trúc"}</span>
+      </button>
+    </div>
+  );
 }
