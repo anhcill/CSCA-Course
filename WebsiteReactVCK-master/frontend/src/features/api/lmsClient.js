@@ -1368,10 +1368,11 @@ export const suggestSessionVocabulary = (sessionId, options = {}) => request(
 
 export const fetchTeacherSalarySummary = async () => request("/teacher/salary-summary");
 
-export const fetchAdminTeacherSalaries = async ({ search = "", rateStatus = "all" } = {}) => {
+export const fetchAdminTeacherSalaries = async ({ search = "", rateStatus = "all", paymentStatus = "all" } = {}) => {
   const params = new URLSearchParams();
   if (search && search.trim()) params.set("search", search.trim());
   if (rateStatus && rateStatus !== "all") params.set("rateStatus", rateStatus);
+  if (paymentStatus && paymentStatus !== "all") params.set("paymentStatus", paymentStatus);
   const query = params.toString();
   return request(`/admin/teacher-salaries${query ? `?${query}` : ""}`);
 };
@@ -1387,11 +1388,36 @@ export const updateTeacherHourlyRate = async (teacherId, hourlyRate) => (
   })
 );
 
-export const adminTeacherSalariesExportUrl = ({ format = "xlsx", search = "", rateStatus = "all" } = {}) => {
+export const updateTeacherClassHourlyRate = async (teacherId, classId, hourlyRateOverride) => (
+  request(`/admin/teacher-salaries/${encodeURIComponent(teacherId)}/classes/${encodeURIComponent(classId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ hourlyRateOverride }),
+  })
+);
+
+export const updateSessionSalaryParameters = async (sessionId, { durationHours, status } = {}) => (
+  request(`/admin/teacher-salaries/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ durationHours, status }),
+  })
+);
+
+export const updateTeacherSalarySettlement = async (
+  teacherId,
+  { period = "all", bonusAmount = 0, deductionAmount = 0, paymentStatus = "pending", notes = "", paidAt = null } = {},
+) => (
+  request(`/admin/teacher-salaries/${encodeURIComponent(teacherId)}/settlement`, {
+    method: "PUT",
+    body: JSON.stringify({ period, bonusAmount, deductionAmount, paymentStatus, notes, paidAt }),
+  })
+);
+
+export const adminTeacherSalariesExportUrl = ({ format = "xlsx", search = "", rateStatus = "all", paymentStatus = "all" } = {}) => {
   const params = new URLSearchParams();
   if (format) params.set("format", format);
   if (search && search.trim()) params.set("search", search.trim());
   if (rateStatus && rateStatus !== "all") params.set("rateStatus", rateStatus);
+  if (paymentStatus && paymentStatus !== "all") params.set("paymentStatus", paymentStatus);
   return `${API_BASE}/admin/teacher-salaries/export?${params.toString()}`;
 };
 

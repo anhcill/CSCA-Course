@@ -16,6 +16,9 @@ import {
   getAllTeachersSalaryOverview,
   getTeacherSalaryDetail,
   updateTeacherHourlyRate,
+  updateTeacherClassHourlyRate,
+  updateSessionSalaryParameters,
+  updateTeacherSalarySettlement,
 } from "../services/salary.service.js";
 import {
   getWelcomeScreenConfig,
@@ -611,7 +614,10 @@ router.get("/teacher-salaries", ...adminOnly, async (req, res) => {
     const rateStatus = ["all", "assigned", "unassigned"].includes(req.query.rateStatus)
       ? req.query.rateStatus
       : "all";
-    const overview = await getAllTeachersSalaryOverview({ query }, { search, rateStatus });
+    const paymentStatus = ["all", "pending", "processing", "paid", "hold"].includes(req.query.paymentStatus)
+      ? req.query.paymentStatus
+      : "all";
+    const overview = await getAllTeachersSalaryOverview({ query }, { search, rateStatus, paymentStatus });
     return res.json({ success: true, data: overview });
   } catch (error) {
     return handleDbError(res, error, "Không thể tải bảng tổng hợp lương giảng viên");
@@ -626,7 +632,17 @@ router.get("/teacher-salaries/export", ...adminOnly, async (req, res) => {
     const rateStatus = ["all", "assigned", "unassigned"].includes(req.query.rateStatus)
       ? req.query.rateStatus
       : "all";
-    const overview = await getAllTeachersSalaryOverview({ query }, { search, rateStatus });
+    const paymentStatus = ["all", "pending", "processing", "paid", "hold"].includes(req.query.paymentStatus)
+      ? req.query.paymentStatus
+      : "all";
+    const overview = await getAllTeachersSalaryOverview({ query }, { search, rateStatus, paymentStatus });
+
+    const statusLabels = {
+      pending: "Chưa thanh toán",
+      processing: "Đang xử lý",
+      paid: "Đã thanh toán",
+      hold: "Tạm giữ",
+    };
 
     const rows = [
       [
@@ -640,8 +656,13 @@ router.get("/teacher-salaries/export", ...adminOnly, async (req, res) => {
         "Tổng số buổi",
         "Số giờ đã dạy",
         "Tổng số giờ",
-        "Lương tạm tính (VNĐ)",
-        "Lương dự kiến (VNĐ)",
+        "Lương theo giờ (VNĐ)",
+        "Thưởng/Phụ cấp (VNĐ)",
+        "Khấu trừ (VNĐ)",
+        "Thực lĩnh (VNĐ)",
+        "Trạng thái thanh toán",
+        "Ghi chú quyết toán",
+        "Ngày thanh toán",
         "Tiến độ (%)",
       ],
       ...overview.teachers.map((t) => [
@@ -656,7 +677,12 @@ router.get("/teacher-salaries/export", ...adminOnly, async (req, res) => {
         t.completedHours,
         t.totalHours,
         t.accruedSalary,
-        t.projectedSalary,
+        t.bonusAmount,
+        t.deductionAmount,
+        t.netAccruedSalary,
+        statusLabels[t.paymentStatus] || t.paymentStatus,
+        t.paymentNotes || "",
+        t.paidAt ? new Date(t.paidAt).toLocaleDateString("vi-VN") : "",
         `${t.progressPct}%`,
       ]),
     ];
@@ -688,7 +714,7 @@ router.get("/teacher-salaries/:id/detail", ...adminOnly, async (req, res) => {
   }
 });
 
-// PUT /api/admin/teacher-salaries/:id — assign / update hourly rate for a teacher
+// PUT /api/admin/teacher-salaries/:id — assign / update base hourly rate for a teacher
 router.put("/teacher-salaries/:id", ...adminOnly, async (req, res) => {
   const teacherId = parseId(req.params.id);
   if (!teacherId) return sendError(res, 422, "teacherId không hợp lệ", "VALIDATION_ERROR");
@@ -719,6 +745,125 @@ router.put("/teacher-salaries/:id", ...adminOnly, async (req, res) => {
       return sendError(res, 404, "Không tìm thấy giảng viên", "NOT_FOUND");
     }
     return handleDbError(res, error, "Không thể cập nhật mức lương giảng viên");
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/admin/teacher-salaries/:id/classes/:classId — set / override hourly rate for a specific class
+router.put("/teacher-salaries/:id/classes/:classId", ...adminOnly, async (req, res) => {
+  const teacherId = parseId(req.params.id);
+  const classId = parseId(req.params.classId);
+  if (!teacherId || !classId) {
+    return sendError(res, 422, "Thông tin giảng viên hoặc lớp học không hợp lệ", "VALIDATION_ERROR");
+  }
+
+  const rawOverride = req.body.hourlyRateOverride;
+  let hourlyRateOverride = null;
+  if (rawOverride !== null && rawOverride !== undefined && rawOverride !== "") {
+    hourlyRateOverride = Number(rawOverride);
+    if (!Number.isFinite(hourlyRateOverride) || hourlyRateOverride < 0) {
+      return sendError(res, 422, "Mức lương của lớp phải là số không âm", "VALIDATION_ERROR");
+    }
+  }
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const updated = await updateTeacherClassHourlyRate({
+      teacherId,
+      classId,
+      hourlyRateOverride,
+      actorId: req.user.id,
+      db: client,
+    });
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      message: hourlyRateOverride !== null
+        ? `Đã cập nhật đơn giá riêng ${hourlyRateOverride.toLocaleString("vi-VN")} đ/giờ cho lớp học`
+        : "Đã xóa đơn giá riêng, áp dụng lại mức lương mặc định của giảng viên",
+      data: updated,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    return handleDbError(res, error, "Không thể cập nhật đơn giá cho lớp học");
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/admin/teacher-salaries/sessions/:sessionId — adjust session duration or status
+router.put("/teacher-salaries/sessions/:sessionId", ...adminOnly, async (req, res) => {
+  const sessionId = parseId(req.params.sessionId);
+  if (!sessionId) return sendError(res, 422, "sessionId không hợp lệ", "VALIDATION_ERROR");
+
+  const { durationHours, status } = req.body;
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const updated = await updateSessionSalaryParameters({
+      sessionId,
+      durationHours,
+      status,
+      actorId: req.user.id,
+      db: client,
+    });
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      message: "Đã cập nhật thông số buổi học phục vụ tính thù lao",
+      data: updated,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error.message === "SESSION_NOT_FOUND") {
+      return sendError(res, 404, "Không tìm thấy buổi học", "NOT_FOUND");
+    }
+    return handleDbError(res, error, "Không thể cập nhật thông số buổi học");
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/admin/teacher-salaries/:id/settlement — update settlement adjustments & payment status
+router.put("/teacher-salaries/:id/settlement", ...adminOnly, async (req, res) => {
+  const teacherId = parseId(req.params.id);
+  if (!teacherId) return sendError(res, 422, "teacherId không hợp lệ", "VALIDATION_ERROR");
+
+  const {
+    period = "all",
+    bonusAmount = 0,
+    deductionAmount = 0,
+    paymentStatus = "pending",
+    notes = "",
+    paidAt = null,
+  } = req.body;
+
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const updated = await updateTeacherSalarySettlement({
+      teacherId,
+      period,
+      bonusAmount,
+      deductionAmount,
+      paymentStatus,
+      notes,
+      paidAt,
+      actorId: req.user.id,
+      db: client,
+    });
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      message: "Đã cập nhật quyết toán và trạng thái thanh toán thù lao thành công",
+      data: updated,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    return handleDbError(res, error, "Không thể cập nhật quyết toán lương giảng viên");
   } finally {
     client.release();
   }

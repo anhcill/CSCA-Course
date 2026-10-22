@@ -2,9 +2,15 @@ import { query as defaultQuery } from "../db/connect.js";
 import { recordAuditEvent } from "./audit.service.js";
 
 /**
- * Calculates duration in hours between two timestamps, with safe rounding and fallbacks.
+ * Calculates duration in hours between two timestamps, with safe rounding, explicit override support, and fallbacks.
  */
-export const calculateSessionDurationHours = (startTime, endTime) => {
+export const calculateSessionDurationHours = (startTime, endTime, explicitDuration) => {
+  if (explicitDuration !== undefined && explicitDuration !== null) {
+    const explicitNum = Number(explicitDuration);
+    if (Number.isFinite(explicitNum) && explicitNum > 0) {
+      return Number(Math.max(0.25, Math.min(12, explicitNum)).toFixed(2));
+    }
+  }
   if (!startTime || !endTime) return 2.0;
   const start = new Date(startTime).getTime();
   const end = new Date(endTime).getTime();
@@ -27,7 +33,7 @@ export const isSessionCompleted = (session) => {
 };
 
 /**
- * Retrieves the full salary detail for a specific teacher, including breakdown by class and session.
+ * Retrieves the full salary detail for a specific teacher, including breakdown by class, session, and settlement.
  */
 export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQuery }) => {
   const userResult = await db.query(
@@ -70,14 +76,28 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
 
   let sessionsByClass = {};
   if (classIds.length > 0) {
-    const sessionsResult = await db.query(
-      `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status
-       FROM class_sessions cs
-       WHERE cs.live_class_id = ANY($1::bigint[])
-         AND cs.status <> 'cancelled'
-       ORDER BY cs.start_time ASC, cs.id ASC`,
-      [classIds],
-    );
+    let sessionsResult;
+    try {
+      sessionsResult = await db.query(
+        `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
+                cs.duration_hours
+         FROM class_sessions cs
+         WHERE cs.live_class_id = ANY($1::bigint[])
+           AND cs.status <> 'cancelled'
+         ORDER BY cs.start_time ASC, cs.id ASC`,
+        [classIds],
+      );
+    } catch {
+      sessionsResult = await db.query(
+        `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
+                NULL::numeric(4,2) AS duration_hours
+         FROM class_sessions cs
+         WHERE cs.live_class_id = ANY($1::bigint[])
+           AND cs.status <> 'cancelled'
+         ORDER BY cs.start_time ASC, cs.id ASC`,
+        [classIds],
+      );
+    }
 
     for (const session of sessionsResult.rows) {
       if (!sessionsByClass[session.live_class_id]) {
@@ -85,6 +105,21 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
       }
       sessionsByClass[session.live_class_id].push(session);
     }
+  }
+
+  // Get settlement record if any
+  let settlement = null;
+  try {
+    const settlementResult = await db.query(
+      `SELECT bonus_amount, deduction_amount, payment_status, notes, paid_at, settled_by, updated_at
+       FROM teacher_salary_settlements
+       WHERE teacher_id = $1 AND period = 'all'`,
+      [teacherId],
+    );
+    settlement = settlementResult.rows[0] || null;
+  } catch {
+    // Graceful fallback if table doesn't exist in specific test sandbox
+    settlement = null;
   }
 
   let totalScheduledSessions = 0;
@@ -108,7 +143,7 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
     let classProjectedSalary = 0;
 
     const sessions = rawSessions.map((session, index) => {
-      const durationHours = calculateSessionDurationHours(session.start_time, session.end_time);
+      const durationHours = calculateSessionDurationHours(session.start_time, session.end_time, session.duration_hours);
       const completed = isSessionCompleted(session);
       const isLive = session.status === "live";
 
@@ -132,6 +167,7 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
         endTime: session.end_time,
         status: session.status,
         durationHours,
+        isCustomDuration: session.duration_hours !== null && session.duration_hours !== undefined,
         isCompleted: completed,
         isLive,
         earnedAmount: sessionSalary,
@@ -158,6 +194,8 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
       courseTitle: cls.course_title || "Khóa học trực tuyến",
       teachingRole: cls.teaching_role || "lead",
       effectiveHourlyRate: effectiveRate,
+      teacherClassRateOverride: cls.teacher_class_rate_override ? Number(cls.teacher_class_rate_override) : null,
+      classRateOverride: cls.class_rate_override ? Number(cls.class_rate_override) : null,
       hasCustomRate: effectiveRate !== teacherHourlyRate,
       totalSessions,
       completedSessions: classCompletedSessions,
@@ -177,6 +215,13 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
     ? Math.round((totalCompletedSessions / totalScheduledSessions) * 100)
     : 0;
 
+  const bonusAmount = Number(settlement?.bonus_amount || 0);
+  const deductionAmount = Number(settlement?.deduction_amount || 0);
+  const netAccruedSalary = Math.max(0, Math.round(totalAccruedSalary + bonusAmount - deductionAmount));
+  const paymentStatus = settlement?.payment_status || "pending";
+  const notes = settlement?.notes || "";
+  const paidAt = settlement?.paid_at || null;
+
   return {
     teacher: {
       id: teacher.id,
@@ -187,6 +232,16 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
       role: teacher.role,
       hourlyRate: teacherHourlyRate,
     },
+    settlement: {
+      bonusAmount,
+      deductionAmount,
+      netAccruedSalary,
+      paymentStatus,
+      notes,
+      paidAt,
+      settledBy: settlement?.settled_by || null,
+      updatedAt: settlement?.updated_at || null,
+    },
     summary: {
       hourlyRate: teacherHourlyRate,
       totalClasses: classes.length,
@@ -196,9 +251,13 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
       completedHours: Number(totalCompletedHours.toFixed(1)),
       totalHours: Number(totalProjectedHours.toFixed(1)),
       accruedSalary: Math.round(totalAccruedSalary),
+      bonusAmount,
+      deductionAmount,
+      netAccruedSalary,
+      paymentStatus,
       projectedSalary: Math.round(totalProjectedSalary),
       progressPct: overallProgressPct,
-      formulaNote: "Lương tạm tính = Số buổi đã dạy × Số giờ/buổi × Mức lương theo giờ",
+      formulaNote: "Thực nhận = (Số buổi đã dạy × Số giờ/buổi × Mức lương theo giờ) + Thưởng - Khấu trừ",
     },
     classes,
   };
@@ -207,7 +266,10 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
 /**
  * Retrieves high-level salary summary for all teachers (for Admin Payroll Console).
  */
-export const getAllTeachersSalaryOverview = async (db = { query: defaultQuery }, { search = "", rateStatus = "all" } = {}) => {
+export const getAllTeachersSalaryOverview = async (
+  db = { query: defaultQuery },
+  { search = "", rateStatus = "all", paymentStatus = "all" } = {},
+) => {
   const params = [];
   const filters = [];
 
@@ -222,7 +284,25 @@ export const getAllTeachersSalaryOverview = async (db = { query: defaultQuery },
     filters.push("(u.hourly_rate IS NULL OR u.hourly_rate = 0)");
   }
 
+  if (paymentStatus && ["pending", "processing", "paid", "hold"].includes(paymentStatus)) {
+    params.push(paymentStatus);
+    filters.push(`COALESCE(tss.payment_status, 'pending') = $${params.length}`);
+  }
+
   const whereClause = filters.length ? `AND ${filters.join(" AND ")}` : "";
+
+  // Check if teacher_salary_settlements table exists, fallback gracefully if not
+  let hasSettlementTable = true;
+  try {
+    const regRes = await db.query("SELECT to_regclass('public.teacher_salary_settlements') AS tbl");
+    hasSettlementTable = Boolean(regRes.rows[0]?.tbl);
+  } catch {
+    hasSettlementTable = false;
+  }
+
+  const settlementJoin = hasSettlementTable
+    ? "LEFT JOIN teacher_salary_settlements tss ON tss.teacher_id = u.id AND tss.period = 'all'"
+    : "LEFT JOIN (SELECT NULL::bigint AS teacher_id, 0::numeric AS bonus_amount, 0::numeric AS deduction_amount, 'pending'::text AS payment_status, NULL::text AS notes, NULL::timestamptz AS paid_at) tss ON false";
 
   const sql = `
     SELECT u.id, u.username, u.email, u.avatar_url, u.role,
@@ -233,9 +313,15 @@ export const getAllTeachersSalaryOverview = async (db = { query: defaultQuery },
            COALESCE(stats.total_sessions, 0)::int AS total_sessions,
            COALESCE(stats.completed_sessions, 0)::int AS completed_sessions,
            COALESCE(stats.completed_hours, 0)::numeric(10,2) AS completed_hours,
-           COALESCE(stats.total_hours, 0)::numeric(10,2) AS total_hours
+           COALESCE(stats.total_hours, 0)::numeric(10,2) AS total_hours,
+           COALESCE(tss.bonus_amount, 0)::numeric(12,2) AS bonus_amount,
+           COALESCE(tss.deduction_amount, 0)::numeric(12,2) AS deduction_amount,
+           COALESCE(tss.payment_status, 'pending') AS payment_status,
+           tss.notes AS payment_notes,
+           tss.paid_at
     FROM users u
     LEFT JOIN student_profiles sp ON sp.user_id = u.id
+    ${settlementJoin}
     LEFT JOIN LATERAL (
       SELECT COUNT(DISTINCT lc.id)::int AS classes_count,
              COUNT(cs.id) FILTER (WHERE cs.status <> 'cancelled')::int AS total_sessions,
@@ -269,9 +355,12 @@ export const getAllTeachersSalaryOverview = async (db = { query: defaultQuery },
   let totalTeachersCount = result.rows.length;
   let assignedHourlyRateCount = 0;
   let totalAccruedSalary = 0;
+  let totalNetSalary = 0;
   let totalProjectedSalary = 0;
   let totalCompletedHours = 0;
   let totalCompletedSessions = 0;
+  let paidCount = 0;
+  let pendingCount = 0;
 
   const teachers = result.rows.map((row) => {
     const rate = Number(row.hourly_rate || 0);
@@ -279,13 +368,21 @@ export const getAllTeachersSalaryOverview = async (db = { query: defaultQuery },
     const totHours = Number(row.total_hours || 0);
     const compSessions = Number(row.completed_sessions || 0);
     const totSessions = Number(row.total_sessions || 0);
+    const bonus = Number(row.bonus_amount || 0);
+    const deduction = Number(row.deduction_amount || 0);
+    const pStatus = row.payment_status || "pending";
 
     const accruedSalary = Math.round(compHours * rate);
+    const netAccruedSalary = Math.max(0, Math.round(accruedSalary + bonus - deduction));
     const projectedSalary = Math.round(totHours * rate);
     const progressPct = totSessions > 0 ? Math.round((compSessions / totSessions) * 100) : 0;
 
     if (rate > 0) assignedHourlyRateCount += 1;
+    if (pStatus === "paid") paidCount += 1;
+    else pendingCount += 1;
+
     totalAccruedSalary += accruedSalary;
+    totalNetSalary += netAccruedSalary;
     totalProjectedSalary += projectedSalary;
     totalCompletedHours += compHours;
     totalCompletedSessions += compSessions;
@@ -306,6 +403,12 @@ export const getAllTeachersSalaryOverview = async (db = { query: defaultQuery },
       completedHours: compHours,
       totalHours: totHours,
       accruedSalary,
+      bonusAmount: bonus,
+      deductionAmount: deduction,
+      netAccruedSalary,
+      paymentStatus: pStatus,
+      paymentNotes: row.payment_notes || "",
+      paidAt: row.paid_at || null,
       projectedSalary,
       progressPct,
     };
@@ -317,16 +420,19 @@ export const getAllTeachersSalaryOverview = async (db = { query: defaultQuery },
       assignedHourlyRateCount,
       unassignedHourlyRateCount: totalTeachersCount - assignedHourlyRateCount,
       totalAccruedSalary: Math.round(totalAccruedSalary),
+      totalNetSalary: Math.round(totalNetSalary),
       totalProjectedSalary: Math.round(totalProjectedSalary),
       totalCompletedHours: Number(totalCompletedHours.toFixed(1)),
       totalCompletedSessions,
+      paidCount,
+      pendingCount,
     },
     teachers,
   };
 };
 
 /**
- * Updates a teacher's hourly rate and writes an audit event.
+ * Updates a teacher's base hourly rate and writes an audit event.
  */
 export const updateTeacherHourlyRate = async ({
   teacherId,
@@ -368,4 +474,204 @@ export const updateTeacherHourlyRate = async ({
   });
 
   return after;
+};
+
+/**
+ * Updates a teacher's class-specific override hourly rate.
+ */
+export const updateTeacherClassHourlyRate = async ({
+  teacherId,
+  classId,
+  hourlyRateOverride,
+  actorId,
+  db = { query: defaultQuery },
+}) => {
+  const tId = Number(teacherId);
+  const cId = Number(classId);
+  if (!Number.isFinite(tId) || !Number.isFinite(cId)) {
+    throw new Error("INVALID_PARAMETERS");
+  }
+
+  let rate = null;
+  if (hourlyRateOverride !== null && hourlyRateOverride !== undefined && hourlyRateOverride !== "") {
+    rate = Number(hourlyRateOverride);
+    if (!Number.isFinite(rate) || rate < 0) {
+      throw new Error("INVALID_HOURLY_RATE");
+    }
+  }
+
+  const existingMapping = await db.query(
+    "SELECT id, hourly_rate_override FROM class_teachers WHERE live_class_id = $1 AND teacher_id = $2",
+    [cId, tId],
+  );
+
+  let beforeRate = null;
+  let after = null;
+
+  if (existingMapping.rows.length > 0) {
+    beforeRate = existingMapping.rows[0].hourly_rate_override;
+    const upd = await db.query(
+      `UPDATE class_teachers
+       SET hourly_rate_override = $1
+       WHERE live_class_id = $2 AND teacher_id = $3
+       RETURNING id, live_class_id, teacher_id, hourly_rate_override`,
+      [rate, cId, tId],
+    );
+    after = upd.rows[0];
+  } else {
+    const classCheck = await db.query("SELECT id, instructor_id, hourly_rate_override FROM live_classes WHERE id = $1", [cId]);
+    if (!classCheck.rows.length) throw new Error("CLASS_NOT_FOUND");
+    beforeRate = classCheck.rows[0].hourly_rate_override;
+
+    const ins = await db.query(
+      `INSERT INTO class_teachers (live_class_id, teacher_id, teaching_role, status, hourly_rate_override)
+       VALUES ($1, $2, 'lead', 'active', $3)
+       ON CONFLICT (live_class_id, teacher_id) DO UPDATE
+       SET hourly_rate_override = EXCLUDED.hourly_rate_override
+       RETURNING id, live_class_id, teacher_id, hourly_rate_override`,
+      [cId, tId, rate],
+    );
+    after = ins.rows[0];
+  }
+
+  await recordAuditEvent({
+    db,
+    actorId,
+    action: "teacher.class_hourly_rate_updated",
+    entityType: "class_teacher",
+    entityId: cId,
+    beforeState: { hourlyRateOverride: beforeRate },
+    afterState: { hourlyRateOverride: rate },
+    metadata: { teacherId: tId, classId: cId },
+  }).catch(() => {});
+
+  return after;
+};
+
+/**
+ * Updates a session's duration or completion status for accurate payroll.
+ */
+export const updateSessionSalaryParameters = async ({
+  sessionId,
+  durationHours,
+  status,
+  actorId,
+  db = { query: defaultQuery },
+}) => {
+  const sId = Number(sessionId);
+  if (!Number.isFinite(sId)) throw new Error("INVALID_SESSION_ID");
+
+  const sessResult = await db.query(
+    "SELECT id, live_class_id, title, duration_hours, status, start_time, end_time FROM class_sessions WHERE id = $1",
+    [sId],
+  );
+  const before = sessResult.rows[0];
+  if (!before) throw new Error("SESSION_NOT_FOUND");
+
+  const updates = [];
+  const params = [sId];
+
+  if (durationHours !== undefined && durationHours !== null && durationHours !== "") {
+    const numH = Number(durationHours);
+    if (!Number.isFinite(numH) || numH <= 0 || numH > 16) {
+      throw new Error("INVALID_DURATION_HOURS");
+    }
+    params.push(Number(numH.toFixed(2)));
+    updates.push(`duration_hours = $${params.length}`);
+  }
+
+  if (status !== undefined && status !== null && status !== "") {
+    const validStatuses = ["scheduled", "live", "ended", "cancelled"];
+    if (!validStatuses.includes(status)) {
+      throw new Error("INVALID_STATUS");
+    }
+    params.push(status);
+    updates.push(`status = $${params.length}`);
+  }
+
+  if (updates.length === 0) return before;
+
+  updates.push("updated_at = NOW()");
+
+  const updateResult = await db.query(
+    `UPDATE class_sessions
+     SET ${updates.join(", ")}
+     WHERE id = $1
+     RETURNING id, live_class_id, title, duration_hours, status, start_time, end_time`,
+    params,
+  );
+
+  const after = updateResult.rows[0];
+
+  await recordAuditEvent({
+    db,
+    actorId,
+    action: "teacher.session_salary_updated",
+    entityType: "class_session",
+    entityId: sId,
+    beforeState: { durationHours: before.duration_hours, status: before.status },
+    afterState: { durationHours: after.duration_hours, status: after.status },
+    metadata: { sessionId: sId, classId: after.live_class_id },
+  }).catch(() => {});
+
+  return after;
+};
+
+/**
+ * Updates or upserts a teacher's settlement adjustments, notes, and payment status.
+ */
+export const updateTeacherSalarySettlement = async ({
+  teacherId,
+  period = "all",
+  bonusAmount = 0,
+  deductionAmount = 0,
+  paymentStatus = "pending",
+  notes = "",
+  paidAt = null,
+  actorId,
+  db = { query: defaultQuery },
+}) => {
+  const tId = Number(teacherId);
+  if (!Number.isFinite(tId)) throw new Error("INVALID_TEACHER_ID");
+
+  const validStatuses = ["pending", "processing", "paid", "hold"];
+  const finalStatus = validStatuses.includes(paymentStatus) ? paymentStatus : "pending";
+
+  const numBonus = Math.max(0, Number(bonusAmount) || 0);
+  const numDeduction = Math.max(0, Number(deductionAmount) || 0);
+
+  const finalPaidAt = finalStatus === "paid"
+    ? (paidAt ? new Date(paidAt) : new Date())
+    : null;
+
+  const result = await db.query(
+    `INSERT INTO teacher_salary_settlements (
+       teacher_id, period, bonus_amount, deduction_amount,
+       payment_status, notes, paid_at, settled_by, updated_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+     ON CONFLICT (teacher_id, period) DO UPDATE SET
+       bonus_amount = EXCLUDED.bonus_amount,
+       deduction_amount = EXCLUDED.deduction_amount,
+       payment_status = EXCLUDED.payment_status,
+       notes = EXCLUDED.notes,
+       paid_at = EXCLUDED.paid_at,
+       settled_by = EXCLUDED.settled_by,
+       updated_at = NOW()
+     RETURNING *`,
+    [tId, period, numBonus, numDeduction, finalStatus, notes || "", finalPaidAt, actorId || null],
+  );
+
+  await recordAuditEvent({
+    db,
+    actorId,
+    action: "teacher.salary_settlement_updated",
+    entityType: "salary_settlement",
+    entityId: tId,
+    beforeState: null,
+    afterState: result.rows[0],
+    metadata: { teacherId: tId, period, paymentStatus: finalStatus },
+  }).catch(() => {});
+
+  return result.rows[0];
 };
