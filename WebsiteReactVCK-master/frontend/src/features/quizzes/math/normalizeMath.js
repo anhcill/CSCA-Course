@@ -54,18 +54,21 @@ const SYMBOL_REPLACEMENTS = {
   ['\u03b4']: '\\delta ',
   ['\u03bc']: '\\mu ',
   ['\u03bb']: '\\lambda ',
+  ['\u03c9']: '\\omega ',
+  ['\u03c6']: '\\varphi ',
+  ['\u03d5']: '\\phi ',
   ['\ud6fc']: '\\alpha ',
   ['\uff08']: '(',
   ['\uff09']: ')',
 };
 
 const INLINE_MATH_COMMAND_RE =
-  /\\(?:sin|cos|tan|cot|sec|csc|log|ln|lg|sqrt|lim|sum|int|vec|bar|hat|tilde|frac|binom|mathbb|mathrm|operatorname|text|begin|end|rightleftharpoons|leftrightharpoons|left|right|infty|emptyset|in|notin|setminus|cup|cap|times|div|cdot|quad|qquad|circ|pi|alpha|beta|gamma|delta|theta|lambda|mu|Delta|partial|pm|Rightarrow|Leftrightarrow|to|leq|geq|neq|le|ge|ne|approx)\b/;
+  /\\(?:sin|cos|tan|cot|sec|csc|log|ln|lg|sqrt|lim|sum|int|vec|bar|hat|tilde|frac|binom|mathbb|mathrm|operatorname|text|begin|end|rightleftharpoons|leftrightharpoons|leftrightarrow|rightarrow|leftarrow|left|right|infty|emptyset|in|notin|setminus|cup|cap|times|div|cdot|quad|qquad|circ|pi|alpha|beta|gamma|delta|theta|lambda|mu|omega|varphi|phi|Delta|partial|pm|Rightarrow|Leftrightarrow|to|leq|geq|neq|le|ge|ne|approx)(?![A-Za-z])/;
 const WRAPPED_MATH_RE = /(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\$[^$\n]*\$)/g;
 const LATEX_COMMAND_BOUNDARY_RE =
-  /\\(sin|cos|tan|cot|sec|csc|log|ln|lg|sqrt|lim|sum|int|vec|bar|hat|tilde|frac|binom|mathbb|mathrm|operatorname|text|begin|end|rightleftharpoons|leftrightharpoons|left|right|infty|emptyset|in|notin|setminus|cup|cap|times|div|cdot|quad|qquad|circ|pi|alpha|beta|gamma|delta|theta|lambda|mu|Delta|partial|pm|Rightarrow|Leftrightarrow|to|leq|geq|neq|le|ge|ne|approx)(?=[A-Za-z])/g;
+  /\\(sin|cos|tan|cot|sec|csc|log|ln|lg|sqrt|lim|sum|int|vec|bar|hat|tilde|frac|binom|mathbb|mathrm|operatorname|text|begin|end|rightleftharpoons|leftrightharpoons|leftrightarrow|rightarrow|leftarrow|left|right|infty|emptyset|in|notin|setminus|cup|cap|times|div|cdot|quad|qquad|circ|pi|alpha|beta|gamma|delta|theta|lambda|mu|omega|varphi|phi|Delta|partial|pm|Rightarrow|Leftrightarrow|to|leq|geq|neq|le|ge|ne|approx)(?=[A-Za-z])/g;
 const MATH_WORD_RE =
-  /^(?:sin|cos|tan|cot|sec|csc|log|ln|lg|lim|sum|int|alpha|beta|gamma|delta|theta|lambda|mu|pi)$/i;
+  /^(?:sin|cos|tan|cot|sec|csc|log|ln|lg|lim|sum|int|alpha|beta|gamma|delta|theta|lambda|mu|omega|varphi|phi|pi)$/i;
 const SIMPLE_INTERVAL_ENDPOINT_RE_SOURCE =
   String.raw`[+\-]?(?:\\infty|\u221e|\d+(?:[.,]\d+)?|[A-Za-z](?:_\{[^{}]+\})?)`;
 const SIMPLE_INTERVAL_RE_SOURCE =
@@ -104,7 +107,7 @@ export function normalizeMathUnicode(input) {
 
 export function normalizeEscapedLatexBackslashes(input) {
   return input.replace(
-    /\\{2,}(?=(?:sin|cos|tan|cot|sec|csc|log|ln|lg|sqrt|lim|sum|int|vec|bar|hat|tilde|frac|binom|mathbb|mathrm|operatorname|text|begin|end|rightleftharpoons|leftrightharpoons|left|right|infty|emptyset|notin|setminus|cup|cap|times|div|cdot|quad|qquad|circ|pi|alpha|beta|gamma|delta|theta|lambda|mu|Delta|partial|pm|Rightarrow|Leftrightarrow|to|leq|geq|neq|approx)\b|\(|\)|\[|\]|\{|\}|[,;!:])/g,
+    /\\{2,}(?=(?:sin|cos|tan|cot|sec|csc|log|ln|lg|sqrt|lim|sum|int|vec|bar|hat|tilde|frac|binom|mathbb|mathrm|operatorname|text|begin|end|rightleftharpoons|leftrightharpoons|left|right|infty|emptyset|notin|setminus|cup|cap|times|div|cdot|quad|qquad|circ|pi|alpha|beta|gamma|delta|theta|lambda|mu|Delta|partial|pm|Rightarrow|Leftrightarrow|to|leq|geq|neq|approx)\b|\(|\)|\[(?![\s+-]*\d)|\]|\{|\}|[,;!:])/g,
     '\\',
   );
 }
@@ -185,7 +188,10 @@ function normalizeEscapedLatexGroupBraces(value) {
       continue;
     }
 
-    out += `\\${command}{${first.body.trim()}}`;
+    const nextBody = command === 'text'
+      ? first.body.replace(/^\s+/, ' ').replace(/\s+$/, ' ')
+      : first.body.trim();
+    out += `\\${command}{${nextBody}}`;
     index = first.end;
   }
 
@@ -194,8 +200,11 @@ function normalizeEscapedLatexGroupBraces(value) {
 
 function normalizeSetOperators(input) {
   return input
+    .replace(/(?:\\cup|\u222a)(?=[A-Za-z0-9])/g, '\\cup ')
     .replace(/\\cup|\u222a/g, '\\cup')
+    .replace(/(?:\\cap|\u2229)(?=[A-Za-z0-9])/g, '\\cap ')
     .replace(/\\cap|\u2229/g, '\\cap')
+    .replace(/(?:\\setminus|\u2216)(?=[A-Za-z0-9])/g, '\\setminus ')
     .replace(/\\setminus|\u2216/g, '\\setminus');
 }
 
@@ -261,8 +270,8 @@ function normalizeLooseMathSyntax(input) {
       if (
         (command === 'in' && (commandText.startsWith('infty') || commandText.startsWith('int'))) ||
         (command === 'le' && (commandText.startsWith('leq') || commandText.startsWith('left'))) ||
-        (command === 'left' && commandText.startsWith('leftrightharpoons')) ||
-        (command === 'right' && commandText.startsWith('rightleftharpoons')) ||
+        (command === 'left' && /^left(?:arrow|rightarrow|leftarrows|rightarrows|rightharpoons|threetimes)/.test(commandText)) ||
+        (command === 'right' && /^right(?:arrow|rightarrows|leftharpoons|arrowtail|squigarrow)/.test(commandText)) ||
         (command === 'ge' && commandText.startsWith('geq')) ||
         (command === 'ne' && commandText.startsWith('neq'))
       ) {
@@ -389,7 +398,8 @@ function stripOuterGroup(value) {
 }
 
 function isMostlyMath(value) {
-  const withoutCommands = value
+  const withoutTextBlocks = value.replace(/\\(?:text|mathrm|mathbf|operatorname)\s*\{[^{}]*\}/g, '');
+  const withoutCommands = withoutTextBlocks
     .replace(/\\[a-zA-Z]+/g, '')
     .replace(/\\([{}()[\],;|])/g, '$1');
   const words = (withoutCommands.match(/[A-Za-z]{2,}/g) || [])
@@ -496,6 +506,7 @@ function readDenominator(input, start) {
 function isUsableOperand(value) {
   if (!value || value.includes('://') || value.includes('/')) return false;
   if (!/[A-Za-z0-9\\]/.test(value)) return false;
+  if (/^\\?(?:sin|cos|tan|cot|sec|csc|log|ln|lg|lim)$/i.test(value.trim())) return false;
   return isMostlyMath(value);
 }
 
@@ -551,14 +562,20 @@ export function normalizeMathText(input) {
 }
 
 export function normalizeLatexMath(input) {
+  const rowBreaks = [];
+  const protectedInput = String(input || '').replace(/\\\\(?=\s*\[[^\]\n]{1,24}\])/g, (rowBreak) => {
+    const token = `\uE002ROW_BREAK_${rowBreaks.length}\uE003`;
+    rowBreaks.push(rowBreak);
+    return token;
+  });
   return repairEscapedMathWordsInProse(repairSetBuilderAbsoluteValues(escapeSetLiteralBraces(normalizeSuperscriptSyntax(
-    normalizeLostSuperscripts(normalizeMathText(input)
+    normalizeLostSuperscripts(normalizeMathText(protectedInput)
       .replace(/\\d(?=\s*(?:\(|_))/g, 'd')
       .replace(/(^|[^\\])\\[ \t]+/g, '$1 ')
       .replace(/[ \t]*\n[ \t]*/g, ' ')
       .replace(/\s{2,}/g, ' ')
       .trim()),
-  ))));
+  )))).replace(/\uE002ROW_BREAK_(\d+)\uE003/g, (_, index) => rowBreaks[Number(index)] || '\\\\');
 }
 
 export function isLikelyLooseMathLine(input) {
@@ -720,7 +737,7 @@ function wrapEqualMathInPlainText(input) {
   let cursor = 0;
 
   while (cursor < input.length) {
-    const relation = input.slice(cursor).match(/=|<|>|\\(?:le|ge|ne)\b/);
+    const relation = input.slice(cursor).match(/=|<|>|\\(?:le|leq|ge|geq|ne|neq)(?![A-Za-z])/);
     if (!relation || relation.index === undefined) break;
 
     const relationIndex = cursor + relation.index;
@@ -756,7 +773,7 @@ function wrapEqualMathInPlainText(input) {
 
     if (
       !normalized ||
-      !/(?:=|<|>|\\(?:le|ge|ne)\b)/.test(normalized) ||
+      !/(?:=|<|>|\\(?:le|leq|ge|geq|ne|neq)(?![A-Za-z]))/.test(normalized) ||
       !isMostlyMath(normalized) ||
       !hasBalancedMathGroups(normalized)
     ) {
@@ -1070,10 +1087,15 @@ function repairGluedTransitionCommands(input) {
         part.startsWith('$')
       ) return part;
 
-      return part.replace(
-        /\\(Rightarrow|Leftarrow|Leftrightarrow|rightarrow|leftarrow|to)(?=[^\s\\()[\]{}$.,;:!?])/g,
-        (_, command) => `\\(\\${command}\\) `,
-      );
+      return part
+        .replace(
+          /\\(Rightarrow|Leftarrow|Leftrightarrow|leftrightarrow|rightarrow|leftarrow|to)(?=[0-9+\-])/g,
+          '\\$1 ',
+        )
+        .replace(
+          /\\(Rightarrow|Leftarrow|Leftrightarrow|leftrightarrow|rightarrow|leftarrow|to)(?=[^\s\\()[\]{}$.,;:!?0-9+\-])/g,
+          (_, command) => `\\(\\${command}\\) `,
+        );
     })
     .join('');
 }

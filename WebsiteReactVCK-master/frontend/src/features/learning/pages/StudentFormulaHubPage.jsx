@@ -22,15 +22,17 @@ import {
 } from "../../api/lmsClient";
 import FormulaDetailModal from "../components/FormulaDetailModal";
 import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
+import { normalizeLatexMath } from "../../quizzes/math/normalizeMath";
 
 // Instant KaTeX rendering cache to avoid re-parsing on every frame
 const katexCache = new Map();
 function renderCachedKatex(latex, displayMode = false) {
   if (!latex) return "";
-  const key = `${displayMode ? "D" : "I"}:${latex}`;
+  const normalized = normalizeLatexMath(String(latex));
+  const key = `${displayMode ? "D" : "I"}:${normalized}`;
   if (katexCache.has(key)) return katexCache.get(key);
   try {
-    const html = katex.renderToString(latex, { displayMode, throwOnError: false });
+    const html = katex.renderToString(normalized, { displayMode, throwOnError: false, strict: "ignore" });
     katexCache.set(key, html);
     return html;
   } catch {
@@ -331,7 +333,18 @@ export default function StudentFormulaHubPage() {
                     {/* Đại lượng chính */}
                     <td className="py-2 px-2 align-middle">
                       <p className="text-[10px] text-slate-600 line-clamp-2">
-                        {formula.variables?.map((v) => `${v.symbol}: ${v.meaning}`).join("; ") || "—"}
+                        {formula.variables && formula.variables.length > 0
+                          ? formula.variables.map((v, idx) => (
+                              <span key={idx}>
+                                {idx > 0 ? "; " : ""}
+                                <span
+                                  className="font-serif font-semibold text-slate-800"
+                                  dangerouslySetInnerHTML={{ __html: renderCachedKatex(v.symbol, false) }}
+                                />
+                                {v.meaning ? `: ${v.meaning}` : ""}
+                              </span>
+                            ))
+                          : "—"}
                       </p>
                     </td>
 

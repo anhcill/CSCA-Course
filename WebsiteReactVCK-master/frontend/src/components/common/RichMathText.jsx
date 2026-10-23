@@ -62,7 +62,7 @@ function canRenderLatex(formula, displayMode = false) {
     katex.renderToString(formula.trim(), {
       displayMode,
       throwOnError: true,
-      strict: false,
+      strict: 'ignore',
       trust: false,
     });
     return true;
@@ -108,14 +108,29 @@ function normalizeRenderableLatex(formula, displayMode = false) {
 }
 
 function sanitizeInlineMath(formula) {
+  if (!formula || !formula.trim()) return '';
   const renderable = normalizeRenderableLatex(formula, false);
   if (renderable) return `$${renderable.formula}$${renderable.suffix}`;
   return escapeFailedMathText(formula.trim());
 }
 
-function sanitizeDisplayMath(formula) {
+function sanitizeDisplayMath(formula, beforeOnLine = '') {
   const renderable = normalizeRenderableLatex(formula, true);
-  if (renderable) return `$$\n${renderable.formula}\n$$${renderable.suffix}`;
+  if (renderable) {
+    const isLineStart = /^[ \t]*$/.test(beforeOnLine);
+    const listPrefixMatch = beforeOnLine.match(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/);
+    const indent = isLineStart
+      ? beforeOnLine
+      : listPrefixMatch
+      ? listPrefixMatch[0].replace(/[^\t ]/g, ' ')
+      : (beforeOnLine.match(/^[ \t]*/)?.[0] || '');
+    const indentedFormula = renderable.formula
+      .split('\n')
+      .map((line) => `${indent}${line}`)
+      .join('\n');
+    const leadingBreak = isLineStart ? '' : `\n${indent}`;
+    return `${leadingBreak}$$\n${indentedFormula}\n${indent}$$${renderable.suffix}`;
+  }
   return escapeFailedMathText(formula.trim());
 }
 
@@ -130,9 +145,17 @@ function sanitizeKatexSegments(value) {
         .map((inlinePart) => {
           if (inlinePart.startsWith('`')) return inlinePart;
 
-          return inlinePart
-            .replace(/\$\$([\s\S]*?)\$\$/g, (_, formula) => sanitizeDisplayMath(formula))
-            .replace(/\$([^$\n]*?)\$/g, (_, formula) => sanitizeInlineMath(formula));
+          return inlinePart.replace(
+            /\$\$([\s\S]*?)\$\$|\$([^$\n]+?)\$/g,
+            (match, displayFormula, inlineFormula, offset, whole) => {
+              if (displayFormula !== undefined) {
+                const lineStart = whole.lastIndexOf('\n', offset - 1) + 1;
+                const beforeOnLine = whole.slice(lineStart, offset);
+                return sanitizeDisplayMath(displayFormula, beforeOnLine);
+              }
+              return sanitizeInlineMath(inlineFormula);
+            },
+          );
         })
         .join('');
     })
@@ -140,37 +163,42 @@ function sanitizeKatexSegments(value) {
 }
 
 function autoWrapLooseMathLines(text) {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
-  const out = [];
+  return text
+    .split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g)
+    .map((segment) => {
+      if (segment.startsWith('$$') || segment.startsWith('\\[')) return segment;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+      const lines = segment.replace(/\r\n?/g, '\n').split('\n');
+      const out = [];
 
-    if (line.includes('$') || !isLikelyLooseMathLine(line)) {
-      out.push(line);
-      continue;
-    }
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
 
-    const group = [line];
-    while (i + 1 < lines.length && !lines[i + 1].includes('$') && isLikelyLooseMathLine(lines[i + 1])) {
-      group.push(lines[i + 1]);
-      i++;
-    }
+        if (line.includes('$') || !isLikelyLooseMathLine(line)) {
+          out.push(line);
+          continue;
+        }
 
-    out.push(`$${normalizeLatexMath(group.join('\n'))}$`);
-  }
+        const group = [line];
+        while (i + 1 < lines.length && !lines[i + 1].includes('$') && isLikelyLooseMathLine(lines[i + 1])) {
+          group.push(lines[i + 1]);
+          i++;
+        }
 
-  return out.join('\n');
+        out.push(`$${normalizeLatexMath(group.join('\n'))}$`);
+      }
+
+      return out.join('\n');
+    })
+    .join('');
 }
 
 function normalizeMathDelimiters(value) {
   const normalizeText = (text) =>
     autoWrapLooseMathLines(
       normalizeRichMathText(text)
-        .replace(/\\\[([\s\S]*?)\\\]/g, (_, formula) => `$$\n${normalizeLatexMath(formula)}\n$$`)
-        .replace(/\\\(([\s\S]*?)\\\)/g, (_, formula) => `$${normalizeLatexMath(formula)}$`)
-        .replace(/(^|\n)\$\$([^\n]+?)\$\$(?=\n|$)/g, (_, prefix, formula) => `${prefix}$$\n${normalizeLatexMath(formula)}\n$$`),
-    );
+        .replace(/\\\(([\s\S]*?)\\\)/g, (_, formula) => `$${normalizeLatexMath(formula)}$`),
+    ).replace(/\\\[([\s\S]*?)\\\]/g, (_, formula) => `$$${formula}$$`);
 
   const normalized = value
     .replace(/\r\n?/g, '\n')
@@ -225,7 +253,7 @@ function RichMathText({ value = '', className = '', readableBreaks = false }) {
         remarkPlugins={[remarkMath]}
         rehypePlugins={[
           rehypeSanitize,
-          [rehypeKatex, { throwOnError: false, strict: false, errorColor: 'currentColor' }],
+          [rehypeKatex, { throwOnError: false, strict: 'ignore', errorColor: 'currentColor' }],
         ]}
         components={{
           p: ({ children }) => <p className="mb-2 whitespace-pre-wrap last:mb-0">{children}</p>,

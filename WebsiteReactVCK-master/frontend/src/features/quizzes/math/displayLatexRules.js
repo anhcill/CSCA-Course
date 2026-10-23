@@ -48,11 +48,17 @@ const LATEX_COMMANDS = [
   'theta',
   'lambda',
   'mu',
+  'omega',
+  'varphi',
+  'phi',
   'Delta',
   'partial',
   'pm',
   'Rightarrow',
   'Leftrightarrow',
+  'leftrightarrow',
+  'rightarrow',
+  'leftarrow',
   'to',
   'leq',
   'geq',
@@ -64,10 +70,10 @@ const LATEX_COMMANDS = [
 ];
 
 const LATEX_COMMAND_SOURCE = LATEX_COMMANDS.join('|');
-const LATEX_COMMAND_RE = new RegExp(String.raw`\\(?:${LATEX_COMMAND_SOURCE})\b`);
+const LATEX_COMMAND_RE = new RegExp(String.raw`\\(?:${LATEX_COMMAND_SOURCE})(?![A-Za-z])`);
 const GLUED_COMMAND_RE = new RegExp(String.raw`\\(${LATEX_COMMAND_SOURCE})(?=[A-Za-z])`, 'g');
 const PROTECTED_SEGMENT_RE = /(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\$[^$\n]*\$|```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/g;
-const RELATION_RE = /(?:=|<|>|\\(?:le|leq|ge|geq|ne|neq|approx|Rightarrow|Leftrightarrow|to)\b|[≤≥≠≈→⇒⇔])/;
+const RELATION_RE = /(?:=|<|>|\\(?:le|leq|ge|geq|ne|neq|approx|Rightarrow|Leftrightarrow|leftrightarrow|rightarrow|leftarrow|to)(?![A-Za-z])|[≤≥≠≈→⇒⇔])/;
 const TEXT_LETTER_RE = /[\u00C0-\u1EF9\u4E00-\u9FFF]/;
 const MATH_RUN_CHARS_SOURCE = String.raw`[A-Za-z0-9\\{}()[\]\s_^+\-*/=<>.,;:|'"!]+`;
 const BARE_OPERATOR_RUN_RE = new RegExp(
@@ -101,8 +107,8 @@ function normalizeGluedCommands(value) {
     if (
       (command === 'in' && (commandText.startsWith('infty') || commandText.startsWith('int'))) ||
       (command === 'le' && (commandText.startsWith('leq') || commandText.startsWith('left'))) ||
-      (command === 'left' && commandText.startsWith('leftrightharpoons')) ||
-      (command === 'right' && commandText.startsWith('rightleftharpoons')) ||
+      (command === 'left' && /^left(?:arrow|rightarrow|leftarrows|rightarrows|rightharpoons|threetimes)/.test(commandText)) ||
+      (command === 'right' && /^right(?:arrow|rightarrows|leftharpoons|arrowtail|squigarrow)/.test(commandText)) ||
       (command === 'ge' && commandText.startsWith('geq')) ||
       (command === 'ne' && commandText.startsWith('neq'))
     ) {
@@ -120,10 +126,10 @@ function stripBrokenDollarsByLine(value) {
       const dollarCount = (line.match(/\$/g) || []).length;
       if (!dollarCount) return line;
 
+      const withoutValidPairs = line.replace(/\$\$[^$\n]+\$\$|\$[^$\n]+\$/g, '');
       const hasBrokenDollar =
-        dollarCount % 2 === 1 ||
-        /\$\$+(?=\s*\S)/.test(line) ||
-        /\\\(|\\\)/.test(line);
+        withoutValidPairs.includes('$') ||
+        /\\\(\s*\$|\$\s*\\\)/.test(line);
       if (!hasBrokenDollar) return line;
 
       const withoutDollars = line.replace(/\$/g, '');
@@ -217,6 +223,7 @@ function looksMathOnly(value) {
   if (TEXT_LETTER_RE.test(text)) return false;
   const hasLatexCommand = LATEX_COMMAND_RE.test(text);
   const hasRelation = RELATION_RE.test(text);
+  if (!hasLatexCommand && !/[A-Za-z0-9]/.test(text)) return false;
   if (!hasLatexCommand && !hasRelation && /[A-Za-z]{2,}/.test(text)) return false;
   if (!hasLatexCommand && !hasRelation && !/[()[\]{}_^]/.test(text)) return false;
   if (!/[=+\-*/^_<>]|\\(?:frac|sqrt|ln|log|lg|sin|cos|tan|cdot|Rightarrow|Leftrightarrow|to|cup|cap|infty)\b/.test(text)) return false;
@@ -227,6 +234,7 @@ function wrapMathOnlyLines(value) {
   return value
     .split('\n')
     .map((line) => {
+      if (/\\\[|\\\(|[$`]/.test(line)) return line;
       const { prefix, body } = stripAnswerPrefix(line);
       const leading = body.match(/^\s*/)?.[0] || '';
       const trailing = body.match(/\s*$/)?.[0] || '';
@@ -303,12 +311,14 @@ function wrapStandaloneCommandTokens(value) {
 export function applyDisplayLatexInputRules(input) {
   if (!input) return '';
 
-  const repaired = collapseNestedInlineDelimiters(
-    repairDollarNoise(String(input).replace(/\r\n?/g, '\n').replace(/\u00A0/g, ' ')),
+  const repaired = wrapMathOnlyLines(
+    collapseNestedInlineDelimiters(
+      repairDollarNoise(String(input).replace(/\r\n?/g, '\n').replace(/\u00A0/g, ' ')),
+    ),
   );
 
   return splitProtected(repaired, (segment) => (
-    wrapStandaloneCommandTokens(wrapBareOperatorRuns(wrapMathOnlyLines(normalizeGluedCommands(segment))))
+    wrapStandaloneCommandTokens(wrapBareOperatorRuns(normalizeGluedCommands(segment)))
   ));
 }
 

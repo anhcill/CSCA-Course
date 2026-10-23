@@ -90,3 +90,35 @@ x = \dfrac{5\pi}{6} + 2k\pi
   assert.doesNotMatch(normalized, /(?<!\\)\\\[6pt\]/);
   assert.doesNotMatch(normalized, /\\\(\\left/);
 });
+
+test('normalizeRichMathText preserves inline math inside italic Markdown lines with trailing punctuation', () => {
+  const input = String.raw`*(Lưu ý mở rộng: $1 + \tan^2\alpha = \dfrac{1}{\cos^2\alpha} = \dfrac{25}{16}$).*`;
+  const normalized = normalizeRichMathText(input);
+  assert.equal(normalized, String.raw`*(Lưu ý mở rộng: $1 + \tan^{2}\alpha = \dfrac{1}{\cos^{2}\alpha} = \dfrac{25}{16}$).*`);
+  assert.doesNotMatch(normalized, /\\\(\)\.\*\\\)/);
+});
+
+test('normalizeLatexMath does not turn bare function slash notation into a fraction', () => {
+  assert.equal(normalizeLatexMath(String.raw`\sin/\cos`), String.raw`\sin/\cos`);
+  assert.equal(normalizeLatexMath(String.raw`\text{ rad}`), String.raw`\text{ rad}`);
+  assert.equal(normalizeLatexMath(String.raw`\text{ hoặc }`), String.raw`\text{ hoặc }`);
+});
+
+test('normalizeRichMathText wraps formulas containing Chinese/Vietnamese inside \\text{...}', () => {
+  const input = String.raw`x = 4 \text{ 或 } x = -2`;
+  const normalized = normalizeRichMathText(input);
+  assert.match(normalized, /\\\(x = 4 \\text\{ 或 \} x = -2\\\)/);
+});
+
+test('normalizeRichMathText handles \\omega\\ne0, \\leftrightarrow, and set operators', () => {
+  assert.match(normalizeRichMathText(String.raw`\omega\ne0`), /\\\(\\omega\s*\\ne\s*0\\\)/);
+  assert.doesNotMatch(
+    normalizeRichMathText(String.raw`y=f(x)\Rightarrow x=g(y),\quad x\leftrightarrow y\Rightarrow y=f^{-1}(x)`),
+    /\\left\s+rightarrow/,
+  );
+  assert.match(
+    normalizeRichMathText('Cho A={1,2,3}, B={2,3,4}. Tìm A∩B.'),
+    /\\\(A\s*\\cap\s*B\.?\\\)/,
+  );
+});
+

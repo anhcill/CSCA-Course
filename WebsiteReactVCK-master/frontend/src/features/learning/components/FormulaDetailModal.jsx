@@ -13,6 +13,21 @@ import {
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import toast from "react-hot-toast";
+import RichMathText from "../../../components/common/RichMathText";
+import { normalizeLatexMath } from "../../quizzes/math/normalizeMath";
+
+function renderSymbolKatex(symbol) {
+  if (!symbol) return "";
+  try {
+    return katex.renderToString(normalizeLatexMath(String(symbol)), {
+      displayMode: false,
+      throwOnError: false,
+      strict: "ignore",
+    });
+  } catch {
+    return String(symbol);
+  }
+}
 
 export default function FormulaDetailModal({
   formula,
@@ -37,9 +52,10 @@ export default function FormulaDetailModal({
 
   let formulaHtml = "";
   try {
-    formulaHtml = katex.renderToString(formula.latex, {
+    formulaHtml = katex.renderToString(normalizeLatexMath(formula.latex || ""), {
       displayMode: true,
       throwOnError: false,
+      strict: "ignore",
     });
   } catch {
     formulaHtml = `<span>${formula.latex}</span>`;
@@ -153,7 +169,7 @@ export default function FormulaDetailModal({
               <Sparkles className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold text-[#102f63]">Ý nghĩa: </span>
-                <span className="leading-relaxed text-slate-700">{formula.description}</span>
+                <RichMathText as="span" className="leading-relaxed text-slate-700" text={formula.description} />
               </div>
             </div>
           )}
@@ -167,7 +183,7 @@ export default function FormulaDetailModal({
               <Lightbulb className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold text-amber-900">Điều kiện áp dụng: </span>
-                <span className="font-mono text-[11px] text-amber-950">{formula.conditions}</span>
+                <RichMathText as="span" className="text-xs text-amber-950" text={formula.conditions} />
               </div>
             </div>
           )}
@@ -196,13 +212,14 @@ export default function FormulaDetailModal({
                   >
                     {formula.variables.map((v, i) => (
                       <tr key={i} className="hover:bg-blue-50/30 transition">
-                        <td className="py-2 px-3.5 font-mono font-bold text-blue-600">
-                          <span className="inline-block bg-blue-50/70 text-blue-700 px-1.5 py-0.5 rounded font-mono font-bold">
-                            {v.symbol}
-                          </span>
+                        <td className="py-2 px-3.5 font-serif font-bold text-blue-600">
+                          <span
+                            className="inline-block bg-blue-50/70 text-blue-700 px-1.5 py-0.5 rounded font-serif font-bold"
+                            dangerouslySetInnerHTML={{ __html: renderSymbolKatex(v.symbol) }}
+                          />
                         </td>
                         <td className="py-2 px-3.5 text-slate-700">
-                          {v.meaning}
+                          <RichMathText as="span" text={v.meaning} />
                         </td>
                       </tr>
                     ))}
@@ -223,14 +240,14 @@ export default function FormulaDetailModal({
                 style={{ backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }}
                 className="rounded-2xl border p-3.5 text-xs space-y-2 shadow-2xs"
               >
-                <p className="font-medium text-slate-800 leading-relaxed">
+                <div className="font-medium text-slate-800 leading-relaxed">
                   <span className="font-bold text-emerald-800">Đề bài: </span>
-                  {formula.exampleProblem}
-                </p>
+                  <RichMathText as="span" text={formula.exampleProblem} />
+                </div>
                 {formula.exampleSolution && (
-                  <div className="border-t border-emerald-200/70 pt-2 text-slate-700 font-mono text-[11px]">
+                  <div className="border-t border-emerald-200/70 pt-2 text-slate-700 text-xs leading-relaxed">
                     <span className="font-bold text-emerald-800 font-sans">Lời giải: </span>
-                    {formula.exampleSolution}
+                    <RichMathText as="span" text={formula.exampleSolution} />
                   </div>
                 )}
               </div>

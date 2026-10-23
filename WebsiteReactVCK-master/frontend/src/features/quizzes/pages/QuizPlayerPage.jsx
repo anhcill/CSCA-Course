@@ -807,7 +807,7 @@ export default function QuizPlayerPage() {
                 onClick={() => loadQuiz({ newAttempt: true })}
                 className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
               >
-                Làm lượt tiếp theo
+                Làm lại lượt thi
               </button>
             )}
 
