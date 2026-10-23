@@ -12,8 +12,6 @@ import {
   FiMinimize,
   FiSave,
   FiCheck,
-  FiEye,
-  FiEyeOff,
   FiGrid,
   FiX,
   FiBookOpen,
@@ -65,6 +63,27 @@ const hasAnswerContent = (question, answers) => {
   return Array.isArray(answer) ? answer.length > 0 : Boolean(answer);
 };
 
+const localizedText = (item, showChinese, primaryKey = 'questionText', chineseKey = 'questionTextCn') => {
+  if (!item) return '';
+  return showChinese
+    ? (item[chineseKey] || item[primaryKey] || '')
+    : (item[primaryKey] || item[chineseKey] || '');
+};
+
+const localizedOptionText = (option, showChinese) => (
+  showChinese ? (option?.textCn || option?.text || '') : (option?.text || option?.textCn || '')
+);
+
+const hasChineseContent = (item) => {
+  if (!item) return false;
+  if (item.questionTextCn || item.passageTextCn) return true;
+  const directOptions = item.options || item.answers || item.linkedOptions || [];
+  if (directOptions.some((option) => option?.textCn)) return true;
+  const children = item.questions || item.subQuestions || item.subItems || [];
+  return children.some((child) => child?.questionTextCn
+    || (child?.options || child?.answers || []).some((option) => option?.textCn));
+};
+
 export default function QuizPlayerPage() {
   const { courseId, classId, quizId } = useParams();
   const navigate = useNavigate();
@@ -93,7 +112,7 @@ export default function QuizPlayerPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [tabViolations, setTabViolations] = useState(0);
   const [showViolationBanner, setShowViolationBanner] = useState(false);
-  const [showBilingual, setShowBilingual] = useState(true);
+  const [showChinese, setShowChinese] = useState(true);
 
   // Palette filter
   const [paletteFilter, setPaletteFilter] = useState('all'); // 'all' | 'unanswered' | 'flagged'
@@ -159,6 +178,7 @@ export default function QuizPlayerPage() {
       setFlagged({});
       setCurrentItemIndex(0);
       setActiveSubIndex(0);
+      setShowChinese(true);
     }
 
     fetchStudentQuizStart(quizId, { newAttempt })
@@ -320,6 +340,10 @@ export default function QuizPlayerPage() {
   useEffect(() => {
     loadQuiz();
   }, [loadQuiz]);
+
+  useEffect(() => {
+    setShowChinese(true);
+  }, [quizId]);
 
   useEffect(() => () => {
     if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
@@ -518,6 +542,8 @@ export default function QuizPlayerPage() {
   const unansweredCount = flattenedQuestions.length - answeredCount;
 
   const currentItem = quiz?.items?.[currentItemIndex];
+  const currentItemHasChinese = hasChineseContent(currentItem);
+  const quizHasChinese = (quiz?.items || []).some(hasChineseContent);
 
   // Jump to specific item and sub-index from palette
   const handleJumpToQuestion = (target) => {
@@ -922,19 +948,30 @@ export default function QuizPlayerPage() {
               ref={reviewSectionRef}
               className="scroll-mt-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 shadow-sm"
             >
-              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center gap-2">
-                {isOverdue ? (
-                  <>
-                    <FiBookOpen className="text-rose-500" />
-                    Tra cứu Đề thi, Đáp án & Lời giải chi tiết
-                  </>
-                ) : (
-                  <>
-                    <FiCheckCircle className="text-emerald-500" />
-                    Đối chiếu đáp án & Lời giải chi tiết
-                  </>
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+                <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-slate-100">
+                  {isOverdue ? (
+                    <>
+                      <FiBookOpen className="text-rose-500" />
+                      Tra cứu Đề thi, Đáp án & Lời giải chi tiết
+                    </>
+                  ) : (
+                    <>
+                      <FiCheckCircle className="text-emerald-500" />
+                      Đối chiếu đáp án & Lời giải chi tiết
+                    </>
+                  )}
+                </h2>
+                {quizHasChinese && (
+                  <button
+                    type="button"
+                    onClick={() => setShowChinese((current) => !current)}
+                    className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:border-blue-300 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  >
+                    {showChinese ? 'Tiếng Việt' : '中文'}
+                  </button>
                 )}
-              </h2>
+              </div>
 
               <div className="space-y-6">
                 {flattenedQuestions.map((q, idx) => {
@@ -1028,7 +1065,7 @@ export default function QuizPlayerPage() {
                       </div>
 
                       <div className="text-sm font-medium text-slate-800 dark:text-slate-100 mb-4 leading-relaxed">
-                        <RichMathText value={q.question.questionText} />
+                        <RichMathText value={localizedText(q.question, showChinese)} />
                       </div>
 
                       {manualGrade && isOverdue && (
@@ -1162,7 +1199,7 @@ export default function QuizPlayerPage() {
                                 <span className={`font-bold ${isActualCorrect ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
                                   {isActualCorrect ? '✓ ' : ''}{opt.key}.
                                 </span>
-                                <RichMathText value={opt.text} />
+                                <RichMathText value={localizedOptionText(opt, showChinese)} />
                               </div>
                             );
                           })}
@@ -1320,15 +1357,14 @@ export default function QuizPlayerPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Bilingual toggle if Chinese text exists */}
-                  {(currentItem.questionTextCn || currentItem.passageText) && (
+                  {/* Show exactly one language at a time; Chinese is the default. */}
+                  {currentItemHasChinese && (
                     <button
                       type="button"
-                      onClick={() => setShowBilingual(!showBilingual)}
+                      onClick={() => setShowChinese((current) => !current)}
                       className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-blue-600 px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
                     >
-                      {showBilingual ? <FiEyeOff size={11} /> : <FiEye size={11} />}
-                      {showBilingual ? 'Ẩn tiếng Trung' : 'Hiện tiếng Trung'}
+                      {showChinese ? 'Tiếng Việt' : '中文'}
                     </button>
                   )}
 
@@ -1355,15 +1391,8 @@ export default function QuizPlayerPage() {
                 <div className="space-y-4">
                   {/* Statement */}
                   <div className="text-sm sm:text-base text-slate-900 dark:text-slate-100 font-medium leading-relaxed">
-                    <RichMathText value={currentItem.questionText} />
+                    <RichMathText value={localizedText(currentItem, showChinese)} />
                   </div>
-
-                  {showBilingual && currentItem.questionTextCn && (
-                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
-                      <span className="font-bold text-slate-400 mr-2">中文:</span>
-                      <RichMathText value={currentItem.questionTextCn} />
-                    </div>
-                  )}
 
                   {/* Optional Image */}
                   {currentItem.imageUrl && (
@@ -1403,12 +1432,7 @@ export default function QuizPlayerPage() {
                             {opt.key}
                           </span>
                           <div className="min-w-0 flex-1">
-                            <RichMathText value={opt.text} />
-                            {showBilingual && opt.textCn && (
-                              <div className="mt-0.5 text-[11px] text-slate-400">
-                                <RichMathText value={opt.textCn} />
-                              </div>
-                            )}
+                            <RichMathText value={localizedOptionText(opt, showChinese)} />
                           </div>
                         </div>
                       );
@@ -1427,7 +1451,7 @@ export default function QuizPlayerPage() {
                       📖 Đoạn văn đọc hiểu
                     </span>
                     <div className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed max-h-72 overflow-y-auto pr-2">
-                      <RichMathText value={currentItem.passageText} />
+                      <RichMathText value={localizedText(currentItem, showChinese, 'passageText', 'passageTextCn')} />
                     </div>
                     {currentItem.passageImageUrl && (
                       <img
@@ -1461,7 +1485,7 @@ export default function QuizPlayerPage() {
                           </div>
 
                           <div className="text-sm font-medium text-slate-800 dark:text-slate-100 leading-relaxed">
-                            <RichMathText value={subQ.questionText} />
+                            <RichMathText value={localizedText(subQ, showChinese)} />
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1481,7 +1505,7 @@ export default function QuizPlayerPage() {
                                     {opt.key}
                                   </span>
                                   <div className="flex-1">
-                                    <RichMathText value={opt.text} />
+                                    <RichMathText value={localizedOptionText(opt, showChinese)} />
                                   </div>
                                 </div>
                               );
@@ -1503,7 +1527,7 @@ export default function QuizPlayerPage() {
                       📝 Đoạn văn điền từ
                     </span>
                     <div className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">
-                      <RichMathText value={currentItem.passageText} />
+                      <RichMathText value={localizedText(currentItem, showChinese, 'passageText', 'passageTextCn')} />
                     </div>
 
                     {/* Word pool A-F */}
@@ -1520,7 +1544,7 @@ export default function QuizPlayerPage() {
                             <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold">
                               {opt.key}
                             </span>
-                            <span>{opt.text || opt.textCn}</span>
+                            <span>{localizedOptionText(opt, showChinese)}</span>
                           </div>
                         ))}
                       </div>
@@ -1544,7 +1568,7 @@ export default function QuizPlayerPage() {
                               #{idx + 1}
                             </span>
                             <span className="max-w-md truncate">
-                              {subItem.questionText || `Chỗ trống [${idx + 1}]`}
+                              {localizedText(subItem, showChinese) || `Chỗ trống [${idx + 1}]`}
                             </span>
                           </div>
 
@@ -1557,7 +1581,7 @@ export default function QuizPlayerPage() {
                               <option value="">-- Chọn từ --</option>
                               {(currentItem.linkedOptions || []).map((opt) => (
                                 <option key={opt.key} value={opt.key}>
-                                  {opt.key}. {opt.text || opt.textCn}
+                                  {opt.key}. {localizedOptionText(opt, showChinese)}
                                 </option>
                               ))}
                             </select>
