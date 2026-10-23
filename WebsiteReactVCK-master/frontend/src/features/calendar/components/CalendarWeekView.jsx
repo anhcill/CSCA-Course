@@ -108,6 +108,12 @@ export default function CalendarWeekView({
                           {ev.title}
                         </p>
 
+                        {ev.class_title && (
+                          <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500 dark:text-slate-400" title={ev.class_title}>
+                            Lớp: {ev.class_title}
+                          </p>
+                        )}
+
                         {/* Thời gian */}
                         <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
                           <Clock className="h-3 w-3 shrink-0" />

@@ -105,6 +105,7 @@ export default function CalendarMonthView({
                   <div className="mt-1 space-y-1">
                     {dayEvents.slice(0, 2).map((ev) => {
                       const isSession = ev.eventType === "SESSION";
+                      const scopeLabel = ev.class_title || ev.course_title;
                       return (
                         <div
                           key={`${ev.eventType}-${ev.id}`}
@@ -112,12 +113,15 @@ export default function CalendarMonthView({
                             e.stopPropagation();
                             onSelectEvent(ev);
                           }}
+                          title={scopeLabel ? `${ev.title} - ${scopeLabel}` : ev.title}
                           className={`truncate rounded px-1 py-0.5 text-[10px] font-semibold flex items-center gap-1 ${
                             isSession ? "bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-sky-300" : "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
                           }`}
                         >
                           {isSession ? <Video className="h-2.5 w-2.5 shrink-0" /> : <ClipboardList className="h-2.5 w-2.5 shrink-0" />}
-                          <span className="truncate">{ev.title}</span>
+                          <span className="truncate">
+                            {ev.title}{scopeLabel ? ` - ${scopeLabel}` : ""}
+                          </span>
                         </div>
                       );
                     })}

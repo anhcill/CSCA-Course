@@ -238,6 +238,7 @@ export default function ScheduleWeeklyTimetable({
                   >
                     {dayDeadlines.map((dl) => {
                       const isQuiz = dl.eventType === "QUIZ_DUE";
+                      const scopeLabel = dl.class_title || dl.course_title || "Chưa xác định lớp";
                       const dueTime = new Date(dl.due_date).toLocaleTimeString("vi-VN", {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -247,7 +248,8 @@ export default function ScheduleWeeklyTimetable({
                           key={`dl-chip-${dl.eventType}-${dl.id}`}
                           type="button"
                           onClick={() => onSelectEvent && onSelectEvent(dl)}
-                          className={`w-full text-left truncate rounded-lg p-1.5 transition cursor-pointer border shadow-2xs hover:shadow-xs group ${
+                          title={`${dl.title} - ${scopeLabel}`}
+                          className={`w-full text-left rounded-lg p-1.5 transition cursor-pointer border shadow-2xs hover:shadow-xs group ${
                             isQuiz
                               ? "bg-purple-50/90 border-purple-200/70 text-purple-900 hover:bg-purple-100"
                               : "bg-blue-50/90 border-blue-200/70 text-blue-900 hover:bg-blue-100"
@@ -259,8 +261,11 @@ export default function ScheduleWeeklyTimetable({
                             </span>
                             <span>{dueTime}</span>
                           </div>
-                          <p className="truncate text-[10px] font-bold text-slate-800 group-hover:text-blue-700">
+                          <p className="line-clamp-2 text-[10px] font-bold leading-tight text-slate-800 group-hover:text-blue-700">
                             {dl.title}
+                          </p>
+                          <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-500">
+                            Lớp: {scopeLabel}
                           </p>
                           {dl.total_students > 0 && (
                             <p className="text-[9px] text-slate-500 font-semibold mt-0.5">
