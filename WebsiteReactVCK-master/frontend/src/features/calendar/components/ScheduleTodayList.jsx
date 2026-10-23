@@ -15,6 +15,7 @@ export default function ScheduleTodayList({
   events = [],
   onJoinSession,
   isTeacher = false,
+  isAdmin = false,
 }) {
   const d = new Date(currentDate);
   const weekday = WEEKDAY_NAMES_MAP[d.getDay()];
@@ -107,14 +108,14 @@ export default function ScheduleTodayList({
 
                 {/* Hành động */}
                 <div className="shrink-0">
-                  {isLive || isOpen || isTeacher ? (
+                  {isLive || isOpen || isAdmin ? (
                     <button
                       type="button"
                       onClick={() => onJoinSession && onJoinSession(session)}
                       className="inline-flex items-center gap-1 rounded-full bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 text-[11px] font-bold shadow-xs transition active:scale-95"
                     >
                       <Play className="h-3 w-3 fill-current" />
-                      <span>{isTeacher ? "Vào dạy" : "Vào lớp"}</span>
+                      <span>{isAdmin ? "Mở phòng" : isTeacher ? "Vào dạy" : "Vào lớp"}</span>
                     </button>
                   ) : isCompleted ? (
                     <span className="inline-block rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-400">

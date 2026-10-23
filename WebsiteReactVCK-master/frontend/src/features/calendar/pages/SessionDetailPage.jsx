@@ -106,6 +106,7 @@ export default function SessionDetailPage() {
   const navigate = useNavigate();
   const { authUser } = useAuthContext();
   const isTeacher = isTeacherRole(authUser?.role);
+  const isAdmin = authUser?.role === "admin";
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab : "overview";
@@ -235,7 +236,7 @@ export default function SessionDetailPage() {
 
   const basePath = `/lms/courses/${courseId}/classes/${classId}`;
   const meetingWindow = getMeetingWindowState(session);
-  const isJoinable = meetingWindow.isOpen;
+  const isJoinable = isAdmin || meetingWindow.isOpen;
   const isEnded = meetingWindow.isClosed;
   const completeTasks = tasks.filter((task) => ["submitted", "graded"].includes(task.status));
   const tabClass = (isActive) =>
@@ -290,7 +291,7 @@ export default function SessionDetailPage() {
                 onClick={handleJoin}
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition hover:brightness-105 active:scale-95 animate-pulse"
               >
-                <Play className="h-4 w-4 fill-current" /> Vào lớp học
+                <Play className="h-4 w-4 fill-current" /> {isAdmin ? "Mở link phòng học" : "Vào lớp học"}
               </button>
             ) : (
               <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#487291] shadow-2xs">

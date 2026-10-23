@@ -14,6 +14,7 @@ import {
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
+import { useAuthContext } from "../../../context/AuthContext";
 import CreateAssignmentModal from "../components/CreateAssignmentModal";
 import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
 import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
@@ -67,6 +68,8 @@ const kindConfig = {
 export default function TeacherSessionWorkspacePage() {
   const { classId, sessionId } = useParams();
   const location = useLocation();
+  const { authUser } = useAuthContext();
+  const isAdmin = authUser?.role === "admin";
   const isAdminView = location.pathname.startsWith("/admin/classes/");
   const classBasePath = isAdminView
     ? `/admin/classes/${classId}` : `/lms/teach/classes/${classId}`;
@@ -304,7 +307,7 @@ export default function TeacherSessionWorkspacePage() {
 
   const classInfo = classData.classInfo || {};
   const meetingWindow = getMeetingWindowState(session);
-  const canJoin = isAdminView || meetingWindow.isOpen;
+  const canJoin = isAdmin || meetingWindow.isOpen;
   return (
     <div className="mx-auto max-w-6xl space-y-5 pb-12 transition-colors duration-200">
       <Link
@@ -347,7 +350,7 @@ export default function TeacherSessionWorkspacePage() {
                 onClick={handleJoin}
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition hover:brightness-105 active:scale-95 animate-pulse"
               >
-                <Play className="h-4 w-4 fill-current" /> {isAdminView ? "Mở link phòng học" : "Vào phòng dạy"}
+                <Play className="h-4 w-4 fill-current" /> {isAdmin ? "Mở link phòng học" : "Vào phòng dạy"}
               </button>
             ) : (
               <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#487291] shadow-2xs">

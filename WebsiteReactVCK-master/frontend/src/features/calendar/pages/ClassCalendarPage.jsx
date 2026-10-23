@@ -21,7 +21,7 @@ import SessionDetailModal from "../components/SessionDetailModal";
 import AssignmentSubmissionsModal from "../components/AssignmentSubmissionsModal";
 import CreateScheduleModal from "../components/CreateScheduleModal";
 import { subscribeToCalendarChanges } from "../calendarSync";
-import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
+import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 
 function getSessionUiState(session) {
   const now = Date.now();
@@ -39,7 +39,8 @@ export default function ClassCalendarPage() {
   const outletContext = useOutletContext();
   const { authUser } = useAuthContext();
   const isTeacher = isTeacherRole(authUser?.role);
-  const canManageFixedSchedule = authUser?.role === "admin";
+  const isAdmin = authUser?.role === "admin";
+  const canManageFixedSchedule = isAdmin;
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState("week"); // "week" | "month" | "list"
@@ -156,11 +157,9 @@ export default function ClassCalendarPage() {
   }, [sessions, assignments, outletContext]);
 
   const handleJoinSession = async (session) => {
-    const now = Date.now();
-    const start = new Date(session.start_time).getTime();
-    const end = new Date(session.end_time).getTime();
-    if (now > end) return toast("Buổi học này đã kết thúc.");
-    if (start - now > 15 * 60 * 1000 && !isTeacher) {
+    const meetingWindowState = getMeetingWindowState(session);
+    if (!isAdmin && meetingWindowState.isClosed) return toast("Buổi học này đã kết thúc.");
+    if (!isAdmin && meetingWindowState.isTooEarly) {
       return toast("Phòng học mở trước giờ học 15 phút. Bạn quay lại sau nhé!", { icon: "⏰" });
     }
 
@@ -318,6 +317,7 @@ export default function ClassCalendarPage() {
               events={allEvents}
               onJoinSession={handleJoinSession}
               isTeacher={isTeacher}
+              isAdmin={isAdmin}
             />
 
             {/* Widget 4: Góc châm ngôn truyền cảm hứng */}
@@ -333,6 +333,7 @@ export default function ClassCalendarPage() {
           onClose={() => setSelectedEvent(null)}
           onJoin={handleJoinSession}
           isTeacher={isTeacher}
+          isAdmin={isAdmin}
           basePath={selectedEventBasePath}
         />
       )}

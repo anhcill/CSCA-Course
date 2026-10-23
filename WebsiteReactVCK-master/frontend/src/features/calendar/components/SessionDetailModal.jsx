@@ -33,13 +33,14 @@ export default function SessionDetailModal({
   onClose,
   onJoin,
   isTeacher = false,
+  isAdmin = false,
   basePath = ""
 }) {
   const [showHistory, setShowHistory] = useState(false);
   if (!session) return null;
 
   const meetingWindow = getMeetingWindowState(session);
-  const isJoinable = meetingWindow.isOpen;
+  const isJoinable = isAdmin || meetingWindow.isOpen;
   const isCompleted = meetingWindow.isClosed;
   const isRescheduled = isSessionRescheduled(session);
   return (
@@ -147,7 +148,7 @@ export default function SessionDetailModal({
                   onClick={() => onJoin(session)}
                   className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition"
                 >
-                  <Play className="h-4 w-4" /> Vào lớp học ngay
+                  <Play className="h-4 w-4" /> {isAdmin ? "Mở link phòng học" : "Vào lớp học ngay"}
                 </button>
               ) : isCompleted ? (
                 <div className="flex items-center justify-center gap-2 rounded-xl bg-slate-100 dark:bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400">

@@ -58,7 +58,8 @@ const TONES_ARRAY = [
 export default function TeacherHubPage() {
   const navigate = useNavigate();
   const { authUser } = useAuthContext();
-  const isTeacher = authUser?.role === "creator" || authUser?.role === "admin";
+  const isAdmin = authUser?.role === "admin";
+  const isTeacher = authUser?.role === "creator" || isAdmin;
   const [data, setData] = useState(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -89,10 +90,10 @@ export default function TeacherHubPage() {
 
   const openLiveRoom = async (session) => {
     const accessWindow = getMeetingWindowState(session);
-    if (accessWindow.isTooEarly) {
+    if (!isAdmin && accessWindow.isTooEarly) {
       return toast("Phòng dạy mở trước giờ bắt đầu 15 phút.", { icon: "⏰" });
     }
-    if (accessWindow.isClosed) {
+    if (!isAdmin && accessWindow.isClosed) {
       return toast("Phòng dạy đã đóng sau giờ học 30 phút.");
     }
     const meetingWindow = reserveMeetingWindow();
@@ -453,10 +454,10 @@ export default function TeacherHubPage() {
                           <button
                             type="button"
                             onClick={() => openLiveRoom(session)}
-                            disabled={!accessWindow.isOpen}
+                            disabled={!isAdmin && !accessWindow.isOpen}
                             className="p-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md shadow-blue-500/20 transition-all duration-200 hover:scale-105 shrink-0 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-400 disabled:shadow-none disabled:hover:scale-100"
                             title={
-                              accessWindow.isOpen
+                              isAdmin || accessWindow.isOpen
                                 ? "Vào phòng dạy"
                                 : accessWindow.isClosed
                                 ? "Phòng đã đóng sau giờ học 30 phút"
