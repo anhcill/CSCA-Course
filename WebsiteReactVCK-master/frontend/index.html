@@ -2,6 +2,23 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (() => {
+        const fallback = "/student-campus-spring.webp";
+        const retired = new Set([
+          "/wallpapers/morning-mist-campus.webp",
+          "https://res.cloudinary.com/dvrgrmais/image/upload/v1792579761/csca/wallpapers/morning-mist-campus.webp",
+        ]);
+        try {
+          const saved = localStorage.getItem("csca_lms_wallpaper");
+          const wallpaper = saved && !retired.has(saved) ? saved : fallback;
+          if (wallpaper !== saved) localStorage.setItem("csca_lms_wallpaper", wallpaper);
+          document.documentElement.style.setProperty("--csca-loading-wallpaper", `url("${wallpaper.replace(/["\\]/g, "")}")`);
+        } catch {
+          document.documentElement.style.setProperty("--csca-loading-wallpaper", `url("${fallback}")`);
+        }
+      })();
+    </script>
     
     <!-- Google Search Console Verification Tag (Thay mã content bên dưới bằng mã xác minh của bạn nếu dùng phương thức HTML tag) -->
     <!-- <meta name="google-site-verification" content="YOUR_GOOGLE_VERIFICATION_CODE_HERE" /> -->

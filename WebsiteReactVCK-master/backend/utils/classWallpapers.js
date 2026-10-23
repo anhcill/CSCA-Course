@@ -1,5 +1,5 @@
 // Centralized CSCA Wallpapers Catalog for Backend Services
-// 15 oriental aesthetic landscape wallpapers hosted on Cloudinary
+// Oriental aesthetic landscape wallpapers hosted on Cloudinary
 
 export const CSCA_WALLPAPERS = [
   {
@@ -8,13 +8,6 @@ export const CSCA_WALLPAPERS = [
     subtitle: "Khuôn viên xuân phong hoa đào",
     url: "/student-campus-spring.webp",
     cloudinaryUrl: "https://res.cloudinary.com/dvrgrmais/image/upload/v1792579793/csca/wallpapers/student-campus-spring.webp",
-  },
-  {
-    id: "morning-mist-campus",
-    title: "Thần Vực Sương Mai",
-    subtitle: "Khuôn viên học viện bình minh",
-    url: "/wallpapers/morning-mist-campus.webp",
-    cloudinaryUrl: "https://res.cloudinary.com/dvrgrmais/image/upload/v1792579761/csca/wallpapers/morning-mist-campus.webp",
   },
   {
     id: "sunset-pavilion",

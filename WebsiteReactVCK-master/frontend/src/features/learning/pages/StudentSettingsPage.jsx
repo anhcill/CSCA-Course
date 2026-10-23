@@ -39,7 +39,7 @@ import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
 import { fetchMyTrustedDevices } from "../../api/accountSecurityClient";
 import { fetchNotificationPreferences, updateNotificationPreferences } from "../../api/lmsClient";
 
-import { CSCA_WALLPAPERS } from "../../../utils/classWallpapers";
+import { CSCA_WALLPAPERS, normalizeLmsWallpaper } from "../../../utils/classWallpapers";
 
 // Default wallpapers list with aesthetic names for CSCA students
 const DEFAULT_WALLPAPERS = CSCA_WALLPAPERS;
@@ -226,7 +226,10 @@ export default function StudentSettingsPage() {
   });
 
   const [currentWallpaper, setCurrentWallpaper] = useState(() => {
-    return localStorage.getItem("csca_lms_wallpaper") || "/student-campus-spring.webp";
+    const savedWallpaper = localStorage.getItem("csca_lms_wallpaper");
+    const wallpaper = normalizeLmsWallpaper(savedWallpaper);
+    if (wallpaper !== savedWallpaper) localStorage.setItem("csca_lms_wallpaper", wallpaper);
+    return wallpaper;
   });
 
   const handleSelectWallpaper = (wp) => {

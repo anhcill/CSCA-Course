@@ -1,5 +1,5 @@
 // Centralized CSCA Wallpapers & Class Cover Images Catalog
-// Includes all 15 aesthetic oriental landscape and academy wallpapers
+// Includes aesthetic oriental landscape and academy wallpapers
 // Uploaded to Cloudinary with local WebP/JPG fallbacks
 
 export const CSCA_WALLPAPERS = [
@@ -9,13 +9,6 @@ export const CSCA_WALLPAPERS = [
     subtitle: "Khuôn viên xuân phong hoa đào",
     url: "/student-campus-spring.webp",
     cloudinaryUrl: "https://res.cloudinary.com/dvrgrmais/image/upload/v1792579793/csca/wallpapers/student-campus-spring.webp",
-  },
-  {
-    id: "morning-mist-campus",
-    title: "Thần Vực Sương Mai",
-    subtitle: "Khuôn viên học viện bình minh",
-    url: "/wallpapers/morning-mist-campus.webp",
-    cloudinaryUrl: "https://res.cloudinary.com/dvrgrmais/image/upload/v1792579761/csca/wallpapers/morning-mist-campus.webp",
   },
   {
     id: "sunset-pavilion",
@@ -109,6 +102,17 @@ export const CSCA_WALLPAPERS = [
     cloudinaryUrl: "https://res.cloudinary.com/dvrgrmais/image/upload/v1792579786/csca/wallpapers/calligraphy-seal.jpg",
   },
 ];
+
+const DEFAULT_LMS_WALLPAPER = "/student-campus-spring.webp";
+const RETIRED_LMS_WALLPAPERS = new Set([
+  "/wallpapers/morning-mist-campus.webp",
+  "https://res.cloudinary.com/dvrgrmais/image/upload/v1792579761/csca/wallpapers/morning-mist-campus.webp",
+]);
+
+export function normalizeLmsWallpaper(value) {
+  const wallpaper = typeof value === "string" ? value.trim() : "";
+  return wallpaper && !RETIRED_LMS_WALLPAPERS.has(wallpaper) ? wallpaper : DEFAULT_LMS_WALLPAPER;
+}
 
 /**
  * Returns the class or course cover image.

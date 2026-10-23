@@ -39,7 +39,7 @@ import AvatarModal from "../../../components/AvatarModal";
 import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
 import { fetchMyTrustedDevices } from "../../api/accountSecurityClient";
 import { fetchTeacherClassesLookup } from "../../api/lmsClient";
-import { CSCA_WALLPAPERS, getClassCoverImage } from "../../../utils/classWallpapers";
+import { CSCA_WALLPAPERS, getClassCoverImage, normalizeLmsWallpaper } from "../../../utils/classWallpapers";
 
 const DEFAULT_WALLPAPERS = CSCA_WALLPAPERS;
 
@@ -270,7 +270,10 @@ export default function TeacherSettingsPage() {
   });
 
   const [currentWallpaper, setCurrentWallpaper] = useState(() => {
-    return localStorage.getItem("csca_lms_wallpaper") || "/student-campus-spring.webp";
+    const savedWallpaper = localStorage.getItem("csca_lms_wallpaper");
+    const wallpaper = normalizeLmsWallpaper(savedWallpaper);
+    if (wallpaper !== savedWallpaper) localStorage.setItem("csca_lms_wallpaper", wallpaper);
+    return wallpaper;
   });
 
   const handleSelectWallpaper = (wp) => {

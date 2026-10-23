@@ -4,6 +4,7 @@ import { fetchTeacherSalarySummary } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { ErrorState, PermissionDeniedState } from "../../../components/common/StateView";
 import TeacherSalarySection from "../components/TeacherSalarySection.jsx";
+import { normalizeLmsWallpaper } from "../../../utils/classWallpapers";
 
 export default function TeacherSalaryPage() {
   const { authUser } = useAuthContext();
@@ -14,14 +15,14 @@ export default function TeacherSalaryPage() {
 
   const [currentWallpaper, setCurrentWallpaper] = useState(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("csca_lms_wallpaper") || "/student-campus-spring.webp";
+      return normalizeLmsWallpaper(localStorage.getItem("csca_lms_wallpaper"));
     }
     return "/student-campus-spring.webp";
   });
 
   useEffect(() => {
     const handleWallpaperChange = (event) => {
-      const newWp = event?.detail || localStorage.getItem("csca_lms_wallpaper") || "/student-campus-spring.webp";
+      const newWp = normalizeLmsWallpaper(event?.detail || localStorage.getItem("csca_lms_wallpaper"));
       setCurrentWallpaper(newWp);
     };
     window.addEventListener("csca_wallpaper_changed", handleWallpaperChange);

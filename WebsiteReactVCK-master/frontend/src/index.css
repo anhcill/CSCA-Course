@@ -30,7 +30,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background-color: #cce4f7;
-  background-image: linear-gradient(rgba(182, 218, 242, 0.68), rgba(204, 230, 248, 0.76)), url('/monet-sunrise.jpg');
+  background-image: linear-gradient(rgba(222, 241, 255, 0.02), rgba(237, 246, 252, 0.12)), var(--csca-loading-wallpaper, url('/student-campus-spring.webp'));
   background-size: cover;
   background-position: center top;
   background-attachment: fixed;
@@ -494,6 +494,27 @@ html:not(.dark) .student-lms--dashboard > header {
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+/* Teacher dashboard header must stay transparent over the selected wallpaper. */
+html:not(.dark) .teacher-lms--dashboard .teacher-lms-header {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html:not(.dark) .teacher-lms--dashboard .teacher-wallpaper-button {
+  background-color: rgba(228, 244, 255, 0.88) !important;
+  border-color: rgba(255, 255, 255, 0.88) !important;
+  color: #17365f !important;
+}
+
+html:not(.dark) .teacher-lms--dashboard .teacher-profile-trigger {
+  background-color: rgba(217, 239, 255, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.92) !important;
+  color: #102f63 !important;
 }
 
 html:not(.dark) .student-lms--dashboard > aside {

@@ -24,6 +24,7 @@ import { fetchUnreadNotificationsCount } from "../../features/api/lmsClient";
 import { useAuthContext } from "../../context/AuthContext";
 import useLogout from "../../hooks/useLogout";
 import { getAvatarUrl, handleAvatarError } from "../../utils/avatar";
+import { normalizeLmsWallpaper } from "../../utils/classWallpapers";
 
 const STUDENT_NAV = [
   { label: "Trang chủ", path: "/lms/dashboard", icon: Home, end: true },
@@ -181,14 +182,18 @@ export default function StudentLmsLayout({ children }) {
 
   const [currentWallpaper, setCurrentWallpaper] = useState(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("csca_lms_wallpaper") || "/student-campus-spring.webp";
+      const savedWallpaper = localStorage.getItem("csca_lms_wallpaper");
+      const wallpaper = normalizeLmsWallpaper(savedWallpaper);
+      if (wallpaper !== savedWallpaper) localStorage.setItem("csca_lms_wallpaper", wallpaper);
+      return wallpaper;
     }
     return "/student-campus-spring.webp";
   });
 
   useEffect(() => {
     const handleWallpaperChange = (event) => {
-      const newWp = event?.detail || localStorage.getItem("csca_lms_wallpaper") || "/student-campus-spring.webp";
+      const newWp = normalizeLmsWallpaper(event?.detail || localStorage.getItem("csca_lms_wallpaper"));
+      localStorage.setItem("csca_lms_wallpaper", newWp);
       setCurrentWallpaper(newWp);
     };
     window.addEventListener("csca_wallpaper_changed", handleWallpaperChange);

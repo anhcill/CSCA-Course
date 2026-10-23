@@ -25,7 +25,7 @@ import { useTheme } from '../../context/ThemeContext';
 import useLogout from '../../hooks/useLogout';
 import { getAvatarUrl, handleAvatarError } from '../../utils/avatar';
 import { PermissionDeniedState } from '../common/StateView';
-import { CSCA_WALLPAPERS } from '../../utils/classWallpapers';
+import { CSCA_WALLPAPERS, normalizeLmsWallpaper } from '../../utils/classWallpapers';
 import { fetchMyLmsPermissions } from '../../features/api/lmsClient';
 
 const TEACHER_NAV = [
@@ -175,14 +175,18 @@ export default function TeacherLmsLayout({ children }) {
   // Synchronize wallpaper with student aesthetic
   const [currentWallpaper, setCurrentWallpaper] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('csca_lms_wallpaper') || '/student-campus-spring.webp';
+      const savedWallpaper = localStorage.getItem('csca_lms_wallpaper');
+      const wallpaper = normalizeLmsWallpaper(savedWallpaper);
+      if (wallpaper !== savedWallpaper) localStorage.setItem('csca_lms_wallpaper', wallpaper);
+      return wallpaper;
     }
     return '/student-campus-spring.webp';
   });
 
   useEffect(() => {
     const handleWallpaperChange = (event) => {
-      const newWp = event?.detail || localStorage.getItem('csca_lms_wallpaper') || '/student-campus-spring.webp';
+      const newWp = normalizeLmsWallpaper(event?.detail || localStorage.getItem('csca_lms_wallpaper'));
+      localStorage.setItem('csca_lms_wallpaper', newWp);
       setCurrentWallpaper(newWp);
     };
     window.addEventListener('csca_wallpaper_changed', handleWallpaperChange);
@@ -289,15 +293,15 @@ export default function TeacherLmsLayout({ children }) {
       )}
 
       {/* Main Content Area */}
-      <main className="min-h-screen lg:pl-[260px]">
-        <header className="fixed left-0 right-0 top-0 z-30 flex h-16 items-center justify-end gap-2 bg-transparent px-4 sm:px-6 lg:left-[260px]">
+      <main className="min-h-screen pt-16 lg:pl-[260px]">
+        <header className="teacher-lms-header fixed left-0 right-0 top-0 z-30 flex h-16 items-center justify-end gap-2 bg-transparent px-4 sm:px-6 lg:left-[260px]">
           {!permissionsReady && (
             <span className="mr-auto hidden text-xs font-semibold text-slate-500 sm:inline">Đang đồng bộ quyền truy cập...</span>
           )}
           <button
             type="button"
             onClick={cycleWallpaper}
-            className="rounded-xl border border-white/85 bg-[#e4f4ff]/85 p-2 text-[#17365f] shadow-[0_5px_18px_rgba(32,91,135,0.18)] backdrop-blur-md transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+            className="teacher-wallpaper-button rounded-xl border border-white/85 bg-[#e4f4ff]/85 p-2 text-[#17365f] shadow-[0_5px_18px_rgba(32,91,135,0.18)] backdrop-blur-md transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
             title="Đổi ảnh nền"
             aria-label="Đổi ảnh nền"
           >
@@ -308,7 +312,7 @@ export default function TeacherLmsLayout({ children }) {
             <button
               type="button"
               onClick={() => setProfileMenuOpen((open) => !open)}
-              className="relative flex items-center gap-2.5 overflow-hidden rounded-xl border border-white/90 bg-[#d9efff]/85 px-2 py-1.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_7px_22px_rgba(24,75,118,0.18)] backdrop-blur-xl transition before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white before:to-transparent hover:bg-[#e8f6ff] dark:border-slate-700 dark:bg-slate-900/85"
+              className="teacher-profile-trigger relative flex items-center gap-2.5 overflow-hidden rounded-xl border border-white/90 bg-[#d9efff]/85 px-2 py-1.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_7px_22px_rgba(24,75,118,0.18)] backdrop-blur-xl transition before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white before:to-transparent hover:bg-[#e8f6ff] dark:border-slate-700 dark:bg-slate-900/85"
               aria-expanded={profileMenuOpen}
             >
               <img src={getAvatarUrl(authUser)} onError={handleAvatarError} alt="" className="h-8 w-8 rounded-full border-2 border-white object-cover shadow-sm" />
