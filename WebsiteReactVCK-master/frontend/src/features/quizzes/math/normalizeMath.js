@@ -1089,9 +1089,40 @@ function stripStandaloneFormattingPunctuation(input) {
 export function normalizeRichMathText(input) {
   if (!input) return '';
 
-  const unescapedInput = normalizeEscapedLatexBackslashes(input);
+  const normalizeDisplayBlock = (block, isDollarBlock) => {
+    const body = block.slice(2, -2);
+    const rowBreaks = [];
+    const protectedBody = body.replace(/\\\\(?=\s*\[[^\]\n]{1,24}\])/g, (rowBreak) => {
+      const token = `\uE002ROW_BREAK_${rowBreaks.length}\uE003`;
+      rowBreaks.push(rowBreak);
+      return token;
+    });
+    const normalizedBody = normalizeLatexMath(protectedBody).replace(
+      /\uE002ROW_BREAK_(\d+)\uE003/g,
+      (_, index) => rowBreaks[Number(index)] || '\\\\',
+    );
+    return isDollarBlock ? `$$${normalizedBody}$$` : `\\[${normalizedBody}\\]`;
+  };
+
+  const displayBlocks = [];
+  const protectedInput = String(input).replace(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g, (block) => {
+    const token = `\uE000MATH_BLOCK_${displayBlocks.length}\uE001`;
+    const isDollarBlock = block.startsWith('$$');
+    displayBlocks.push(normalizeDisplayBlock(block, isDollarBlock));
+    return token;
+  });
+
+  const unescapedInput = normalizeEscapedLatexBackslashes(protectedInput);
   const cleanedInput = stripStandaloneFormattingPunctuation(repairGluedTransitionCommands(unescapedInput));
-  const displayRuleInput = applyDisplayLatexInputRules(repairEscapedMathWordsInProse(cleanedInput));
+  // Keep complete display blocks opaque. Applying prose math wrapping inside
+  // aligned/cases/array environments inserts inline delimiters into LaTeX and
+  // makes otherwise valid solutions render as broken text.
+  const displayRuleInput = cleanedInput
+    .split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g)
+    .map((part) => (part.startsWith('$$') || part.startsWith('\\[')
+      ? part
+      : applyDisplayLatexInputRules(repairEscapedMathWordsInProse(part))))
+    .join('');
   const repairedInput = repairMalformedInlineDollarDelimiters(stripStackedOcrMathFragments(displayRuleInput));
   const normalized = repairedInput
     .split(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\$[^$\n]*\$|`[^`\n]*`)/g)
@@ -1137,7 +1168,8 @@ export function normalizeRichMathText(input) {
     .replace(/(^|\n)([^\n$]*\\(?:sin|cos|tan|cot|sec|csc|log|ln|lg|sqrt|frac|left|right|pi|cap|cup|setminus)[^\n$]*)\$(?=\n|$)/g, (_, prefix, formula) => `${prefix}\\(${String(formula).trim()}\\)`)
     .replace(/(^|\n)\$([^\n$]*\\(?:sin|cos|tan|cot|sec|csc|log|ln|lg|sqrt|frac|left|right|pi|cap|cup|setminus)[^\n$]*)(?=\n|$)/g, (_, prefix, formula) => `${prefix}\\(${String(formula).trim()}\\)`);
 
-  return applyDisplayLatexOutputRules(mergeAdjacentInlineMath(repairedUnmatchedDollars));
+  const output = applyDisplayLatexOutputRules(mergeAdjacentInlineMath(repairedUnmatchedDollars));
+  return output.replace(/\uE000MATH_BLOCK_(\d+)\uE001/g, (_, index) => displayBlocks[Number(index)] || '');
 }
 
 export function normalizeAdminMathInputText(input) {

@@ -68,3 +68,25 @@ test('normalizeRichMathText wraps plain math formulas in \\(...\\) for KaTeX', (
   assert.match(normalized, /\\\(/);
   assert.match(normalized, /\\\)/);
 });
+
+test('normalizeRichMathText keeps display aligned environments intact', () => {
+  const input = String.raw`$$\begin{aligned}
+\sin 75^\circ &= \sin(45^\circ + 30^\circ) \\
+&= \dfrac{\sqrt{6} + \sqrt{2}}{4}
+\end{aligned}$$`;
+  const normalized = normalizeRichMathText(input);
+  assert.match(normalized, /^\$\$[\s\S]*\\begin\{aligned\}/);
+  assert.match(normalized, /\\\\/);
+  assert.doesNotMatch(normalized, /\\\(\\begin|\\\)\\/);
+});
+
+test('normalizeRichMathText keeps cases and array row spacing intact', () => {
+  const input = String.raw`$$\left[\begin{array}{l}
+ x = \dfrac{\pi}{6} + 2k\pi \\[6pt]
+x = \dfrac{5\pi}{6} + 2k\pi
+\end{array}\right.$$`;
+  const normalized = normalizeRichMathText(input);
+  assert.match(normalized, /\\\\\[6pt\]/);
+  assert.doesNotMatch(normalized, /(?<!\\)\\\[6pt\]/);
+  assert.doesNotMatch(normalized, /\\\(\\left/);
+});
