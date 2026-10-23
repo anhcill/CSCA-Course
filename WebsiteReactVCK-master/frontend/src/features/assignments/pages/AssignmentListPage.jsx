@@ -41,7 +41,7 @@ export default function AssignmentListPage() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [activeFilter, setActiveFilter] = useState("all"); // "all" | "homework" | "quiz" | "submitted" | "overdue"
+  const [activeFilter, setActiveFilter] = useState("active"); // "active" | "all" | "quiz" | "submitted" | "overdue"
   const [searchQuery, setSearchQuery] = useState("");
 
   const loadAssignments = useCallback(async ({ silent = false } = {}) => {
@@ -78,12 +78,35 @@ export default function AssignmentListPage() {
     loadAssignments();
   }, [loadAssignments]);
 
+  useEffect(() => {
+    const refresh = () => loadAssignments({ silent: true });
+    const intervalId = window.setInterval(refresh, 60000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [loadAssignments]);
+
   // Xử lý dữ liệu thật từ API
   const allFormattedItems = useMemo(() => {
     const formattedReal = rawAssignments.map((assignment) => {
       const isQuiz = itemType(assignment) === "quiz";
       const status = itemStatus(assignment);
       const due = assignment.due_date ? new Date(assignment.due_date) : null;
+      const availableFrom = assignment.available_from ? new Date(assignment.available_from) : null;
+      const availableUntil = assignment.available_until ? new Date(assignment.available_until) : due;
+      const now = Date.now();
+      const isWithinWindow = (!availableFrom || availableFrom.getTime() <= now)
+        && (!availableUntil || availableUntil.getTime() > now);
+      const attemptLimit = Number(assignment.attempt_limit || 1);
+      const attemptCount = Number(assignment.attempt_count || 0);
+      const isInProgress = isQuiz && String(assignment.submission_status || "").toLowerCase() === "in_progress";
+      const canRetryQuiz = isQuiz && isWithinWindow && (isInProgress || attemptCount < attemptLimit);
+      const canResubmitAssignment = !isQuiz && isWithinWindow && Boolean(assignment.can_resubmit);
+      const isActionable = isQuiz
+        ? canRetryQuiz
+        : isWithinWindow && (status === "todo" || status === "inProgress" || canResubmitAssignment);
 
       let normalizedStatus = "todo";
       if (status === "graded") normalizedStatus = "completed";
@@ -112,7 +135,16 @@ export default function AssignmentListPage() {
         icon: isQuiz ? Calendar : FileText,
         iconStyle: isQuiz ? "bg-rose-50 text-rose-500" : "bg-blue-50 text-blue-600",
         created_at: assignment.created_at || assignment.due_date || new Date().toISOString(),
+        createdTimestamp: new Date(assignment.created_at || assignment.due_date || 0).getTime(),
         dueTimestamp: due ? due.getTime() : null,
+        availableFromTimestamp: availableFrom ? availableFrom.getTime() : null,
+        availableUntilTimestamp: availableUntil ? availableUntil.getTime() : null,
+        isActionable,
+        isInProgress,
+        canRetry: canRetryQuiz && attemptCount > 0 && !isInProgress,
+        canResubmit: canResubmitAssignment,
+        attemptCount,
+        attemptLimit,
       };
     });
 
@@ -125,14 +157,14 @@ export default function AssignmentListPage() {
 
   // Đếm số lượng theo danh mục cho thanh lọc (dựa trên dữ liệu thật)
   const counts = useMemo(() => {
-    let homework = 0;
+    let active = 0;
     let quiz = 0;
     let submitted = 0;
     let overdue = 0;
 
     allFormattedItems.forEach((it) => {
+      if (it.isActionable) active += 1;
       if (it.isQuiz) quiz += 1;
-      else homework += 1;
 
       if (it.normalizedStatus === "completed" || it.normalizedStatus === "grading") {
         submitted += 1;
@@ -143,7 +175,7 @@ export default function AssignmentListPage() {
 
     return {
       all: allFormattedItems.length,
-      homework,
+      active,
       quiz,
       submitted,
       overdue,
@@ -152,8 +184,8 @@ export default function AssignmentListPage() {
 
   // Lọc theo tabs & tìm kiếm
   const visibleItems = useMemo(() => {
-    return allFormattedItems.filter((it) => {
-      if (activeFilter === "homework" && it.isQuiz) return false;
+    const filtered = allFormattedItems.filter((it) => {
+      if (activeFilter === "active" && !it.isActionable) return false;
       if (activeFilter === "quiz" && !it.isQuiz) return false;
       if (activeFilter === "submitted" && it.normalizedStatus !== "completed" && it.normalizedStatus !== "grading") return false;
       if (activeFilter === "overdue" && it.normalizedStatus !== "overdue") return false;
@@ -168,6 +200,8 @@ export default function AssignmentListPage() {
 
       return true;
     });
+
+    return filtered;
   }, [allFormattedItems, activeFilter, searchQuery]);
 
   // NỐI DỮ LIỆU THẬT CHO BOX 1: "Hạn nộp trong tuần này"
@@ -181,7 +215,12 @@ export default function AssignmentListPage() {
     );
 
     const targetList = pending.length > 0 ? pending : withDue;
-    const sorted = [...targetList].sort((a, b) => (a.dueTimestamp || 0) - (b.dueTimestamp || 0));
+    // Bài vừa được đăng luôn nổi lên đầu; cùng thời điểm mới ưu tiên hạn gần hơn.
+    const sorted = [...targetList].sort((a, b) => {
+      const createdDiff = (b.createdTimestamp || 0) - (a.createdTimestamp || 0);
+      if (createdDiff !== 0) return createdDiff;
+      return (a.dueTimestamp || Number.POSITIVE_INFINITY) - (b.dueTimestamp || Number.POSITIVE_INFINITY);
+    });
 
     const dayNames = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 

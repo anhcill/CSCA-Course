@@ -46,8 +46,47 @@ export default function AssignmentTable({
     }
   };
 
+  const getItemStatusBadge = (item) => {
+    if (item.isInProgress) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 whitespace-nowrap">
+          <Clock className="h-2.5 w-2.5" />
+          Đang làm
+        </span>
+      );
+    }
+    if (item.canRetry) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 whitespace-nowrap">
+          <Clock className="h-2.5 w-2.5" />
+          Còn {Math.max(0, item.attemptLimit - item.attemptCount)} lượt
+        </span>
+      );
+    }
+    if (item.canResubmit) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 whitespace-nowrap">
+          <Clock className="h-2.5 w-2.5" />
+          Được nộp lại
+        </span>
+      );
+    }
+    return getStatusBadge(item.normalizedStatus);
+  };
+
   const getActionButton = (item) => {
     const status = item.normalizedStatus || "todo";
+    if (item.isInProgress || item.canRetry || item.canResubmit) {
+      return (
+        <button
+          type="button"
+          onClick={() => onAction && onAction(item, item.isQuiz ? "play" : "submit")}
+          className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold text-blue-600 shadow-2xs transition hover:bg-blue-600 hover:text-white whitespace-nowrap"
+        >
+          {item.isInProgress ? "Tiếp tục" : item.isQuiz ? "Làm lại" : "Nộp lại"}
+        </button>
+      );
+    }
     if (status === "todo") {
       return (
         <button
@@ -189,7 +228,7 @@ export default function AssignmentTable({
 
                     {/* Trạng thái */}
                     <td className="py-1.5 px-1.5 whitespace-nowrap align-middle">
-                      {getStatusBadge(item.normalizedStatus)}
+                      {getItemStatusBadge(item)}
                     </td>
 
                     {/* Điểm */}

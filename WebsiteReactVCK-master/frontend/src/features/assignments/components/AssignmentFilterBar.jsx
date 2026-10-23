@@ -8,8 +8,8 @@ export default function AssignmentFilterBar({
   onSearchChange,
 }) {
   const filters = [
+    { id: "active", label: "Bài tập", icon: FileText, count: counts.active ?? 0 },
     { id: "all", label: "Tất cả", icon: LayoutGrid, count: counts.all ?? 0 },
-    { id: "homework", label: "Bài tập", icon: FileText, count: counts.homework ?? 0 },
     { id: "quiz", label: "Kiểm tra", icon: Calendar, count: counts.quiz ?? 0 },
     { id: "submitted", label: "Đã nộp", icon: CheckCircle2, count: counts.submitted ?? 0 },
     { id: "overdue", label: "Quá hạn", icon: AlertCircle, count: counts.overdue ?? 0 },

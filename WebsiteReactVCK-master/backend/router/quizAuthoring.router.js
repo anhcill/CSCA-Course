@@ -529,7 +529,7 @@ export const createQuizAuthoringRouter = ({
       committed = true;
 
       if (requestedStatus === "PUBLISHED" && scheduled.liveClassId) {
-        broadcastToClass({
+        await broadcastToClass({
           liveClassId: scheduled.liveClassId,
           title: `Quiz mới: ${scheduled.title}`,
           message: scheduled.activityScope === "homework" ? "Bạn có bài tập về nhà mới." : "Bài trên lớp đã sẵn sàng.",
@@ -657,7 +657,7 @@ export const createQuizAuthoringRouter = ({
       committed = true;
 
       if (quiz.status !== "PUBLISHED") {
-        broadcastToClass({
+        await broadcastToClass({
           liveClassId: scheduled.liveClassId,
           title: `Quiz mới: ${scheduled.title}`,
           message: scheduled.activityScope === "homework" ? "Bạn có bài tập về nhà mới." : "Bài trên lớp đã sẵn sàng.",

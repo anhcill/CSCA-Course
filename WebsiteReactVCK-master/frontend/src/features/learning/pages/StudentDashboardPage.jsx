@@ -256,9 +256,11 @@ export default function StudentDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const loadDashboard = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const loadDashboard = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     const [courseResult, scheduleResult, notificationResult] = await Promise.allSettled([
       fetchMyEnrolledCourses(),
       fetchMyLiveSchedule(),
@@ -267,16 +269,36 @@ export default function StudentDashboardPage() {
 
     if (courseResult.status === "fulfilled") {
       setCourses(Array.isArray(courseResult.value?.data) ? courseResult.value.data : []);
-    } else {
+    } else if (!silent) {
       setCourses([]);
       setError("Không thể tải dữ liệu trang chủ. Vui lòng thử lại.");
     }
-    setSessions(scheduleResult.status === "fulfilled" && Array.isArray(scheduleResult.value?.data) ? scheduleResult.value.data : []);
-    setNotifications(notificationResult.status === "fulfilled" && Array.isArray(notificationResult.value?.data?.notifications) ? notificationResult.value.data.notifications : []);
-    setLoading(false);
+    if (scheduleResult.status === "fulfilled") {
+      setSessions(Array.isArray(scheduleResult.value?.data) ? scheduleResult.value.data : []);
+    } else if (!silent) {
+      setSessions([]);
+    }
+    if (notificationResult.status === "fulfilled") {
+      setNotifications(Array.isArray(notificationResult.value?.data?.notifications) ? notificationResult.value.data.notifications : []);
+    } else if (!silent) {
+      setNotifications([]);
+    }
+    if (!silent) setLoading(false);
   }, []);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
+
+  useEffect(() => {
+    const refresh = () => loadDashboard({ silent: true });
+    const intervalId = window.setInterval(refresh, 60000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("csca:notifications-updated", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("csca:notifications-updated", refresh);
+    };
+  }, [loadDashboard]);
 
   const upcomingSessions = useMemo(() => {
     const now = Date.now();
