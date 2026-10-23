@@ -23,6 +23,7 @@ import { fetchSubmissions, gradeSubmission } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import GradingWorkflowPanel from "../components/GradingWorkflowPanel";
 import SubmissionAnnotations from "../components/SubmissionAnnotations";
+import usePersistentClassSelection from "../../teacher/hooks/usePersistentClassSelection";
 
 /* ── Mẫu nhận xét nhanh phong cách Á Đông & Chuyên nghiệp ───────── */
 const QUICK_FEEDBACK = [
@@ -226,7 +227,6 @@ export default function TeacherGradingPage() {
 
   // Filters & Sorting
   const [filterStatus, setFilterStatus] = useState("pending"); // all | pending | graded
-  const [filterClass, setFilterClass] = useState(requestedClassId || "all");
   const [filterType, setFilterType] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortByDeadline, setSortByDeadline] = useState("asc"); // asc | desc
@@ -234,6 +234,18 @@ export default function TeacherGradingPage() {
   // Audio player playback rate (0.75, 1, 1.25, 1.5)
   const [playbackRate, setPlaybackRate] = useState(1);
   const [activeFileIndex, setActiveGradingFileIndex] = useState(0);
+
+  const submissionClassIds = useMemo(
+    () => [...new Set(submissions.filter((submission) => submission.classId).map((submission) => submission.classId))],
+    [submissions],
+  );
+  const [filterClass, setFilterClass] = usePersistentClassSelection({
+    scope: "grading",
+    availableClassIds: submissionClassIds,
+    allValue: "all",
+    ready: !loading,
+    preferredValue: requestedClassId || null,
+  });
 
   const subFiles = useMemo(() => {
     if (!selectedSub) return [];
@@ -286,10 +298,6 @@ export default function TeacherGradingPage() {
   useEffect(() => {
     loadSubmissions();
   }, [loadSubmissions]);
-
-  useEffect(() => {
-    setFilterClass(requestedClassId || "all");
-  }, [requestedClassId]);
 
   // Handle selecting a submission from queue
   const handleSelectSub = useCallback((sub) => {

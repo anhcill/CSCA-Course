@@ -26,6 +26,7 @@ import {
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
+import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
 
 const EMPTY_GRADEBOOK = {
   classInfo: null,
@@ -441,7 +442,6 @@ export default function TeacherStudentProgressPage() {
   const location = useLocation();
   const isAdminView = location.pathname.startsWith("/admin/");
   const [classes, setClasses] = useState([]);
-  const [classId, setClassId] = useState("");
   const [courseFilter, setCourseFilter] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState("all");
   const [gradebook, setGradebook] = useState(EMPTY_GRADEBOOK);
@@ -453,10 +453,22 @@ export default function TeacherStudentProgressPage() {
   const [editingScoreTarget, setEditingScoreTarget] = useState(null);
   const [activeView, setActiveView] = useState("overview");
   const [riskStudents, setRiskStudents] = useState([]);
-  const [riskClassFilter, setRiskClassFilter] = useState("all");
   const [riskFilter, setRiskFilter] = useState("all");
   const [loadingRisk, setLoadingRisk] = useState(false);
   const [riskError, setRiskError] = useState("");
+  const classIds = useMemo(() => classes.map((item) => item.id), [classes]);
+  const [classId, setClassId] = usePersistentClassSelection({
+    scope: isAdminView ? "student-progress-admin" : "student-progress",
+    availableClassIds: classIds,
+    allValue: "",
+    ready: !loadingClasses,
+  });
+  const [riskClassFilter, setRiskClassFilter] = usePersistentClassSelection({
+    scope: isAdminView ? "risk-students-admin" : "risk-students",
+    availableClassIds: classIds,
+    allValue: "all",
+    ready: !loadingClasses,
+  });
 
   const loadClasses = useCallback(async () => {
     setLoadingClasses(true);
@@ -465,13 +477,17 @@ export default function TeacherStudentProgressPage() {
       const result = await fetchTeacherDashboardStats({ limit: 1 });
       const nextClasses = result?.data?.classes || [];
       setClasses(nextClasses);
-      setClassId((current) => current || String(nextClasses[0]?.id || ""));
+      setClassId((current) => (
+        nextClasses.some((item) => String(item.id) === String(current))
+          ? current
+          : String(nextClasses[0]?.id || "")
+      ));
     } catch (loadError) {
       setError(loadError.message || "Không thể tải danh sách lớp phụ trách.");
     } finally {
       setLoadingClasses(false);
     }
-  }, []);
+  }, [setClassId]);
 
   const loadGradebook = useCallback(async () => {
     if (!classId) {

@@ -22,6 +22,7 @@ import {
   saveSupportCase,
 } from "../../api/lmsClient";
 import { datetimeLocal } from "../components/workflowStyles";
+import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
 
 const statesConfig = {
   open: {
@@ -53,7 +54,14 @@ const statesConfig = {
 export default function StudentSupportPage() {
   const [params] = useSearchParams();
   const [classes, setClasses] = useState([]);
-  const [classId, setClassId] = useState(params.get("classId") || "");
+  const classIds = useMemo(() => classes.map((item) => item.id), [classes]);
+  const [classId, setClassId] = usePersistentClassSelection({
+    scope: "student-support",
+    availableClassIds: classIds,
+    allValue: "",
+    ready: classes.length > 0,
+    preferredValue: params.get("classId") || null,
+  });
   const [data, setData] = useState({ students: [], owners: [], cases: [] });
   const [status, setStatus] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,10 +77,14 @@ export default function StudentSupportPage() {
       .then((r) => {
         const classList = Array.isArray(r?.data) ? r.data : [];
         setClasses(classList);
-        setClassId((curr) => curr || String(classList[0]?.id || ""));
+        setClassId((current) => (
+          classList.some((item) => String(item.id) === String(current))
+            ? current
+            : String(classList[0]?.id || "")
+        ));
       })
       .catch((e) => setError(e.message || "Không thể tải danh sách lớp học."));
-  }, []);
+  }, [setClassId]);
 
   // Load support cases for selected class
   const load = useCallback(async () => {

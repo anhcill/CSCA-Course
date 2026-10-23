@@ -41,6 +41,7 @@ import Loading from "../../../components/Loading.jsx";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
 import { getClassCoverImage } from "../../../utils/classWallpapers";
+import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
 
 const formatDateOnly = (dateString) => {
   if (!dateString) return "Chưa có ngày";
@@ -167,7 +168,7 @@ export default function TeacherFilesPage() {
 
   // Filters from URL or state
   const selectedCourseId = searchParams.get("courseId") || "all";
-  const selectedClassId = searchParams.get("classId") || "all";
+  const urlClassId = searchParams.get("classId") || null;
   const selectedDateFilter = searchParams.get("date") || "all"; // 'all', 'today', 'week', or YYYY-MM-DD
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedKind, setSelectedKind] = useState("all");
@@ -175,23 +176,26 @@ export default function TeacherFilesPage() {
   // View mode: 'by_class' (Theo Lớp & Buổi học - MẶC ĐỊNH), 'timeline' (Theo ngày học), 'table' (Dạng bảng)
   const [viewMode, setViewMode] = useState("by_class");
 
-  // Active class for drill-down in by_class mode
-  const [activeClassId, setActiveClassId] = useState(
-    selectedClassId !== "all" ? selectedClassId : null
-  );
+  const eligibleClassIds = useMemo(() => classesLookup
+    .filter((item) => selectedCourseId === "all" || String(item.courseId) === String(selectedCourseId))
+    .map((item) => item.id), [classesLookup, selectedCourseId]);
+  const [selectedClassId, setSelectedClassId] = usePersistentClassSelection({
+    scope: isAdmin ? "files-admin" : "files",
+    availableClassIds: eligibleClassIds,
+    allValue: "all",
+    ready: !loading,
+    preferredValue: urlClassId,
+  });
+  const activeClassId = selectedClassId === "all" ? null : selectedClassId;
+  const requestedClassId = viewMode === "by_class" || selectedClassId === "all"
+    ? undefined
+    : selectedClassId;
 
   // Filter in class detail: 'all_sessions' vs 'only_with_files'
   const [sessionVisibilityFilter, setSessionVisibilityFilter] = useState("all_sessions");
 
   // Filter for class cards search
   const [classSearchQuery, setClassSearchQuery] = useState("");
-
-  // Sync activeClassId if URL selectedClassId changes
-  useEffect(() => {
-    if (selectedClassId !== "all") {
-      setActiveClassId(selectedClassId);
-    }
-  }, [selectedClassId]);
 
   // Upload modal state
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -216,7 +220,7 @@ export default function TeacherFilesPage() {
         fetchTeacherClassesLookup().catch(() => ({ data: [] })),
         fetchTeacherFiles({
           courseId: selectedCourseId !== "all" ? selectedCourseId : undefined,
-          classId: (viewMode !== "by_class" && selectedClassId !== "all") ? selectedClassId : undefined,
+          classId: requestedClassId,
           date: selectedDateFilter !== "all" && selectedDateFilter !== "today" && selectedDateFilter !== "week"
             ? selectedDateFilter : undefined,
         }),
@@ -230,7 +234,7 @@ export default function TeacherFilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCourseId, selectedClassId, selectedDateFilter, viewMode]);
+  }, [requestedClassId, selectedCourseId, selectedDateFilter]);
 
   useEffect(() => {
     loadData();
@@ -354,12 +358,13 @@ export default function TeacherFilesPage() {
 
   // Handlers for URL filters & Class selection
   const handleSelectClass = (classId) => {
-    setActiveClassId(classId);
+    const nextClassId = classId || "all";
+    setSelectedClassId(nextClassId);
     const next = new URLSearchParams(searchParams);
-    if (!classId) {
+    if (nextClassId === "all") {
       next.delete("classId");
     } else {
-      next.set("classId", classId);
+      next.set("classId", nextClassId);
     }
     setSearchParams(next);
   };
@@ -370,7 +375,7 @@ export default function TeacherFilesPage() {
     if (val === "all") next.delete("courseId");
     else next.set("courseId", val);
     next.delete("classId"); // reset class when course changes
-    setActiveClassId(null);
+    setSelectedClassId("all");
     setSearchParams(next);
   };
 
@@ -379,10 +384,10 @@ export default function TeacherFilesPage() {
     const next = new URLSearchParams(searchParams);
     if (val === "all") {
       next.delete("classId");
-      setActiveClassId(null);
+      setSelectedClassId("all");
     } else {
       next.set("classId", val);
-      setActiveClassId(val);
+      setSelectedClassId(val);
     }
     setSearchParams(next);
   };

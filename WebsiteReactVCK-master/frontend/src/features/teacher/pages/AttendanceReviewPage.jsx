@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -22,6 +22,7 @@ import {
   reviewFinalizedAttendanceSheet,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
+import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
 
 const STATUS_LABELS = {
   present: { label: "Có mặt", badge: "bg-emerald-50 text-emerald-700 border-emerald-200" },
@@ -318,7 +319,14 @@ export default function AttendanceReviewPage() {
   const location = useLocation();
   const isAdminView = location.pathname.startsWith("/admin/");
   const [classes, setClasses] = useState([]);
-  const [classId, setClassId] = useState("");
+  const [classesLoaded, setClassesLoaded] = useState(false);
+  const classIds = useMemo(() => classes.map((item) => item.id), [classes]);
+  const [classId, setClassId] = usePersistentClassSelection({
+    scope: isAdminView ? "attendance-review-admin" : "attendance-review",
+    availableClassIds: classIds,
+    allValue: "",
+    ready: classesLoaded,
+  });
   const [status, setStatus] = useState("pending");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState([]);
@@ -332,7 +340,8 @@ export default function AttendanceReviewPage() {
   useEffect(() => {
     fetchTeacherClassesLookup()
       .then((r) => setClasses(Array.isArray(r?.data) ? r.data : []))
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(e.message))
+      .finally(() => setClassesLoaded(true));
   }, []);
 
   const load = useCallback(async () => {
