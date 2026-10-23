@@ -546,7 +546,8 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
                 lc.allow_file_download,
                 COALESCE(NULLIF(lc.teacher_display_name, ''), u.username, u.email) AS instructor_name,
                 (SELECT COUNT(*)::int FROM class_enrollments ce
-                 WHERE ce.live_class_id = lc.id AND ce.status = 'active') AS student_count
+                 WHERE ce.live_class_id = lc.id AND ce.status = 'active'
+                   AND ce.is_internal_test = FALSE) AS student_count
          FROM live_classes lc
          LEFT JOIN users u ON u.id = lc.instructor_id
          WHERE lc.id = $1 AND lc.course_id = $2 AND lc.status = 'active'
@@ -677,7 +678,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         `SELECT lc.id, lc.title, lc.description, lc.instructor_id, lc.max_students,
                 lc.allow_file_download,
                 COALESCE(NULLIF(lc.teacher_display_name, ''), u.username, u.email) AS instructor_name,
-                COUNT(ce.id) FILTER (WHERE ce.status = 'active')::int AS enrolled_count
+                COUNT(ce.id) FILTER (WHERE ce.status = 'active' AND ce.is_internal_test = FALSE)::int AS enrolled_count
          FROM live_classes lc
          LEFT JOIN users u ON u.id = lc.instructor_id
          LEFT JOIN class_enrollments ce ON ce.live_class_id = lc.id

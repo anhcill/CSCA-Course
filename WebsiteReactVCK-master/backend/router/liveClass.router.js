@@ -509,7 +509,7 @@ router.get("/", protectRoute, requireManagedLearner, async (req, res) => {
               lc.max_students, lc.status, lc.created_at, lc.updated_at,
               lc.teacher_display_name, lc.cover_image_url,
               COALESCE(c.title, c.name) AS course_title,
-              COUNT(ce.id) FILTER (WHERE ce.status = 'active')::int AS enrolled_count
+              COUNT(ce.id) FILTER (WHERE ce.status = 'active' AND ce.is_internal_test = FALSE)::int AS enrolled_count
        FROM live_classes lc
        LEFT JOIN courses c ON c.id = lc.course_id
        LEFT JOIN class_enrollments ce ON ce.live_class_id = lc.id
@@ -648,7 +648,7 @@ router.get("/my-schedule", protectRoute, requireManagedLearner, async (req, res)
               cs.lesson_id, COALESCE(lesson.title, lesson.name) AS lesson_title,
               lc.title AS class_title, lc.course_id, lc.instructor_id, lc.max_students,
               COALESCE(c.title, c.name) AS course_title,
-              COUNT(ce2.id) FILTER (WHERE ce2.status = 'active')::int AS enrolled_count,
+              COUNT(ce2.id) FILTER (WHERE ce2.status = 'active' AND ce2.is_internal_test = FALSE)::int AS enrolled_count,
               cs.meet_url, cs.management_session_source_id,
               EXISTS (
                 SELECT 1 FROM class_schedules managed_schedule
@@ -748,7 +748,7 @@ router.post("/:classId/join", protectRoute, requireRole("user"), requireActiveSt
 
     const countResult = await client.query(
       `SELECT COUNT(*)::int AS count FROM class_enrollments
-       WHERE live_class_id = $1 AND status = 'active'`,
+       WHERE live_class_id = $1 AND status = 'active' AND is_internal_test = FALSE`,
       [classId],
     );
     if (countResult.rows[0].count >= liveClass.max_students) {
@@ -790,7 +790,7 @@ router.get("/:classId/enrollments", protectRoute, requireTeacher, requirePermiss
 
     const result = await query(
       `SELECT u.id, u.username, u.email, u.avatar_url,
-              ce.status AS enrollment_status, ce.enrolled_at,
+              ce.status AS enrollment_status, ce.enrolled_at, ce.is_internal_test,
               COUNT(DISTINCT cs.id) FILTER (WHERE cs.status <> 'cancelled')::int AS total_sessions,
               COUNT(DISTINCT ca.session_id) FILTER (WHERE ca.status = 'present')::int AS present_sessions
        FROM class_enrollments ce
@@ -798,9 +798,10 @@ router.get("/:classId/enrollments", protectRoute, requireTeacher, requirePermiss
        LEFT JOIN class_sessions cs ON cs.live_class_id = ce.live_class_id
        LEFT JOIN class_attendance ca ON ca.user_id = ce.user_id AND ca.session_id = cs.id
        WHERE ce.live_class_id = $1 AND ce.status = 'active'
-       GROUP BY u.id, ce.status, ce.enrolled_at
+         AND ($2::boolean OR NOT ce.is_internal_test)
+       GROUP BY u.id, ce.status, ce.enrolled_at, ce.is_internal_test
        ORDER BY LOWER(COALESCE(u.username, u.email)) ASC`,
-      [classId],
+      [classId, req.user.role === 'admin'],
     );
 
     return res.json({ success: true, data: result.rows.map((row) => ({
@@ -871,7 +872,7 @@ router.post("/:classId/enrollments", protectRoute, requireRole("admin"), async (
     let enrollmentId = existing.rows[0]?.id || null;
     if (!alreadyActive) {
       const countResult = await client.query(
-        "SELECT COUNT(*)::int AS count FROM class_enrollments WHERE live_class_id = $1 AND status = 'active'",
+        "SELECT COUNT(*)::int AS count FROM class_enrollments WHERE live_class_id = $1 AND status = 'active' AND is_internal_test = FALSE",
         [classId],
       );
       if (countResult.rows[0].count >= liveClass.max_students) {

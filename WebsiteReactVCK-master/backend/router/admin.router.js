@@ -119,6 +119,7 @@ const safeUser = (row) => ({
   hasSeenWelcome: Boolean(row.welcome_seen_at),
   isManagementManaged: Boolean(row.is_management_managed),
   lmsAccountStatus: row.lms_account_status || "unmanaged",
+  isInternalTestAccount: Boolean(row.is_internal_test_account),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -160,7 +161,8 @@ const courseSelect = `
          (SELECT COUNT(*)::int FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
          (SELECT COUNT(*)::int FROM live_classes lc WHERE lc.course_id = c.id) AS class_count,
          (SELECT COUNT(*)::int FROM live_classes lc WHERE lc.course_id = c.id AND lc.status = 'active') AS active_class_count,
-         (SELECT COUNT(*)::int FROM enrollments e WHERE e.course_id = c.id AND e.status = 'active') AS active_enrollments,
+         (SELECT COUNT(*)::int FROM enrollments e JOIN users eu ON eu.id = e.user_id
+          WHERE e.course_id = c.id AND e.status = 'active' AND COALESCE(eu.is_internal_test_account, FALSE) = FALSE) AS active_enrollments,
          (SELECT COUNT(*)::int FROM lesson_progress lp WHERE lp.course_id = c.id) AS progress_count`;
 
 const getCourse = async (courseId, db = { query }) => {
@@ -173,7 +175,7 @@ const getUser = async (userId, db = { query }) => {
     `SELECT u.id, u.username, u.email, u.role, u.gender, u.avatar_url, u.is_locked,
             u.locked_reason, u.locked_at, u.device_limit_attempts, u.device_limit_last_attempt_at,
             u.is_vip, u.email_verified, u.oauth_provider, u.password_hash,
-            u.is_management_managed, u.lms_account_status,
+            u.is_management_managed, u.lms_account_status, u.is_internal_test_account,
             COALESCE(u.hourly_rate, 0)::numeric(12,2) AS hourly_rate,
             u.created_at, u.updated_at, sp.full_name
      FROM users u LEFT JOIN student_profiles sp ON sp.user_id = u.id WHERE u.id = $1`,
@@ -314,7 +316,7 @@ router.get("/kpi-summary", ...adminOnly, async (req, res) => {
   try {
     const [users, courses, enrollments, pending, attendance, completion, revenue, monthly, activities, entitlements, syncJobs] = await Promise.all([
       query(`SELECT COUNT(*)::int AS total,
-                    COUNT(*) FILTER (WHERE role = 'user' AND NOT is_locked)::int AS active_learners,
+                    COUNT(*) FILTER (WHERE role = 'user' AND NOT is_locked AND COALESCE(is_internal_test_account, FALSE) = FALSE)::int AS active_learners,
                     COUNT(*) FILTER (WHERE role = 'creator')::int AS creators,
                     COUNT(*) FILTER (WHERE role = 'admin')::int AS admins,
                     COUNT(*) FILTER (WHERE is_locked)::int AS locked
@@ -323,14 +325,18 @@ router.get("/kpi-summary", ...adminOnly, async (req, res) => {
                     COUNT(*) FILTER (WHERE is_published)::int AS published,
                     COUNT(*) FILTER (WHERE NOT is_published)::int AS drafts
              FROM courses`),
-      query("SELECT COUNT(*)::int AS count FROM enrollments WHERE status = 'active'"),
-      query("SELECT COUNT(*)::int AS count FROM assignment_submissions WHERE status IN ('submitted', 'late')"),
+      query(`SELECT COUNT(*)::int AS count FROM enrollments e JOIN users u ON u.id = e.user_id
+             WHERE e.status = 'active' AND COALESCE(u.is_internal_test_account, FALSE) = FALSE`),
+      query(`SELECT COUNT(*)::int AS count FROM assignment_submissions s JOIN users u ON u.id = s.user_id
+             WHERE s.status IN ('submitted', 'late') AND COALESCE(u.is_internal_test_account, FALSE) = FALSE`),
       query(`SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE ca.status = 'present') /
                           NULLIF(COUNT(*) FILTER (WHERE ca.status IN ('present', 'absent', 'excused')), 0), 1) AS rate
              FROM class_attendance ca
+             JOIN users attendance_user ON attendance_user.id = ca.user_id
              JOIN class_attendance_sheets sheet ON sheet.session_id = ca.session_id
              JOIN class_sessions cs ON cs.id = sheet.session_id
-             WHERE cs.status <> 'cancelled' AND cs.start_time <= NOW()`),
+             WHERE cs.status <> 'cancelled' AND cs.start_time <= NOW()
+               AND COALESCE(attendance_user.is_internal_test_account, FALSE) = FALSE`),
       query("SELECT COALESCE(AVG(progress_pct), 0)::numeric(5,1) AS rate FROM progress"),
       query("SELECT COALESCE(SUM(final_amount_vnd) FILTER (WHERE status = 'success'), 0)::bigint AS total FROM transactions"),
       query(`WITH months AS (
@@ -338,18 +344,22 @@ router.get("/kpi-summary", ...adminOnly, async (req, res) => {
                FROM generate_series(6, 0, -1) AS n
              )
              SELECT to_char(m.month_start, 'YYYY-MM') AS month,
-                    (SELECT COUNT(*)::int FROM enrollments e WHERE date_trunc('month', e.enrolled_at) = m.month_start) AS enrollments,
-                    (SELECT COUNT(*)::int FROM users u WHERE date_trunc('month', u.created_at) = m.month_start) AS users
+                    (SELECT COUNT(*)::int FROM enrollments e JOIN users eu ON eu.id = e.user_id
+                     WHERE date_trunc('month', e.enrolled_at) = m.month_start AND COALESCE(eu.is_internal_test_account, FALSE) = FALSE) AS enrollments,
+                    (SELECT COUNT(*)::int FROM users u WHERE date_trunc('month', u.created_at) = m.month_start
+                     AND COALESCE(u.is_internal_test_account, FALSE) = FALSE) AS users
              FROM months m ORDER BY m.month_start`),
       query(`SELECT ae.id, ae.action, ae.entity_type, ae.entity_id, ae.created_at,
                     u.username AS actor, u.avatar_url AS avatar
              FROM audit_events ae LEFT JOIN users u ON u.id = ae.actor_id
              ORDER BY ae.created_at DESC LIMIT 8`),
       query(`SELECT
-               COUNT(*) FILTER (WHERE access_status = 'active' AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW()))::int AS active,
-               COUNT(*) FILTER (WHERE access_status = 'suspended')::int AS suspended,
-               COUNT(*) FILTER (WHERE access_status IN ('revoked', 'expired') OR (valid_until IS NOT NULL AND valid_until <= NOW()))::int AS inactive
-             FROM lms_access_grants`),
+               COUNT(*) FILTER (WHERE grant_row.access_status = 'active' AND grant_row.valid_from <= NOW() AND (grant_row.valid_until IS NULL OR grant_row.valid_until > NOW()))::int AS active,
+               COUNT(*) FILTER (WHERE grant_row.access_status = 'suspended')::int AS suspended,
+               COUNT(*) FILTER (WHERE grant_row.access_status IN ('revoked', 'expired') OR (grant_row.valid_until IS NOT NULL AND grant_row.valid_until <= NOW()))::int AS inactive
+             FROM lms_access_grants grant_row
+             JOIN users grant_user ON grant_user.id = grant_row.user_id
+             WHERE COALESCE(grant_user.is_internal_test_account, FALSE) = FALSE`),
       query(`SELECT COUNT(*) FILTER (WHERE status = 'DEAD_LETTER')::int AS dead_letter FROM lms_sync_jobs`),
     ]);
 
@@ -1020,7 +1030,7 @@ router.get("/users", ...adminOnly, async (req, res) => {
               u.is_locked, u.locked_reason, u.locked_at,
               u.device_limit_attempts, u.device_limit_last_attempt_at,
               u.is_vip, u.email_verified, u.oauth_provider,
-              u.is_management_managed, u.lms_account_status,
+              u.is_management_managed, u.lms_account_status, u.is_internal_test_account,
               (u.password_hash IS NOT NULL) AS has_password,
               COALESCE(u.hourly_rate, 0)::numeric(12,2) AS hourly_rate,
               u.created_at, u.updated_at, COALESCE(sp.full_name, u.username) AS full_name,
@@ -1065,7 +1075,7 @@ router.post("/users", ...adminOnly, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, FALSE, $8, $9)
        RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked,
                  is_vip, email_verified, oauth_provider, password_hash,
-                 is_management_managed, lms_account_status, created_at, updated_at`,
+                 is_management_managed, lms_account_status, is_internal_test_account, created_at, updated_at`,
       [username, email, hash, gender, avatarUrl, role, hourlyRate, role === "user", role === "user" ? "active" : "unmanaged"],
     );
     if (fullName) {
@@ -1115,7 +1125,7 @@ router.patch("/users/:id/lock", ...adminOnly, async (req, res) => {
        RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked,
                  locked_reason, locked_at, device_limit_attempts, device_limit_last_attempt_at,
                  is_vip, email_verified, oauth_provider, password_hash,
-                 is_management_managed, lms_account_status, created_at, updated_at`,
+                 is_management_managed, lms_account_status, is_internal_test_account, created_at, updated_at`,
       [req.body.isLocked, userId],
     );
     if (req.body.isLocked) {
@@ -1203,7 +1213,7 @@ router.patch("/users/:id", ...adminOnly, async (req, res) => {
          RETURNING id, username, email, role, gender, avatar_url, hourly_rate, is_locked,
                    locked_reason, locked_at, device_limit_attempts, device_limit_last_attempt_at,
                    is_vip, email_verified, oauth_provider, password_hash,
-                   is_management_managed, lms_account_status, created_at, updated_at`,
+                   is_management_managed, lms_account_status, is_internal_test_account, created_at, updated_at`,
         values,
       );
       after = result.rows[0];
@@ -1714,8 +1724,10 @@ router.delete("/courses/:id", ...adminOnly, async (req, res) => {
     const course = await getCourse(courseId, client);
     if (!course) { await client.query("ROLLBACK"); return sendError(res, 404, "Không tìm thấy khóa học", "NOT_FOUND"); }
     const counts = await client.query(`SELECT
-      (SELECT COUNT(*)::int FROM enrollments WHERE course_id = $1) AS enrollments,
-      (SELECT COUNT(*)::int FROM lesson_progress WHERE course_id = $1) AS progress`, [courseId]);
+      (SELECT COUNT(*)::int FROM enrollments e JOIN users eu ON eu.id = e.user_id
+       WHERE e.course_id = $1 AND COALESCE(eu.is_internal_test_account, FALSE) = FALSE) AS enrollments,
+      (SELECT COUNT(*)::int FROM lesson_progress lp JOIN users progress_user ON progress_user.id = lp.user_id
+       WHERE lp.course_id = $1 AND COALESCE(progress_user.is_internal_test_account, FALSE) = FALSE) AS progress`, [courseId]);
     const details = { enrollmentsCount: Number(counts.rows[0].enrollments || 0), progressCount: Number(counts.rows[0].progress || 0) };
     if (details.enrollmentsCount > 0 || details.progressCount > 0) {
       await client.query("ROLLBACK");

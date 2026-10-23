@@ -215,7 +215,7 @@ const handleLeaderboard = async (req, res) => {
 
     const { scope, period, page, limit, offset } = options;
     const values = [];
-    const filters = ["u.role = 'user'", "COALESCE(u.is_locked, false) = false"];
+    const filters = ["u.role = 'user'", "COALESCE(u.is_locked, false) = false", "COALESCE(u.is_internal_test_account, false) = false"];
     let joinClause = "";
     let resolvedScopeId = null;
 
@@ -526,8 +526,9 @@ router.get("/session/:sessionId", protectRoute, requireTeacher, requirePermissio
          WHERE cs2.live_class_id = ce.live_class_id AND cs2.status <> 'cancelled'
        ) stats ON true
        WHERE ce.live_class_id = $2 AND ce.status = 'active'
+         AND ($3::boolean OR ce.is_internal_test = FALSE)
        ORDER BY LOWER(COALESCE(u.username, u.email)) ASC`,
-      [sessionId, session.live_class_id],
+      [sessionId, session.live_class_id, req.user.role === "admin"],
     );
 
     return res.json({
@@ -693,6 +694,7 @@ router.get("/amendments", protectRoute, requireTeacher, requirePermission("lms.a
        JOIN live_classes lc ON lc.id = cs.live_class_id JOIN users u ON u.id = r.user_id
        LEFT JOIN users requester ON requester.id = r.requested_by LEFT JOIN users reviewer ON reviewer.id = r.reviewed_by
        WHERE ($1 = 'all' OR r.status = $1) AND ($2::bigint IS NULL OR lc.id = $2)
+          AND ($3 = 'admin' OR COALESCE(u.is_internal_test_account, FALSE) = FALSE)
           AND ($3 = 'admin' OR EXISTS (
             SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = lc.id AND ct.teacher_id = $4 AND ct.status = 'active')
             OR (lc.instructor_id = $4 AND NOT EXISTS (
@@ -724,8 +726,9 @@ router.get("/session/:sessionId/amendments", protectRoute, requireTeacher, requi
        LEFT JOIN users requester ON requester.id = request.requested_by
        LEFT JOIN users reviewer ON reviewer.id = request.reviewed_by
        WHERE request.session_id = $1
+         AND ($2::boolean OR COALESCE(student.is_internal_test_account, FALSE) = FALSE)
        ORDER BY CASE request.status WHEN 'pending' THEN 0 ELSE 1 END, request.requested_at DESC, request.id DESC`,
-      [sessionId],
+      [sessionId, req.user.role === "admin"],
     );
     return res.json({ success: true, data: result.rows.map(serializeAmendment), meta: { canReview: await mayReviewAttendance(req.user) } });
   } catch (error) {
@@ -755,11 +758,13 @@ router.post("/amendments", protectRoute, requireTeacher, requirePermission("lms.
     if (!session) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy buổi học"); }
     if (!(await canManageSession(session, req.user, client))) { await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền tạo phiếu chỉnh sửa cho buổi học này"); }
     const attendance = await client.query(
-      `SELECT ca.status, COALESCE(ca.note, '') AS note
+      `SELECT ca.status, COALESCE(ca.note, '') AS note, ce.is_internal_test
        FROM class_attendance ca
        JOIN class_enrollments ce ON ce.live_class_id = $2 AND ce.user_id = ca.user_id AND ce.status = 'active'
-       WHERE ca.session_id = $1 AND ca.user_id = $3 FOR UPDATE`,
-      [sessionId, session.live_class_id, userId],
+       WHERE ca.session_id = $1 AND ca.user_id = $3
+         AND ($4::boolean OR ce.is_internal_test = FALSE)
+       FOR UPDATE OF ca`,
+      [sessionId, session.live_class_id, userId, req.user.role === "admin"],
     );
     const current = attendance.rows[0];
     if (!current) { await client.query("ROLLBACK"); return validationError(res, "Học viên không có bản ghi điểm danh trong buổi này"); }
@@ -780,11 +785,13 @@ router.post("/amendments", protectRoute, requireTeacher, requirePermission("lms.
       metadata: { sessionId, userId, reason, ip: req.ip },
     });
     const reviewers = await client.query(
-      `SELECT DISTINCT u.id FROM users u WHERE u.id <> $1 AND (u.role = 'admin' OR (
+      `SELECT DISTINCT u.id FROM users u WHERE u.id <> $1
+        AND ($4::boolean = FALSE OR u.role = 'admin')
+        AND (u.role = 'admin' OR (
         EXISTS (SELECT 1 FROM lms_role_permissions rp JOIN lms_permissions p ON p.id = rp.permission_id
                 WHERE rp.role = u.role::text AND rp.is_allowed AND p.code = 'lms.attendance.amend.review')
         AND (u.id = $2 OR EXISTS (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id = $3 AND ct.teacher_id = u.id AND ct.status = 'active'))))`,
-      [req.user.id, session.instructor_id, session.live_class_id],
+      [req.user.id, session.instructor_id, session.live_class_id, Boolean(current.is_internal_test)],
     );
     for (const reviewer of reviewers.rows) await notifyWorkflow(client, {
       userId: reviewer.id, title: "Có phiếu sửa điểm danh chờ duyệt", message: reason,
@@ -818,7 +825,10 @@ router.post("/amendments/:amendmentId/review", protectRoute, requireTeacher, req
        FROM attendance_amendment_requests request
        JOIN class_sessions cs ON cs.id = request.session_id
        JOIN live_classes lc ON lc.id = cs.live_class_id
-       WHERE request.id = $1 FOR UPDATE OF request, cs`, [amendmentId],
+       JOIN users student ON student.id = request.user_id
+       WHERE request.id = $1
+         AND ($2::boolean OR COALESCE(student.is_internal_test_account, FALSE) = FALSE)
+       FOR UPDATE OF request, cs`, [amendmentId, req.user.role === "admin"],
     );
     const amendment = requestResult.rows[0];
     if (!amendment) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy phiếu chỉnh sửa"); }
@@ -862,7 +872,7 @@ router.post("/amendments/:amendmentId/review", protectRoute, requireTeacher, req
                 COALESCE(ca.note, '') AS note, ca.checked_at
          FROM class_attendance ca
          JOIN class_enrollments ce
-           ON ce.user_id = ca.user_id AND ce.live_class_id = $2
+           ON ce.user_id = ca.user_id AND ce.live_class_id = $2 AND ce.is_internal_test = FALSE
          WHERE ca.session_id = $1 ORDER BY ca.user_id`, [amendment.session_id, amendment.live_class_id],
       );
       if (snapshot.rows.every((row) => row.management_membership_source_id)) {
@@ -976,8 +986,9 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
     const enrolledResult = await client.query(
       `SELECT ce.user_id, ce.management_membership_source_id
        FROM class_enrollments ce
-       WHERE ce.live_class_id = $1 AND ce.status = 'active'`,
-      [session.live_class_id],
+       WHERE ce.live_class_id = $1 AND ce.status = 'active'
+         AND ($2::boolean OR ce.is_internal_test = FALSE)`,
+      [session.live_class_id, req.user.role === "admin"],
     );
     const enrolledIds = new Set(enrolledResult.rows.map((row) => String(row.user_id)));
     if (

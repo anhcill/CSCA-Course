@@ -184,7 +184,7 @@ const buildDashboardClassesQuery = (scope) => `
   LEFT JOIN courses c ON c.id = lc.course_id
   LEFT JOIN users u_inst ON u_inst.id = lc.instructor_id
   LEFT JOIN LATERAL (
-    SELECT COUNT(*) FILTER (WHERE ce.status = 'active')::int AS enrolled_count
+    SELECT COUNT(*) FILTER (WHERE ce.status = 'active' AND ce.is_internal_test = FALSE)::int AS enrolled_count
     FROM class_enrollments ce
     WHERE ce.live_class_id = lc.id
   ) roster ON true
@@ -218,7 +218,7 @@ const buildDashboardClassesQuery = (scope) => `
       WHERE ce.user_id = lp.user_id AND lp.course_id = lc.course_id
         AND l.course_id = lc.course_id AND COALESCE(l.is_published, true) = true
     ) completed ON true
-    WHERE ce.live_class_id = lc.id AND ce.status = 'active'
+    WHERE ce.live_class_id = lc.id AND ce.status = 'active' AND ce.is_internal_test = FALSE
   ) progress ON true
   LEFT JOIN LATERAL (
     SELECT STRING_AGG(
@@ -316,7 +316,7 @@ const buildRiskQuery = (scope) => `
     WHERE (a.live_class_id = mc.id OR (a.live_class_id IS NULL AND mc.course_id IS NOT NULL AND a.course_id = mc.course_id))
       AND (a.live_class_id IS NOT NULL OR a.course_id IS NOT NULL)
   ) assignments ON true
-  WHERE ce.status = 'active'
+  WHERE ce.status = 'active' AND ce.is_internal_test = FALSE
     AND (attendance.absent_sessions >= 2 OR attendance.attendance_rate < 70 OR grades.gpa < 5
       OR progress.progress_pct < 30 OR assignments.overdue_missing > 0)
   ORDER BY CASE WHEN attendance.absent_sessions >= 3 OR attendance.attendance_rate < 70 OR grades.gpa < 5 THEN 0 ELSE 1 END,
@@ -330,6 +330,7 @@ const buildPendingQuery = (scope, statusFilter = "all", page = 1, limit = 8) => 
     scope.clause,
     "s.status IN ('submitted', 'late')",
     "NOT s.return_requested",
+    "COALESCE(u.is_internal_test_account, FALSE) = FALSE",
     `(a.live_class_id = lc.id OR (
       a.live_class_id IS NULL AND lc.course_id IS NOT NULL AND a.course_id = lc.course_id
       AND EXISTS (
@@ -399,7 +400,9 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("
              )
            )
          )
-         WHERE ${scope.clause} AND s.status IN ('submitted', 'late') AND NOT s.return_requested`,
+         JOIN users submission_user ON submission_user.id = s.user_id
+         WHERE ${scope.clause} AND s.status IN ('submitted', 'late') AND NOT s.return_requested
+           AND COALESCE(submission_user.is_internal_test_account, FALSE) = FALSE`,
         pendingCountParams,
       ),
       query(
@@ -425,7 +428,7 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("
       `SELECT COUNT(DISTINCT ce.user_id)::int AS count
        FROM class_enrollments ce
        JOIN live_classes lc ON lc.id = ce.live_class_id
-       WHERE ${scope.clause} AND ce.status = 'active'`,
+       WHERE ${scope.clause} AND ce.status = 'active' AND ce.is_internal_test = FALSE`,
       scope.params,
     );
 
@@ -503,7 +506,7 @@ router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, r
         `SELECT u.id, u.username, u.email, u.avatar_url
          FROM class_enrollments ce
          JOIN users u ON u.id = ce.user_id
-         WHERE ce.live_class_id = $1 AND ce.status = 'active'
+         WHERE ce.live_class_id = $1 AND ce.status = 'active' AND ce.is_internal_test = FALSE
          ORDER BY LOWER(COALESCE(u.username, u.email)), u.id`,
         [classId],
       ),
@@ -511,7 +514,8 @@ router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, r
         `SELECT ca.session_id, ca.user_id, ca.status, ca.checked_at
          FROM class_attendance ca
          JOIN class_sessions cs ON cs.id = ca.session_id
-         WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'`,
+         JOIN class_enrollments ce ON ce.live_class_id = cs.live_class_id AND ce.user_id = ca.user_id
+         WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled' AND ce.is_internal_test = FALSE`,
         [classId],
       ),
       query(
@@ -534,12 +538,14 @@ router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, r
                 s.status, latest_grade.score, a.max_score, s.submitted_at
          FROM assignment_submissions s
          JOIN assignments a ON a.id = s.assignment_id
+         JOIN users assignment_user ON assignment_user.id = s.user_id
          LEFT JOIN LATERAL (
            SELECT sg.score FROM submission_grades sg
            WHERE sg.submission_id = s.id AND sg.submission_revision = s.revision
            ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1
          ) latest_grade ON true
          WHERE a.live_class_id = $1 AND a.class_session_id IS NOT NULL
+           AND COALESCE(assignment_user.is_internal_test_account, FALSE) = FALSE
          UNION ALL
          SELECT latest.class_session_id AS session_id, latest.user_id,
                 CONCAT('quiz-', latest.quiz_id) AS activity_id, 'quiz' AS activity_type,
@@ -550,7 +556,9 @@ router.get("/classes/:classId/student-progress", protectRoute, requireTeacher, r
                   qa.score, qa.max_score, qa.submitted_at, qa.attempt_number, qa.id
            FROM quiz_attempts qa
            JOIN quizzes q ON q.id = qa.quiz_id
+           JOIN users quiz_user ON quiz_user.id = qa.user_id
            WHERE q.live_class_id = $1 AND q.class_session_id IS NOT NULL AND qa.status = 'submitted'
+             AND COALESCE(quiz_user.is_internal_test_account, FALSE) = FALSE
            ORDER BY qa.user_id, q.id, qa.attempt_number DESC, qa.submitted_at DESC, qa.id DESC
          ) latest`,
         [classId],
@@ -624,13 +632,17 @@ router.put("/classes/:classId/grades", protectRoute, requireTeacher, requirePerm
     await assertGradebookOpen(client, classId);
 
     const enrollment = await client.query(
-      `SELECT u.id, u.username, u.email
+      `SELECT u.id, u.username, u.email, COALESCE(u.is_internal_test_account, FALSE) AS is_internal_test_account
        FROM class_enrollments ce
        JOIN users u ON u.id = ce.user_id
        WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'`,
       [classId, studentId],
     );
     if (!enrollment.rows[0]) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Học viên không thuộc lớp này hoặc chưa được kích hoạt");
+    }
+    if (req.user.role !== "admin" && enrollment.rows[0].is_internal_test_account) {
       await client.query("ROLLBACK");
       return notFound(res, "Học viên không thuộc lớp này hoặc chưa được kích hoạt");
     }
@@ -870,7 +882,7 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, requirePerm
            WHERE (a.live_class_id = $1 OR (a.live_class_id IS NULL AND $2::bigint IS NOT NULL AND a.course_id = $2::bigint))
              AND ${ownerFilter}
          ) assignments ON true
-         WHERE ce.live_class_id = $1 AND ce.status = 'active'
+         WHERE ce.live_class_id = $1 AND ce.status = 'active' AND ce.is_internal_test = FALSE
          ORDER BY LOWER(COALESCE(u.username, u.email)), ce.user_id`,
         baseParams,
       ),
@@ -883,7 +895,7 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, requirePerm
                 ROUND(AVG(latest_grade.score), 1) AS avg_score
          FROM assignments a
          LEFT JOIN class_sessions cs ON cs.id = a.class_session_id
-         LEFT JOIN class_enrollments ce ON ce.live_class_id = $1 AND ce.status = 'active'
+         LEFT JOIN class_enrollments ce ON ce.live_class_id = $1 AND ce.status = 'active' AND ce.is_internal_test = FALSE
          LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.user_id = ce.user_id
          LEFT JOIN LATERAL (SELECT sg.score FROM submission_grades sg WHERE sg.submission_id = s.id AND sg.submission_revision = s.revision ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1) latest_grade ON true
          WHERE (a.live_class_id = $1 OR (a.live_class_id IS NULL AND $2::bigint IS NOT NULL AND a.course_id = $2::bigint))
@@ -895,13 +907,16 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, requirePerm
       query(
         `SELECT q.id, q.title, 'quiz' AS assignment_type, q.activity_scope, q.due_date,
                 cs.id AS class_session_id, cs.title AS session_title, cs.start_time AS session_start,
-                (SELECT COUNT(*)::int FROM class_enrollments ce WHERE ce.live_class_id = $1 AND ce.status = 'active') AS total_count,
+                (SELECT COUNT(*)::int FROM class_enrollments ce WHERE ce.live_class_id = $1 AND ce.status = 'active' AND ce.is_internal_test = FALSE) AS total_count,
                 COUNT(DISTINCT qa.id) FILTER (WHERE qa.status = 'submitted')::int AS submitted_count,
                 0::int AS pending_grading_count,
                 ROUND(AVG(qa.score), 1) AS avg_score
          FROM quizzes q
          JOIN class_sessions cs ON cs.id = q.class_session_id
-         LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id
+         LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND EXISTS (
+           SELECT 1 FROM users quiz_user
+           WHERE quiz_user.id = qa.user_id AND COALESCE(quiz_user.is_internal_test_account, FALSE) = FALSE
+         )
          WHERE q.live_class_id = $1 AND q.course_id = $2 AND ${quizOwnerFilter}
          GROUP BY q.id, cs.id
          ORDER BY CASE WHEN cs.start_time >= NOW() THEN 0 ELSE 1 END, cs.start_time ASC, q.created_at DESC`,
@@ -917,20 +932,27 @@ router.get("/classes/:classId/detail", protectRoute, requireTeacher, requirePerm
                 next_session.start_time AS next_session_start,
                 next_session.meet_url AS next_meet_url
          FROM class_sessions cs
-         LEFT JOIN class_attendance ca ON ca.session_id = cs.id
+         LEFT JOIN class_attendance ca ON ca.session_id = cs.id AND EXISTS (
+           SELECT 1 FROM class_enrollments attendance_enrollment
+           WHERE attendance_enrollment.live_class_id = $1
+             AND attendance_enrollment.user_id = ca.user_id
+             AND attendance_enrollment.is_internal_test = FALSE
+         )
          LEFT JOIN LATERAL (
            SELECT CASE WHEN COUNT(l.id) > 0 THEN ROUND(100.0 * COUNT(lp.id) FILTER (WHERE lp.is_completed) / COUNT(l.id), 1) ELSE NULL END AS progress_pct
            FROM class_enrollments ce2
            JOIN lessons l ON $2::bigint IS NOT NULL AND l.course_id = $2::bigint AND COALESCE(l.is_published, true) = true
            LEFT JOIN lesson_progress lp ON lp.lesson_id = l.id AND lp.user_id = ce2.user_id
-           WHERE ce2.live_class_id = $1 AND ce2.status = 'active'
+           WHERE ce2.live_class_id = $1 AND ce2.status = 'active' AND ce2.is_internal_test = FALSE
          ) student_progress ON true
          LEFT JOIN LATERAL (
            SELECT ROUND(AVG(sg.score), 1) AS gpa
            FROM assignment_submissions s
            JOIN assignments a ON a.id = s.assignment_id
+           JOIN users grade_user ON grade_user.id = s.user_id
            JOIN LATERAL (SELECT sg2.score FROM submission_grades sg2 WHERE sg2.submission_id = s.id AND sg2.submission_revision = s.revision ORDER BY sg2.graded_at DESC, sg2.id DESC LIMIT 1) sg ON true
-           WHERE a.live_class_id = $1 OR (a.live_class_id IS NULL AND $2::bigint IS NOT NULL AND a.course_id = $2::bigint)
+           WHERE (a.live_class_id = $1 OR (a.live_class_id IS NULL AND $2::bigint IS NOT NULL AND a.course_id = $2::bigint))
+             AND COALESCE(grade_user.is_internal_test_account, FALSE) = FALSE
          ) student_grades ON true
          LEFT JOIN LATERAL (
            SELECT start_time, meet_url FROM class_sessions

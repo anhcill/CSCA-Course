@@ -178,6 +178,11 @@ const canGradeAssignment = async (assignment, user, db = { query }) => {
   return result.rows.length > 0;
 };
 
+const isInternalTestLearner = async (userId, db = { query }) => Boolean((await db.query(
+  "SELECT 1 FROM users WHERE id = $1 AND role = 'user' AND is_internal_test_account = TRUE",
+  [userId],
+)).rows[0]);
+
 const getAssessmentAccommodation = async ({ assessmentType, assessmentId, userId, db = { query } }) => {
   const result = await db.query(
     `SELECT id, assessment_type, assessment_id, user_id, due_at, extra_time_minutes,
@@ -466,6 +471,10 @@ router.get("/", protectRoute, async (req, res) => {
       : "";
     const assignmentSessionScope = sessionParamIndex ? `AND a.class_session_id = $${sessionParamIndex}` : "";
     const quizSessionScope = sessionParamIndex ? `AND q.class_session_id = $${sessionParamIndex}` : "";
+    const visibleClassEnrollment = isAdmin ? "TRUE" : "ce.is_internal_test = FALSE";
+    const visibleGrantUser = isAdmin ? "TRUE" : "COALESCE(grant_user.is_internal_test_account, FALSE) = FALSE";
+    const visibleSubmissionUser = isAdmin ? "TRUE" : "COALESCE(submission_user.is_internal_test_account, FALSE) = FALSE";
+    const visibleAttemptUser = isAdmin ? "TRUE" : "COALESCE(attempt_user.is_internal_test_account, FALSE) = FALSE";
     const result = await query(
       `WITH assignment_rows AS (
           SELECT a.id, a.title, a.assignment_type AS type, a.course_id, a.live_class_id, a.description,
@@ -482,19 +491,27 @@ router.get("/", protectRoute, async (req, res) => {
                  (
                    CASE
                      WHEN a.live_class_id IS NOT NULL THEN (
-                       SELECT COUNT(*)::int FROM class_enrollments ce WHERE ce.live_class_id = a.live_class_id AND ce.status = 'active'
+                       SELECT COUNT(*)::int FROM class_enrollments ce
+                       WHERE ce.live_class_id = a.live_class_id AND ce.status = 'active' AND ${visibleClassEnrollment}
                      )
                      WHEN a.course_id IS NOT NULL THEN (
-                       SELECT COUNT(*)::int FROM lms_access_grants g WHERE g.course_id = a.course_id AND g.access_status = 'active' AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+                       SELECT COUNT(*)::int FROM lms_access_grants g
+                       JOIN users grant_user ON grant_user.id = g.user_id
+                       WHERE g.course_id = a.course_id AND g.access_status = 'active' AND g.valid_from <= NOW()
+                         AND (g.valid_until IS NULL OR g.valid_until > NOW()) AND ${visibleGrantUser}
                      )
                      ELSE 0
                    END
                  ) AS total_students,
                  (
-                   SELECT COUNT(DISTINCT s_sub.user_id)::int FROM assignment_submissions s_sub WHERE s_sub.assignment_id = a.id AND s_sub.status IN ('submitted', 'graded')
+                   SELECT COUNT(DISTINCT s_sub.user_id)::int FROM assignment_submissions s_sub
+                   JOIN users submission_user ON submission_user.id = s_sub.user_id
+                   WHERE s_sub.assignment_id = a.id AND s_sub.status IN ('submitted', 'graded') AND ${visibleSubmissionUser}
                  ) AS submitted_count,
                  (
-                   SELECT COUNT(DISTINCT s_sub.user_id)::int FROM assignment_submissions s_sub WHERE s_sub.assignment_id = a.id AND s_sub.status = 'graded'
+                   SELECT COUNT(DISTINCT s_sub.user_id)::int FROM assignment_submissions s_sub
+                   JOIN users submission_user ON submission_user.id = s_sub.user_id
+                   WHERE s_sub.assignment_id = a.id AND s_sub.status = 'graded' AND ${visibleSubmissionUser}
                  ) AS graded_count,
                  CASE WHEN sg.score IS NOT NULL THEN 'graded'
                      WHEN s.id IS NOT NULL THEN s.status
@@ -536,19 +553,27 @@ router.get("/", protectRoute, async (req, res) => {
                  (
                    CASE
                      WHEN q.live_class_id IS NOT NULL THEN (
-                       SELECT COUNT(*)::int FROM class_enrollments ce WHERE ce.live_class_id = q.live_class_id AND ce.status = 'active'
+                       SELECT COUNT(*)::int FROM class_enrollments ce
+                       WHERE ce.live_class_id = q.live_class_id AND ce.status = 'active' AND ${visibleClassEnrollment}
                      )
                      WHEN COALESCE(q.course_id, l.course_id) IS NOT NULL THEN (
-                       SELECT COUNT(*)::int FROM lms_access_grants g WHERE g.course_id = COALESCE(q.course_id, l.course_id) AND g.access_status = 'active' AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+                       SELECT COUNT(*)::int FROM lms_access_grants g
+                       JOIN users grant_user ON grant_user.id = g.user_id
+                       WHERE g.course_id = COALESCE(q.course_id, l.course_id) AND g.access_status = 'active' AND g.valid_from <= NOW()
+                         AND (g.valid_until IS NULL OR g.valid_until > NOW()) AND ${visibleGrantUser}
                      )
                      ELSE 0
                    END
                  ) AS total_students,
                  (
-                   SELECT COUNT(DISTINCT qa_sub.user_id)::int FROM quiz_attempts qa_sub WHERE qa_sub.quiz_id = q.id AND qa_sub.status = 'submitted'
+                   SELECT COUNT(DISTINCT qa_sub.user_id)::int FROM quiz_attempts qa_sub
+                   JOIN users attempt_user ON attempt_user.id = qa_sub.user_id
+                   WHERE qa_sub.quiz_id = q.id AND qa_sub.status = 'submitted' AND ${visibleAttemptUser}
                  ) AS submitted_count,
                  (
-                   SELECT COUNT(DISTINCT qa_sub.user_id)::int FROM quiz_attempts qa_sub WHERE qa_sub.quiz_id = q.id AND qa_sub.status = 'submitted'
+                   SELECT COUNT(DISTINCT qa_sub.user_id)::int FROM quiz_attempts qa_sub
+                   JOIN users attempt_user ON attempt_user.id = qa_sub.user_id
+                   WHERE qa_sub.quiz_id = q.id AND qa_sub.status = 'submitted' AND ${visibleAttemptUser}
                  ) AS graded_count,
                  CASE WHEN qa.status = 'submitted' THEN 'graded'
                       WHEN q.activity_scope = 'homework' AND COALESCE(quiz_accommodation.due_at, q.due_date) IS NOT NULL AND COALESCE(quiz_accommodation.due_at, q.due_date) < NOW() THEN 'late'
@@ -606,14 +631,16 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
               COALESCE(c.title, c.name) AS course_title,
               lc.title AS class_title, cs.title AS session_title, cs.start_time AS session_start, cs.end_time AS session_end,
               COUNT(DISTINCT qq.id)::int AS question_count,
-              COUNT(DISTINCT qa.id)::int AS attempts_count,
-              ROUND(AVG(qa.score / NULLIF(qa.max_score, 0) * 100), 1) AS avg_score
+              COUNT(DISTINCT qa.id) FILTER (WHERE req_user.id IS NOT NULL)::int AS attempts_count,
+              ROUND(AVG(qa.score / NULLIF(qa.max_score, 0) * 100) FILTER (WHERE req_user.id IS NOT NULL), 1) AS avg_score
        FROM quizzes q
        LEFT JOIN courses c ON c.id = q.course_id
        LEFT JOIN live_classes lc ON lc.id = q.live_class_id
        LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
        LEFT JOIN quiz_questions qq ON qq.quiz_id = q.id
        LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.status = 'submitted'
+       LEFT JOIN users req_user ON req_user.id = qa.user_id
+         AND (${req.user.role === "admin" ? "TRUE" : "COALESCE(req_user.is_internal_test_account, FALSE) = FALSE"})
        WHERE ${ownerFilter}
        GROUP BY q.id, c.id, lc.id, cs.id
        ORDER BY q.created_at DESC, q.id DESC`,
@@ -873,6 +900,7 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
     if (!canView) return forbidden(res, "Bạn không có quyền xem thống kê của đề kiểm tra này");
 
     let students = [];
+    const visibleStudent = req.user.role === "admin" ? "TRUE" : "COALESCE(u.is_internal_test_account, FALSE) = FALSE";
     if (quizRow.live_class_id) {
       const studentResult = await query(
         `SELECT u.id AS user_id, u.username, u.email, u.avatar_url,
@@ -903,7 +931,7 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
          LEFT JOIN LATERAL (
            SELECT COUNT(*)::int AS cnt FROM quiz_attempts qa_all WHERE qa_all.quiz_id = $1 AND qa_all.user_id = u.id
          ) att_count ON true
-         WHERE ce.live_class_id = $2 AND ce.status = 'active'
+         WHERE ce.live_class_id = $2 AND ce.status = 'active' AND ${visibleStudent}
          ORDER BY CASE WHEN best_qa.status = 'submitted' THEN 1 WHEN best_qa.status = 'in_progress' THEN 2 ELSE 3 END,
                   best_qa.score DESC NULLS LAST, u.username ASC`,
         [quizId, quizRow.live_class_id],
@@ -939,6 +967,7 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
          LEFT JOIN LATERAL (
            SELECT COUNT(*)::int AS cnt FROM quiz_attempts qa_all WHERE qa_all.quiz_id = $1 AND qa_all.user_id = u.id
          ) att_count ON true
+         WHERE ${visibleStudent}
          ORDER BY CASE WHEN best_qa.status = 'submitted' THEN 1 WHEN best_qa.status = 'in_progress' THEN 2 ELSE 3 END,
                   best_qa.score DESC NULLS LAST, u.username ASC`,
         [quizId],
@@ -1069,8 +1098,9 @@ router.get("/teacher/quizzes/:quizId/attempts/:attemptId", protectRoute, require
        FROM quiz_attempts qa
        JOIN users u ON u.id = qa.user_id
        LEFT JOIN student_profiles sp ON sp.user_id = u.id
-       WHERE qa.id = $1 AND qa.quiz_id = $2`,
-      [attemptId, quizId]
+       WHERE qa.id = $1 AND qa.quiz_id = $2
+         AND ($3::boolean OR COALESCE(u.is_internal_test_account, FALSE) = FALSE)`,
+      [attemptId, quizId, req.user.role === "admin"]
     );
     const attempt = attemptRes.rows[0];
     if (!attempt) return notFound(res, "Không tìm thấy lượt làm bài");
@@ -1154,8 +1184,10 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
               u.email AS student_email, u.username AS student_username
        FROM quiz_attempts qa
        JOIN users u ON u.id = qa.user_id
-       WHERE qa.id = $1 AND qa.quiz_id = $2 FOR UPDATE`,
-      [attemptId, quizId]
+       WHERE qa.id = $1 AND qa.quiz_id = $2
+         AND ($3::boolean OR COALESCE(u.is_internal_test_account, FALSE) = FALSE)
+       FOR UPDATE OF qa`,
+      [attemptId, quizId, req.user.role === "admin"]
     );
     const attempt = attemptRes.rows[0];
     if (!attempt) {
@@ -1282,7 +1314,11 @@ router.delete("/teacher/quizzes/:quizId", protectRoute, requireTeacher, requireP
     if (!scope) return notFound(res, "Không tìm thấy đề kiểm tra");
     if (scope.live_class_id) await assertGradebookOpen(client, scope.live_class_id);
     const quiz = (await client.query(`SELECT q.id,q.title,q.live_class_id,q.instructor_id,c.author_id,
-      EXISTS (SELECT 1 FROM quiz_attempts qa WHERE qa.quiz_id=q.id) AS has_attempts
+      EXISTS (
+        SELECT 1 FROM quiz_attempts qa
+        JOIN users attempt_user ON attempt_user.id = qa.user_id
+        WHERE qa.quiz_id=q.id AND COALESCE(attempt_user.is_internal_test_account, FALSE) = FALSE
+      ) AS has_attempts
       FROM quizzes q LEFT JOIN courses c ON c.id=q.course_id WHERE q.id=$1 FOR UPDATE OF q`, [quizId])).rows[0];
     if (!quiz) return notFound(res, "Không tìm thấy đề kiểm tra");
     const canDelete = req.user.role === "admin" || (quiz.live_class_id
@@ -1444,7 +1480,9 @@ router.get("/teacher/accommodations", protectRoute, requireTeacher, requirePermi
       `SELECT accommodation.*, COALESCE(u.username, u.email) AS student_name, u.email AS student_email
        FROM assessment_accommodations accommodation JOIN users u ON u.id = accommodation.user_id
        WHERE accommodation.assessment_type = $1 AND accommodation.assessment_id = $2
-       ORDER BY accommodation.status = 'active' DESC, LOWER(COALESCE(u.username, u.email))`, [assessmentType, assessmentId],
+         AND ($3::boolean OR COALESCE(u.is_internal_test_account, FALSE) = FALSE)
+       ORDER BY accommodation.status = 'active' DESC, LOWER(COALESCE(u.username, u.email))`,
+      [assessmentType, assessmentId, req.user.role === "admin"],
     );
     return res.json({ success: true, data: result.rows.map((row) => ({ ...serializeAccommodation(row), studentName: row.student_name, studentEmail: row.student_email })) });
   } catch (error) {
@@ -1476,7 +1514,12 @@ router.put("/teacher/accommodations", protectRoute, requireTeacher, requirePermi
     if (dueAt && baseDeadline && dueAt < new Date(baseDeadline)) { await client.query("ROLLBACK"); return validationError(res, "Gia hạn riêng không được sớm hơn hạn chung"); }
     if (assessmentType === "assignment" && (extraTimeMinutes > 0 || attemptLimitOverride !== null)) { await client.query("ROLLBACK"); return validationError(res, "Bài tự luận chỉ hỗ trợ gia hạn nộp"); }
     if (!context.liveClassId) { await client.query("ROLLBACK"); return validationError(res, "Hoạt động này chưa gắn lớp nên không thể điều chỉnh theo học viên"); }
-    const enrolled = await client.query("SELECT 1 FROM class_enrollments WHERE live_class_id = $1 AND user_id = $2 AND status = 'active'", [context.liveClassId, userId]);
+    const enrolled = await client.query(
+      `SELECT 1 FROM class_enrollments ce
+       WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
+         AND ($3::boolean OR ce.is_internal_test = FALSE)`,
+      [context.liveClassId, userId, req.user.role === "admin"],
+    );
     if (!enrolled.rows[0]) { await client.query("ROLLBACK"); return validationError(res, "Học viên không thuộc lớp nhận hoạt động này"); }
     if (assessmentType === "quiz" && attemptLimitOverride !== null && attemptLimitOverride < context.baseAttemptLimit) {
       await client.query("ROLLBACK");
@@ -1523,6 +1566,10 @@ router.post("/teacher/accommodations/:id/revoke", protectRoute, requireTeacher, 
     const result = await client.query("SELECT * FROM assessment_accommodations WHERE id = $1 FOR UPDATE", [id]);
     const item = result.rows[0];
     if (!item) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy điều chỉnh"); }
+    if (req.user.role !== "admin" && await isInternalTestLearner(item.user_id, client)) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy điều chỉnh");
+    }
     const context = await assessmentContextForAccommodation({ assessmentType: item.assessment_type, assessmentId: item.assessment_id, user: req.user, db: client });
     if (!context) { await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền thu hồi điều chỉnh này"); }
     if (item.status !== "active") { await client.query("ROLLBACK"); return conflict(res, "Điều chỉnh đã được thu hồi"); }
@@ -1704,7 +1751,11 @@ router.get("/submission-assets/:assetId/access", protectRoute, requireStudentOrA
     let allowed = req.user.role === "admin" || String(asset.user_id) === String(req.user.id);
     if (!allowed && req.user.role === "creator" && asset.assignment_id) {
       const assignment = await getAssignment(asset.assignment_id);
-      allowed = Boolean(assignment && await canGradeAssignment(assignment, req.user));
+      allowed = Boolean(
+        assignment
+        && !(await isInternalTestLearner(asset.user_id))
+        && await canGradeAssignment(assignment, req.user)
+      );
     }
     if (!allowed) return forbidden(res, "Bạn không có quyền xem tệp bài nộp này");
     if (asset.status !== "ready") return conflict(res, "Tệp chưa sẵn sàng", "ASSET_NOT_READY");
@@ -1754,6 +1805,7 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, requirePe
       values.push(sessionId);
       filters.push(`a.class_session_id = $${values.length}`);
     }
+    if (req.user.role !== "admin") filters.push("COALESCE(u.is_internal_test_account, FALSE) = FALSE");
     const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
     const result = await query(
       `SELECT s.id, s.assignment_id, s.user_id, s.content_text, s.status, s.submitted_at,
@@ -1962,7 +2014,14 @@ router.patch("/:id", protectRoute, requireTeacher, requirePermission("lms.assign
       return validationError(res, "attachmentUrl phải là link HTTPS hoặc tài liệu bảo mật của LMS");
     }
     if (nextMaxScore !== Number(assignment.max_score)) {
-      const submitted = await client.query("SELECT 1 FROM assignment_submissions WHERE assignment_id=$1 LIMIT 1", [assignmentId]);
+    const submitted = await client.query(
+      `SELECT 1 FROM assignment_submissions submission
+       JOIN users submission_user ON submission_user.id = submission.user_id
+       WHERE submission.assignment_id = $1
+         AND COALESCE(submission_user.is_internal_test_account, FALSE) = FALSE
+       LIMIT 1`,
+      [assignmentId],
+    );
       if (submitted.rows.length) return conflict(res, "Bài tập đã có bài nộp; không thể đổi thang điểm và làm sai lệch điểm cũ.");
     }
 
@@ -2086,8 +2145,10 @@ router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStude
       );
       await client.query("DELETE FROM grading_drafts WHERE submission_id = $1", [old.id]);
       await recordAuditEvent({ db: client, actorId: req.user.id, action: "submission.resubmitted", entityType: "assignment_submission", entityId: old.id, beforeState: { revision: old.revision }, afterState: { revision: old.revision + 1 } });
-      await notifyWorkflow(client, { userId: assignment.instructor_id, title: "Học viên đã nộp lại bài", message: assignment.title,
-        link: `/lms/teacher/assignments/review?assignmentId=${assignmentId}`, key: `resubmission:${old.id}:${old.revision + 1}`, actorId: req.user.id });
+      if (!req.user.is_internal_test_account) {
+        await notifyWorkflow(client, { userId: assignment.instructor_id, title: "Học viên đã nộp lại bài", message: assignment.title,
+          link: `/lms/teacher/assignments/review?assignmentId=${assignmentId}`, key: `resubmission:${old.id}:${old.revision + 1}`, actorId: req.user.id });
+      }
     } else result = await client.query(
       `INSERT INTO assignment_submissions (assignment_id, user_id, content_text, file_asset_id, file_asset_ids, audio_asset_id, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -2115,6 +2176,9 @@ router.get("/submissions/:submissionId/history", protectRoute, requireStudentOrA
     if (!submissionId) return validationError(res, "Mã bài nộp không hợp lệ");
     const current = (await query("SELECT * FROM assignment_submissions WHERE id = $1", [submissionId])).rows[0];
     if (!current) return notFound(res, "Không tìm thấy bài nộp");
+    if (req.user.role !== "user" && req.user.role !== "admin" && await isInternalTestLearner(current.user_id)) {
+      return notFound(res, "Không tìm thấy bài nộp");
+    }
     const assignment = await getAssignment(current.assignment_id);
     const isStudent = req.user.role === "user";
     const allowed = isStudent
@@ -2137,8 +2201,9 @@ router.post("/submissions/:submissionId/return", protectRoute, requireTeacher, r
     if (!Number.isFinite(deadline.getTime()) || deadline <= new Date()) return validationError(res, "Hạn nộp lại phải ở tương lai");
     const submissionId = parsePositiveId(req.params.submissionId);
     if (!submissionId) return validationError(res, "Mã bài nộp không hợp lệ");
-    const initial = (await client.query("SELECT assignment_id FROM assignment_submissions WHERE id = $1", [submissionId])).rows[0];
+    const initial = (await client.query("SELECT assignment_id, user_id FROM assignment_submissions WHERE id = $1", [submissionId])).rows[0];
     if (!initial) return notFound(res, "Không tìm thấy bài nộp");
+    if (req.user.role !== "admin" && await isInternalTestLearner(initial.user_id, client)) return notFound(res, "Không tìm thấy bài nộp");
     const assignment = await getAssignment(initial.assignment_id, client);
     if (!(await canGradeAssignment(assignment, req.user, client))) return forbidden(res, "Bạn không có quyền trả bài");
     await client.query("BEGIN");
@@ -2164,8 +2229,9 @@ router.put("/submissions/:submissionId/draft", protectRoute, requireTeacher, req
   try {
     const submissionId = parsePositiveId(req.params.submissionId);
     if (!submissionId) return validationError(res, "Mã bài nộp không hợp lệ");
-    const initial = (await client.query("SELECT assignment_id FROM assignment_submissions WHERE id = $1", [submissionId])).rows[0];
+    const initial = (await client.query("SELECT assignment_id, user_id FROM assignment_submissions WHERE id = $1", [submissionId])).rows[0];
     if (!initial) return notFound(res, "Không tìm thấy bài nộp");
+    if (req.user.role !== "admin" && await isInternalTestLearner(initial.user_id, client)) return notFound(res, "Không tìm thấy bài nộp");
     const assignment = await getAssignment(initial.assignment_id, client);
     if (!(await canGradeAssignment(assignment, req.user, client))) return forbidden(res, "Bạn không có quyền chấm bài này");
     const annotations = normalizeAnnotations(req.body.annotations);
@@ -2213,6 +2279,10 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
     );
     const submission = submissionResult.rows[0];
     if (!submission) { await client.query("ROLLBACK"); return notFound(res, "Không tìm thấy bài nộp"); }
+    if (req.user.role !== "admin" && await isInternalTestLearner(submission.user_id, client)) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy bài nộp");
+    }
     if (!(await canGradeAssignment(submission, req.user, client))) { await client.query("ROLLBACK"); return forbidden(res, "Bạn không có quyền chấm bài nộp này"); }
     if (Number(req.body.revision) !== submission.revision || submission.return_requested) { await client.query("ROLLBACK"); return conflict(res, "Bài đã thay đổi hoặc đang chờ nộp lại. Hãy tải lại trước khi chấm."); }
     const previousGrade = (await client.query("SELECT * FROM submission_grades WHERE submission_id = $1 AND submission_revision = $2 ORDER BY id DESC LIMIT 1", [submissionId, submission.revision])).rows[0];

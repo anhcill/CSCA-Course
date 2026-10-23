@@ -195,7 +195,11 @@ const canManageQuiz = async (db, quiz, user) => {
 
 const quizSelect = `SELECT q.*, c.author_id, COALESCE(c.title, c.name) AS course_title,
   lc.title AS class_title, cs.title AS session_title,
-  EXISTS (SELECT 1 FROM quiz_attempts qa WHERE qa.quiz_id = q.id) AS has_attempts
+  EXISTS (
+    SELECT 1 FROM quiz_attempts qa
+    JOIN users attempt_user ON attempt_user.id = qa.user_id
+    WHERE qa.quiz_id = q.id AND COALESCE(attempt_user.is_internal_test_account, FALSE) = FALSE
+  ) AS has_attempts
   FROM quizzes q
   LEFT JOIN courses c ON c.id = q.course_id
   LEFT JOIN live_classes lc ON lc.id = q.live_class_id

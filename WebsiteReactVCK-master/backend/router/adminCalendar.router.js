@@ -98,7 +98,8 @@ router.get("/", adminOnly, async (req, res) => {
           ))
           ORDER BY COALESCE(assigned_user.username, assigned_user.email)
         ) AS teacher_names,
-        (SELECT COUNT(*)::int FROM class_enrollments ce WHERE ce.live_class_id = cs.live_class_id AND ce.status = 'active') AS enrolled_count,
+        (SELECT COUNT(*)::int FROM class_enrollments ce
+         WHERE ce.live_class_id = cs.live_class_id AND ce.status = 'active' AND ce.is_internal_test = FALSE) AS enrolled_count,
         (SELECT COUNT(*)::int
          FROM class_session_change_logs cl
          WHERE cl.session_id = cs.id

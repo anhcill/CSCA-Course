@@ -488,6 +488,11 @@ export default function AdminUser() {
                                   Bạn
                                 </span>
                               )}
+                              {u.isInternalTestAccount && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800">
+                                  TEST NỘI BỘ
+                                </span>
+                              )}
                             </div>
                             <p className="text-[11px] text-gray-400 font-mono">@{u.username}</p>
                           </div>

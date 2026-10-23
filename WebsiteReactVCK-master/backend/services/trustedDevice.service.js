@@ -294,7 +294,7 @@ export const resolveAuthenticatedSession = async ({
   const result = await db.query(
     `SELECT u.id, u.username, u.email, u.role, u.avatar_url, u.gender,
             u.is_vip, u.vip_expires_at, u.email_verified, u.is_locked, u.created_at,
-            u.is_management_managed, u.lms_account_status,
+            u.is_management_managed, u.lms_account_status, u.is_internal_test_account,
             s.id AS session_id, s.trusted_device_id
      FROM user_sessions s
      JOIN users u ON u.id = s.user_id

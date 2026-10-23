@@ -5,7 +5,8 @@ export const buildGradebook = async (db, classId, sessionId = null) => {
   const stored = (await db.query("SELECT policy FROM class_gradebook_policies WHERE class_id = $1", [classId])).rows[0];
   const policy = stored?.policy || DEFAULT_GRADEBOOK_POLICY;
   const students = (await db.query(`SELECT u.id, COALESCE(u.username, u.email) AS name, u.email FROM class_enrollments ce
-    JOIN users u ON u.id = ce.user_id WHERE ce.live_class_id = $1 AND ce.status = 'active' ORDER BY LOWER(COALESCE(u.username,u.email)),u.id`, [classId])).rows;
+    JOIN users u ON u.id = ce.user_id WHERE ce.live_class_id = $1 AND ce.status = 'active'
+      AND ce.is_internal_test = FALSE ORDER BY LOWER(COALESCE(u.username,u.email)),u.id`, [classId])).rows;
   const sessions = (await db.query(`SELECT id FROM class_sessions WHERE live_class_id = $1 AND status <> 'cancelled'
     AND end_time <= NOW() AND ($2::bigint IS NULL OR id = $2)`, [classId, sessionId])).rows;
   const activities = (await db.query(

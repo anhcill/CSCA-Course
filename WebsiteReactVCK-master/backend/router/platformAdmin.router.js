@@ -114,8 +114,8 @@ router.get("/classes", ...adminOnly, async (req, res) => {
               COALESCE(c.title, c.name) AS course_title,
               c.external_course_id, COALESCE(u.username, u.email) AS system_teacher_name,
               CASE WHEN u.role = 'creator' THEN u.id ELSE NULL END AS assigned_teacher_id,
-              COUNT(DISTINCT ce.user_id) FILTER (WHERE ce.status = 'active')::int AS student_count,
-              COUNT(DISTINCT ce.user_id) FILTER (WHERE ce.status = 'active' AND EXISTS (
+              COUNT(DISTINCT ce.user_id) FILTER (WHERE ce.status = 'active' AND ce.is_internal_test = FALSE)::int AS student_count,
+              COUNT(DISTINCT ce.user_id) FILTER (WHERE ce.status = 'active' AND ce.is_internal_test = FALSE AND EXISTS (
                 SELECT 1 FROM lms_access_grants g
                 WHERE g.user_id = ce.user_id AND g.course_id = c.id AND g.access_status = 'active'
                   AND (g.valid_until IS NULL OR g.valid_until > NOW())
