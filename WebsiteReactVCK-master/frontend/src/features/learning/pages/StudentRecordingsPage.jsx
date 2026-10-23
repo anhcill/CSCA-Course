@@ -18,6 +18,7 @@ import RecordingCard from "../components/recordings/RecordingCard";
 import RecordingStatsWidget from "../components/recordings/RecordingStatsWidget";
 import RecordingDriveFoldersWidget from "../components/recordings/RecordingDriveFoldersWidget";
 import RecordingStudyTipsWidget from "../components/recordings/RecordingStudyTipsWidget";
+import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
 
 const dateValue = (value) => {
   const time = value ? new Date(value).getTime() : 0;
@@ -63,7 +64,6 @@ export default function StudentRecordingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [classId, setClassId] = useState("all");
   const [selectedVideo, setSelectedVideo] = useState(null);
 
   const loadRecordings = useCallback(async () => {
@@ -124,6 +124,14 @@ export default function StudentRecordingsPage() {
           String(a.title).localeCompare(String(b.title), "vi")
       );
   }, [data.classes, data.recordings]);
+
+  const classIds = useMemo(() => classes.map((item) => item.id), [classes]);
+  const [classId, setClassId] = usePersistentClassSelection({
+    scope: "recordings",
+    availableClassIds: classIds,
+    allValue: "all",
+    ready: !loading,
+  });
 
   const groups = useMemo(() => {
     const needle = search.trim().toLowerCase();

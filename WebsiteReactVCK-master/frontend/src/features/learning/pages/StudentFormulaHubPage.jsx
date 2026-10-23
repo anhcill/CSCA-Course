@@ -21,6 +21,7 @@ import {
   toggleFormulaStarApi,
 } from "../../api/lmsClient";
 import FormulaDetailModal from "../components/FormulaDetailModal";
+import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
 
 // Instant KaTeX rendering cache to avoid re-parsing on every frame
 const katexCache = new Map();
@@ -42,7 +43,6 @@ export default function StudentFormulaHubPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("sessions"); // "sessions" | "cheatsheet" | "starred"
-  const [selectedClassId, setSelectedClassId] = useState("ALL");
   const [selectedSubject, setSelectedSubject] = useState("ALL"); // "ALL" | "MATH" | "PHYSICS" | "CHEMISTRY"
   const [selectedSessionId, setSelectedSessionId] = useState("ALL"); // "ALL" or specific sessionId
   const [searchQuery, setSearchQuery] = useState("");
@@ -114,6 +114,14 @@ export default function StudentFormulaHubPage() {
     });
     return Array.from(map.entries()).map(([id, title]) => ({ id, title }));
   }, [sessions]);
+
+  const classIds = useMemo(() => classList.map((item) => item.id), [classList]);
+  const [selectedClassId, setSelectedClassId] = usePersistentClassSelection({
+    scope: "formula",
+    availableClassIds: classIds,
+    allValue: "ALL",
+    ready: !loading,
+  });
 
   // Filtered Sessions according to Class, Subject & Search
   const filteredSessions = useMemo(() => {

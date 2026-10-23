@@ -19,13 +19,13 @@ import {
 } from "../../api/lmsClient";
 import { speakChinese } from "../utils/speech";
 import VocabularyPracticeModal from "../components/VocabularyPracticeModal";
+import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
 
 export default function StudentVocabularyHubPage() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("sessions"); // "sessions" | "wordbank" | "starred"
-  const [selectedClassId, setSelectedClassId] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [activePracticeSession, setActivePracticeSession] = useState(null);
 
@@ -82,6 +82,14 @@ export default function StudentVocabularyHubPage() {
     });
     return Array.from(map.entries()).map(([id, title]) => ({ id, title }));
   }, [sessions]);
+
+  const classIds = useMemo(() => classList.map((item) => item.id), [classList]);
+  const [selectedClassId, setSelectedClassId] = usePersistentClassSelection({
+    scope: "vocabulary",
+    availableClassIds: classIds,
+    allValue: "ALL",
+    ready: !loading,
+  });
 
   // Filtered Sessions according to Class & Search
   const filteredSessions = useMemo(() => {

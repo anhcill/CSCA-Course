@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { fetchStudentFiles, fetchStudentClassesLookup } from "../../api/lmsClient";
 import { ErrorState } from "../../../components/common/StateView";
+import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
 
 const mimeType = (file) => String(file.mimeType || file.mime_type || "").toLowerCase();
 const fileSize = (value) => {
@@ -209,14 +210,21 @@ export default function StudentFilesPage() {
   // URL / route filters
   const selectedCourseId = routeCourseId || searchParams.get("courseId") || "all";
   const urlClassId = routeClassId || searchParams.get("classId") || null;
-  const [activeClassId, setActiveClassId] = useState(urlClassId);
   const selectedTimePreset = searchParams.get("time") || "all"; // 'all', 'today', 'week'
 
-  useEffect(() => {
-    if (urlClassId) {
-      setActiveClassId(urlClassId);
-    }
-  }, [urlClassId]);
+  const eligibleClassIds = useMemo(() => classesLookup
+    .filter((item) => selectedCourseId === "all" || String(item.courseId) === String(selectedCourseId))
+    .map((item) => item.id), [classesLookup, selectedCourseId]);
+  const [activeClassId, setActiveClassId] = usePersistentClassSelection({
+    scope: "files",
+    availableClassIds: eligibleClassIds,
+    allValue: "all",
+    ready: !loading,
+    preferredValue: urlClassId,
+  });
+  const requestedClassId = viewMode === "by_class" || activeClassId === "all"
+    ? undefined
+    : activeClassId;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -229,7 +237,7 @@ export default function StudentFilesPage() {
         }),
         fetchStudentFiles({
           courseId: selectedCourseId !== "all" ? selectedCourseId : undefined,
-          classId: viewMode === "by_class" ? undefined : (urlClassId || undefined),
+          classId: requestedClassId,
         }),
       ]);
 
@@ -241,7 +249,7 @@ export default function StudentFilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCourseId, urlClassId, viewMode]);
+  }, [requestedClassId, selectedCourseId]);
 
   useEffect(() => {
     loadData();
@@ -341,12 +349,13 @@ export default function StudentFilesPage() {
 
   // Handlers for URL filters & Class selection
   const handleSelectClass = (classId) => {
-    setActiveClassId(classId);
+    const nextClassId = classId || "all";
+    setActiveClassId(nextClassId);
     const next = new URLSearchParams(searchParams);
-    if (!classId) {
+    if (nextClassId === "all") {
       next.delete("classId");
     } else {
-      next.set("classId", classId);
+      next.set("classId", nextClassId);
     }
     setSearchParams(next);
   };
@@ -365,13 +374,13 @@ export default function StudentFilesPage() {
 
   // Currently active class
   const activeClass = useMemo(() => {
-    if (!activeClassId) return null;
+    if (!activeClassId || activeClassId === "all") return null;
     return classesLookup.find((c) => String(c.id) === String(activeClassId)) || null;
   }, [classesLookup, activeClassId]);
 
   // Files of active class
   const activeClassFiles = useMemo(() => {
-    if (!activeClassId) return [];
+    if (!activeClassId || activeClassId === "all") return [];
     return visibleFiles.filter((f) => String(f.classId) === String(activeClassId));
   }, [visibleFiles, activeClassId]);
 
@@ -465,7 +474,7 @@ export default function StudentFilesPage() {
     if (val === "all") next.delete("courseId");
     else next.set("courseId", val);
     next.delete("classId");
-    setActiveClassId(null);
+    setActiveClassId("all");
     setSearchParams(next);
   };
 
@@ -474,7 +483,7 @@ export default function StudentFilesPage() {
     const next = new URLSearchParams(searchParams);
     if (val === "all") {
       next.delete("classId");
-      setActiveClassId(null);
+      setActiveClassId("all");
     } else {
       next.set("classId", val);
       setActiveClassId(val);
@@ -602,7 +611,7 @@ export default function StudentFilesPage() {
                   Lớp:
                 </span>
                 <select
-                  value={urlClassId || "all"}
+                  value={activeClassId || "all"}
                   onChange={handleClassFilterChange}
                   className="h-8 rounded-xl border border-slate-200/90 bg-slate-50/90 px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white max-w-[160px] truncate"
                 >
@@ -691,7 +700,7 @@ export default function StudentFilesPage() {
           </div>
         ) : viewMode === "by_class" ? (
           /* ================= VIEW: THEO LỚP & BUỔI HỌC (DEFAULT & PRIMARY) ================= */
-          !activeClassId ? (
+          activeClassId === "all" || !activeClass ? (
             /* --- TẦNG 1: DANH SÁCH CÁC Ô TÀI LIỆU LỚP HỌC --- */
             <div className="space-y-3">
               {/* Toolbar tiêu đề & tìm kiếm lớp */}
