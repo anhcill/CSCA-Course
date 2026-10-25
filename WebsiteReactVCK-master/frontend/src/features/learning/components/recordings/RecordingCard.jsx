@@ -1,22 +1,8 @@
 import { Link } from "react-router-dom";
-import { Play, ExternalLink, Clock, CalendarDays, Video, BookOpen } from "lucide-react";
-
-const formatDateTime = (value) => {
-  if (!value) return "Chưa cập nhật ngày";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Chưa cập nhật ngày";
-  return date.toLocaleString("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-};
+import { Play, ExternalLink, CalendarDays, Video } from "lucide-react";
 
 export default function RecordingCard({ item, onPlay }) {
-  const durationText = item.durationMinutes ? `${item.durationMinutes} phút` : "Bản ghi";
-  const dateText = formatDateTime(item.recordedAt);
+  const displayTitle = item.sessionTitle || item.title || "Bản ghi buổi học";
   const sessionUrl = item.courseId && item.classId && item.sessionId
     ? `/lms/courses/${item.courseId}/classes/${item.classId}/sessions/${item.sessionId}`
     : null;
@@ -55,29 +41,14 @@ export default function RecordingCard({ item, onPlay }) {
           </span>
         </div>
 
-        {/* Bottom Badges */}
-        <div className="absolute inset-x-2.5 bottom-2 flex items-center justify-between text-[11px] font-medium text-white">
-          <span className="inline-flex items-center gap-1 rounded-md bg-slate-900/75 px-1.5 py-0.5 text-[9px] backdrop-blur-md text-slate-100">
-            <CalendarDays className="h-2.5 w-2.5 text-sky-200" />
-            <span>{dateText}</span>
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-md bg-slate-900/75 px-1.5 py-0.5 text-[9px] font-bold text-amber-200 backdrop-blur-md">
-            <Clock className="h-2.5 w-2.5" />
-            <span>{durationText}</span>
-          </span>
-        </div>
       </div>
 
       {/* Card Content */}
       <div className="mt-2 flex flex-1 flex-col justify-between">
         <div>
-          <h4 className="text-[11px] font-bold text-slate-800 transition line-clamp-1 group-hover:text-sky-700 sm:text-xs">
-            {item.title}
+          <h4 className="text-[11px] font-bold text-slate-800 transition line-clamp-2 group-hover:text-sky-700 sm:text-xs">
+            {displayTitle}
           </h4>
-          <div className="mt-1 flex min-w-0 items-center gap-1 text-[10px] font-semibold text-sky-700 sm:text-[11px]">
-            <BookOpen className="h-3 w-3 shrink-0 text-sky-500" />
-            <span className="line-clamp-1">{item.sessionTitle ? `Buổi học: ${item.sessionTitle}` : "Video bổ trợ của lớp"}</span>
-          </div>
         </div>
 
         {/* Action Buttons Row */}

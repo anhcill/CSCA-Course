@@ -340,9 +340,9 @@ export default function StudentRecordingsPage() {
                         Bản ghi các buổi học được tự động đồng bộ vào thư mục Google Drive của lớp học.
                       </div>
                     ) : (
-                      <div className="space-y-6 p-4 sm:p-5">
+                      <div className="space-y-4 p-3 sm:p-4">
                         {group.days.map(([day, items]) => (
-                          <div key={day} className="space-y-3">
+                          <div key={day} className="space-y-2">
                             <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-600">
                               <CalendarDays className="h-4 w-4 text-blue-600" />
                               <span>{dateHeading(day)}</span>
@@ -351,7 +351,7 @@ export default function StudentRecordingsPage() {
                               </span>
                             </h3>
 
-                            <div className="flex flex-wrap items-start gap-2.5">
+                            <div className="flex flex-wrap items-start gap-2">
                               {items.map((item) => (
                                 <RecordingCard
                                   key={item.id}
