@@ -13,7 +13,6 @@ import {
   Home,
   LogOut,
   Menu,
-  MessageSquare,
   Settings,
   UserRound,
   Video,
@@ -34,10 +33,9 @@ const STUDENT_NAV = [
   { label: "Từ vựng", path: "/lms/vocabulary", icon: BookA },
   { label: "Công thức", path: "/lms/formulas", icon: Binary },
   { label: "Tài liệu", path: "/lms/files", icon: FolderOpen },
-  { label: "Thảo luận", path: "/lms/discussions", icon: MessageSquare },
+  { label: "Bản ghi buổi học", path: "/lms/recordings", icon: Video },
   { label: "Thông báo", path: "/lms/notifications", icon: Bell },
   { label: "Kết quả học tập", path: "/lms/analytics", icon: BarChart3 },
-  { label: "Bản ghi buổi học", path: "/lms/recordings", icon: Video },
 ];
 
 function Brand() {
@@ -63,6 +61,8 @@ function StudentNavItem({ item, onNavigate, unreadCount = 0 }) {
       import("../../features/learning/pages/StudentVocabularyHubPage.jsx").catch(() => {});
     } else if (item.path === "/lms/formulas") {
       import("../../features/learning/pages/StudentFormulaHubPage.jsx").catch(() => {});
+    } else if (item.path === "/lms/recordings") {
+      import("../../features/learning/pages/StudentRecordingsPage.jsx").catch(() => {});
     }
   };
 
