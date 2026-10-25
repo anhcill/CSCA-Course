@@ -185,7 +185,7 @@ export default function LeaderboardPage() {
   const loadLeaderboard = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/leaderboard?scope=${scope}&period=${period}`);
+      const res = await fetch(`/api/attendance/leaderboard?scope=${scope}&period=${period}`);
       const data = await res.json();
       if (data.success && data.data && Array.isArray(data.data.leaderboard) && data.data.leaderboard.length > 0) {
         setLeaderboard(data.data.leaderboard);

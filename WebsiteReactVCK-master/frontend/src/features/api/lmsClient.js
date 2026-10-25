@@ -43,20 +43,61 @@ const parseResponse = async (response) => {
   return body || { success: true, data: null };
 };
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const LONG_RUNNING_TIMEOUT_MS = 180_000;
+
 const request = async (path, options = {}) => {
-  const headers = new Headers(options.headers || {});
-  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
-  if (options.body && !isFormData && !headers.has("Content-Type")) {
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, signal: callerSignal, ...fetchOptions } = options;
+  const headers = new Headers(fetchOptions.headers || {});
+  const isFormData = typeof FormData !== "undefined" && fetchOptions.body instanceof FormData;
+  if (fetchOptions.body && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-    credentials: "include",
-  });
+  let timeoutId = null;
+  let timedOut = false;
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
 
-  return parseResponse(response);
+  const onCallerAbort = () => {
+    controller?.abort(callerSignal?.reason);
+  };
+
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      controller?.abort(callerSignal.reason);
+    } else {
+      callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+
+  if (controller && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...fetchOptions,
+      headers,
+      signal: controller ? controller.signal : callerSignal,
+      credentials: "include",
+    });
+
+    return await parseResponse(response);
+  } catch (error) {
+    if (timedOut) {
+      throw new LmsApiError("Máy chủ phản hồi quá lâu, vui lòng thử lại", {
+        status: 408,
+        errorCode: "REQUEST_TIMEOUT",
+      });
+    }
+    throw error;
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+    if (callerSignal) callerSignal.removeEventListener("abort", onCallerAbort);
+  }
 };
 
 const requestCalendarMutation = async (path, options, detail) => {
@@ -674,6 +715,7 @@ export const ocrQuizImage = async (formData) => request(
   {
     method: "POST",
     body: formData,
+    timeoutMs: LONG_RUNNING_TIMEOUT_MS,
   },
 );
 
@@ -682,6 +724,7 @@ export const previewQuizImport = async (formData) => request(
   {
     method: "POST",
     body: formData,
+    timeoutMs: LONG_RUNNING_TIMEOUT_MS,
   },
 );
 
@@ -912,7 +955,7 @@ export const fetchLeaderboard = async ({ scope = "class", period = "week", class
   if (page) params.set("page", page);
   if (limit) params.set("limit", limit);
   const query = params.toString();
-  return request(`/leaderboard${query ? `?${query}` : ""}`);
+  return request(`/attendance/leaderboard${query ? `?${query}` : ""}`);
 };
 
 export const fetchStudentGamificationStats = async () => (
@@ -1443,12 +1486,12 @@ export const deleteSessionVocabulary = (vocabularyId) => request(
 
 export const batchImportSessionVocabulary = (sessionId, vocabularies) => request(
   `/lms/sessions/${encodeURIComponent(sessionId)}/vocabulary/batch-import`,
-  { method: "POST", body: JSON.stringify({ vocabularies }) },
+  { method: "POST", body: JSON.stringify({ vocabularies }), timeoutMs: LONG_RUNNING_TIMEOUT_MS },
 );
 
 export const suggestSessionVocabulary = (sessionId, options = {}) => request(
   `/lms/sessions/${encodeURIComponent(sessionId)}/vocabulary/ai-suggest`,
-  { method: "POST", body: JSON.stringify(options) },
+  { method: "POST", body: JSON.stringify(options), timeoutMs: LONG_RUNNING_TIMEOUT_MS },
 );
 
 // ============================================================================
@@ -1623,6 +1666,7 @@ export const batchImportFormulasApi = async (formulas) => (
   request("/admin/formulas/batch-import", {
     method: "POST",
     body: JSON.stringify({ formulas }),
+    timeoutMs: LONG_RUNNING_TIMEOUT_MS,
   })
 );
 

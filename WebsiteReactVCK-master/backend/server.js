@@ -34,6 +34,7 @@ import aiRouter from "./router/ai.router.js";
 import vocabularyRouter from "./router/vocabulary.router.js";
 import formulaRouter from "./router/formula.router.js";
 import { isAllowedOrigin, securityHeaders } from "./middleware/security.js";
+import { missingAssetNotFound } from "./middleware/missingAsset.js";
 import { renderHtmlWithSeo } from "./services/seoPrerender.service.js";
 
 dotenv.config({ path: "./backend/.env" });
@@ -164,6 +165,9 @@ if (process.env.NODE_ENV === "production") {
       }
     },
   }));
+
+  // Missing hashed bundles (/assets/*, *.js, *.css) must return 404 instead of falling back to index.html
+  app.use(missingAssetNotFound);
 
   app.get("*", (req, res) => {
     const renderedHtml = renderHtmlWithSeo(indexPath, req.originalUrl || req.url);

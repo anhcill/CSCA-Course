@@ -1,4 +1,5 @@
-import { Suspense, lazy } from "react";
+import { Suspense, useEffect, useRef } from "react";
+import { isSwUpdatePending, lazyWithRetry as lazy } from "./utils/chunkRecovery.js";
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import Unauthorized from "./pages/client/Unauthorized.jsx";
@@ -37,6 +38,8 @@ import FirstTimeWelcomeModal from "./components/welcome/FirstTimeWelcomeModal.js
 import ChatbotWidget from "./components/course/ChatbotWidget.jsx";
 import OfflineScreen from "./components/common/OfflineScreen.jsx";
 import FloatingContactMenu from "./components/common/FloatingContactMenu.jsx";
+import AppErrorBoundary from "./components/common/AppErrorBoundary.jsx";
+import RouteLoadingFallback from "./components/common/RouteLoadingFallback.jsx";
 
 // LMS feature pages
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.jsx"));
@@ -120,9 +123,10 @@ function CourseClassRedirect() {
   return <Navigate to={`/lms/courses/${courseId}/classes`} replace />;
 }
 
-function AppRoutes() {
+function AppRoutes({ pathname }) {
   return (
-    <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center px-4 text-sm font-semibold text-slate-500 dark:text-slate-400">Đang tải không gian học tập...</div>}>
+    <AppErrorBoundary resetKey={pathname}>
+    <Suspense fallback={<RouteLoadingFallback />}>
     <Routes>
       {/* === Public website === */}
       <Route path="/" element={<Home />} />
@@ -263,13 +267,25 @@ function AppRoutes() {
       <Route path="*" element={<NotFound />} />
     </Routes>
     </Suspense>
+    </AppErrorBoundary>
   );
 }
 
 function AppContent() {
   const { authUser, sessionExpired, dismissSessionExpired } = useAuthContext();
-  const { pathname } = useLocation();
+  const { pathname, search, hash } = useLocation();
   const navigate = useNavigate();
+  const prevPathnameRef = useRef(pathname);
+
+  useEffect(() => {
+    if (prevPathnameRef.current !== pathname) {
+      prevPathnameRef.current = pathname;
+      if (isSwUpdatePending()) {
+        window.location.assign(`${pathname}${search}${hash}`);
+      }
+    }
+  }, [pathname, search, hash]);
+
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
   const isLiveRoomPage = pathname.startsWith("/lms/live-room/");
   const isLmsPage = pathname === "/lms" || pathname.startsWith("/lms/");
@@ -294,7 +310,7 @@ function AppContent() {
       <div className="fixed inset-0 z-50 h-screen w-screen overflow-hidden bg-slate-950">
         <Toaster position="top-center" reverseOrder={false} />
         <LmsRouteGuard allowedRoles={[...TEACHER_ROLES, USER_ROLES.STUDENT]}>
-          <AppRoutes />
+          <AppRoutes pathname={pathname} />
         </LmsRouteGuard>
         <SessionExpiredModal
           isOpen={sessionExpired}
@@ -322,11 +338,13 @@ function AppContent() {
       <div className="min-h-screen">
         <Toaster position="top-center" reverseOrder={false} />
         <LmsRouteGuard allowedRoles={allowedRoles}>
-          <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center px-4 text-sm font-semibold text-slate-500 dark:text-slate-400">Đang tải không gian học tập...</div>}>
-            <Layout>
-              <AppRoutes />
-            </Layout>
-          </Suspense>
+          <AppErrorBoundary resetKey={pathname}>
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <Layout>
+                <AppRoutes pathname={pathname} />
+              </Layout>
+            </Suspense>
+          </AppErrorBoundary>
         </LmsRouteGuard>
         <PwaInstallPrompt />
         <SessionExpiredModal
@@ -347,7 +365,7 @@ function AppContent() {
       {!isAdminPage && <Navbar />}
       <Toaster position="top-center" reverseOrder={false} />
       <main className={`flex-grow ${isAdminPage ? "" : "pt-16 xl:pt-[108px]"}`}>
-        <AppRoutes />
+        <AppRoutes pathname={pathname} />
       </main>
       {!isAdminPage && <Footer />}
       <PwaInstallPrompt />
@@ -369,7 +387,9 @@ function App() {
   return (
     <ThemeProvider>
       <LoadingProvider>
-        <AppContent />
+        <AppErrorBoundary fullScreen>
+          <AppContent />
+        </AppErrorBoundary>
         <OfflineScreen />
       </LoadingProvider>
     </ThemeProvider>

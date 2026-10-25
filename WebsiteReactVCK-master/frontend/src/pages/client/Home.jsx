@@ -24,8 +24,9 @@ import Loading from '../../components/Loading';
 import Meta from '../../components/Meta.jsx';
 import FAQSection, { FAQ_SCHEMA } from '../../components/FAQSection.jsx';
 import { fetchLeaderboard } from '../../features/api/lmsClient';
+import { lazyWithRetry } from '../../utils/chunkRecovery.js';
 
-const FeedBack = React.lazy(() => import('../../components/FeedBack'));
+const FeedBack = lazyWithRetry(() => import('../../components/FeedBack'));
 
 const commonsImage = (fileName, width = 1600) =>
   `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(fileName)}?width=${width}`;

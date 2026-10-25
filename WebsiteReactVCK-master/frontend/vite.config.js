@@ -66,13 +66,23 @@ export default defineConfig({
                 // course, teacher and admin bundle at once.
                 globPatterns: ['index.html', 'favicon.ico', 'favicon.svg', 'site.webmanifest'],
                 navigateFallback: '/index.html',
-                navigateFallbackDenylist: [/^\/api\//],
+                navigateFallbackDenylist: [/^\/api\//, /^\/assets\//, /\.[a-z0-9]+$/i],
                 runtimeCaching: [
                     {
                         urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/assets/'),
                         handler: 'CacheFirst',
                         options: {
                             cacheName: 'app-assets-cache',
+                            plugins: [
+                                {
+                                    cacheWillUpdate: async ({ response }) => {
+                                        if (!response || response.status !== 200) return null;
+                                        const contentType = response.headers.get('content-type') || '';
+                                        if (contentType.includes('text/html')) return null;
+                                        return response;
+                                    }
+                                }
+                            ],
                             expiration: {
                                 maxEntries: 120,
                                 maxAgeSeconds: 30 * 24 * 60 * 60
