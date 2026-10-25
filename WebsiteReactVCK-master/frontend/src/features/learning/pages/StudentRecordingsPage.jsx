@@ -351,7 +351,7 @@ export default function StudentRecordingsPage() {
                               </span>
                             </h3>
 
-                            <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,210px))] justify-start gap-3">
+                            <div className="flex flex-wrap items-start gap-2.5">
                               {items.map((item) => (
                                 <RecordingCard
                                   key={item.id}
