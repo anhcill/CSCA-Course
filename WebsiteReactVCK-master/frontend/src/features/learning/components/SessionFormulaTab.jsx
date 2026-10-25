@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Binary, Check, ChevronDown, Copy,
   HelpCircle, Info, Lightbulb, Star
@@ -14,6 +14,15 @@ export default function SessionFormulaTab({
 }) {
   const [expandedSolutions, setExpandedSolutions] = useState({});
   const [copiedId, setCopiedId] = useState(null);
+  const formulaGroups = useMemo(() => {
+    const groups = new Map();
+    formulas.forEach((formula) => {
+      const chapterName = formula.chapterName?.trim() || 'Nội dung chung';
+      if (!groups.has(chapterName)) groups.set(chapterName, []);
+      groups.get(chapterName).push(formula);
+    });
+    return [...groups.entries()];
+  }, [formulas]);
 
   const toggleSolution = (id) => {
     setExpandedSolutions((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -59,9 +68,20 @@ export default function SessionFormulaTab({
         </div>
       </div>
 
-      {/* Formulas List */}
-      <div className="space-y-5">
-        {formulas.map((formula) => {
+      {/* Formulas grouped by lesson topic */}
+      {formulaGroups.map(([chapterName, chapterFormulas]) => (
+        <section key={chapterName} className="space-y-4">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-black uppercase tracking-[0.12em] text-slate-800 dark:text-slate-100">
+              {chapterName}
+            </h3>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700 dark:bg-blue-950/60 dark:text-sky-300">
+              {chapterFormulas.length} công thức
+            </span>
+            <div className="h-px flex-1 bg-gradient-to-r from-blue-200 to-transparent dark:from-blue-900" />
+          </div>
+          <div className="space-y-5">
+        {chapterFormulas.map((formula) => {
           let formulaHtml = '';
           try {
             formulaHtml = katex.renderToString(formula.latex, {
@@ -219,7 +239,9 @@ export default function SessionFormulaTab({
             </div>
           );
         })}
-      </div>
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

@@ -18,6 +18,7 @@
     "test:quiz": "node --test backend/services/quizAttempt.service.test.js backend/services/quizAuthoring.service.test.js backend/services/quizDocumentImport.service.test.js backend/services/quizOcr.service.test.js backend/router/quizAuthoring.router.test.js backend/router/quizPlayer.router.test.js backend/router/quizEssayGrading.router.test.js",
     "test:vocabulary": "node --test backend/router/vocabulary.router.test.js",
     "test:formulas": "node --test backend/router/formula.router.test.js",
+    "test:recordings": "node --test backend/utils/recordingUrl.test.js backend/router/recording.router.test.js",
     "test:lms-workflows": "node --test backend/services/lmsWorkflow.integration.test.js",
     "test:integration": "node --test backend/middleware/requireManagementIntegration.test.js backend/services/managementCalendarDelivery.service.test.js backend/services/managementSync.service.test.js",
     "worker": "cross-env NODE_ENV=production node ./backend/worker.js",

@@ -32,6 +32,7 @@ export default function TeacherSessionVocabularyTab({
   const [aiTopic, setAiTopic] = useState(session?.title || '');
   const [aiCount, setAiCount] = useState(10);
   const [newWord, setNewWord] = useState({
+    topic: 'Nội dung chung',
     term: '',
     pinyin: '',
     sinoVietnamese: '',
@@ -44,6 +45,7 @@ export default function TeacherSessionVocabularyTab({
   const resetWordForm = () => {
     setEditingWordId(null);
     setNewWord({
+      topic: 'Nội dung chung',
       term: '',
       pinyin: '',
       sinoVietnamese: '',
@@ -62,6 +64,7 @@ export default function TeacherSessionVocabularyTab({
   const openEditModal = (word) => {
     setEditingWordId(word.id);
     setNewWord({
+      topic: word.topic || 'Nội dung chung',
       term: word.term || '',
       pinyin: word.pinyin || '',
       sinoVietnamese: word.sinoVietnamese || '',
@@ -119,8 +122,8 @@ export default function TeacherSessionVocabularyTab({
 
     return trimmed.split(/\r?\n/).filter(Boolean).map((line) => {
       const columns = line.includes('\t') ? line.split('\t') : line.split(',');
-      const [term, pinyin, meaning, sinoVietnamese = '', partOfSpeech = '', exampleSentence = '', exampleMeaning = ''] = columns.map((value) => value.trim());
-      return { term, pinyin, meaning, sinoVietnamese, partOfSpeech, exampleSentence, exampleMeaning };
+      const [term, pinyin, meaning, sinoVietnamese = '', partOfSpeech = '', exampleSentence = '', exampleMeaning = '', topic = 'Nội dung chung'] = columns.map((value) => value.trim());
+      return { topic, term, pinyin, meaning, sinoVietnamese, partOfSpeech, exampleSentence, exampleMeaning };
     });
   };
 
@@ -216,10 +219,15 @@ export default function TeacherSessionVocabularyTab({
               className="flex flex-col justify-between rounded-3xl border border-white/85 bg-white/92 p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-xl transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/90"
             >
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-300 border border-blue-200/60">
-                    {word.partOfSpeech || 'Từ vựng'}
-                  </span>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60">
+                      {word.topic || 'Nội dung chung'}
+                    </span>
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-300 border border-blue-200/60">
+                      {word.partOfSpeech || 'Từ vựng'}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
@@ -308,6 +316,18 @@ export default function TeacherSessionVocabularyTab({
             </div>
 
             <form onSubmit={handleSaveWord} className="space-y-3.5 pt-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Chủ đề / Nhóm kiến thức
+                </label>
+                <input
+                  type="text"
+                  placeholder="VD: Dãy số hoặc Số phức"
+                  value={newWord.topic}
+                  onChange={(e) => setNewWord({ ...newWord, topic: e.target.value })}
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200/90 bg-white text-xs font-bold text-slate-800 outline-none focus:border-blue-500 shadow-2xs dark:bg-slate-800 dark:text-white"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -472,7 +492,7 @@ export default function TeacherSessionVocabularyTab({
                 Hoặc dán danh sách TSV, CSV hoặc JSON từ Excel:
               </label>
               <p className="mt-0.5 text-[11px] text-slate-500">
-                Cột: Hán tự, Pinyin, Nghĩa tiếng Việt, Hán Việt, Từ loại, Câu ví dụ, Dịch câu.
+                Cột: Hán tự, Pinyin, Nghĩa tiếng Việt, Hán Việt, Từ loại, Câu ví dụ, Dịch câu, Chủ đề.
               </p>
               <textarea
                 value={importText}

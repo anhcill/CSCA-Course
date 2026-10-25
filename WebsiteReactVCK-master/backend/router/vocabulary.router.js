@@ -507,11 +507,11 @@ export const createVocabularyRouter = ({
       }
       const inserted = await client.query(
         `INSERT INTO session_vocabularies
-           (session_id, class_id, term, pinyin, sino_vietnamese, meaning, part_of_speech,
+           (session_id, class_id, topic, term, pinyin, sino_vietnamese, meaning, part_of_speech,
             example_sentence, example_meaning, audio_url, order_index, created_by, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)
          RETURNING *`,
-        [sessionId, access.session.class_id, payload.term, payload.pinyin, payload.sinoVietnamese,
+        [sessionId, access.session.class_id, payload.topic || "Nội dung chung", payload.term, payload.pinyin, payload.sinoVietnamese,
           payload.meaning, payload.partOfSpeech, payload.exampleSentence, payload.exampleMeaning,
           payload.audioUrl, payload.orderIndex, req.user.id],
       );
@@ -556,7 +556,7 @@ export const createVocabularyRouter = ({
         return accessError(res, access.error ? access : { error: "forbidden" });
       }
       const columnMap = {
-        term: "term", pinyin: "pinyin", sinoVietnamese: "sino_vietnamese", meaning: "meaning",
+        topic: "topic", term: "term", pinyin: "pinyin", sinoVietnamese: "sino_vietnamese", meaning: "meaning",
         partOfSpeech: "part_of_speech", exampleSentence: "example_sentence",
         exampleMeaning: "example_meaning", audioUrl: "audio_url", orderIndex: "order_index",
       };
@@ -652,7 +652,11 @@ Không dùng Markdown, LaTeX hoặc ký tự backslash trong bất kỳ giá tr�
       const vocabularies = [];
       for (const item of extractJsonArray(aiResult.answer).slice(0, count)) {
         try {
-          vocabularies.push(normalizeVocabularyPayload({ ...item, orderIndex: vocabularies.length }));
+          vocabularies.push(normalizeVocabularyPayload({
+            ...item,
+            topic: item?.topic || topic,
+            orderIndex: vocabularies.length,
+          }));
         } catch (error) {
           if (!(error instanceof VocabularyValidationError)) throw error;
           console.warn("Skipping invalid AI vocabulary item:", error.message);
@@ -703,10 +707,10 @@ Không dùng Markdown, LaTeX hoặc ký tự backslash trong bất kỳ giá tr�
         const item = items[index];
         const inserted = await client.query(
           `INSERT INTO session_vocabularies
-             (session_id, class_id, term, pinyin, sino_vietnamese, meaning, part_of_speech,
+             (session_id, class_id, topic, term, pinyin, sino_vietnamese, meaning, part_of_speech,
               example_sentence, example_meaning, audio_url, order_index, created_by, updated_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12) RETURNING *`,
-          [sessionId, access.session.class_id, item.term, item.pinyin, item.sinoVietnamese,
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13) RETURNING *`,
+          [sessionId, access.session.class_id, item.topic || "Nội dung chung", item.term, item.pinyin, item.sinoVietnamese,
             item.meaning, item.partOfSpeech, item.exampleSentence, item.exampleMeaning,
             item.audioUrl, item.orderIndex ?? index, req.user.id],
         );

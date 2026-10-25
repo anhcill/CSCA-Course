@@ -120,9 +120,10 @@ test("session vocabulary API enforces class access and persists learner progress
   const created = await jsonRequest(baseUrl, `/api/lms/sessions/${session.id}/vocabulary`, {
     method: "POST",
     user: "teacher",
-    body: { term: "多面体", pinyin: "duō miàn tǐ", meaning: "Khối đa diện", orderIndex: 1 },
+    body: { topic: "Hình học", term: "多面体", pinyin: "duō miàn tǐ", meaning: "Khối đa diện", orderIndex: 1 },
   });
   assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.data.topic, "Hình học");
   const vocabularyId = created.body.data.id;
 
   const forbiddenCreate = await jsonRequest(baseUrl, `/api/lms/sessions/${session.id}/vocabulary`, {
@@ -175,6 +176,7 @@ test("session vocabulary API enforces class access and persists learner progress
   assert.equal(suggested.status, 200, JSON.stringify(suggested.body));
   assert.equal(suggested.body.data.model, "ag/gemini-3-flash");
   assert.equal(suggested.body.data.vocabularies[0].term, "导数");
+  assert.equal(suggested.body.data.vocabularies[0].topic, "Đạo hàm");
 
   const imported = await jsonRequest(baseUrl, `/api/lms/sessions/${session.id}/vocabulary/batch-import`, {
     method: "POST",

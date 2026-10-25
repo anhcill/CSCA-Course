@@ -1,4 +1,5 @@
 const FIELD_RULES = Object.freeze({
+  topic: { max: 100 },
   term: { required: true, max: 100 },
   pinyin: { max: 100 },
   sinoVietnamese: { max: 100 },
@@ -81,6 +82,7 @@ export const serializeVocabulary = (row) => ({
   id: String(row.id),
   sessionId: String(row.session_id),
   classId: String(row.class_id),
+  topic: row.topic || "Nội dung chung",
   term: row.term,
   pinyin: row.pinyin || "",
   sinoVietnamese: row.sino_vietnamese || "",

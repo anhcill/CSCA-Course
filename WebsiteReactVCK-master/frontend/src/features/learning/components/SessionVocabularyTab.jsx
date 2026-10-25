@@ -13,6 +13,15 @@ export default function SessionVocabularyTab({
     () => vocabularies.filter((w) => w.status === 'mastered').length,
     [vocabularies]
   );
+  const vocabularyGroups = useMemo(() => {
+    const groups = new Map();
+    vocabularies.forEach((word) => {
+      const topic = word.topic?.trim() || 'Nội dung chung';
+      if (!groups.has(topic)) groups.set(topic, []);
+      groups.get(topic).push(word);
+    });
+    return [...groups.entries()];
+  }, [vocabularies]);
   const percent = vocabularies.length > 0 ? Math.round((masteredCount / vocabularies.length) * 100) : 0;
 
   if (vocabularies.length === 0) {
@@ -65,87 +74,92 @@ export default function SessionVocabularyTab({
         </button>
       </div>
 
-      {/* Vocabulary Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-        {vocabularies.map((word) => (
-          <div
-            key={word.id}
-            className="flex flex-col justify-between rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm transition hover:border-blue-300 dark:hover:border-blue-700/60"
-          >
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-300">
-                  {word.partOfSpeech || 'Từ vựng'}
-                </span>
-                <div className="flex items-center gap-1">
-                  {onToggleStar && (
-                    <button
-                      type="button"
-                      onClick={() => onToggleStar(word.id)}
-                      className={`p-1 rounded-md transition ${
-                        word.isStarred
-                          ? 'text-amber-500 fill-current'
-                          : 'text-slate-300 hover:text-amber-500 dark:text-slate-600'
-                      }`}
-                      title="Đánh dấu quan trọng"
-                    >
-                      <Star className={`h-4 w-4 ${word.isStarred ? 'fill-current' : ''}`} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => speakChinese(word.term)}
-                    className="p-1 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-sky-400 transition"
-                    title="Phát âm"
-                  >
-                    <Volume2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-baseline gap-2">
-                <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-                  {word.term}
-                </h3>
-                <span className="text-xs font-bold text-blue-600 dark:text-sky-400">
-                  {word.pinyin}
-                </span>
-              </div>
-
-              {word.sinoVietnamese && (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Hán Việt: <span className="font-semibold text-slate-700 dark:text-slate-200">{word.sinoVietnamese}</span>
-                </p>
-              )}
-
-              <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                {word.meaning}
-              </p>
-
-              {word.exampleSentence && (
-                <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-2.5 text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
-                  <p className="font-medium italic">{`"${word.exampleSentence}"`}</p>
-                  {word.exampleMeaning && (
-                    <p className="text-[10px] text-slate-400">{word.exampleMeaning}</p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-3 pt-2.5 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 text-[10px] font-bold">
-              <span className={`px-2 py-0.5 rounded-full ${
-                word.status === 'mastered'
-                  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400'
-                  : word.status === 'learning'
-                  ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'
-                  : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
-              }`}>
-                {word.status === 'mastered' ? 'Đã thuộc' : word.status === 'learning' ? 'Đang học' : 'Từ mới'}
-              </span>
-            </div>
+      {vocabularyGroups.map(([topic, words]) => (
+        <section key={topic} className="space-y-3">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-black uppercase tracking-[0.12em] text-slate-800 dark:text-slate-100">
+              {topic}
+            </h3>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700 dark:bg-blue-950/60 dark:text-sky-300">
+              {words.length} từ
+            </span>
+            <div className="h-px flex-1 bg-gradient-to-r from-blue-200 to-transparent dark:from-blue-900" />
           </div>
-        ))}
-      </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {words.map((word) => (
+              <div
+                key={word.id}
+                className="flex flex-col justify-between rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm transition hover:border-blue-300 dark:hover:border-blue-700/60"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-sky-300">
+                      {word.partOfSpeech || 'Từ vựng'}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {onToggleStar && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleStar(word.id)}
+                          className={`p-1 rounded-md transition ${
+                            word.isStarred
+                              ? 'text-amber-500 fill-current'
+                              : 'text-slate-300 hover:text-amber-500 dark:text-slate-600'
+                          }`}
+                          title="Đánh dấu quan trọng"
+                        >
+                          <Star className={`h-4 w-4 ${word.isStarred ? 'fill-current' : ''}`} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => speakChinese(word.term)}
+                        className="p-1 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-sky-400 transition"
+                        title="Phát âm"
+                      >
+                        <Volume2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">{word.term}</h3>
+                    <span className="text-xs font-bold text-blue-600 dark:text-sky-400">{word.pinyin}</span>
+                  </div>
+
+                  {word.sinoVietnamese && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Hán Việt: <span className="font-semibold text-slate-700 dark:text-slate-200">{word.sinoVietnamese}</span>
+                    </p>
+                  )}
+
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{word.meaning}</p>
+
+                  {word.exampleSentence && (
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-2.5 text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
+                      <p className="font-medium italic">{`"${word.exampleSentence}"`}</p>
+                      {word.exampleMeaning && <p className="text-[10px] text-slate-400">{word.exampleMeaning}</p>}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-3 pt-2.5 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 text-[10px] font-bold">
+                  <span className={`px-2 py-0.5 rounded-full ${
+                    word.status === 'mastered'
+                      ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400'
+                      : word.status === 'learning'
+                      ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'
+                      : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
+                  }`}>
+                    {word.status === 'mastered' ? 'Đã thuộc' : word.status === 'learning' ? 'Đang học' : 'Từ mới'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

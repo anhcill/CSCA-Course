@@ -109,9 +109,7 @@ export default function StudentRecordingsPage() {
   const classes = useMemo(() => {
     return data.classes
       .map((c) => {
-        const recs = data.recordings.filter((r) => r.classId === c.id);
-        const directRec = recs.find((r) => r.hasDirectUrl || r.openUrl);
-        const driveUrl = c.folderOpenUrl || c.folderUrl || directRec?.openUrl || null;
+        const driveUrl = c.folderOpenUrl || c.folderUrl || null;
         return {
           ...c,
           classDriveUrl: driveUrl,
@@ -123,7 +121,7 @@ export default function StudentRecordingsPage() {
           dateValue(b.latestRecordingAt) - dateValue(a.latestRecordingAt) ||
           String(a.title).localeCompare(String(b.title), "vi")
       );
-  }, [data.classes, data.recordings]);
+  }, [data.classes]);
 
   const classIds = useMemo(() => classes.map((item) => item.id), [classes]);
   const [classId, setClassId] = usePersistentClassSelection({
@@ -174,7 +172,6 @@ export default function StudentRecordingsPage() {
             classItem.classDriveUrl ||
             classItem.folderOpenUrl ||
             classItem.folderUrl ||
-            items.find((item) => item.hasDirectUrl)?.openUrl ||
             null,
           items,
           days: [...days.entries()],
@@ -354,7 +351,7 @@ export default function StudentRecordingsPage() {
                               </span>
                             </h3>
 
-                            <div className="grid gap-3.5 sm:grid-cols-2">
+                            <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
                               {items.map((item) => (
                                 <RecordingCard
                                   key={item.id}

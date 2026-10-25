@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Binary,
   Plus,
@@ -32,6 +32,7 @@ export default function TeacherSessionFormulaTab({
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newFormula, setNewFormula] = useState({
+    chapterName: 'Nội dung chung',
     nameVi: '',
     nameZh: '',
     pinyin: '',
@@ -42,6 +43,15 @@ export default function TeacherSessionFormulaTab({
     exampleSolution: '',
     variablesStr: 'R: Bán kính lớn, r: Bán kính nhỏ, h: Chiều cao',
   });
+  const formulaGroups = useMemo(() => {
+    const groups = new Map();
+    formulas.forEach((formula) => {
+      const chapterName = formula.chapterName?.trim() || 'Nội dung chung';
+      if (!groups.has(chapterName)) groups.set(chapterName, []);
+      groups.get(chapterName).push(formula);
+    });
+    return [...groups.entries()];
+  }, [formulas]);
 
   const handleInsertSymbol = (code) => {
     setNewFormula((prev) => ({
@@ -75,6 +85,7 @@ export default function TeacherSessionFormulaTab({
       toast.success('Đã thêm công thức mới vào buổi dạy thành công! 📐');
       setShowAddModal(false);
       setNewFormula({
+        chapterName: 'Nội dung chung',
         nameVi: '',
         nameZh: '',
         pinyin: '',
@@ -139,8 +150,20 @@ export default function TeacherSessionFormulaTab({
           </p>
         </div>
       ) : (
-        <div className="space-y-3.5">
-          {formulas.map((formula) => {
+        <div className="space-y-6">
+          {formulaGroups.map(([chapterName, chapterFormulas]) => (
+            <section key={chapterName} className="space-y-3.5">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-black uppercase tracking-[0.12em] text-slate-800 dark:text-slate-100">
+                  {chapterName}
+                </h3>
+                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700 dark:bg-blue-950/60 dark:text-sky-300">
+                  {chapterFormulas.length} công thức
+                </span>
+                <div className="h-px flex-1 bg-gradient-to-r from-blue-200 to-transparent dark:from-blue-900" />
+              </div>
+              <div className="space-y-3.5">
+          {chapterFormulas.map((formula) => {
             let formulaHtml = '';
             try {
               formulaHtml = katex.renderToString(formula.latex, {
@@ -208,6 +231,9 @@ export default function TeacherSessionFormulaTab({
               </div>
             );
           })}
+              </div>
+            </section>
+          ))}
         </div>
       )}
 
@@ -234,6 +260,19 @@ export default function TeacherSessionFormulaTab({
             </div>
 
             <form onSubmit={handleSave} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Chủ đề / Nhóm công thức *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="VD: Dãy số hoặc Số phức"
+                  value={newFormula.chapterName}
+                  onChange={(e) => setNewFormula({ ...newFormula, chapterName: e.target.value })}
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200/90 bg-white text-xs font-bold text-slate-800 outline-none focus:border-blue-500 shadow-2xs dark:bg-slate-800 dark:text-white"
+                />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">

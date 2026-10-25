@@ -60,7 +60,7 @@ const serializeClass = (row, { includeDriveUrl = false } = {}) => ({
   ...(includeDriveUrl ? { folderUrl: row.folder_url || "" } : {}),
 });
 
-const validatePayload = async (body, current = null) => {
+export const validateRecordingPayload = async (body, current = null, dbQuery = query) => {
   const classId = body.classId === undefined ? Number(current?.live_class_id) : parseId(body.classId);
   const sessionId = body.sessionId === undefined
     ? (current?.class_session_id ? Number(current.class_session_id) : null)
@@ -71,7 +71,7 @@ const validatePayload = async (body, current = null) => {
   const driveUrl = rawDriveUrl ? normalizeGoogleDriveUrl(rawDriveUrl) : null;
   const recordedAt = body.recordedAt === undefined ? current?.recorded_at : parseOptionalDate(body.recordedAt);
   const durationMinutes = body.durationMinutes === undefined
-    ? current?.duration_minutes
+    ? (current?.duration_minutes ?? null)
     : (body.durationMinutes === null || body.durationMinutes === "" ? null : Number(body.durationMinutes));
   const isPublished = body.isPublished === undefined ? Boolean(current?.is_published) : body.isPublished;
 
@@ -88,21 +88,21 @@ const validatePayload = async (body, current = null) => {
   }
   if (typeof isPublished !== "boolean") return { error: "Trạng thái xuất bản không hợp lệ" };
 
-  const liveClass = (await query(
+  const liveClass = (await dbQuery(
     `SELECT lc.id, lc.title, lc.course_id FROM live_classes lc
      WHERE lc.id = $1 AND lc.status <> 'cancelled'`,
     [classId],
   )).rows[0];
   if (!liveClass) return { error: "Không tìm thấy lớp học" };
   if (sessionId) {
-    const session = (await query(
+    const session = (await dbQuery(
       "SELECT id, title, start_time FROM class_sessions WHERE id = $1 AND live_class_id = $2 AND status <> 'cancelled'",
       [sessionId, classId],
     )).rows[0];
     if (!session) return { error: "Buổi học không thuộc lớp đã chọn" };
   }
   if (isPublished && !driveUrl) {
-    const publishedFolder = (await query(
+    const publishedFolder = (await dbQuery(
       "SELECT 1 FROM class_recording_folders WHERE live_class_id = $1 AND is_published = TRUE",
       [classId],
     )).rows[0];
@@ -359,7 +359,7 @@ router.put("/admin/classes/:classId/folder", ...adminOnly, async (req, res) => {
 
 router.post("/admin", ...adminOnly, async (req, res) => {
   try {
-    const payload = await validatePayload(req.body || {});
+    const payload = await validateRecordingPayload(req.body || {});
     if (payload.error) return errorResponse(res, 422, payload.error, "VALIDATION_ERROR");
     const result = await query(
       `INSERT INTO class_recordings (
@@ -384,7 +384,7 @@ router.patch("/admin/:id", ...adminOnly, async (req, res) => {
   try {
     const current = (await query("SELECT * FROM class_recordings WHERE id = $1", [recordingId])).rows[0];
     if (!current) return errorResponse(res, 404, "Không tìm thấy bản ghi", "NOT_FOUND");
-    const payload = await validatePayload(req.body || {}, current);
+    const payload = await validateRecordingPayload(req.body || {}, current);
     if (payload.error) return errorResponse(res, 422, payload.error, "VALIDATION_ERROR");
     const result = await query(
       `UPDATE class_recordings SET
