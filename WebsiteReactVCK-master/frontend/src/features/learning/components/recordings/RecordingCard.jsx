@@ -14,13 +14,6 @@ const formatDateTime = (value) => {
   });
 };
 
-const formatClassTitle = (title) => {
-  if (!title) return "Lớp học trực tuyến";
-  const str = String(title).trim();
-  if (/^\d+$/.test(str)) return `Lớp ${str}`;
-  return str;
-};
-
 export default function RecordingCard({ item, onPlay }) {
   const durationText = item.durationMinutes ? `${item.durationMinutes} phút` : "Bản ghi";
   const dateText = formatDateTime(item.recordedAt);
@@ -60,11 +53,6 @@ export default function RecordingCard({ item, onPlay }) {
             <Video className="h-2.5 w-2.5 text-rose-300" />
             <span>HD</span>
           </span>
-          {item.sessionTitle && (
-            <span className="hidden max-w-[120px] rounded-md bg-sky-700/85 px-1.5 py-0.5 text-[9px] font-bold text-white backdrop-blur-md line-clamp-1 sm:inline-flex">
-              {item.sessionTitle}
-            </span>
-          )}
         </div>
 
         {/* Bottom Badges */}
@@ -90,17 +78,10 @@ export default function RecordingCard({ item, onPlay }) {
             <BookOpen className="h-3 w-3 shrink-0 text-sky-500" />
             <span className="line-clamp-1">{item.sessionTitle ? `Buổi học: ${item.sessionTitle}` : "Video bổ trợ của lớp"}</span>
           </div>
-          <p className="mt-1 text-[10px] text-slate-500 line-clamp-2 leading-relaxed sm:text-[11px]">
-            {item.description || "Video ghi lại toàn bộ tiến trình buổi học, kiến thức trọng tâm và giải đáp thắc mắc."}
-          </p>
         </div>
 
         {/* Action Buttons Row */}
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 border-t border-sky-100 pt-2">
-          <div className="min-w-0 flex-1 text-[10px] font-semibold text-slate-500 truncate sm:text-[11px]">
-            <span className="truncate">{formatClassTitle(item.classTitle)}</span>
-          </div>
-
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-sky-100 pt-2">
           <div className="flex min-w-0 items-center gap-1 shrink-0">
             {sessionUrl && (
               <Link
