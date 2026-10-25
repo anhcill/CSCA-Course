@@ -27,6 +27,18 @@ const TIME_RANGES = {
 
 const ROW_HEIGHT = 62; // pixels per hour for comfortable reading
 const WEEKDAY_NAMES = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
+const TIME_RANGE_STORAGE_KEY = "csca_calendar_time_range";
+const DEFAULT_TIME_RANGE = "afternoon_evening";
+
+const getInitialTimeRange = () => {
+  if (typeof window === "undefined") return DEFAULT_TIME_RANGE;
+  try {
+    const savedRange = window.localStorage.getItem(TIME_RANGE_STORAGE_KEY);
+    return savedRange && TIME_RANGES[savedRange] ? savedRange : DEFAULT_TIME_RANGE;
+  } catch {
+    return DEFAULT_TIME_RANGE;
+  }
+};
 
 const getWeekDates = (date) => {
   const d = new Date(date);
@@ -86,10 +98,19 @@ export default function ScheduleWeeklyTimetable({
   events = [],
   onSelectEvent,
 }) {
-  const [rangeKey, setRangeKey] = useState("evening_only");
-  const selectedRange = TIME_RANGES[rangeKey] || TIME_RANGES.evening_only;
+  const [rangeKey, setRangeKey] = useState(getInitialTimeRange);
+  const selectedRange = TIME_RANGES[rangeKey] || TIME_RANGES[DEFAULT_TIME_RANGE];
   const hours = selectedRange.hours;
   const minHour = selectedRange.startHour;
+
+  const handleRangeChange = (nextRange) => {
+    setRangeKey(nextRange);
+    try {
+      window.localStorage.setItem(TIME_RANGE_STORAGE_KEY, nextRange);
+    } catch {
+      // Keep the in-memory selection when browser storage is unavailable.
+    }
+  };
 
   const weekDays = useMemo(() => getWeekDates(currentDate), [currentDate]);
   const today = new Date();
@@ -127,7 +148,7 @@ export default function ScheduleWeeklyTimetable({
               <button
                 key={key}
                 type="button"
-                onClick={() => setRangeKey(key)}
+                onClick={() => handleRangeChange(key)}
                 className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
                   isActive
                     ? "bg-blue-600 text-white shadow-xs"
