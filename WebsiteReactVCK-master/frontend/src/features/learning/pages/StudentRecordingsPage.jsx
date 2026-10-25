@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
   ExternalLink,
   FolderOpen,
+  GraduationCap,
   PlaySquare,
   Search,
   School,
+  Sparkles,
   RefreshCw,
   X,
   Play,
@@ -155,6 +160,30 @@ export default function StudentRecordingsPage() {
     });
   }, [classId, classes, data.recordings, search]);
 
+  const classCards = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return classes
+      .map((classItem) => {
+        const recordings = data.recordings
+          .filter((item) => item.classId === classItem.id)
+          .sort((a, b) => dateValue(b.recordedAt) - dateValue(a.recordedAt));
+        return {
+          ...classItem,
+          recordings,
+          latest: recordings[0] || null,
+          sessionCount: new Set(recordings.filter((item) => item.sessionId).map((item) => item.sessionId)).size,
+          matches: !needle || [
+            classItem.title,
+            classItem.courseTitle,
+            ...recordings.flatMap((item) => [item.title, item.sessionTitle]),
+          ].some((value) => String(value || "").toLowerCase().includes(needle)),
+        };
+      })
+      .filter((item) => item.matches);
+  }, [classes, data.recordings, search]);
+
+  const visibleCount = classId === "all" ? classCards.length : groups.length;
+
   // Total stats
   const totalRecordings = data.recordings.length;
   const totalMinutes = useMemo(() => {
@@ -231,9 +260,9 @@ export default function StudentRecordingsPage() {
             {/* Content List: Classes & Recordings */}
             {loading ? (
               <LoadingState message="Đang tải danh sách bản ghi buổi học..." count={2} />
-            ) : error && groups.length === 0 ? (
+            ) : error && visibleCount === 0 ? (
               <ErrorState title="Chưa thể tải bản ghi" message={error} onRetry={loadRecordings} />
-            ) : groups.length === 0 ? (
+            ) : visibleCount === 0 ? (
               <div className="rounded-2xl border border-white/85 bg-white/90 p-12 text-center shadow-xs backdrop-blur-md">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
                   <PlaySquare className="h-6 w-6" />
@@ -259,8 +288,47 @@ export default function StudentRecordingsPage() {
                   </button>
                 )}
               </div>
+            ) : classId === "all" ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {classCards.map((classItem) => (
+                  <button
+                    key={classItem.id}
+                    type="button"
+                    onClick={() => setClassId(classItem.id)}
+                    className="group flex min-w-0 flex-col justify-between rounded-2xl border border-white/80 bg-white/95 p-3.5 text-left shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md transition hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between gap-1 text-[10px]">
+                        <span className="inline-flex min-w-0 items-center gap-1 rounded-md border border-blue-200/60 bg-blue-50 px-2 py-0.5 font-bold text-blue-700">
+                          <BookOpen className="h-3 w-3 shrink-0" />
+                          <span className="truncate">[{classItem.courseTitle || "CSCA"}]</span>
+                        </span>
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-200/60 bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Lớp học</span>
+                      </div>
+
+                      <div className="flex items-start gap-2.5">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white"><GraduationCap className="h-5 w-5" /></div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="line-clamp-1 text-sm font-extrabold leading-snug text-[#102f63] transition group-hover:text-blue-600">{formatClassTitle(classItem.title)}</h3>
+                          <p className="mt-0.5 truncate text-[11px] text-slate-500">{classItem.courseTitle || "Khóa học CSCA"}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-1 text-center">
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-2"><span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Bản ghi</span><span className="text-sm font-black text-[#102f63]">{classItem.recordings.length} video</span></div>
+                        <div className="rounded-xl border border-blue-100/60 bg-blue-50/40 p-2"><span className="block text-[9px] font-bold uppercase tracking-wider text-blue-600">Buổi có video</span><span className="text-sm font-black text-blue-700">{classItem.sessionCount} buổi</span></div>
+                      </div>
+
+                      {classItem.latest && <div className="flex items-center gap-1.5 truncate rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-1.5 text-[10px] text-slate-600"><Sparkles className="h-3 w-3 shrink-0 text-amber-500" /><span className="truncate">Mới nhất: <strong className="font-semibold text-slate-800">{classItem.latest.sessionTitle || classItem.latest.title}</strong></span></div>}
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between border-t border-slate-100/80 pt-2.5 text-xs font-bold text-blue-600 group-hover:text-blue-700"><span className="text-[10px] text-slate-400">Xem video theo buổi học</span><span className="inline-flex items-center gap-1">Vào xem <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" /></span></div>
+                  </button>
+                ))}
+              </div>
             ) : (
               <div className="space-y-5">
+                <button type="button" onClick={() => setClassId("all")} className="inline-flex items-center gap-1.5 rounded-xl border border-white/80 bg-white/90 px-3 py-2 text-xs font-bold text-slate-600 shadow-xs hover:text-blue-700"><ArrowLeft className="h-3.5 w-3.5" /> Danh sách lớp</button>
                 {groups.map((group) => (
                   <section
                     key={group.id}
