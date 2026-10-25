@@ -111,9 +111,11 @@ test("notifyHomeworkQuizPublished sends email ONLY for homework quizzes and skip
         };
       }
       if (sql.includes("FROM class_enrollments ce")) {
+        assert.doesNotMatch(sql, /is_internal_test/);
         return {
           rows: [
             { user_id: 101, email: "student1@example.com", username: "student1", display_name: "Nguyễn Văn A" },
+            { user_id: 102, email: "test-account@example.com", username: "test-account", display_name: "Tài khoản Test" },
           ],
         };
       }
@@ -140,8 +142,8 @@ test("notifyHomeworkQuizPublished sends email ONLY for homework quizzes and skip
     emailSender: async (payload) => sentEmails.push(payload),
   });
   assert.equal(homeworkResult.skipped, false);
-  assert.equal(homeworkResult.emailed, 1);
-  assert.equal(sentEmails.length, 1);
+  assert.equal(homeworkResult.emailed, 2);
+  assert.equal(sentEmails.length, 2);
   assert.equal(sentEmails[0].homeworkKind, "quiz");
   assert.equal(sentEmails[0].title, "Quiz về nhà Hàm số mũ & Logarit");
   assert.equal(sentEmails[0].classTitle, "CSCA-MATH-K12");
@@ -149,6 +151,8 @@ test("notifyHomeworkQuizPublished sends email ONLY for homework quizzes and skip
   assert.equal(sentEmails[0].attemptLimit, 2);
   assert.equal(sentEmails[0].passingScore, 70);
   assert.match(sentEmails[0].actionUrl, /\/lms\/quiz\/77$/);
+  assert.equal(sentEmails[1].email, "test-account@example.com");
+  assert.equal(sentEmails[1].username, "Tài khoản Test");
 });
 
 test("sendHomeworkAssignedEmail runs in sandbox mode when BREVO_API_KEY is unset", async () => {

@@ -291,8 +291,6 @@ export const notifyHomeworkQuizPublished = async ({
          LEFT JOIN student_profiles sp ON sp.user_id = u.id
          WHERE ce.live_class_id = $1
            AND ce.status = 'active'
-           AND ce.is_internal_test = FALSE
-           AND COALESCE(u.is_internal_test_account, FALSE) = FALSE
            AND u.email IS NOT NULL
            AND TRIM(u.email) <> ''`,
         [quiz.live_class_id],
@@ -305,7 +303,6 @@ export const notifyHomeworkQuizPublished = async ({
          FROM users u
          LEFT JOIN student_profiles sp ON sp.user_id = u.id
          WHERE u.role = 'user'
-           AND COALESCE(u.is_internal_test_account, FALSE) = FALSE
            AND u.email IS NOT NULL
            AND TRIM(u.email) <> ''
            AND (
