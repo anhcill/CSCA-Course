@@ -7,6 +7,7 @@ import requirePermission from "../middleware/requirePermission.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import { assertGradebookOpen } from "../services/lmsWorkflow.service.js";
 import { broadcastToClass } from "../services/notification.service.js";
+import { notifyHomeworkQuizPublished } from "../services/assignmentDeadlineNotification.service.js";
 import {
   QuizAuthoringValidationError,
   flattenQuizAuthoringItems,
@@ -467,6 +468,7 @@ export const createQuizAuthoringRouter = ({
   authMiddlewares = [protectRoute, requireTeacher, requirePermission("lms.quiz.manage")],
   ocrExtractor = extractQuizImageOcrText,
   ocrRateLimiter = createQuizOcrRateLimiter(),
+  homeworkQuizNotifier = notifyHomeworkQuizPublished,
 } = {}) => {
   const router = express.Router();
   const secured = [...authMiddlewares, authoringEnabled];
@@ -529,16 +531,29 @@ export const createQuizAuthoringRouter = ({
       committed = true;
 
       if (requestedStatus === "PUBLISHED" && scheduled.liveClassId) {
+        const homeworkDeadlineText = scheduled.dueDate
+          ? new Date(scheduled.dueDate).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })
+          : "";
         await broadcastToClass({
           liveClassId: scheduled.liveClassId,
           title: `Quiz mới: ${scheduled.title}`,
-          message: scheduled.activityScope === "homework" ? "Bạn có bài tập về nhà mới." : "Bài trên lớp đã sẵn sàng.",
+          message: scheduled.activityScope === "homework"
+            ? `Bạn có bài tập về nhà mới${homeworkDeadlineText ? `. Hạn nộp: ${homeworkDeadlineText}.` : "."}`
+            : "Bài trên lớp đã sẵn sàng.",
           eventType: "quiz.published",
           linkUrl: `/lms/quiz/${result.rows[0].id}`,
-          data: { quizId: result.rows[0].id, courseId: scheduled.courseId, liveClassId: scheduled.liveClassId, classSessionId: scheduled.classSessionId },
+          data: { quizId: result.rows[0].id, courseId: scheduled.courseId, liveClassId: scheduled.liveClassId, classSessionId: scheduled.classSessionId, activityScope: scheduled.activityScope },
           actorId: req.user.id,
           dedupePrefix: `quiz:${result.rows[0].id}:published`,
         }).catch((error) => console.error("Quiz publish notification warning:", error.message));
+
+        if (scheduled.activityScope === "homework") {
+          await homeworkQuizNotifier({
+            quizId: result.rows[0].id,
+            actorId: req.user.id,
+            db,
+          }).catch((error) => console.error("Homework quiz email notification warning:", error.message));
+        }
       }
 
       const created = await loadQuiz(db, result.rows[0].id);
@@ -657,16 +672,29 @@ export const createQuizAuthoringRouter = ({
       committed = true;
 
       if (quiz.status !== "PUBLISHED") {
+        const homeworkDeadlineText = scheduled.dueDate
+          ? new Date(scheduled.dueDate).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })
+          : "";
         await broadcastToClass({
           liveClassId: scheduled.liveClassId,
           title: `Quiz mới: ${scheduled.title}`,
-          message: scheduled.activityScope === "homework" ? "Bạn có bài tập về nhà mới." : "Bài trên lớp đã sẵn sàng.",
+          message: scheduled.activityScope === "homework"
+            ? `Bạn có bài tập về nhà mới${homeworkDeadlineText ? `. Hạn nộp: ${homeworkDeadlineText}.` : "."}`
+            : "Bài trên lớp đã sẵn sàng.",
           eventType: "quiz.published",
           linkUrl: `/lms/quiz/${quizId}`,
-          data: { quizId, courseId: scheduled.courseId, liveClassId: scheduled.liveClassId, classSessionId: scheduled.classSessionId },
+          data: { quizId, courseId: scheduled.courseId, liveClassId: scheduled.liveClassId, classSessionId: scheduled.classSessionId, activityScope: scheduled.activityScope },
           actorId: req.user.id,
           dedupePrefix: `quiz:${quizId}:published`,
         }).catch((error) => console.error("Quiz publish notification warning:", error.message));
+
+        if (scheduled.activityScope === "homework") {
+          await homeworkQuizNotifier({
+            quizId,
+            actorId: req.user.id,
+            db,
+          }).catch((error) => console.error("Homework quiz email notification warning:", error.message));
+        }
       }
       return res.json({ success: true, data: serializeQuiz(published), message: "Đã xuất bản đề" });
     } catch (error) {

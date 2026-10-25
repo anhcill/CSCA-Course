@@ -19,6 +19,7 @@ import { awardXp, XP_VALUES } from "../services/gamification.service.js";
 import {
   notifyAssignmentDeadlineChanged,
   notifyAssignmentPublished,
+  notifyHomeworkQuizPublished,
 } from "../services/assignmentDeadlineNotification.service.js";
 import { broadcastToClass } from "../services/notification.service.js";
 import { sendNotificationEmail } from "../services/brevoEmail.service.js";
@@ -851,6 +852,12 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
         actorId: req.user.id,
         dedupePrefix: `quiz:${quizResult.rows[0].id}:published`,
       });
+      if (activityScope === "homework") {
+        await notifyHomeworkQuizPublished({
+          quizId: quizResult.rows[0].id,
+          actorId: req.user.id,
+        }).catch((error) => console.error("Homework quiz email notification warning:", error.message));
+      }
     }
     const descriptionFields = parseQuizDescriptionMetadata(quizResult.rows[0].description);
     return res.status(201).json({

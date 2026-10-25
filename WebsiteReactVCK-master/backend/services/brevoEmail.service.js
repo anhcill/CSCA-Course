@@ -507,6 +507,148 @@ export const sendCourseEnrollmentEmail = async ({ email, username, courseName, c
   });
 };
 
+const escapeEmailHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const formatVietnamDeadlineForEmail = (value) => {
+  if (!value) return "Chưa đặt hạn nộp cụ thể";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Chưa đặt hạn nộp cụ thể";
+  return date.toLocaleString("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const cleanHomeworkDescription = (value) => {
+  if (!value || typeof value !== "string") return "";
+  const stripped = value
+    .replace(/<!--\s*MOLI_QUIZ_META:[\s\S]*?-->/g, "")
+    .trim();
+  if (!stripped) return "";
+  return stripped.length > 500 ? `${stripped.slice(0, 500).trim()}...` : stripped;
+};
+
+/**
+ * 7. Gửi email thông báo Bài tập về nhà / Quiz về nhà mới (kèm hạn nộp, lớp học, buổi học, hướng dẫn)
+ */
+export const sendHomeworkAssignedEmail = async ({
+  email,
+  username,
+  homeworkKind = "assignment",
+  assignmentType = "homework",
+  title: homeworkTitle,
+  description,
+  dueDate,
+  classTitle,
+  courseTitle,
+  sessionTitle,
+  instructorName,
+  maxScore,
+  durationMinutes,
+  attemptLimit,
+  passingScore,
+  actionUrl,
+}) => {
+  const isQuizHomework = homeworkKind === "quiz" || assignmentType === "quiz";
+  const typeLabelMap = {
+    homework: "Bài tập về nhà",
+    essay: "Bài tập tự luận về nhà",
+    hskk: "Bài tập luyện nói (HSKK) về nhà",
+    quiz: "Quiz về nhà",
+  };
+  const badgeLabel = isQuizHomework
+    ? "Quiz Về Nhà"
+    : typeLabelMap[String(assignmentType || "homework").toLowerCase()] || "Bài tập về nhà";
+  const headerTitle = isQuizHomework ? "Quiz Về Nhà Mới!" : "Bài Tập Về Nhà Mới!";
+  const subjectPrefix = isQuizHomework ? "Quiz về nhà mới" : "Bài tập về nhà mới";
+  const ctaText = isQuizHomework ? "Làm Quiz Về Nhà Ngay →" : "Xem & Nộp Bài Tập Ngay →";
+  const deadlineText = formatVietnamDeadlineForEmail(dueDate);
+  const cleanedDescription = cleanHomeworkDescription(description);
+  const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+  const resolvedActionUrl = actionUrl || `${frontendUrl}/lms/dashboard`;
+  const safeTitle = homeworkTitle || "Bài tập về nhà mới";
+
+  const detailRows = [
+    classTitle ? `<li>🏫 <strong>Lớp học:</strong> ${escapeEmailHtml(classTitle)}</li>` : "",
+    courseTitle ? `<li>📘 <strong>Khóa học:</strong> ${escapeEmailHtml(courseTitle)}</li>` : "",
+    sessionTitle ? `<li>🗓️ <strong>Buổi học:</strong> ${escapeEmailHtml(sessionTitle)}</li>` : "",
+    instructorName ? `<li>👨‍🏫 <strong>Giảng viên:</strong> ${escapeEmailHtml(instructorName)}</li>` : "",
+    `<li>⏰ <strong>Hạn nộp:</strong> <span style="color: #dc2626; font-weight: 700;">${escapeEmailHtml(deadlineText)}</span></li>`,
+    isQuizHomework
+      ? `<li>⏱️ <strong>Thời lượng:</strong> ${Number(durationMinutes) > 0 ? `${Number(durationMinutes)} phút` : "Không giới hạn"}${Number(attemptLimit) > 0 ? ` • <strong>Số lượt làm:</strong> tối đa ${Number(attemptLimit)} lượt` : ""}${Number.isFinite(Number(passingScore)) && Number(passingScore) > 0 ? ` • <strong>Điểm đạt:</strong> ${Number(passingScore)}%` : ""}</li>`
+      : Number(maxScore) > 0
+        ? `<li>🎯 <strong>Thang điểm:</strong> ${escapeEmailHtml(maxScore)} điểm</li>`
+        : "",
+  ].filter(Boolean).join("");
+
+  const bodyContent = `
+    <p style="font-size: 15px; margin-top: 0;">Xin chào <strong>${escapeEmailHtml(username || "học viên")}</strong>,</p>
+    <p style="font-size: 14px; color: #475569; line-height: 1.7;">
+      Giảng viên vừa giao một <strong>${escapeEmailHtml(badgeLabel.toLowerCase())}</strong> mới cho lớp của bạn trên hệ thống <strong>Moly Course</strong>. Vui lòng xem thông tin chi tiết bên dưới để chủ động hoàn thành đúng hạn:
+    </p>
+
+    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 14px; padding: 20px; margin: 22px 0;">
+      <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #ea580c; margin-bottom: 6px;">
+        ${escapeEmailHtml(badgeLabel)}
+      </div>
+      <div style="font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 14px; line-height: 1.4;">
+        ${escapeEmailHtml(safeTitle)}
+      </div>
+      <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #334155; line-height: 1.9;">
+        ${detailRows}
+      </ul>
+    </div>
+
+    ${
+      cleanedDescription
+        ? `<div style="background-color: #f8fafc; border-left: 4px solid #ea580c; border-radius: 8px; padding: 14px 16px; margin: 18px 0; font-size: 13px; color: #475569; line-height: 1.6; white-space: pre-line;"><strong>📌 Hướng dẫn / Yêu cầu:</strong><br/>${escapeEmailHtml(cleanedDescription)}</div>`
+        : ""
+    }
+
+    <div style="text-align: center; margin: 26px 0;">
+      <a href="${escapeEmailHtml(resolvedActionUrl)}" class="btn">${escapeEmailHtml(ctaText)}</a>
+    </div>
+
+    <p style="font-size: 13px; color: #64748b; line-height: 1.6; margin-top: 16px;">
+      💡 <em>Lưu ý: Bạn nên hoàn thành và nộp bài trước thời hạn ít nhất 15–30 phút để tránh bị tính nộp muộn.</em>
+    </p>
+  `;
+
+  const subjectClassSuffix = classTitle ? ` - Lớp ${classTitle}` : "";
+  const textParts = [
+    `[Moly Course] ${subjectPrefix}: ${safeTitle}`,
+    classTitle ? `Lớp học: ${classTitle}` : null,
+    courseTitle ? `Khóa học: ${courseTitle}` : null,
+    sessionTitle ? `Buổi học: ${sessionTitle}` : null,
+    `Hạn nộp: ${deadlineText}`,
+    cleanedDescription ? `Hướng dẫn: ${cleanedDescription}` : null,
+    `Làm bài tại: ${resolvedActionUrl}`,
+  ].filter(Boolean);
+
+  return sendBrevoEmail({
+    to: email,
+    toName: username,
+    subject: `[Moly Course] ${subjectPrefix}: ${safeTitle}${subjectClassSuffix}`,
+    htmlContent: createBaseEmailHtml({
+      title: headerTitle,
+      preheader: `${badgeLabel}: ${safeTitle} | Hạn nộp: ${deadlineText}${classTitle ? ` | Lớp: ${classTitle}` : ""}`,
+      bodyContent,
+      showSecurityNote: false,
+    }),
+    textContent: textParts.join("\n"),
+  });
+};
+
 export default {
   sendBrevoEmail,
   sendSignupOtpEmail,
@@ -515,4 +657,5 @@ export default {
   sendPasswordChangedNotificationEmail,
   sendNotificationEmail,
   sendCourseEnrollmentEmail,
+  sendHomeworkAssignedEmail,
 };

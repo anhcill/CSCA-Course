@@ -1,5 +1,6 @@
 import { query } from "../db/connect.js";
 import { createNotification } from "./notification.service.js";
+import { sendHomeworkAssignedEmail } from "./brevoEmail.service.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 const MAX_REMINDER_ASSIGNMENTS = 200;
@@ -51,9 +52,10 @@ const reminderCopy = (assignment, stage) => {
 };
 
 const assignmentLink = (assignmentId) => `/lms/assignment/${assignmentId}/submit`;
+const quizLink = (quizId) => `/lms/quiz/${quizId}`;
 
-const getAssignmentAudience = async ({ assignmentId, excludeSubmitted = false }) => {
-  const result = await query(
+const getAssignmentAudience = async ({ assignmentId, excludeSubmitted = false, db = { query } }) => {
+  const result = await db.query(
     `WITH target AS (
        SELECT a.id, a.course_id, a.live_class_id,
               COALESCE(a.course_id, lc.course_id) AS resolved_course_id,
@@ -68,32 +70,37 @@ const getAssignmentAudience = async ({ assignmentId, excludeSubmitted = false })
      SELECT DISTINCT u.id AS user_id
      FROM target a
      JOIN users u ON u.role = 'user'
-     WHERE a.resolved_course_id IS NOT NULL
-       AND a.course_is_published = TRUE
-       AND (
-         EXISTS (
-           SELECT 1 FROM lms_access_grants g
-           WHERE g.user_id = u.id AND g.course_id = a.resolved_course_id
-             AND g.access_status = 'active' AND g.valid_from <= NOW()
-             AND (g.valid_until IS NULL OR g.valid_until > NOW())
-         )
-         OR (
-           a.course_is_management_managed = FALSE
-           AND (
-             EXISTS (
-               SELECT 1 FROM enrollments e
-               WHERE e.user_id = u.id AND e.course_id = a.resolved_course_id AND e.status = 'active'
-             )
-             OR EXISTS (
-               SELECT 1
-               FROM class_enrollments course_enrollment
-               JOIN live_classes course_class ON course_class.id = course_enrollment.live_class_id
-               WHERE course_enrollment.user_id = u.id AND course_class.course_id = a.resolved_course_id
-                 AND course_enrollment.status = 'active' AND course_class.status = 'active'
+     WHERE (
+       (
+         a.resolved_course_id IS NOT NULL
+         AND a.course_is_published = TRUE
+         AND (
+           EXISTS (
+             SELECT 1 FROM lms_access_grants g
+             WHERE g.user_id = u.id AND g.course_id = a.resolved_course_id
+               AND g.access_status = 'active' AND g.valid_from <= NOW()
+               AND (g.valid_until IS NULL OR g.valid_until > NOW())
+           )
+           OR (
+             a.course_is_management_managed = FALSE
+             AND (
+               EXISTS (
+                 SELECT 1 FROM enrollments e
+                 WHERE e.user_id = u.id AND e.course_id = a.resolved_course_id AND e.status = 'active'
+               )
+               OR EXISTS (
+                 SELECT 1
+                 FROM class_enrollments course_enrollment
+                 JOIN live_classes course_class ON course_class.id = course_enrollment.live_class_id
+                 WHERE course_enrollment.user_id = u.id AND course_class.course_id = a.resolved_course_id
+                   AND course_enrollment.status = 'active' AND course_class.status = 'active'
+               )
              )
            )
          )
        )
+       OR (a.resolved_course_id IS NULL AND a.live_class_id IS NOT NULL)
+     )
        AND (
          a.live_class_id IS NULL
          OR EXISTS (
@@ -117,20 +124,58 @@ const getAssignmentAudience = async ({ assignmentId, excludeSubmitted = false })
   return result.rows.map((row) => row.user_id).filter(Boolean);
 };
 
-const getAssignmentForNotification = async (assignmentId) => {
-  const result = await query(
-    `SELECT id, title, due_date, course_id, live_class_id
-     FROM assignments
-     WHERE id = $1`,
+const getAssignmentForNotification = async (assignmentId, db = { query }) => {
+  const result = await db.query(
+    `SELECT a.id, a.title, a.description, a.assignment_type, a.max_score, a.due_date,
+            a.course_id, a.live_class_id, a.class_session_id,
+            COALESCE(c.title, c.name, class_course.title, class_course.name) AS course_title,
+            lc.title AS class_title,
+            cs.title AS session_title,
+            COALESCE(NULLIF(lc.teacher_display_name, ''), instructor.username) AS instructor_name
+     FROM assignments a
+     LEFT JOIN courses c ON c.id = a.course_id
+     LEFT JOIN live_classes lc ON lc.id = a.live_class_id
+     LEFT JOIN courses class_course ON class_course.id = lc.course_id
+     LEFT JOIN class_sessions cs ON cs.id = a.class_session_id
+     LEFT JOIN users instructor ON instructor.id = COALESCE(a.instructor_id, lc.instructor_id)
+     WHERE a.id = $1`,
     [assignmentId],
   );
   return result.rows[0] || null;
 };
 
-const notifyAudience = async ({ assignment, recipients, title, message, eventType, actorId = null, dedupePrefix, data = {} }) => {
+const getRecipientEmailProfiles = async (userIds, db = { query }) => {
+  if (!Array.isArray(userIds) || userIds.length === 0) return [];
+  const result = await db.query(
+    `SELECT u.id AS user_id, u.email, u.username,
+            COALESCE(NULLIF(sp.full_name, ''), u.username, u.email) AS display_name,
+            COALESCE(u.is_internal_test_account, FALSE) AS is_internal_test_account
+     FROM users u
+     LEFT JOIN student_profiles sp ON sp.user_id = u.id
+     WHERE u.id = ANY($1::bigint[])
+       AND COALESCE(u.is_internal_test_account, FALSE) = FALSE
+       AND u.email IS NOT NULL
+       AND TRIM(u.email) <> ''`,
+    [userIds],
+  );
+  return result.rows;
+};
+
+const notifyAudience = async ({
+  assignment,
+  recipients,
+  title,
+  message,
+  eventType,
+  actorId = null,
+  dedupePrefix,
+  data = {},
+  notificationCreator = createNotification,
+}) => {
   let delivered = 0;
+  const newlyNotifiedUserIds = [];
   for (const userId of recipients) {
-    const notification = await createNotification({
+    const notification = await notificationCreator({
       userId,
       title,
       message,
@@ -140,41 +185,194 @@ const notifyAudience = async ({ assignment, recipients, title, message, eventTyp
       actorId,
       dedupeKey: `${dedupePrefix}:user:${userId}`,
     });
-    if (notification) delivered += 1;
+    if (notification) {
+      delivered += 1;
+      newlyNotifiedUserIds.push(userId);
+    }
   }
-  return delivered;
+  return { delivered, newlyNotifiedUserIds };
 };
 
-export const notifyAssignmentPublished = async ({ assignmentId, actorId }) => {
+export const notifyAssignmentPublished = async ({
+  assignmentId,
+  actorId,
+  db = { query },
+  emailSender = sendHomeworkAssignedEmail,
+  notificationCreator = createNotification,
+}) => {
   try {
-    const assignment = await getAssignmentForNotification(assignmentId);
+    const assignment = await getAssignmentForNotification(assignmentId, db);
     if (!assignment) return 0;
-    const recipients = await getAssignmentAudience({ assignmentId });
+    const recipients = await getAssignmentAudience({ assignmentId, db });
     const deadline = assignment.due_date ? ` Hạn nộp: ${formatDeadline(assignment.due_date)}.` : " Chưa đặt hạn nộp.";
-    return notifyAudience({
+    const { delivered, newlyNotifiedUserIds } = await notifyAudience({
       assignment,
       recipients,
-      title: `Bài tập mới: ${assignment.title}`,
-      message: `Bạn có bài tập mới “${assignment.title}”.${deadline}`,
+      title: `Bài tập về nhà mới: ${assignment.title}`,
+      message: `Bạn có bài tập về nhà mới “${assignment.title}”.${deadline}`,
       eventType: "assignment.published",
       actorId,
       dedupePrefix: `assignment:${assignment.id}:published`,
-      data: { kind: "published" },
+      data: { kind: "published", activityScope: "homework" },
+      notificationCreator,
     });
+
+    const targetEmailUserIds = newlyNotifiedUserIds.length > 0 ? newlyNotifiedUserIds : recipients;
+    if (targetEmailUserIds.length > 0 && typeof emailSender === "function") {
+      const profiles = await getRecipientEmailProfiles(targetEmailUserIds, db);
+      const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+      const actionUrl = `${frontendUrl}${assignmentLink(assignment.id)}`;
+      for (const profile of profiles) {
+        try {
+          await emailSender({
+            email: profile.email,
+            username: profile.display_name || profile.username,
+            homeworkKind: "assignment",
+            assignmentType: assignment.assignment_type || "homework",
+            title: assignment.title,
+            description: assignment.description || "",
+            dueDate: assignment.due_date || null,
+            classTitle: assignment.class_title || null,
+            courseTitle: assignment.course_title || null,
+            sessionTitle: assignment.session_title || null,
+            instructorName: assignment.instructor_name || null,
+            maxScore: assignment.max_score ?? null,
+            actionUrl,
+          });
+        } catch (emailErr) {
+          console.error(`[AssignmentDeadlineNotification] Homework email failed for ${profile.email}:`, emailErr.message);
+        }
+      }
+    }
+
+    return delivered;
   } catch (error) {
     console.error("[AssignmentDeadlineNotification] Could not notify assignment publication:", error);
     return 0;
   }
 };
 
-export const notifyAssignmentDeadlineChanged = async ({ assignmentId, actorId }) => {
+export const notifyHomeworkQuizPublished = async ({
+  quizId,
+  actorId = null,
+  db = { query },
+  emailSender = sendHomeworkAssignedEmail,
+}) => {
   try {
-    const assignment = await getAssignmentForNotification(assignmentId);
+    const quizResult = await db.query(
+      `SELECT q.id, q.title, q.description, q.activity_scope, q.status, q.due_date,
+              q.duration_minutes, q.passing_score, q.attempt_limit,
+              q.course_id, q.live_class_id, q.class_session_id,
+              COALESCE(c.title, c.name, class_course.title, class_course.name) AS course_title,
+              lc.title AS class_title,
+              cs.title AS session_title,
+              COALESCE(NULLIF(lc.teacher_display_name, ''), instructor.username) AS instructor_name
+       FROM quizzes q
+       LEFT JOIN courses c ON c.id = q.course_id
+       LEFT JOIN live_classes lc ON lc.id = q.live_class_id
+       LEFT JOIN courses class_course ON class_course.id = lc.course_id
+       LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
+       LEFT JOIN users instructor ON instructor.id = COALESCE(q.instructor_id, lc.instructor_id)
+       WHERE q.id = $1`,
+      [quizId],
+    );
+    const quiz = quizResult.rows[0];
+    if (!quiz || quiz.activity_scope !== "homework" || quiz.status !== "PUBLISHED") {
+      return { emailed: 0, skipped: true };
+    }
+
+    let profiles = [];
+    if (quiz.live_class_id) {
+      const classMembers = await db.query(
+        `SELECT DISTINCT u.id AS user_id, u.email, u.username,
+                COALESCE(NULLIF(sp.full_name, ''), u.username, u.email) AS display_name
+         FROM class_enrollments ce
+         JOIN users u ON u.id = ce.user_id
+         LEFT JOIN student_profiles sp ON sp.user_id = u.id
+         WHERE ce.live_class_id = $1
+           AND ce.status = 'active'
+           AND ce.is_internal_test = FALSE
+           AND COALESCE(u.is_internal_test_account, FALSE) = FALSE
+           AND u.email IS NOT NULL
+           AND TRIM(u.email) <> ''`,
+        [quiz.live_class_id],
+      );
+      profiles = classMembers.rows;
+    } else if (quiz.course_id) {
+      const courseMembers = await db.query(
+        `SELECT DISTINCT u.id AS user_id, u.email, u.username,
+                COALESCE(NULLIF(sp.full_name, ''), u.username, u.email) AS display_name
+         FROM users u
+         LEFT JOIN student_profiles sp ON sp.user_id = u.id
+         WHERE u.role = 'user'
+           AND COALESCE(u.is_internal_test_account, FALSE) = FALSE
+           AND u.email IS NOT NULL
+           AND TRIM(u.email) <> ''
+           AND (
+             EXISTS (
+               SELECT 1 FROM lms_access_grants g
+               WHERE g.user_id = u.id AND g.course_id = $1
+                 AND g.access_status = 'active' AND g.valid_from <= NOW()
+                 AND (g.valid_until IS NULL OR g.valid_until > NOW())
+             )
+             OR EXISTS (
+               SELECT 1 FROM enrollments e
+               WHERE e.user_id = u.id AND e.course_id = $1 AND e.status = 'active'
+             )
+           )`,
+        [quiz.course_id],
+      );
+      profiles = courseMembers.rows;
+    }
+
+    if (profiles.length === 0 || typeof emailSender !== "function") {
+      return { emailed: 0, skipped: false };
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+    const actionUrl = `${frontendUrl}${quizLink(quiz.id)}`;
+    let emailed = 0;
+
+    for (const profile of profiles) {
+      try {
+        await emailSender({
+          email: profile.email,
+          username: profile.display_name || profile.username,
+          homeworkKind: "quiz",
+          assignmentType: "quiz",
+          title: quiz.title,
+          description: quiz.description || "",
+          dueDate: quiz.due_date || null,
+          classTitle: quiz.class_title || null,
+          courseTitle: quiz.course_title || null,
+          sessionTitle: quiz.session_title || null,
+          instructorName: quiz.instructor_name || null,
+          durationMinutes: quiz.duration_minutes ?? null,
+          attemptLimit: quiz.attempt_limit ?? null,
+          passingScore: quiz.passing_score ?? null,
+          actionUrl,
+        });
+        emailed += 1;
+      } catch (emailErr) {
+        console.error(`[AssignmentDeadlineNotification] Homework quiz email failed for ${profile.email}:`, emailErr.message);
+      }
+    }
+
+    return { emailed, skipped: false };
+  } catch (error) {
+    console.error("[AssignmentDeadlineNotification] Could not notify homework quiz publication:", error);
+    return { emailed: 0, error: error?.message || "unknown" };
+  }
+};
+
+export const notifyAssignmentDeadlineChanged = async ({ assignmentId, actorId, db = { query } }) => {
+  try {
+    const assignment = await getAssignmentForNotification(assignmentId, db);
     if (!assignment) return 0;
-    const recipients = await getAssignmentAudience({ assignmentId });
+    const recipients = await getAssignmentAudience({ assignmentId, db });
     const dueKey = assignment.due_date ? new Date(assignment.due_date).toISOString() : "none";
     const deadline = assignment.due_date ? formatDeadline(assignment.due_date) : "đã được gỡ bỏ";
-    return notifyAudience({
+    const { delivered } = await notifyAudience({
       assignment,
       recipients,
       title: `Cập nhật hạn nộp: ${assignment.title}`,
@@ -184,6 +382,7 @@ export const notifyAssignmentDeadlineChanged = async ({ assignmentId, actorId })
       dedupePrefix: `assignment:${assignment.id}:deadline:${dueKey}`,
       data: { kind: "deadline_updated" },
     });
+    return delivered;
   } catch (error) {
     console.error("[AssignmentDeadlineNotification] Could not notify deadline change:", error);
     return 0;
@@ -225,11 +424,12 @@ export const processAssignmentDeadlineReminders = async () => {
         const stage = getDeadlineReminderStage(effective.due_date, now);
         if (!stage) continue;
         const dueKey = new Date(effective.due_date).toISOString();
-        notifications += await notifyAudience({
+        const { delivered } = await notifyAudience({
           assignment: effective, recipients: [recipient.id], ...reminderCopy(effective, stage),
           dedupePrefix: `assignment:${assignment.id}:revision:${recipient.revision}:deadline:${dueKey}:${stage}`,
           data: { kind: stage, reminderStage: stage },
         });
+        notifications += delivered;
       }
     }
     return { scanned: candidates.rows.length, notifications };
