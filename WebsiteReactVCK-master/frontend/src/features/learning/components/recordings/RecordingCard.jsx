@@ -1,8 +1,16 @@
 import { Link } from "react-router-dom";
 import { Play, ExternalLink, CalendarDays, Video } from "lucide-react";
 
+const formatDate = (value) => {
+  if (!value) return "Chưa có ngày";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Chưa có ngày";
+  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+};
+
 export default function RecordingCard({ item, onPlay }) {
   const displayTitle = item.sessionTitle || item.title || "Bản ghi buổi học";
+  const recordedDate = formatDate(item.recordedAt);
   const sessionUrl = item.courseId && item.classId && item.sessionId
     ? `/lms/courses/${item.courseId}/classes/${item.classId}/sessions/${item.sessionId}`
     : null;
@@ -49,6 +57,7 @@ export default function RecordingCard({ item, onPlay }) {
           <h4 className="text-[11px] font-bold text-slate-800 transition line-clamp-2 group-hover:text-sky-700 sm:text-xs">
             {displayTitle}
           </h4>
+          <span className="mt-1 block text-[10px] text-slate-400">{recordedDate}</span>
         </div>
 
         {/* Action Buttons Row */}

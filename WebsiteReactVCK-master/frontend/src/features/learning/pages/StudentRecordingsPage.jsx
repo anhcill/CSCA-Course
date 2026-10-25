@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CalendarDays,
   ExternalLink,
   FolderOpen,
   PlaySquare,
@@ -33,22 +32,6 @@ const formatDateTime = (value) => {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
-};
-
-const dateKey = (value) => {
-  if (!dateValue(value)) return "undated";
-  const date = new Date(value);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
-
-const dateHeading = (value) => {
-  if (value === "undated") return "Chưa cập nhật ngày";
-  return new Date(`${value}T00:00:00`).toLocaleDateString("vi-VN", {
-    weekday: "long",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
   });
 };
 
@@ -158,13 +141,6 @@ export default function StudentRecordingsPage() {
         );
       if (!classMatches && items.length === 0) return [];
 
-      const days = new Map();
-      items.forEach((item) => {
-        const key = dateKey(item.recordedAt);
-        if (!days.has(key)) days.set(key, []);
-        days.get(key).push(item);
-      });
-
       return [
         {
           ...classItem,
@@ -174,7 +150,6 @@ export default function StudentRecordingsPage() {
             classItem.folderUrl ||
             null,
           items,
-          days: [...days.entries()],
         },
       ];
     });
@@ -335,33 +310,21 @@ export default function StudentRecordingsPage() {
                     </header>
 
                     {/* Class Days & Cards */}
-                    {group.days.length === 0 ? (
+                    {group.items.length === 0 ? (
                       <div className="p-6 text-center text-xs text-slate-500">
                         Bản ghi các buổi học được tự động đồng bộ vào thư mục Google Drive của lớp học.
                       </div>
                     ) : (
-                      <div className="space-y-4 p-3 sm:p-4">
-                        {group.days.map(([day, items]) => (
-                          <div key={day} className="space-y-2">
-                            <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-600">
-                              <CalendarDays className="h-4 w-4 text-blue-600" />
-                              <span>{dateHeading(day)}</span>
-                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 normal-case">
-                                {items.length} video
-                              </span>
-                            </h3>
-
-                            <div className="flex flex-wrap items-start gap-2">
-                              {items.map((item) => (
-                                <RecordingCard
-                                  key={item.id}
-                                  item={item}
-                                  onPlay={handlePlayVideo}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        ))}
+                      <div className="p-3 sm:p-4">
+                        <div className="flex flex-wrap items-start gap-2">
+                          {group.items.map((item) => (
+                            <RecordingCard
+                              key={item.id}
+                              item={item}
+                              onPlay={handlePlayVideo}
+                            />
+                          ))}
+                        </div>
                       </div>
                     )}
                   </section>
