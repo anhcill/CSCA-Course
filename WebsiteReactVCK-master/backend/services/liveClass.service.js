@@ -41,6 +41,7 @@ const getJitsiHosts = () => {
 
 const isZoomHost = (hostname) => hostname === "zoom.us" || hostname.endsWith(".zoom.us");
 const isJitsiHost = (hostname) => getJitsiHosts().has(hostname);
+const isGoogleCalendarHost = (hostname) => hostname === "calendar.app.google" || hostname === "calendar.google.com";
 
 export const getMeetingProvider = (meetingUrl) => {
   if (!meetingUrl) return null;
@@ -51,6 +52,7 @@ export const getMeetingProvider = (meetingUrl) => {
     return null;
   }
   if (hostname === "meet.google.com") return "Google Meet";
+  if (isGoogleCalendarHost(hostname)) return "Google Calendar";
   if (isZoomHost(hostname)) return "Zoom";
   if (isJitsiHost(hostname)) return "Jitsi";
   return null;
@@ -64,10 +66,11 @@ export const validateMeetingUrl = (meetingUrl) => {
     const parsed = new URL(meetingUrl);
     const hostname = parsed.hostname.toLowerCase();
     const isGoogleMeet = hostname === "meet.google.com";
+    const isGoogleCalendar = isGoogleCalendarHost(hostname);
     const isZoom = isZoomHost(hostname);
     const isJitsi = isJitsiHost(hostname);
-    if (parsed.protocol !== "https:" || (!isGoogleMeet && !isZoom && !isJitsi)) {
-      return "meetUrl phải là đường dẫn HTTPS của Google Meet, Zoom hoặc Jitsi";
+    if (parsed.protocol !== "https:" || (!isGoogleMeet && !isGoogleCalendar && !isZoom && !isJitsi)) {
+      return "meetUrl phải là đường dẫn HTTPS của Google Meet, Google Calendar, Zoom hoặc Jitsi";
     }
   } catch {
     return "meetUrl không hợp lệ";
@@ -141,7 +144,7 @@ export const isSupportedMeetingHost = (meetingUrl) => {
     const parsed = new URL(meetingUrl);
     const hostname = parsed.hostname.toLowerCase();
     return parsed.protocol === "https:"
-      && (hostname === "meet.google.com" || isZoomHost(hostname) || isJitsiHost(hostname));
+      && (hostname === "meet.google.com" || isGoogleCalendarHost(hostname) || isZoomHost(hostname) || isJitsiHost(hostname));
   } catch {
     return false;
   }

@@ -27,14 +27,18 @@ test("Jitsi Meet is accepted and identified without weakening existing providers
   assert.equal(isSupportedMeetingHost("https://meet.jit.si/csca-class-123"), true);
 
   assert.equal(getMeetingProvider("https://meet.google.com/abc-defg-hij"), "Google Meet");
+  assert.equal(getMeetingProvider("https://calendar.app.google/dyJiRRMYTPWWZpPd6"), "Google Calendar");
   assert.equal(getMeetingProvider("https://us06web.zoom.us/j/123456"), "Zoom");
   assert.equal(validateMeetingUrl("https://meet.google.com/abc-defg-hij"), null);
+  assert.equal(validateMeetingUrl("https://calendar.app.google/dyJiRRMYTPWWZpPd6"), null);
+  assert.equal(isSupportedMeetingHost("https://calendar.app.google/dyJiRRMYTPWWZpPd6"), true);
   assert.equal(validateMeetingUrl("https://us06web.zoom.us/j/123456"), null);
 });
 
 test("lookalike and insecure Jitsi URLs are rejected", () => {
-  assert.match(validateMeetingUrl("https://meet.jit.si.evil.example/room"), /Google Meet, Zoom hoặc Jitsi/);
-  assert.match(validateMeetingUrl("http://meet.jit.si/room"), /Google Meet, Zoom hoặc Jitsi/);
+  assert.match(validateMeetingUrl("https://meet.jit.si.evil.example/room"), /Google Meet, Google Calendar, Zoom hoặc Jitsi/);
+  assert.match(validateMeetingUrl("http://meet.jit.si/room"), /Google Meet, Google Calendar, Zoom hoặc Jitsi/);
+  assert.match(validateMeetingUrl("https://calendar.app.google.evil.example/event"), /Google Meet, Google Calendar, Zoom hoặc Jitsi/);
   assert.equal(getMeetingProvider("https://meet.jit.si.evil.example/room"), null);
   assert.equal(isSupportedMeetingHost("http://meet.jit.si/room"), false);
 });

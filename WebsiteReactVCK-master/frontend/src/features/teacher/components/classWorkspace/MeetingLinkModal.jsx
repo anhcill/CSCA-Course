@@ -9,6 +9,7 @@ const getProviderName = (url) => {
   try {
     const hostname = new URL(url).hostname.toLowerCase();
     if (hostname === "meet.google.com") return "Google Meet";
+    if (hostname === "calendar.app.google" || hostname === "calendar.google.com") return "Google Calendar";
     if (hostname === "zoom.us" || hostname.endsWith(".zoom.us")) return "Zoom";
     if (isJitsiMeeting(url)) return "Jitsi Meet";
   } catch {
@@ -34,7 +35,7 @@ export default function MeetingLinkModal({ session, onClose, onSaved }) {
     event.preventDefault();
     const normalizedUrl = meetUrl.trim();
     if (!normalizedUrl) {
-      toast.error("Dán link Jitsi, Zoom hoặc Google Meet để tiếp tục.");
+      toast.error("Dán link Google Meet, Google Calendar, Zoom hoặc Jitsi để tiếp tục.");
       return;
     }
 
@@ -95,7 +96,7 @@ export default function MeetingLinkModal({ session, onClose, onSaved }) {
               />
             </div>
             <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-              {provider ? `Đã nhận diện: ${provider}.` : "Chấp nhận link HTTPS của Jitsi Meet, Google Meet hoặc Zoom."}
+              {provider ? `Đã nhận diện: ${provider}.` : "Chấp nhận link HTTPS của Google Meet, Google Calendar, Zoom hoặc Jitsi Meet."}
             </p>
           </div>
 

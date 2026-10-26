@@ -369,7 +369,7 @@ export default function CreateScheduleModal({ classId, onClose, onSuccess, canMa
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Link phòng học trực tuyến (tùy chọn)</label>
                 <input
                   type="url"
-                  placeholder="https://meet.google.com/..."
+                  placeholder="https://meet.google.com/... hoặc https://calendar.app.google/..."
                   value={sessionForm.meetUrl}
                   onChange={(e) => setSessionForm({ ...sessionForm, meetUrl: e.target.value })}
                   className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white"

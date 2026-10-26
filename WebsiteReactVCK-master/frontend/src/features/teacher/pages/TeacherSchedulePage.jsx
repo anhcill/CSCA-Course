@@ -744,7 +744,7 @@ export default function TeacherSchedulePage() {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Link phòng học trực tuyến</label>
                 <input
                   type="url"
-                  placeholder="https://meet.google.com/abc-defg-hij"
+                  placeholder="https://meet.google.com/... hoặc https://calendar.app.google/..."
                   value={sessionForm.meetUrl}
                   onChange={(e) => setSessionForm({ ...sessionForm, meetUrl: e.target.value })}
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white font-mono outline-none focus:border-sky-500"
