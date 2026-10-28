@@ -31,7 +31,7 @@ const isMobileDevice = (device) => /iphone|ipad|android|mobile/i.test(
 );
 
 const LOCK_REASON_LABELS = {
-  DEVICE_LIMIT_ABUSE: "Cố đăng nhập thiết bị thứ ba quá 3 lần",
+  DEVICE_LIMIT_ABUSE: "Cố đăng nhập thiết bị thứ tư quá 3 lần",
   ADMIN_LOCK: "Quản trị viên khóa thủ công",
 };
 

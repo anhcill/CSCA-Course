@@ -3,7 +3,7 @@ import net from "node:net";
 import { getClient, query } from "../db/connect.js";
 
 export const TRUSTED_DEVICE_COOKIE = "csca_trusted_device";
-export const TRUSTED_DEVICE_LIMIT = 2;
+export const TRUSTED_DEVICE_LIMIT = 3;
 export const DEVICE_LIMIT_LOCK_THRESHOLD = 3;
 
 export const getTrustedDeviceLimitForRole = (role) => (
@@ -171,7 +171,7 @@ export const establishLoginSession = async ({
         if (shouldLock) {
           throw new TrustedDeviceAuthError(
             "ACCOUNT_LOCKED_DEVICE_LIMIT",
-            "Tài khoản đã bị khóa vì đăng nhập từ thiết bị thứ ba 3 lần. Vui lòng liên hệ quản trị viên.",
+            "Tài khoản đã bị khóa vì đăng nhập từ thiết bị thứ tư 3 lần. Vui lòng liên hệ quản trị viên.",
             { details: { attempts: attemptCount, attemptsRemaining: 0, deviceLimit } },
           );
         }
