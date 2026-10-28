@@ -432,6 +432,249 @@ export const getAllTeachersSalaryOverview = async (
 };
 
 /**
+ * Read-only payroll projection for InternalManagement. The LMS remains the
+ * source of session facts and configured hourly rates; Management can use the
+ * returned source IDs to reconcile costs without entering salaries manually.
+ */
+export const getManagementPayrollReport = async (
+  {
+    from = null,
+    to = null,
+    courseSourceId = null,
+    classSourceId = null,
+    teacherSourceId = null,
+    includeProjected = true,
+  } = {},
+  db = { query: defaultQuery },
+) => {
+  const params = [];
+  const filters = ["cs.status <> 'cancelled'"];
+  const addParam = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  if (from) filters.push(`cs.start_time >= ${addParam(from)}::timestamptz`);
+  if (to) filters.push(`cs.start_time < ${addParam(to)}::timestamptz`);
+  if (courseSourceId) filters.push(`LOWER(COALESCE(lc.management_course_source_id, c.external_course_id)) = LOWER(${addParam(courseSourceId)})`);
+  if (classSourceId) filters.push(`LOWER(COALESCE(lc.management_class_source_id, 'LIVE-' || lc.id::text)) = LOWER(${addParam(classSourceId)})`);
+  if (teacherSourceId) filters.push(`LOWER(COALESCE(u.management_staff_source_id, ta.management_teacher_source_id)) = LOWER(${addParam(teacherSourceId)})`);
+
+  const result = await db.query(`
+    WITH teacher_assignments AS (
+      SELECT ct.live_class_id, ct.teacher_id, ct.teaching_role,
+             ct.hourly_rate_override AS teacher_class_rate_override,
+             ct.management_teacher_source_id
+      FROM class_teachers ct
+      WHERE ct.status = 'active' AND ct.teaching_role IN ('lead', 'co_teacher')
+      UNION ALL
+      SELECT lc.id, lc.instructor_id, 'lead', NULL, NULL
+      FROM live_classes lc
+      WHERE lc.instructor_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM class_teachers existing
+          WHERE existing.live_class_id = lc.id AND existing.teacher_id = lc.instructor_id
+        )
+    )
+    SELECT
+      u.id AS teacher_id,
+      u.management_staff_source_id,
+      ta.management_teacher_source_id,
+      COALESCE(sp.full_name, u.management_display_name, u.username) AS teacher_name,
+      u.username AS teacher_username,
+      u.hourly_rate AS teacher_hourly_rate,
+      ta.teaching_role,
+      lc.id AS class_id,
+      lc.management_class_source_id,
+      COALESCE(lc.management_class_source_id, 'LIVE-' || lc.id::text) AS class_source_id,
+      lc.management_source_updated_at AS class_source_updated_at,
+      lc.title AS class_title,
+      COALESCE(lc.management_course_source_id, c.external_course_id) AS course_source_id,
+      lc.management_course_source_id,
+      c.external_course_id,
+      c.title AS course_title,
+      c.name AS course_name,
+      c.management_source_updated_at AS course_source_updated_at,
+      lc.hourly_rate_override AS class_rate_override,
+      ta.teacher_class_rate_override,
+      cs.id AS session_id,
+      cs.management_session_source_id,
+      COALESCE(cs.management_session_source_id, 'SESSION-' || cs.id::text) AS session_source_id,
+      cs.title AS session_title,
+      cs.start_time,
+      cs.end_time,
+      cs.status,
+      cs.duration_hours,
+      cs.management_source_updated_at AS session_source_updated_at,
+      u.updated_at AS teacher_updated_at,
+      COALESCE(tss.bonus_amount, 0) AS bonus_amount,
+      COALESCE(tss.deduction_amount, 0) AS deduction_amount,
+      COALESCE(tss.payment_status, 'pending') AS payment_status,
+      tss.paid_at,
+      tss.updated_at AS settlement_updated_at
+    FROM teacher_assignments ta
+    JOIN users u ON u.id = ta.teacher_id
+    JOIN live_classes lc ON lc.id = ta.live_class_id AND lc.status <> 'cancelled'
+    LEFT JOIN courses c ON c.id = lc.course_id
+    JOIN class_sessions cs ON cs.live_class_id = lc.id
+    LEFT JOIN student_profiles sp ON sp.user_id = u.id
+    LEFT JOIN teacher_salary_settlements tss ON tss.teacher_id = u.id AND tss.period = 'all'
+    WHERE ${filters.join(" AND ")}
+    ORDER BY u.id, lc.id, cs.start_time, cs.id
+  `, params);
+
+  const items = result.rows.map((row) => {
+    const effectiveHourlyRate = Number(row.teacher_class_rate_override ?? row.class_rate_override ?? row.teacher_hourly_rate ?? 0);
+    const durationHours = calculateSessionDurationHours(row.start_time, row.end_time, row.duration_hours);
+    const isCompleted = isSessionCompleted(row);
+    const amount = Math.round(durationHours * effectiveHourlyRate);
+    const sourceUpdatedCandidates = [
+      row.teacher_updated_at,
+      row.class_source_updated_at,
+      row.course_source_updated_at,
+      row.session_source_updated_at,
+      row.settlement_updated_at,
+    ].filter(Boolean).map((value) => new Date(value).getTime()).filter(Number.isFinite);
+    const sourceUpdatedAt = sourceUpdatedCandidates.length
+      ? new Date(Math.max(...sourceUpdatedCandidates)).toISOString()
+      : null;
+
+    return {
+      teacherSourceId: row.management_staff_source_id || null,
+      teacherAssignmentSourceId: row.management_teacher_source_id || null,
+      teacherLmsId: row.teacher_id,
+      teacherName: row.teacher_name,
+      teacherUsername: row.teacher_username,
+      courseSourceId: row.course_source_id || null,
+      courseTitle: row.course_title || row.course_name || null,
+      classSourceId: row.class_source_id,
+      classLmsId: row.class_id,
+      classTitle: row.class_title,
+      teachingRole: row.teaching_role || "lead",
+      sessionSourceId: row.session_source_id,
+      sessionLmsId: row.session_id,
+      sessionTitle: row.session_title,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      status: row.status,
+      isCompleted,
+      durationHours,
+      effectiveHourlyRate,
+      accruedAmount: isCompleted ? amount : 0,
+      projectedAmount: includeProjected ? amount : null,
+      bonusAmount: Number(row.bonus_amount || 0),
+      deductionAmount: Number(row.deduction_amount || 0),
+      paymentStatus: row.payment_status || "pending",
+      paidAt: row.paid_at || null,
+      sourceUpdatedAt,
+      sourceMappingComplete: Boolean(
+        row.management_staff_source_id
+        && (row.management_course_source_id || row.external_course_id)
+        && row.management_class_source_id
+        && row.management_session_source_id,
+      ),
+      sourceIdFallbacks: {
+        teacher: !row.management_staff_source_id,
+        course: !(row.management_course_source_id || row.external_course_id),
+        class: !row.management_class_source_id,
+        session: !row.management_session_source_id,
+      },
+    };
+  });
+
+  const teachers = new Map();
+  const classes = new Map();
+  for (const item of items) {
+    const key = item.teacherSourceId || `lms:${item.teacherLmsId}`;
+    if (!teachers.has(key)) {
+      teachers.set(key, {
+        teacherSourceId: item.teacherSourceId,
+        teacherLmsId: item.teacherLmsId,
+        accruedAmount: 0,
+        projectedAmount: 0,
+        bonusAmount: item.bonusAmount,
+        deductionAmount: item.deductionAmount,
+        paymentStatus: item.paymentStatus,
+        paidAt: item.paidAt,
+      });
+    }
+    const summary = teachers.get(key);
+    summary.accruedAmount += item.accruedAmount;
+    if (item.projectedAmount !== null) summary.projectedAmount += item.projectedAmount;
+
+    const classKey = `${key}:${item.classSourceId || `lms:${item.classLmsId}`}`;
+    if (!classes.has(classKey)) {
+      classes.set(classKey, {
+        teacherSourceId: item.teacherSourceId,
+        teacherLmsId: item.teacherLmsId,
+        teacherName: item.teacherName,
+        courseSourceId: item.courseSourceId,
+        courseTitle: item.courseTitle,
+        classSourceId: item.classSourceId,
+        classLmsId: item.classLmsId,
+        classTitle: item.classTitle,
+        sessionCount: 0,
+        completedSessionCount: 0,
+        totalHours: 0,
+        completedHours: 0,
+        accruedAmount: 0,
+        projectedAmount: 0,
+        settlementAdjustmentApplied: false,
+      });
+    }
+    const classSummary = classes.get(classKey);
+    classSummary.sessionCount += 1;
+    classSummary.completedSessionCount += item.isCompleted ? 1 : 0;
+    classSummary.totalHours += item.durationHours;
+    classSummary.completedHours += item.isCompleted ? item.durationHours : 0;
+    classSummary.accruedAmount += item.accruedAmount;
+    if (item.projectedAmount !== null) classSummary.projectedAmount += item.projectedAmount;
+  }
+
+  const teacherSummaries = [...teachers.values()].map((teacher) => ({
+    ...teacher,
+    netAccruedAmount: Math.max(0, teacher.accruedAmount + teacher.bonusAmount - teacher.deductionAmount),
+  }));
+  const classSummaries = [...classes.values()].map((summary) => ({
+    ...summary,
+    totalHours: Number(summary.totalHours.toFixed(2)),
+    completedHours: Number(summary.completedHours.toFixed(2)),
+    costAmount: summary.accruedAmount,
+    projectedCostAmount: summary.projectedAmount,
+  }));
+  const accruedAmount = items.reduce((sum, item) => sum + item.accruedAmount, 0);
+  const projectedAmount = items.reduce((sum, item) => sum + (item.projectedAmount || 0), 0);
+  const bonusAmount = teacherSummaries.reduce((sum, teacher) => sum + teacher.bonusAmount, 0);
+  const deductionAmount = teacherSummaries.reduce((sum, teacher) => sum + teacher.deductionAmount, 0);
+
+  return {
+    sourceSystem: "CSCA_COURSE",
+    calculatedAt: new Date().toISOString(),
+    period: { from, to, settlementPeriod: "all" },
+    includeProjected: Boolean(includeProjected),
+    items,
+    classSummaries,
+    totals: {
+      itemCount: items.length,
+      teacherCount: teachers.size,
+      classCount: classes.size,
+      accruedAmount,
+      projectedAmount,
+      teachingAccruedAmount: accruedAmount,
+      teachingProjectedAmount: projectedAmount,
+      classCostAmount: accruedAmount,
+      projectedClassCostAmount: projectedAmount,
+      bonusAmount,
+      deductionAmount,
+      settlementAdjustmentScope: "teacher",
+      netAccruedAmountScope: "teacher",
+      netAccruedAmount: teacherSummaries.reduce((sum, teacher) => sum + teacher.netAccruedAmount, 0),
+    },
+    teacherSummaries,
+  };
+};
+
+/**
  * Updates a teacher's base hourly rate and writes an audit event.
  */
 export const updateTeacherHourlyRate = async ({

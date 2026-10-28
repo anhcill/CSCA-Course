@@ -16,6 +16,21 @@ test("student provisioning preserves login locks and separates student from teac
   pool.query = (sql, params) => db.query(sql, params);
   pool.connect = async () => ({ query: (sql, params) => db.query(sql, params), release() {} });
   const router = (await import("./managementIntegration.router.js")).default;
+  const payroll = router.stack.find((layer) => layer.route?.path === "/payroll/teacher-costs/query").route.stack.at(-1).handle;
+  const payrollResponse = {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; return this; },
+  };
+  await payroll({
+    body: {},
+    rawBody: "{}",
+    managementIntegration: { idempotencyKey: "payroll-query", correlationId: "payroll-query" },
+  }, payrollResponse);
+  assert.equal(payrollResponse.statusCode, 200, JSON.stringify(payrollResponse.body));
+  assert.equal(payrollResponse.body.data.sourceSystem, "CSCA_COURSE");
+
   const provision = router.stack.find((layer) => layer.route?.path === "/students/provision").route.stack.at(-1).handle;
   const invoke = async (body, key) => {
     const response = {

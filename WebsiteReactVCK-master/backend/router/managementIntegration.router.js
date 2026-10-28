@@ -4,6 +4,7 @@ import express from "express";
 import { getClient, query } from "../db/connect.js";
 import requireManagementIntegration from "../middleware/requireManagementIntegration.js";
 import { enqueueManagementEvent, parseManagementEvent, SyncValidationError } from "../services/managementSync.service.js";
+import { getManagementPayrollReport } from "../services/salary.service.js";
 
 const router = express.Router();
 
@@ -71,6 +72,53 @@ router.post("/events/status", requireManagementIntegration, async (req, res) => 
   } catch (error) {
     console.error("Management event status error:", error.message);
     return res.status(500).json({ success: false, message: "Không thể kiểm tra trạng thái đồng bộ", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+const parsePayrollFilters = (body) => {
+  if (!isPlainObject(body)) return null;
+  const from = body.from === undefined || body.from === null || body.from === "" ? null : parseDate(body.from);
+  const to = body.to === undefined || body.to === null || body.to === "" ? null : parseDate(body.to);
+  const courseSourceId = body.courseSourceId === undefined || body.courseSourceId === null || body.courseSourceId === ""
+    ? null : normalizedText(body.courseSourceId, 128);
+  const classSourceId = body.classSourceId === undefined || body.classSourceId === null || body.classSourceId === ""
+    ? null : normalizedText(body.classSourceId, 128);
+  const teacherSourceId = body.teacherSourceId === undefined || body.teacherSourceId === null || body.teacherSourceId === ""
+    ? null : normalizedText(body.teacherSourceId, 128);
+  const includeProjected = body.includeProjected === undefined ? true : body.includeProjected;
+  if ((body.from !== undefined && body.from !== null && body.from !== "" && !from)
+    || (body.to !== undefined && body.to !== null && body.to !== "" && !to)
+    || (body.courseSourceId !== undefined && body.courseSourceId !== null && body.courseSourceId !== "" && !courseSourceId)
+    || (body.classSourceId !== undefined && body.classSourceId !== null && body.classSourceId !== "" && !classSourceId)
+    || (body.teacherSourceId !== undefined && body.teacherSourceId !== null && body.teacherSourceId !== "" && !teacherSourceId)
+    || typeof includeProjected !== "boolean") return null;
+  if (from && to && to <= from) return null;
+  if (from && to && to.getTime() - from.getTime() > 366 * 24 * 60 * 60 * 1000) return null;
+  return {
+    from: from?.toISOString() || null,
+    to: to?.toISOString() || null,
+    courseSourceId,
+    classSourceId,
+    teacherSourceId,
+    includeProjected,
+  };
+};
+
+// Read-only payroll projection for InternalManagement. POST is intentional:
+// the existing HMAC contract signs the JSON body and does not sign query text.
+router.post("/payroll/teacher-costs/query", requireManagementIntegration, async (req, res) => {
+  const filters = parsePayrollFilters(req.body);
+  if (!filters) return validationError(res, "Bộ lọc payroll không hợp lệ");
+  try {
+    const report = await getManagementPayrollReport(filters);
+    return res.json({
+      success: true,
+      correlationId: req.managementIntegration.correlationId,
+      data: report,
+    });
+  } catch (error) {
+    console.error("Management payroll report error:", error.message);
+    return res.status(500).json(errorBody("Không thể đọc dữ liệu payroll từ LMS", "INTERNAL_ERROR"));
   }
 });
 

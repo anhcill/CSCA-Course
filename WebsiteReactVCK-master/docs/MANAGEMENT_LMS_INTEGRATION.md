@@ -65,6 +65,56 @@ không phải JSON đã parse/format lại. `Idempotency-Key` được lưu bề
 payload nhận lại response cũ và không cấp quyền hai lần. Một request cũ hơn
 `sourceUpdatedAt`/`validFrom` đã lưu không thể ghi đè quyết định mới hơn.
 
+### Đọc chi phí giảng viên / payroll
+
+InternalManagement không nhập tay lương giảng viên. CSCA Course là nguồn sự
+thật cho buổi học, thời lượng và mức lương theo giờ đã cấu hình; Management chỉ
+đọc báo cáo qua endpoint ký HMAC sau:
+
+```text
+POST /api/integrations/v1/payroll/teacher-costs/query
+```
+
+Body là JSON (mọi trường đều tùy chọn):
+
+```json
+{
+  "from": "2026-10-01T00:00:00.000Z",
+  "to": "2026-11-01T00:00:00.000Z",
+  "courseSourceId": "course-123",
+  "classSourceId": "class-456",
+  "teacherSourceId": "staff-789",
+  "includeProjected": true
+}
+```
+
+`from` bao gồm, `to` loại trừ và khoảng tối đa 366 ngày. Response trả về
+`sourceSystem: "CSCA_COURSE"`, thời điểm `calculatedAt`, các dòng
+`items` theo giáo viên/lớp/buổi học, `classSummaries` để tính chi phí từng lớp
+và `teacherSummaries`/`totals`. Mỗi dòng có
+`teacherSourceId`, `courseSourceId`, `classSourceId`, `sessionSourceId`,
+`durationHours`, `effectiveHourlyRate`, `accruedAmount` (buổi đã hoàn thành),
+`projectedAmount` (dự kiến nếu bật), cùng `bonusAmount`, `deductionAmount`,
+`paymentStatus`, `paidAt` và `sourceUpdatedAt` để đối soát.
+
+`classSummaries[].costAmount` là chi phí lương đã phát sinh của đúng lớp/giáo
+viên; `projectedCostAmount` là chi phí dự kiến. Đây là số trước thưởng/khấu trừ.
+Ở cấp `totals`, dùng `classCostAmount`/`projectedClassCostAmount` cho bài toán
+chi phí lớp; `netAccruedAmount` chỉ có phạm vi giáo viên.
+Thưởng và khấu trừ nằm ở cấp giáo viên (`settlementAdjustmentScope: "teacher"`)
+vì settlement hiện là kỳ `all`, nên không tự phân bổ vào một lớp khi lọc theo
+`classSourceId`. `sourceMappingComplete` và `sourceIdFallbacks` cho biết dòng
+nào còn đang dùng ID fallback nội bộ (`LIVE-*`/`SESSION-*`) thay vì mapping
+Management thật.
+
+Settlement hiện đọc kỳ `all`; endpoint không tạo hoặc sửa khoản thanh toán.
+Header `Idempotency-Key` vẫn bắt buộc theo middleware dùng chung nhưng truy vấn
+đọc này không ghi request hoặc tạo side effect.
+`bonusAmount`/`deductionAmount` được tính một lần trong `teacherSummaries` và
+`totals`, không cộng lặp theo từng session. InternalManagement có thể dùng
+`accruedAmount` và `projectedAmount` làm đầu vào cho bài toán chi phí/lợi nhuận
+và điểm hòa vốn của lớp.
+
 ### Provision tài khoản
 
 ```text

@@ -4,6 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import {
   calculateSessionDurationHours,
   getAllTeachersSalaryOverview,
+  getManagementPayrollReport,
   getTeacherSalaryDetail,
   isSessionCompleted,
   updateTeacherHourlyRate,
@@ -11,6 +12,96 @@ import {
   updateSessionSalaryParameters,
   updateTeacherSalarySettlement,
 } from "./salary.service.js";
+
+test("management payroll report exposes source mappings and does not duplicate settlement adjustments", async () => {
+  const db = {
+    query: async () => ({ rows: [{
+      teacher_id: 7,
+      management_staff_source_id: "staff-7",
+      management_teacher_source_id: null,
+      teacher_name: "Teacher Seven",
+      teacher_username: "teacher7",
+      teacher_hourly_rate: "200000",
+      teaching_role: "lead",
+      class_id: 11,
+      class_source_id: "class-11",
+      class_source_updated_at: "2026-10-01T00:00:00.000Z",
+      class_title: "CSCA Live",
+      course_source_id: "course-1",
+      course_title: "CSCA",
+      course_name: null,
+      course_source_updated_at: null,
+      class_rate_override: null,
+      teacher_class_rate_override: "250000",
+      session_id: 101,
+      session_source_id: "session-101",
+      session_title: "Session 1",
+      start_time: "2026-10-10T08:00:00.000Z",
+      end_time: "2026-10-10T10:00:00.000Z",
+      status: "ended",
+      duration_hours: null,
+      session_source_updated_at: "2026-10-10T10:00:00.000Z",
+      teacher_updated_at: null,
+      bonus_amount: "10000",
+      deduction_amount: "5000",
+      payment_status: "pending",
+      paid_at: null,
+      settlement_updated_at: "2026-10-11T00:00:00.000Z",
+    }, {
+      teacher_id: 7,
+      management_staff_source_id: "staff-7",
+      management_teacher_source_id: null,
+      teacher_name: "Teacher Seven",
+      teacher_username: "teacher7",
+      teacher_hourly_rate: "200000",
+      teaching_role: "lead",
+      class_id: 11,
+      class_source_id: "class-11",
+      class_source_updated_at: null,
+      class_title: "CSCA Live",
+      course_source_id: "course-1",
+      course_title: "CSCA",
+      course_name: null,
+      course_source_updated_at: null,
+      class_rate_override: null,
+      teacher_class_rate_override: "250000",
+      session_id: 102,
+      session_source_id: "session-102",
+      session_title: "Session 2",
+      start_time: "2099-10-17T08:00:00.000Z",
+      end_time: "2099-10-17T10:00:00.000Z",
+      status: "scheduled",
+      duration_hours: null,
+      session_source_updated_at: null,
+      teacher_updated_at: null,
+      bonus_amount: "10000",
+      deduction_amount: "5000",
+      payment_status: "pending",
+      paid_at: null,
+      settlement_updated_at: "2026-10-11T00:00:00.000Z",
+    }] }),
+  };
+
+  const report = await getManagementPayrollReport({ from: "2026-10-01T00:00:00.000Z", to: "2026-11-01T00:00:00.000Z" }, db);
+  assert.equal(report.sourceSystem, "CSCA_COURSE");
+  assert.equal(report.items[0].effectiveHourlyRate, 250000);
+  assert.equal(report.items[0].accruedAmount, 500000);
+  assert.equal(report.items[1].accruedAmount, 0);
+  assert.equal(report.totals.accruedAmount, 500000);
+  assert.equal(report.totals.projectedAmount, 1000000);
+  assert.equal(report.totals.classCostAmount, 500000);
+  assert.equal(report.totals.projectedClassCostAmount, 1000000);
+  assert.equal(report.totals.netAccruedAmountScope, "teacher");
+  assert.equal(report.totals.bonusAmount, 10000);
+  assert.equal(report.totals.deductionAmount, 5000);
+  assert.equal(report.totals.netAccruedAmount, 505000);
+  assert.equal(report.teacherSummaries[0].netAccruedAmount, 505000);
+  assert.equal(report.classSummaries.length, 1);
+  assert.equal(report.classSummaries[0].costAmount, 500000);
+  assert.equal(report.classSummaries[0].projectedCostAmount, 1000000);
+  assert.equal(report.classSummaries[0].settlementAdjustmentApplied, false);
+  assert.equal(report.items[0].sourceMappingComplete, false);
+});
 
 test("calculateSessionDurationHours calculates exact hours based on start and end time", () => {
   const start = new Date("2026-10-15T08:00:00.000Z");
