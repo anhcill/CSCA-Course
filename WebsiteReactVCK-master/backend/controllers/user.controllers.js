@@ -18,6 +18,7 @@ import {
 } from "../services/brevoEmail.service.js";
 import { getWelcomeScreenConfig, DEFAULT_WELCOME_CONFIG } from "../services/welcomeScreen.service.js";
 import {
+  TRUSTED_DEVICE_LIMIT,
   TrustedDeviceAuthError,
   establishLoginSession,
   getTrustedDeviceLimitForRole,
@@ -407,6 +408,14 @@ export const login = async (req, res) => {
     }
 
     if (user.is_locked) {
+      if (user.locked_reason === "DEVICE_LIMIT_ABUSE") {
+        return res.status(423).json({
+          success: false,
+          message: `Tài khoản đã bị khóa vì đăng nhập vượt quá giới hạn ${TRUSTED_DEVICE_LIMIT} thiết bị nhiều lần. Vui lòng liên hệ quản trị viên để xóa thiết bị cũ và mở khóa tài khoản.`,
+          errorCode: "ACCOUNT_LOCKED_DEVICE_LIMIT",
+          details: { deviceLimit: TRUSTED_DEVICE_LIMIT, attemptsRemaining: 0 },
+        });
+      }
       return res.status(403).json({ success: false, message: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.", errorCode: "ACCOUNT_LOCKED" });
     }
 

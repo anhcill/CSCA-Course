@@ -38,10 +38,19 @@ const useLogin = () => {
             return user;
         } catch (error) {
             // axios wraps HTTP errors in error.response; re-surface the message
-            const serverMessage = error.response?.data?.message;
+            const responseData = error.response?.data;
+            const serverMessage = responseData?.message;
             if (serverMessage) {
-                toast.error(serverMessage);
-                throw new Error(serverMessage);
+                const isDeviceLimitError = ['DEVICE_LIMIT_REACHED', 'ACCOUNT_LOCKED_DEVICE_LIMIT'].includes(responseData?.errorCode);
+                toast.error(serverMessage, {
+                    id: isDeviceLimitError ? 'trusted-device-limit' : undefined,
+                    duration: isDeviceLimitError ? 12000 : 4000,
+                });
+                const surfacedError = new Error(serverMessage);
+                surfacedError.alreadyToasted = true;
+                surfacedError.errorCode = responseData?.errorCode;
+                surfacedError.details = responseData?.details;
+                throw surfacedError;
             }
             // Non-HTTP errors (network down, already-toasted validation errors)
             throw error;

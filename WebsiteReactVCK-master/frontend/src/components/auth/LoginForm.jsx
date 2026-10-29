@@ -111,7 +111,7 @@ const LoginForm = ({ onSwitchMode, onClose, initialIdentifier = "" }) => {
     } catch (error) {
       // useLogin already throws; error toast shown by hook itself
       // only show here if hook didn't (safety net)
-      if (error?.message) {
+      if (error?.message && !error.alreadyToasted) {
         toast.error(error.message);
       }
     }
