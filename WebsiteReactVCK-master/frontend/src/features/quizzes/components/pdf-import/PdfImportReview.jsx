@@ -150,6 +150,9 @@ export default function PdfImportReview({
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {items.map((item, index) => {
             const kind = item.itemType || item.kind || 'single_choice';
+            const importMeta = item.ocrMetadata || {};
+            const confidence = Number.isFinite(Number(importMeta.confidence)) ? Math.round(Number(importMeta.confidence) * 100) : null;
+            const sourceImageUrl = importMeta.sourceImageUrl || importMeta.source?.imageUrl || '';
             return (
               <div
                 key={item.id || index}
@@ -169,14 +172,31 @@ export default function PdfImportReview({
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveItem(index)}
-                    className="p-1 text-slate-400 hover:text-red-600"
-                    title="Xóa câu hỏi này"
-                  >
-                    <FiTrash2 size={14} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {(confidence !== null || importMeta.sourcePage) && (
+                      <span className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${
+                        importMeta.reviewRequired || (confidence !== null && confidence < 80)
+                          ? 'border-amber-200 bg-amber-50 text-amber-700'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      }`}>
+                        {confidence !== null ? `Tin cậy ${confidence}%` : 'Cần đối chiếu'}
+                        {importMeta.sourcePage ? ` · Trang ${importMeta.sourcePage}` : ''}
+                      </span>
+                    )}
+                    {sourceImageUrl && (
+                      <a href={sourceImageUrl} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-sky-600 hover:underline">
+                        Xem ảnh gốc
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveItem(index)}
+                      className="p-1 text-slate-400 hover:text-red-600"
+                      title="Xóa câu hỏi này"
+                    >
+                      <FiTrash2 size={14} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Single Choice Question Review */}

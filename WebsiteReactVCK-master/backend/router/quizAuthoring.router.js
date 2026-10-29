@@ -21,6 +21,7 @@ import {
   QuizDocumentImportError,
   previewQuizImportFile,
 } from "../services/quizDocumentImport.service.js";
+import { documentExtractionLooksAnomalous, extractQuizDocumentVisionStructured, extractQuizDocumentVisionText } from "../services/quizDocumentVision.service.js";
 
 const MAX_OCR_IMAGE_SIZE = 8 * 1024 * 1024;
 const OCR_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -776,7 +777,13 @@ export const createQuizAuthoringRouter = ({
       if (!new Set(["auto", "vi", "zh", "en", "vi_zh"]).has(languageMode)) {
         throw new QuizDocumentImportError("QUIZ_IMPORT_LANGUAGE_INVALID", "Chế độ ngôn ngữ import không hợp lệ", 400);
       }
-      const preview = await previewQuizImportFile(req.file, { languageMode });
+      const preview = await previewQuizImportFile(req.file, {
+        languageMode,
+        visionExtractor: extractQuizDocumentVisionText,
+        visionStructuredExtractor: extractQuizDocumentVisionStructured,
+        isExtractionAnomalous: documentExtractionLooksAnomalous,
+        signal: requestAbortSignal(req, res),
+      });
       return res.json({ success: true, data: preview, message: "Đã tạo bản xem trước từ tài liệu" });
     } catch (error) {
       if (error instanceof QuizDocumentImportError) {

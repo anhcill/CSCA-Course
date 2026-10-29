@@ -27,6 +27,18 @@ export const cleanQuizOcrText = (value) => String(value || "")
   .replace(/\n{3,}/g, "\n\n")
   .trim();
 
+export const cleanQuizOcrJson = (value) => {
+  const text = cleanQuizOcrText(value).replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end < start) throw new QuizOcrError("OCR_INVALID_JSON", "AI không trả về JSON hợp lệ", { status: 502 });
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch (error) {
+    throw new QuizOcrError("OCR_INVALID_JSON", "AI không trả về JSON hợp lệ", { status: 502, cause: error });
+  }
+};
+
 export const buildQuizOcrPrompt = () => `You are an OCR engine for one exam question image.
 
 Return ONLY the OCR text. Do not solve the question. Do not add commentary.
@@ -64,7 +76,7 @@ export class QuizOcrError extends Error {
 }
 
 export const getQuizOcrConfig = (env = process.env) => {
-  const primaryModel = String(env.QUIZ_OCR_MODEL || env.MOLI_PET_MODEL || "ag/gemini-3-flash").trim();
+  const primaryModel = String(env.QUIZ_OCR_MODEL || env.MOLI_PET_MODEL || "ag/gemini-3.8-flash-high").trim();
   const explicitEnabled = String(env.QUIZ_OCR_ENABLED || "").trim();
   return {
     enabled: String(explicitEnabled || env.MOLI_PET_ENABLED || "false").toLowerCase() === "true",
@@ -125,6 +137,8 @@ export const extractQuizImageOcrText = async (file, {
   signal,
   fetchImpl = fetch,
   config = getQuizOcrConfig(),
+  promptBuilder = buildQuizOcrPrompt,
+  responseFormat = null,
 } = {}) => {
   if (!config.enabled) throw new QuizOcrError("OCR_DISABLED", "OCR ảnh chưa được bật", { status: 503 });
   if (!config.baseUrl || config.apiKeys.length === 0 || config.models.length === 0) {
@@ -152,10 +166,11 @@ export const extractQuizImageOcrText = async (file, {
           model,
           temperature: 0,
           max_tokens: config.maxTokens,
+          ...(responseFormat ? { response_format: responseFormat } : {}),
           messages: [{
             role: "user",
             content: [
-              { type: "text", text: buildQuizOcrPrompt() },
+              { type: "text", text: promptBuilder() },
               { type: "image_url", image_url: { url: imageUrl } },
             ],
           }],
@@ -180,5 +195,21 @@ export const extractQuizImageOcrText = async (file, {
   }
 
   throw lastError || new QuizOcrError("OCR_PROVIDER_UNAVAILABLE", "OCR ảnh thất bại", { status: 502 });
+};
+
+export const extractQuizImageOcrJson = async (file, {
+  schema,
+  ...options
+} = {}) => {
+  const promptBuilder = () => `You are a document question extraction engine.\n\nReturn ONLY valid JSON matching this schema:\n${JSON.stringify(schema)}\n\nRules:\n- Preserve the original language and all mathematical symbols.\n- Do not solve questions or invent missing answers.\n- Use null or an empty string when a field is not visible.\n- Include confidence from 0 to 1 and source.page when known.\n- Keep each option as a separate object.\n`;
+  const text = await extractQuizImageOcrText(file, {
+    ...options,
+    promptBuilder,
+    responseFormat: {
+      type: "json_schema",
+      json_schema: { name: "quiz_import", strict: false, schema },
+    },
+  });
+  return cleanQuizOcrJson(text);
 };
 

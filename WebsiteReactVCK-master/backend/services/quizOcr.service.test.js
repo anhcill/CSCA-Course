@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   QuizOcrError,
   buildQuizOcrPrompt,
+  cleanQuizOcrJson,
   cleanQuizOcrText,
+  extractQuizImageOcrJson,
   extractQuizImageOcrText,
   getQuizOcrConfig,
 } from "./quizOcr.service.js";
@@ -31,6 +33,10 @@ test("OCR prompt requires transcription without solving", () => {
 
 test("cleanQuizOcrText strips fences and normalizes whitespace", () => {
   assert.equal(cleanQuizOcrText("```text\r\n25. x  \r\n\r\n\r\nA. 1\r\n```"), "25. x\n\nA. 1");
+});
+
+test("cleanQuizOcrJson accepts fenced structured provider output", () => {
+  assert.deepEqual(cleanQuizOcrJson('```json\n{"questions":[]}\n```'), { questions: [] });
 });
 
 test("OCR reuses MolyPet provider configuration when dedicated values are absent", () => {
@@ -66,6 +72,22 @@ test("extractQuizImageOcrText sends the image only to the configured server prov
   assert.equal(request.options.headers.Authorization, "Bearer secret-key");
   assert.equal(request.body.model, "vision-model");
   assert.match(request.body.messages[0].content[1].image_url.url, /^data:image\/png;base64,/);
+});
+
+test("structured OCR requests JSON schema output", async () => {
+  let requestBody = null;
+  const schema = { type: "object", required: ["questions"], properties: { questions: { type: "array" } } };
+  const result = await extractQuizImageOcrJson(file, {
+    config,
+    schema,
+    fetchImpl: async (url, options) => {
+      requestBody = JSON.parse(options.body);
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"questions":[]}' } }] }), { status: 200 });
+    },
+  });
+  assert.deepEqual(result, { questions: [] });
+  assert.equal(requestBody.response_format.type, "json_schema");
+  assert.deepEqual(requestBody.response_format.json_schema.schema, schema);
 });
 
 test("extractQuizImageOcrText maps provider timeout to 504", async () => {
