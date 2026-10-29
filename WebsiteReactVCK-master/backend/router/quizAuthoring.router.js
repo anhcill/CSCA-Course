@@ -237,10 +237,8 @@ const validateTarget = async (db, metadata, user, { requireOpenSession = false }
   if (user.role !== "admin" && !(await isAssignedTeacher(db, metadata.liveClassId, user.id))) {
     throw httpError(403, "FORBIDDEN", "Bạn không phụ trách lớp hoặc buổi học này");
   }
-  if (requireOpenSession && (target.live_class_status !== "active"
-    || !["scheduled", "live", "rescheduled"].includes(target.status)
-    || new Date(target.end_time).getTime() <= Date.now())) {
-    throw httpError(409, "QUIZ_SESSION_CLOSED", "Không thể xuất bản đề cho buổi học đã kết thúc hoặc đã hủy");
+  if (requireOpenSession && (target.live_class_status !== "active" || target.status === "cancelled")) {
+    throw httpError(409, "QUIZ_SESSION_CLOSED", "Không thể xuất bản đề cho buổi học đã hủy hoặc lớp đã đóng");
   }
   return target;
 };

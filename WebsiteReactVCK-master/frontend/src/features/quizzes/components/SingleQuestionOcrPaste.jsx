@@ -38,6 +38,8 @@ function createOcrAnswer(key) {
 export default function SingleQuestionOcrPaste({ onApply, onClear }) {
   const [ocrText, setOcrText] = useState('');
   const [parsedDraft, setParsedDraft] = useState(null);
+  const [ocrImageUrl, setOcrImageUrl] = useState('');
+  const [ocrImageError, setOcrImageError] = useState('');
   const [applied, setApplied] = useState(false);
 
   const parsed = useMemo(
@@ -62,20 +64,31 @@ export default function SingleQuestionOcrPaste({ onApply, onClear }) {
     loading: imageOcrLoading,
     previewUrl,
     runImageOcr,
-  } = useSingleQuestionImageOcr({ onTextExtracted: handleOcrTextExtracted });
+  } = useSingleQuestionImageOcr({
+    onTextExtracted: handleOcrTextExtracted,
+    onImageUploaded: setOcrImageUrl,
+    onImageUploadError: error => setOcrImageError(error?.message || 'Không thể lưu ảnh lên Cloudinary.'),
+  });
+
+  const handleImageFile = useCallback((file) => {
+    setOcrImageError('');
+    void runImageOcr(file);
+  }, [runImageOcr]);
 
   const handleApply = () => {
     if (!parsedDraft || !canApply) {
       alert('Chưa tách được nội dung OCR.');
       return;
     }
-    onApply(parsedDraft);
+    onApply({ ...parsedDraft, imageUrl: ocrImageUrl });
     setApplied(true);
   };
 
   const handleClear = () => {
     setOcrText('');
     setParsedDraft(null);
+    setOcrImageUrl('');
+    setOcrImageError('');
     setApplied(false);
     clearImageOcr();
     if (onClear) onClear();
@@ -87,7 +100,7 @@ export default function SingleQuestionOcrPaste({ onApply, onClear }) {
 
     event.preventDefault();
     setApplied(false);
-    void runImageOcr(file);
+    handleImageFile(file);
   };
 
   const updateDraft = (updates) => {
@@ -159,8 +172,13 @@ export default function SingleQuestionOcrPaste({ onApply, onClear }) {
         fileName={fileName}
         loading={imageOcrLoading}
         previewUrl={previewUrl}
-        onImageFile={runImageOcr}
+        onImageFile={handleImageFile}
       />
+      {ocrImageError && (
+        <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+          OCR vẫn tiếp tục, nhưng ảnh chưa lưu được lên Cloudinary: {ocrImageError}
+        </p>
+      )}
 
       <textarea
         value={ocrText}

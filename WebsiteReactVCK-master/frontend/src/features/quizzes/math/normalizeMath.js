@@ -1089,11 +1089,11 @@ function repairGluedTransitionCommands(input) {
 
       return part
         .replace(
-          /\\(Rightarrow|Leftarrow|Leftrightarrow|leftrightarrow|rightarrow|leftarrow|to)(?=[0-9+\-])/g,
+          /\\(Rightarrow|Leftarrow|Leftrightarrow|leftrightarrow|rightarrow|leftarrow|to)(?=[0-9+-])/g,
           '\\$1 ',
         )
         .replace(
-          /\\(Rightarrow|Leftarrow|Leftrightarrow|leftrightarrow|rightarrow|leftarrow|to)(?=[^\s\\()[\]{}$.,;:!?0-9+\-])/g,
+          /\\(Rightarrow|Leftarrow|Leftrightarrow|leftrightarrow|rightarrow|leftarrow|to)(?=[^\s\\()[\]{}$.,;:!?0-9+-])/g,
           (_, command) => `\\(\\${command}\\) `,
         );
     })

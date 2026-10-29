@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ocrQuizImage } from '../../api/lmsClient.js';
+import { ocrQuizImage, uploadImageToCloudinary } from '../../api/lmsClient.js';
 
 const IMAGE_OCR_MAX_SIZE = 8 * 1024 * 1024;
 const IMAGE_OCR_HARD_MAX_SIZE = 20 * 1024 * 1024;
@@ -68,7 +68,7 @@ async function prepareImageForOcr(file) {
   }
 }
 
-export function useSingleQuestionImageOcr({ onTextExtracted } = {}) {
+export function useSingleQuestionImageOcr({ onTextExtracted, onImageUploaded, onImageUploadError } = {}) {
   const activeRunRef = useRef(0);
   const [loading, setLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -123,6 +123,18 @@ export function useSingleQuestionImageOcr({ onTextExtracted } = {}) {
         return URL.createObjectURL(file);
       });
 
+      // Preserve pasted/cropped source images in Cloudinary for the question.
+      try {
+        const uploaded = await uploadImageToCloudinary(file, { folder: 'csca/quizzes/ocr' });
+        if (activeRunRef.current === runId) onImageUploaded?.(uploaded.publicUrl || uploaded.secure_url || '');
+      } catch (uploadError) {
+        console.warn('Không thể lưu ảnh OCR lên Cloudinary:', uploadError);
+        if (activeRunRef.current === runId) {
+          onImageUploaded?.('');
+          onImageUploadError?.(uploadError);
+        }
+      }
+
       const formData = new FormData();
       formData.append('image', ocrFile);
       formData.append('file', ocrFile);
@@ -145,7 +157,7 @@ export function useSingleQuestionImageOcr({ onTextExtracted } = {}) {
         setLoading(false);
       }
     }
-  }, [onTextExtracted]);
+  }, [onImageUploaded, onImageUploadError, onTextExtracted]);
 
   return {
     clearImageOcr,

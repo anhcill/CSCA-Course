@@ -99,11 +99,10 @@ export default function QuizEditorPage() {
   const availableClasses = classList.filter((item) => (
     item.status === 'active' || String(item.id) === String(quizMeta.liveClassId)
   ));
-  const sessionList = (selectedClass?.sessions || []).filter((session) => {
-    if (String(session.id) === String(quizMeta.classSessionId)) return true;
-    const endTime = session.endTime ? new Date(session.endTime).getTime() : Number.POSITIVE_INFINITY;
-    return ['scheduled', 'live', 'rescheduled'].includes(session.status) && endTime > Date.now();
-  });
+  // A quiz can be attached to a lesson that has already been taught (for
+  // example, homework assigned after class), so keep every non-cancelled
+  // session returned by the teacher lookup instead of hiding past sessions.
+  const sessionList = selectedClass?.sessions || [];
 
   // Only classes assigned to the current teacher are returned by this lookup.
   useEffect(() => {
@@ -189,7 +188,7 @@ export default function QuizEditorPage() {
         id: `q-${Date.now()}`,
         kind: 'question',
         questionType: isEssay ? 'essay' : 'single_choice',
-        questionText: isEssay ? 'Nội dung câu tự luận mới...' : 'Nội dung câu hỏi mới...',
+        questionText: '',
         questionTextCn: '',
         questionTextEn: '',
         answers: [

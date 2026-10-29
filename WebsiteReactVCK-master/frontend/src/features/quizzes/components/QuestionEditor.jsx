@@ -204,7 +204,7 @@ export default function QuestionEditor({
       questionText: parsed.questionText || '',
       questionTextCn: parsed.questionTextCn || '',
       questionTextEn: '',
-      imageUrl: '',
+      imageUrl: parsed.imageUrl || '',
       answers: parsed.answers?.length
         ? parsed.answers.map(answer => ({
             text: answer.text || '',

@@ -672,9 +672,8 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
   }
 });
 
-// GET /api/assignments/teacher/quiz-targets?courseId=… — return only the
-// selected teacher's future/live sessions. Creation repeats this validation
-// under a row lock, so a stale browser cannot attach a quiz to a past lesson.
+// GET /api/assignments/teacher/quiz-targets?courseId=… — return all
+// non-cancelled sessions for the selected teacher, including taught lessons.
 router.get("/teacher/quiz-targets", protectRoute, requireTeacher, requirePermission("lms.quiz.manage"), async (req, res) => {
   try {
     const courseId = parsePositiveId(req.query.courseId);
@@ -693,7 +692,7 @@ router.get("/teacher/quiz-targets", protectRoute, requireTeacher, requirePermiss
        JOIN courses c ON c.id = lc.course_id
        JOIN class_sessions cs ON cs.live_class_id = lc.id
        WHERE lc.course_id = $1 AND lc.status = 'active'
-         AND cs.status IN ('scheduled', 'live', 'rescheduled') AND cs.end_time > NOW()
+         AND cs.status <> 'cancelled'
          AND ${accessClause}
        ORDER BY cs.start_time ASC, cs.id ASC`,
       params,
@@ -738,7 +737,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     if (!title || title.length > 255 || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 240 || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100 || !Number.isInteger(attemptLimit) || attemptLimit < 1 || attemptLimit > 5 || !QUIZ_REVIEW_POLICIES.has(reviewPolicy)) return validationError(res, "Thông tin đề kiểm tra không hợp lệ");
     if (questions.length < 1 || questions.length > 200) return validationError(res, "Đề kiểm tra cần từ 1 đến 200 câu hỏi");
     if (!courseId) return validationError(res, "Quiz phải được gắn với một khóa học");
-    if (!liveClassId || !classSessionId) return validationError(res, "Quiz phải được gắn với một lớp và một buổi học chưa kết thúc");
+    if (!liveClassId || !classSessionId) return validationError(res, "Quiz phải được gắn với một lớp và một buổi học");
     if (!["session", "homework"].includes(activityScope)) return validationError(res, "Loại hoạt động quiz không hợp lệ");
     if (dueDate && Number.isNaN(Date.parse(dueDate))) return validationError(res, "Hạn nộp Quiz không hợp lệ");
     if (rawAvailableFrom && Number.isNaN(Date.parse(rawAvailableFrom))) return validationError(res, "Thời gian mở quiz không hợp lệ");
@@ -768,9 +767,9 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
       await client.query("ROLLBACK");
       return forbidden(res, "Bạn không phụ trách lớp hoặc buổi học này");
     }
-    if (!['scheduled', 'live', 'rescheduled'].includes(targetSession.status) || new Date(targetSession.end_time).getTime() <= Date.now()) {
+    if (targetSession.status === 'cancelled') {
       await client.query("ROLLBACK");
-      return validationError(res, "Không thể tạo quiz cho buổi học đã kết thúc, đã hủy hoặc đã qua");
+      return validationError(res, "Không thể tạo quiz cho buổi học đã hủy");
     }
     const availableFrom = rawAvailableFrom ? new Date(rawAvailableFrom) : (activityScope === "session" ? new Date(targetSession.start_time) : new Date());
     const availableUntil = rawAvailableUntil ? new Date(rawAvailableUntil) : (activityScope === "homework" ? new Date(dueDate) : new Date(targetSession.end_time));
