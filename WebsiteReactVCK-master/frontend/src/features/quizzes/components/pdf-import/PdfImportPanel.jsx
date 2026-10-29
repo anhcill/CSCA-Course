@@ -58,45 +58,9 @@ export default function PdfImportPanel({ isOpen, onClose, onImportItems }) {
       setIsReviewing(true);
     } catch (err) {
       console.warn('Import preview failed:', err);
-      // Fallback demo mock if backend import service is not running
-      const fallbackItems = [
-        {
-          id: `imp-${Date.now()}-1`,
-          itemType: 'single_choice',
-          kind: 'question',
-          questionType: 'single_choice',
-          questionText: 'Tính đạo hàm của hàm số y = 3x^2 - 5x + 2 tại x = 1.',
-          questionTextCn: '求函数 y = 3x^2 - 5x + 2 在 x = 1 处的导数。',
-          answers: [
-            { text: '1', textCn: '1' },
-            { text: '2', textCn: '2' },
-            { text: '-1', textCn: '-1' },
-            { text: '0', textCn: '0' },
-          ],
-          correctAnswer: 'A',
-          explanation: "y' = 6x - 5, do đó y'(1) = 6(1) - 5 = 1.",
-          points: 1,
-        },
-        {
-          id: `imp-${Date.now()}-2`,
-          itemType: 'single_choice',
-          kind: 'question',
-          questionType: 'single_choice',
-          questionText: 'Cho hình chóp S.ABC có đáy ABC là tam giác vuông tại B.',
-          questionTextCn: '已知三棱锥 S.ABC 的底面 ABC 是以 B 为直角顶点的直角三角形。',
-          answers: [
-            { text: 'AB vuông góc BC', textCn: 'AB 垂直于 BC' },
-            { text: 'AB song song BC', textCn: 'AB 平行于 BC' },
-            { text: 'SB vuông góc AC', textCn: 'SB 垂直于 AC' },
-            { text: 'Cả 3 đáp án sai', textCn: '以上均不正确' },
-          ],
-          correctAnswer: 'A',
-          explanation: 'Vì tam giác ABC vuông tại B nên AB vuông góc BC.',
-          points: 1,
-        },
-      ];
-      setPreviewData({ items: fallbackItems, fileName: file.name });
-      setIsReviewing(true);
+      setPreviewData(null);
+      setIsReviewing(false);
+      setErrorMessage(err?.message || 'Không thể phân tích tài liệu. Vui lòng kiểm tra file rồi thử lại.');
     } finally {
       setLoading(false);
     }
