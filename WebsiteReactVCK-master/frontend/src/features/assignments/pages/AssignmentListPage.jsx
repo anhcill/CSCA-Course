@@ -133,7 +133,7 @@ export default function AssignmentListPage() {
         scoreDisplay,
         isQuiz,
         icon: isQuiz ? Calendar : FileText,
-        iconStyle: isQuiz ? "bg-rose-50 text-rose-500" : "bg-blue-50 text-blue-600",
+        iconStyle: isQuiz ? "bg-rose-50 text-rose-500 dark:bg-rose-950/60 dark:text-rose-400" : "bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400",
         created_at: assignment.created_at || assignment.due_date || new Date().toISOString(),
         createdTimestamp: new Date(assignment.created_at || assignment.due_date || 0).getTime(),
         dueTimestamp: due ? due.getTime() : null,
@@ -391,7 +391,7 @@ export default function AssignmentListPage() {
   }
 
   return (
-    <div className="min-h-full p-2.5 sm:p-3.5 xl:px-4 xl:py-3">
+    <div className="min-h-full p-2.5 sm:p-3.5 xl:px-4 xl:py-3 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto max-w-[1440px]">
         {/* Bố cục 2 cột:
             Cột trái: Tiêu đề, Thanh lọc, Bảng danh sách bài tập

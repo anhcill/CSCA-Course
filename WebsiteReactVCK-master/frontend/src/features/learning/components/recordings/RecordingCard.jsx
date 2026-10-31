@@ -27,16 +27,16 @@ export default function RecordingCard({ item, onPlay }) {
   return (
     <article
       onClick={handleOpenVideo}
-      className="group relative flex min-w-[170px] max-w-[210px] flex-[0_1_210px] flex-col justify-between overflow-hidden rounded-xl border border-sky-100/90 bg-white/90 p-2 shadow-[0_4px_16px_rgba(67,125,161,0.08)] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-[0_8px_22px_rgba(67,125,161,0.14)] cursor-pointer sm:p-2.5"
+      className="group relative flex min-w-[170px] max-w-[210px] flex-[0_1_210px] flex-col justify-between overflow-hidden rounded-xl border border-sky-100/90 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-2 shadow-[0_4px_16px_rgba(67,125,161,0.08)] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:border-sky-200 dark:hover:border-slate-700 hover:shadow-[0_8px_22px_rgba(67,125,161,0.14)] cursor-pointer sm:p-2.5"
     >
       {/* Video Preview Thumbnail / Header */}
-      <div className="relative aspect-[16/8.5] w-full overflow-hidden rounded-lg bg-gradient-to-br from-sky-100 via-blue-200 to-cyan-100 shadow-inner">
+      <div className="relative aspect-[16/8.5] w-full overflow-hidden rounded-lg bg-gradient-to-br from-sky-100 via-blue-200 to-cyan-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800 shadow-inner">
         {/* Subtle decorative radial glow */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/55 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/55 dark:from-white/10 via-transparent to-transparent" />
 
         {/* Center Play Button Overlay */}
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-sky-700 shadow-md backdrop-blur-md transition-all duration-300 group-hover:scale-105 group-hover:bg-sky-600 group-hover:text-white sm:h-10 sm:w-10">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 dark:bg-slate-800/90 text-sky-700 dark:text-sky-400 shadow-md backdrop-blur-md transition-all duration-300 group-hover:scale-105 group-hover:bg-sky-600 group-hover:text-white sm:h-10 sm:w-10">
             <Play className="ml-0.5 h-4 w-4 fill-current sm:h-5 sm:w-5" />
           </div>
         </div>
@@ -54,20 +54,20 @@ export default function RecordingCard({ item, onPlay }) {
       {/* Card Content */}
       <div className="mt-2 flex flex-1 flex-col justify-between">
         <div>
-          <h4 className="text-[11px] font-bold text-slate-800 transition line-clamp-2 group-hover:text-sky-700 sm:text-xs">
+          <h4 className="text-[11px] font-bold text-slate-800 dark:text-slate-100 transition line-clamp-2 group-hover:text-sky-700 dark:group-hover:text-sky-400 sm:text-xs">
             {displayTitle}
           </h4>
-          <span className="mt-1 block text-[10px] text-slate-400">{recordedDate}</span>
+          <span className="mt-1 block text-[10px] text-slate-400 dark:text-slate-500">{recordedDate}</span>
         </div>
 
         {/* Action Buttons Row */}
-        <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-sky-100 pt-2">
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-sky-100 dark:border-slate-800 pt-2">
           <div className="flex min-w-0 items-center gap-1 shrink-0">
             {sessionUrl && (
               <Link
                 to={sessionUrl}
                 onClick={(event) => event.stopPropagation()}
-                className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700 transition hover:bg-sky-100"
+                className="inline-flex items-center gap-1 rounded-lg border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 px-2 py-1 text-[10px] font-bold text-sky-700 dark:text-sky-300 transition hover:bg-sky-100 dark:hover:bg-slate-700"
               >
                 <CalendarDays className="h-3 w-3" />
                 <span className="hidden sm:inline">Xem buổi</span>

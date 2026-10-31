@@ -386,7 +386,7 @@ export default function AdminTeacherSalaryPage() {
       {/* KPI Overview Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* KPI 1: Tổng thù lao tạm tính */}
-        <div className="rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent p-4 dark:bg-slate-900">
+        <div className="rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent p-4 dark:bg-none dark:bg-slate-900">
           <div className="flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-400 font-bold uppercase tracking-wider font-mono">
             <span>Tổng thù lao dạy học</span>
             <FiDollarSign className="w-4 h-4" />
@@ -400,7 +400,7 @@ export default function AdminTeacherSalaryPage() {
         </div>
 
         {/* KPI 2: Tổng thực chi quyết toán */}
-        <div className="rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent p-4 dark:bg-slate-900">
+        <div className="rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent p-4 dark:bg-none dark:bg-slate-900">
           <div className="flex items-center justify-between text-xs text-blue-800 dark:text-sky-400 font-bold uppercase tracking-wider font-mono">
             <span>Tổng thực chi sau điều chỉnh</span>
             <FiTrendingUp className="w-4 h-4" />
@@ -414,7 +414,7 @@ export default function AdminTeacherSalaryPage() {
         </div>
 
         {/* KPI 3: Tình trạng thanh toán */}
-        <div className="rounded-2xl border border-purple-200/80 dark:border-purple-900/60 bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent p-4 dark:bg-slate-900">
+        <div className="rounded-2xl border border-purple-200/80 dark:border-purple-900/60 bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent p-4 dark:bg-none dark:bg-slate-900">
           <div className="flex items-center justify-between text-xs text-purple-800 dark:text-purple-400 font-bold uppercase tracking-wider font-mono">
             <span>Tiến độ thanh toán</span>
             <FiCheckCircle className="w-4 h-4" />

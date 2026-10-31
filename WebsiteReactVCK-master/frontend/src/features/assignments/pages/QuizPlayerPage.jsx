@@ -537,7 +537,7 @@ export default function QuizPlayerPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#070d19] p-6 text-white">
+      <div className="flex h-screen w-screen items-center justify-center bg-[#070d19] dark:bg-slate-950 p-6 text-white dark:text-white">
         <div className="w-full max-w-md">
           <LoadingState message="Đang khởi tạo đề làm bài..." count={3} />
         </div>
@@ -547,8 +547,8 @@ export default function QuizPlayerPage() {
 
   if (loadError || !quizData) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#070d19] p-6 text-white">
-        <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-[#0c1527] p-6 text-center">
+      <div className="flex h-screen w-screen items-center justify-center bg-[#070d19] dark:bg-slate-950 p-6 text-white dark:text-white">
+        <div className="w-full max-w-md rounded-2xl border border-slate-800 dark:border-slate-800 bg-[#0c1527] dark:bg-slate-900 p-6 text-center">
           <ErrorState
             title="Không thể mở đề thi"
             message={loadError || "Không tìm thấy nội dung đề thi."}
@@ -632,7 +632,7 @@ export default function QuizPlayerPage() {
   const renderOmrPanel = () => (
     <div className="flex flex-col h-full overflow-hidden">
       {/* OMR Header */}
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-2 border-b border-slate-800/90 px-3.5 py-3 bg-[#091120]">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-2 border-b border-slate-800/90 dark:border-slate-800 px-3.5 py-3 bg-[#091120] dark:bg-slate-900">
         <div>
           <h2 className="text-xs font-black tracking-wider text-white flex items-center gap-1.5">
             <span>🔘</span> {reviewMode ? "KẾT QUẢ TỪNG CÂU" : "BẢNG TRẮC NGHIỆM"}
@@ -674,7 +674,7 @@ export default function QuizPlayerPage() {
         <div className="w-full" style={{ minWidth: `${132 + (answerKeys.length * 38)}px` }}>
           {/* Table Column Headers */}
           <div
-            className="grid items-center gap-1 border-b border-slate-800/60 pb-2 text-center text-xs font-black text-slate-400"
+            className="grid items-center gap-1 border-b border-slate-800/60 dark:border-slate-800 pb-2 text-center text-xs font-black text-slate-400 dark:text-slate-400"
             style={{ gridTemplateColumns: `56px repeat(${answerKeys.length}, minmax(30px, 1fr)) ${reviewMode ? "72px" : "30px"}` }}
           >
             <span className="text-left pl-1 text-[10px] uppercase tracking-wider text-slate-500">Câu</span>
@@ -691,7 +691,7 @@ export default function QuizPlayerPage() {
           </div>
 
           {/* Rows */}
-          <div className="divide-y divide-slate-800/40">
+          <div className="divide-y divide-slate-800/40 dark:divide-slate-800/60">
             {questions.map((question, index) => {
               const review = reviewByQuestion.get(String(question.id));
               const selected = answers[question.id];
@@ -717,7 +717,7 @@ export default function QuizPlayerPage() {
                   className={`grid items-center gap-1 py-1.5 text-center transition ${
                     reviewMode && answerReviewAvailable && !isEssay
                       ? review?.isCorrect ? "bg-emerald-950/10" : isUnanswered ? "bg-slate-900/20" : "bg-rose-950/10"
-                      : "hover:bg-slate-800/20"
+                      : "hover:bg-slate-800/20 dark:hover:bg-slate-800/40"
                   }`}
                   style={{ gridTemplateColumns: `56px repeat(${answerKeys.length}, minmax(30px, 1fr)) ${reviewMode ? "72px" : "30px"}` }}
                 >
@@ -773,12 +773,12 @@ export default function QuizPlayerPage() {
                                     ? "bg-emerald-600 text-white ring-2 ring-emerald-400/50"
                                     : isWrongChosen
                                       ? "bg-rose-600 text-white ring-2 ring-rose-400/40"
-                                      : "border border-slate-700 bg-slate-900/60 text-slate-500"
+                                      : "border border-slate-700 bg-slate-900/60 text-slate-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-500"
                                   : isChosen
                                     ? reviewMode
                                       ? "bg-blue-600 text-white ring-2 ring-blue-400/40"
                                       : "bg-red-600 text-white shadow-md shadow-red-900/50 scale-105"
-                                    : "border border-slate-700/80 bg-slate-900/40 text-slate-400 hover:border-slate-500 hover:bg-slate-800/80 hover:text-slate-200"
+                                    : "border border-slate-700/80 bg-slate-900/40 text-slate-400 hover:border-slate-500 hover:bg-slate-800/80 hover:text-slate-200 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:bg-slate-800"
                               } disabled:cursor-default`}
                             >
                               {isChosen || reviewMode ? <span>{key}</span> : <span className="opacity-0 hover:opacity-100 text-[10px]">{key}</span>}
@@ -816,7 +816,7 @@ export default function QuizPlayerPage() {
       </div>
 
       {/* Footer */}
-      <div className="shrink-0 border-t border-slate-800/90 bg-[#091120] p-3">
+      <div className="shrink-0 border-t border-slate-800/90 dark:border-slate-800 bg-[#091120] dark:bg-slate-900 p-3">
         {renderSubmitActions()}
       </div>
     </div>
@@ -825,7 +825,7 @@ export default function QuizPlayerPage() {
   const renderEssayPanel = () => (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Essay Header */}
-      <div className="flex shrink-0 items-start justify-between border-b border-slate-800/90 px-3.5 py-3 bg-[#091120]">
+      <div className="flex shrink-0 items-start justify-between border-b border-slate-800/90 dark:border-slate-800 px-3.5 py-3 bg-[#091120] dark:bg-slate-900">
         <div className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 text-sm">
             ✍️
@@ -893,7 +893,7 @@ export default function QuizPlayerPage() {
 
         {/* Prompt */}
         {essayConfig?.prompt && (
-          <div className="rounded-xl border border-slate-800 bg-[#091120] p-3 text-xs text-slate-300">
+          <div className="rounded-xl border border-slate-800 dark:border-slate-800 bg-[#091120] dark:bg-slate-900 p-3 text-xs text-slate-300 dark:text-slate-200">
             <span className="text-[10px] font-black uppercase text-amber-400 block mb-1">
               📌 Yêu cầu phần tự luận:
             </span>
@@ -936,8 +936,8 @@ export default function QuizPlayerPage() {
                   }}
                   className={`rounded-2xl border p-3.5 space-y-2.5 transition-all ${
                     isSelected
-                      ? "border-amber-500/80 bg-[#0d182b] shadow-lg shadow-amber-950/20"
-                      : "border-slate-800 bg-[#091120] hover:border-slate-700"
+                      ? "border-amber-500/80 bg-[#0d182b] dark:bg-slate-900/90 shadow-lg shadow-amber-950/20"
+                      : "border-slate-800 bg-[#091120] dark:border-slate-800 dark:bg-slate-900/60 hover:border-slate-700 dark:hover:border-slate-700"
                   } ${isDragOver ? "ring-2 ring-amber-400 bg-amber-950/20" : ""}`}
                 >
                   <div className="flex items-center justify-between text-xs font-bold text-slate-200">
@@ -1037,7 +1037,7 @@ export default function QuizPlayerPage() {
                   {!reviewMode && !result && questionAttachments.length === 0 && (
                     <div
                       className={`rounded-xl border border-dashed p-2 text-center transition ${
-                        isDragOver ? "border-amber-400 bg-amber-500/15" : "border-slate-800/80 bg-slate-900/40"
+                        isDragOver ? "border-amber-400 bg-amber-500/15" : "border-slate-800/80 bg-slate-900/40 dark:border-slate-800 dark:bg-slate-950/40"
                       }`}
                     >
                       <span className="text-[10px] text-slate-400">
@@ -1055,7 +1055,7 @@ export default function QuizPlayerPage() {
                           className="group relative rounded-xl border border-slate-700 bg-slate-900 overflow-hidden shadow-xs aspect-[4/3]"
                         >
                           {att.isPdf || att.name?.toLowerCase().endsWith(".pdf") ? (
-                            <div className="h-full w-full flex flex-col items-center justify-center p-2 bg-[#09101d] text-center">
+                            <div className="h-full w-full flex flex-col items-center justify-center p-2 bg-[#09101d] dark:bg-slate-950 text-center">
                               <FiFileText className="h-7 w-7 text-rose-400 mb-1" />
                               <span className="text-[10px] font-bold text-slate-200 line-clamp-1 w-full px-1">{att.name}</span>
                               <span className="text-[8px] text-slate-400 uppercase font-mono">PDF</span>
@@ -1110,7 +1110,7 @@ export default function QuizPlayerPage() {
                   )}
 
                   {reviewMode || result ? (
-                    <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-2.5 text-[11px] leading-relaxed text-slate-300">
+                    <div className="rounded-xl border border-slate-700 bg-slate-950/60 dark:border-slate-700 dark:bg-slate-950/80 p-2.5 text-[11px] leading-relaxed text-slate-300 dark:text-slate-200">
                       <b className="mb-1 block text-[9px] uppercase tracking-wide text-slate-500">Ghi chú / bài làm đã nhập</b>
                       {essayNotesByQuestion[String(question.id)]?.trim() || "Không có ghi chú văn bản cho câu này."}
                     </div>
@@ -1121,7 +1121,7 @@ export default function QuizPlayerPage() {
                       onFocus={() => setSelectedEssayQuestionId(question.id)}
                       placeholder={`Ghi chú, đáp số hoặc lời giải tóm tắt cho câu ${question.displayNumber}...`}
                       rows={2}
-                      className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-xs text-white outline-none placeholder:text-slate-500 focus:border-amber-500 transition"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-xs text-white outline-none placeholder:text-slate-500 focus:border-amber-500 dark:border-slate-700 dark:bg-slate-950/80 dark:text-white dark:placeholder:text-slate-500 focus:dark:border-amber-500 transition"
                     />
                   )}
                 </div>
@@ -1167,7 +1167,7 @@ export default function QuizPlayerPage() {
               if (e.dataTransfer.files) handleAddImages(e.dataTransfer.files, null);
             }}
             className={`rounded-2xl border-2 border-dashed p-3 text-center transition ${
-              isDraggingOver ? "border-amber-400 bg-amber-500/10" : "border-slate-800 bg-[#070e1b] hover:border-slate-700"
+              isDraggingOver ? "border-amber-400 bg-amber-500/10" : "border-slate-800 bg-[#070e1b] dark:border-slate-800 dark:bg-slate-950/80 hover:border-slate-700 dark:hover:border-slate-700"
             }`}
           >
             <input
@@ -1204,7 +1204,7 @@ export default function QuizPlayerPage() {
             {reviewMode ? "Ghi chú chung đã gửi:" : "Ghi chú chung cho giáo viên:"}
           </label>
           {reviewMode || result ? (
-            <div className="min-h-[52px] whitespace-pre-wrap rounded-xl border border-slate-700 bg-slate-950/60 p-2.5 text-xs leading-relaxed text-slate-300">
+            <div className="min-h-[52px] whitespace-pre-wrap rounded-xl border border-slate-700 bg-slate-950/60 dark:border-slate-700 dark:bg-slate-950/80 p-2.5 text-xs leading-relaxed text-slate-300 dark:text-slate-200">
               {essayNotes.trim() || "Không có ghi chú chung."}
             </div>
           ) : (
@@ -1213,14 +1213,14 @@ export default function QuizPlayerPage() {
               onChange={(e) => setEssayNotes(e.target.value)}
               placeholder="Lời nhắn hoặc ghi chú thêm cho bài thi tự luận..."
               rows={2}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 focus:outline-none transition"
+              className="w-full rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 text-xs text-white placeholder-slate-500 focus:border-amber-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950/80 dark:text-white dark:placeholder-slate-500 focus:dark:border-amber-500 transition"
             />
           )}
         </div>
       </div>
 
       {/* Footer with Submit and Fullscreen */}
-      <div className="shrink-0 border-t border-slate-800/90 bg-[#091120] p-3 sm:p-4">
+      <div className="shrink-0 border-t border-slate-800/90 dark:border-slate-800 bg-[#091120] dark:bg-slate-900 p-3 sm:p-4">
         {renderSubmitActions()}
       </div>
     </div>
@@ -1229,10 +1229,10 @@ export default function QuizPlayerPage() {
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-50 flex h-screen w-screen flex-col overflow-hidden bg-[#060c18] text-slate-100 font-sans"
+      className="fixed inset-0 z-50 flex h-screen w-screen flex-col overflow-hidden bg-[#060c18] dark:bg-slate-950 text-slate-100 dark:text-slate-100 font-sans"
     >
       {/* TOP BAR / HEADER */}
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800/90 bg-[#091122] px-3 sm:px-5 gap-2 z-20">
+      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800/90 dark:border-slate-800 bg-[#091122] dark:bg-slate-900 px-3 sm:px-5 gap-2 z-20">
         {/* Left: Title & Exit */}
         <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-600 via-rose-600 to-red-700 text-white shadow-md shadow-rose-950/50">
@@ -1258,7 +1258,7 @@ export default function QuizPlayerPage() {
           </button>
 
           {/* Mode Pill */}
-          <div className="hidden lg:flex items-center gap-2 rounded-xl border border-slate-800 bg-[#0d172a] px-3 py-1.5">
+          <div className="hidden lg:flex items-center gap-2 rounded-xl border border-slate-800 bg-[#0d172a] dark:border-slate-800 dark:bg-slate-950/70 px-3 py-1.5">
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-rose-500/20 text-rose-400 text-[10px]">
               🎯
             </span>
@@ -1274,7 +1274,7 @@ export default function QuizPlayerPage() {
         {/* Center / Right: Progress & Timer */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Answered badge */}
-          <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-[#0d172a] px-3 py-1.5">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-[#0d172a] dark:border-slate-800 dark:bg-slate-950/70 px-3 py-1.5">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600/30 text-blue-400 text-xs font-black">
               ✓
             </span>
@@ -1350,7 +1350,7 @@ export default function QuizPlayerPage() {
       </header>
 
       {/* MOBILE SWITCHER TABS */}
-      <div className="flex lg:hidden shrink-0 border-b border-slate-800 bg-[#0a1222] px-2 py-1.5 gap-1.5 overflow-x-auto">
+      <div className="flex lg:hidden shrink-0 border-b border-slate-800 dark:border-slate-800 bg-[#0a1222] dark:bg-slate-950 px-2 py-1.5 gap-1.5 overflow-x-auto">
         <button
           type="button"
           onClick={() => setMobileTab("paper")}
@@ -1399,13 +1399,13 @@ export default function QuizPlayerPage() {
       <main className="flex flex-1 min-h-0 overflow-hidden p-2 sm:p-3 gap-2 sm:gap-3">
         {/* LEFT COLUMN: PDF VIEWER / QUESTION CARDS */}
         <section
-          className={`min-w-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0a1222] overflow-hidden shadow-2xl flex-1 lg:flex-[7] ${
+          className={`min-w-0 flex flex-col rounded-2xl border border-slate-800/80 dark:border-slate-800 bg-[#0a1222] dark:bg-slate-900/90 overflow-hidden shadow-2xl flex-1 lg:flex-[7] ${
             mobileTab === "paper" ? "flex" : "hidden lg:flex"
           }`}
         >
           {/* Top Viewer Subheader (Tabs for Review Mode & Solution File) */}
           {reviewMode && (
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-[#0d1629] px-2.5 sm:px-4 py-2.5 gap-3">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-800 dark:border-slate-800 bg-[#0d1629] dark:bg-slate-900 px-2.5 sm:px-4 py-2.5 gap-3">
               <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5">
                 <span className="hidden sm:inline text-[11px] font-black uppercase text-slate-400 mr-1 whitespace-nowrap">Chế độ xem:</span>
                 {hasSplitReview && (
@@ -1484,11 +1484,11 @@ export default function QuizPlayerPage() {
           )}
 
           {/* Viewer Content Area */}
-          <div className="flex-1 min-h-0 bg-slate-900 overflow-hidden relative">
+          <div className="flex-1 min-h-0 bg-slate-900 dark:bg-slate-950 overflow-hidden relative">
             {activeViewerTab === "split" && hasSplitReview ? (
               <div className="grid h-full grid-cols-1 overflow-y-auto bg-slate-950 lg:grid-cols-2 lg:overflow-hidden">
                 <div className="flex min-h-[68vh] flex-col border-b border-slate-700 lg:min-h-0 lg:border-b-0 lg:border-r">
-                  <div className="flex h-9 shrink-0 items-center justify-between bg-[#111b2e] px-3 text-[11px] font-black text-slate-200">
+                  <div className="flex h-9 shrink-0 items-center justify-between bg-[#111b2e] dark:bg-slate-900 px-3 text-[11px] font-black text-slate-200">
                     <span><FiFileText className="mr-1.5 inline h-3.5 w-3.5 text-rose-400" />Đề bài</span>
                     <a href={quizData.paperUrl} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-white" title="Mở đề trong tab mới"><FiExternalLink /></a>
                   </div>
@@ -1512,8 +1512,8 @@ export default function QuizPlayerPage() {
               </div>
             ) : activeViewerTab === "questions" ? (
               /* Inline Question-by-Question breakdown */
-              <div className="h-full overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#0a1222]">
-                <div className={`rounded-2xl border p-4 text-xs ${answerReviewAvailable ? "border-slate-800 bg-[#0e182b]" : "border-amber-800/60 bg-amber-950/20"}`}>
+              <div className="h-full overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#0a1222] dark:bg-slate-950">
+                <div className={`rounded-2xl border p-4 text-xs ${answerReviewAvailable ? "border-slate-800 bg-[#0e182b] dark:border-slate-800 dark:bg-slate-900" : "border-amber-800/60 bg-amber-950/20 dark:border-amber-800/60 dark:bg-amber-950/30"}`}>
                   <h3 className="font-black text-white text-sm mb-1">Chi tiết câu hỏi & Đáp án đối chiếu</h3>
                   <p className={answerReviewAvailable ? "text-slate-400" : "text-amber-200"}>
                     {answerReviewAvailable
@@ -1540,7 +1540,7 @@ export default function QuizPlayerPage() {
                     <article
                       key={question.id}
                       id={`quiz-question-card-${index}`}
-                      className={`rounded-2xl border bg-[#0e1728] p-4 sm:p-5 ${
+                      className={`rounded-2xl border bg-[#0e1728] dark:bg-slate-900/90 p-4 sm:p-5 ${
                         isEssay ? "border-amber-800/50"
                           : answerReviewAvailable && review
                             ? isUserCorrect ? "border-emerald-800/60" : isUnanswered ? "border-slate-700" : "border-rose-800/60"
@@ -1630,8 +1630,8 @@ export default function QuizPlayerPage() {
                                       : isWrongChosen
                                       ? "border-rose-500 bg-rose-950/30 text-rose-200"
                                       : active
-                                      ? "border-blue-500 bg-blue-950/30 text-blue-200"
-                                      : "border-slate-800 bg-[#09101d] text-slate-300"
+                                      ? "border-blue-500 bg-blue-950/30 text-blue-200 dark:border-blue-500 dark:bg-blue-950/60 dark:text-blue-200"
+                                      : "border-slate-800 bg-[#09101d] text-slate-300 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 hover:dark:bg-slate-800"
                                   }`}
                                 >
                                   <span
@@ -1680,8 +1680,8 @@ export default function QuizPlayerPage() {
               />
             ) : (
               /* Fallback if no PDF was provided in creation */
-              <div className="h-full overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#0a1222]">
-                <div className="rounded-2xl border border-slate-800 bg-[#0e182b] p-4 text-xs">
+              <div className="h-full overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#0a1222] dark:bg-slate-950">
+                <div className="rounded-2xl border border-slate-800 dark:border-slate-800 bg-[#0e182b] dark:bg-slate-900 p-4 text-xs">
                   <h3 className="font-black text-white text-sm mb-1">Nội dung câu hỏi đề thi</h3>
                   <p className="text-slate-400">
                     Đề thi được soạn trực tiếp trên hệ thống. Đọc nội dung dưới đây và chọn đáp án ở bảng bên phải.
@@ -1697,7 +1697,7 @@ export default function QuizPlayerPage() {
                     <article
                       key={question.id}
                       id={`quiz-question-card-${index}`}
-                      className="rounded-2xl border border-slate-800/90 bg-[#0e1728] p-4 sm:p-5"
+                      className="rounded-2xl border border-slate-800/90 dark:border-slate-800 bg-[#0e1728] dark:bg-slate-900/90 p-4 sm:p-5"
                     >
                       <div className="flex items-start gap-3">
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-xs font-black text-white">
@@ -1763,8 +1763,8 @@ export default function QuizPlayerPage() {
                                     onClick={() => handleSelect(question, option.key)}
                                     className={`flex items-center gap-3 rounded-xl border p-3 text-xs font-semibold text-left transition ${
                                       active
-                                        ? "border-rose-500 bg-rose-950/40 text-white shadow-sm ring-1 ring-rose-500/40"
-                                        : "border-slate-800 bg-[#09101d] text-slate-300 hover:border-slate-700 hover:bg-slate-800/60"
+                                        ? "border-rose-500 bg-rose-950/40 text-white shadow-sm ring-1 ring-rose-500/40 dark:border-rose-500 dark:bg-rose-950/60 dark:ring-rose-500/50"
+                                        : "border-slate-800 bg-[#09101d] text-slate-300 hover:border-slate-700 hover:bg-slate-800/60 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 hover:dark:bg-slate-800"
                                     }`}
                                   >
                                     <span
@@ -1794,14 +1794,14 @@ export default function QuizPlayerPage() {
 
         {/* RIGHT COLUMN: SINGLE TABBED ANSWER PANEL (SWITCH BETWEEN MC & ESSAY) */}
         <section
-          className={`w-full lg:w-[380px] xl:w-[430px] 2xl:w-[460px] shrink-0 flex flex-col rounded-2xl border border-slate-800/80 bg-[#0b1323] overflow-hidden shadow-2xl ${
+          className={`w-full lg:w-[380px] xl:w-[430px] 2xl:w-[460px] shrink-0 flex flex-col rounded-2xl border border-slate-800/80 dark:border-slate-800 bg-[#0b1323] dark:bg-slate-900/95 overflow-hidden shadow-2xl ${
             hasBoth
               ? (mobileTab === "mc" || mobileTab === "essay" ? "flex" : "hidden lg:flex")
               : (mobileTab === "paper" ? "hidden lg:flex" : "flex")
           }`}
         >
           {hasBoth && (
-            <div className="flex shrink-0 border-b border-slate-800 bg-[#080e1b] p-1.5 gap-1.5">
+            <div className="flex shrink-0 border-b border-slate-800 dark:border-slate-800 bg-[#080e1b] dark:bg-slate-950 p-1.5 gap-1.5">
               <button
                 type="button"
                 onClick={() => {
@@ -1855,7 +1855,7 @@ export default function QuizPlayerPage() {
       {/* CONFIRM SUBMIT MODAL */}
       {showConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-3xl border border-slate-800 bg-[#0e1728] p-6 shadow-2xl text-slate-100">
+          <div className="w-full max-w-sm rounded-3xl border border-slate-800 dark:border-slate-800 bg-[#0e1728] dark:bg-slate-900 p-6 shadow-2xl text-slate-100 dark:text-slate-100">
             <div className="text-center">
               <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-500/15 text-2xl text-rose-400">
                 📝
@@ -1871,7 +1871,7 @@ export default function QuizPlayerPage() {
               </p>
             </div>
 
-            <div className="mt-5 space-y-2 rounded-2xl border border-slate-800 bg-[#09101d] p-3.5 text-xs">
+            <div className="mt-5 space-y-2 rounded-2xl border border-slate-800 dark:border-slate-800 bg-[#09101d] dark:bg-slate-950/80 p-3.5 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-400">Trắc nghiệm đã làm:</span>
                 <b className="font-mono font-black text-emerald-400">
@@ -1984,7 +1984,7 @@ export default function QuizPlayerPage() {
       {/* CONFIRM EXIT MODAL */}
       {showExitConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-3xl border border-slate-800 bg-[#0e1728] p-6 shadow-2xl text-slate-100">
+          <div className="w-full max-w-sm rounded-3xl border border-slate-800 dark:border-slate-800 bg-[#0e1728] dark:bg-slate-900 p-6 shadow-2xl text-slate-100 dark:text-slate-100">
             <div className="text-center">
               <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/15 text-2xl text-amber-400">
                 🚪

@@ -218,7 +218,7 @@ export default function StudentRecordingsPage() {
                   type="button"
                   onClick={loadRecordings}
                   disabled={loading}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/85 bg-white/90 px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs backdrop-blur-md transition hover:bg-white hover:text-blue-600 disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/85 bg-white/90 dark:border-slate-800 dark:bg-slate-900/90 px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 shadow-xs backdrop-blur-md transition hover:bg-white dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-60"
                   title="Làm mới danh sách"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-blue-600" : ""}`} />
@@ -228,14 +228,14 @@ export default function StudentRecordingsPage() {
             </div>
 
             {/* Floating Glassmorphism Search & Filter Toolbar */}
-            <section className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 rounded-2xl border border-white/85 bg-white/92 p-2.5 sm:p-3 shadow-[0_8px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
+            <section className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 rounded-2xl border border-white/85 bg-white/92 dark:border-slate-800 dark:bg-slate-900/90 p-2.5 sm:p-3 shadow-[0_8px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
               <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Tìm kiếm bản ghi, bài giảng, chủ đề..."
-                  className="h-10 w-full rounded-xl border border-slate-200/80 bg-white/90 pl-10 pr-4 text-xs font-medium text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                  className="h-10 w-full rounded-xl border border-slate-200/80 bg-white/90 dark:border-slate-700/80 dark:bg-slate-800/90 pl-10 pr-4 text-xs font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition focus:border-blue-400 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40"
                 />
               </div>
 
@@ -244,7 +244,7 @@ export default function StudentRecordingsPage() {
                   <select
                     value={classId}
                     onChange={(e) => setClassId(e.target.value)}
-                    className="h-10 w-full rounded-xl border border-slate-200/80 bg-white/90 px-3 pr-8 text-xs font-bold text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white"
+                    className="h-10 w-full rounded-xl border border-slate-200/80 bg-white/90 dark:border-slate-700/80 dark:bg-slate-800/90 px-3 pr-8 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none transition focus:border-blue-400 focus:bg-white dark:focus:bg-slate-800"
                   >
                     <option value="all">Tất cả lớp ({classes.length})</option>
                     {classes.map((c) => (
@@ -263,14 +263,14 @@ export default function StudentRecordingsPage() {
             ) : error && visibleCount === 0 ? (
               <ErrorState title="Chưa thể tải bản ghi" message={error} onRetry={loadRecordings} />
             ) : visibleCount === 0 ? (
-              <div className="rounded-2xl border border-white/85 bg-white/90 p-12 text-center shadow-xs backdrop-blur-md">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <div className="rounded-2xl border border-white/85 bg-white/90 dark:border-slate-800 dark:bg-slate-900/90 p-12 text-center shadow-xs backdrop-blur-md">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
                   <PlaySquare className="h-6 w-6" />
                 </div>
-                <h3 className="mt-4 text-sm font-bold text-slate-800">
+                <h3 className="mt-4 text-sm font-bold text-slate-800 dark:text-slate-100">
                   Chưa có bản ghi nào phù hợp
                 </h3>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {search
                     ? `Không tìm thấy kết quả phù hợp với từ khóa "${search}".`
                     : "Chưa có video bản ghi hoặc thư mục nào được phát hành cho lớp học này."}
@@ -295,67 +295,64 @@ export default function StudentRecordingsPage() {
                     key={classItem.id}
                     type="button"
                     onClick={() => setClassId(classItem.id)}
-                    className="group flex min-w-0 flex-col justify-between rounded-2xl border border-white/80 bg-white/95 p-3.5 text-left shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md transition hover:-translate-y-0.5 hover:shadow-md"
+                    className="group flex min-w-0 flex-col justify-between rounded-2xl border border-white/80 bg-white/95 dark:border-slate-800 dark:bg-slate-900/90 p-3.5 text-left shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md transition hover:-translate-y-0.5 hover:shadow-md"
                   >
                     <div className="space-y-2.5">
                       <div className="flex items-center justify-between gap-1 text-[10px]">
-                        <span className="inline-flex min-w-0 items-center gap-1 rounded-md border border-blue-200/60 bg-blue-50 px-2 py-0.5 font-bold text-blue-700">
+                        <span className="inline-flex min-w-0 items-center gap-1 rounded-md border border-blue-200/60 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 font-bold text-blue-700 dark:text-blue-300">
                           <BookOpen className="h-3 w-3 shrink-0" />
                           <span className="truncate">[{classItem.courseTitle || "CSCA"}]</span>
                         </span>
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-200/60 bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Lớp học</span>
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-200/60 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 font-bold text-emerald-700 dark:text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Lớp học</span>
                       </div>
 
                       <div className="flex items-start gap-2.5">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white"><GraduationCap className="h-5 w-5" /></div>
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition group-hover:bg-blue-600 group-hover:text-white"><GraduationCap className="h-5 w-5" /></div>
                         <div className="min-w-0 flex-1">
-                          <h3 className="line-clamp-1 text-sm font-extrabold leading-snug text-[#102f63] transition group-hover:text-blue-600">{formatClassTitle(classItem.title)}</h3>
-                          <p className="mt-0.5 truncate text-[11px] text-slate-500">{classItem.courseTitle || "Khóa học CSCA"}</p>
+                          <h3 className="line-clamp-1 text-sm font-extrabold leading-snug text-[#102f63] dark:text-white transition group-hover:text-blue-600 dark:group-hover:text-blue-400">{formatClassTitle(classItem.title)}</h3>
+                          <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">{classItem.courseTitle || "Khóa học CSCA"}</p>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 pt-1 text-center">
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-2"><span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Bản ghi</span><span className="text-sm font-black text-[#102f63]">{classItem.recordings.length} video</span></div>
-                        <div className="rounded-xl border border-blue-100/60 bg-blue-50/40 p-2"><span className="block text-[9px] font-bold uppercase tracking-wider text-blue-600">Buổi có video</span><span className="text-sm font-black text-blue-700">{classItem.sessionCount} buổi</span></div>
+                        <div className="rounded-xl border border-slate-100 dark:border-slate-700/60 bg-slate-50/80 dark:bg-slate-800/60 p-2"><span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Bản ghi</span><span className="text-sm font-black text-[#102f63] dark:text-white">{classItem.recordings.length} video</span></div>
+                        <div className="rounded-xl border border-blue-100/60 dark:border-blue-900/40 bg-blue-50/40 dark:bg-blue-950/30 p-2"><span className="block text-[9px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Buổi có video</span><span className="text-sm font-black text-blue-700 dark:text-blue-300">{classItem.sessionCount} buổi</span></div>
                       </div>
 
-                      {classItem.latest && <div className="flex items-center gap-1.5 truncate rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-1.5 text-[10px] text-slate-600"><Sparkles className="h-3 w-3 shrink-0 text-amber-500" /><span className="truncate">Mới nhất: <strong className="font-semibold text-slate-800">{classItem.latest.sessionTitle || classItem.latest.title}</strong></span></div>}
+                      {classItem.latest && <div className="flex items-center gap-1.5 truncate rounded-lg border border-slate-100 dark:border-slate-700/60 bg-slate-50/80 dark:bg-slate-800/60 px-2.5 py-1.5 text-[10px] text-slate-600 dark:text-slate-300"><Sparkles className="h-3 w-3 shrink-0 text-amber-500" /><span className="truncate">Mới nhất: <strong className="font-semibold text-slate-800 dark:text-slate-200">{classItem.latest.sessionTitle || classItem.latest.title}</strong></span></div>}
                     </div>
 
-                    <div className="mt-2 flex items-center justify-between border-t border-slate-100/80 pt-2.5 text-xs font-bold text-blue-600 group-hover:text-blue-700"><span className="text-[10px] text-slate-400">Xem video theo buổi học</span><span className="inline-flex items-center gap-1">Vào xem <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" /></span></div>
+                    <div className="mt-2 flex items-center justify-between border-t border-slate-100/80 dark:border-slate-800/80 pt-2.5 text-xs font-bold text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300"><span className="text-[10px] text-slate-400 dark:text-slate-500">Xem video theo buổi học</span><span className="inline-flex items-center gap-1">Vào xem <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" /></span></div>
                   </button>
                 ))}
               </div>
             ) : (
               <div className="space-y-5">
-                <button type="button" onClick={() => setClassId("all")} className="inline-flex items-center gap-1.5 rounded-xl border border-white/80 bg-white/90 px-3 py-2 text-xs font-bold text-slate-600 shadow-xs hover:text-blue-700"><ArrowLeft className="h-3.5 w-3.5" /> Danh sách lớp</button>
+                <button type="button" onClick={() => setClassId("all")} className="inline-flex items-center gap-1.5 rounded-xl border border-white/80 bg-white/90 dark:border-slate-800 dark:bg-slate-900/90 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 shadow-xs hover:text-blue-700 dark:hover:text-blue-400"><ArrowLeft className="h-3.5 w-3.5" /> Danh sách lớp</button>
                 {groups.map((group) => (
                   <section
                     key={group.id}
-                    className="overflow-hidden rounded-3xl border border-white/85 bg-white/92 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md"
+                    className="overflow-hidden rounded-3xl border border-white/85 bg-white/92 dark:border-slate-800 dark:bg-slate-900/90 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md"
                   >
                     {/* Class Group Banner */}
-                    <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-blue-100/70 bg-[#ebf5fc] p-4 sm:p-5">
+                    <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-blue-100/70 dark:border-slate-800 bg-[#ebf5fc] dark:bg-slate-800/80 p-4 sm:p-5">
                       <div className="flex items-center gap-3.5">
                         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-500/25">
                           <School className="h-5 w-5" />
                         </span>
                         <div>
                           <h2
-                            className="text-base sm:text-lg font-black tracking-tight text-[#102f63]"
-                            style={{ color: "#102f63" }}
+                            className="text-base sm:text-lg font-black tracking-tight text-[#102f63] dark:text-white"
                           >
                             {formatClassTitle(group.title)}
                           </h2>
                           <p
-                            className="mt-0.5 text-xs font-semibold text-slate-700"
-                            style={{ color: "#334155" }}
+                            className="mt-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300"
                           >
                             <span>{group.courseTitle || "Khóa học CSCA"}</span>
-                            <span className="mx-1.5 text-slate-400">·</span>
+                            <span className="mx-1.5 text-slate-400 dark:text-slate-500">·</span>
                             <span
-                              className="font-bold text-blue-700"
-                              style={{ color: "#1d4ed8" }}
+                              className="font-bold text-blue-700 dark:text-blue-400"
                             >
                               {group.items.length} bản ghi
                             </span>
@@ -379,7 +376,7 @@ export default function StudentRecordingsPage() {
 
                     {/* Class Days & Cards */}
                     {group.items.length === 0 ? (
-                      <div className="p-6 text-center text-xs text-slate-500">
+                      <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400">
                         Bản ghi các buổi học được tự động đồng bộ vào thư mục Google Drive của lớp học.
                       </div>
                     ) : (

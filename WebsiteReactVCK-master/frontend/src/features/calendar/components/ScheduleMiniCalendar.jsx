@@ -78,15 +78,15 @@ export default function ScheduleMiniCalendar({ currentDate, onDateChange, events
   const monthTitle = `Tháng ${viewDate.getMonth() + 1}, ${viewDate.getFullYear()}`;
 
   return (
-    <div className="rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_8px_30px_rgba(32,78,120,0.06)] backdrop-blur-md">
+    <div className="rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_8px_30px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)]">
       {/* Header Tháng & Nút prev/next */}
       <div className="flex items-center justify-between pb-3">
-        <h3 className="text-sm font-bold text-slate-800">{monthTitle}</h3>
+        <h3 className="text-sm font-bold text-slate-800 dark:text-white">{monthTitle}</h3>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={handlePrevMonth}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             aria-label="Tháng trước"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -94,7 +94,7 @@ export default function ScheduleMiniCalendar({ currentDate, onDateChange, events
           <button
             type="button"
             onClick={handleNextMonth}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             aria-label="Tháng sau"
           >
             <ChevronRight className="h-4 w-4" />
@@ -103,7 +103,7 @@ export default function ScheduleMiniCalendar({ currentDate, onDateChange, events
       </div>
 
       {/* Tiêu đề các thứ T2 -> CN */}
-      <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-slate-400">
+      <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-slate-400 dark:text-slate-500">
         {WEEKDAYS.map((wd) => (
           <div key={wd} className="py-1">
             {wd}
@@ -140,20 +140,20 @@ export default function ScheduleMiniCalendar({ currentDate, onDateChange, events
                     isSelected
                       ? "bg-blue-600 font-bold text-white shadow-sm"
                       : isToday
-                      ? "bg-blue-100 font-bold text-blue-700 hover:bg-blue-200"
+                      ? "bg-blue-100 font-bold text-blue-700 hover:bg-blue-200 dark:bg-blue-950/70 dark:text-blue-300 dark:hover:bg-blue-900/60"
                       : isCurrentMonth
-                      ? "font-medium text-slate-700 hover:bg-slate-100"
-                      : "text-slate-300 hover:bg-slate-50"
+                      ? "font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                      : "text-slate-300 hover:bg-slate-50 dark:text-slate-600 dark:hover:bg-slate-800/40"
                   }`}
                 >
                   <span className="leading-none">{date.getDate()}</span>
                   {(hasSession || hasDeadline) && (
                     <span className="absolute bottom-0.5 flex items-center gap-0.5">
                       {hasSession && (
-                        <span className={`h-1 w-1 rounded-full ${isSelected ? "bg-white" : "bg-blue-600"}`} />
+                        <span className={`h-1 w-1 rounded-full ${isSelected ? "bg-white" : "bg-blue-600 dark:bg-blue-400"}`} />
                       )}
                       {hasDeadline && (
-                        <span className={`h-1 w-1 rounded-full ${isSelected ? "bg-amber-300" : "bg-amber-500"}`} />
+                        <span className={`h-1 w-1 rounded-full ${isSelected ? "bg-amber-300" : "bg-amber-500 dark:bg-amber-400"}`} />
                       )}
                     </span>
                   )}

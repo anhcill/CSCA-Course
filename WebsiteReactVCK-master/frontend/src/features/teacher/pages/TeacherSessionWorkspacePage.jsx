@@ -798,13 +798,13 @@ function TeacherSessionTasks({ tasks, onCreateHomework, onCreateSessionQuiz, onO
   return (
     <section className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-3xl border border-violet-200/80 bg-gradient-to-br from-violet-50/90 via-purple-50/40 to-white/95 p-5 shadow-[0_12px_35px_rgba(109,40,217,0.06)] backdrop-blur-xl dark:border-violet-900/60 dark:bg-violet-950/20 sm:p-6">
+        <article className="rounded-3xl border border-violet-200/80 bg-gradient-to-br from-violet-50/90 via-purple-50/40 to-white/95 p-5 shadow-[0_12px_35px_rgba(109,40,217,0.06)] backdrop-blur-xl dark:border-violet-900/60 dark:bg-none dark:bg-violet-950/20 sm:p-6">
           <span className="rounded-full bg-violet-600 px-2.5 py-1 text-[10px] font-black text-white shadow-2xs">TRONG BUỔI HỌC</span>
           <h2 className="mt-3 text-base font-black text-[#102f63] dark:text-white">Quiz trắc nghiệm tại lớp</h2>
           <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">Học viên làm ngay trong không gian buổi học. Hệ thống chấm tự động.</p>
           <button type="button" onClick={onCreateSessionQuiz} className="mt-4 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-violet-500/20 transition hover:bg-violet-500">Tạo Quiz buổi học</button>
         </article>
-        <article className="rounded-3xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/90 via-teal-50/40 to-white/95 p-5 shadow-[0_12px_35px_rgba(5,150,105,0.06)] backdrop-blur-xl dark:border-emerald-900/60 dark:bg-emerald-950/20 sm:p-6">
+        <article className="rounded-3xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/90 via-teal-50/40 to-white/95 p-5 shadow-[0_12px_35px_rgba(5,150,105,0.06)] backdrop-blur-xl dark:border-emerald-900/60 dark:bg-none dark:bg-emerald-950/20 sm:p-6">
           <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-black text-white shadow-2xs">BÀI TẬP VỀ NHÀ</span>
           <h2 className="mt-3 text-base font-black text-[#102f63] dark:text-white">Giao file tự luận hoặc Quiz về nhà</h2>
           <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">Có hạn nộp; bài file đi vào Cổng chấm tổng, Quiz được chấm tự động.</p>

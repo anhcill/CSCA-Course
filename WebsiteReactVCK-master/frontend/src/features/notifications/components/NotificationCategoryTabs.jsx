@@ -27,13 +27,13 @@ export default function NotificationCategoryTabs({
             onClick={() => onSelectCategory(cat.id)}
             className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold transition-all duration-150 active:scale-95 ${
               isActive
-                ? "bg-[#102f63] text-white shadow-md shadow-[#102f63]/25"
-                : "border border-white/80 bg-white/85 text-[#17365f] hover:bg-white hover:text-[#102f63] shadow-xs backdrop-blur-md"
+                ? "bg-[#102f63] dark:bg-sky-600 text-white shadow-md shadow-[#102f63]/25 dark:shadow-sky-900/30"
+                : "border border-white/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/80 text-[#17365f] dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-[#102f63] dark:hover:text-white shadow-xs backdrop-blur-md"
             }`}
           >
-            <Icon className={`h-4 w-4 ${isActive ? "text-white" : "text-[#487291]"}`} />
+            <Icon className={`h-4 w-4 ${isActive ? "text-white" : "text-[#487291] dark:text-slate-400"}`} />
             <span>{cat.label}</span>
-            <span className={isActive ? "text-white/80" : "text-[#487291]"}>({count})</span>
+            <span className={isActive ? "text-white/80" : "text-[#487291] dark:text-slate-400"}>({count})</span>
           </button>
         );
       })}

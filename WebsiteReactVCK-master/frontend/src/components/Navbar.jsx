@@ -410,6 +410,18 @@ const Navbar = () => {
                   </>
                 )}
 
+                {/* Quick Preferences on mobile */}
+                <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 px-2 py-3 mt-3">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Giao diện</span>
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200"
+                  >
+                    {isDarkMode ? <FiSun className="h-4 w-4 text-amber-400" /> : <FiMoon className="h-4 w-4 text-slate-600" />}
+                    <span>{isDarkMode ? 'Giao diện tối' : 'Giao diện sáng'}</span>
+                  </button>
+                </div>
                 {/* Auth buttons cho guest */}
                 {!authUser && (
                   <div className="grid grid-cols-2 gap-2 pt-4">

@@ -60,36 +60,36 @@ const getEventColor = (title = "") => {
   if (lower.includes("trung") || lower.includes("hsk") || lower.includes("hskk") || lower.includes("tiếng")) {
     return {
       border: "border-l-rose-500",
-      bg: "bg-rose-50/95 hover:bg-rose-100/90",
-      cardBorder: "border-rose-100",
-      time: "text-rose-600",
-      text: "text-rose-950",
+      bg: "bg-rose-50/95 hover:bg-rose-100/90 dark:bg-rose-950/40 dark:hover:bg-rose-950/60",
+      cardBorder: "border-rose-100 dark:border-rose-900/40",
+      time: "text-rose-600 dark:text-rose-400",
+      text: "text-rose-950 dark:text-rose-100",
     };
   }
   if (lower.includes("vật lý") || lower.includes("lý") || lower.includes("physics") || lower.includes("hóa")) {
     return {
       border: "border-l-emerald-500",
-      bg: "bg-emerald-50/95 hover:bg-emerald-100/90",
-      cardBorder: "border-emerald-100",
-      time: "text-emerald-600",
-      text: "text-emerald-950",
+      bg: "bg-emerald-50/95 hover:bg-emerald-100/90 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60",
+      cardBorder: "border-emerald-100 dark:border-emerald-900/40",
+      time: "text-emerald-600 dark:text-emerald-400",
+      text: "text-emerald-950 dark:text-emerald-100",
     };
   }
   if (lower.includes("kỹ năng") || lower.includes("thảo luận") || lower.includes("phản xạ") || lower.includes("nhóm")) {
     return {
       border: "border-l-amber-500",
-      bg: "bg-amber-50/95 hover:bg-amber-100/90",
-      cardBorder: "border-amber-100",
-      time: "text-amber-600",
-      text: "text-amber-950",
+      bg: "bg-amber-50/95 hover:bg-amber-100/90 dark:bg-amber-950/40 dark:hover:bg-amber-950/60",
+      cardBorder: "border-amber-100 dark:border-amber-900/40",
+      time: "text-amber-600 dark:text-amber-400",
+      text: "text-amber-950 dark:text-amber-100",
     };
   }
   return {
     border: "border-l-blue-500",
-    bg: "bg-blue-50/95 hover:bg-blue-100/90",
-    cardBorder: "border-blue-100",
-    time: "text-blue-600",
-    text: "text-blue-950",
+    bg: "bg-blue-50/95 hover:bg-blue-100/90 dark:bg-blue-950/40 dark:hover:bg-blue-950/60",
+    cardBorder: "border-blue-100 dark:border-blue-900/40",
+    time: "text-blue-600 dark:text-blue-400",
+    text: "text-blue-950 dark:text-blue-100",
   };
 };
 
@@ -132,15 +132,15 @@ export default function ScheduleWeeklyTimetable({
   const hasAnySessionThisWeek = displayEvents.some((ev) => ev.eventType === "SESSION");
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md">
+    <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]">
       {/* Thanh bộ lọc khung giờ (Đẩy buổi tối lên đầu theo yêu cầu) */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-slate-50/70 px-4 py-2.5">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-          <Clock className="h-3.5 w-3.5 text-blue-600" />
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-slate-50/70 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950/70">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+          <Clock className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
           <span>Khung giờ hiển thị:</span>
         </div>
 
-        <div className="flex items-center gap-1 rounded-xl bg-white p-1 shadow-xs border border-slate-200/70">
+        <div className="flex items-center gap-1 rounded-xl bg-white p-1 shadow-xs border border-slate-200/70 dark:bg-slate-900 dark:border-slate-800">
           {Object.entries(TIME_RANGES).map(([key, config]) => {
             const Icon = config.icon;
             const isActive = rangeKey === key;
@@ -152,7 +152,7 @@ export default function ScheduleWeeklyTimetable({
                 className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
                   isActive
                     ? "bg-blue-600 text-white shadow-xs"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 }`}
                 title={config.label}
               >
@@ -165,11 +165,11 @@ export default function ScheduleWeeklyTimetable({
       </div>
 
       {!hasAnySessionThisWeek && (
-        <div className="flex items-center justify-between px-4 py-2 bg-blue-50/40 border-b border-blue-100/60 text-xs">
-          <span className="text-slate-600 font-medium">
+        <div className="flex items-center justify-between px-4 py-2 bg-blue-50/40 border-b border-blue-100/60 dark:bg-slate-900/90 dark:border-slate-800 text-xs">
+          <span className="text-slate-600 dark:text-slate-300 font-medium">
             Tuần này không có buổi học trực tuyến nào được xếp lịch.
           </span>
-          <span className="text-slate-400 text-[11px]">
+          <span className="text-slate-400 dark:text-slate-500 text-[11px]">
             Sử dụng các nút điều hướng hoặc lịch mini để chọn tuần học khác.
           </span>
         </div>
@@ -178,8 +178,8 @@ export default function ScheduleWeeklyTimetable({
       <div className="overflow-x-auto [scrollbar-width:thin]">
         <div className="min-w-[820px]">
           {/* Header 7 cột ngày trong tuần */}
-          <div className="grid grid-cols-[68px_repeat(7,1fr)] border-b border-slate-200/80 bg-slate-50/50">
-            <div className="flex items-center justify-center py-3 text-xs font-semibold text-slate-400">
+          <div className="grid grid-cols-[68px_repeat(7,1fr)] border-b border-slate-200/80 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-950/60">
+            <div className="flex items-center justify-center py-3 text-xs font-semibold text-slate-400 dark:text-slate-500">
               Giờ
             </div>
 
@@ -197,20 +197,20 @@ export default function ScheduleWeeklyTimetable({
               return (
                 <div
                   key={dayDate.toISOString()}
-                  className={`relative flex flex-col items-center justify-center border-l border-slate-200/70 py-2.5 text-center transition ${
-                    isToday ? "bg-blue-50/40" : ""
+                  className={`relative flex flex-col items-center justify-center border-l border-slate-200/70 dark:border-slate-800 py-2.5 text-center transition ${
+                    isToday ? "bg-blue-50/40 dark:bg-blue-950/30" : ""
                   }`}
                 >
                   <span
                     className={`text-xs font-bold ${
-                      isToday ? "text-blue-600" : "text-slate-700"
+                      isToday ? "text-blue-600 dark:text-blue-400" : "text-slate-700 dark:text-slate-200"
                     }`}
                   >
                     {WEEKDAY_NAMES[idx]}
                   </span>
                   <span
                     className={`mt-0.5 text-[11px] font-semibold ${
-                      isToday ? "text-blue-600" : "text-slate-400"
+                      isToday ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"
                     }`}
                   >
                     {dayNum}/{monthNum < 10 ? `0${monthNum}` : monthNum}
@@ -226,7 +226,7 @@ export default function ScheduleWeeklyTimetable({
                         );
                         if (firstDeadline && onSelectEvent) onSelectEvent(firstDeadline);
                       }}
-                      className="mt-1 inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 hover:bg-amber-100 hover:border-amber-300 transition cursor-pointer shadow-2xs"
+                      className="mt-1 inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 hover:bg-amber-100 hover:border-amber-300 dark:bg-amber-950/60 dark:border-amber-800/80 dark:text-amber-300 dark:hover:bg-amber-900/60 transition cursor-pointer shadow-2xs"
                       title={`Nhấp để xem chi tiết ${dayDeadlinesCount} hạn nộp bài tập / quiz`}
                     >
                       {dayDeadlinesCount} hạn nộp
@@ -234,7 +234,7 @@ export default function ScheduleWeeklyTimetable({
                   )}
 
                   {isToday && (
-                    <div className="absolute bottom-0 h-0.5 w-8 rounded-full bg-blue-600" />
+                    <div className="absolute bottom-0 h-0.5 w-8 rounded-full bg-blue-600 dark:bg-blue-500" />
                   )}
                 </div>
               );
@@ -243,8 +243,8 @@ export default function ScheduleWeeklyTimetable({
 
           {/* Hàng sự kiện hạn nộp bài tập / Quiz trong tuần nếu có */}
           {displayEvents.some((ev) => ev.eventType !== "SESSION") && (
-            <div className="grid grid-cols-[68px_repeat(7,1fr)] border-b border-amber-200/60 bg-amber-50/30">
-              <div className="flex items-center justify-center p-2 text-[10px] font-bold text-amber-700 text-center">
+            <div className="grid grid-cols-[68px_repeat(7,1fr)] border-b border-amber-200/60 bg-amber-50/30 dark:border-amber-900/40 dark:bg-amber-950/20">
+              <div className="flex items-center justify-center p-2 text-[10px] font-bold text-amber-700 dark:text-amber-400 text-center">
                 Hạn nộp
               </div>
               {weekDays.map((dayDate) => {
@@ -255,7 +255,7 @@ export default function ScheduleWeeklyTimetable({
                 return (
                   <div
                     key={`deadline-row-${dateIsoDay}`}
-                    className="border-l border-slate-200/60 p-1.5 space-y-1"
+                    className="border-l border-slate-200/60 dark:border-slate-800 p-1.5 space-y-1"
                   >
                     {dayDeadlines.map((dl) => {
                       const isQuiz = dl.eventType === "QUIZ_DUE";
@@ -272,24 +272,24 @@ export default function ScheduleWeeklyTimetable({
                           title={`${dl.title} - ${scopeLabel}`}
                           className={`w-full text-left rounded-lg p-1.5 transition cursor-pointer border shadow-2xs hover:shadow-xs group ${
                             isQuiz
-                              ? "bg-purple-50/90 border-purple-200/70 text-purple-900 hover:bg-purple-100"
-                              : "bg-blue-50/90 border-blue-200/70 text-blue-900 hover:bg-blue-100"
+                              ? "bg-purple-50/90 border-purple-200/70 text-purple-900 hover:bg-purple-100 dark:bg-purple-950/60 dark:border-purple-800/70 dark:text-purple-200 dark:hover:bg-purple-900/60"
+                              : "bg-blue-50/90 border-blue-200/70 text-blue-900 hover:bg-blue-100 dark:bg-blue-950/60 dark:border-blue-800/70 dark:text-blue-200 dark:hover:bg-blue-900/60"
                           }`}
                         >
-                          <div className="flex items-center justify-between text-[9px] font-bold text-slate-500 mb-0.5">
-                            <span className={isQuiz ? "text-purple-600" : "text-blue-600"}>
+                          <div className="flex items-center justify-between text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">
+                            <span className={isQuiz ? "text-purple-600 dark:text-purple-400" : "text-blue-600 dark:text-blue-400"}>
                               {isQuiz ? "Quiz" : "Bài tập"}
                             </span>
                             <span>{dueTime}</span>
                           </div>
-                          <p className="line-clamp-2 text-[10px] font-bold leading-tight text-slate-800 group-hover:text-blue-700">
+                          <p className="line-clamp-2 text-[10px] font-bold leading-tight text-slate-800 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-blue-300">
                             {dl.title}
                           </p>
-                          <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-500">
+                          <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-500 dark:text-slate-400">
                             Lớp: {scopeLabel}
                           </p>
                           {dl.total_students > 0 && (
-                            <p className="text-[9px] text-slate-500 font-semibold mt-0.5">
+                            <p className="text-[9px] text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
                               Đã nộp: {dl.submitted_count || 0}/{dl.total_students}
                             </p>
                           )}
@@ -305,12 +305,12 @@ export default function ScheduleWeeklyTimetable({
           {/* Body thời khóa biểu */}
           <div className="relative grid grid-cols-[68px_repeat(7,1fr)]">
             {/* Cột các mốc giờ bên trái */}
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {hours.map((hour) => (
                 <div
                   key={hour}
                   style={{ height: `${ROW_HEIGHT}px` }}
-                  className="flex items-start justify-center pt-2 text-[11px] font-bold text-slate-500"
+                  className="flex items-start justify-center pt-2 text-[11px] font-bold text-slate-500 dark:text-slate-400"
                 >
                   {hour < 10 ? `0${hour}:00` : `${hour}:00`}
                 </div>
@@ -335,8 +335,8 @@ export default function ScheduleWeeklyTimetable({
               return (
                 <div
                   key={dayIdx}
-                  className={`relative border-l border-slate-100 ${
-                    isToday ? "bg-blue-50/15" : ""
+                  className={`relative border-l border-slate-100 dark:border-slate-800 ${
+                    isToday ? "bg-blue-50/15 dark:bg-blue-950/10" : ""
                   }`}
                   style={{ height: `${hours.length * ROW_HEIGHT}px` }}
                 >
@@ -345,7 +345,7 @@ export default function ScheduleWeeklyTimetable({
                     <div
                       key={hIdx}
                       style={{ height: `${ROW_HEIGHT}px` }}
-                      className="border-b border-slate-100/90"
+                      className="border-b border-slate-100/90 dark:border-slate-800/80"
                     />
                   ))}
 
@@ -417,8 +417,8 @@ export default function ScheduleWeeklyTimetable({
 
                         {/* Phòng học / Lớp học tự động xuống dòng rõ ràng */}
                         {(ev.room || ev.class_title) && (
-                          <div className="mt-1 flex items-start gap-1 text-[11px] text-slate-500">
-                            <MapPin className="h-3 w-3 shrink-0 mt-0.5 text-slate-400" />
+                          <div className="mt-1 flex items-start gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                            <MapPin className="h-3 w-3 shrink-0 mt-0.5 text-slate-400 dark:text-slate-500" />
                             <span className="break-words whitespace-normal font-medium leading-tight">
                               {ev.room || ev.class_title}
                             </span>

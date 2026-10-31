@@ -1,13 +1,15 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from 'react';
 
-
 const ThemeContext = createContext();
 
 const getInitialTheme = () => {
     const storedTheme = localStorage.getItem('darkMode');
     if (storedTheme !== null) return storedTheme === 'true';
-    return false; // Mặc định là giao diện sáng cho toàn hệ thống
+    if (typeof window !== 'undefined' && window.matchMedia) {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
 };
 
 export const ThemeProvider = ({ children }) => {
@@ -21,6 +23,18 @@ export const ThemeProvider = ({ children }) => {
             document.documentElement.classList.remove('dark');
         }
     }, [isDarkMode]);
+
+    useEffect(() => {
+        if (!window.matchMedia) return;
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleChange = (e) => {
+            if (localStorage.getItem('darkMode') === null) {
+                setIsDarkMode(e.matches);
+            }
+        };
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
+    }, []);
 
     const toggleTheme = () => setIsDarkMode((currentTheme) => !currentTheme);
 

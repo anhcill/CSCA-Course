@@ -88,38 +88,38 @@ const kindConfig = {
   pdf: {
     label: "PDF",
     icon: FileText,
-    badge: "bg-rose-50 text-rose-600 border-rose-200/80",
-    pill: "bg-rose-100 text-rose-700",
+    badge: "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border-rose-200/80 dark:border-rose-800",
+    pill: "bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300",
   },
   doc: {
     label: "Word",
     icon: FileText,
-    badge: "bg-blue-50 text-blue-600 border-blue-200/80",
-    pill: "bg-blue-100 text-blue-700",
+    badge: "bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border-blue-200/80 dark:border-blue-800",
+    pill: "bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300",
   },
   sheet: {
     label: "Excel",
     icon: FileSpreadsheet,
-    badge: "bg-emerald-50 text-emerald-600 border-emerald-200/80",
-    pill: "bg-emerald-100 text-emerald-700",
+    badge: "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800",
+    pill: "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300",
   },
   slide: {
     label: "Slide",
     icon: FileText,
-    badge: "bg-amber-50 text-amber-600 border-amber-200/80",
-    pill: "bg-amber-100 text-amber-700",
+    badge: "bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border-amber-200/80 dark:border-amber-800",
+    pill: "bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300",
   },
   image: {
     label: "Ảnh",
     icon: Files,
-    badge: "bg-purple-50 text-purple-600 border-purple-200/80",
-    pill: "bg-purple-100 text-purple-700",
+    badge: "bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 border-purple-200/80 dark:border-purple-800",
+    pill: "bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300",
   },
   other: {
     label: "Tài liệu",
     icon: Files,
-    badge: "bg-indigo-50 text-indigo-600 border-indigo-200/80",
-    pill: "bg-indigo-100 text-indigo-700",
+    badge: "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border-indigo-200/80 dark:border-indigo-800",
+    pill: "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300",
   },
 };
 
@@ -624,22 +624,22 @@ export default function TeacherFilesPage() {
   }
 
   return (
-    <div className="min-h-full p-2.5 sm:p-4 lg:p-6 text-slate-900 transition-colors">
+    <div className="min-h-full p-2.5 sm:p-4 lg:p-6 text-slate-900 dark:text-slate-100 transition-colors">
       <div className="mx-auto max-w-7xl space-y-4 sm:space-y-5">
         {/* ================= 1. CALLIGRAPHIC HEADER HERO TRỰC TIẾP TRÊN NỀN PHONG CẢNH Á ĐÔNG ================= */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pt-1 pb-1">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/80 bg-white/85 px-3 py-1 text-xs font-bold text-[#102f63] shadow-2xs backdrop-blur-md">
-              <FolderOpen className="h-3.5 w-3.5 text-blue-600" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/85 px-3 py-1 text-xs font-bold text-[#102f63] dark:text-sky-300 shadow-2xs backdrop-blur-md">
+              <FolderOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               <span>Quản lý học liệu & bài giảng</span>
             </div>
-            <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs">
+            <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] dark:text-white drop-shadow-xs">
               {isAdmin ? "Kho Tài Liệu Toàn Hệ Thống" : "Tài Liệu & Học Liệu Giảng Dạy"}
             </h1>
-            <p className="text-xs font-semibold italic text-slate-800 sm:text-sm">
+            <p className="text-xs font-semibold italic text-slate-800 dark:text-slate-300 sm:text-sm">
               “Sách vở là kho tàng tri thức, tích lũy mỗi ngày để vươn xa.”
             </p>
-            <p className="font-['Ma_Shan_Zheng',cursive] text-xs sm:text-sm tracking-wider text-slate-600">
+            <p className="font-['Ma_Shan_Zheng',cursive] text-xs sm:text-sm tracking-wider text-slate-600 dark:text-slate-400">
               —— 积学以明志，温故而知新。
             </p>
           </div>
@@ -652,7 +652,7 @@ export default function TeacherFilesPage() {
                 setUploadSessionId("");
                 setIsUploadOpen(true);
               }}
-              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#102f63] to-[#1d4f8d] px-4 py-2.5 text-xs font-black text-white shadow-[0_8px_20px_rgba(16,47,99,0.22)] transition hover:brightness-110 active:scale-95"
+              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#102f63] to-[#1d4f8d] dark:from-blue-700 dark:to-indigo-700 px-4 py-2.5 text-xs font-black text-white shadow-[0_8px_20px_rgba(16,47,99,0.22)] transition hover:brightness-110 active:scale-95"
             >
               <Plus className="h-4 w-4" />
               <span>Đăng tài liệu mới</span>
@@ -668,47 +668,47 @@ export default function TeacherFilesPage() {
               value: files.length,
               subtext: "Đã đăng tải toàn hệ thống",
               icon: Files,
-              iconStyle: "bg-blue-50 text-blue-600",
+              iconStyle: "bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400",
             },
             {
               label: "Số môn / khóa học",
               value: uniqueCourses.length,
               subtext: "Giáo trình đang lưu trữ",
               icon: BookOpen,
-              iconStyle: "bg-violet-50 text-violet-600",
+              iconStyle: "bg-violet-50 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400",
             },
             {
               label: "Lớp đang theo dõi",
               value: availableClasses.length,
               subtext: "Có phân công giảng dạy",
               icon: School,
-              iconStyle: "bg-amber-50 text-amber-600",
+              iconStyle: "bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400",
             },
             {
               label: "Tài liệu PDF & Slide",
               value: fileStats.pdfOrSlideCount,
               subtext: `${fileStats.pdfCount} PDF · ${fileStats.slideCount} Slide`,
               icon: Sparkles,
-              iconStyle: "bg-emerald-50 text-emerald-600",
+              iconStyle: "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400",
             },
           ].map((item) => {
             const Icon = item.icon;
             return (
               <div
                 key={item.label}
-                className="flex items-center gap-3 rounded-2xl border border-white/80 bg-white/90 p-3.5 shadow-[0_8px_25px_rgba(32,78,120,0.06)] backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-sky-300"
+                className="flex items-center gap-3 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-3.5 shadow-[0_8px_25px_rgba(32,78,120,0.06)] dark:shadow-none backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-sky-300 dark:hover:border-sky-600"
               >
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.iconStyle} shadow-2xs`}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xl sm:text-2xl font-black text-[#102f63] leading-none font-mono">
+                  <p className="text-xl sm:text-2xl font-black text-[#102f63] dark:text-white leading-none font-mono">
                     {item.value}
                   </p>
-                  <p className="text-xs font-bold text-slate-800 leading-tight mt-1 truncate">
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight mt-1 truncate">
                     {item.label}
                   </p>
-                  <p className="text-[10px] font-medium text-slate-500 truncate mt-0.5">
+                  <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 truncate mt-0.5">
                     {item.subtext}
                   </p>
                 </div>
@@ -718,27 +718,27 @@ export default function TeacherFilesPage() {
         </section>
 
         {/* ================= 3. BỘ LỌC SẮP XẾP KHOA HỌC TRÊN NỀN KÍNH MỜ ================= */}
-        <section className="rounded-2xl border border-white/80 bg-white/92 p-3.5 sm:p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md space-y-3.5">
+        <section className="rounded-2xl border border-white/80 dark:border-slate-800 bg-white/92 dark:bg-slate-900/90 p-3.5 sm:p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] dark:shadow-none backdrop-blur-md space-y-3.5">
           {/* Header & View Mode Switcher */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
             <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600 shadow-2xs">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 shadow-2xs">
                 <Filter className="h-4 w-4" />
               </span>
-              <h2 className="text-xs font-black uppercase tracking-wider text-[#102f63]">
+              <h2 className="text-xs font-black uppercase tracking-wider text-[#102f63] dark:text-white">
                 Bộ lọc sắp xếp khoa học
               </h2>
             </div>
 
             {/* View Mode Switcher */}
-            <div className="flex items-center gap-1 rounded-xl bg-slate-100/90 p-1">
+            <div className="flex items-center gap-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/90 p-1">
               <button
                 type="button"
                 onClick={() => setViewMode("by_class")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   viewMode === "by_class"
                     ? "bg-blue-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
                 title="Sắp xếp thông minh theo từng Ô Lớp Học & Buổi học"
               >
@@ -751,7 +751,7 @@ export default function TeacherFilesPage() {
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   viewMode === "timeline"
                     ? "bg-blue-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
                 title="Sắp xếp theo Ngày học (Timeline)"
               >
@@ -764,7 +764,7 @@ export default function TeacherFilesPage() {
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   viewMode === "table"
                     ? "bg-blue-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
                 title="Dạng Bảng chi tiết"
               >
@@ -778,17 +778,17 @@ export default function TeacherFilesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
             {/* 1. Môn học / Khóa học */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1">
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                 Giáo trình môn học:
               </label>
               <select
                 value={selectedCourseId}
                 onChange={handleCourseChange}
-                className="w-full rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-800 outline-none shadow-2xs focus:border-blue-500 focus:bg-white"
+                className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none shadow-2xs focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
               >
-                <option value="all">Tất cả môn học ({uniqueCourses.length})</option>
+                <option value="all" className="dark:bg-slate-900 dark:text-white">Tất cả môn học ({uniqueCourses.length})</option>
                 {uniqueCourses.map((c) => (
-                  <option key={c.id} value={c.id}>
+                  <option key={c.id} value={c.id} className="dark:bg-slate-900 dark:text-white">
                     [{c.category}] {c.title}
                   </option>
                 ))}
@@ -797,17 +797,17 @@ export default function TeacherFilesPage() {
 
             {/* 2. Lớp học */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1">
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                 Lớp học:
               </label>
               <select
                 value={selectedClassId}
                 onChange={handleClassChange}
-                className="w-full rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-800 outline-none shadow-2xs focus:border-blue-500 focus:bg-white"
+                className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none shadow-2xs focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
               >
-                <option value="all">Tất cả các lớp ({availableClasses.length})</option>
+                <option value="all" className="dark:bg-slate-900 dark:text-white">Tất cả các lớp ({availableClasses.length})</option>
                 {availableClasses.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
+                  <option key={cls.id} value={cls.id} className="dark:bg-slate-900 dark:text-white">
                     {cls.title} ({cls.sessions?.length || 0} buổi)
                   </option>
                 ))}
@@ -816,40 +816,40 @@ export default function TeacherFilesPage() {
 
             {/* 3. Ngày học */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1">
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                 Ngày học / Buổi học:
               </label>
               <select
                 value={selectedDateFilter}
                 onChange={handleDateFilterChange}
-                className="w-full rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-800 outline-none shadow-2xs focus:border-blue-500 focus:bg-white"
+                className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none shadow-2xs focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
               >
-                <option value="all">Tất cả ngày</option>
-                <option value="today">Hôm nay ({new Date().toLocaleDateString("vi-VN")})</option>
-                <option value="week">Trong tuần này</option>
+                <option value="all" className="dark:bg-slate-900 dark:text-white">Tất cả ngày</option>
+                <option value="today" className="dark:bg-slate-900 dark:text-white">Hôm nay ({new Date().toLocaleDateString("vi-VN")})</option>
+                <option value="week" className="dark:bg-slate-900 dark:text-white">Trong tuần này</option>
               </select>
             </div>
 
             {/* 4. Tìm kiếm từ khóa */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1">
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                 Tìm kiếm tài liệu:
               </label>
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                 <input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Tên file, buổi học..."
-                  className="w-full rounded-xl border border-slate-200/90 bg-white/95 py-2 pl-8 pr-3 text-xs font-semibold text-slate-800 outline-none shadow-2xs focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/80 py-2 pl-8 pr-3 text-xs font-semibold text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none shadow-2xs focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
                 />
               </div>
             </div>
           </div>
 
           {/* Quick Kind Filter Pills */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
-            <span className="text-[11px] font-bold text-slate-400 mr-1">Định dạng:</span>
+          <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 mr-1">Định dạng:</span>
             {[
               ["all", "Tất cả định dạng"],
               ["pdf", "PDF"],
@@ -864,8 +864,8 @@ export default function TeacherFilesPage() {
                 onClick={() => setSelectedKind(kind)}
                 className={`px-3 py-1 rounded-xl text-xs font-semibold transition ${
                   selectedKind === kind
-                    ? "bg-[#102f63] text-white shadow-xs font-bold"
-                    : "bg-white/80 border border-slate-200/80 text-slate-600 hover:bg-white hover:text-slate-900"
+                    ? "bg-[#102f63] dark:bg-blue-600 text-white shadow-xs font-bold"
+                    : "bg-white/80 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 {label}
@@ -889,24 +889,24 @@ export default function TeacherFilesPage() {
             /* --- TẦNG 1: DANH SÁCH CÁC Ô TÀI LIỆU LỚP HỌC (ĐỒNG NHẤT ẢNH PHONG CẢNH CSCA) --- */
             <div className="space-y-4">
               {/* Toolbar tiêu đề & tìm kiếm lớp */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/90 p-3.5 sm:p-4 shadow-sm backdrop-blur-md">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-3.5 sm:p-4 shadow-sm backdrop-blur-md">
                 <div>
-                  <h3 className="text-sm font-black text-[#102f63] flex items-center gap-2">
-                    <FolderOpen className="h-4 w-4 text-blue-600" />
+                  <h3 className="text-sm font-black text-[#102f63] dark:text-white flex items-center gap-2">
+                    <FolderOpen className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     Danh sách Ô Tài Liệu Lớp Học ({searchedClasses.length} lớp)
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     Mỗi lớp là một ô tài liệu riêng biệt. Nhấp vào lớp để quản lý tài liệu chi tiết theo từng buổi học.
                   </p>
                 </div>
 
                 <div className="relative w-full sm:w-72">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                   <input
                     value={classSearchQuery}
                     onChange={(e) => setClassSearchQuery(e.target.value)}
                     placeholder="Tìm theo tên lớp, môn học..."
-                    className="h-8 w-full rounded-xl border border-slate-200/90 bg-white pl-8 pr-3 text-xs text-slate-800 shadow-2xs outline-none focus:border-blue-500"
+                    className="h-8 w-full rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-950 pl-8 pr-3 text-xs text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-2xs outline-none focus:border-blue-500 dark:focus:border-sky-500"
                   />
                 </div>
               </div>
@@ -940,10 +940,10 @@ export default function TeacherFilesPage() {
                       <article
                         key={cls.id}
                         onClick={() => handleSelectClass(cls.id)}
-                        className="group flex flex-col justify-between overflow-hidden rounded-3xl border border-white/85 bg-white shadow-[0_8px_24px_rgba(45,87,122,0.1)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(45,87,122,0.18)] hover:border-sky-300 cursor-pointer"
+                        className="group flex flex-col justify-between overflow-hidden rounded-3xl border border-white/85 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-[0_8px_24px_rgba(45,87,122,0.1)] dark:shadow-none transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(45,87,122,0.18)] hover:border-sky-300 dark:hover:border-sky-600 cursor-pointer"
                       >
                         {/* Banner ảnh phong cảnh Á Đông CSCA - Đồng nhất 100% với học viên & tổng quan */}
-                        <div className="relative h-28 sm:h-32 w-full overflow-hidden bg-sky-100">
+                        <div className="relative h-28 sm:h-32 w-full overflow-hidden bg-sky-100 dark:bg-slate-800">
                           <img
                             src={cover}
                             onError={(e) => {
@@ -953,7 +953,7 @@ export default function TeacherFilesPage() {
                             alt={cls.title}
                             className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-[#102f63]/90 via-[#102f63]/30 to-white/10" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#102f63]/90 via-[#102f63]/30 to-white/10 dark:from-slate-950/90 dark:via-slate-950/40 dark:to-transparent" />
 
                           {/* Huy hiệu khóa học trên góc trái */}
                           <span
@@ -983,20 +983,20 @@ export default function TeacherFilesPage() {
                         <div className="p-3.5 sm:p-4 flex flex-col justify-between flex-1 space-y-3">
                           {/* 2 Ô thống kê tài liệu & buổi học */}
                           <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="rounded-xl border border-sky-100 bg-sky-50/70 p-2.5 text-center">
-                              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            <div className="rounded-xl border border-sky-100 dark:border-sky-900/50 bg-sky-50/70 dark:bg-sky-950/40 p-2.5 text-center">
+                              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                                 Tài liệu
                               </span>
-                              <span className="text-sm font-black text-blue-700 font-mono">
+                              <span className="text-sm font-black text-blue-700 dark:text-blue-300 font-mono">
                                 {clsFiles.length} file
                               </span>
                             </div>
 
-                            <div className="rounded-xl border border-slate-200/70 bg-slate-50 p-2.5 text-center">
-                              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            <div className="rounded-xl border border-slate-200/70 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-2.5 text-center">
+                              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                                 Buổi có tài liệu
                               </span>
-                              <span className="text-sm font-black text-slate-800 font-mono">
+                              <span className="text-sm font-black text-slate-800 dark:text-slate-200 font-mono">
                                 {sessionsWithFilesCount} / {totalSessions} buổi
                               </span>
                             </div>
@@ -1004,20 +1004,20 @@ export default function TeacherFilesPage() {
 
                           {/* Tệp tài liệu mới nhất (nếu có) */}
                           {latestFile ? (
-                            <div className="flex items-center gap-1.5 rounded-xl border border-amber-200/70 bg-amber-50/70 px-2.5 py-1.5 text-[11px] text-amber-900">
-                              <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                            <div className="flex items-center gap-1.5 rounded-xl border border-amber-200/70 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 px-2.5 py-1.5 text-[11px] text-amber-900 dark:text-amber-200">
+                              <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
                               <span className="truncate">
                                 Mới nhất: <strong>{latestFile.name}</strong>
                               </span>
                             </div>
                           ) : (
-                            <div className="text-[11px] text-slate-400 italic px-1">
+                            <div className="text-[11px] text-slate-400 dark:text-slate-500 italic px-1">
                               Chưa có tài liệu đính kèm nào.
                             </div>
                           )}
 
                           {/* Hàng nút hành động dưới cùng */}
-                          <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-xs font-bold">
+                          <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3 text-xs font-bold">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1026,13 +1026,13 @@ export default function TeacherFilesPage() {
                                 setUploadSessionId("");
                                 setIsUploadOpen(true);
                               }}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-1.5 text-slate-700 transition hover:bg-sky-50 hover:text-sky-700"
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-slate-700 dark:text-slate-300 transition hover:bg-sky-50 dark:hover:bg-slate-700 hover:text-sky-700 dark:hover:text-sky-300"
                             >
                               <Plus className="h-3.5 w-3.5" />
                               <span>Thêm file</span>
                             </button>
 
-                            <span className="inline-flex items-center gap-1 text-blue-600 transition group-hover:translate-x-0.5">
+                            <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 transition group-hover:translate-x-0.5">
                               <span>Vào xem theo buổi</span>
                               <ArrowRight className="h-3.5 w-3.5" />
                             </span>
@@ -1046,16 +1046,16 @@ export default function TeacherFilesPage() {
 
               {/* Ô tài liệu chung hệ thống nếu có file không gán lớp */}
               {systemGeneralFiles.length > 0 && (
-                <div className="mt-6 rounded-3xl border border-white/90 bg-white/92 p-5 shadow-sm backdrop-blur-md">
-                  <div className="flex items-center gap-3 mb-3 border-b border-slate-100 pb-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 font-bold">
+                <div className="mt-6 rounded-3xl border border-white/90 dark:border-slate-800 bg-white/92 dark:bg-slate-900/90 p-5 shadow-sm backdrop-blur-md">
+                  <div className="flex items-center gap-3 mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 font-bold">
                       <BookOpen className="h-5 w-5" />
                     </span>
                     <div>
-                      <h3 className="text-sm font-black text-[#102f63]">
+                      <h3 className="text-sm font-black text-[#102f63] dark:text-white">
                         Học liệu chung môn học & Giáo trình toàn hệ thống ({systemGeneralFiles.length} file)
                       </h3>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         Các tài liệu cấp môn học dùng chung cho tất cả các lớp
                       </p>
                     </div>
@@ -1077,12 +1077,12 @@ export default function TeacherFilesPage() {
             /* --- TẦNG 2: XEM TÀI LIỆU CHI TIẾT THEO BUỔI HỌC CỦA LỚP ĐƯỢC CHỌN --- */
             <div className="space-y-4">
               {/* Header điều hướng & tóm tắt lớp đang chọn */}
-              <div className="rounded-3xl border border-white/90 bg-white/92 p-4 sm:p-5 shadow-sm backdrop-blur-md space-y-4">
+              <div className="rounded-3xl border border-white/90 dark:border-slate-800 bg-white/92 dark:bg-slate-900/90 p-4 sm:p-5 shadow-sm backdrop-blur-md space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => handleSelectClass(null)}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-[#102f63] bg-white border border-slate-200/90 shadow-2xs hover:bg-sky-50 hover:text-blue-700 transition w-fit"
+                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-[#102f63] dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 shadow-2xs hover:bg-sky-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-400 transition w-fit"
                   >
                     <ArrowLeft className="h-4 w-4" />
                     <span>Quay lại danh sách lớp học</span>
@@ -1090,14 +1090,14 @@ export default function TeacherFilesPage() {
 
                   <div className="flex flex-wrap items-center gap-2">
                     {/* Toggle hiển thị buổi */}
-                    <div className="flex items-center rounded-xl bg-slate-100 p-1 text-xs">
+                    <div className="flex items-center rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs">
                       <button
                         type="button"
                         onClick={() => setSessionVisibilityFilter("all_sessions")}
                         className={`px-3 py-1.5 rounded-lg font-bold transition ${
                           sessionVisibilityFilter === "all_sessions"
-                            ? "bg-white text-blue-700 shadow-xs"
-                            : "text-slate-500 hover:text-slate-900"
+                            ? "bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-xs"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                         }`}
                       >
                         Tất cả buổi ({activeClassSessionsGrouped.length})
@@ -1107,8 +1107,8 @@ export default function TeacherFilesPage() {
                         onClick={() => setSessionVisibilityFilter("only_with_files")}
                         className={`px-3 py-1.5 rounded-lg font-bold transition ${
                           sessionVisibilityFilter === "only_with_files"
-                            ? "bg-white text-blue-700 shadow-xs"
-                            : "text-slate-500 hover:text-slate-900"
+                            ? "bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-xs"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                         }`}
                       >
                         Chỉ buổi có file ({activeClassSessionsGrouped.filter((s) => s.files.length > 0).length})
@@ -1132,29 +1132,29 @@ export default function TeacherFilesPage() {
 
                 {/* Class Info Header */}
                 {activeClass && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800 pt-4">
                     <div className="flex items-center gap-3.5">
-                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 border border-sky-100 font-bold shadow-2xs">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 border border-sky-100 dark:border-sky-800 font-bold shadow-2xs">
                         <School className="h-6 w-6" />
                       </span>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/50">
                             {activeClass.courseCategory || "CSCA"}
                           </span>
-                          <span className="text-xs text-slate-500">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
                             {activeClass.courseTitle}
                           </span>
                         </div>
-                        <h2 className="text-lg sm:text-xl font-black text-[#102f63] mt-0.5">
+                        <h2 className="text-lg sm:text-xl font-black text-[#102f63] dark:text-white mt-0.5">
                           {activeClass.title}
                         </h2>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 text-xs font-bold text-slate-700 bg-sky-50/70 px-4 py-2 rounded-2xl border border-sky-100/80">
+                    <div className="flex items-center gap-3 text-xs font-bold text-slate-700 dark:text-slate-300 bg-sky-50/70 dark:bg-sky-950/40 px-4 py-2 rounded-2xl border border-sky-100/80 dark:border-sky-900/50">
                       <span>{activeClassFiles.length} tài liệu trong lớp</span>
-                      <span className="text-slate-300">·</span>
+                      <span className="text-slate-300 dark:text-slate-600">·</span>
                       <span>{activeClassSessionsGrouped.length} buổi học</span>
                     </div>
                   </div>
@@ -1163,17 +1163,17 @@ export default function TeacherFilesPage() {
 
               {/* 1. Phần Tài liệu chung của lớp (nếu có) */}
               {activeClassGeneralFiles.length > 0 && (
-                <section className="rounded-3xl border border-white/90 bg-white/92 overflow-hidden shadow-sm backdrop-blur-md">
-                  <div className="bg-sky-50/50 px-5 py-3.5 border-b border-sky-100/70 flex items-center justify-between">
+                <section className="rounded-3xl border border-white/90 dark:border-slate-800 bg-white/92 dark:bg-slate-900/90 overflow-hidden shadow-sm backdrop-blur-md">
+                  <div className="bg-sky-50/50 dark:bg-sky-950/40 px-5 py-3.5 border-b border-sky-100/70 dark:border-sky-900/50 flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-100 text-blue-700 font-bold text-xs">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-bold text-xs">
                         <FolderOpen className="h-4 w-4" />
                       </span>
                       <div>
-                        <h3 className="text-sm font-black text-[#102f63]">
+                        <h3 className="text-sm font-black text-[#102f63] dark:text-white">
                           Tài liệu & Giáo trình chung của lớp
                         </h3>
-                        <p className="text-[11px] text-slate-500">
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
                           {activeClassGeneralFiles.length} tệp tài liệu tham khảo chung toàn khóa
                         </p>
                       </div>
@@ -1194,19 +1194,19 @@ export default function TeacherFilesPage() {
               {/* 2. Danh sách Tài liệu Sắp xếp Thông minh theo Buổi học */}
               <div className="space-y-3.5">
                 <div className="flex items-center justify-between px-1">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-[#102f63] flex items-center gap-1.5">
-                    <CalendarDays className="h-3.5 w-3.5 text-blue-600" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-[#102f63] dark:text-white flex items-center gap-1.5">
+                    <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                     Tài liệu sắp xếp theo từng buổi học ({displayedSessions.length} buổi)
                   </h3>
                 </div>
 
                 {displayedSessions.length === 0 ? (
-                  <div className="p-12 text-center rounded-3xl bg-white/90 border border-white/90 backdrop-blur-md">
-                    <CalendarDays className="mx-auto h-10 w-10 text-slate-400 mb-2" />
-                    <p className="text-sm font-bold text-slate-800">
+                  <div className="p-12 text-center rounded-3xl bg-white/90 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800 backdrop-blur-md">
+                    <CalendarDays className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500 mb-2" />
+                    <p className="text-sm font-bold text-slate-800 dark:text-white">
                       Chưa có buổi học nào có tài liệu đính kèm
                     </p>
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                       Nhấp vào &quot;Tất cả buổi&quot; hoặc bấm &quot;Đăng tài liệu&quot; để tải lên tài liệu cho các buổi học.
                     </p>
                   </div>
@@ -1216,32 +1216,32 @@ export default function TeacherFilesPage() {
                       key={session.id}
                       className={`rounded-3xl border transition-all ${
                         session.files.length > 0
-                          ? "border-white/90 bg-white/92 shadow-sm backdrop-blur-md"
-                          : "border-dashed border-slate-200/90 bg-white/60"
+                          ? "border-white/90 dark:border-slate-800 bg-white/92 dark:bg-slate-900/90 shadow-sm backdrop-blur-md"
+                          : "border-dashed border-slate-200/90 dark:border-slate-800 bg-white/60 dark:bg-slate-900/40"
                       } overflow-hidden`}
                     >
                       {/* Session Header */}
-                      <div className="bg-slate-50/70 px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                      <div className="bg-slate-50/70 dark:bg-slate-800/60 px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 font-black text-xs font-mono shadow-2xs">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-black text-xs font-mono shadow-2xs">
                             B{sIndex + 1}
                           </span>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h4 className="text-sm font-black text-slate-900">
+                              <h4 className="text-sm font-black text-slate-900 dark:text-white">
                                 {session.title || `Buổi học ${sIndex + 1}`}
                               </h4>
                               {session.chapterTitle && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-200/70 text-slate-600 font-semibold">
+                                <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
                                   {session.chapterTitle}
                                 </span>
                               )}
                             </div>
 
-                            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                            <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                               {session.startTime && (
                                 <span className="flex items-center gap-1">
-                                  <CalendarDays className="h-3 w-3 text-slate-400" />
+                                  <CalendarDays className="h-3 w-3 text-slate-400 dark:text-slate-500" />
                                   {formatDateOnly(session.startTime)}
                                 </span>
                               )}
@@ -1262,8 +1262,8 @@ export default function TeacherFilesPage() {
                           <span
                             className={`text-xs font-bold px-2.5 py-1 rounded-full font-mono ${
                               session.files.length > 0
-                                ? "bg-blue-50 text-blue-700 border border-blue-200/70"
-                                : "bg-slate-100 text-slate-500"
+                                ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200/70 dark:border-blue-900/50"
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                             }`}
                           >
                             {session.files.length} tài liệu
@@ -1276,7 +1276,7 @@ export default function TeacherFilesPage() {
                               setUploadSessionId(session.id);
                               setIsUploadOpen(true);
                             }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold text-slate-700 hover:text-blue-700 bg-white hover:bg-blue-50 border border-slate-200/80 shadow-2xs transition"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-700 dark:hover:text-blue-400 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700 shadow-2xs transition"
                             title={`Thêm tài liệu vào ${session.title}`}
                           >
                             <Plus className="h-3.5 w-3.5" />
@@ -1298,8 +1298,8 @@ export default function TeacherFilesPage() {
                             ))}
                           </div>
                         ) : (
-                          <div className="py-6 px-4 text-center rounded-2xl bg-white/40 border border-dashed border-slate-200/80">
-                            <p className="text-xs font-medium text-slate-400">
+                          <div className="py-6 px-4 text-center rounded-2xl bg-white/40 dark:bg-slate-900/40 border border-dashed border-slate-200/80 dark:border-slate-800">
+                            <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
                               Buổi học này chưa có tài liệu đính kèm nào.
                             </p>
                             <button
@@ -1309,7 +1309,7 @@ export default function TeacherFilesPage() {
                                 setUploadSessionId(session.id);
                                 setIsUploadOpen(true);
                               }}
-                              className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline"
+                              className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
                             >
                               <Plus className="h-3.5 w-3.5" />
                               Tải lên tài liệu (Slide, bài tập...) cho buổi này
@@ -1329,19 +1329,19 @@ export default function TeacherFilesPage() {
             {timelineGroups.map(([dateKey, groupFiles]) => (
               <section
                 key={dateKey}
-                className="rounded-3xl border border-white/90 bg-white/92 overflow-hidden shadow-sm backdrop-blur-md"
+                className="rounded-3xl border border-white/90 dark:border-slate-800 bg-white/92 dark:bg-slate-900/90 overflow-hidden shadow-sm backdrop-blur-md"
               >
                 {/* Header Ngày học */}
-                <div className="bg-sky-50/50 px-5 py-3.5 border-b border-sky-100/70 flex flex-wrap items-center justify-between gap-3">
+                <div className="bg-sky-50/50 dark:bg-sky-950/40 px-5 py-3.5 border-b border-sky-100/70 dark:border-sky-900/50 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-100 text-blue-700 font-bold text-xs">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-bold text-xs">
                       <CalendarDays className="h-4 w-4" />
                     </span>
                     <div>
-                      <h3 className="text-sm font-black text-[#102f63] capitalize">
+                      <h3 className="text-sm font-black text-[#102f63] dark:text-white capitalize">
                         {dateKey === "no-date" ? "Tài liệu học tập chung" : formatDateOnly(dateKey)}
                       </h3>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
                         {groupFiles.length} tệp tài liệu đăng tải
                       </p>
                     </div>
@@ -1362,10 +1362,10 @@ export default function TeacherFilesPage() {
           </div>
         ) : (
           /* ================= VIEW 3: DẠNG BẢNG CHI TIẾT ================= */
-          <div className="rounded-3xl border border-white/90 bg-white/92 overflow-hidden shadow-sm backdrop-blur-md">
+          <div className="rounded-3xl border border-white/90 dark:border-slate-800 bg-white/92 dark:bg-slate-900/90 overflow-hidden shadow-sm backdrop-blur-md">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-sky-50/60 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200/80">
+              <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                <thead className="bg-sky-50/60 dark:bg-slate-800/80 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200/80 dark:border-slate-800">
                   <tr>
                     <th className="px-4 py-3.5">Tên tài liệu</th>
                     <th className="px-4 py-3.5">Môn / Giáo trình</th>
@@ -1375,44 +1375,44 @@ export default function TeacherFilesPage() {
                     <th className="px-4 py-3.5 text-right">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredFiles.map((file) => {
                     const kind = kindForFile(file.mimeType, file.name);
                     const config = kindConfig[kind] || kindConfig.other;
                     const Icon = config.icon;
                     return (
-                      <tr key={file.instanceId || file.id} className="hover:bg-sky-50/40 transition">
+                      <tr key={file.instanceId || file.id} className="hover:bg-sky-50/40 dark:hover:bg-slate-800/50 transition">
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2.5 min-w-0 max-w-xs">
                             <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${config.badge}`}>
                               <Icon className="h-3.5 w-3.5" />
                             </span>
-                            <span className="font-bold text-slate-900 truncate" title={file.name}>
+                            <span className="font-bold text-slate-900 dark:text-white truncate" title={file.name}>
                               {file.name}
                             </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 font-medium whitespace-nowrap">
+                        <td className="px-4 py-3.5 font-medium whitespace-nowrap text-slate-700 dark:text-slate-300">
                           {file.courseTitle || "—"}
                         </td>
-                        <td className="px-4 py-3.5 font-medium whitespace-nowrap">
+                        <td className="px-4 py-3.5 font-medium whitespace-nowrap text-slate-700 dark:text-slate-300">
                           {file.classTitle || "Tài liệu chung"}
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           {file.sessionStartTime ? (
                             <div>
-                              <span className="font-bold block text-slate-900">
+                              <span className="font-bold block text-slate-900 dark:text-white">
                                 {formatDateOnly(file.sessionStartTime)}
                               </span>
-                              <span className="text-[10px] text-slate-400">
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500">
                                 {file.sessionTitle || "Buổi học"}
                               </span>
                             </div>
                           ) : (
-                            <span className="text-slate-400">Tài liệu chung</span>
+                            <span className="text-slate-400 dark:text-slate-500">Tài liệu chung</span>
                           )}
                         </td>
-                        <td className="px-4 py-3.5 whitespace-nowrap text-slate-500">
+                        <td className="px-4 py-3.5 whitespace-nowrap text-slate-500 dark:text-slate-400">
                           {file.uploadedBy}
                         </td>
                         <td className="px-4 py-3.5 text-right whitespace-nowrap">
@@ -1421,7 +1421,7 @@ export default function TeacherFilesPage() {
                               href={file.downloadUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="p-1.5 rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-600 hover:text-white transition shadow-2xs"
+                              className="p-1.5 rounded-lg text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-600 hover:text-white transition shadow-2xs"
                               title="Tải xuống"
                             >
                               <Download className="h-4 w-4" />
@@ -1429,7 +1429,7 @@ export default function TeacherFilesPage() {
                             <button
                               type="button"
                               onClick={() => handleDeleteFile(file)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition"
                               title="Xóa tài liệu"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -1448,18 +1448,18 @@ export default function TeacherFilesPage() {
 
       {/* ================= MODAL: TẢI LÊN TÀI LIỆU MỚI ================= */}
       {isUploadOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#102f63]/40 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-lg rounded-3xl bg-white border border-white/90 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#102f63]/40 dark:bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-white/90 dark:border-slate-800 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
                 <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
                   <UploadCloud className="h-5 w-5" />
                 </span>
                 <div>
-                  <h3 className="text-base font-black text-[#102f63]">
+                  <h3 className="text-base font-black text-[#102f63] dark:text-white">
                     Thêm tài liệu học tập
                   </h3>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Tải file mới hoặc dùng lại file đã có trong kho
                   </p>
                 </div>
@@ -1471,24 +1471,24 @@ export default function TeacherFilesPage() {
                   setUploadMode("upload");
                   setReuseSearch("");
                 }}
-                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition"
+                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 dark:bg-slate-800 p-1">
               <button
                 type="button"
                 onClick={() => setUploadMode("upload")}
-                className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${uploadMode === "upload" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${uploadMode === "upload" ? "bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"}`}
               >
                 <UploadCloud className="h-4 w-4" /> Tải file mới
               </button>
               <button
                 type="button"
                 onClick={() => setUploadMode("reuse")}
-                className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${uploadMode === "reuse" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${uploadMode === "reuse" ? "bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"}`}
               >
                 <Library className="h-4 w-4" /> Chọn từ kho
               </button>
@@ -1503,7 +1503,7 @@ export default function TeacherFilesPage() {
             >
               {/* Chọn Lớp học */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Chọn Lớp học *
                 </label>
                 <select
@@ -1515,11 +1515,11 @@ export default function TeacherFilesPage() {
                     setReuseSearch("");
                     setReusableFiles([]);
                   }}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
                 >
-                  <option value="">-- Chọn lớp học --</option>
+                  <option value="" className="dark:bg-slate-900 dark:text-white">-- Chọn lớp học --</option>
                   {classesLookup.map((cls) => (
-                    <option key={cls.id} value={cls.id}>
+                    <option key={cls.id} value={cls.id} className="dark:bg-slate-900 dark:text-white">
                       [{cls.courseCategory}] {cls.title} ({cls.courseTitle}) {cls.sessions?.length ? `· ${cls.sessions.length} buổi học` : "· Chưa có lịch"}
                     </option>
                   ))}
@@ -1529,11 +1529,11 @@ export default function TeacherFilesPage() {
               {/* Chọn Buổi học / Ngày học */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                     Gắn vào Buổi học / Ngày học cụ thể:
                   </label>
                   {uploadClassSessions.length > 0 && (
-                    <span className="text-[11px] font-semibold text-blue-600 font-mono">
+                    <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 font-mono">
                       {uploadClassSessions.length} buổi học trong lịch
                     </span>
                   )}
@@ -1545,27 +1545,27 @@ export default function TeacherFilesPage() {
                     setReuseSearch("");
                     setReusableFiles([]);
                   }}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
                 >
-                  <option value="">Tài liệu chung của lớp (không gắn ngày cụ thể)</option>
+                  <option value="" className="dark:bg-slate-900 dark:text-white">Tài liệu chung của lớp (không gắn ngày cụ thể)</option>
                   {uploadClassSessions.map((session) => (
-                    <option key={session.id} value={session.id}>
+                    <option key={session.id} value={session.id} className="dark:bg-slate-900 dark:text-white">
                       {formatDateOnly(session.startTime)} — {session.title}
                     </option>
                   ))}
                 </select>
                 {uploadClassSessions.length === 0 ? (
-                  <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5 text-[11px] text-amber-800 flex items-start gap-2">
+                  <div className="mt-2 rounded-xl border border-amber-500/20 dark:border-amber-800/40 bg-amber-500/10 dark:bg-amber-950/30 p-2.5 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
                     <AlertCircle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
                     <div>
                       <p className="font-bold">Lớp này hiện chưa có buổi học nào trong lịch.</p>
-                      <p className="mt-0.5 text-slate-600">
+                      <p className="mt-0.5 text-slate-600 dark:text-slate-400">
                         Bạn có thể tải dưới dạng <strong>Tài liệu chung của lớp</strong>, hoặc vào mục <strong>Lịch giảng dạy</strong> để lên lịch các buổi học trước rồi quay lại gắn vào ngày cụ thể.
                       </p>
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-1 text-[11px] text-slate-500">
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                     Gắn vào buổi học giúp học viên tìm thấy ngay trong chi tiết buổi học và lịch học mỗi ngày.
                   </p>
                 )}
@@ -1575,11 +1575,11 @@ export default function TeacherFilesPage() {
                 <>
               {/* Quyền hiển thị */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Quyền hiển thị:
                 </label>
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-sky-50/50 transition">
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 cursor-pointer hover:bg-sky-50/50 dark:hover:bg-slate-800 transition">
                     <input
                       type="radio"
                       name="visibility"
@@ -1589,11 +1589,11 @@ export default function TeacherFilesPage() {
                       className="accent-blue-600"
                     />
                     <div>
-                      <span className="font-bold block text-slate-800">Chỉ lớp này</span>
-                      <span className="text-[10px] text-slate-400">Chỉ học viên lớp được tải</span>
+                      <span className="font-bold block text-slate-800 dark:text-white">Chỉ lớp này</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">Chỉ học viên lớp được tải</span>
                     </div>
                   </label>
-                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-sky-50/50 transition">
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 cursor-pointer hover:bg-sky-50/50 dark:hover:bg-slate-800 transition">
                     <input
                       type="radio"
                       name="visibility"
@@ -1603,8 +1603,8 @@ export default function TeacherFilesPage() {
                       className="accent-blue-600"
                     />
                     <div>
-                      <span className="font-bold block text-slate-800">Toàn khóa học</span>
-                      <span className="text-[10px] text-slate-400">Mọi lớp thuộc môn này</span>
+                      <span className="font-bold block text-slate-800 dark:text-white">Toàn khóa học</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">Mọi lớp thuộc môn này</span>
                     </div>
                   </label>
                 </div>
@@ -1612,10 +1612,10 @@ export default function TeacherFilesPage() {
 
               {/* Chọn File */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Chọn Tệp tài liệu *
                 </label>
-                <div className="rounded-2xl border-2 border-dashed border-slate-300 p-6 text-center hover:border-blue-500 transition bg-slate-50/50">
+                <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 p-6 text-center hover:border-blue-500 dark:hover:border-sky-500 transition bg-slate-50/50 dark:bg-slate-950/50">
                   <input
                     type="file"
                     required
@@ -1626,7 +1626,7 @@ export default function TeacherFilesPage() {
                   {selectedUploadFile ? (
                     <div className="space-y-1">
                       <CheckCircle2 className="mx-auto h-7 w-7 text-emerald-500" />
-                      <p className="text-xs font-bold text-slate-900 truncate max-w-xs mx-auto">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-xs mx-auto">
                         {selectedUploadFile.name}
                       </p>
                       <button
@@ -1639,11 +1639,11 @@ export default function TeacherFilesPage() {
                     </div>
                   ) : (
                     <label htmlFor="fileUploadInput" className="cursor-pointer space-y-1 block">
-                      <UploadCloud className="mx-auto h-7 w-7 text-blue-500" />
-                      <p className="text-xs font-bold text-blue-600">
+                      <UploadCloud className="mx-auto h-7 w-7 text-blue-500 dark:text-blue-400" />
+                      <p className="text-xs font-bold text-blue-600 dark:text-blue-400">
                         Nhấp để chọn file từ máy tính
                       </p>
-                      <p className="text-[10px] text-slate-400">
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
                         Hỗ trợ PDF, Word, Excel, Slide, Ảnh (Tối đa 100MB)
                       </p>
                     </label>
@@ -1667,22 +1667,22 @@ export default function TeacherFilesPage() {
               ) : (
                 <div className="space-y-3">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                     <input
                       value={reuseSearch}
                       onChange={(event) => setReuseSearch(event.target.value)}
                       placeholder="Tìm tài liệu đã tải lên..."
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs outline-none focus:border-blue-500 focus:bg-white"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 py-2.5 pl-9 pr-3 text-xs outline-none focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
                     />
                   </div>
                   <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
                     {reusableLoading ? (
-                      <p className="py-8 text-center text-xs font-semibold text-slate-500">Đang tải kho tài liệu...</p>
+                      <p className="py-8 text-center text-xs font-semibold text-slate-500 dark:text-slate-400">Đang tải kho tài liệu...</p>
                     ) : reusableFiles.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center">
-                        <Library className="mx-auto h-7 w-7 text-slate-300" />
-                        <p className="mt-2 text-xs font-bold text-slate-700">Không còn tài liệu phù hợp</p>
-                        <p className="mt-1 text-[11px] text-slate-400">Chỉ hiển thị tài liệu cùng khóa học và bạn có quyền sử dụng.</p>
+                      <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-6 text-center">
+                        <Library className="mx-auto h-7 w-7 text-slate-300 dark:text-slate-600" />
+                        <p className="mt-2 text-xs font-bold text-slate-700 dark:text-slate-300">Không còn tài liệu phù hợp</p>
+                        <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">Chỉ hiển thị tài liệu cùng khóa học và bạn có quyền sử dụng.</p>
                       </div>
                     ) : reusableFiles.map((file) => {
                       const kind = kindForFile(file.mimeType, file.name);
@@ -1690,14 +1690,14 @@ export default function TeacherFilesPage() {
                       const Icon = config.icon;
                       const attaching = String(attachingFileId || "") === String(file.id);
                       return (
-                        <article key={file.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3 transition hover:border-blue-300 hover:bg-blue-50/30">
+                        <article key={file.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 transition hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50/30 dark:hover:bg-slate-800/50">
                           <div className="flex min-w-0 items-center gap-2.5">
                             <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${config.badge}`}>
                               <Icon className="h-4 w-4" />
                             </span>
                             <div className="min-w-0">
-                              <p className="truncate text-xs font-bold text-[#102f63]" title={file.name}>{file.name}</p>
-                              <p className="truncate text-[10px] text-slate-500">
+                              <p className="truncate text-xs font-bold text-[#102f63] dark:text-white" title={file.name}>{file.name}</p>
+                              <p className="truncate text-[10px] text-slate-500 dark:text-slate-400">
                                 {file.sourceClassTitle || file.courseTitle || "Kho chung"}
                                 {file.sourceSessionTitle ? ` · ${file.sourceSessionTitle}` : ""}
                               </p>
@@ -1707,7 +1707,7 @@ export default function TeacherFilesPage() {
                             type="button"
                             disabled={Boolean(attachingFileId)}
                             onClick={() => handleAttachReusableFile(file)}
-                            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 px-3 py-2 text-[11px] font-bold text-white disabled:opacity-50"
                           >
                             <Link2 className="h-3.5 w-3.5" /> {attaching ? "Đang gắn..." : "Dùng lại"}
                           </button>
@@ -1719,7 +1719,7 @@ export default function TeacherFilesPage() {
               )}
 
               {/* Action buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => {
@@ -1731,7 +1731,7 @@ export default function TeacherFilesPage() {
                     setReuseSearch("");
                   }}
                   disabled={isUploading}
-                  className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                  className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                 >
                   {uploadProgress?.status === "success" ? "Đóng" : "Hủy"}
                 </button>
@@ -1739,7 +1739,7 @@ export default function TeacherFilesPage() {
                   <button
                     type="submit"
                     disabled={isUploading || !selectedUploadFile || uploadProgress?.status === "success"}
-                    className="rounded-xl bg-[#102f63] hover:bg-blue-700 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
+                    className="rounded-xl bg-[#102f63] dark:bg-blue-600 hover:bg-blue-700 dark:hover:bg-blue-500 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
                   >
                     {isUploading
                       ? "Đang tải lên..."
@@ -1767,7 +1767,7 @@ function FileCard({ file, onDelete }) {
   const viewUrl = file.viewUrl || file.view_url || downloadUrl;
 
   return (
-    <div className="group/file rounded-2xl border border-white/90 bg-white p-3.5 shadow-2xs hover:border-blue-300 hover:shadow-md transition flex flex-col justify-between space-y-3">
+    <div className="group/file rounded-2xl border border-white/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-2xs hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition flex flex-col justify-between space-y-3">
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -1778,21 +1778,21 @@ function FileCard({ file, onDelete }) {
               {config.label}
             </span>
             {file.isReused && (
-              <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-blue-700">
+              <span className="rounded-md bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300">
                 Dùng lại
               </span>
             )}
           </div>
 
           {file.sizeBytes || file.size ? (
-            <span className="text-[10px] font-mono text-slate-400">
+            <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
               {fileSize(file.sizeBytes || file.size)}
             </span>
           ) : null}
         </div>
 
         <div>
-          <h4 className="text-xs font-bold text-slate-800 line-clamp-2 leading-relaxed group-hover/file:text-blue-600 transition" title={file.name}>
+          <h4 className="text-xs font-bold text-slate-800 dark:text-white line-clamp-2 leading-relaxed group-hover/file:text-blue-600 dark:group-hover/file:text-blue-400 transition" title={file.name}>
             {viewUrl ? (
               <a href={viewUrl} target="_blank" rel="noreferrer" className="hover:underline flex items-start gap-1">
                 <span>{file.name}</span>
@@ -1802,8 +1802,8 @@ function FileCard({ file, onDelete }) {
               file.name
             )}
           </h4>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="font-semibold text-blue-700">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+            <span className="font-semibold text-blue-700 dark:text-blue-400">
               {file.classTitle || "Lớp học"}
             </span>
             {file.sessionTitle && (
@@ -1818,8 +1818,8 @@ function FileCard({ file, onDelete }) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 text-[11px]">
-        <span className="text-slate-400 text-[10px]">
+      <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2.5 text-[11px]">
+        <span className="text-slate-400 dark:text-slate-500 text-[10px]">
           {file.sessionStartTime ? formatDateOnly(file.sessionStartTime) : (file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString("vi-VN") : "")}
         </span>
         <div className="flex items-center gap-1">
@@ -1828,7 +1828,7 @@ function FileCard({ file, onDelete }) {
               href={downloadUrl}
               target="_blank"
               rel="noreferrer"
-              className="p-1.5 rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-600 hover:text-white transition shadow-2xs"
+              className="p-1.5 rounded-lg text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-600 hover:text-white transition shadow-2xs"
               title="Tải xuống tài liệu"
             >
               <Download className="h-4 w-4" />
@@ -1838,7 +1838,7 @@ function FileCard({ file, onDelete }) {
             <button
               type="button"
               onClick={onDelete}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition"
               title={file.placementId ? "Gỡ tài liệu khỏi vị trí này" : "Xóa file gốc"}
             >
               <Trash2 className="h-4 w-4" />

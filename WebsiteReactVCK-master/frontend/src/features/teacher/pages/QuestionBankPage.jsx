@@ -45,17 +45,17 @@ const blankQuestion = () => ({
 const difficultyConfig = {
   easy: {
     label: "Dễ",
-    badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    badge: "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
     dot: "bg-emerald-500",
   },
   medium: {
     label: "Vừa",
-    badge: "bg-amber-50 text-amber-700 border-amber-200",
+    badge: "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800",
     dot: "bg-amber-500",
   },
   hard: {
     label: "Khó",
-    badge: "bg-rose-50 text-rose-700 border-rose-200",
+    badge: "bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800",
     dot: "bg-rose-500",
   },
 };
@@ -218,22 +218,22 @@ export default function QuestionBankPage() {
   const activeCourse = courses.find((c) => String(c.id) === String(courseId));
 
   return (
-    <div className="min-h-full p-2.5 sm:p-4 lg:p-6 text-slate-900 transition-colors">
+    <div className="min-h-full p-2.5 sm:p-4 lg:p-6 text-slate-900 dark:text-slate-100 transition-colors">
       <div className="mx-auto max-w-7xl space-y-4 sm:space-y-5">
         {/* ================= 1. CALLIGRAPHIC HEADER HERO TRỰC TIẾP TRÊN NỀN PHONG CẢNH Á ĐÔNG ================= */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pt-1 pb-1">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/80 bg-white/85 px-3 py-1 text-xs font-bold text-[#102f63] shadow-2xs backdrop-blur-md">
-              <Library className="h-3.5 w-3.5 text-blue-600" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/85 px-3 py-1 text-xs font-bold text-[#102f63] dark:text-sky-300 shadow-2xs backdrop-blur-md">
+              <Library className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               <span>Ngân hàng câu hỏi & Đề thi trắc nghiệm</span>
             </div>
-            <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs">
+            <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] dark:text-white drop-shadow-xs">
               Ngân Hàng Câu Hỏi CSCA
             </h1>
-            <p className="text-xs font-semibold italic text-slate-800 sm:text-sm">
+            <p className="text-xs font-semibold italic text-slate-800 dark:text-slate-300 sm:text-sm">
               “Bể học vô bờ, rèn luyện qua từng câu hỏi để vững bước thành tài.”
             </p>
-            <p className="font-['Ma_Shan_Zheng',cursive] text-xs sm:text-sm tracking-wider text-slate-600">
+            <p className="font-['Ma_Shan_Zheng',cursive] text-xs sm:text-sm tracking-wider text-slate-600 dark:text-slate-400">
               —— 问渠那得清如许，为有源头活水来。
             </p>
           </div>
@@ -243,9 +243,9 @@ export default function QuestionBankPage() {
               type="button"
               disabled={!courseId}
               onClick={() => setSamplerOpen(!samplerOpen)}
-              className="inline-flex items-center gap-2 rounded-2xl border border-sky-200 bg-white/90 px-3.5 py-2.5 text-xs font-bold text-[#102f63] shadow-2xs transition hover:bg-sky-50 active:scale-95 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-2xl border border-sky-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800 px-3.5 py-2.5 text-xs font-bold text-[#102f63] dark:text-slate-200 shadow-2xs transition hover:bg-sky-50 dark:hover:bg-slate-700 active:scale-95 disabled:opacity-50"
             >
-              <Compass className="h-4 w-4 text-blue-600" />
+              <Compass className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               <span>Rút đề ngẫu nhiên</span>
             </button>
 
@@ -253,7 +253,7 @@ export default function QuestionBankPage() {
               type="button"
               disabled={!courseId}
               onClick={() => setEditing(blankQuestion())}
-              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#102f63] to-[#1d4f8d] px-4 py-2.5 text-xs font-black text-white shadow-[0_8px_20px_rgba(16,47,99,0.22)] transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#102f63] to-[#1d4f8d] dark:from-blue-700 dark:to-indigo-700 px-4 py-2.5 text-xs font-black text-white shadow-[0_8px_20px_rgba(16,47,99,0.22)] transition hover:brightness-110 active:scale-95 disabled:opacity-50"
             >
               <Plus className="h-4 w-4" />
               <span>Thêm câu hỏi mới</span>
@@ -269,47 +269,47 @@ export default function QuestionBankPage() {
               value: total,
               subtext: activeCourse ? activeCourse.title || activeCourse.name : "Toàn bộ khóa học",
               icon: Library,
-              iconStyle: "bg-blue-50 text-blue-600",
+              iconStyle: "bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400",
             },
             {
               label: "Phân bố độ khó",
               value: `${stats.easyCount}D · ${stats.mediumCount}V · ${stats.hardCount}K`,
               subtext: "Dễ · Vừa · Khó trên trang",
               icon: Award,
-              iconStyle: "bg-emerald-50 text-emerald-600",
+              iconStyle: "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400",
             },
             {
               label: "Dùng chung trong khóa",
               value: `${stats.courseVisible} câu`,
               subtext: "Giáo viên cùng khóa sử dụng",
               icon: Layers,
-              iconStyle: "bg-violet-50 text-violet-600",
+              iconStyle: "bg-violet-50 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400",
             },
             {
               label: "Câu hỏi riêng tư",
               value: `${stats.privateVisible} câu`,
               subtext: "Chỉ cá nhân bạn nhìn thấy",
               icon: Sparkles,
-              iconStyle: "bg-amber-50 text-amber-600",
+              iconStyle: "bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400",
             },
           ].map((item) => {
             const Icon = item.icon;
             return (
               <div
                 key={item.label}
-                className="flex items-center gap-3 rounded-2xl border border-white/80 bg-white/90 p-3.5 shadow-[0_8px_25px_rgba(32,78,120,0.06)] backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-sky-300"
+                className="flex items-center gap-3 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-3.5 shadow-[0_8px_25px_rgba(32,78,120,0.06)] dark:shadow-none backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-sky-300 dark:hover:border-sky-600"
               >
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.iconStyle} shadow-2xs`}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xl sm:text-2xl font-black text-[#102f63] leading-none font-mono">
+                  <p className="text-xl sm:text-2xl font-black text-[#102f63] dark:text-white leading-none font-mono">
                     {item.value}
                   </p>
-                  <p className="text-xs font-bold text-slate-800 leading-tight mt-1 truncate">
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight mt-1 truncate">
                     {item.label}
                   </p>
-                  <p className="text-[10px] font-medium text-slate-500 truncate mt-0.5">
+                  <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 truncate mt-0.5">
                     {item.subtext}
                   </p>
                 </div>
@@ -320,16 +320,16 @@ export default function QuestionBankPage() {
 
         {/* ================= SAMPLER ACCORDION NẾU ĐƯỢC BẬT ================= */}
         {samplerOpen && courseId && (
-          <div className="rounded-3xl border border-sky-200 bg-white/95 p-4 sm:p-5 shadow-lg backdrop-blur-md space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <h3 className="text-sm font-black text-[#102f63] flex items-center gap-2">
-                <Compass className="h-4 w-4 text-blue-600" />
+          <div className="rounded-3xl border border-sky-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 p-4 sm:p-5 shadow-lg backdrop-blur-md space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+              <h3 className="text-sm font-black text-[#102f63] dark:text-white flex items-center gap-2">
+                <Compass className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 Công cụ rút câu hỏi ngẫu nhiên theo ma trận đề
               </h3>
               <button
                 type="button"
                 onClick={() => setSamplerOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -344,17 +344,17 @@ export default function QuestionBankPage() {
         )}
 
         {/* ================= 3. BỘ LỌC TÌM KIẾM KHOA HỌC ================= */}
-        <section className="rounded-2xl border border-white/80 bg-white/92 p-3.5 sm:p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+        <section className="rounded-2xl border border-white/80 dark:border-slate-800 bg-white/92 dark:bg-slate-900/90 p-3.5 sm:p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] dark:shadow-none backdrop-blur-md space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
             <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600 shadow-2xs">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 shadow-2xs">
                 <Filter className="h-4 w-4" />
               </span>
-              <h2 className="text-xs font-black uppercase tracking-wider text-[#102f63]">
+              <h2 className="text-xs font-black uppercase tracking-wider text-[#102f63] dark:text-white">
                 Bộ lọc & Tìm kiếm câu hỏi
               </h2>
             </div>
-            <span className="text-xs font-bold text-slate-500 font-mono">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 font-mono">
               Trang {page} · Hiển thị {rows.length}/{total} câu
             </span>
           </div>
@@ -362,12 +362,12 @@ export default function QuestionBankPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
             {/* 1. Khóa học */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1">
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                 Khóa học / Giáo trình:
               </label>
               <select
                 aria-label="Khóa học"
-                className="w-full rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-800 outline-none shadow-2xs focus:border-blue-500 focus:bg-white"
+                className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none shadow-2xs focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
                 value={courseId}
                 onChange={(e) => {
                   setCourseId(e.target.value);
@@ -376,7 +376,7 @@ export default function QuestionBankPage() {
                 }}
               >
                 {courses.map((c) => (
-                  <option key={c.id} value={c.id}>
+                  <option key={c.id} value={c.id} className="dark:bg-slate-900 dark:text-white">
                     {c.title || c.name}
                   </option>
                 ))}
@@ -385,15 +385,15 @@ export default function QuestionBankPage() {
 
             {/* 2. Tìm kiếm */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1">
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                 Tìm kiếm từ khóa / thẻ chủ đề:
               </label>
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                 <input
                   aria-label="Tìm câu hỏi hoặc chủ đề"
                   placeholder="Nội dung, công thức, thẻ bài tập..."
-                  className="w-full rounded-xl border border-slate-200/90 bg-white/95 py-2 pl-8 pr-3 text-xs font-semibold text-slate-800 outline-none shadow-2xs focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/80 py-2 pl-8 pr-3 text-xs font-semibold text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none shadow-2xs focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
@@ -405,22 +405,22 @@ export default function QuestionBankPage() {
 
             {/* 3. Độ khó */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1">
+              <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
                 Mức độ phân hóa:
               </label>
               <select
                 aria-label="Độ khó"
-                className="w-full rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-800 outline-none shadow-2xs focus:border-blue-500 focus:bg-white"
+                className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none shadow-2xs focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
                 value={difficulty}
                 onChange={(e) => {
                   setDifficulty(e.target.value);
                   setPage(1);
                 }}
               >
-                <option value="">Tất cả độ khó (Dễ · Vừa · Khó)</option>
-                <option value="easy">Dễ (Nhận biết & Thông hiểu)</option>
-                <option value="medium">Vừa (Vận dụng)</option>
-                <option value="hard">Khó (Vận dụng cao)</option>
+                <option value="" className="dark:bg-slate-900 dark:text-white">Tất cả độ khó (Dễ · Vừa · Khó)</option>
+                <option value="easy" className="dark:bg-slate-900 dark:text-white">Dễ (Nhận biết & Thông hiểu)</option>
+                <option value="medium" className="dark:bg-slate-900 dark:text-white">Vừa (Vận dụng)</option>
+                <option value="hard" className="dark:bg-slate-900 dark:text-white">Khó (Vận dụng cao)</option>
               </select>
             </div>
           </div>
@@ -428,25 +428,25 @@ export default function QuestionBankPage() {
 
         {/* ================= 4. DANH SÁCH CÂU HỎI HIỂN THỊ ================= */}
         {error ? (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-xs font-semibold text-rose-700">
+          <div className="rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 p-4 text-xs font-semibold text-rose-700 dark:text-rose-300">
             {error}
           </div>
         ) : loading ? (
-          <div className="py-16 text-center text-xs text-slate-400">
-            <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-            <p className="mt-2 font-bold text-slate-600">Đang đồng bộ ngân hàng câu hỏi...</p>
+          <div className="py-16 text-center text-xs text-slate-400 dark:text-slate-500">
+            <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-blue-600 dark:border-blue-400 border-t-transparent" />
+            <p className="mt-2 font-bold text-slate-600 dark:text-slate-300">Đang đồng bộ ngân hàng câu hỏi...</p>
           </div>
         ) : rows.length === 0 ? (
-          <div className="rounded-3xl border border-white/80 bg-white/90 p-12 text-center shadow-sm backdrop-blur-md space-y-3">
-            <HelpCircle className="mx-auto h-12 w-12 text-slate-300" />
-            <h3 className="text-base font-black text-slate-800">Chưa có câu hỏi nào phù hợp</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+          <div className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-12 text-center shadow-sm backdrop-blur-md space-y-3">
+            <HelpCircle className="mx-auto h-12 w-12 text-slate-300 dark:text-slate-600" />
+            <h3 className="text-base font-black text-slate-800 dark:text-white">Chưa có câu hỏi nào phù hợp</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
               Không tìm thấy câu hỏi nào trong bộ lọc hiện tại. Nhấp &quot;Thêm câu hỏi mới&quot; để bổ sung vào ngân hàng đề.
             </p>
             <button
               type="button"
               onClick={() => setEditing(blankQuestion())}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs transition"
             >
               <Plus className="h-4 w-4" />
               <span>Thêm câu hỏi ngay</span>
@@ -462,12 +462,12 @@ export default function QuestionBankPage() {
               return (
                 <article
                   key={q.id}
-                  className="rounded-3xl border border-white/90 bg-white/95 p-4 sm:p-5 shadow-xs transition hover:border-sky-300 hover:shadow-md space-y-3.5"
+                  className="rounded-3xl border border-white/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 p-4 sm:p-5 shadow-xs transition hover:border-sky-300 dark:hover:border-sky-600 hover:shadow-md space-y-3.5"
                 >
                   {/* Top Bar: Question Number + Badges + Actions */}
-                  <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-100 pb-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-2.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="flex h-7 px-2.5 items-center justify-center rounded-xl bg-blue-50 text-blue-700 font-mono font-black text-xs border border-blue-100">
+                      <span className="flex h-7 px-2.5 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-mono font-black text-xs border border-blue-100 dark:border-blue-900/50">
                         Câu {questionNumber}
                       </span>
 
@@ -478,7 +478,7 @@ export default function QuestionBankPage() {
                       </span>
 
                       {/* Points Badge */}
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700 font-mono">
+                      <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-300 font-mono">
                         {q.points} điểm
                       </span>
 
@@ -486,8 +486,8 @@ export default function QuestionBankPage() {
                       <span
                         className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                           q.visibility === "course"
-                            ? "bg-violet-50 text-violet-700 border border-violet-100"
-                            : "bg-slate-100 text-slate-600"
+                            ? "bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/50"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                         }`}
                       >
                         {q.visibility === "course" ? "Dùng chung trong khóa" : "Cá nhân"}
@@ -499,10 +499,10 @@ export default function QuestionBankPage() {
                       <button
                         type="button"
                         onClick={() => handleDuplicate(q)}
-                        className="inline-flex items-center gap-1 rounded-xl bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
+                        className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
                         title="Tạo bản sao câu hỏi này"
                       >
-                        <Copy className="h-3 w-3 text-slate-500" />
+                        <Copy className="h-3 w-3 text-slate-500 dark:text-slate-400" />
                         <span className="hidden sm:inline">Nhân bản</span>
                       </button>
 
@@ -511,7 +511,7 @@ export default function QuestionBankPage() {
                           <button
                             type="button"
                             onClick={() => setEditing({ ...q, options: [...q.options] })}
-                            className="inline-flex items-center gap-1 rounded-xl bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 transition"
+                            className="inline-flex items-center gap-1 rounded-xl bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition"
                             title="Sửa câu hỏi"
                           >
                             <Pencil className="h-3 w-3" />
@@ -521,7 +521,7 @@ export default function QuestionBankPage() {
                           <button
                             type="button"
                             onClick={() => setDeleting(q)}
-                            className="inline-flex items-center gap-1 rounded-xl bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-600 hover:bg-rose-100 transition"
+                            className="inline-flex items-center gap-1 rounded-xl bg-rose-50 dark:bg-rose-950/50 px-2.5 py-1 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition"
                             title="Xóa khỏi ngân hàng"
                           >
                             <Trash2 className="h-3 w-3" />
@@ -533,7 +533,7 @@ export default function QuestionBankPage() {
                   </div>
 
                   {/* Question Text */}
-                  <div className="text-sm font-bold text-slate-900 leading-relaxed whitespace-pre-wrap">
+                  <div className="text-sm font-bold text-slate-900 dark:text-white leading-relaxed whitespace-pre-wrap">
                     {q.questionText}
                   </div>
 
@@ -548,22 +548,22 @@ export default function QuestionBankPage() {
                           key={i}
                           className={`flex items-start gap-2.5 rounded-2xl p-2.5 border transition ${
                             isCorrect
-                              ? "border-emerald-300 bg-emerald-50/70 text-emerald-900 font-semibold shadow-2xs"
-                              : "border-slate-200/80 bg-slate-50/60 text-slate-700"
+                              ? "border-emerald-300 dark:border-emerald-700/80 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-semibold shadow-2xs"
+                              : "border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300"
                           }`}
                         >
                           <span
                             className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-lg text-[11px] font-black font-mono ${
                               isCorrect
                                 ? "bg-emerald-600 text-white"
-                                : "bg-white text-slate-600 border border-slate-200"
+                                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                             }`}
                           >
                             {letter}
                           </span>
                           <span className="flex-1 min-w-0 pt-0.5">{opt}</span>
                           {isCorrect && (
-                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
                           )}
                         </div>
                       );
@@ -571,21 +571,21 @@ export default function QuestionBankPage() {
                   </div>
 
                   {/* Footer: Tags & Explanation Toggle */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 pt-2.5">
                     {/* Tags Pills */}
                     <div className="flex flex-wrap items-center gap-1.5">
                       {Array.isArray(q.tags) && q.tags.length > 0 ? (
                         q.tags.map((tag, tIdx) => (
                           <span
                             key={tIdx}
-                            className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-100"
+                            className="inline-flex items-center gap-1 rounded-md bg-sky-50 dark:bg-sky-950/50 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300 border border-sky-100 dark:border-sky-800"
                           >
-                            <Tag className="h-2.5 w-2.5 text-sky-500" />
+                            <Tag className="h-2.5 w-2.5 text-sky-500 dark:text-sky-400" />
                             {tag}
                           </span>
                         ))
                       ) : (
-                        <span className="text-[10px] text-slate-400 italic">Chưa gắn thẻ chủ đề</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 italic">Chưa gắn thẻ chủ đề</span>
                       )}
                     </div>
 
@@ -593,7 +593,7 @@ export default function QuestionBankPage() {
                     <button
                       type="button"
                       onClick={() => toggleExpand(q.id)}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 transition"
+                      className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition"
                     >
                       <Eye className="h-3.5 w-3.5" />
                       <span>{isExpanded ? "Ẩn giải thích chi tiết" : "Xem lời giải chi tiết"}</span>
@@ -602,12 +602,12 @@ export default function QuestionBankPage() {
 
                   {/* Expanded Explanation Box */}
                   {isExpanded && (
-                    <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-3 text-xs text-slate-700 space-y-1 animate-in fade-in duration-150">
-                      <p className="font-bold text-[#102f63] flex items-center gap-1.5">
+                    <div className="rounded-2xl border border-sky-100 dark:border-sky-900/50 bg-sky-50/60 dark:bg-sky-950/30 p-3 text-xs text-slate-700 dark:text-slate-300 space-y-1 animate-in fade-in duration-150">
+                      <p className="font-bold text-[#102f63] dark:text-sky-200 flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                         Lời giải và phương pháp tư duy:
                       </p>
-                      <p className="leading-relaxed whitespace-pre-wrap text-slate-600">
+                      <p className="leading-relaxed whitespace-pre-wrap text-slate-600 dark:text-slate-400">
                         {q.explanation || "Chưa có lời giải chi tiết được cập nhật cho câu hỏi này."}
                       </p>
                     </div>
@@ -620,18 +620,18 @@ export default function QuestionBankPage() {
 
         {/* ================= 5. THANH PHÂN TRANG (PAGINATION) ================= */}
         {total > 0 && (
-          <div className="flex items-center justify-between rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm backdrop-blur-md">
+          <div className="flex items-center justify-between rounded-2xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-3 shadow-sm backdrop-blur-md">
             <button
               type="button"
               disabled={page === 1 || loading}
               onClick={() => setPage(page - 1)}
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-sky-50 hover:text-blue-700 disabled:opacity-40 transition shadow-2xs"
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-400 disabled:opacity-40 transition shadow-2xs"
             >
               <ChevronLeft className="h-4 w-4" />
               <span>Trang trước</span>
             </button>
 
-            <span className="text-xs font-bold text-[#102f63] font-mono">
+            <span className="text-xs font-bold text-[#102f63] dark:text-slate-200 font-mono">
               Trang {page} / {Math.max(1, Math.ceil(total / 30))} · Tổng cộng {total} câu
             </span>
 
@@ -639,7 +639,7 @@ export default function QuestionBankPage() {
               type="button"
               disabled={page * 30 >= total || loading}
               onClick={() => setPage(page + 1)}
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-sky-50 hover:text-blue-700 disabled:opacity-40 transition shadow-2xs"
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-blue-400 disabled:opacity-40 transition shadow-2xs"
             >
               <span>Trang kế tiếp</span>
               <ChevronRight className="h-4 w-4" />
@@ -650,18 +650,18 @@ export default function QuestionBankPage() {
 
       {/* ================= MODAL: SOẠN & CHỈNH SỬA CÂU HỎI ================= */}
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#102f63]/40 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-3xl bg-white border border-white/90 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 my-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#102f63]/40 dark:bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-3xl bg-white dark:bg-slate-900 border border-white/90 dark:border-slate-800 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 my-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
                 <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
                   <Pencil className="h-4 w-4" />
                 </span>
                 <div>
-                  <h3 className="text-base font-black text-[#102f63]">
+                  <h3 className="text-base font-black text-[#102f63] dark:text-white">
                     {editing.id ? "Chỉnh sửa câu hỏi" : "Soạn câu hỏi trắc nghiệm mới"}
                   </h3>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Lưu trữ vào ngân hàng đề để tái sử dụng cho các bài kiểm tra
                   </p>
                 </div>
@@ -669,7 +669,7 @@ export default function QuestionBankPage() {
               <button
                 type="button"
                 onClick={() => setEditing(null)}
-                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition"
+                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -678,7 +678,7 @@ export default function QuestionBankPage() {
             <form onSubmit={handleSaveQuestion} className="space-y-4">
               {/* Nội dung câu hỏi */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Nội dung câu hỏi *
                 </label>
                 <textarea
@@ -688,17 +688,17 @@ export default function QuestionBankPage() {
                   value={editing.questionText}
                   onChange={(e) => setEditing({ ...editing, questionText: e.target.value })}
                   placeholder="Nhập nội dung câu hỏi (hỗ trợ công thức toán học KaTeX)..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
 
               {/* Các phương án lựa chọn */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-slate-700">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                     Các lựa chọn — Tích chọn đáp án đúng *
                   </label>
-                  <span className="text-[11px] font-semibold text-emerald-600">
+                  <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
                     Đáp án đúng: Phương án {String.fromCharCode(65 + editing.correctAnswer)}
                   </span>
                 </div>
@@ -714,7 +714,7 @@ export default function QuestionBankPage() {
                           onChange={() => setEditing({ ...editing, correctAnswer: i })}
                           className="h-4 w-4 text-blue-600 accent-blue-600 cursor-pointer"
                         />
-                        <span className="font-mono font-bold text-xs text-slate-700 w-4">
+                        <span className="font-mono font-bold text-xs text-slate-700 dark:text-slate-300 w-4">
                           {String.fromCharCode(65 + i)}
                         </span>
                       </label>
@@ -731,8 +731,8 @@ export default function QuestionBankPage() {
                         placeholder={`Phương án ${String.fromCharCode(65 + i)}...`}
                         className={`w-full rounded-xl border px-3 py-1.5 text-xs font-medium outline-none transition ${
                           editing.correctAnswer === i
-                            ? "border-emerald-300 bg-emerald-50/50 text-emerald-900 focus:bg-white"
-                            : "border-slate-200 bg-slate-50 text-slate-800 focus:border-blue-500 focus:bg-white"
+                            ? "border-emerald-300 dark:border-emerald-700/80 bg-emerald-50/50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 focus:bg-white dark:focus:bg-slate-900"
+                            : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 text-slate-800 dark:text-slate-100 focus:border-blue-500 dark:focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900"
                         }`}
                       />
                     </div>
@@ -744,7 +744,7 @@ export default function QuestionBankPage() {
                     type="button"
                     disabled={editing.options.length >= 6}
                     onClick={() => setEditing({ ...editing, options: [...editing.options, ""] })}
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition"
+                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 transition"
                   >
                     + Thêm phương án
                   </button>
@@ -758,7 +758,7 @@ export default function QuestionBankPage() {
                         correctAnswer: Math.min(editing.correctAnswer, editing.options.length - 2),
                       })
                     }
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition"
+                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 transition"
                   >
                     - Bớt phương án cuối
                   </button>
@@ -768,52 +768,52 @@ export default function QuestionBankPage() {
               {/* Grid 3 cột: Độ khó, Điểm số, Phạm vi hiển thị */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Độ khó *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Độ khó *</label>
                   <select
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:border-blue-500 dark:focus:border-sky-500"
                     value={editing.difficulty}
                     onChange={(e) => setEditing({ ...editing, difficulty: e.target.value })}
                   >
-                    <option value="easy">Dễ (Nhận biết)</option>
-                    <option value="medium">Vừa (Thông hiểu / Vận dụng)</option>
-                    <option value="hard">Khó (Vận dụng cao)</option>
+                    <option value="easy" className="dark:bg-slate-900 dark:text-white">Dễ (Nhận biết)</option>
+                    <option value="medium" className="dark:bg-slate-900 dark:text-white">Vừa (Thông hiểu / Vận dụng)</option>
+                    <option value="hard" className="dark:bg-slate-900 dark:text-white">Khó (Vận dụng cao)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Điểm số *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Điểm số *</label>
                   <input
                     required
                     type="number"
                     min="0.25"
                     max="100"
                     step="0.25"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 font-mono"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:border-blue-500 dark:focus:border-sky-500 font-mono"
                     value={editing.points}
                     onChange={(e) => setEditing({ ...editing, points: Number(e.target.value) })}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Phạm vi chia sẻ *</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Phạm vi chia sẻ *</label>
                   <select
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:border-blue-500 dark:focus:border-sky-500"
                     value={editing.visibility}
                     onChange={(e) => setEditing({ ...editing, visibility: e.target.value })}
                   >
-                    <option value="private">Cá nhân (Chỉ mình bạn)</option>
-                    <option value="course">Dùng chung trong khóa</option>
+                    <option value="private" className="dark:bg-slate-900 dark:text-white">Cá nhân (Chỉ mình bạn)</option>
+                    <option value="course" className="dark:bg-slate-900 dark:text-white">Dùng chung trong khóa</option>
                   </select>
                 </div>
               </div>
 
               {/* Thẻ chủ đề */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Thẻ chủ đề (phân cách bằng dấu phẩy)
                 </label>
                 <input
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:border-blue-500 dark:focus:border-sky-500 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                   placeholder="Ví dụ: Đại số, Hàm số bậc hai, BĐT..."
                   value={Array.isArray(editing.tags) ? editing.tags.join(", ") : editing.tags}
                   onChange={(e) => setEditing({ ...editing, tags: e.target.value })}
@@ -822,21 +822,21 @@ export default function QuestionBankPage() {
 
               {/* Lời giải chi tiết */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Lời giải và giải thích chi tiết
                 </label>
                 <textarea
                   maxLength={4000}
                   rows={3}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:border-blue-500 dark:focus:border-sky-500 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                   placeholder="Hướng dẫn giải từng bước để học viên ôn tập..."
                   value={editing.explanation}
                   onChange={(e) => setEditing({ ...editing, explanation: e.target.value })}
                 />
               </div>
 
-              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                <p className="text-[11px] text-slate-400">
+              <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
                   Lưu ý: Sửa câu hỏi không làm ảnh hưởng các đề thi đã tạo trước đó.
                 </p>
                 <div className="flex items-center gap-2">
@@ -844,14 +844,14 @@ export default function QuestionBankPage() {
                     type="button"
                     disabled={busy}
                     onClick={() => setEditing(null)}
-                    className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                    className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                   >
                     Hủy
                   </button>
                   <button
                     type="submit"
                     disabled={busy}
-                    className="rounded-xl bg-[#102f63] hover:bg-blue-700 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
+                    className="rounded-xl bg-[#102f63] dark:bg-blue-600 hover:bg-blue-700 dark:hover:bg-blue-500 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
                   >
                     {busy ? "Đang lưu..." : "Lưu câu hỏi"}
                   </button>
@@ -864,23 +864,23 @@ export default function QuestionBankPage() {
 
       {/* ================= MODAL: XÁC NHẬN XÓA CÂU HỎI ================= */}
       {deleting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#102f63]/40 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white border border-white/90 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 text-rose-600">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#102f63]/40 dark:bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-white/90 dark:border-slate-800 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400">
                 <AlertCircle className="h-5 w-5" />
               </span>
-              <h3 className="text-base font-black text-slate-900">Xóa câu hỏi khỏi ngân hàng?</h3>
+              <h3 className="text-base font-black text-slate-900 dark:text-white">Xóa câu hỏi khỏi ngân hàng?</h3>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Bạn có chắc chắn muốn xóa câu hỏi này khỏi ngân hàng không? Các đề thi đã sử dụng câu hỏi này vẫn giữ nguyên vẹn nội dung.
             </p>
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => setDeleting(null)}
-                className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
                 Hủy bỏ
               </button>

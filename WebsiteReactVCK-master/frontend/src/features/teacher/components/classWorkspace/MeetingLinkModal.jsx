@@ -59,7 +59,7 @@ export default function MeetingLinkModal({ session, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="meeting-link-title">
       <form onSubmit={handleSubmit} className="w-full max-w-lg overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-[0_20px_50px_rgba(32,78,120,0.2)] backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-900/95">
-        <div className="flex items-start justify-between border-b border-sky-100/70 bg-gradient-to-r from-sky-50/80 via-white to-white px-6 py-4.5 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-start justify-between border-b border-sky-100/70 bg-gradient-to-r from-sky-50/80 via-white to-white px-6 py-4.5 dark:border-slate-800 dark:bg-none dark:bg-slate-900">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/80 bg-sky-50 px-3 py-1 text-[11px] font-bold text-[#102f63] dark:bg-blue-950/70 dark:text-blue-300">
               <Video className="h-3.5 w-3.5" /> Phòng học trực tuyến

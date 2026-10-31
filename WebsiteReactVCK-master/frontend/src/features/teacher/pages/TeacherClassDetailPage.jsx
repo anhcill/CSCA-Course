@@ -149,28 +149,28 @@ export default function TeacherClassDetailPage() {
         <div className="flex flex-wrap items-center gap-2.5">
           <Link
             to={isAdminView ? "/admin/classes" : "/lms/teach"}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/85 dark:border-slate-700 bg-white/80 dark:bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-[#17365f] dark:text-slate-200 shadow-2xs backdrop-blur-md transition hover:bg-white dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-white"
           >
             <ArrowLeft className="h-3.5 w-3.5" /> {isAdminView ? "Quay lại quản lý lớp" : "Quay lại trang Giảng dạy"}
           </Link>
           <Link
             to={`${classBasePath}/curriculum`}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/85 dark:border-slate-700 bg-white/80 dark:bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-[#17365f] dark:text-slate-200 shadow-2xs backdrop-blur-md transition hover:bg-white dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-white"
           >
-            <BookOpen className="h-3.5 w-3.5 text-blue-600" /> Giáo trình lớp
+            <BookOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" /> Giáo trình lớp
           </Link>
           <a
             href="#class-workspace-files"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/85 dark:border-slate-700 bg-white/80 dark:bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-[#17365f] dark:text-slate-200 shadow-2xs backdrop-blur-md transition hover:bg-white dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-white"
           >
-            <Files className="h-3.5 w-3.5 text-blue-600" /> Tài liệu của lớp ({files.length})
+            <Files className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" /> Tài liệu của lớp ({files.length})
           </a>
           {canManageCurriculum && (
             <a
               href="#class-chapters-manager"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/85 dark:border-slate-700 bg-white/80 dark:bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-[#17365f] dark:text-slate-200 shadow-2xs backdrop-blur-md transition hover:bg-white dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-white"
             >
-              <BookOpen className="h-3.5 w-3.5 text-blue-600" /> Chương & buổi học
+              <BookOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" /> Chương & buổi học
             </a>
           )}
         </div>

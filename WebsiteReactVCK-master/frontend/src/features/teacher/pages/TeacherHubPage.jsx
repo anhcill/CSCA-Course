@@ -140,17 +140,17 @@ export default function TeacherHubPage() {
   }
 
   return (
-    <div className="min-h-full px-3 pb-12 pt-1 sm:px-5 lg:px-6 text-slate-900">
+    <div className="min-h-full px-3 pb-12 pt-1 sm:px-5 lg:px-6 text-slate-900 dark:text-slate-100 transition-colors">
       <div className="mx-auto max-w-[1480px] space-y-4">
         {/* 1. Tiêu đề Tổng quan giảng dạy (Khắc họa trực tiếp trên nền phong cảnh Á Đông) */}
         <section className="pt-0.5 pb-1">
-          <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs">
+          <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] dark:text-sky-200 drop-shadow-xs">
             Tổng quan giảng dạy
           </h1>
-          <p className="mt-1 text-xs sm:text-sm font-semibold italic text-[#244866]">
+          <p className="mt-1 text-xs sm:text-sm font-semibold italic text-[#244866] dark:text-slate-300">
             “Dạy học là thắp sáng một ngọn lửa, không phải đổ đầy một chiếc bình.”
           </p>
-          <p className="mt-0.5 font-['Ma_Shan_Zheng',cursive] text-sm sm:text-base tracking-wider text-[#17365f]">
+          <p className="mt-0.5 font-['Ma_Shan_Zheng',cursive] text-sm sm:text-base tracking-wider text-[#17365f] dark:text-slate-400">
             —— 学为人师 · 行为世范
           </p>
         </section>
@@ -163,7 +163,7 @@ export default function TeacherHubPage() {
               value: loading ? "..." : data.stats.activeClassesCount,
               icon: BookOpen,
               to: "/lms/teach/classes",
-              iconStyle: "bg-blue-50 text-blue-600",
+              iconStyle: "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400",
               subtext: "Đang hoạt động",
             },
             {
@@ -171,7 +171,7 @@ export default function TeacherHubPage() {
               value: loading ? "..." : data.stats.totalStudentsCount,
               icon: Users,
               to: "/lms/teach/student-progress",
-              iconStyle: "bg-violet-50 text-violet-600",
+              iconStyle: "bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400",
               subtext: "Đang theo học",
             },
             {
@@ -179,7 +179,7 @@ export default function TeacherHubPage() {
               value: loading ? "..." : data.stats.pendingGradingCount,
               icon: ClipboardCheck,
               to: "/lms/teacher/assignments/review",
-              iconStyle: "bg-amber-50 text-amber-600",
+              iconStyle: "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400",
               subtext: "Nhấn để chấm ngay →",
             },
             {
@@ -191,7 +191,7 @@ export default function TeacherHubPage() {
                 : "—%",
               icon: CheckCircle2,
               to: "/lms/teach/attendance",
-              iconStyle: "bg-emerald-50 text-emerald-600",
+              iconStyle: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400",
               subtext: "Tất cả các lớp",
             },
           ].map((item) => {
@@ -200,19 +200,19 @@ export default function TeacherHubPage() {
               <Link
                 key={item.label}
                 to={item.to}
-                className="group flex items-center gap-3 rounded-2xl border border-white/80 bg-white/90 p-3.5 shadow-[0_8px_25px_rgba(32,78,120,0.06)] backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-sky-300"
+                className="group flex items-center gap-3 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-3.5 shadow-[0_8px_25px_rgba(32,78,120,0.06)] dark:shadow-none backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-sky-300 dark:hover:border-slate-700"
               >
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.iconStyle} shadow-2xs`}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xl sm:text-2xl font-black text-[#102f63] leading-none font-mono">
+                  <p className="text-xl sm:text-2xl font-black text-[#102f63] dark:text-sky-300 leading-none font-mono">
                     {item.value}
                   </p>
-                  <p className="text-xs font-bold text-slate-800 leading-tight mt-1 truncate">
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight mt-1 truncate">
                     {item.label}
                   </p>
-                  <p className="text-[10px] font-medium text-slate-500 truncate mt-0.5">
+                  <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 truncate mt-0.5">
                     {item.subtext}
                   </p>
                 </div>
@@ -236,11 +236,11 @@ export default function TeacherHubPage() {
               {/* Header của danh sách lớp học: tích hợp gọn gàng ô tìm kiếm, không dùng thanh ngang cồng kềnh */}
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 px-1">
                 <div>
-                  <h2 className="text-lg font-black text-[#102f63] flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-blue-600" />
+                  <h2 className="text-lg font-black text-[#102f63] dark:text-white flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                     Lớp đang phụ trách ({data.classes.length})
                   </h2>
-                  <p className="mt-0.5 text-xs text-[#487291]">
+                  <p className="mt-0.5 text-xs text-[#487291] dark:text-slate-400">
                     Mỗi thẻ là một lớp học bạn đang quản lý giảng dạy.
                   </p>
                 </div>
@@ -253,14 +253,14 @@ export default function TeacherHubPage() {
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Tìm lớp, khóa học..."
                       aria-label="Tìm kiếm lớp học"
-                      className="h-8 w-full rounded-xl border border-white/85 bg-white/90 pl-8 pr-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 shadow-2xs focus:border-sky-300 focus:bg-white backdrop-blur-md"
+                      className="h-8 w-full rounded-xl border border-white/85 dark:border-slate-700 bg-white/90 dark:bg-slate-900 pl-8 pr-3 text-xs text-slate-700 dark:text-white outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-2xs focus:border-sky-300 focus:bg-white dark:focus:bg-slate-800 backdrop-blur-md"
                     />
                   </div>
 
                   <button
                     type="button"
                     onClick={loadDashboard}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/85 bg-white/90 text-sky-700 shadow-2xs hover:bg-white transition"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/85 dark:border-slate-700 bg-white/90 dark:bg-slate-800 text-sky-700 dark:text-sky-300 shadow-2xs hover:bg-white dark:hover:bg-slate-700 transition"
                     title="Làm mới"
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
@@ -268,7 +268,7 @@ export default function TeacherHubPage() {
 
                   <Link
                     to="/lms/teach/classes"
-                    className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-900 transition shrink-0 ml-1"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 dark:text-sky-300 hover:text-sky-900 dark:hover:text-sky-100 transition shrink-0 ml-1"
                   >
                     Xem tất cả <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
@@ -276,12 +276,12 @@ export default function TeacherHubPage() {
               </div>
 
               {filteredClasses.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-white/90 bg-white/80 px-6 py-14 text-center shadow-sm backdrop-blur">
+                <div className="rounded-3xl border border-dashed border-white/90 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 px-6 py-14 text-center shadow-sm backdrop-blur">
                   <GraduationCap className="mx-auto h-10 w-10 text-sky-400" />
-                  <h3 className="mt-4 text-base font-black text-slate-900">
+                  <h3 className="mt-4 text-base font-black text-slate-900 dark:text-white">
                     {search ? "Không tìm thấy lớp phù hợp" : "Chưa có lớp nào được phân công"}
                   </h3>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {search
                       ? "Thử tìm kiếm với từ khóa khác hoặc xóa bộ lọc."
                       : "Khi quản trị viên phân công lớp giảng dạy, số liệu sẽ xuất hiện tại đây."}
@@ -305,10 +305,10 @@ export default function TeacherHubPage() {
                     return (
                       <article
                         key={item.id}
-                        className="group flex flex-col justify-between overflow-hidden rounded-3xl border border-white/85 bg-white shadow-[0_8px_24px_rgba(45,87,122,0.1)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(45,87,122,0.18)] hover:border-sky-300"
+                        className="group flex flex-col justify-between overflow-hidden rounded-3xl border border-white/85 dark:border-slate-800 bg-white dark:bg-slate-900/95 shadow-[0_8px_24px_rgba(45,87,122,0.1)] dark:shadow-none transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(45,87,122,0.18)] hover:border-sky-300 dark:hover:border-slate-700"
                       >
                         {/* Banner ảnh phong cảnh Á Đông CSCA - Đồng nhất 100% với ô học viên */}
-                        <div className="relative h-28 sm:h-32 w-full overflow-hidden bg-sky-100">
+                        <div className="relative h-28 sm:h-32 w-full overflow-hidden bg-sky-100 dark:bg-slate-800">
                           <img
                             src={cover}
                             onError={(e) => {
@@ -351,19 +351,19 @@ export default function TeacherHubPage() {
                         {/* Thân thẻ lớp học */}
                         <div className="p-3 sm:p-3.5 flex flex-col justify-between flex-1">
                           {/* Hàng thông tin Giảng viên phụ trách & Sĩ số học viên */}
-                          <div className="flex items-center justify-between gap-2 text-xs text-slate-600">
+                          <div className="flex items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
                             <div className="flex items-center gap-2 min-w-0">
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600 shadow-2xs">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-sky-400 shadow-2xs">
                                 <UserRound className="h-3.5 w-3.5" />
                               </span>
                               <div className="min-w-0">
-                                <span className="block text-[9px] text-slate-400 font-medium">Giảng viên phụ trách</span>
-                                <span className="block truncate text-xs font-bold text-slate-800">
+                                <span className="block text-[9px] text-slate-400 dark:text-slate-500 font-medium">Giảng viên phụ trách</span>
+                                <span className="block truncate text-xs font-bold text-slate-800 dark:text-slate-200">
                                   {item.instructor_name || item.teacherDisplayName || displayName}
                                 </span>
                               </div>
                             </div>
-                            <span className="text-[10px] font-bold text-[#102f63] bg-sky-50 px-2 py-0.5 rounded-full border border-sky-100 shrink-0 font-mono">
+                            <span className="text-[10px] font-bold text-[#102f63] dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 px-2 py-0.5 rounded-full border border-sky-100 dark:border-sky-800 shrink-0 font-mono">
                               {item.totalStudents || 0} học viên
                             </span>
                           </div>
@@ -371,16 +371,16 @@ export default function TeacherHubPage() {
                           {/* Hàng tiến độ buổi học & thanh % hoàn thành */}
                           <div className="mt-2.5">
                             <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-semibold">
-                              <span className="text-slate-500 font-medium">
+                              <span className="text-slate-500 dark:text-slate-400 font-medium">
                                 {totalSessions > 0
                                   ? `${completedSessions}/${totalSessions} buổi học`
                                   : "Tiến độ buổi học"}
                               </span>
-                              <span className="font-black text-[#17365f] font-mono">
+                              <span className="font-black text-[#17365f] dark:text-sky-200 font-mono">
                                 {progressPercent}%
                               </span>
                             </div>
-                            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                               <div
                                 className={`h-full rounded-full transition-all duration-500 ${
                                   isCompleted ? "bg-emerald-500" : tone.bar
@@ -412,22 +412,22 @@ export default function TeacherHubPage() {
             {/* Cột phải: Buổi dạy hôm nay & Tiện ích giảng dạy (4/12 cols) */}
             <div className="space-y-4 xl:col-span-4">
               {/* Buổi dạy hôm nay */}
-              <section className="rounded-3xl border border-white/80 bg-white/90 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md space-y-3">
-                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                  <h3 className="text-sm font-black text-[#102f63] flex items-center gap-2">
+              <section className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] dark:shadow-none backdrop-blur-md space-y-3">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <h3 className="text-sm font-black text-[#102f63] dark:text-white flex items-center gap-2">
                     <CalendarDays className="w-4 h-4 text-rose-500" />
                     Buổi dạy hôm nay ({data.todaySessions.length})
                   </h3>
                   <Link
                     to="/lms/teach/calendar"
-                    className="text-[11px] font-bold text-sky-700 hover:underline"
+                    className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline"
                   >
                     Xem lịch dạy
                   </Link>
                 </div>
 
                 {data.todaySessions.length === 0 ? (
-                  <p className="rounded-2xl bg-sky-50/50 border border-sky-100 px-4 py-8 text-center text-xs text-slate-500">
+                  <p className="rounded-2xl bg-sky-50/50 dark:bg-slate-800/50 border border-sky-100 dark:border-slate-700 px-4 py-8 text-center text-xs text-slate-500 dark:text-slate-400">
                     Hôm nay không có buổi học trực tuyến nào diễn ra.
                   </p>
                 ) : (
@@ -437,16 +437,16 @@ export default function TeacherHubPage() {
                       return (
                         <div
                           key={session.id}
-                          className="group relative overflow-hidden rounded-2xl border border-sky-100 bg-white/90 p-3 flex items-center justify-between gap-3 shadow-2xs hover:border-sky-300 transition"
+                          className="group relative overflow-hidden rounded-2xl border border-sky-100 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 p-3 flex items-center justify-between gap-3 shadow-2xs hover:border-sky-300 dark:hover:border-slate-600 transition"
                         >
                           <div className="min-w-0">
-                            <p className="text-xs font-black text-slate-900 truncate">
+                            <p className="text-xs font-black text-slate-900 dark:text-white truncate">
                               {session.title}
                             </p>
-                            <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                               Lớp: {session.className}
                             </p>
-                            <p className="text-[11px] text-blue-600 font-bold mt-1 flex items-center gap-1">
+                            <p className="text-[11px] text-blue-600 dark:text-blue-400 font-bold mt-1 flex items-center gap-1">
                               <Clock className="w-3 h-3" />
                               {formatSessionTimeOnly(session.startTime)} - {formatSessionTimeOnly(session.endTime)}
                             </p>
@@ -474,41 +474,41 @@ export default function TeacherHubPage() {
               </section>
 
               {/* Bài chờ chấm nhanh */}
-              <section className="rounded-3xl border border-white/80 bg-white/90 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md space-y-3">
-                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                  <h3 className="text-sm font-black text-[#102f63] flex items-center gap-2">
+              <section className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] dark:shadow-none backdrop-blur-md space-y-3">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <h3 className="text-sm font-black text-[#102f63] dark:text-white flex items-center gap-2">
                     <ClipboardCheck className="w-4 h-4 text-amber-500" />
                     Bài nộp chờ chấm ({data.pendingSubmissions.length})
                   </h3>
                   <Link
                     to="/lms/teacher/assignments/review"
-                    className="text-[11px] font-bold text-sky-700 hover:underline"
+                    className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline"
                   >
                     Xem tất cả
                   </Link>
                 </div>
 
                 {data.pendingSubmissions.length === 0 ? (
-                  <p className="rounded-2xl bg-amber-50/40 border border-amber-100/60 px-4 py-7 text-center text-xs text-slate-500">
+                  <p className="rounded-2xl bg-amber-50/40 dark:bg-amber-950/30 border border-amber-100/60 dark:border-amber-900/40 px-4 py-7 text-center text-xs text-slate-500 dark:text-slate-400">
                     Tất cả bài tập đã được chấm xong! ✨
                   </p>
                 ) : (
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
                     {data.pendingSubmissions.slice(0, 4).map((sub) => (
                       <Link
                         key={sub.id}
                         to={`/lms/teacher/assignments/review?submissionId=${sub.id}`}
-                        className="group flex items-center justify-between gap-2 py-2.5 hover:bg-slate-50/80 px-1 rounded-xl transition"
+                        className="group flex items-center justify-between gap-2 py-2.5 hover:bg-slate-50/80 dark:hover:bg-slate-800/80 px-1 rounded-xl transition"
                       >
                         <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-800 truncate group-hover:text-blue-600">
+                          <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">
                             {sub.assignmentTitle}
                           </p>
-                          <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                             {sub.studentName} · {sub.className}
                           </p>
                         </div>
-                        <span className="shrink-0 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                        <span className="shrink-0 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200/80 dark:border-amber-800">
                           Chờ chấm
                         </span>
                       </Link>
@@ -518,8 +518,8 @@ export default function TeacherHubPage() {
               </section>
 
               {/* Phím tắt tiện ích nhanh */}
-              <section className="rounded-3xl border border-white/80 bg-white/90 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md">
-                <h3 className="text-xs font-black uppercase tracking-wider text-[#487291] mb-3">
+              <section className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] dark:shadow-none backdrop-blur-md">
+                <h3 className="text-xs font-black uppercase tracking-wider text-[#487291] dark:text-slate-400 mb-3">
                   Tiện ích nhanh
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
@@ -534,12 +534,12 @@ export default function TeacherHubPage() {
                       <Link
                         key={act.label}
                         to={act.to}
-                        className="flex items-center gap-2 rounded-2xl border border-white/80 bg-white/90 p-2.5 shadow-2xs transition hover:-translate-y-0.5 hover:shadow-sm"
+                        className="flex items-center gap-2 rounded-2xl border border-white/80 dark:border-slate-750 bg-white/90 dark:bg-slate-800/90 p-2.5 shadow-2xs transition hover:-translate-y-0.5 hover:shadow-sm hover:bg-white dark:hover:bg-slate-800"
                       >
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-sky-50 dark:bg-slate-700 text-sky-600 dark:text-sky-400">
                           <Icon className="h-3.5 w-3.5" />
                         </span>
-                        <span className="text-[11px] font-bold text-slate-800 truncate">
+                        <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">
                           {act.label}
                         </span>
                       </Link>
@@ -553,12 +553,12 @@ export default function TeacherHubPage() {
                 className="relative min-h-[190px] overflow-hidden rounded-3xl bg-cover bg-center shadow-[0_12px_38px_rgba(56,96,130,0.16)] flex flex-col justify-between p-5 text-center"
                 style={{ backgroundImage: "url('/student-campus-spring.webp')" }}
               >
-                <div className="absolute inset-0 bg-gradient-to-b from-white/80 via-white/20 to-[#17365f]/50" />
+                <div className="absolute inset-0 bg-gradient-to-b from-white/80 via-white/20 to-[#17365f]/50 dark:from-slate-950/85 dark:via-slate-900/60 dark:to-slate-950/90" />
                 <div className="relative z-10 flex min-h-[160px] flex-col items-center justify-between">
-                  <p className="font-['Ma_Shan_Zheng',cursive] text-2xl leading-tight text-[#102f63]">
+                  <p className="font-['Ma_Shan_Zheng',cursive] text-2xl leading-tight text-[#102f63] dark:text-sky-200">
                     春华秋实<br />桃李满园
                   </p>
-                  <div className="w-full rounded-2xl border border-white/70 bg-white/85 px-3 py-2 text-[10px] italic text-[#17365f] shadow-sm backdrop-blur">
+                  <div className="w-full rounded-2xl border border-white/70 dark:border-slate-700 bg-white/85 dark:bg-slate-900/85 px-3 py-2 text-[10px] italic text-[#17365f] dark:text-slate-300 shadow-sm backdrop-blur">
                     “Mỗi hạt mầm tri thức gieo xuống hôm nay sẽ nở hoa rực rỡ vào ngày mai.”
                   </div>
                 </div>

@@ -486,9 +486,9 @@ export default function NotificationCenterPage() {
                     type="button"
                     onClick={handleMarkAll}
                     disabled={markingAll}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-white/85 bg-white/85 px-4 py-2 text-xs font-bold text-slate-700 shadow-xs backdrop-blur-md transition hover:bg-white hover:text-blue-700 disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/85 bg-white/85 dark:border-slate-800 dark:bg-slate-900/90 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 shadow-xs backdrop-blur-md transition hover:bg-white dark:hover:bg-slate-800 hover:text-blue-700 dark:hover:text-blue-400 disabled:opacity-60"
                   >
-                    <Check className="h-3.5 w-3.5 text-slate-700" />
+                    <Check className="h-3.5 w-3.5 text-slate-700 dark:text-slate-300" />
                     <span>{markingAll ? "Đang xử lý..." : "Đọc tất cả"}</span>
                   </button>
                 )}
@@ -497,7 +497,7 @@ export default function NotificationCenterPage() {
                   type="button"
                   onClick={loadData}
                   disabled={loading}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-white/85 bg-white/85 text-slate-700 shadow-xs backdrop-blur-md transition hover:bg-white hover:text-blue-700 disabled:opacity-60"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-white/85 bg-white/85 dark:border-slate-800 dark:bg-slate-900/90 text-slate-700 dark:text-slate-300 shadow-xs backdrop-blur-md transition hover:bg-white dark:hover:bg-slate-800 hover:text-blue-700 dark:hover:text-blue-400 disabled:opacity-60"
                   title="Làm mới danh sách"
                 >
                   <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin text-blue-600" : ""}`} />
@@ -514,22 +514,22 @@ export default function NotificationCenterPage() {
 
             {/* Notification items grouped by timeline */}
             {loadError ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50/90 p-8 text-center shadow-xs">
-                <h3 className="text-sm font-bold text-rose-800">Không thể tải thông báo</h3>
-                <p className="mt-1 text-xs text-rose-600">{loadError}</p>
+              <div className="rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/90 dark:bg-slate-900/90 p-8 text-center shadow-xs">
+                <h3 className="text-sm font-bold text-rose-800 dark:text-rose-400">Không thể tải thông báo</h3>
+                <p className="mt-1 text-xs text-rose-600 dark:text-slate-400">{loadError}</p>
                 <button type="button" onClick={loadData} className="mt-4 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700">
                   Thử lại
                 </button>
               </div>
             ) : groupedItems.length === 0 ? (
-              <div className="rounded-2xl border border-white/85 bg-white/90 p-12 text-center shadow-xs backdrop-blur-md">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <div className="rounded-2xl border border-white/85 bg-white/90 dark:border-slate-800 dark:bg-slate-900/90 p-12 text-center shadow-xs backdrop-blur-md">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
                   <Bell className="h-6 w-6" />
                 </div>
-                <h3 className="mt-4 text-sm font-bold text-slate-800">
+                <h3 className="mt-4 text-sm font-bold text-slate-800 dark:text-slate-100">
                   Không có thông báo nào trong danh mục này
                 </h3>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {activeQuickFilter === "unread"
                     ? "Tuyệt vời! Bạn đã đọc hết tất cả thông báo."
                     : "Các thông báo và cập nhật mới sẽ hiển thị tại đây khi có phát sinh."}
@@ -552,7 +552,7 @@ export default function NotificationCenterPage() {
                 {groupedItems.map((group) => (
                   <section key={group.name} className="space-y-2.5">
                     {/* Section Header: Hôm nay, Hôm qua, 12/01/2025... */}
-                    <h2 className="text-xs sm:text-sm font-black text-slate-800 tracking-tight pt-1">
+                    <h2 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-200 tracking-tight pt-1">
                       {group.name}
                     </h2>
 

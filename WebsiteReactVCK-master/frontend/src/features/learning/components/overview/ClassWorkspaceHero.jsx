@@ -40,37 +40,37 @@ export default function ClassWorkspaceHero({
   const clampedPercent = Math.max(0, Math.min(100, Number(percent || 0)));
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6 transition">
+    <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6 transition dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
       {/* Background ambient subtle decorative glows */}
-      <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl dark:bg-sky-500/10" />
+      <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl dark:bg-amber-500/10" />
 
       <div className="relative grid gap-5 lg:grid-cols-12 lg:items-center">
         {/* Left Side (Col 1-6): Class identity, Scholar quote, Badges, Timetable button */}
         <div className="space-y-3 lg:col-span-6 flex flex-col justify-between">
           <div>
-            <h1 className="font-['Dancing_Script',cursive] text-3xl sm:text-4xl lg:text-[42px] font-bold text-[#102f63] leading-none">
+            <h1 className="font-['Dancing_Script',cursive] text-3xl sm:text-4xl lg:text-[42px] font-bold text-[#102f63] leading-none dark:text-sky-200">
               {classDisplayName}
             </h1>
-            <p className="mt-2 text-xs sm:text-sm font-semibold italic text-[#244866]">
+            <p className="mt-2 text-xs sm:text-sm font-semibold italic text-[#244866] dark:text-slate-300">
               “Học để thấu hiểu, luyện để tinh thông.” ·{" "}
-              <span className="font-['Ma_Shan_Zheng',cursive] text-sm sm:text-base text-[#17365f]">
+              <span className="font-['Ma_Shan_Zheng',cursive] text-sm sm:text-base text-[#17365f] dark:text-sky-400">
                 博学审问 · 慎思明辨
               </span>
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 border border-white px-3 py-1 text-xs font-bold text-[#102f63] shadow-2xs">
-              <GraduationCap className="h-3.5 w-3.5 text-blue-600" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 border border-white px-3 py-1 text-xs font-bold text-[#102f63] shadow-2xs dark:border-slate-700/60 dark:bg-slate-800 dark:text-slate-200">
+              <GraduationCap className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               Giảng viên: {instructorName || "CSCA"}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 px-3 py-1 text-xs font-bold text-emerald-700 shadow-2xs">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 px-3 py-1 text-xs font-bold text-emerald-700 shadow-2xs dark:border-emerald-800/60 dark:bg-emerald-950/70 dark:text-emerald-300">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               Đang theo học
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs">
-              <Sparkles className="h-3.5 w-3.5 text-sky-600" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs dark:border-sky-800/60 dark:bg-sky-950/70 dark:text-sky-300">
+              <Sparkles className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
               Tiến độ: {clampedPercent}%
             </span>
           </div>
@@ -78,7 +78,7 @@ export default function ClassWorkspaceHero({
           <div className="pt-2">
             <Link
               to={`${basePath}/calendar`}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#17365f] via-[#102f63] to-[#0d2754] px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-950/20 transition hover:shadow-lg hover:brightness-105 active:scale-95"
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#17365f] via-[#102f63] to-[#0d2754] px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-950/20 transition hover:shadow-lg hover:brightness-105 active:scale-95 dark:from-sky-700 dark:via-blue-800 dark:to-slate-900"
             >
               <CalendarDays className="h-3.5 w-3.5 text-sky-300" /> Lịch học của lớp
             </Link>
@@ -86,13 +86,13 @@ export default function ClassWorkspaceHero({
         </div>
 
         {/* Right Side (Col 7-12): Buổi học hôm nay / gần nhất / tiếp theo */}
-        <div className="lg:col-span-6 flex flex-col justify-between rounded-2xl border border-sky-100/90 bg-gradient-to-br from-sky-50/60 via-white/80 to-blue-50/40 p-4 sm:p-5 shadow-2xs backdrop-blur-sm">
+        <div className="lg:col-span-6 flex flex-col justify-between rounded-2xl border border-sky-100/90 bg-gradient-to-br from-sky-50/60 via-white/80 to-blue-50/40 p-4 sm:p-5 shadow-2xs backdrop-blur-sm dark:border-slate-800 dark:from-slate-900/90 dark:via-slate-900/60 dark:to-slate-800/50">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider ${
                 isTodaySession
-                  ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300 animate-pulse"
-                  : "bg-sky-100 text-sky-800 ring-1 ring-sky-200"
+                  ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300 animate-pulse dark:bg-amber-950/70 dark:text-amber-300 dark:ring-amber-700/60"
+                  : "bg-sky-100 text-sky-800 ring-1 ring-sky-200 dark:bg-sky-950/70 dark:text-sky-300 dark:ring-sky-800/60"
               }`}
             >
               <CalendarDays className="h-3 w-3" />
@@ -104,30 +104,30 @@ export default function ClassWorkspaceHero({
               </span>
             )}
             {nextSession?.provider && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
-                <Video className="h-3 w-3 text-emerald-600" /> {nextSession.provider}
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/70 dark:text-emerald-300 dark:ring-emerald-800/60">
+                <Video className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> {nextSession.provider}
               </span>
             )}
           </div>
 
           {nextSession ? (
             <div className="space-y-1.5 py-2.5">
-              <h2 className="line-clamp-2 text-base sm:text-lg font-black tracking-tight text-[#102f63]">
+              <h2 className="line-clamp-2 text-base sm:text-lg font-black tracking-tight text-[#102f63] dark:text-white">
                 {nextSession.title}
               </h2>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#244866]">
-                <span className="inline-flex items-center gap-1.5 font-bold text-sky-700">
-                  <Clock className="h-3.5 w-3.5 text-sky-600" />
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#244866] dark:text-slate-300">
+                <span className="inline-flex items-center gap-1.5 font-bold text-sky-700 dark:text-sky-300">
+                  <Clock className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
                   {formatDateTime(nextSession.start_time)}
                 </span>
               </div>
             </div>
           ) : (
             <div className="space-y-1 py-2.5">
-              <h2 className="text-sm sm:text-base font-bold text-[#102f63]">
+              <h2 className="text-sm sm:text-base font-bold text-[#102f63] dark:text-white">
                 Hiện chưa có lịch buổi học mới
               </h2>
-              <p className="text-xs text-[#487291]">
+              <p className="text-xs text-[#487291] dark:text-slate-400">
                 Giảng viên sẽ sớm cập nhật lịch buổi học trực tuyến tiếp theo cho lớp.
               </p>
             </div>
@@ -145,14 +145,14 @@ export default function ClassWorkspaceHero({
           </div>
 
           {otherSessions.length > 0 && (
-            <div className="relative mt-3 flex flex-wrap items-center gap-2 border-t border-sky-100/80 pt-2.5 text-xs">
+            <div className="relative mt-3 flex flex-wrap items-center gap-2 border-t border-sky-100/80 dark:border-slate-800 pt-2.5 text-xs">
               <span className="font-bold text-[#102f63] dark:text-sky-300">Sắp tới:</span>
               <div className="flex flex-wrap items-center gap-2">
                 {otherSessions.map((item) => (
                   <Link
                     key={item.id}
                     to={`${basePath}/sessions/${item.id}`}
-                    className="inline-flex items-center gap-2 rounded-xl border border-sky-200/90 bg-white dark:bg-slate-800/90 px-3 py-1.5 text-xs shadow-2xs transition hover:border-sky-400 hover:bg-sky-50 dark:hover:bg-slate-700"
+                    className="inline-flex items-center gap-2 rounded-xl border border-sky-200/90 bg-white dark:bg-slate-800/90 dark:border-slate-700 px-3 py-1.5 text-xs shadow-2xs transition hover:border-sky-400 hover:bg-sky-50 dark:hover:bg-slate-700"
                   >
                     <span className="font-bold text-[#102f63] dark:text-white max-w-[150px] truncate">
                       {item.title}

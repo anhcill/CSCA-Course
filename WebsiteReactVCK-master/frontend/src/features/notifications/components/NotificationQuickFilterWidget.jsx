@@ -59,10 +59,10 @@ export default function NotificationQuickFilterWidget({
   filterCounts = {},
 }) {
   return (
-    <section className="rounded-3xl border border-white/80 bg-white/85 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md">
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100/80">
-        <Filter className="h-4 w-4 text-[#102f63]" />
-        <h2 className="text-sm font-black text-[#102f63] tracking-tight">
+    <section className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/90 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md">
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100/80 dark:border-slate-800">
+        <Filter className="h-4 w-4 text-[#102f63] dark:text-sky-400" />
+        <h2 className="text-sm font-black text-[#102f63] dark:text-white tracking-tight">
           Bộ lọc nhanh
         </h2>
       </div>
@@ -80,8 +80,8 @@ export default function NotificationQuickFilterWidget({
               onClick={() => onSelectFilter(item.id)}
               className={`flex w-full items-center justify-between gap-3 rounded-2xl px-3.5 py-2.5 text-xs font-semibold transition-all ${
                 isActive
-                  ? "bg-[#dff1ff] text-[#17365f] font-bold shadow-xs"
-                  : "text-[#244866] hover:bg-sky-50/70 hover:text-sky-700"
+                  ? "bg-[#dff1ff] dark:bg-sky-950/50 text-[#17365f] dark:text-sky-200 font-bold shadow-xs border border-sky-200/50 dark:border-sky-800/50"
+                  : "text-[#244866] dark:text-slate-300 hover:bg-sky-50/70 dark:hover:bg-slate-800 hover:text-sky-700 dark:hover:text-white"
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
@@ -96,7 +96,7 @@ export default function NotificationQuickFilterWidget({
               </div>
               <span
                 className={`text-[11px] font-bold shrink-0 ${
-                  isActive ? "text-[#102f63]" : "text-slate-400"
+                  isActive ? "text-[#102f63] dark:text-sky-300" : "text-slate-400 dark:text-slate-500"
                 }`}
               >
                 {count}

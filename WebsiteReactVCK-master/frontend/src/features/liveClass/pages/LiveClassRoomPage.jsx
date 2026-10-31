@@ -178,8 +178,8 @@ export default function LiveClassRoomPage() {
   const errorMessage = accessError || parsedMeeting.error || embedError;
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-slate-950 text-white overflow-hidden select-none">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 bg-slate-950/95 px-3 backdrop-blur sm:px-4">
+    <div className="flex h-screen w-screen flex-col bg-slate-950 dark:bg-slate-950 text-white overflow-hidden select-none">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 dark:border-slate-800 bg-slate-950/95 dark:bg-slate-950/95 px-3 backdrop-blur sm:px-4">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30">
             <Video className="h-4 w-4" />
@@ -208,7 +208,7 @@ export default function LiveClassRoomPage() {
             type="button"
             onClick={toggleFullscreen}
             title={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/15"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 dark:border-slate-800 bg-white/5 dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-200 dark:text-slate-300 transition hover:bg-white/15 dark:hover:bg-slate-800"
           >
             {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
             <span className="hidden md:inline">{isFullscreen ? "Thu nhỏ" : "Toàn màn hình"}</span>
@@ -220,7 +220,7 @@ export default function LiveClassRoomPage() {
               target="_blank"
               rel="noreferrer"
               title="Mở trong tab riêng"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/15"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 dark:border-slate-800 bg-white/5 dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-200 dark:text-slate-300 transition hover:bg-white/15 dark:hover:bg-slate-800"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Mở tab riêng</span>
@@ -238,7 +238,7 @@ export default function LiveClassRoomPage() {
         </div>
       </header>
 
-      <main className="relative flex-1 w-full bg-[#101827] overflow-hidden">
+      <main className="relative flex-1 w-full bg-[#101827] dark:bg-slate-950 overflow-hidden">
         {loadingAccess && (
           <div className="absolute inset-0 z-10 grid place-items-center bg-slate-950">
             <div className="text-center">
@@ -249,14 +249,14 @@ export default function LiveClassRoomPage() {
         )}
         {errorMessage && !loadingAccess && (
           <div className="absolute inset-0 z-10 grid place-items-center bg-slate-950 px-4">
-            <div className="max-w-md rounded-2xl border border-rose-400/20 bg-rose-500/10 p-6 text-center">
+            <div className="max-w-md rounded-2xl border border-rose-400/20 dark:border-rose-900/40 bg-rose-500/10 dark:bg-rose-950/30 p-6 text-center">
               <h2 className="text-lg font-black text-rose-200">Không thể mở phòng học</h2>
               <p className="mt-2 text-sm text-slate-300">{errorMessage}</p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-black text-slate-900 transition hover:bg-slate-200"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white dark:bg-slate-800 px-3 py-2 text-xs font-black text-slate-900 dark:text-white transition hover:bg-slate-200 dark:hover:bg-slate-700"
                 >
                   <RotateCcw className="h-3.5 w-3.5" /> Thử lại
                 </button>
@@ -265,7 +265,7 @@ export default function LiveClassRoomPage() {
                     href={meetingUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/10"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 dark:border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 dark:text-slate-300 transition hover:bg-white/10 dark:hover:bg-slate-800"
                   >
                     <ExternalLink className="h-3.5 w-3.5" /> Mở ở tab riêng
                   </a>

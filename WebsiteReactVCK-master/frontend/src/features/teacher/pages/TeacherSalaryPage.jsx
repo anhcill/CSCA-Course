@@ -72,19 +72,19 @@ export default function TeacherSalaryPage() {
       <div className="mx-auto max-w-[1440px] space-y-2.5">
         {/* Floating Hero Title directly on wallpaper - matching Student style */}
         <div className="pt-0.5 pb-1">
-          <h1 className="font-['Dancing_Script',cursive] text-4xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs sm:text-5xl">
+          <h1 className="font-['Dancing_Script',cursive] text-4xl font-extrabold tracking-tight text-[#102f63] dark:text-sky-200 drop-shadow-xs sm:text-5xl">
             Bảng Lương Giảng Viên
           </h1>
-          <p className="mt-1 text-xs font-semibold italic text-slate-800 sm:text-sm">
+          <p className="mt-1 text-xs font-semibold italic text-slate-800 dark:text-slate-200 sm:text-sm">
             “Tận tâm truyền thụ tri thức, xứng đáng với mọi cống hiến.”
           </p>
-          <p className="mt-0.5 font-['Ma_Shan_Zheng',cursive] text-sm tracking-wider text-slate-600 sm:text-base">
+          <p className="mt-0.5 font-['Ma_Shan_Zheng',cursive] text-sm tracking-wider text-slate-600 dark:text-slate-400 sm:text-base">
             —— 学而不厌，诲人不倦。
           </p>
         </div>
 
         {loading ? (
-          <div className="rounded-2xl border border-white/80 bg-white/90 p-12 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
+          <div className="rounded-2xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-12 shadow-[0_6px_25px_rgba(32,78,120,0.06)] dark:shadow-none backdrop-blur-md">
             <Loading
               loading={true}
               text="Đang tính toán bảng lương giảng viên..."
@@ -93,7 +93,7 @@ export default function TeacherSalaryPage() {
             />
           </div>
         ) : error ? (
-          <div className="rounded-2xl border border-white/80 bg-white/90 p-8 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
+          <div className="rounded-2xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-8 shadow-[0_6px_25px_rgba(32,78,120,0.06)] dark:shadow-none backdrop-blur-md">
             <ErrorState
               title="Chưa thể tải dữ liệu bảng lương"
               message={error}

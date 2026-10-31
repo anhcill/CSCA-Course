@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <script>
       (() => {
+        try {
+          const savedTheme = localStorage.getItem("darkMode");
+          const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          if (savedTheme === "true" || (savedTheme === null && prefersDark)) {
+            document.documentElement.classList.add("dark");
+          } else {
+            document.documentElement.classList.remove("dark");
+          }
+        } catch {}
+      })();
+    </script>
+    <script>
+      (() => {
         const fallback = "/student-campus-spring.webp";
         const retired = new Set([
           "/wallpapers/morning-mist-campus.webp",

@@ -35,21 +35,21 @@ export default function CourseResultsPage() {
   return (
     <div className="space-y-5 pb-10">
       {finalError && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-xs font-bold text-rose-700">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-xs font-bold text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-400">
           {finalError}
         </div>
       )}
 
       {finalGrade && (
-        <section className="relative overflow-hidden rounded-3xl border border-emerald-200 bg-emerald-50/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
+        <section className="relative overflow-hidden rounded-3xl border border-emerald-200 bg-emerald-50/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:shadow-none">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
               <Trophy className="h-4 w-4" />
             </span>
-            <h2 className="text-base font-bold text-emerald-950">Điểm tổng kết đã chốt</h2>
+            <h2 className="text-base font-bold text-emerald-950 dark:text-emerald-100">Điểm tổng kết đã chốt</h2>
           </div>
-          <p className="mt-3 text-3xl sm:text-4xl font-black text-emerald-700">{finalGrade.total ?? "—"}/100</p>
-          <p className="mt-1 text-xs text-emerald-900 font-semibold">
+          <p className="mt-3 text-3xl sm:text-4xl font-black text-emerald-700 dark:text-emerald-400">{finalGrade.total ?? "—"}/100</p>
+          <p className="mt-1 text-xs text-emerald-900 font-semibold dark:text-emerald-300">
             {finalGrade.passed === null
               ? "Chưa xác định"
               : finalGrade.passed
@@ -58,7 +58,7 @@ export default function CourseResultsPage() {
             · Chốt lúc {new Date(finalGrade.finalizedAt).toLocaleString("vi-VN")}
           </p>
           {finalGrade.policy?.weights && (
-            <p className="mt-2 text-[11px] text-emerald-800">
+            <p className="mt-2 text-[11px] text-emerald-800 dark:text-emerald-400">
               Trọng số: bài tập {finalGrade.policy.weights.assignment}%, quiz{" "}
               {finalGrade.policy.weights.quiz}%, chuyên cần {finalGrade.policy.weights.attendance}%.
             </p>
@@ -69,47 +69,47 @@ export default function CourseResultsPage() {
       {/* 3 Metric Cards */}
       <section className="grid gap-4 sm:grid-cols-3">
         {[
-          ["Hoàn thành bài học", `${progress.percent || 0}%`, CheckCircle2, "bg-emerald-50 text-emerald-600"],
-          ["Bài đã chấm điểm", `${graded.length} bài`, ClipboardCheck, "bg-sky-50 text-sky-600"],
-          ["Điểm trung bình", averageScore ? `${averageScore}/10` : "—", Trophy, "bg-amber-50 text-amber-600"],
+          ["Hoàn thành bài học", `${progress.percent || 0}%`, CheckCircle2, "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"],
+          ["Bài đã chấm điểm", `${graded.length} bài`, ClipboardCheck, "bg-sky-50 text-sky-600 dark:bg-sky-950/60 dark:text-sky-400"],
+          ["Điểm trung bình", averageScore ? `${averageScore}/10` : "—", Trophy, "bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"],
         ].map(([label, value, Icon, tone]) => (
           <div
             key={label}
-            className="rounded-3xl border border-white/80 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md"
+            className="rounded-3xl border border-white/80 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none"
           >
             <div className="flex items-center justify-between">
               <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${tone}`}>
                 <Icon className="h-5 w-5" />
               </span>
-              <Sparkles className="h-4 w-4 text-slate-300" />
+              <Sparkles className="h-4 w-4 text-slate-300 dark:text-slate-600" />
             </div>
-            <p className="mt-4 text-2xl sm:text-3xl font-black text-[#102f63]">{value}</p>
-            <p className="mt-1 text-xs font-bold text-[#487291]">{label}</p>
+            <p className="mt-4 text-2xl sm:text-3xl font-black text-[#102f63] dark:text-white">{value}</p>
+            <p className="mt-1 text-xs font-bold text-[#487291] dark:text-slate-400">{label}</p>
           </div>
         ))}
       </section>
 
       {/* Bảng điểm chi tiết các bài */}
-      <section className="rounded-3xl border border-white/80 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
-        <div className="border-b border-slate-100 pb-4">
-          <h2 className="text-lg font-black text-[#102f63]">Chi tiết điểm số & Nhận xét của giảng viên</h2>
-          <p className="mt-0.5 text-xs text-[#487291]">
+      <section className="rounded-3xl border border-white/80 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6 dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
+        <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
+          <h2 className="text-lg font-black text-[#102f63] dark:text-white">Chi tiết điểm số & Nhận xét của giảng viên</h2>
+          <p className="mt-0.5 text-xs text-[#487291] dark:text-slate-400">
             Tổng hợp kết quả các bài kiểm tra và bài tập về nhà đã được giáo viên chấm.
           </p>
         </div>
 
         {graded.length === 0 ? (
-          <div className="my-8 rounded-2xl border border-dashed border-slate-200 bg-white/50 px-5 py-10 text-center">
-            <ClipboardCheck className="mx-auto h-8 w-8 text-[#487291]" />
-            <p className="mt-3 text-sm font-bold text-[#102f63]">Chưa có bài nào được chấm điểm</p>
-            <p className="mt-1 text-xs text-[#487291]">
+          <div className="my-8 rounded-2xl border border-dashed border-slate-200 bg-white/50 px-5 py-10 text-center dark:border-slate-800 dark:bg-slate-800/40">
+            <ClipboardCheck className="mx-auto h-8 w-8 text-[#487291] dark:text-slate-500" />
+            <p className="mt-3 text-sm font-bold text-[#102f63] dark:text-white">Chưa có bài nào được chấm điểm</p>
+            <p className="mt-1 text-xs text-[#487291] dark:text-slate-400">
               Điểm số và nhận xét sẽ hiển thị tại đây ngay khi giáo viên hoàn tất chấm bài.
             </p>
           </div>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-left text-xs sm:text-sm">
-              <thead className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-[#487291]">
+              <thead className="border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold uppercase tracking-wider text-[#487291] dark:text-slate-400">
                 <tr>
                   <th className="px-3 py-3">Bài tập / Bài thi</th>
                   <th className="px-3 py-3">Điểm số</th>
@@ -117,17 +117,17 @@ export default function CourseResultsPage() {
                   <th className="px-3 py-3">Ngày chấm</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {graded.map((item) => (
-                  <tr key={`${item.type}-${item.id}`} className="hover:bg-sky-50/40 transition">
-                    <td className="px-3 py-3.5 font-bold text-[#102f63]">{item.title}</td>
-                    <td className="px-3 py-3.5 font-black text-sky-700">
+                  <tr key={`${item.type}-${item.id}`} className="hover:bg-sky-50/40 dark:hover:bg-slate-800/50 transition">
+                    <td className="px-3 py-3.5 font-bold text-[#102f63] dark:text-white">{item.title}</td>
+                    <td className="px-3 py-3.5 font-black text-sky-700 dark:text-sky-400">
                       {item.score}/{item.max_score || 10}
                     </td>
-                    <td className="max-w-md px-3 py-3.5 text-xs text-[#244866]">
+                    <td className="max-w-md px-3 py-3.5 text-xs text-[#244866] dark:text-slate-300">
                       {item.feedback_text || "Giáo viên chưa để lại nhận xét thêm."}
                     </td>
-                    <td className="px-3 py-3.5 text-xs text-[#487291]">{formatDate(item.graded_at)}</td>
+                    <td className="px-3 py-3.5 text-xs text-[#487291] dark:text-slate-400">{formatDate(item.graded_at)}</td>
                   </tr>
                 ))}
               </tbody>

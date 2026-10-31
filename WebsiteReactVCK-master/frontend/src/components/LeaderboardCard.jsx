@@ -5,7 +5,7 @@ const LeaderboardCard = ({ rank, name, points, avatarUrl }) => {
     1: "bg-yellow-400 text-black",
     2: "bg-gray-300 text-black",
     3: "bg-orange-300 text-black",
-    default: "bg-white text-gray-800",
+    default: "bg-white dark:bg-slate-800/90 text-gray-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700/60",
   };
 
   const rankIcons = {
@@ -38,7 +38,7 @@ const LeaderboardCard = ({ rank, name, points, avatarUrl }) => {
         </div>
       </div>
       <div className="text-right">
-        <p className="font-semibold text-gray-600">{points} pts</p>
+        <p className="font-semibold text-gray-600 dark:text-slate-300">{points} pts</p>
       </div>
     </div>
   );

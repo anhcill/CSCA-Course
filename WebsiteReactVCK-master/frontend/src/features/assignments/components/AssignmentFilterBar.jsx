@@ -16,7 +16,7 @@ export default function AssignmentFilterBar({
   ];
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/92 px-3 py-2 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/92 px-3 py-2 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-[0_6px_25px_rgba(0,0,0,0.4)]">
       {/* Cụm tabs lọc bên trái */}
       <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {filters.map((f) => {
@@ -30,7 +30,7 @@ export default function AssignmentFilterBar({
               className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition whitespace-nowrap ${
                 isActive
                   ? "bg-blue-600 text-white shadow-sm"
-                  : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900"
+                  : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
               }`}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -44,13 +44,13 @@ export default function AssignmentFilterBar({
 
       {/* Ô tìm kiếm bên phải */}
       <div className="relative w-full sm:w-64">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Tìm tên bài tập, kiểm tra..."
-          className="h-8 w-full rounded-xl border border-slate-200/90 bg-slate-50/80 pl-9 pr-3 text-xs text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-blue-400 focus:bg-white"
+          className="h-8 w-full rounded-xl border border-slate-200/90 bg-slate-50/80 pl-9 pr-3 text-xs text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-blue-400 focus:bg-white dark:border-slate-700 dark:bg-slate-950/80 dark:text-white dark:placeholder:text-slate-500 focus:dark:border-sky-500 focus:dark:bg-slate-950"
         />
       </div>
     </div>

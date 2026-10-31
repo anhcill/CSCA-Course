@@ -34,6 +34,7 @@ import {
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { useAuthContext } from "../../../context/AuthContext";
+import { useTheme } from "../../../context/ThemeContext";
 import useCUDUser from "../../../hooks/useCUDUser";
 import AvatarModal from "../../../components/AvatarModal";
 import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
@@ -58,6 +59,7 @@ const isMobileDevice = (device) =>
 
 export default function TeacherSettingsPage() {
   const { authUser } = useAuthContext();
+  const { isDarkMode, toggleTheme } = useTheme();
   const isAdmin = authUser?.role === "admin";
   const { i18n } = useTranslation();
   const { updateUserInfo, updateStudentProfile, saving } = useCUDUser();
@@ -239,20 +241,21 @@ export default function TeacherSettingsPage() {
   // Theme selection
   const handleSelectTheme = (themeKey) => {
     if (themeKey === "dark") {
-      toast("Chế độ Tối (Dark mode) đang được hoàn thiện và sẽ sớm cập nhật!", {
-        icon: "🌙",
-        duration: 3000,
-      });
+      if (!isDarkMode) toggleTheme();
+      toast.success("Đã bật Chế độ Tối (Dark mode)");
+      return;
+    }
+    if (themeKey === "light") {
+      if (isDarkMode) toggleTheme();
+      toast.success("Đã sử dụng Giao diện Sáng mặc định");
       return;
     }
     if (themeKey === "system") {
-      toast("Chế độ tự động theo thiết bị đang được phát triển!", {
-        icon: "🖥️",
-        duration: 3000,
-      });
+      const prefersDark = typeof window !== "undefined" && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (prefersDark !== isDarkMode) toggleTheme();
+      toast.success("Đã áp dụng giao diện theo thiết bị");
       return;
     }
-    toast.success("Đang sử dụng Giao diện Sáng mặc định");
   };
 
   // Wallpapers list & active selection
@@ -960,60 +963,70 @@ export default function TeacherSettingsPage() {
 
             {/* 3 Theme Options Grid */}
             <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {/* Theme 1: Sáng (Active) */}
+              {/* Theme 1: Sáng */}
               <div
                 onClick={() => handleSelectTheme("light")}
-                className="group relative cursor-pointer rounded-2xl border-2 border-blue-500 bg-white p-2.5 shadow-sm ring-2 ring-blue-500/20 transition hover:shadow-md"
+                className={`group relative cursor-pointer rounded-2xl p-2.5 transition ${
+                  !isDarkMode
+                    ? "border-2 border-blue-500 bg-white dark:bg-slate-900 shadow-sm ring-2 ring-blue-500/20 hover:shadow-md"
+                    : "border border-slate-200 bg-slate-50/70 opacity-85 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/50"
+                }`}
               >
-                <div className="relative h-20 w-full overflow-hidden rounded-xl bg-slate-100">
+                <div className="relative h-20 w-full overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
                   <img
                     src="/student-campus-spring.webp"
                     alt="Giao diện Sáng"
                     className="h-full w-full object-cover transition group-hover:scale-105"
                   />
-                  <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white shadow-md">
-                    <Check className="h-3 w-3 stroke-[3]" />
-                  </div>
+                  {!isDarkMode && (
+                    <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white shadow-md">
+                      <Check className="h-3 w-3 stroke-[3]" />
+                    </div>
+                  )}
                 </div>
                 <div className="mt-2.5 flex items-center gap-2">
                   <Sun className="h-4 w-4 text-amber-500" />
                   <div>
-                    <p className="text-xs font-bold text-slate-900">Sáng</p>
-                    <p className="text-[10px] text-slate-500">Mặc định hệ thống</p>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Sáng</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Mặc định hệ thống</p>
                   </div>
                 </div>
               </div>
 
-              {/* Theme 2: Tối (Sắp ra mắt) */}
+              {/* Theme 2: Tối */}
               <div
                 onClick={() => handleSelectTheme("dark")}
-                className="group relative cursor-not-allowed rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 opacity-80 transition hover:border-slate-300"
+                className={`group relative cursor-pointer rounded-2xl p-2.5 transition ${
+                  isDarkMode
+                    ? "border-2 border-blue-500 bg-slate-900 shadow-sm ring-2 ring-blue-500/20 hover:shadow-md"
+                    : "border border-slate-200 bg-slate-50/70 opacity-85 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/50"
+                }`}
               >
                 <div className="relative h-20 w-full overflow-hidden rounded-xl bg-slate-900">
                   <img
                     src="/wallpapers/imperial-lake.jpg"
                     alt="Giao diện Tối"
-                    className="h-full w-full object-cover brightness-[0.35] contrast-125 saturate-150"
+                    className="h-full w-full object-cover brightness-[0.4] contrast-125 saturate-150 transition group-hover:scale-105"
                   />
-                  <div className="absolute inset-0 flex items-center justify-center bg-slate-950/20">
-                    <span className="rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-slate-200 backdrop-blur-sm">
-                      Sắp ra mắt
-                    </span>
-                  </div>
+                  {isDarkMode && (
+                    <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white shadow-md">
+                      <Check className="h-3 w-3 stroke-[3]" />
+                    </div>
+                  )}
                 </div>
                 <div className="mt-2.5 flex items-center gap-2">
                   <Moon className="h-4 w-4 text-indigo-400" />
                   <div>
-                    <p className="text-xs font-bold text-slate-700">Tối</p>
-                    <p className="text-[10px] text-slate-400">Dễ nhìn ban đêm</p>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Tối</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Dễ nhìn ban đêm</p>
                   </div>
                 </div>
               </div>
 
-              {/* Theme 3: Theo hệ thống (Sắp ra mắt) */}
+              {/* Theme 3: Theo hệ thống */}
               <div
                 onClick={() => handleSelectTheme("system")}
-                className="group relative cursor-not-allowed rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 opacity-80 transition hover:border-slate-300"
+                className="group relative cursor-pointer rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 opacity-85 transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/50"
               >
                 <div className="relative flex h-20 w-full overflow-hidden rounded-xl">
                   <div className="h-full w-1/2 overflow-hidden">
@@ -1030,17 +1043,12 @@ export default function TeacherSettingsPage() {
                       className="h-full w-[200%] max-w-none -translate-x-1/2 object-cover brightness-[0.35] contrast-125"
                     />
                   </div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-slate-200 backdrop-blur-sm">
-                      Sắp ra mắt
-                    </span>
-                  </div>
                 </div>
                 <div className="mt-2.5 flex items-center gap-2">
-                  <Monitor className="h-4 w-4 text-slate-500" />
+                  <Monitor className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                   <div>
-                    <p className="text-xs font-bold text-slate-700">Theo thiết bị</p>
-                    <p className="text-[10px] text-slate-400">Tự động thích ứng</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Theo hệ thống</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500">Tự động theo thiết bị</p>
                   </div>
                 </div>
               </div>
@@ -1115,18 +1123,18 @@ export default function TeacherSettingsPage() {
       {/* 1. EDIT TEACHER INFO MODAL */}
       {editInfoModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-lg rounded-3xl border border-white/80 bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="w-full max-w-lg rounded-3xl border border-white/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs">
+                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 shadow-2xs">
                   <Pencil className="h-4 w-4" />
                 </span>
-                <h3 className="text-base font-bold text-[#102f63]">Cập nhật thông tin Giảng viên</h3>
+                <h3 className="text-base font-bold text-[#102f63] dark:text-white">Cập nhật thông tin Giảng viên</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setEditInfoModalOpen(false)}
-                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1213,18 +1221,18 @@ export default function TeacherSettingsPage() {
       {/* 2. CHANGE PASSWORD MODAL */}
       {passwordModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-3xl border border-white/80 bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="w-full max-w-md rounded-3xl border border-white/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs">
+                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 shadow-2xs">
                   <Lock className="h-4 w-4" />
                 </span>
-                <h3 className="text-base font-bold text-[#102f63]">Đổi mật khẩu tài khoản</h3>
+                <h3 className="text-base font-bold text-[#102f63] dark:text-white">Đổi mật khẩu tài khoản</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setPasswordModalOpen(false)}
-                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1315,15 +1323,15 @@ export default function TeacherSettingsPage() {
       {/* 3. TRUSTED DEVICES MODAL */}
       {devicesModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-lg rounded-3xl border border-white/80 bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="w-full max-w-lg rounded-3xl border border-white/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-2xs">
+                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shadow-2xs">
                   <Laptop className="h-4 w-4" />
                 </span>
                 <div>
-                  <h3 className="text-base font-bold text-[#102f63]">Thiết bị đăng nhập</h3>
-                  <p className="text-xs text-slate-500">
+                  <h3 className="text-base font-bold text-[#102f63] dark:text-white">Thiết bị đăng nhập</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Giới hạn {trustedDevices.limit} thiết bị đăng nhập đồng thời
                   </p>
                 </div>
@@ -1331,7 +1339,7 @@ export default function TeacherSettingsPage() {
               <button
                 type="button"
                 onClick={() => setDevicesModalOpen(false)}
-                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1399,18 +1407,18 @@ export default function TeacherSettingsPage() {
       {/* 4. ADD CUSTOM WALLPAPER MODAL */}
       {addWallpaperModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-3xl border border-white/80 bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="w-full max-w-md rounded-3xl border border-white/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs">
+                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 shadow-2xs">
                   <ImageIcon className="h-4 w-4" />
                 </span>
-                <h3 className="text-base font-bold text-[#102f63]">Thêm ảnh nền tùy chỉnh</h3>
+                <h3 className="text-base font-bold text-[#102f63] dark:text-white">Thêm ảnh nền tùy chỉnh</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setAddWallpaperModalOpen(false)}
-                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition"
               >
                 <X className="h-5 w-5" />
               </button>

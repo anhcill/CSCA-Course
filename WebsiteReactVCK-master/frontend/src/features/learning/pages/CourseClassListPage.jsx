@@ -53,31 +53,31 @@ export default function CourseClassListPage() {
         <div className="px-1">
           <Link
             to="/lms/my-learning"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#17365f] transition hover:text-sky-700"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#17365f] transition hover:text-sky-700 dark:text-sky-300 dark:hover:text-sky-200"
           >
             <ArrowLeft className="h-3.5 w-3.5" /> Khóa học của tôi
           </Link>
         </div>
 
         {/* Calligraphy Header Hero */}
-        <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/80 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
-          <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-sky-200/30 blur-3xl" />
+        <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/80 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6 dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
+          <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-sky-200/30 blur-3xl dark:bg-sky-500/10" />
           <div className="relative">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700 ring-1 ring-sky-200 shadow-2xs">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700 ring-1 ring-sky-200 shadow-2xs dark:bg-sky-950/70 dark:text-sky-300 dark:ring-sky-800/60">
               <Users className="h-3.5 w-3.5" /> Chọn lớp học
             </span>
-            <h1 className="mt-2.5 font-['Dancing_Script',cursive] text-3xl sm:text-4xl lg:text-[42px] font-bold text-[#102f63] leading-tight">
+            <h1 className="mt-2.5 font-['Dancing_Script',cursive] text-3xl sm:text-4xl lg:text-[42px] font-bold text-[#102f63] leading-tight dark:text-sky-200">
               {course.title || "Danh sách lớp học"}
             </h1>
-            <p className="mt-2 text-xs sm:text-sm font-semibold italic text-[#244866]">
+            <p className="mt-2 text-xs sm:text-sm font-semibold italic text-[#244866] dark:text-slate-300">
               “Vạn dặm đường dài, bắt đầu từ một bước chân.” ·{" "}
-              <span className="font-['Ma_Shan_Zheng',cursive] text-base text-[#17365f]">千里之行 · 始于足下</span>
+              <span className="font-['Ma_Shan_Zheng',cursive] text-base text-[#17365f] dark:text-sky-400">千里之行 · 始于足下</span>
             </p>
           </div>
         </section>
 
         {classes.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-white bg-white/80 p-8 text-center shadow-sm backdrop-blur-md">
+          <div className="rounded-3xl border border-dashed border-white bg-white/80 p-8 text-center shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80">
             <EmptyState
               icon={Users}
               title="Bạn chưa được xếp lớp"
@@ -93,7 +93,7 @@ export default function CourseClassListPage() {
                 <Link
                   key={liveClass.id}
                   to={`/lms/courses/${courseId}/classes/${liveClass.id}`}
-                  className="group relative flex min-h-[220px] flex-col justify-between overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-4 shadow-[0_10px_30px_rgba(45,87,122,0.08)] backdrop-blur-md transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:border-sky-300 sm:p-5"
+                  className="group relative flex min-h-[220px] flex-col justify-between overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-4 shadow-[0_10px_30px_rgba(45,87,122,0.08)] backdrop-blur-md transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:border-sky-300 sm:p-5 dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none dark:hover:border-sky-500/50"
                 >
                   {/* Top Colorful Accent Strip */}
                   <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${theme.topBar}`} />
@@ -111,7 +111,7 @@ export default function CourseClassListPage() {
                       >
                         <BookOpen className="h-5 w-5" />
                       </div>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200/80 shadow-2xs">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200/80 shadow-2xs dark:bg-emerald-950/70 dark:text-emerald-300 dark:ring-emerald-800/60">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         Đã cấp quyền
                       </span>
@@ -119,11 +119,11 @@ export default function CourseClassListPage() {
 
                     {/* Class Title & Teacher */}
                     <div className="mt-3.5 space-y-1.5">
-                      <h2 className="line-clamp-2 text-base sm:text-lg font-black tracking-tight text-[#102f63] transition-colors group-hover:text-sky-700">
+                      <h2 className="line-clamp-2 text-base sm:text-lg font-black tracking-tight text-[#102f63] transition-colors group-hover:text-sky-700 dark:text-white dark:group-hover:text-sky-400">
                         {displayTitle}
                       </h2>
-                      <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 px-2.5 py-1 text-xs font-semibold text-[#17365f]">
-                        <GraduationCap className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                      <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 px-2.5 py-1 text-xs font-semibold text-[#17365f] dark:bg-slate-800 dark:text-slate-200">
+                        <GraduationCap className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
                         <span className="truncate max-w-[170px]">
                           GV: {liveClass.instructor_name || "Chưa phân công"}
                         </span>
@@ -131,15 +131,15 @@ export default function CourseClassListPage() {
                     </div>
 
                     {liveClass.description && (
-                      <p className="mt-2 line-clamp-2 text-[11px] sm:text-xs leading-relaxed text-[#487291]">
+                      <p className="mt-2 line-clamp-2 text-[11px] sm:text-xs leading-relaxed text-[#487291] dark:text-slate-400">
                         {liveClass.description}
                       </p>
                     )}
                   </div>
 
                   {/* Footer Action */}
-                  <div className="relative mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#487291]">
+                  <div className="relative mt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3 text-xs">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#487291] dark:text-slate-400">
                       <Sparkles className="h-3 w-3 text-amber-500" /> Trực tuyến
                     </span>
                     <span

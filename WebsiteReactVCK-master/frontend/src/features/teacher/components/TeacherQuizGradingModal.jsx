@@ -328,7 +328,7 @@ export default function TeacherQuizGradingModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/65 backdrop-blur-md animate-fadeIn">
       <div className="relative flex flex-col w-full max-w-6xl h-[92vh] max-h-[900px] rounded-3xl border border-white/80 bg-white/95 shadow-[0_24px_70px_rgba(32,78,120,0.25)] backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-900/95 overflow-hidden">
         {/* HEADER */}
-        <header className="flex shrink-0 items-center justify-between border-b border-sky-100/70 bg-gradient-to-r from-sky-50/70 via-white to-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
+        <header className="flex shrink-0 items-center justify-between border-b border-sky-100/70 bg-gradient-to-r from-sky-50/70 via-white to-white px-6 py-4 dark:border-slate-800 dark:bg-none dark:bg-slate-900">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 shadow-2xs dark:bg-blue-950/60 dark:text-sky-300">
               <FiFileText className="h-5 w-5" />

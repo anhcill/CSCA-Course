@@ -540,6 +540,40 @@ html:not(.dark) .student-dashboard-page span {
 }
 
 /* ==========================================================================
+   GLOBAL DARK MODE GRADIENT & COLOR SAFEGUARDS
+   ========================================================================== */
+
+/* 1. Triệt tiêu triệt để gradient sáng khi ở Dark Mode đã có dark:bg-* */
+.dark [class*="dark:bg-"][class*="bg-gradient-"]:not([class*="dark:from-"]):not([class*="dark:to-"]):not([class*="dark:bg-gradient"]) {
+  background-image: none !important;
+}
+
+/* 2. Modal header & dialog gradient overrides */
+.dark [role="dialog"] header[class*="bg-gradient-"]:not([class*="dark:from-"]),
+.dark [role="dialog"] div[class*="bg-gradient-"]:not([class*="dark:from-"]),
+.dark header[class*="bg-gradient-"][class*="to-white"]:not([class*="dark:from-"]),
+.dark header[class*="bg-gradient-"][class*="via-white"]:not([class*="dark:from-"]) {
+  background-image: none !important;
+}
+
+/* 3. Phủ màu tối cho Teacher LMS & Modal */
+.dark .teacher-lms [class~="bg-white"],
+.dark .teacher-lms [class*="bg-white/"],
+.dark .teacher-lms [class~="bg-slate-50"],
+.dark .teacher-lms [class~="bg-slate-100"],
+.dark [role="dialog"] [class~="bg-white"]:not(button):not(a):not(input):not(select):not(textarea),
+.dark [role="dialog"] [class*="bg-white/"]:not(button):not(a):not(input):not(select):not(textarea),
+.dark [role="dialog"] [class~="bg-slate-50"],
+.dark [role="dialog"] [class~="bg-slate-100"] {
+  background-color: #0f172a !important;
+}
+
+.dark .teacher-lms [class~="bg-gradient-to-r"]:not([class*="dark:from-"]):not([class*="dark:bg-none"]),
+.dark .teacher-lms [class~="bg-gradient-to-br"]:not([class*="dark:from-"]):not([class*="dark:bg-none"]) {
+  background-image: linear-gradient(130deg, #14213d 0%, #111b2e 54%, #0d1a30 100%);
+}
+
+/* ==========================================================================
    DARK MODE SCOPED TOKENS (GIỮ NGUYÊN 100% CẤU HÌNH BAN ĐẦU)
    ========================================================================== */
 .dark .student-lms,

@@ -67,10 +67,10 @@ export default function NotificationSettingsWidget() {
   };
 
   return (
-    <section className="rounded-3xl border border-white/80 bg-white/85 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md">
-      <div className="flex items-center gap-2 mb-3.5 pb-2 border-b border-slate-100/80">
-        <Settings className="h-4 w-4 text-[#102f63]" />
-        <h2 className="text-sm font-black text-[#102f63] tracking-tight">
+    <section className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/85 dark:bg-slate-900/90 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md">
+      <div className="flex items-center gap-2 mb-3.5 pb-2 border-b border-slate-100/80 dark:border-slate-800">
+        <Settings className="h-4 w-4 text-[#102f63] dark:text-sky-400" />
+        <h2 className="text-sm font-black text-[#102f63] dark:text-white tracking-tight">
           Cài đặt thông báo
         </h2>
       </div>
@@ -86,8 +86,8 @@ export default function NotificationSettingsWidget() {
               className="flex items-center justify-between gap-3 text-xs"
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <Icon className="h-4 w-4 text-[#487291] shrink-0" />
-                <span className="truncate font-semibold text-[#17365f]">{item.label}</span>
+                <Icon className="h-4 w-4 text-[#487291] dark:text-slate-400 shrink-0" />
+                <span className="truncate font-semibold text-[#17365f] dark:text-slate-200">{item.label}</span>
               </div>
 
               {/* iOS-like toggle switch matching screenshot */}
@@ -98,7 +98,7 @@ export default function NotificationSettingsWidget() {
                 disabled={savingKey === item.id}
                 onClick={() => handleToggle(item.id, item.label)}
                 className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
-                  isOn ? "bg-[#1d63a8]" : "bg-slate-300"
+                  isOn ? "bg-[#1d63a8] dark:bg-sky-600" : "bg-slate-300 dark:bg-slate-700"
                 }`}
               >
                 <span

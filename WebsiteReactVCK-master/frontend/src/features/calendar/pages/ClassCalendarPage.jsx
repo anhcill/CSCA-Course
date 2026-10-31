@@ -219,7 +219,7 @@ export default function ClassCalendarPage() {
     : basePath;
 
   return (
-    <div className="min-h-full p-3 sm:p-4 xl:px-4 xl:py-3">
+    <div className="min-h-full p-3 sm:p-4 xl:px-4 xl:py-3 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto max-w-[1440px]">
         {/* Nút thêm lịch dành riêng cho Giáo viên / Admin */}
         {(canManageFixedSchedule || isTeacher) && (
@@ -244,13 +244,13 @@ export default function ClassCalendarPage() {
           <div className="space-y-3 min-w-0">
             {/* Chữ Lịch học gắn trực tiếp lên nền, không dùng khung thẻ nền */}
             <div className="pt-0.5 pb-1">
-              <h1 className="font-['Dancing_Script',cursive] text-4xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs sm:text-5xl">
+              <h1 className="font-['Dancing_Script',cursive] text-4xl font-extrabold tracking-tight text-[#102f63] dark:text-sky-300 drop-shadow-xs sm:text-5xl">
                 Lịch học
               </h1>
-              <p className="mt-1 text-xs font-semibold italic text-slate-800 sm:text-sm">
+              <p className="mt-1 text-xs font-semibold italic text-slate-800 dark:text-slate-200 sm:text-sm">
                 {isTeacher ? "“Dạy học tận tâm, khai mở tri thức.”" : "“Học có kế hoạch, tương lai rộng mở.”"}
               </p>
-              <p className="mt-0.5 font-['Ma_Shan_Zheng',cursive] text-sm tracking-wider text-slate-600 sm:text-base">
+              <p className="mt-0.5 font-['Ma_Shan_Zheng',cursive] text-sm tracking-wider text-slate-600 dark:text-slate-400 sm:text-base">
                 {isTeacher ? "—— 师者，所以传道受业解惑也。" : "—— 凡事预则立，不预则废。"}
               </p>
             </div>
@@ -274,7 +274,7 @@ export default function ClassCalendarPage() {
             )}
 
             {viewMode === "month" && (
-              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md">
+              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]">
                 <CalendarMonthView
                   currentDate={currentDate}
                   events={allEvents}
@@ -288,7 +288,7 @@ export default function ClassCalendarPage() {
             )}
 
             {viewMode === "list" && (
-              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md">
+              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]">
                 <CalendarListView
                   events={allEvents}
                   onSelectEvent={setSelectedEvent}

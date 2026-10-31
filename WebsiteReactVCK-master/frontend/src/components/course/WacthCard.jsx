@@ -345,7 +345,7 @@ const WatchCard = ({ lesson, onLessonComplete, handleLessonSelect }) => {
         theme="colored"
       />
 
-      <div className="relative w-full h-[30rem] bg-gray-200">
+      <div className="relative w-full h-[30rem] bg-gray-200 dark:bg-slate-900 rounded-2xl overflow-hidden border border-transparent dark:border-slate-800 shadow-sm">
         {lesson.videoUrl ? (
           <ReactPlayer
             ref={playerRef}
@@ -376,14 +376,14 @@ const WatchCard = ({ lesson, onLessonComplete, handleLessonSelect }) => {
             }}
           />
         ) : (
-          <div>Không có video để hiển thị.</div>
+          <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500 dark:text-slate-400">Không có video để hiển thị.</div>
         )}
       </div>
 
       {showQuiz && filteredExercises[currentExerciseIndex] && (
-        <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white text-black p-6 rounded-lg shadow-lg max-w-4xl w-full mx-4">
-            <h3 className="text-xl font-semibold mb-4">
+        <div className="fixed inset-0 bg-gray-800/75 dark:bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-6 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 max-w-4xl w-full mx-4">
+            <h3 className="text-xl font-bold mb-4 text-[#102f63] dark:text-white">
               {filteredExercises[currentExerciseIndex].question}
             </h3>
             <div className="space-y-4">
@@ -392,7 +392,7 @@ const WatchCard = ({ lesson, onLessonComplete, handleLessonSelect }) => {
                   <button
                     key={index}
                     onClick={() => handleAnswer(option)}
-                    className="block w-full text-left px-4 py-3 bg-gray-100 rounded-md hover:bg-gray-200 transition duration-150"
+                    className="block w-full text-left px-4 py-3 bg-gray-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-transparent dark:border-slate-700/60 rounded-xl hover:bg-gray-200 dark:hover:bg-slate-700 hover:text-blue-600 dark:hover:text-blue-400 transition duration-150"
                   >
                     {option}
                   </button>
