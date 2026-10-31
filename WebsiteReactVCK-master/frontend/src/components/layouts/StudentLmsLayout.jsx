@@ -16,8 +16,6 @@ import {
   LogOut,
   Menu,
   Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
   Settings,
   Sun,
   UserRound,
@@ -304,21 +302,6 @@ export default function StudentLmsLayout({ children }) {
               aria-label={mobileOpen ? "Đóng menu học viên" : "Mở menu học viên"}
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
-            <button
-              type="button"
-              onClick={toggleSidebarCollapse}
-              className={`hidden lg:flex items-center justify-center h-9 w-9 rounded-xl border transition ${
-                !isDarkMode
-                  ? (hasScenicBackground
-                      ? "border border-white/85 bg-[#e4f4ff]/85 shadow-[0_5px_18px_rgba(32,91,135,0.18)] backdrop-blur-md text-[#17365f] hover:bg-white hover:text-blue-700"
-                      : "bg-white/75 shadow-sm text-slate-600 hover:bg-white hover:text-blue-700 backdrop-blur")
-                  : "border border-slate-700 bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white shadow-sm"
-              }`}
-              title={isSidebarCollapsed ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
-              aria-label={isSidebarCollapsed ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
-            >
-              {isSidebarCollapsed ? <PanelLeftOpen className="h-4.5 w-4.5" /> : <PanelLeftClose className="h-4.5 w-4.5" />}
             </button>
           </div>
 

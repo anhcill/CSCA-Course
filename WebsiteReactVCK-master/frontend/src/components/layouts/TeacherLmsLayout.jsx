@@ -16,8 +16,6 @@ import {
   MessageSquare,
   Moon,
   Palette,
-  PanelLeftClose,
-  PanelLeftOpen,
   Presentation,
   Settings,
   Sun,
@@ -367,24 +365,9 @@ export default function TeacherLmsLayout({ children }) {
         <header className={`teacher-lms-header fixed right-0 top-0 z-30 flex h-16 items-center justify-between gap-2 bg-transparent px-4 sm:px-6 transition-[left] duration-300 ease-in-out ${
           isSidebarCollapsed ? 'left-0 lg:left-[98px]' : 'left-0 lg:left-[260px]'
         }`}>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleSidebarCollapse}
-              className={`hidden lg:flex items-center justify-center h-9 w-9 rounded-xl border transition ${
-                !isDarkMode
-                  ? "border-white/85 bg-[#e4f4ff]/85 text-[#17365f] shadow-[0_5px_18px_rgba(32,91,135,0.18)] backdrop-blur-md hover:bg-white hover:text-blue-700"
-                  : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
-              }`}
-              title={isSidebarCollapsed ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
-              aria-label={isSidebarCollapsed ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
-            >
-              {isSidebarCollapsed ? <PanelLeftOpen className="h-4.5 w-4.5" /> : <PanelLeftClose className="h-4.5 w-4.5" />}
-            </button>
-            {!permissionsReady && (
-              <span className="hidden text-xs font-semibold text-slate-500 sm:inline">Đang đồng bộ quyền truy cập...</span>
-            )}
-          </div>
+          {!permissionsReady ? (
+            <span className="hidden text-xs font-semibold text-slate-500 sm:inline">Đang đồng bộ quyền truy cập...</span>
+          ) : <div />}
           <div className="flex items-center gap-2">
           <button
             type="button"
