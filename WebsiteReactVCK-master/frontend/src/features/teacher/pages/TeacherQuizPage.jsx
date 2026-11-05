@@ -304,13 +304,15 @@ function QuizStatsModal({ quiz, onClose }) {
   };
 
   const students = useMemo(() => data?.students || [], [data?.students]);
+  const questionAnalytics = useMemo(() => data?.questions || [], [data?.questions]);
+  const reportMeta = data?.report || {};
   const pendingEssayCount = useMemo(
-    () => students.filter((student) => student.status === "submitted" && student.hasEssay && !student.essayGrade).length,
-    [students],
+    () => summary.pendingEssayCount ?? students.filter((student) => student.status === "submitted" && student.hasEssay && !student.essayGrade).length,
+    [students, summary.pendingEssayCount],
   );
   const gradedEssayCount = useMemo(
-    () => students.filter((student) => student.status === "submitted" && student.hasEssay && student.essayGrade).length,
-    [students],
+    () => summary.fullyGradedCount ?? students.filter((student) => student.status === "submitted" && student.hasEssay && student.essayGrade).length,
+    [students, summary.fullyGradedCount],
   );
   useEffect(() => {
     if (!suggestedFilterAppliedRef.current && pendingEssayCount > 0) {
@@ -318,8 +320,9 @@ function QuizStatsModal({ quiz, onClose }) {
       setTabFilter("pending_grading");
     }
   }, [pendingEssayCount]);
-  const passRate = summary.submittedCount > 0
-    ? Math.round((summary.passedCount / summary.submittedCount) * 100)
+  const gradedResultCount = summary.fullyGradedCount ?? summary.submittedCount;
+  const passRate = gradedResultCount > 0
+    ? Math.round((summary.passedCount / gradedResultCount) * 100)
     : null;
   const distributionItems = [
     { key: "excellent", label: "Xuất sắc", range: "≥ 80%", value: summary.distribution?.excellent || 0, color: "#10b981" },
@@ -455,6 +458,17 @@ function QuizStatsModal({ quiz, onClose }) {
                 }`}>
                   {quiz.status === "PUBLISHED" ? "ĐANG CÔNG BỐ" : quiz.status === "ARCHIVED" ? "ĐÃ LƯU TRỮ" : "BẢN NHÁP"}
                 </span>
+                {data && (
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${
+                    reportMeta.status === "provisional"
+                      ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                      : reportMeta.status === "live"
+                        ? "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  }`}>
+                    {reportMeta.status === "provisional" ? "BÁO CÁO TẠM THỜI" : reportMeta.status === "live" ? "ĐANG CẬP NHẬT" : "BÁO CÁO HOÀN TẤT"}
+                  </span>
+                )}
               </div>
               <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
                 {quiz.courseTitle} · {quiz.classTitle} {quiz.sessionTitle ? `· ${quiz.sessionTitle}` : ""}
@@ -522,16 +536,24 @@ function QuizStatsModal({ quiz, onClose }) {
                       <FiClock className="h-3.5 w-3.5" /> {summary.inProgressCount} học viên đang làm bài
                     </span>
                   )}
+                  {reportMeta.emailDelivery && (
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${reportMeta.emailDelivery.failedCount > 0 ? "text-rose-600 dark:text-rose-400" : "text-sky-700 dark:text-sky-300"}`}>
+                      <FiSend className="h-3.5 w-3.5" /> Email {reportMeta.emailDelivery.sentCount}/{reportMeta.emailDelivery.recipientCount}
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-center">
-                  <div className="grid grid-cols-2 border-y border-slate-200 dark:border-slate-800 sm:grid-cols-5">
+                  <div className="grid grid-cols-2 border-y border-slate-200 dark:border-slate-800 sm:grid-cols-4">
                     {[
                       { label: "Học viên", value: summary.totalStudents, detail: "Sĩ số lớp", color: "text-slate-950 dark:text-white" },
                       { label: "Đã nộp", value: summary.submittedCount, detail: `${summary.submissionRate}% hoàn thành`, color: "text-emerald-600 dark:text-emerald-400" },
                       { label: "Cần chấm", value: pendingEssayCount, detail: `${gradedEssayCount} bài tự luận đã chấm`, color: pendingEssayCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-sky-600 dark:text-sky-400" },
                       { label: "Chưa làm", value: summary.unsubmittedCount, detail: "Cần nhắc nhở", color: "text-rose-600 dark:text-rose-400" },
-                      { label: "Đạt chuẩn", value: passRate === null ? "—" : `${passRate}%`, detail: `${summary.passedCount}/${summary.submittedCount} bài ≥ ${quiz.passingScore || 60}%`, color: "text-amber-600 dark:text-amber-400" },
+                      { label: "Đạt chuẩn", value: passRate === null ? "—" : `${passRate}%`, detail: `${summary.passedCount}/${gradedResultCount} bài đã chấm ≥ ${quiz.passingScore || 60}%`, color: "text-amber-600 dark:text-amber-400" },
+                      { label: "Tự nộp", value: summary.autoSubmittedCount || 0, detail: "Hết giờ hệ thống nộp", color: "text-violet-600 dark:text-violet-400" },
+                      { label: "TG trung bình", value: summary.averageDurationSeconds == null ? "—" : `${Math.round(summary.averageDurationSeconds / 60)}p`, detail: "Thời gian làm bài", color: "text-cyan-600 dark:text-cyan-400" },
+                      { label: "Chọn điểm", value: data?.quiz?.attemptScorePolicy === "latest" ? "Mới nhất" : data?.quiz?.attemptScorePolicy === "first" ? "Đầu tiên" : "Cao nhất", detail: "Khi có nhiều lượt", color: "text-indigo-600 dark:text-indigo-400" },
                     ].map((metric, index) => (
                       <div
                         key={metric.label}
@@ -576,6 +598,43 @@ function QuizStatsModal({ quiz, onClose }) {
                   </div>
                 </div>
               </section>
+
+              {questionAnalytics.length > 0 && (
+                <section aria-labelledby="question-analysis-title" className="space-y-3 border-b border-slate-200 pb-6 dark:border-slate-800">
+                  <div>
+                    <h3 id="question-analysis-title" className="text-sm font-black text-slate-950 dark:text-white">Phân tích từng câu</h3>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Câu có tỷ lệ đúng thấp được đưa lên đầu để giảng viên ôn lại sát hơn.</p>
+                  </div>
+                  <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                    <table className="min-w-full divide-y divide-slate-200 text-xs dark:divide-slate-800">
+                      <thead className="bg-slate-50 text-left text-[10px] font-black uppercase tracking-wider text-slate-500 dark:bg-slate-950/60">
+                        <tr>
+                          <th className="px-3 py-2.5">Câu</th>
+                          <th className="px-3 py-2.5">Nội dung</th>
+                          <th className="px-3 py-2.5 text-right">Trả lời / trống</th>
+                          <th className="px-3 py-2.5 text-right">Đúng / sai</th>
+                          <th className="px-3 py-2.5 text-right">Tỷ lệ đúng</th>
+                          <th className="px-3 py-2.5">Lựa chọn</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                        {[...questionAnalytics]
+                          .sort((a, b) => (a.correctRate ?? 101) - (b.correctRate ?? 101))
+                          .map((question) => (
+                            <tr key={question.questionId} className="bg-white dark:bg-slate-900">
+                              <td className="whitespace-nowrap px-3 py-3 font-black text-slate-900 dark:text-white">{question.position}</td>
+                              <td className="max-w-[360px] px-3 py-3 font-semibold text-slate-700 dark:text-slate-200"><span className="line-clamp-2">{question.text || "Câu hỏi"}</span></td>
+                              <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{question.answered || 0} / {question.blank || 0}</td>
+                              <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{question.type === "essay" || question.type === "translation" ? `${question.graded || 0} chấm · ${question.pending || 0} chờ` : `${question.correct || 0} / ${question.incorrect || 0}`}</td>
+                              <td className={`whitespace-nowrap px-3 py-3 text-right font-black tabular-nums ${question.correctRate !== null && question.correctRate < 50 ? "text-rose-600" : "text-emerald-600"}`}>{question.correctRate === null ? "—" : `${question.correctRate}%`}</td>
+                              <td className="min-w-[180px] px-3 py-3 text-[11px] text-slate-500 dark:text-slate-400">{Object.entries(question.optionCounts || {}).map(([key, count]) => `${key}: ${count}`).join(" · ") || "—"}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
 
               {/* Danh sách học viên và bộ lọc */}
               <div className="space-y-3">
@@ -909,6 +968,7 @@ export default function TeacherQuizPage() {
   const [timeLimit, setTimeLimit] = useState(30);
   const [passScore, setPassScore] = useState(60);
   const [attemptLimit, setAttemptLimit] = useState(1);
+  const [attemptScorePolicy, setAttemptScorePolicy] = useState("best");
   const [reviewPolicy, setReviewPolicy] = useState("after_submit");
   const [shuffleQuestions, setShuffleQuestions] = useState(true);
   const [questions, setQuestions] = useState([createBlankQuestion()]);
@@ -1132,6 +1192,7 @@ export default function TeacherQuizPage() {
     setTimeLimit(30);
     setPassScore(60);
     setAttemptLimit(1);
+    setAttemptScorePolicy("best");
     setReviewPolicy("after_submit");
     setShuffleQuestions(true);
     setQuestions([createBlankQuestion()]);
@@ -1815,6 +1876,7 @@ export default function TeacherQuizPage() {
         durationMinutes: Number(timeLimit),
         passingScore: Number(passScore),
         attemptLimit: Number(attemptLimit),
+        attemptScorePolicy,
         reviewPolicy,
         shuffleQuestions,
         paperFileId: paperFile?.id || undefined,
@@ -2468,7 +2530,7 @@ export default function TeacherQuizPage() {
 
                 {/* Khối 3: Cài đặt làm bài & thời gian */}
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/50 space-y-3">
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                     <div>
                       <label className="mb-1 block text-[11px] font-black text-slate-700 dark:text-slate-200">
                         Thời gian (phút)
@@ -2509,6 +2571,21 @@ export default function TeacherQuizPage() {
                         {[1, 2, 3, 4, 5].map((cnt) => (
                           <option key={cnt} value={cnt}>{cnt} lượt</option>
                         ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[11px] font-black text-slate-700 dark:text-slate-200">
+                        Lấy điểm lượt
+                      </label>
+                      <select
+                        value={attemptScorePolicy}
+                        onChange={(e) => setAttemptScorePolicy(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                      >
+                        <option value="best">Cao nhất</option>
+                        <option value="latest">Mới nhất</option>
+                        <option value="first">Đầu tiên</option>
                       </select>
                     </div>
 

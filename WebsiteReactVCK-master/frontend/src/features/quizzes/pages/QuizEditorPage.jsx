@@ -50,6 +50,7 @@ const createBlankQuiz = () => ({
   durationMinutes: 45,
   passingScore: 60,
   attemptLimit: 1,
+  attemptScorePolicy: 'best',
   availableFrom: '',
   availableUntil: '',
   dueDate: '',
@@ -643,7 +644,7 @@ export default function QuizEditorPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Áp dụng cho Lớp học
@@ -753,6 +754,20 @@ export default function QuizEditorPage() {
                   onChange={(e) => setQuizMeta({ ...quizMeta, attemptLimit: Number(e.target.value) })}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-xs"
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Cách chọn điểm đại diện
+                </label>
+                <select
+                  value={quizMeta.attemptScorePolicy || 'best'}
+                  onChange={(e) => setQuizMeta({ ...quizMeta, attemptScorePolicy: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-xs"
+                >
+                  <option value="best">Lượt điểm cao nhất</option>
+                  <option value="latest">Lượt nộp mới nhất</option>
+                  <option value="first">Lượt nộp đầu tiên</option>
+                </select>
               </div>
             </div>
 

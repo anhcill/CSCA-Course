@@ -8,6 +8,7 @@ import { processAvailableManagementAttendanceDeliveries } from "./services/manag
 import { processAvailableManagementCalendarDeliveries } from "./services/managementCalendarDelivery.service.js";
 import { processAssignmentDeadlineReminders } from "./services/assignmentDeadlineNotification.service.js";
 import { processScheduledClassAnnouncements } from "./services/classAnnouncement.service.js";
+import { processExpiredQuizAttempts, processQuizCloseReports } from "./services/quizCloseReport.service.js";
 
 dotenv.config({ path: path.resolve("backend", ".env") });
 
@@ -20,9 +21,12 @@ const workerId = (process.env.LMS_SYNC_WORKER_ID || `${os.hostname()}-${process.
 const pollMs = parseBoundedInt(process.env.LMS_SYNC_WORKER_POLL_MS, 3000, 250, 60000);
 const batchSize = parseBoundedInt(process.env.LMS_SYNC_WORKER_BATCH_SIZE, 10, 1, 100);
 const deadlineReminderPollMs = parseBoundedInt(process.env.LMS_ASSIGNMENT_REMINDER_POLL_MS, 300000, 60000, 3600000);
+const quizCloseReportPollMs = parseBoundedInt(process.env.QUIZ_CLOSE_REPORT_POLL_MS, 60000, 10000, 3600000);
+const quizCloseReportEmailEnabled = process.env.QUIZ_CLOSE_REPORT_EMAIL_ENABLED !== "false";
 const runOnce = process.env.LMS_SYNC_WORKER_ONCE === "true";
 let stopping = false;
 let nextDeadlineReminderAt = 0;
+let nextQuizCloseReportAt = 0;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -40,6 +44,8 @@ const main = async () => {
     do {
       const shouldProcessDeadlines = Date.now() >= nextDeadlineReminderAt;
       if (shouldProcessDeadlines) nextDeadlineReminderAt = Date.now() + deadlineReminderPollMs;
+      const shouldProcessQuizCloseReports = quizCloseReportEmailEnabled && Date.now() >= nextQuizCloseReportAt;
+      if (shouldProcessQuizCloseReports) nextQuizCloseReportAt = Date.now() + quizCloseReportPollMs;
       const [incomingResults, attendanceResults, calendarResults, announcementResults] = await Promise.all([
         processAvailableManagementSyncJobs({ workerId, limit: batchSize }),
         processAvailableManagementAttendanceDeliveries({ workerId, limit: batchSize }),
@@ -47,12 +53,19 @@ const main = async () => {
         processScheduledClassAnnouncements({ limit: batchSize }),
       ]);
       const deadlineResult = shouldProcessDeadlines ? await processAssignmentDeadlineReminders() : null;
+      const expiredQuizAttemptResult = await processExpiredQuizAttempts({ limit: Math.max(100, batchSize * 10) });
+      const quizCloseReportResult = shouldProcessQuizCloseReports
+        ? await processQuizCloseReports({ limit: batchSize })
+        : null;
       const results = [
         ...incomingResults,
         ...attendanceResults,
         ...calendarResults,
         ...announcementResults.filter((result) => result.delivered).map(() => ({ status: "announcements", count: 1 })),
         ...(deadlineResult?.notifications ? [{ status: "assignment_reminders", count: deadlineResult.notifications }] : []),
+        ...(expiredQuizAttemptResult?.submitted ? [{ status: "quiz_attempts_auto_submitted", count: expiredQuizAttemptResult.submitted }] : []),
+        ...(quizCloseReportResult?.delivered ? [{ status: "quiz_close_reports", count: quizCloseReportResult.delivered }] : []),
+        ...(quizCloseReportResult?.failed ? [{ status: "quiz_close_report_failures", count: quizCloseReportResult.failed }] : []),
       ];
       if (results.length > 0) {
         const summary = results.reduce((accumulator, result) => {

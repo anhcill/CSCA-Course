@@ -332,7 +332,7 @@ export const notifyHomeworkQuizPublished = async ({
 
     for (const profile of profiles) {
       try {
-        await emailSender({
+        const delivery = await emailSender({
           email: profile.email,
           username: profile.display_name || profile.username,
           homeworkKind: "quiz",
@@ -349,7 +349,8 @@ export const notifyHomeworkQuizPublished = async ({
           passingScore: quiz.passing_score ?? null,
           actionUrl,
         });
-        emailed += 1;
+        if (delivery?.success === true) emailed += 1;
+        else console.error(`[AssignmentDeadlineNotification] Homework quiz email rejected for ${profile.email}:`, delivery?.error || "unknown delivery error");
       } catch (emailErr) {
         console.error(`[AssignmentDeadlineNotification] Homework quiz email failed for ${profile.email}:`, emailErr.message);
       }

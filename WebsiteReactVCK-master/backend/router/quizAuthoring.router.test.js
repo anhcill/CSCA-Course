@@ -67,6 +67,12 @@ test("metadata normalization supports incomplete drafts and enforces publish tar
   const draft = normalizeQuizMetadata({ title: "Draft", items: [] });
   assert.equal(draft.status, "DRAFT");
   assert.equal(draft.courseId, null);
+  assert.equal(draft.attemptScorePolicy, "best");
+  assert.equal(normalizeQuizMetadata({ title: "Latest", attemptScorePolicy: "latest" }).attemptScorePolicy, "latest");
+  assert.throws(
+    () => normalizeQuizMetadata({ title: "Invalid policy", attemptScorePolicy: "average" }),
+    (error) => error.status === 400 && error.path === "attemptScorePolicy",
+  );
   assert.throws(
     () => normalizeQuizMetadata({ title: "Publish", status: "PUBLISHED" }, { requireComplete: true }),
     (error) => error.status === 400 && error.code === "VALIDATION_ERROR",

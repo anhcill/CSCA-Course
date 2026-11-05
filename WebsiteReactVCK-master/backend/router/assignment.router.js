@@ -41,8 +41,10 @@ import {
   parseQuizDescriptionMetadata,
   publicQuizQuestion,
 } from "../services/quizAttempt.service.js";
+import { buildQuizReportSnapshot } from "../services/quizCloseReport.service.js";
 
 const router = express.Router();
+const QUIZ_ATTEMPT_SCORE_POLICIES = new Set(["best", "latest", "first"]);
 
 const validationError = (res, message) => res.status(422).json({ success: false, message, errorCode: "VALIDATION_ERROR" });
 const notFound = (res, message) => res.status(404).json({ success: false, message, errorCode: "NOT_FOUND" });
@@ -488,7 +490,8 @@ router.get("/", protectRoute, async (req, res) => {
                 a.class_session_id, NULL::varchar AS activity_scope, assignment_session.title AS session_title,
                 assignment_session.start_time AS session_start, assignment_session.end_time AS session_end,
                  NULL::timestamptz AS available_from, NULL::timestamptz AS available_until, lc.title AS class_title,
-                 NULL::integer AS attempt_limit, NULL::bigint AS attempt_count, NULL::integer AS attempt_number,
+                 NULL::integer AS attempt_limit, NULL::varchar AS attempt_score_policy,
+                 NULL::bigint AS attempt_count, NULL::integer AS attempt_number,
                  (
                    CASE
                      WHEN a.live_class_id IS NOT NULL THEN (
@@ -549,6 +552,7 @@ router.get("/", protectRoute, async (req, res) => {
                 quiz_session.start_time AS session_start, quiz_session.end_time AS session_end,
                  q.available_from, q.available_until, quiz_lc.title AS class_title,
                  COALESCE(quiz_accommodation.attempt_limit_override, q.attempt_limit, 1)::integer AS attempt_limit,
+                 COALESCE(q.attempt_score_policy, 'best') AS attempt_score_policy,
                  COALESCE(quiz_attempt_stats.attempt_count, 0)::bigint AS attempt_count,
                  qa.attempt_number::integer AS attempt_number,
                  (
@@ -588,7 +592,13 @@ router.get("/", protectRoute, async (req, res) => {
             SELECT latest_attempt.*
             FROM quiz_attempts latest_attempt
             WHERE latest_attempt.quiz_id = q.id AND latest_attempt.user_id = $1
-            ORDER BY latest_attempt.attempt_number DESC, latest_attempt.id DESC
+            ORDER BY
+              CASE WHEN COALESCE(q.attempt_score_policy, 'best') = 'first' THEN latest_attempt.attempt_number END ASC,
+              CASE WHEN COALESCE(q.attempt_score_policy, 'best') = 'latest' THEN latest_attempt.attempt_number END DESC,
+              CASE WHEN COALESCE(q.attempt_score_policy, 'best') = 'best' AND latest_attempt.status = 'submitted' THEN 0 ELSE 1 END,
+              CASE WHEN COALESCE(q.attempt_score_policy, 'best') = 'best' THEN latest_attempt.score END DESC NULLS LAST,
+              latest_attempt.attempt_number DESC,
+              latest_attempt.id DESC
             LIMIT 1
           ) qa ON true
           LEFT JOIN LATERAL (
@@ -627,7 +637,7 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
     const params = req.user.role === "admin" ? [] : [req.user.id];
     const result = await query(
       `SELECT q.id, q.title, q.description, q.paper_file_id, q.solution_file_id, q.live_class_id, q.class_session_id, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score,
-              q.attempt_limit, q.available_from, q.available_until, q.review_policy,
+              q.attempt_limit, q.attempt_score_policy, q.available_from, q.available_until, q.review_policy,
               q.status, q.shuffle_questions, q.created_at,
               COALESCE(c.title, c.name) AS course_title,
               lc.title AS class_title, cs.title AS session_title, cs.start_time AS session_start, cs.end_time AS session_end,
@@ -657,7 +667,7 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
         sessionTitle: row.session_title || "Chưa gắn buổi học", sessionStart: row.session_start || null, sessionEnd: row.session_end || null,
         activityScope: row.activity_scope || "session", dueDate: row.due_date || null,
         availableFrom: row.available_from || null, availableUntil: row.available_until || null,
-        attemptLimit: Number(row.attempt_limit || 1), reviewPolicy: row.review_policy || "after_submit",
+        attemptLimit: Number(row.attempt_limit || 1), attemptScorePolicy: row.attempt_score_policy || "best", reviewPolicy: row.review_policy || "after_submit",
         hasPaper: Boolean(row.paper_file_id),
         hasSolution: Boolean(row.solution_file_id),
         solutionFileId: row.solution_file_id ? String(row.solution_file_id) : null,
@@ -731,10 +741,11 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
     const activityScope = req.body?.activityScope === undefined ? "session" : req.body.activityScope;
     const dueDate = req.body?.dueDate || null;
     const attemptLimit = Number(req.body?.attemptLimit ?? 1);
+    const attemptScorePolicy = String(req.body?.attemptScorePolicy || "best").trim().toLowerCase();
     const reviewPolicy = req.body?.reviewPolicy || "after_submit";
     const rawAvailableFrom = req.body?.availableFrom || null;
     const rawAvailableUntil = req.body?.availableUntil || null;
-    if (!title || title.length > 255 || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 240 || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100 || !Number.isInteger(attemptLimit) || attemptLimit < 1 || attemptLimit > 5 || !QUIZ_REVIEW_POLICIES.has(reviewPolicy)) return validationError(res, "Thông tin đề kiểm tra không hợp lệ");
+    if (!title || title.length > 255 || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 240 || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100 || !Number.isInteger(attemptLimit) || attemptLimit < 1 || attemptLimit > 5 || !QUIZ_ATTEMPT_SCORE_POLICIES.has(attemptScorePolicy) || !QUIZ_REVIEW_POLICIES.has(reviewPolicy)) return validationError(res, "Thông tin đề kiểm tra không hợp lệ");
     if (questions.length < 1 || questions.length > 200) return validationError(res, "Đề kiểm tra cần từ 1 đến 200 câu hỏi");
     if (!courseId) return validationError(res, "Quiz phải được gắn với một khóa học");
     if (!liveClassId || !classSessionId) return validationError(res, "Quiz phải được gắn với một lớp và một buổi học");
@@ -824,10 +835,10 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
       };
     });
     const quizResult = await client.query(
-      `INSERT INTO quizzes (title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id, attempt_limit, available_from, available_until, review_policy, solution_file_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-       RETURNING id, title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, solution_file_id, duration_minutes, passing_score, status, shuffle_questions, attempt_limit, available_from, available_until, review_policy, created_at`,
-      [title, description, courseId, liveClassId, classSessionId, activityScope, activityScope === "homework" ? dueDate : null, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id, attemptLimit, availableFrom.toISOString(), availableUntil.toISOString(), reviewPolicy, solutionFileId],
+      `INSERT INTO quizzes (title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, duration_minutes, passing_score, status, shuffle_questions, instructor_id, attempt_limit, attempt_score_policy, available_from, available_until, review_policy, solution_file_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+       RETURNING id, title, description, course_id, live_class_id, class_session_id, activity_scope, due_date, paper_file_id, solution_file_id, duration_minutes, passing_score, status, shuffle_questions, attempt_limit, attempt_score_policy, available_from, available_until, review_policy, created_at`,
+      [title, description, courseId, liveClassId, classSessionId, activityScope, activityScope === "homework" ? dueDate : null, paperFileId, durationMinutes, passingScore, status, req.body.shuffleQuestions !== false, req.user.id, attemptLimit, attemptScorePolicy, availableFrom.toISOString(), availableUntil.toISOString(), reviewPolicy, solutionFileId],
     );
     for (const question of normalizedQuestions) {
       await client.query(
@@ -836,7 +847,7 @@ router.post("/teacher/quizzes", protectRoute, requireTeacher, requirePermission(
         [quizResult.rows[0].id, question.text, question.type, JSON.stringify(question.options), question.correct ?? "", question.explanation, question.points, question.order],
       );
     }
-    await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.created", entityType: "quiz", entityId: quizResult.rows[0].id, afterState: quizResult.rows[0], metadata: { ip: req.ip, questionCount: normalizedQuestions.length, liveClassId, classSessionId, activityScope, attemptLimit, reviewPolicy } });
+    await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.created", entityType: "quiz", entityId: quizResult.rows[0].id, afterState: quizResult.rows[0], metadata: { ip: req.ip, questionCount: normalizedQuestions.length, liveClassId, classSessionId, activityScope, attemptLimit, attemptScorePolicy, reviewPolicy } });
     await client.query("COMMIT");
     if (status === "PUBLISHED") {
       await broadcastToClass({
@@ -904,6 +915,124 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
       ? (String(quizRow.class_instructor_id) === String(req.user.id) || await isAssignedTeacher(quizRow.live_class_id, req.user.id))
       : String(quizRow.instructor_id) === String(req.user.id));
     if (!canView) return forbidden(res, "Bạn không có quyền xem thống kê của đề kiểm tra này");
+
+    const snapshot = await buildQuizReportSnapshot({
+      db: { query },
+      quizId,
+      reportKind: "live",
+      includeInternal: req.user.role === "admin",
+    });
+    const snapshotStudents = snapshot.students.map((student) => {
+      const submitted = student.status === "graded" || student.status === "pending_grading";
+      return {
+        userId: String(student.userId),
+        username: student.name,
+        email: student.email,
+        avatarUrl: null,
+        fullName: student.name,
+        status: submitted ? "submitted" : student.status,
+        reportStatus: student.status,
+        attemptId: student.attemptId ? String(student.attemptId) : null,
+        score: student.score ?? null,
+        maxScore: student.maxScore ?? null,
+        scorePercentage: student.percentage ?? null,
+        passed: student.passed === true,
+        attemptNumber: Number(student.attemptNumber || 0),
+        totalAttempts: Number(student.totalAttempts || student.attemptNumber || 0),
+        startedAt: student.startedAt || null,
+        submittedAt: student.submittedAt || null,
+        hasEssay: Boolean(student.hasEssay || student.pendingEssay),
+        essayGrade: student.hasEssay && !student.pendingEssay ? { completed: true } : null,
+        pendingEssay: Boolean(student.pendingEssay),
+        autoSubmitted: Boolean(student.autoSubmitted),
+        durationSeconds: student.durationSeconds ?? null,
+      };
+    });
+    const percentages = snapshotStudents
+      .filter((student) => student.reportStatus === "graded")
+      .map((student) => Number(student.scorePercentage))
+      .filter(Number.isFinite);
+    const summary = snapshot.summary;
+    const latestDelivery = await query(
+      `SELECT report_kind, status, delivered_at,
+              COUNT(d.id)::int AS recipient_count,
+              COUNT(d.id) FILTER (WHERE d.status = 'sent')::int AS sent_count,
+              COUNT(d.id) FILTER (WHERE d.status = 'failed')::int AS failed_count
+       FROM quiz_close_reports r
+       LEFT JOIN quiz_close_report_deliveries d ON d.report_id = r.id
+       WHERE r.quiz_id = $1
+       GROUP BY r.id
+       ORDER BY r.created_at DESC, r.id DESC
+       LIMIT 1`,
+      [quizId],
+    ).catch(() => ({ rows: [] }));
+    const delivery = latestDelivery.rows[0] || null;
+    const snapshotDescriptionFields = parseQuizDescriptionMetadata(quizRow.description);
+    const snapshotIsClosed = Boolean(snapshot.report.closeAt && new Date(snapshot.report.closeAt).getTime() <= Date.now());
+    return res.json({
+      success: true,
+      data: {
+        quiz: {
+          id: String(quizRow.id),
+          title: quizRow.title,
+          description: snapshotDescriptionFields.description,
+          essayConfig: snapshotDescriptionFields.essayConfig,
+          courseTitle: quizRow.course_title || "Khóa học",
+          classTitle: snapshot.quiz.classTitle || quizRow.class_title || "Lớp học",
+          sessionTitle: snapshot.quiz.sessionTitle || quizRow.session_title || "Buổi học",
+          sessionStart: quizRow.session_start,
+          activityScope: quizRow.activity_scope,
+          dueDate: quizRow.due_date,
+          availableUntil: snapshot.report.closeAt,
+          isClosed: snapshotIsClosed,
+          durationMinutes: snapshot.quiz.durationMinutes,
+          passingScore: snapshot.quiz.passingScore,
+          questionCount: snapshot.questions.length,
+          attemptLimit: Number(quizRow.attempt_limit || 1),
+          attemptScorePolicy: snapshot.report.attemptScorePolicy || snapshot.report.attemptPolicy || "best",
+          status: quizRow.status,
+          createdAt: quizRow.created_at,
+        },
+        report: {
+          ...snapshot.report,
+          status: snapshotIsClosed ? (snapshot.report.provisional ? "provisional" : "final") : "live",
+          rosterMode: "live",
+          emailDelivery: delivery ? {
+            reportKind: delivery.report_kind,
+            status: delivery.status,
+            deliveredAt: delivery.delivered_at,
+            recipientCount: Number(delivery.recipient_count || 0),
+            sentCount: Number(delivery.sent_count || 0),
+            failedCount: Number(delivery.failed_count || 0),
+          } : null,
+        },
+        summary: {
+          totalStudents: summary.rosterTotal,
+          submittedCount: summary.submitted,
+          unsubmittedCount: summary.notStarted,
+          inProgressCount: summary.inProgress,
+          submissionRate: summary.rosterTotal > 0 ? Number(((summary.submitted / summary.rosterTotal) * 100).toFixed(1)) : 0,
+          fullyGradedCount: summary.fullyGraded,
+          pendingEssayCount: summary.pendingEssay,
+          avgScore: summary.averageScore,
+          maxScore: summary.maxScore,
+          minScore: summary.minScore,
+          passedCount: summary.passed,
+          failedCount: summary.failed,
+          autoSubmittedCount: summary.autoSubmitted,
+          averageDurationSeconds: summary.averageDurationSeconds,
+          distribution: {
+            excellent: percentages.filter((score) => score >= 80).length,
+            good: percentages.filter((score) => score >= 65 && score < 80).length,
+            average: percentages.filter((score) => score >= 50 && score < 65).length,
+            weak: percentages.filter((score) => score < 50).length,
+          },
+          scoreBands: summary.distribution,
+        },
+        questions: snapshot.questions,
+        students: snapshotStudents,
+      },
+    });
 
     let students = [];
     const visibleStudent = req.user.role === "admin" ? "TRUE" : "COALESCE(u.is_internal_test_account, FALSE) = FALSE";

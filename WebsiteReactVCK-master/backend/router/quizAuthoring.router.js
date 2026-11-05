@@ -26,6 +26,7 @@ import { documentExtractionLooksAnomalous, extractQuizDocumentVisionStructured, 
 const MAX_OCR_IMAGE_SIZE = 8 * 1024 * 1024;
 const OCR_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const REVIEW_POLICIES = new Set(["after_submit", "after_close", "never"]);
+const ATTEMPT_SCORE_POLICIES = new Set(["best", "latest", "first"]);
 const ACTIVITY_SCOPES = new Set(["session", "homework"]);
 const QUIZ_STATUSES = new Set(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 
@@ -85,6 +86,7 @@ const metadataFromRow = (row) => ({
   durationMinutes: row.duration_minutes,
   passingScore: row.passing_score,
   attemptLimit: row.attempt_limit,
+  attemptScorePolicy: row.attempt_score_policy,
   availableFrom: row.available_from,
   availableUntil: row.available_until,
   dueDate: row.due_date,
@@ -101,8 +103,10 @@ export const normalizeQuizMetadata = (payload, {
   const source = { ...metadataFromRow(existing), ...(payload || {}) };
   const activityScope = String(source.activityScope || "session").trim();
   const reviewPolicy = String(source.reviewPolicy || "after_submit").trim();
+  const attemptScorePolicy = String(source.attemptScorePolicy || "best").trim().toLowerCase();
   if (!ACTIVITY_SCOPES.has(activityScope)) throw httpError(400, "VALIDATION_ERROR", "activityScope không hợp lệ", { path: "activityScope" });
   if (!REVIEW_POLICIES.has(reviewPolicy)) throw httpError(400, "VALIDATION_ERROR", "reviewPolicy không hợp lệ", { path: "reviewPolicy" });
+  if (!ATTEMPT_SCORE_POLICIES.has(attemptScorePolicy)) throw httpError(400, "VALIDATION_ERROR", "attemptScorePolicy không hợp lệ", { path: "attemptScorePolicy" });
 
   const courseId = parsePositiveId(source.courseId, "courseId", { optional: true });
   const liveClassId = parsePositiveId(source.liveClassId, "liveClassId", { optional: true });
@@ -145,6 +149,7 @@ export const normalizeQuizMetadata = (payload, {
     durationMinutes: finiteNumber(source.durationMinutes, 30, "durationMinutes", { min: 1, max: 240, integer: true }),
     passingScore: finiteNumber(source.passingScore, 60, "passingScore", { min: 0, max: 100 }),
     attemptLimit: finiteNumber(source.attemptLimit, 1, "attemptLimit", { min: 1, max: 5, integer: true }),
+    attemptScorePolicy,
     availableFrom,
     availableUntil,
     dueDate,
@@ -168,6 +173,7 @@ const serializeQuiz = (row, items = undefined) => ({
   durationMinutes: Number(row.duration_minutes || 0),
   passingScore: Number(row.passing_score || 0),
   attemptLimit: Number(row.attempt_limit || 1),
+  attemptScorePolicy: row.attempt_score_policy || "best",
   availableFrom: row.available_from || null,
   availableUntil: row.available_until || null,
   dueDate: row.due_date || null,
@@ -314,6 +320,7 @@ const attemptProtectedMetadataChanged = (before, after) => [
   [Number(before.duration_minutes), after.durationMinutes],
   [Number(before.passing_score), after.passingScore],
   [Number(before.attempt_limit), after.attemptLimit],
+  [before.attempt_score_policy || "best", after.attemptScorePolicy],
   [before.review_policy, after.reviewPolicy],
   [Boolean(before.shuffle_questions), after.shuffleQuestions],
   [before.available_from ? new Date(before.available_from).toISOString() : null, after.availableFrom?.toISOString() || null],
@@ -507,14 +514,14 @@ export const createQuizAuthoringRouter = ({
         `INSERT INTO quizzes
          (title, description, course_id, live_class_id, class_session_id, activity_scope, due_date,
           duration_minutes, passing_score, status, shuffle_questions, instructor_id, attempt_limit,
-          available_from, available_until, review_policy)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+          available_from, available_until, review_policy, attempt_score_policy)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          RETURNING *`,
         [scheduled.title, scheduled.description, scheduled.courseId, scheduled.liveClassId, scheduled.classSessionId,
           scheduled.activityScope, scheduled.dueDate?.toISOString() || null, scheduled.durationMinutes,
           scheduled.passingScore, requestedStatus, scheduled.shuffleQuestions, req.user.id, scheduled.attemptLimit,
           scheduled.availableFrom?.toISOString() || null, scheduled.availableUntil?.toISOString() || null,
-          scheduled.reviewPolicy],
+          scheduled.reviewPolicy, scheduled.attemptScorePolicy],
       );
       await replaceItems(client, result.rows[0].id, rawItems, { allowIncomplete: requestedStatus === "DRAFT" });
       await recordAuditEvent({
@@ -590,13 +597,14 @@ export const createQuizAuthoringRouter = ({
       const result = await client.query(
         `UPDATE quizzes SET title=$1, description=$2, course_id=$3, live_class_id=$4, class_session_id=$5,
          activity_scope=$6, due_date=$7, duration_minutes=$8, passing_score=$9, shuffle_questions=$10,
-         attempt_limit=$11, available_from=$12, available_until=$13, review_policy=$14, updated_at=NOW()
-         WHERE id=$15 RETURNING *`,
+         attempt_limit=$11, available_from=$12, available_until=$13, review_policy=$14,
+         attempt_score_policy=$15, updated_at=NOW()
+         WHERE id=$16 RETURNING *`,
         [scheduled.title, scheduled.description, scheduled.courseId, scheduled.liveClassId, scheduled.classSessionId,
           scheduled.activityScope, scheduled.dueDate?.toISOString() || null, scheduled.durationMinutes,
           scheduled.passingScore, scheduled.shuffleQuestions, scheduled.attemptLimit,
           scheduled.availableFrom?.toISOString() || null, scheduled.availableUntil?.toISOString() || null,
-          scheduled.reviewPolicy, quizId],
+          scheduled.reviewPolicy, scheduled.attemptScorePolicy, quizId],
       );
       await recordAuditEvent({ db: client, actorId: req.user.id, action: "quiz.updated", entityType: "quiz", entityId: quizId, beforeState: quiz, afterState: result.rows[0], metadata: { ip: req.ip } });
       await client.query("COMMIT");

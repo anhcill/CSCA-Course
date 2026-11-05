@@ -649,6 +649,131 @@ export const sendHomeworkAssignedEmail = async ({
   });
 };
 
+const formatQuizReportNumber = (value, suffix = "") => {
+  if (value === null || value === undefined || value === "") return "—";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return `${Number.isInteger(number) ? number : number.toFixed(1)}${suffix}`;
+};
+
+const formatQuizReportDuration = (seconds) => {
+  const totalSeconds = Number(seconds);
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "—";
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = Math.round(totalSeconds % 60);
+  return minutes > 0 ? `${minutes} phút ${remainingSeconds} giây` : `${remainingSeconds} giây`;
+};
+
+/**
+ * 8. Gửi báo cáo tổng thể khi quiz đóng hoặc sau khi chấm xong phần tự luận.
+ */
+export const sendQuizClosedReportEmail = async ({
+  email,
+  username,
+  report,
+  reportKind,
+  quizId,
+  recipientRole,
+}) => {
+  const snapshot = report || {};
+  const quiz = snapshot.quiz || {};
+  const summary = snapshot.summary || {};
+  const students = Array.isArray(snapshot.students) ? snapshot.students : [];
+  const questions = Array.isArray(snapshot.questions) ? snapshot.questions : [];
+  const provisional = Boolean(snapshot.report?.provisional || reportKind === "provisional");
+  const reportLabel = provisional ? "Báo cáo tạm thời" : "Báo cáo hoàn tất";
+  const safeQuizTitle = quiz.title || `Quiz #${quizId || quiz.id || ""}`;
+  const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+  const reportBasePath = recipientRole === "admin" ? "/admin/quizzes" : "/lms/teacher/quizzes";
+  const reportUrl = `${frontendUrl}${reportBasePath}?reportQuizId=${encodeURIComponent(quizId || quiz.id || "")}`;
+  const missingStudents = students.filter((student) => student.status === "not_started");
+  const weakestQuestions = questions
+    .filter((question) => Number.isFinite(Number(question.correctRate)) && Number(question.submitted || 0) > 0)
+    .sort((a, b) => Number(a.correctRate) - Number(b.correctRate))
+    .slice(0, 5);
+
+  const metricRows = [
+    ["Sĩ số", formatQuizReportNumber(summary.rosterTotal)],
+    ["Đã nộp", `${formatQuizReportNumber(summary.submitted)} (${formatQuizReportNumber(summary.rosterTotal > 0 ? (Number(summary.submitted || 0) / Number(summary.rosterTotal)) * 100 : 0, "%")})`],
+    ["Đã chấm hoàn tất", formatQuizReportNumber(summary.fullyGraded)],
+    ["Chờ chấm tự luận", formatQuizReportNumber(summary.pendingEssay)],
+    ["Điểm trung bình", formatQuizReportNumber(summary.averageScore, "%")],
+    ["Cao nhất / thấp nhất", `${formatQuizReportNumber(summary.maxScore, "%")} / ${formatQuizReportNumber(summary.minScore, "%")}`],
+    ["Đạt / chưa đạt", `${formatQuizReportNumber(summary.passed)} / ${formatQuizReportNumber(summary.failed)}`],
+    ["Tự động nộp", formatQuizReportNumber(summary.autoSubmitted)],
+    ["Thời gian làm trung bình", formatQuizReportDuration(summary.averageDurationSeconds)],
+  ];
+
+  const metricsHtml = metricRows.map(([label, value]) => `
+    <tr>
+      <td style="padding: 9px 10px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 13px;">${escapeEmailHtml(label)}</td>
+      <td style="padding: 9px 10px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 13px; font-weight: 800; text-align: right;">${escapeEmailHtml(value)}</td>
+    </tr>`).join("");
+
+  const weakestQuestionsHtml = weakestQuestions.length > 0
+    ? `<div style="margin: 22px 0;">
+        <h3 style="margin: 0 0 10px; font-size: 14px; color: #0f172a;">Các câu cần ôn lại</h3>
+        <ol style="margin: 0; padding-left: 22px; color: #475569; font-size: 13px; line-height: 1.7;">
+          ${weakestQuestions.map((question) => `<li><strong>Câu ${escapeEmailHtml(question.position || question.questionId || "")}</strong>: ${escapeEmailHtml(String(question.text || "").slice(0, 120))} — đúng ${formatQuizReportNumber(question.correctRate, "%")}</li>`).join("")}
+        </ol>
+      </div>`
+    : "";
+
+  const missingStudentsHtml = missingStudents.length > 0
+    ? `<div style="margin: 22px 0; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 14px 16px;">
+        <h3 style="margin: 0 0 8px; font-size: 14px; color: #9a3412;">Học viên chưa bắt đầu (${missingStudents.length})</h3>
+        <p style="margin: 0; color: #7c2d12; font-size: 13px; line-height: 1.7;">${missingStudents.map((student) => escapeEmailHtml(student.name || student.email || student.userId)).join(", ")}</p>
+      </div>`
+    : "";
+
+  const bodyContent = `
+    <p style="font-size: 15px; margin-top: 0;">Xin chào <strong>${escapeEmailHtml(username || "giảng viên")}</strong>,</p>
+    <p style="font-size: 14px; color: #475569; line-height: 1.7;">
+      Quiz <strong>${escapeEmailHtml(safeQuizTitle)}</strong>${quiz.classTitle ? ` của lớp <strong>${escapeEmailHtml(quiz.classTitle)}</strong>` : ""} đã đến thời điểm tổng hợp kết quả.
+      ${provisional ? "Báo cáo này đang tạm thời vì vẫn còn bài tự luận chờ chấm; hệ thống sẽ gửi bản hoàn tất sau khi chấm xong." : "Kết quả trong báo cáo đã hoàn tất theo dữ liệu chấm bài hiện tại."}
+    </p>
+
+    <div style="margin: 20px 0; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden;">
+      <div style="background: ${provisional ? "#fffbeb" : "#ecfdf5"}; padding: 12px 14px; color: ${provisional ? "#92400e" : "#065f46"}; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;">
+        ${escapeEmailHtml(reportLabel)}${quiz.sessionTitle ? ` · ${escapeEmailHtml(quiz.sessionTitle)}` : ""}
+      </div>
+      <table role="presentation" style="width: 100%; border-collapse: collapse;">${metricsHtml}</table>
+    </div>
+
+    ${weakestQuestionsHtml}
+    ${missingStudentsHtml}
+
+    <div style="text-align: center; margin: 26px 0 10px;">
+      <a href="${escapeEmailHtml(reportUrl)}" class="btn">Mở Báo Cáo Chi Tiết →</a>
+    </div>
+  `;
+
+  const textContent = [
+    `${reportLabel}: ${safeQuizTitle}`,
+    quiz.classTitle ? `Lớp: ${quiz.classTitle}` : null,
+    `Đã nộp: ${summary.submitted || 0}/${summary.rosterTotal || 0}`,
+    `Đã chấm hoàn tất: ${summary.fullyGraded || 0}`,
+    `Chờ chấm tự luận: ${summary.pendingEssay || 0}`,
+    `Điểm trung bình: ${formatQuizReportNumber(summary.averageScore, "%")}`,
+    `Đạt / chưa đạt: ${summary.passed || 0}/${summary.failed || 0}`,
+    `Tự động nộp: ${summary.autoSubmitted || 0}`,
+    `Xem chi tiết: ${reportUrl}`,
+  ].filter(Boolean).join("\n");
+
+  return sendBrevoEmail({
+    to: email,
+    toName: username,
+    subject: `[Moly Course] ${reportLabel} quiz: ${safeQuizTitle}${quiz.classTitle ? ` - ${quiz.classTitle}` : ""}`,
+    htmlContent: createBaseEmailHtml({
+      title: `${reportLabel} Quiz`,
+      preheader: `${safeQuizTitle}: ${summary.submitted || 0}/${summary.rosterTotal || 0} học viên đã nộp`,
+      bodyContent,
+      showSecurityNote: false,
+    }),
+    textContent,
+  });
+};
+
 export default {
   sendBrevoEmail,
   sendSignupOtpEmail,
@@ -658,4 +783,5 @@ export default {
   sendNotificationEmail,
   sendCourseEnrollmentEmail,
   sendHomeworkAssignedEmail,
+  sendQuizClosedReportEmail,
 };

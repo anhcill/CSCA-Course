@@ -5,7 +5,7 @@ import {
   notifyAssignmentPublished,
   notifyHomeworkQuizPublished,
 } from "./assignmentDeadlineNotification.service.js";
-import { sendHomeworkAssignedEmail } from "./brevoEmail.service.js";
+import { sendHomeworkAssignedEmail, sendQuizClosedReportEmail } from "./brevoEmail.service.js";
 
 const now = Date.parse("2026-09-26T10:00:00.000Z");
 
@@ -128,7 +128,10 @@ test("notifyHomeworkQuizPublished sends email ONLY for homework quizzes and skip
     quizId: 77,
     actorId: 1,
     db: createQuizDb("session"),
-    emailSender: async (payload) => sentEmails.push(payload),
+    emailSender: async (payload) => {
+      sentEmails.push(payload);
+      return { success: true };
+    },
   });
   assert.equal(sessionResult.skipped, true);
   assert.equal(sessionResult.emailed, 0);
@@ -139,7 +142,10 @@ test("notifyHomeworkQuizPublished sends email ONLY for homework quizzes and skip
     quizId: 77,
     actorId: 1,
     db: createQuizDb("homework"),
-    emailSender: async (payload) => sentEmails.push(payload),
+    emailSender: async (payload) => {
+      sentEmails.push(payload);
+      return { success: true };
+    },
   });
   assert.equal(homeworkResult.skipped, false);
   assert.equal(homeworkResult.emailed, 2);
@@ -153,6 +159,14 @@ test("notifyHomeworkQuizPublished sends email ONLY for homework quizzes and skip
   assert.match(sentEmails[0].actionUrl, /\/lms\/quiz\/77$/);
   assert.equal(sentEmails[1].email, "test-account@example.com");
   assert.equal(sentEmails[1].username, "Tài khoản Test");
+
+  const rejectedResult = await notifyHomeworkQuizPublished({
+    quizId: 77,
+    actorId: 1,
+    db: createQuizDb("homework"),
+    emailSender: async () => ({ success: false, error: "provider rejected" }),
+  });
+  assert.equal(rejectedResult.emailed, 0);
 });
 
 test("sendHomeworkAssignedEmail runs in sandbox mode when BREVO_API_KEY is unset", async () => {
@@ -175,6 +189,43 @@ test("sendHomeworkAssignedEmail runs in sandbox mode when BREVO_API_KEY is unset
       attemptLimit: 2,
       passingScore: 60,
       actionUrl: "https://www.molycourse.online/lms/quiz/99",
+    });
+    assert.equal(res.success, true);
+    assert.equal(res.mock, true);
+  } finally {
+    if (prevKey === undefined) delete process.env.BREVO_API_KEY;
+    else process.env.BREVO_API_KEY = prevKey;
+  }
+});
+
+test("sendQuizClosedReportEmail renders a provisional report in sandbox mode", async () => {
+  const prevKey = process.env.BREVO_API_KEY;
+  process.env.BREVO_API_KEY = "";
+  try {
+    const res = await sendQuizClosedReportEmail({
+      email: "teacher@example.com",
+      username: "Giảng viên A",
+      quizId: 99,
+      reportKind: "provisional",
+      report: {
+        report: { provisional: true },
+        quiz: { id: "99", title: "Quiz đường thẳng", classTitle: "Toán 01" },
+        summary: {
+          rosterTotal: 20,
+          submitted: 18,
+          fullyGraded: 15,
+          pendingEssay: 3,
+          passed: 12,
+          failed: 3,
+          averageScore: 74.5,
+          minScore: 40,
+          maxScore: 100,
+          autoSubmitted: 2,
+          averageDurationSeconds: 1320,
+        },
+        students: [{ userId: "1", name: "Học viên chưa làm", status: "not_started" }],
+        questions: [{ questionId: "2", position: 2, text: "Phương trình đường thẳng", submitted: 18, correctRate: 38.9 }],
+      },
     });
     assert.equal(res.success, true);
     assert.equal(res.mock, true);
