@@ -245,12 +245,12 @@ html:not(.dark) div.bg-white:not(button):not(a):not(input):not(select):not(texta
 
 /* 6. Hero Banners & Hộp thông tin Gradient (Admin, Giáo viên, Học viên) */
 /* Hòa âm với bức tranh Claude Monet (Impression, Sunrise): sắc xanh biển sâu (Maritime Navy) dịu mắt */
-html:not(.dark) [class*="bg-gradient-to-"][class*="from-blue-600"],
-html:not(.dark) [class*="bg-gradient-to-"][class*="from-indigo-"],
-html:not(.dark) [class*="bg-gradient-to-"][class*="from-slate-900"],
-html:not(.dark) [class*="bg-gradient-to-"][class*="from-slate-950"],
-html:not(.dark) [class*="from-blue-600"][class*="to-indigo-800"],
-html:not(.dark) [class*="from-blue-600"][class*="to-violet-600"] {
+html:not(.dark) [class*="bg-gradient-to-"][class~="from-blue-600"]:not([class*="dark:from-"]),
+html:not(.dark) [class*="bg-gradient-to-"][class*="from-indigo-"]:not([class*="dark:from-"]),
+html:not(.dark) [class*="bg-gradient-to-"][class~="from-slate-900"]:not([class*="dark:from-"]),
+html:not(.dark) [class*="bg-gradient-to-"][class~="from-slate-950"]:not([class*="dark:from-"]),
+html:not(.dark) [class~="from-blue-600"][class~="to-indigo-800"]:not([class*="dark:from-"]),
+html:not(.dark) [class~="from-blue-600"][class~="to-violet-600"]:not([class*="dark:from-"]) {
   background-image: linear-gradient(135deg, #163e59 0%, #1e5277 50%, #296d96 100%) !important;
   border-color: rgba(148, 196, 228, 0.6) !important;
   color: #ffffff !important;
@@ -258,21 +258,21 @@ html:not(.dark) [class*="from-blue-600"][class*="to-violet-600"] {
 }
 
 /* Chữ trong Hero Banner tối màu: trắng sáng rõ ràng */
-html:not(.dark) [class*="from-indigo-"] h1,
-html:not(.dark) [class*="from-indigo-"] h2,
-html:not(.dark) [class*="from-indigo-"] h3,
-html:not(.dark) [class*="from-slate-900"] h1,
-html:not(.dark) [class*="from-slate-900"] h2,
-html:not(.dark) [class*="from-slate-900"] h3,
-html:not(.dark) [class*="from-slate-950"] h1,
-html:not(.dark) [class*="from-slate-950"] h2,
-html:not(.dark) [class*="from-slate-950"] h3 {
+html:not(.dark) [class*="from-indigo-"]:not([class*="dark:from-"]) h1,
+html:not(.dark) [class*="from-indigo-"]:not([class*="dark:from-"]) h2,
+html:not(.dark) [class*="from-indigo-"]:not([class*="dark:from-"]) h3,
+html:not(.dark) [class~="from-slate-900"]:not([class*="dark:from-"]) h1,
+html:not(.dark) [class~="from-slate-900"]:not([class*="dark:from-"]) h2,
+html:not(.dark) [class~="from-slate-900"]:not([class*="dark:from-"]) h3,
+html:not(.dark) [class~="from-slate-950"]:not([class*="dark:from-"]) h1,
+html:not(.dark) [class~="from-slate-950"]:not([class*="dark:from-"]) h2,
+html:not(.dark) [class~="from-slate-950"]:not([class*="dark:from-"]) h3 {
   color: #ffffff !important;
 }
 
-html:not(.dark) [class*="from-indigo-"] p,
-html:not(.dark) [class*="from-slate-900"] p,
-html:not(.dark) [class*="from-slate-950"] p {
+html:not(.dark) [class*="from-indigo-"]:not([class*="dark:from-"]) p,
+html:not(.dark) [class~="from-slate-900"]:not([class*="dark:from-"]) p,
+html:not(.dark) [class~="from-slate-950"]:not([class*="dark:from-"]) p {
   color: #d1e7f6 !important;
 }
 
@@ -367,19 +367,19 @@ html:not(.dark) [class~="bg-white"]:is(button, a):not([class*="bg-gradient-"] *)
 }
 
 /* 8.2. Nút bấm phụ (Secondary / Gray / Slate-100): Làm mới, Hủy, Xem thêm... */
-html:not(.dark) button[class*="bg-slate-100"],
-html:not(.dark) button[class*="bg-gray-100"],
-html:not(.dark) a[class*="bg-slate-100"],
-html:not(.dark) a[class*="bg-gray-100"],
+html:not(.dark) button[class~="bg-slate-100"]:not([class*="bg-white"]):not([class*="bg-[#"]),
+html:not(.dark) button[class~="bg-gray-100"]:not([class*="bg-white"]):not([class*="bg-[#"]),
+html:not(.dark) a[class~="bg-slate-100"]:not([class*="bg-white"]):not([class*="bg-[#"]),
+html:not(.dark) a[class~="bg-gray-100"]:not([class*="bg-white"]):not([class*="bg-[#"]),
 html:not(.dark) .btn-secondary {
   background-color: rgba(214, 235, 250, 0.9) !important;
   color: #142f42 !important;
   border: 1px solid rgba(158, 202, 230, 0.7) !important;
 }
-html:not(.dark) button[class*="bg-slate-100"]:hover,
-html:not(.dark) button[class*="bg-gray-100"]:hover,
-html:not(.dark) a[class*="bg-slate-100"]:hover,
-html:not(.dark) a[class*="bg-gray-100"]:hover,
+html:not(.dark) button[class~="bg-slate-100"]:not([class*="bg-white"]):not([class*="bg-[#"]):hover,
+html:not(.dark) button[class~="bg-gray-100"]:not([class*="bg-white"]):not([class*="bg-[#"]):hover,
+html:not(.dark) a[class~="bg-slate-100"]:not([class*="bg-white"]):not([class*="bg-[#"]):hover,
+html:not(.dark) a[class~="bg-gray-100"]:not([class*="bg-white"]):not([class*="bg-[#"]):hover,
 html:not(.dark) .btn-secondary:hover {
   background-color: rgba(188, 222, 245, 0.95) !important;
   border-color: #2b76a4 !important;
@@ -387,15 +387,19 @@ html:not(.dark) .btn-secondary:hover {
 }
 
 /* 8.3. Nút bấm đen/slate-900 trong Admin (Làm mới danh sách, Filter "ALL"...) -> Xanh Navy Monet đồng bộ */
-html:not(.dark) button[class*="bg-slate-900"],
-html:not(.dark) a[class*="bg-slate-900"] {
+html:not(.dark) button[class~="bg-slate-900"]:not([class*="bg-white"]):not([class*="bg-[#"]):not([class*="teacher-"]),
+html:not(.dark) button[class~="bg-slate-950"]:not([class*="bg-white"]):not([class*="bg-[#"]):not([class*="teacher-"]),
+html:not(.dark) a[class~="bg-slate-900"]:not([class*="bg-white"]):not([class*="bg-[#"]):not([class*="teacher-"]),
+html:not(.dark) a[class~="bg-slate-950"]:not([class*="bg-white"]):not([class*="bg-[#"]):not([class*="teacher-"]) {
   background-color: #1b4965 !important;
   color: #ffffff !important;
   border-color: #163e59 !important;
   box-shadow: 0 4px 12px rgba(27, 73, 101, 0.25) !important;
 }
-html:not(.dark) button[class*="bg-slate-900"]:hover,
-html:not(.dark) a[class*="bg-slate-900"]:hover {
+html:not(.dark) button[class~="bg-slate-900"]:not([class*="bg-white"]):not([class*="bg-[#"]):not([class*="teacher-"]):hover,
+html:not(.dark) button[class~="bg-slate-950"]:not([class*="bg-white"]):not([class*="bg-[#"]):not([class*="teacher-"]):hover,
+html:not(.dark) a[class~="bg-slate-900"]:not([class*="bg-white"]):not([class*="bg-[#"]):not([class*="teacher-"]):hover,
+html:not(.dark) a[class~="bg-slate-950"]:not([class*="bg-white"]):not([class*="bg-[#"]):not([class*="teacher-"]):hover {
   background-color: #14384d !important;
 }
 
@@ -416,9 +420,9 @@ html:not(.dark) aside a[class*="bg-emerald-600"] [class*="bg-white/"] {
 }
 
 /* 9. Các ô tiêu đề cột, ngày trong tuần, header bảng theo sắc xanh biển nhạt */
-html:not(.dark) [class*="bg-slate-50"]:not(button):not(a),
-html:not(.dark) [class*="bg-gray-50"]:not(button):not(a),
-html:not(.dark) [class*="bg-slate-100"]:not(button):not(a) {
+html:not(.dark) [class~="bg-slate-50"]:not(button):not(a):not([class*="dark:bg-slate-50"]),
+html:not(.dark) [class~="bg-gray-50"]:not(button):not(a):not([class*="dark:bg-gray-50"]),
+html:not(.dark) [class~="bg-slate-100"]:not(button):not(a):not([class*="dark:bg-slate-100"]) {
   background-color: rgba(214, 235, 250, 0.85) !important;
 }
 
@@ -515,6 +519,23 @@ html:not(.dark) .teacher-lms--dashboard .teacher-profile-trigger {
   background-color: rgba(217, 239, 255, 0.9) !important;
   border-color: rgba(255, 255, 255, 0.92) !important;
   color: #102f63 !important;
+}
+
+/* Thẻ thống kê KPI của Giảng viên - Nền trắng kính mờ / viền xanh nhẹ nhàng đồng bộ phong cách học viên */
+html:not(.dark) .teacher-stat-card {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.82) !important;
+  color: inherit !important;
+  box-shadow: 0 8px 25px rgba(32, 78, 120, 0.06) !important;
+}
+html:not(.dark) .teacher-stat-card:hover {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  border-color: #7dd3fc !important;
+  box-shadow: 0 12px 28px rgba(32, 78, 120, 0.12) !important;
+}
+.dark .teacher-stat-card {
+  background-color: rgba(15, 23, 42, 0.9) !important;
+  border-color: #1e293b !important;
 }
 
 html:not(.dark) .student-lms--dashboard > aside {

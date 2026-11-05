@@ -200,7 +200,7 @@ export default function TeacherHubPage() {
               <Link
                 key={item.label}
                 to={item.to}
-                className="group flex items-center gap-3 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-3.5 shadow-[0_8px_25px_rgba(32,78,120,0.06)] dark:shadow-none backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-sky-300 dark:hover:border-slate-700"
+                className="teacher-stat-card group flex items-center gap-3 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-3.5 shadow-[0_8px_25px_rgba(32,78,120,0.06)] dark:shadow-none backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-sky-300 dark:hover:border-slate-700"
               >
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.iconStyle} shadow-2xs`}>
                   <Icon className="h-5 w-5" />
