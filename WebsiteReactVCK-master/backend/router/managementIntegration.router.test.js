@@ -91,6 +91,37 @@ test("student provisioning preserves login locks and separates student from teac
     { is_locked: true, external_student_id: "legacy-party" });
 
   await db.query("INSERT INTO users(username,email,role,is_locked,is_management_managed,lms_account_status,external_student_id,management_party_id) VALUES ('teacher-student','teacher@example.test','creator',FALSE,TRUE,'active','teacher-party','teacher-party')");
+  const teacherId = (await db.query("SELECT id FROM users WHERE email='teacher@example.test'")).rows[0].id;
+  const updateSettlement = router.stack.find((layer) => layer.route?.path === "/payroll/teacher-settlements/update").route.stack.at(-1).handle;
+  const settlementBody = {
+    teacherLmsId: teacherId,
+    period: "all",
+    bonusAmount: 125000,
+    deductionAmount: 25000,
+    paymentStatus: "processing",
+    notes: "Updated from InternalManagement",
+  };
+  const settlementResponse = {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; return this; },
+  };
+  await updateSettlement({
+    body: settlementBody,
+    rawBody: JSON.stringify(settlementBody),
+    managementIntegration: { idempotencyKey: "settlement-update", correlationId: "settlement-update" },
+  }, settlementResponse);
+  assert.equal(settlementResponse.statusCode, 200, JSON.stringify(settlementResponse.body));
+  assert.deepEqual((await db.query(
+    "SELECT bonus_amount::float8 AS bonus_amount, deduction_amount::float8 AS deduction_amount, payment_status, notes FROM teacher_salary_settlements WHERE teacher_id=$1 AND period='all'",
+    [teacherId],
+  )).rows[0], {
+    bonus_amount: 125000,
+    deduction_amount: 25000,
+    payment_status: "processing",
+    notes: "Updated from InternalManagement",
+  });
   response = await invoke(payload("teacher-party", "teacher@example.test", "Active"), "teacher-conflict");
   assert.equal(response.statusCode, 409);
   assert.equal(response.body.errorCode, "STUDENT_TEACHER_IDENTITY_CONFLICT");

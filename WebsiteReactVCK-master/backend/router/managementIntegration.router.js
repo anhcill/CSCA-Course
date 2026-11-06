@@ -4,7 +4,7 @@ import express from "express";
 import { getClient, query } from "../db/connect.js";
 import requireManagementIntegration from "../middleware/requireManagementIntegration.js";
 import { enqueueManagementEvent, parseManagementEvent, SyncValidationError } from "../services/managementSync.service.js";
-import { getManagementPayrollReport } from "../services/salary.service.js";
+import { getManagementPayrollReport, updateTeacherSalarySettlement } from "../services/salary.service.js";
 
 const router = express.Router();
 
@@ -119,6 +119,60 @@ router.post("/payroll/teacher-costs/query", requireManagementIntegration, async 
   } catch (error) {
     console.error("Management payroll report error:", error.message);
     return res.status(500).json(errorBody("Không thể đọc dữ liệu payroll từ LMS", "INTERNAL_ERROR"));
+  }
+});
+
+const parsePayrollSettlement = (body) => {
+  if (!isPlainObject(body)) return null;
+  const teacherLmsId = Number(body.teacherLmsId);
+  const period = body.period === undefined || body.period === null || body.period === ""
+    ? "all" : normalizedText(body.period, 40);
+  const bonusAmount = Number(body.bonusAmount ?? 0);
+  const deductionAmount = Number(body.deductionAmount ?? 0);
+  const paymentStatus = normalizedText(body.paymentStatus ?? "pending", 40)?.toLowerCase();
+  const notes = body.notes === undefined || body.notes === null ? "" : String(body.notes).trim();
+  const paidAt = body.paidAt === undefined || body.paidAt === null || body.paidAt === ""
+    ? null : parseDate(body.paidAt);
+  if (!Number.isSafeInteger(teacherLmsId) || teacherLmsId <= 0 || !period
+    || !Number.isFinite(bonusAmount) || bonusAmount < 0
+    || !Number.isFinite(deductionAmount) || deductionAmount < 0
+    || !["pending", "processing", "paid", "hold"].includes(paymentStatus)
+    || notes.length > 2000
+    || (body.paidAt !== undefined && body.paidAt !== null && body.paidAt !== "" && !paidAt)) return null;
+  return { teacherLmsId, period, bonusAmount, deductionAmount, paymentStatus, notes, paidAt };
+};
+
+// Finance administrators can update the same settlement record used by the LMS
+// salary screen. InternalManagement re-queries payroll immediately afterwards.
+router.post("/payroll/teacher-settlements/update", requireManagementIntegration, async (req, res) => {
+  const settlement = parsePayrollSettlement(req.body);
+  if (!settlement) return validationError(res, "Dữ liệu quyết toán lương giáo viên không hợp lệ");
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    const updated = await updateTeacherSalarySettlement({
+      teacherId: settlement.teacherLmsId,
+      period: settlement.period,
+      bonusAmount: settlement.bonusAmount,
+      deductionAmount: settlement.deductionAmount,
+      paymentStatus: settlement.paymentStatus,
+      notes: settlement.notes,
+      paidAt: settlement.paidAt,
+      actorId: null,
+      db: client,
+    });
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      correlationId: req.managementIntegration.correlationId,
+      data: updated,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Management payroll settlement update error:", error.message);
+    return res.status(500).json(errorBody("Không thể cập nhật quyết toán lương trên LMS", "INTERNAL_ERROR"));
+  } finally {
+    client.release();
   }
 });
 
