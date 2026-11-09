@@ -24,9 +24,17 @@ const TONES = [
   { bar: "bg-rose-500", badge: "bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-800/60", button: "bg-rose-500 hover:bg-rose-600" },
 ];
 
-const getProgress = (course) => {
-  const value = Number(course?.progress_percent ?? course?.progressPercent ?? 0);
-  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+const getProgress = (item) => {
+  if (item?.progress_percent != null || item?.progressPercent != null) {
+    const value = Number(item?.progress_percent ?? item?.progressPercent ?? 0);
+    return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+  }
+  const total = Number(item?.progress_total || item?.total_lessons || item?.total_sessions || 0);
+  const completed = Number(item?.progress_completed || item?.completed_lessons || item?.completed_sessions || 0);
+  if (total > 0) {
+    return Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+  }
+  return 0;
 };
 
 const matchesSearch = (course, keyword) => {
@@ -165,14 +173,21 @@ export default function StudentCourseListPage() {
         ) : (
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {classCards.map(({ course, liveClass }, index) => {
-              const progress = getProgress(liveClass);
+              const targetItem = liveClass || course;
+              const progressTotal = liveClass
+                ? Number(liveClass.progress_total || 0)
+                : Number(course.progress_total || 0);
+              const progressCompleted = liveClass
+                ? Number(liveClass.progress_completed || 0)
+                : Number(course.progress_completed || 0);
+              const progressUnit = (liveClass?.progress_source || course.progress_source) === "sessions" ? "buổi" : "bài";
+              const progress = progressTotal > 0
+                ? Math.max(0, Math.min(100, Math.round((progressCompleted / progressTotal) * 100)))
+                : getProgress(targetItem);
               const completed = progress === 100;
               const started = progress > 0;
               const tone = TONES[index % TONES.length];
-              const cover = getClassCoverImage(liveClass || course, course.course_id || course.id);
-              const progressTotal = Number(liveClass.progress_total || 0);
-              const progressCompleted = Number(liveClass.progress_completed || 0);
-              const progressUnit = liveClass.progress_source === "sessions" ? "buổi" : "bài";
+              const cover = getClassCoverImage(targetItem, course.course_id || course.id);
 
               return (
                 <Link

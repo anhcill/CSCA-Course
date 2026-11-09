@@ -32,9 +32,17 @@ const TONES = {
   amber: { icon: "bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400", bar: "bg-amber-400" },
 };
 
-const getProgress = (course) => {
-  const value = Number(course?.progress_percent ?? course?.progressPercent ?? 0);
-  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+const getProgress = (item) => {
+  if (item?.progress_percent != null || item?.progressPercent != null) {
+    const value = Number(item?.progress_percent ?? item?.progressPercent ?? 0);
+    return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+  }
+  const total = Number(item?.progress_total || item?.total_lessons || item?.total_sessions || 0);
+  const completed = Number(item?.progress_completed || item?.completed_lessons || item?.completed_sessions || 0);
+  if (total > 0) {
+    return Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+  }
+  return 0;
 };
 
 const isToday = (dateValue) => {
@@ -146,14 +154,21 @@ const formatClassTitle = (title) => {
 };
 
 function DashboardClassCard({ course, liveClass, index }) {
-  const progress = getProgress(course);
+  const targetItem = liveClass || course;
+  const progressTotal = liveClass
+    ? Number(liveClass.progress_total || 0)
+    : Number(course.progress_total || 0);
+  const progressCompleted = liveClass
+    ? Number(liveClass.progress_completed || 0)
+    : Number(course.progress_completed || 0);
+  const progressUnit = (liveClass?.progress_source || course.progress_source) === "sessions" ? "buổi" : "bài";
+  const progress = progressTotal > 0
+    ? Math.max(0, Math.min(100, Math.round((progressCompleted / progressTotal) * 100)))
+    : getProgress(targetItem);
   const completed = progress === 100;
   const started = progress > 0;
   const tone = TONES_ARRAY[index % TONES_ARRAY.length];
-  const cover = getClassCoverImage(liveClass || course, course.course_id || course.id);
-  const progressTotal = Number(course.progress_total || 0);
-  const progressCompleted = Number(course.progress_completed || 0);
-  const progressUnit = course.progress_source === "sessions" ? "buổi" : "bài";
+  const cover = getClassCoverImage(targetItem, course.course_id || course.id);
   const targetPath = liveClass
     ? `/lms/courses/${course.course_id}/classes/${liveClass.id}`
     : `/lms/courses/${course.course_id}/classes`;

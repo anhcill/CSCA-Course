@@ -204,7 +204,14 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
                     FROM class_sessions class_session
                     WHERE class_session.live_class_id = lc.id
                       AND class_session.status <> 'cancelled'
-                      AND (class_session.status = 'ended' OR class_session.end_time <= NOW())
+                      AND (
+                        class_session.status = 'ended'
+                        OR class_session.end_time <= NOW()
+                        OR EXISTS (
+                          SELECT 1 FROM class_attendance ca
+                          WHERE ca.session_id = class_session.id AND ca.user_id = $1 AND ca.status = 'present'
+                        )
+                      )
                   ),
                   'progress_source', 'sessions',
                   'progress_percent', CASE
@@ -218,7 +225,14 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
                       FROM class_sessions class_session
                       WHERE class_session.live_class_id = lc.id
                         AND class_session.status <> 'cancelled'
-                        AND (class_session.status = 'ended' OR class_session.end_time <= NOW())
+                        AND (
+                        class_session.status = 'ended'
+                        OR class_session.end_time <= NOW()
+                        OR EXISTS (
+                          SELECT 1 FROM class_attendance ca
+                          WHERE ca.session_id = class_session.id AND ca.user_id = $1 AND ca.status = 'present'
+                        )
+                      )
                     ) / (
                       SELECT COUNT(*)
                       FROM class_sessions class_session
@@ -273,7 +287,14 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
                 AND lc.course_id = c.id
                 AND lc.status = 'active'
                 AND cs.status <> 'cancelled'
-                AND (cs.status = 'ended' OR cs.end_time <= NOW())
+                AND (
+                  cs.status = 'ended'
+                  OR cs.end_time <= NOW()
+                  OR EXISTS (
+                    SELECT 1 FROM class_attendance ca
+                    WHERE ca.session_id = cs.id AND ca.user_id = $1 AND ca.status = 'present'
+                  )
+                )
             ),
             0
           ) AS completed_sessions,
