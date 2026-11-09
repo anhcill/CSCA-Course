@@ -633,24 +633,159 @@ html:not(.dark) .student-dashboard-page span {
   --tw-ring-color: #263650;
 }
 
+/* 1. Phủ màu chữ trắng sáng và xám nhạt cho cả Teacher & Student LMS */
 .dark .student-lms .text-slate-950,
 .dark .student-lms .text-slate-900,
 .dark .student-lms .text-slate-800,
-.dark .student-lms .text-slate-700 {
-  color: #f1f5f9;
+.dark .student-lms .text-slate-700,
+.dark .student-lms .text-gray-950,
+.dark .student-lms .text-gray-900,
+.dark .student-lms .text-gray-800,
+.dark .student-lms .text-gray-700,
+.dark .teacher-lms .text-slate-950,
+.dark .teacher-lms .text-slate-900,
+.dark .teacher-lms .text-slate-800,
+.dark .teacher-lms .text-slate-700,
+.dark .teacher-lms .text-gray-950,
+.dark .teacher-lms .text-gray-900,
+.dark .teacher-lms .text-gray-800,
+.dark .teacher-lms .text-gray-700 {
+  color: #f1f5f9 !important;
 }
 
 .dark .student-lms .text-slate-600,
 .dark .student-lms .text-slate-500,
-.dark .student-lms .text-slate-400 {
-  color: #a7b6cc;
+.dark .student-lms .text-slate-400,
+.dark .student-lms .text-gray-600,
+.dark .student-lms .text-gray-500,
+.dark .student-lms .text-gray-400,
+.dark .teacher-lms .text-slate-600,
+.dark .teacher-lms .text-slate-500,
+.dark .teacher-lms .text-slate-400,
+.dark .teacher-lms .text-gray-600,
+.dark .teacher-lms .text-gray-500,
+.dark .teacher-lms .text-gray-400 {
+  color: #94a3b8 !important;
 }
 
-.dark .student-lms input,
+/* 2. Triệt để khắc phục lỗi chữ màu xanh navy Monet (#102f63, #17365f, #244866...) bị chìm vào nền tối */
+.dark .teacher-lms [class*="text-[#102f63]"],
+.dark .student-lms [class*="text-[#102f63]"],
+.dark [role="dialog"] [class*="text-[#102f63]"],
+.dark .text-\[\#102f63\] {
+  color: #f8fafc !important;
+}
+
+.dark .teacher-lms [class*="text-[#17365f]"],
+.dark .student-lms [class*="text-[#17365f]"],
+.dark [role="dialog"] [class*="text-[#17365f]"],
+.dark .text-\[\#17365f\] {
+  color: #e2e8f0 !important;
+}
+
+.dark .teacher-lms [class*="text-[#244866]"],
+.dark .student-lms [class*="text-[#244866]"],
+.dark [role="dialog"] [class*="text-[#244866]"],
+.dark .text-\[\#244866\] {
+  color: #cbd5e1 !important;
+}
+
+.dark .teacher-lms [class*="text-[#487291]"],
+.dark .student-lms [class*="text-[#487291]"],
+.dark [role="dialog"] [class*="text-[#487291]"],
+.dark .text-\[\#487291\] {
+  color: #94a3b8 !important;
+}
+
+.dark .teacher-lms [class*="text-[#1a446c]"],
+.dark .student-lms [class*="text-[#1a446c]"],
+.dark [role="dialog"] [class*="text-[#1a446c]"],
+.dark .text-\[\#1a446c\] {
+  color: #cbd5e1 !important;
+}
+
+.dark .teacher-lms [class*="text-[#2b76a4]"],
+.dark .student-lms [class*="text-[#2b76a4]"],
+.dark [role="dialog"] [class*="text-[#2b76a4]"],
+.dark .text-\[\#2b76a4\] {
+  color: #7dd3fc !important;
+}
+
+/* 3. Nút bấm và Tab Active có nền xanh navy tối (#102f63) -> Xanh Cobalt sáng rõ trong Dark Mode */
+.dark .teacher-lms [class*="bg-[#102f63]"]:is(button, a, span),
+.dark .student-lms [class*="bg-[#102f63]"]:is(button, a, span),
+.dark [role="dialog"] [class*="bg-[#102f63]"]:is(button, a, span),
+.dark .bg-\[\#102f63\]:is(button, a, span) {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35) !important;
+}
+
+/* 4. Viền kính mờ (border-white/*) và viền bảng biểu trong Dark Mode */
+.dark .teacher-lms [class*="border-white/"],
+.dark .student-lms [class*="border-white/"] {
+  border-color: rgba(255, 255, 255, 0.09) !important;
+}
+
+.dark .teacher-lms .border-slate-100,
+.dark .teacher-lms .border-slate-200,
+.dark .teacher-lms .border-slate-200\/80,
+.dark .teacher-lms .border-blue-100,
+.dark .teacher-lms .border-blue-200,
+.dark .teacher-lms .ring-slate-100,
+.dark .teacher-lms .ring-blue-100 {
+  border-color: #263650 !important;
+  --tw-ring-color: #263650 !important;
+}
+
+.dark .teacher-lms [class*="border-sky-100"],
+.dark .student-lms [class*="border-sky-100"],
+.dark .teacher-lms [class*="border-sky-200"],
+.dark .student-lms [class*="border-sky-200"] {
+  border-color: rgba(56, 189, 248, 0.2) !important;
+}
+
+/* 5. Nút bấm phụ nền trắng kính mờ (bg-white/80, bg-white/90, etc.) trong Dark Mode */
+.dark .teacher-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]),
+.dark .teacher-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]),
+.dark .student-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]),
+.dark .student-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]) {
+  background-color: rgba(30, 41, 59, 0.8) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #e2e8f0 !important;
+}
+
+.dark .teacher-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]):hover,
+.dark .teacher-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]):hover,
+.dark .student-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]):hover,
+.dark .student-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]):hover {
+  background-color: rgba(51, 65, 85, 0.95) !important;
+  color: #ffffff !important;
+}
+
+/* 6. Form inputs, textareas, selects cho cả Teacher & Student LMS */
+.dark .teacher-lms input:not([type="checkbox"]):not([type="radio"]),
+.dark .teacher-lms select,
+.dark .teacher-lms textarea,
+.dark .student-lms input:not([type="checkbox"]):not([type="radio"]),
 .dark .student-lms select,
 .dark .student-lms textarea {
-  border-color: #31435f;
-  background-color: #0d1728;
-  color: #e2e8f0;
+  border-color: #31435f !important;
+  background-color: #0d1728 !important;
+  color: #e2e8f0 !important;
+}
+
+.dark .teacher-lms input::placeholder,
+.dark .teacher-lms textarea::placeholder,
+.dark .student-lms input::placeholder,
+.dark .student-lms textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* 7. Icon màu xanh biển trong Dark Mode -> Màu xanh Sky sáng rõ */
+.dark .teacher-lms .text-sky-700,
+.dark .student-lms .text-sky-700 {
+  color: #38bdf8 !important;
 }
 

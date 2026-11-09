@@ -404,7 +404,7 @@ export default function TeacherLmsLayout({ children }) {
                 <span className="block truncate text-xs font-black text-[#102f63] dark:text-white">{authUser?.fullName || authUser?.username}</span>
                 <span className="block text-[10px] text-slate-500 dark:text-sky-400">{isAdmin ? 'Quản trị viên' : 'Giảng viên'}</span>
               </span>
-              <ChevronDown className="h-4 w-4 text-[#17365f]" />
+              <ChevronDown className="h-4 w-4 text-[#17365f] dark:text-slate-400" />
             </button>
             {profileMenuOpen && (
               <div className="absolute right-0 mt-2 w-56 overflow-hidden rounded-2xl border border-[#c4def0] bg-[#eef8ff]/95 p-2 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95">

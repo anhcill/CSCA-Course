@@ -242,44 +242,44 @@ export default function SessionDetailPage() {
   const tabClass = (isActive) =>
     `inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all duration-200 ${
       isActive
-        ? "bg-[#102f63] text-white shadow-md shadow-[#102f63]/25 ring-1 ring-[#102f63]/20"
-        : "text-[#244866] hover:bg-white/90 hover:text-[#102f63]"
+        ? "bg-[#102f63] text-white shadow-md shadow-[#102f63]/25 ring-1 ring-[#102f63]/20 dark:bg-blue-600 dark:shadow-blue-500/25 dark:ring-blue-500/30"
+        : "text-[#244866] hover:bg-white/90 hover:text-[#102f63] dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white"
     }`;
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 pb-12 transition-colors duration-200">
       <Link
         to={basePath}
-        className="inline-flex items-center gap-2 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700"
+        className="inline-flex items-center gap-2 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
       >
         <ArrowLeft className="h-3.5 w-3.5" /> Quay lại lớp và lịch học
       </Link>
 
       {/* Hero Banner: Oriental Scholar Glassmorphic Theme */}
-      <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition">
+      <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition dark:border-slate-800 dark:bg-slate-900/90">
         {/* Background ambient subtle decorative glows */}
-        <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl" />
+        <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl dark:bg-sky-500/10" />
+        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl dark:bg-amber-500/10" />
 
         <div className="relative flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs">
-                <Video className="h-3.5 w-3.5 text-sky-600" /> Không gian buổi học
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs dark:bg-sky-950/60 dark:border-sky-800/60 dark:text-sky-300">
+                <Video className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" /> Không gian buổi học
               </span>
               {session.provider && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-bold text-emerald-700 shadow-2xs">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-bold text-emerald-700 shadow-2xs dark:bg-emerald-950/60 dark:border-emerald-800/60 dark:text-emerald-300">
                   {session.provider}
                 </span>
               )}
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63]">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63] dark:text-white">
               {session.title}
             </h1>
 
-            <p className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#244866]">
-              <Clock className="h-4 w-4 text-sky-600 shrink-0" />
+            <p className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#244866] dark:text-slate-300">
+              <Clock className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
               {formatDateTime(session.start_time)}
             </p>
           </div>
@@ -294,7 +294,7 @@ export default function SessionDetailPage() {
                 <Play className="h-4 w-4 fill-current" /> {isAdmin ? "Mở link phòng học" : "Vào lớp học"}
               </button>
             ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#487291] shadow-2xs">
+              <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#487291] shadow-2xs dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300">
                 {isEnded ? <CheckCircle2 className="h-3.5 w-3.5 text-slate-400" /> : <Lock className="h-3.5 w-3.5 text-amber-500" />}
                 {isEnded ? "Phòng đã đóng sau giờ học" : "Phòng mở trước 15 phút"}
               </span>
@@ -308,22 +308,22 @@ export default function SessionDetailPage() {
               })}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
             >
-              <CalendarDays className="h-3.5 w-3.5 text-blue-600" /> Thêm Google Calendar
+              <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Thêm Google Calendar
             </a>
             <a
               href={classCalendarIcsUrl(classId)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
             >
-              <FileText className="h-3.5 w-3.5 text-blue-600" /> Tải lịch .ics
+              <FileText className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Tải lịch .ics
             </a>
             {isTeacher && (
               <Link
                 to={`/lms/teach/classes/${classId}/attendance?sessionId=${session.id}`}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
               >
-                <Users className="h-3.5 w-3.5 text-blue-600" /> Điểm danh
+                <Users className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Điểm danh
               </Link>
             )}
           </div>
@@ -356,7 +356,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* Frosted glass sub-navigation tabs */}
-      <nav className="flex gap-1.5 overflow-x-auto rounded-2xl border border-white/85 bg-white/80 p-1.5 shadow-2xs backdrop-blur-md" aria-label="Chức năng của buổi học">
+      <nav className="flex gap-1.5 overflow-x-auto rounded-2xl border border-white/85 bg-white/80 p-1.5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90" aria-label="Chức năng của buổi học">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const count = tab.id === "vocabulary" ? sessionVocabs.length
@@ -380,7 +380,7 @@ export default function SessionDetailPage() {
                 <span className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
                   activeTab === tab.id
                     ? "bg-white/20 text-white"
-                    : "bg-slate-100 text-[#487291]"
+                    : "bg-slate-100 text-[#487291] dark:bg-slate-800 dark:text-slate-300"
                 }`}>
                   {count}
                 </span>

@@ -138,13 +138,13 @@ export default function TeacherClassCurriculumPage() {
                 <BookOpen className="h-3.5 w-3.5 text-blue-600" />
                 <span>Giáo trình học phần & Lộ trình đào tạo</span>
               </div>
-              <h1 className="font-['Dancing_Script',cursive] text-3xl sm:text-4xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs">
+              <h1 className="font-['Dancing_Script',cursive] text-3xl sm:text-4xl font-extrabold tracking-tight text-[#102f63] dark:text-sky-200 drop-shadow-xs">
                 {workspace.course?.title || workspace.course?.name || classInfo?.courseTitle || "Giáo Trình Khóa Học"}
               </h1>
-              <p className="text-xs font-semibold italic text-[#244866] sm:text-sm">
-                Lớp học: <strong className="font-bold text-[#102f63]">{classInfo?.title || "Lớp học"}</strong> · {totalLessons} bài học đã xuất bản
+              <p className="text-xs font-semibold italic text-[#244866] dark:text-slate-300 sm:text-sm">
+                Lớp học: <strong className="font-bold text-[#102f63] dark:text-white">{classInfo?.title || "Lớp học"}</strong> · {totalLessons} bài học đã xuất bản
               </p>
-              <p className="font-['Ma_Shan_Zheng',cursive] text-sm sm:text-base tracking-wider text-slate-600">
+              <p className="font-['Ma_Shan_Zheng',cursive] text-sm sm:text-base tracking-wider text-slate-600 dark:text-slate-400">
                 —— 循序渐进 · 积厚流光。
               </p>
             </div>
@@ -153,48 +153,48 @@ export default function TeacherClassCurriculumPage() {
 
         {/* ================= 3. 4 THẺ THỐNG KÊ NHANH (KPI TIẾN TRÌNH) ================= */}
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-3xl border border-white/80 bg-white/90 p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
-            <div className="flex items-center justify-between text-slate-500">
+          <div className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
               <span className="text-[11px] font-bold uppercase tracking-wider">Tổng chương</span>
-              <Layers className="h-4 w-4 text-blue-600" />
+              <Layers className="h-4 w-4 text-blue-600 dark:text-sky-400" />
             </div>
-            <p className="mt-1 text-2xl font-black text-[#102f63] font-mono">
+            <p className="mt-1 text-2xl font-black text-[#102f63] dark:text-sky-300 font-mono">
               {sections.length}
             </p>
-            <p className="text-[10px] text-slate-500">Chương mục bài học</p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">Chương mục bài học</p>
           </div>
 
-          <div className="rounded-3xl border border-white/80 bg-white/90 p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
-            <div className="flex items-center justify-between text-slate-500">
+          <div className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
               <span className="text-[11px] font-bold uppercase tracking-wider">Tổng bài học</span>
-              <BookOpen className="h-4 w-4 text-emerald-600" />
+              <BookOpen className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <p className="mt-1 text-2xl font-black text-[#102f63] font-mono">
+            <p className="mt-1 text-2xl font-black text-[#102f63] dark:text-sky-300 font-mono">
               {totalLessons}
             </p>
-            <p className="text-[10px] text-slate-500">Đã công bố cho lớp</p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">Đã công bố cho lớp</p>
           </div>
 
-          <div className="rounded-3xl border border-white/80 bg-white/90 p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
-            <div className="flex items-center justify-between text-slate-500">
+          <div className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
               <span className="text-[11px] font-bold uppercase tracking-wider">Bài có Video</span>
-              <Video className="h-4 w-4 text-violet-600" />
+              <Video className="h-4 w-4 text-violet-600 dark:text-violet-400" />
             </div>
-            <p className="mt-1 text-2xl font-black text-[#102f63] font-mono">
+            <p className="mt-1 text-2xl font-black text-[#102f63] dark:text-sky-300 font-mono">
               {videoLessonsCount}
             </p>
-            <p className="text-[10px] text-slate-500">Video bài giảng đa phương tiện</p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">Video bài giảng đa phương tiện</p>
           </div>
 
-          <div className="rounded-3xl border border-white/80 bg-white/90 p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
-            <div className="flex items-center justify-between text-slate-500">
+          <div className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-4 shadow-[0_6px_25px_rgba(32,78,120,0.06)] backdrop-blur-md">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
               <span className="text-[11px] font-bold uppercase tracking-wider">Thời lượng</span>
-              <Clock3 className="h-4 w-4 text-amber-600" />
+              <Clock3 className="h-4 w-4 text-amber-600 dark:text-amber-400" />
             </div>
-            <p className="mt-1 text-2xl font-black text-[#102f63] font-mono">
+            <p className="mt-1 text-2xl font-black text-[#102f63] dark:text-sky-300 font-mono">
               {totalDurationMinutes ? `${totalDurationMinutes}p` : "—"}
             </p>
-            <p className="text-[10px] text-slate-500">Tổng thời lượng bài học</p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">Tổng thời lượng bài học</p>
           </div>
         </section>
 

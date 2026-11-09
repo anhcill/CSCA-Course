@@ -22,10 +22,10 @@ export default function ClassNextSessionHero({
   basePath,
 }) {
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.1)] backdrop-blur-md sm:p-6 transition">
+    <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.1)] backdrop-blur-md sm:p-6 transition dark:border-slate-800 dark:bg-slate-900/90">
       {/* Decorative subtle oriental ambient glow */}
-      <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-sky-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-12 left-1/3 h-32 w-32 rounded-full bg-amber-200/30 blur-3xl" />
+      <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-sky-200/40 blur-3xl dark:bg-sky-500/10" />
+      <div className="pointer-events-none absolute -bottom-12 left-1/3 h-32 w-32 rounded-full bg-amber-200/30 blur-3xl dark:bg-amber-500/10" />
 
       <div className="relative flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
         <div className="min-w-0 max-w-2xl space-y-2.5">
@@ -33,8 +33,8 @@ export default function ClassNextSessionHero({
             <span
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider ${
                 isTodaySession
-                  ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300 animate-pulse"
-                  : "bg-sky-100 text-sky-800 ring-1 ring-sky-200"
+                  ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:ring-amber-800/60 animate-pulse"
+                  : "bg-sky-100 text-sky-800 ring-1 ring-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:ring-sky-800/60"
               }`}
             >
               <CalendarDays className="h-3.5 w-3.5" />
@@ -46,34 +46,34 @@ export default function ClassNextSessionHero({
               </span>
             )}
             {nextSession?.provider && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">
-                <Video className="h-3 w-3 text-emerald-600" /> {nextSession.provider}
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:ring-emerald-800/60">
+                <Video className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> {nextSession.provider}
               </span>
             )}
           </div>
 
           {nextSession ? (
             <>
-              <h2 className="line-clamp-2 text-xl font-black tracking-tight text-[#102f63] sm:text-2xl">
+              <h2 className="line-clamp-2 text-xl font-black tracking-tight text-[#102f63] dark:text-white sm:text-2xl">
                 {nextSession.title}
               </h2>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sm:text-sm text-[#244866]">
-                <span className="inline-flex items-center gap-1.5 font-bold text-sky-700">
-                  <Clock className="h-4 w-4 text-sky-600" />
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sm:text-sm text-[#244866] dark:text-slate-300">
+                <span className="inline-flex items-center gap-1.5 font-bold text-sky-700 dark:text-sky-400">
+                  <Clock className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                   {formatDateTime(nextSession.start_time)}
                 </span>
                 <span>·</span>
                 <span>
-                  Giảng viên: <strong className="text-[#102f63] font-bold">{instructorName || "CSCA"}</strong>
+                  Giảng viên: <strong className="text-[#102f63] dark:text-white font-bold">{instructorName || "CSCA"}</strong>
                 </span>
               </div>
             </>
           ) : (
             <>
-              <h2 className="text-lg font-bold text-[#102f63] sm:text-xl">
+              <h2 className="text-lg font-bold text-[#102f63] dark:text-white sm:text-xl">
                 Hiện chưa có lịch buổi học mới
               </h2>
-              <p className="text-xs text-[#487291] sm:text-sm">
+              <p className="text-xs text-[#487291] dark:text-slate-400 sm:text-sm">
                 Giảng viên sẽ sớm cập nhật lịch buổi học trực tuyến tiếp theo cho lớp {classTitle || ""}.
               </p>
             </>

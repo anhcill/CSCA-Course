@@ -312,33 +312,33 @@ export default function TeacherSessionWorkspacePage() {
     <div className="mx-auto max-w-6xl space-y-5 pb-12 transition-colors duration-200">
       <Link
         to={classBasePath}
-        className="inline-flex items-center gap-2 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700"
+        className="inline-flex items-center gap-2 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
       >
         <ArrowLeft className="h-3.5 w-3.5" /> Quay lại lớp và lịch dạy
       </Link>
 
       {/* Hero Banner: Oriental Scholar Glassmorphic Theme (Matching SessionDetailPage) */}
-      <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition">
-        <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl" />
+      <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition dark:border-slate-800 dark:bg-slate-900/90">
+        <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl dark:bg-sky-500/10" />
+        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl dark:bg-amber-500/10" />
 
         <div className="relative flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs">
-                <Video className="h-3.5 w-3.5 text-sky-600" /> Không gian buổi dạy
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs dark:bg-sky-950/60 dark:border-sky-800/60 dark:text-sky-300">
+                <Video className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" /> Không gian buổi dạy
               </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-bold text-emerald-700 shadow-2xs">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-bold text-emerald-700 shadow-2xs dark:bg-emerald-950/60 dark:border-emerald-800/60 dark:text-emerald-300">
                 Lớp: {classInfo.title || "Lớp học"}
               </span>
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63]">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63] dark:text-white">
               {session.title}
             </h1>
 
-            <p className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#244866]">
-              <Clock className="h-4 w-4 text-sky-600 shrink-0" />
+            <p className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#244866] dark:text-slate-300">
+              <Clock className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
               {formatDateTime(session.start_time)}
             </p>
           </div>
@@ -353,7 +353,7 @@ export default function TeacherSessionWorkspacePage() {
                 <Play className="h-4 w-4 fill-current" /> {isAdmin ? "Mở link phòng học" : "Vào phòng dạy"}
               </button>
             ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#487291] shadow-2xs">
+              <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#487291] shadow-2xs dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300">
                 {meetingWindow.isClosed ? "Phòng đã đóng sau giờ học" : "Phòng mở trước giờ dạy 15 phút"}
               </span>
             )}
@@ -362,29 +362,29 @@ export default function TeacherSessionWorkspacePage() {
               href={googleCalendarEventUrl({ title: session.title, startTime: session.start_time, endTime: session.end_time, details: "Buổi dạy CSCA Academy" })}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
             >
-              <CalendarDays className="h-3.5 w-3.5 text-blue-600" /> Google Calendar
+              <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Google Calendar
             </a>
             <a
               href={classCalendarIcsUrl(classId)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
             >
-              <FileText className="h-3.5 w-3.5 text-blue-600" /> Tải .ics
+              <FileText className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Tải .ics
             </a>
             <button
               type="button"
               onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
             >
-              <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" /> Điểm danh
+              <CheckCircle2 className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Điểm danh
             </button>
           </div>
         </div>
       </section>
 
       {/* Frosted sub-navigation tabs (Matching SessionDetailPage) */}
-      <nav className="flex gap-1.5 overflow-x-auto rounded-2xl border border-white/85 bg-white/80 p-1.5 shadow-2xs backdrop-blur-md" aria-label="Chức năng của buổi dạy">
+      <nav className="flex gap-1.5 overflow-x-auto rounded-2xl border border-white/85 bg-white/80 p-1.5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90" aria-label="Chức năng của buổi dạy">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const count = tab.id === "vocabulary" ? sessionVocabs.length
@@ -400,8 +400,8 @@ export default function TeacherSessionWorkspacePage() {
               onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })}
               className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all duration-200 ${
                 activeTab === tab.id
-                  ? "bg-[#102f63] text-white shadow-md shadow-[#102f63]/25 ring-1 ring-[#102f63]/20"
-                  : "text-[#244866] hover:bg-white/90 hover:text-[#102f63]"
+                  ? "bg-[#102f63] text-white shadow-md shadow-[#102f63]/25 ring-1 ring-[#102f63]/20 dark:bg-blue-600 dark:shadow-blue-500/25 dark:ring-blue-500/30"
+                  : "text-[#244866] hover:bg-white/90 hover:text-[#102f63] dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white"
               }`}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -410,7 +410,7 @@ export default function TeacherSessionWorkspacePage() {
                 <span className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
                   activeTab === tab.id
                     ? "bg-white/20 text-white"
-                    : "bg-slate-100 text-[#487291]"
+                    : "bg-slate-100 text-[#487291] dark:bg-slate-800 dark:text-slate-300"
                 }`}>
                   {count}
                 </span>
@@ -1000,18 +1000,18 @@ function ReusableFileModal({
 }) {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#102f63]/45 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/90 bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/90 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white">
               <Library className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-base font-black text-[#102f63]">Chọn tài liệu đã có</h2>
-              <p className="mt-0.5 text-xs text-slate-500">File chỉ được lưu một lần; buổi học này dùng chung liên kết an toàn.</p>
+              <h2 className="text-base font-black text-[#102f63] dark:text-white">Chọn tài liệu đã có</h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">File chỉ được lưu một lần; buổi học này dùng chung liên kết an toàn.</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="Đóng kho tài liệu">
+          <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200" aria-label="Đóng kho tài liệu">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1021,7 +1021,7 @@ function ReusableFileModal({
             event.preventDefault();
             onSearch();
           }}
-          className="flex gap-2 border-b border-slate-100 p-4"
+          className="flex gap-2 border-b border-slate-100 p-4 dark:border-slate-800"
         >
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -1029,22 +1029,22 @@ function ReusableFileModal({
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Tìm theo tên tài liệu..."
-              className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs outline-none focus:border-blue-500"
+              className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
             />
           </div>
-          <button type="submit" className="rounded-xl bg-[#102f63] px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700">
+          <button type="submit" className="rounded-xl bg-[#102f63] px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700">
             Tìm kiếm
           </button>
         </form>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {loading ? (
-            <p className="py-10 text-center text-xs font-semibold text-slate-500">Đang tải kho tài liệu...</p>
+            <p className="py-10 text-center text-xs font-semibold text-slate-500 dark:text-slate-400">Đang tải kho tài liệu...</p>
           ) : files.length === 0 ? (
             <div className="py-10 text-center">
-              <Library className="mx-auto h-8 w-8 text-slate-300" />
-              <p className="mt-3 text-sm font-bold text-slate-700">Không còn tài liệu phù hợp để gắn</p>
-              <p className="mt-1 text-xs text-slate-400">Kho chỉ hiển thị tài liệu cùng khóa học mà bạn có quyền sử dụng.</p>
+              <Library className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
+              <p className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">Không còn tài liệu phù hợp để gắn</p>
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Kho chỉ hiển thị tài liệu cùng khóa học mà bạn có quyền sử dụng.</p>
             </div>
           ) : (
             <div className="space-y-2.5">
@@ -1054,14 +1054,14 @@ function ReusableFileModal({
                 const Icon = config.icon;
                 const attaching = String(attachingFileId || "") === String(file.id);
                 return (
-                  <article key={file.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3.5 transition hover:border-blue-300 hover:bg-blue-50/30">
+                  <article key={file.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3.5 transition hover:border-blue-300 hover:bg-blue-50/30 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:border-slate-700 dark:hover:bg-slate-800">
                     <div className="flex min-w-0 items-center gap-3">
                       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${config.badge}`}>
                         <Icon className="h-4.5 w-4.5" />
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-[#102f63]" title={file.name}>{file.name}</p>
-                        <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                        <p className="truncate text-sm font-bold text-[#102f63] dark:text-white" title={file.name}>{file.name}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
                           {file.sourceClassTitle || file.courseTitle || "Kho tài liệu chung"}
                           {file.sourceSessionTitle ? ` · ${file.sourceSessionTitle}` : ""}
                           {file.reuseCount ? ` · đã dùng lại ${file.reuseCount} lần` : ""}
