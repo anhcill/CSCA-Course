@@ -730,6 +730,27 @@ const formatQuizReportDuration = (seconds) => {
   return minutes > 0 ? `${minutes} phút ${remainingSeconds} giây` : `${remainingSeconds} giây`;
 };
 
+const formatQuizReportDateTime = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const quizReportStudentStatus = (student) => {
+  if (student?.status === "graded") return { label: "Đã nộp", color: "#166534", background: "#dcfce7" };
+  if (student?.status === "pending_grading") return { label: "Đã nộp - chờ chấm", color: "#92400e", background: "#fef3c7" };
+  if (student?.status === "in_progress") return { label: "Đang làm", color: "#1d4ed8", background: "#dbeafe" };
+  return { label: "Chưa nộp", color: "#b91c1c", background: "#fee2e2" };
+};
+
 /**
  * 8. Gửi báo cáo tổng thể khi quiz đóng hoặc sau khi chấm xong phần tự luận.
  */
@@ -745,18 +766,12 @@ export const sendQuizClosedReportEmail = async ({
   const quiz = snapshot.quiz || {};
   const summary = snapshot.summary || {};
   const students = Array.isArray(snapshot.students) ? snapshot.students : [];
-  const questions = Array.isArray(snapshot.questions) ? snapshot.questions : [];
   const provisional = Boolean(snapshot.report?.provisional || reportKind === "provisional");
   const reportLabel = provisional ? "Báo cáo tạm thời" : "Báo cáo hoàn tất";
   const safeQuizTitle = quiz.title || `Quiz #${quizId || quiz.id || ""}`;
   const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
   const reportBasePath = recipientRole === "admin" ? "/admin/quizzes" : "/lms/teacher/quizzes";
   const reportUrl = `${frontendUrl}${reportBasePath}?reportQuizId=${encodeURIComponent(quizId || quiz.id || "")}`;
-  const missingStudents = students.filter((student) => student.status === "not_started");
-  const weakestQuestions = questions
-    .filter((question) => Number.isFinite(Number(question.correctRate)) && Number(question.submitted || 0) > 0)
-    .sort((a, b) => Number(a.correctRate) - Number(b.correctRate))
-    .slice(0, 5);
 
   const metricRows = [
     ["Sĩ số", formatQuizReportNumber(summary.rosterTotal)],
@@ -776,21 +791,46 @@ export const sendQuizClosedReportEmail = async ({
       <td style="padding: 9px 10px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 13px; font-weight: 800; text-align: right;">${escapeEmailHtml(value)}</td>
     </tr>`).join("");
 
-  const weakestQuestionsHtml = weakestQuestions.length > 0
-    ? `<div style="margin: 22px 0;">
-        <h3 style="margin: 0 0 10px; font-size: 14px; color: #0f172a;">Các câu cần ôn lại</h3>
-        <ol style="margin: 0; padding-left: 22px; color: #475569; font-size: 13px; line-height: 1.7;">
-          ${weakestQuestions.map((question) => `<li><strong>Câu ${escapeEmailHtml(question.position || question.questionId || "")}</strong>: ${escapeEmailHtml(String(question.text || "").slice(0, 120))} — đúng ${formatQuizReportNumber(question.correctRate, "%")}</li>`).join("")}
-        </ol>
-      </div>`
-    : "";
+  const studentRowsHtml = students.map((student, index) => {
+    const status = quizReportStudentStatus(student);
+    const hasScore = student.score !== null && student.score !== undefined
+      && student.maxScore !== null && student.maxScore !== undefined;
+    const result = student.passed === true ? "Đạt" : student.passed === false ? "Chưa đạt" : "—";
+    return `
+      <tr>
+        <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 12px; text-align: center;">${index + 1}</td>
+        <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 12px; font-weight: 700;">${escapeEmailHtml(student.name || student.email || `Học viên #${student.userId || index + 1}`)}</td>
+        <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: center;"><span style="display: inline-block; padding: 3px 7px; border-radius: 999px; color: ${status.color}; background: ${status.background}; font-weight: 800; white-space: nowrap;">${escapeEmailHtml(status.label)}</span></td>
+        <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 12px; font-weight: 800; text-align: center; white-space: nowrap;">${hasScore ? `${formatQuizReportNumber(student.score)}/${formatQuizReportNumber(student.maxScore)}` : "—"}</td>
+        <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 12px; text-align: center;">${formatQuizReportNumber(student.percentage, "%")}</td>
+        <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 12px; text-align: center; white-space: nowrap;">${escapeEmailHtml(result)}</td>
+        <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 12px; text-align: center;">${student.attemptNumber ? formatQuizReportNumber(student.attemptNumber) : "—"}</td>
+        <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #475569; font-size: 11px; text-align: center; white-space: nowrap;">${formatQuizReportDateTime(student.submittedAt)}</td>
+      </tr>`;
+  }).join("");
 
-  const missingStudentsHtml = missingStudents.length > 0
-    ? `<div style="margin: 22px 0; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 14px 16px;">
-        <h3 style="margin: 0 0 8px; font-size: 14px; color: #9a3412;">Học viên chưa bắt đầu (${missingStudents.length})</h3>
-        <p style="margin: 0; color: #7c2d12; font-size: 13px; line-height: 1.7;">${missingStudents.map((student) => escapeEmailHtml(student.name || student.email || student.userId)).join(", ")}</p>
+  const studentTableHtml = students.length > 0
+    ? `<div style="margin: 22px 0;">
+        <h3 style="margin: 0 0 10px; font-size: 14px; color: #0f172a;">Chi tiết tình trạng học viên</h3>
+        <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px;">
+          <table role="presentation" style="width: 100%; min-width: 760px; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #f8fafc;">
+                <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">STT</th>
+                <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: left;">Học viên</th>
+                <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">Trạng thái</th>
+                <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">Điểm</th>
+                <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">Tỷ lệ</th>
+                <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">Kết quả</th>
+                <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">Lượt</th>
+                <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">Nộp lúc</th>
+              </tr>
+            </thead>
+            <tbody>${studentRowsHtml}</tbody>
+          </table>
+        </div>
       </div>`
-    : "";
+    : `<p style="margin: 22px 0; color: #64748b; font-size: 13px;">Lớp chưa có học viên trong danh sách báo cáo.</p>`;
 
   const bodyContent = `
     <p style="font-size: 15px; margin-top: 0;">Xin chào <strong>${escapeEmailHtml(username || "giảng viên")}</strong>,</p>
@@ -806,8 +846,7 @@ export const sendQuizClosedReportEmail = async ({
       <table role="presentation" style="width: 100%; border-collapse: collapse;">${metricsHtml}</table>
     </div>
 
-    ${weakestQuestionsHtml}
-    ${missingStudentsHtml}
+    ${studentTableHtml}
 
     <div style="text-align: center; margin: 26px 0 10px;">
       <a href="${escapeEmailHtml(reportUrl)}" class="btn">Mở Báo Cáo Chi Tiết →</a>
@@ -823,6 +862,13 @@ export const sendQuizClosedReportEmail = async ({
     `Điểm trung bình: ${formatQuizReportNumber(summary.averageScore, "%")}`,
     `Đạt / chưa đạt: ${summary.passed || 0}/${summary.failed || 0}`,
     `Tự động nộp: ${summary.autoSubmitted || 0}`,
+    ...students.map((student, index) => {
+      const status = quizReportStudentStatus(student).label;
+      const score = student.score !== null && student.score !== undefined
+        ? `${formatQuizReportNumber(student.score)}/${formatQuizReportNumber(student.maxScore)}`
+        : "—";
+      return `${index + 1}. ${student.name || student.email || `Học viên #${student.userId || index + 1}`} | ${status} | Điểm: ${score} | ${formatQuizReportNumber(student.percentage, "%")} | Nộp: ${formatQuizReportDateTime(student.submittedAt)}`;
+    }),
     `Xem chi tiết: ${reportUrl}`,
   ].filter(Boolean).join("\n");
 

@@ -234,3 +234,72 @@ test("sendQuizClosedReportEmail renders a provisional report in sandbox mode", a
     else process.env.BREVO_API_KEY = prevKey;
   }
 });
+
+test("sendQuizClosedReportEmail renders a per-student submission and score table", async () => {
+  const previousKey = process.env.BREVO_API_KEY;
+  const previousFetch = global.fetch;
+  let payload;
+  process.env.BREVO_API_KEY = "test-brevo-key-long-enough";
+  global.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ messageId: "test-report-message" }) };
+  };
+  try {
+    const res = await sendQuizClosedReportEmail({
+      email: "admin@example.com",
+      username: "Admin",
+      quizId: 99,
+      recipientRole: "admin",
+      reportKind: "close",
+      report: {
+        report: { provisional: false },
+        quiz: { id: 99, title: "Quiz đường thẳng", classTitle: "Toán 01" },
+        summary: {
+          rosterTotal: 3,
+          submitted: 1,
+          fullyGraded: 1,
+          pendingEssay: 0,
+          passed: 1,
+          failed: 0,
+          averageScore: 80,
+          minScore: 80,
+          maxScore: 80,
+          autoSubmitted: 0,
+          averageDurationSeconds: 900,
+        },
+        students: [
+          {
+            userId: 1,
+            name: "Nguyễn Đã Nộp",
+            status: "graded",
+            score: 8,
+            maxScore: 10,
+            percentage: 80,
+            passed: true,
+            attemptNumber: 2,
+            submittedAt: "2026-11-09T03:00:00.000Z",
+          },
+          { userId: 2, name: "Trần Đang Làm", status: "in_progress", attemptNumber: 1 },
+          { userId: 3, name: "Lê Chưa Nộp", status: "not_started" },
+        ],
+        questions: [{ questionId: 2, position: 2, text: "Nội dung không cần hiện", submitted: 1, correctRate: 0 }],
+      },
+    });
+
+    assert.equal(res.success, true);
+    assert.equal(payload.subject, "[Moly Course] Báo cáo hoàn tất quiz: Quiz đường thẳng - Toán 01");
+    assert.match(payload.htmlContent, /Chi tiết tình trạng học viên/);
+    assert.match(payload.htmlContent, /Nguyễn Đã Nộp/);
+    assert.match(payload.htmlContent, /Đã nộp/);
+    assert.match(payload.htmlContent, /8\/10/);
+    assert.match(payload.htmlContent, /Trần Đang Làm/);
+    assert.match(payload.htmlContent, /Lê Chưa Nộp/);
+    assert.match(payload.htmlContent, /Chưa nộp/);
+    assert.doesNotMatch(payload.htmlContent, /Các câu cần ôn lại/);
+    assert.doesNotMatch(payload.htmlContent, /Nội dung không cần hiện/);
+  } finally {
+    if (previousKey === undefined) delete process.env.BREVO_API_KEY;
+    else process.env.BREVO_API_KEY = previousKey;
+    global.fetch = previousFetch;
+  }
+});
