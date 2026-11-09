@@ -1,7 +1,10 @@
 import crypto from "crypto";
 import { getClient } from "../db/connect.js";
 import { recordAuditEvent } from "./audit.service.js";
-import { enqueueManagementCalendarDelivery } from "./managementCalendarDelivery.service.js";
+import {
+  enqueueCurriculumShiftCalendarDeliveries,
+  enqueueManagementCalendarDelivery,
+} from "./managementCalendarDelivery.service.js";
 import { normalizeSessionKind, shiftCancelledSessionCurriculum } from "./sessionCurriculumShift.service.js";
 import { notifyClassStudents } from "./liveClass.service.js";
 import { createManagedUsername } from "../utils/usernameGenerator.js";
@@ -861,15 +864,11 @@ export const syncCalendarSession = async (client, event) => {
       actorId: null,
       extendCourse: input.extendCourse,
     });
-    const extension = await client.query("SELECT * FROM class_sessions WHERE id = $1", [curriculumShift.extensionSessionId]);
-    if (extension.rows[0]) {
-      await enqueueManagementCalendarDelivery(client, {
-        managementClassId: input.classSourceId,
-        eventType: "lms.session.upserted",
-        lmsSession: extension.rows[0],
-        correlationId: `curriculum-extension:${session.id}:${curriculumShift.extensionSessionId}`,
-      });
-    }
+    await enqueueCurriculumShiftCalendarDeliveries(client, {
+      managementClassId: input.classSourceId,
+      sessionIds: curriculumShift.shiftedSessionIds,
+      correlationPrefix: `curriculum-shift:${session.id}`,
+    });
   }
   const scheduleChanged = existing && (new Date(existing.start_time).getTime() !== new Date(startsAt).getTime()
     || new Date(existing.end_time).getTime() !== new Date(endsAt).getTime());

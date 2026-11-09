@@ -12,7 +12,10 @@ import {
   notifyUpcomingSessions,
   validateMeetingUrl,
 } from "../services/liveClass.service.js";
-import { enqueueManagementCalendarDelivery } from "../services/managementCalendarDelivery.service.js";
+import {
+  enqueueCurriculumShiftCalendarDeliveries,
+  enqueueManagementCalendarDelivery,
+} from "../services/managementCalendarDelivery.service.js";
 import { buildClassCalendarIcs } from "../services/calendarIcs.service.js";
 import { getDeterministicClassCover } from "../utils/classWallpapers.js";
 import { recordAuditEvent } from "../services/audit.service.js";
@@ -2116,12 +2119,11 @@ router.post("/sessions/:sessionId/cancel", protectRoute, requireTeacher, require
       lmsSession: cancelled,
       correlationId: `session:${sessionId}:v${cancelled.version || 1}`,
     });
-    if (extension) {
-      await enqueueManagementCalendarDelivery(client, {
+    if (curriculumShift) {
+      await enqueueCurriculumShiftCalendarDeliveries(client, {
         managementClassId: current.management_class_source_id,
-        eventType: "lms.session.upserted",
-        lmsSession: extension,
-        correlationId: `curriculum-extension:${sessionId}:${extension.id}`,
+        sessionIds: curriculumShift.shiftedSessionIds,
+        correlationPrefix: `curriculum-shift:${sessionId}`,
       });
     }
     await recordAuditEvent({

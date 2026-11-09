@@ -250,6 +250,32 @@ export const enqueueManagementCalendarDelivery = async (client, {
   return result.rows[0];
 };
 
+export const enqueueCurriculumShiftCalendarDeliveries = async (client, {
+  managementClassId,
+  sessionIds,
+  correlationPrefix,
+}) => {
+  const ids = [...new Set((sessionIds || []).map(Number).filter(Number.isSafeInteger))];
+  if (!managementClassId || ids.length === 0) return [];
+
+  const sessions = await client.query(
+    `SELECT * FROM class_sessions
+     WHERE id = ANY($1::bigint[])
+     ORDER BY start_time, id`,
+    [ids],
+  );
+  const deliveries = [];
+  for (const session of sessions.rows) {
+    deliveries.push(await enqueueManagementCalendarDelivery(client, {
+      managementClassId,
+      eventType: "lms.session.upserted",
+      lmsSession: session,
+      correlationId: `${correlationPrefix}:${session.id}:v${session.version || 1}`,
+    }));
+  }
+  return deliveries;
+};
+
 export const processAvailableManagementCalendarDeliveries = async ({ workerId, limit = 10 }) => {
   const client = await getClient();
   try {

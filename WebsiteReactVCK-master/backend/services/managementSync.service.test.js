@@ -267,6 +267,24 @@ test("Management cancellation shifts an existing session curriculum and extends 
   assert.equal(extension.title, "Chapter 15");
   assert.equal(extension.status, "scheduled");
   assert.equal(extension.session_kind, "regular");
+  const calendarDeliveries = (await db.query(
+    `SELECT event_type, payload->'lmsSession'->>'id' AS session_id,
+            payload->'lmsSession'->>'title' AS title,
+            (payload->'lmsSession'->>'version')::int AS version
+     FROM lms_management_calendar_outbox
+     ORDER BY id`,
+  )).rows;
+  const shiftedFollowingDelivery = calendarDeliveries.find((row) => row.session_id === String(following.id));
+  assert.equal(shiftedFollowingDelivery?.event_type, "lms.session.upserted");
+  assert.equal(shiftedFollowingDelivery?.title, "Chapter 14");
+  assert.equal(shiftedFollowingDelivery?.version, 2);
+  const extensionDelivery = calendarDeliveries.find(
+    (row) => row.session_id === String(outcome.data.curriculumShift.extensionSessionId),
+  );
+  assert.equal(extensionDelivery?.event_type, "lms.session.upserted");
+  assert.equal(extensionDelivery?.title, "Chapter 15");
+  assert.equal(calendarDeliveries.filter((row) => row.event_type === "lms.session.upserted").length, 2);
+  assert.equal(calendarDeliveries.filter((row) => row.event_type === "lms.session.cancelled").length, 1);
   assert.equal(Number((await db.query(
     "SELECT COUNT(*) AS count FROM session_curriculum_operations WHERE cancelled_session_id=$1 AND completed_at IS NOT NULL",
     [cancelled.id],
