@@ -827,14 +827,14 @@ export const syncCalendarSession = async (client, event) => {
   const result = existing
     ? await client.query(
       `UPDATE class_sessions SET schedule_id = $1, title = $2, meet_url = $3,
-         start_time = $4, end_time = $5, status = $6,
+         start_time = $4, end_time = $5, status = $6::varchar,
          management_session_source_id = $7, management_source_updated_at = $8,
          change_reason = COALESCE($10, change_reason), changed_at = NOW(),
          original_start_at = $11, original_end_at = $12,
          session_kind = $13, replacement_for_session_id = $14,
-         is_payable = CASE WHEN $6 = 'cancelled' THEN FALSE ELSE TRUE END,
-         cancel_reason = CASE WHEN $6 = 'cancelled' THEN COALESCE($10, cancel_reason) ELSE cancel_reason END,
-         cancelled_at = CASE WHEN $6 = 'cancelled' THEN COALESCE(cancelled_at, NOW()) ELSE cancelled_at END,
+         is_payable = CASE WHEN $6::varchar = 'cancelled' THEN FALSE ELSE TRUE END,
+         cancel_reason = CASE WHEN $6::varchar = 'cancelled' THEN COALESCE($10, cancel_reason) ELSE cancel_reason END,
+         cancelled_at = CASE WHEN $6::varchar = 'cancelled' THEN COALESCE(cancelled_at, NOW()) ELSE cancelled_at END,
          version = version + 1, updated_at = NOW()
        WHERE id = $9 RETURNING *`,
       [scheduleId, title, input.meetingUrl, startsAt, endsAt, status,
@@ -846,8 +846,8 @@ export const syncCalendarSession = async (client, event) => {
          (live_class_id, schedule_id, title, meet_url, start_time, end_time, status,
           original_start_at, original_end_at, management_session_source_id, management_source_updated_at,
           session_kind, replacement_for_session_id, is_payable, cancel_reason, cancelled_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$10,$11,$8,$9,$12,$13,($7 <> 'cancelled'),$14,
-          CASE WHEN $7 = 'cancelled' THEN NOW() ELSE NULL END) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7::varchar,$10,$11,$8,$9,$12,$13,($7::varchar <> 'cancelled'),$14,
+          CASE WHEN $7::varchar = 'cancelled' THEN NOW() ELSE NULL END) RETURNING *`,
       [liveClass.id, scheduleId, title, input.meetingUrl, startsAt, endsAt, status,
         input.sessionSourceId, input.sourceUpdatedAt, originalStartsAt, originalEndsAt,
         input.sessionKind, replacementForSessionId, input.changeReason],

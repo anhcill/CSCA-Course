@@ -176,6 +176,103 @@ test("session move adopts the old generated occurrence instead of leaving a dupl
   assert.equal(sessions[0].status, "rescheduled");
 });
 
+test("Management cancellation shifts an existing session curriculum and extends the class", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^"]+\.sql"/g)].map((match) => JSON.parse(match[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('cancel-teacher','cancel-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const course = (await db.query(
+    `INSERT INTO courses(name,slug,author_id,is_published)
+     VALUES ('Cancellation course','cancellation-course',$1,TRUE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await db.query(
+    `INSERT INTO live_classes
+       (title,course_id,instructor_id,status,management_class_source_id,management_source_updated_at)
+     VALUES ('Cancellation class',$1,$2,'active','class-cancel','2026-11-01T00:00:00Z') RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+  const sundaySchedule = (await db.query(
+    `INSERT INTO class_schedules
+       (live_class_id,day_of_week,start_time,end_time,start_date,status,timezone,management_schedule_source_id)
+     VALUES ($1,7,'15:00','17:00','2026-11-01','active','Asia/Ho_Chi_Minh','schedule-sunday') RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+  const wednesdaySchedule = (await db.query(
+    `INSERT INTO class_schedules
+       (live_class_id,day_of_week,start_time,end_time,start_date,status,timezone,management_schedule_source_id)
+     VALUES ($1,3,'20:00','22:00','2026-11-01','active','Asia/Ho_Chi_Minh','schedule-wednesday') RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+  const cancelled = (await db.query(
+    `INSERT INTO class_sessions
+       (live_class_id,schedule_id,title,start_time,end_time,status,original_start_at,original_end_at,
+        management_session_source_id,management_source_updated_at,session_kind,version)
+     VALUES ($1,$2,'Chapter 14','2026-11-08T08:00:00Z','2026-11-08T10:00:00Z','scheduled',
+       '2026-11-08T08:00:00Z','2026-11-08T10:00:00Z','session-cancel','2026-11-01T00:00:00Z','regular',3)
+     RETURNING id`,
+    [liveClass.id, sundaySchedule.id],
+  )).rows[0];
+  const following = (await db.query(
+    `INSERT INTO class_sessions
+       (live_class_id,schedule_id,title,start_time,end_time,status,original_start_at,original_end_at,session_kind)
+     VALUES ($1,$2,'Chapter 15','2026-11-11T13:00:00Z','2026-11-11T15:00:00Z','scheduled',
+       '2026-11-11T13:00:00Z','2026-11-11T15:00:00Z','regular') RETURNING id`,
+    [liveClass.id, wednesdaySchedule.id],
+  )).rows[0];
+
+  await db.query("BEGIN");
+  const outcome = await syncCalendarSession(db, {
+    eventType: "class.session.cancelled",
+    occurredAt: new Date("2026-11-09T02:20:01Z"),
+    payload: {
+      classSourceId: "class-cancel",
+      sessionSourceId: "session-cancel",
+      lmsSessionId: String(cancelled.id),
+      expectedLmsVersion: 3,
+      lmsScheduleId: String(sundaySchedule.id),
+      lessonDate: "2026-11-08",
+      startTime: "15:00:00",
+      endTime: "17:00:00",
+      timezone: "Asia/Ho_Chi_Minh",
+      status: "cancelled",
+      changeReason: "Teacher unavailable",
+      sessionKind: "Regular",
+      isPayable: false,
+      curriculumAction: "ShiftForward",
+      extendCourse: true,
+      sourceUpdatedAt: "2026-11-09T02:20:01Z",
+    },
+  });
+  await db.query("COMMIT");
+
+  assert.equal(outcome.action, "class.session.synced");
+  assert.ok(outcome.data.curriculumShift?.extensionSessionId);
+  const cancelledAfter = (await db.query("SELECT status,is_payable,cancel_reason FROM class_sessions WHERE id=$1", [cancelled.id])).rows[0];
+  assert.equal(cancelledAfter.status, "cancelled");
+  assert.equal(cancelledAfter.is_payable, false);
+  assert.equal(cancelledAfter.cancel_reason, "Teacher unavailable");
+  const followingAfter = (await db.query("SELECT title FROM class_sessions WHERE id=$1", [following.id])).rows[0];
+  assert.equal(followingAfter.title, "Chapter 14");
+  const extension = (await db.query(
+    "SELECT title,status,session_kind FROM class_sessions WHERE id=$1",
+    [outcome.data.curriculumShift.extensionSessionId],
+  )).rows[0];
+  assert.equal(extension.title, "Chapter 15");
+  assert.equal(extension.status, "scheduled");
+  assert.equal(extension.session_kind, "regular");
+  assert.equal(Number((await db.query(
+    "SELECT COUNT(*) AS count FROM session_curriculum_operations WHERE cancelled_session_id=$1 AND completed_at IS NOT NULL",
+    [cancelled.id],
+  )).rows[0].count), 1);
+});
+
 test("Management email changes preserve LMS identities, access and one active lead teacher", async (t) => {
   const db = new PGlite();
   t.after(() => db.close());
