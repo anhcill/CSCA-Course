@@ -63,6 +63,7 @@ const main = async () => {
         ...calendarResults,
         ...announcementResults.filter((result) => result.delivered).map(() => ({ status: "announcements", count: 1 })),
         ...(deadlineResult?.notifications ? [{ status: "assignment_reminders", count: deadlineResult.notifications }] : []),
+        ...(deadlineResult?.emails ? [{ status: "homework_reminder_emails", count: deadlineResult.emails }] : []),
         ...(expiredQuizAttemptResult?.submitted ? [{ status: "quiz_attempts_auto_submitted", count: expiredQuizAttemptResult.submitted }] : []),
         ...(quizCloseReportResult?.delivered ? [{ status: "quiz_close_reports", count: quizCloseReportResult.delivered }] : []),
         ...(quizCloseReportResult?.failed ? [{ status: "quiz_close_report_failures", count: quizCloseReportResult.failed }] : []),

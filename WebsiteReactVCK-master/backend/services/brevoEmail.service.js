@@ -715,6 +715,76 @@ export const sendHomeworkAssignedEmail = async ({
   });
 };
 
+/** Gửi một lời nhắc nhẹ khi bài tập/quiz về nhà còn tối đa 12 giờ. */
+export const sendHomeworkDueReminderEmail = async ({
+  email,
+  username,
+  homeworkKind = "assignment",
+  title: homeworkTitle,
+  dueDate,
+  classTitle,
+  courseTitle,
+  sessionTitle,
+  actionUrl,
+  isTest = false,
+}) => {
+  const isQuiz = homeworkKind === "quiz";
+  const itemLabel = isQuiz ? "quiz về nhà" : "bài tập về nhà";
+  const safeTitle = homeworkTitle || (isQuiz ? "Quiz về nhà" : "Bài tập về nhà");
+  const deadlineText = formatVietnamDeadlineForEmail(dueDate);
+  const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+  const resolvedActionUrl = actionUrl || `${frontendUrl}/lms/dashboard`;
+  const testPrefix = isTest ? "[KIỂM TRA] " : "";
+
+  const bodyContent = `
+    ${isTest ? `<div style="margin-bottom: 18px; padding: 10px 12px; border-radius: 10px; background: #eff6ff; color: #1d4ed8; font-size: 12px; font-weight: 800; text-align: center;">EMAIL KIỂM TRA MẪU NHẮC HẠN — không thay đổi dữ liệu bài làm</div>` : ""}
+    <p style="font-size: 15px; margin-top: 0;">Xin chào <strong>${escapeEmailHtml(username || "bạn")}</strong> 🌷</p>
+    <p style="font-size: 14px; color: #475569; line-height: 1.75;">
+      Moly nhắc nhẹ là <strong>${escapeEmailHtml(itemLabel)}</strong> dưới đây sắp đến hạn rồi nè.
+      Hệ thống chưa ghi nhận bài nộp của bạn, nên khi thuận tiện bạn nhớ vào hoàn thành nhé. Chúc bạn làm bài thật tốt! ✨
+    </p>
+
+    <div style="background: linear-gradient(135deg, #fff7ed 0%, #fefce8 100%); border: 1px solid #fed7aa; border-radius: 16px; padding: 20px; margin: 22px 0;">
+      <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; color: #ea580c; margin-bottom: 7px;">Còn chưa đầy 12 giờ</div>
+      <div style="font-size: 18px; font-weight: 900; color: #0f172a; line-height: 1.45; margin-bottom: 12px;">${escapeEmailHtml(safeTitle)}</div>
+      <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 13px; line-height: 1.9;">
+        ${classTitle ? `<li>🏫 <strong>Lớp:</strong> ${escapeEmailHtml(classTitle)}</li>` : ""}
+        ${courseTitle ? `<li>📘 <strong>Khóa học:</strong> ${escapeEmailHtml(courseTitle)}</li>` : ""}
+        ${sessionTitle ? `<li>🗓️ <strong>Buổi học:</strong> ${escapeEmailHtml(sessionTitle)}</li>` : ""}
+        <li>⏰ <strong>Hạn hoàn thành:</strong> <span style="color: #dc2626; font-weight: 900;">${escapeEmailHtml(deadlineText)}</span></li>
+      </ul>
+    </div>
+
+    <div style="text-align: center; margin: 26px 0 12px;">
+      <a href="${escapeEmailHtml(resolvedActionUrl)}" class="btn">${isQuiz ? "Vào Làm Quiz Ngay →" : "Vào Làm Bài Ngay →"}</a>
+    </div>
+
+    <p style="font-size: 13px; color: #64748b; line-height: 1.7; text-align: center;">
+      Cố lên một chút nữa thôi, hoàn thành sớm để mình thật thoải mái nha 💛
+    </p>
+  `;
+
+  return sendBrevoEmail({
+    to: email,
+    toName: username,
+    subject: `[Moly Course] ${testPrefix}Nhắc nhẹ: ${safeTitle} sắp đến hạn rồi 🌷`,
+    htmlContent: createBaseEmailHtml({
+      title: "Moly Nhắc Bạn Một Chút Nè!",
+      preheader: `${safeTitle} sẽ hết hạn lúc ${deadlineText}. Bạn nhớ hoàn thành nhé!`,
+      bodyContent,
+      showSecurityNote: false,
+    }),
+    textContent: [
+      isTest ? "ĐÂY LÀ EMAIL KIỂM TRA - Không thay đổi dữ liệu bài làm." : null,
+      `Xin chào ${username || "bạn"},`,
+      `${safeTitle} sắp đến hạn. Hệ thống chưa ghi nhận bài nộp của bạn.`,
+      classTitle ? `Lớp: ${classTitle}` : null,
+      `Hạn hoàn thành: ${deadlineText}`,
+      `Vào làm bài: ${resolvedActionUrl}`,
+    ].filter(Boolean).join("\n"),
+  });
+};
+
 const formatQuizReportNumber = (value, suffix = "") => {
   if (value === null || value === undefined || value === "") return "—";
   const number = Number(value);
@@ -896,5 +966,6 @@ export default {
   sendCourseEnrollmentEmail,
   sendClassEnrollmentApprovedEmail,
   sendHomeworkAssignedEmail,
+  sendHomeworkDueReminderEmail,
   sendQuizClosedReportEmail,
 };

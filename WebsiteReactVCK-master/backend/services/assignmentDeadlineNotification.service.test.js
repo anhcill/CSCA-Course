@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getDeadlineReminderStage,
+  isTwelveHourReminderDue,
   notifyAssignmentPublished,
   notifyHomeworkQuizPublished,
 } from "./assignmentDeadlineNotification.service.js";
-import { sendHomeworkAssignedEmail, sendQuizClosedReportEmail } from "./brevoEmail.service.js";
+import { sendHomeworkAssignedEmail, sendHomeworkDueReminderEmail, sendQuizClosedReportEmail } from "./brevoEmail.service.js";
 
 const now = Date.parse("2026-09-26T10:00:00.000Z");
 
@@ -19,6 +20,13 @@ test("assignment deadline reminders ignore dates outside their delivery window",
   assert.equal(getDeadlineReminderStage("2026-09-28T10:00:00.000Z", now), null);
   assert.equal(getDeadlineReminderStage("2026-09-23T10:00:00.000Z", now), null);
   assert.equal(getDeadlineReminderStage("invalid-date", now), null);
+});
+
+test("12-hour homework reminder window includes only future deadlines within twelve hours", () => {
+  assert.equal(isTwelveHourReminderDue("2026-09-26T22:00:00.000Z", now), true);
+  assert.equal(isTwelveHourReminderDue("2026-09-26T22:00:01.000Z", now), false);
+  assert.equal(isTwelveHourReminderDue("2026-09-26T09:59:59.000Z", now), false);
+  assert.equal(isTwelveHourReminderDue("invalid-date", now), false);
 });
 
 test("notifyAssignmentPublished sends homework email with class, session, deadline and link", async () => {
@@ -195,6 +203,42 @@ test("sendHomeworkAssignedEmail runs in sandbox mode when BREVO_API_KEY is unset
   } finally {
     if (prevKey === undefined) delete process.env.BREVO_API_KEY;
     else process.env.BREVO_API_KEY = prevKey;
+  }
+});
+
+test("sendHomeworkDueReminderEmail renders a gentle test reminder with a direct action link", async () => {
+  const previousKey = process.env.BREVO_API_KEY;
+  const previousFetch = global.fetch;
+  let payload;
+  process.env.BREVO_API_KEY = "test-brevo-key-long-enough";
+  global.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ messageId: "test-reminder-message" }) };
+  };
+  try {
+    const res = await sendHomeworkDueReminderEmail({
+      email: "student@example.com",
+      username: "Học viên A",
+      homeworkKind: "quiz",
+      title: "Quiz Buổi 1",
+      dueDate: "2026-11-10T10:00:00.000Z",
+      classTitle: "Tiếng Trung xã hội",
+      courseTitle: "CSCA tháng 10",
+      sessionTitle: "Buổi 1",
+      actionUrl: "https://www.molycourse.online/lms/quiz/24",
+      isTest: true,
+    });
+
+    assert.equal(res.success, true);
+    assert.match(payload.subject, /\[KIỂM TRA\] Nhắc nhẹ/);
+    assert.match(payload.htmlContent, /Moly nhắc nhẹ/);
+    assert.match(payload.htmlContent, /Hệ thống chưa ghi nhận bài nộp/);
+    assert.match(payload.htmlContent, /Quiz Buổi 1/);
+    assert.match(payload.htmlContent, /https:\/\/www\.molycourse\.online\/lms\/quiz\/24/);
+  } finally {
+    if (previousKey === undefined) delete process.env.BREVO_API_KEY;
+    else process.env.BREVO_API_KEY = previousKey;
+    global.fetch = previousFetch;
   }
 });
 

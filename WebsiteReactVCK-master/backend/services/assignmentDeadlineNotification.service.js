@@ -1,9 +1,10 @@
 import { query } from "../db/connect.js";
 import { createNotification } from "./notification.service.js";
-import { sendHomeworkAssignedEmail } from "./brevoEmail.service.js";
+import { sendHomeworkAssignedEmail, sendHomeworkDueReminderEmail } from "./brevoEmail.service.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 const MAX_REMINDER_ASSIGNMENTS = 200;
+const TWELVE_HOURS_MS = 12 * HOUR_MS;
 
 const formatDeadline = (value) => {
   const date = new Date(value);
@@ -26,6 +27,14 @@ export const getDeadlineReminderStage = (dueDate, now = Date.now()) => {
   if (remainingMs > 0 && remainingMs <= 3 * HOUR_MS) return "urgent";
   if (remainingMs > 3 * HOUR_MS && remainingMs <= 24 * HOUR_MS) return "due_soon";
   return null;
+};
+
+export const isTwelveHourReminderDue = (dueDate, now = Date.now()) => {
+  const dueAt = new Date(dueDate).getTime();
+  const nowAt = now instanceof Date ? now.getTime() : Number(now);
+  if (Number.isNaN(dueAt) || !Number.isFinite(nowAt)) return false;
+  const remainingMs = dueAt - nowAt;
+  return remainingMs > 0 && remainingMs <= TWELVE_HOURS_MS;
 };
 
 const reminderCopy = (assignment, stage) => {
@@ -387,9 +396,106 @@ export const notifyAssignmentDeadlineChanged = async ({ assignmentId, actorId, d
   }
 };
 
-export const processAssignmentDeadlineReminders = async () => {
+const deliverTwelveHourHomeworkReminder = async ({
+  db,
+  target,
+  emailSender,
+  notificationCreator,
+}) => {
+  if (!target?.userId || !target?.email || !target?.dueDate) return { emailed: 0, notified: 0 };
+  const dueKey = new Date(target.dueDate).toISOString();
+  const dedupeBase = `${target.kind}:${target.itemId}:user:${target.userId}:due:${dueKey}:12h`;
+  const emailDedupeKey = `${dedupeBase}:email`;
+  const notificationDedupeKey = `${dedupeBase}:notification`;
+
+  const existingDelivery = await db.query(
+    `SELECT id, status FROM notification_outbox
+     WHERE dedupe_key = $1 ORDER BY id DESC LIMIT 1`,
+    [emailDedupeKey],
+  );
+  if (existingDelivery.rows[0]?.status === "delivered") return { emailed: 0, notified: 0 };
+
+  let outboxId = existingDelivery.rows[0]?.id;
+  if (outboxId) {
+    await db.query(
+      `UPDATE notification_outbox
+       SET status = 'pending', payload = $2::jsonb
+       WHERE id = $1`,
+      [outboxId, JSON.stringify({ kind: target.kind, itemId: target.itemId, userId: target.userId, dueDate: dueKey })],
+    );
+  } else {
+    const inserted = await db.query(
+      `INSERT INTO notification_outbox
+         (event_type, recipient_ids, payload, dedupe_key, status)
+       VALUES ($1, $2::bigint[], $3::jsonb, $4, 'pending')
+       RETURNING id`,
+      [
+        target.kind === "quiz" ? "quiz.due_12h" : "assignment.due_12h",
+        [target.userId],
+        JSON.stringify({ kind: target.kind, itemId: target.itemId, userId: target.userId, dueDate: dueKey }),
+        emailDedupeKey,
+      ],
+    );
+    outboxId = inserted.rows[0]?.id;
+  }
+
+  let notified = 0;
+  const existingNotification = await db.query(
+    "SELECT id FROM notifications WHERE user_id = $1 AND dedupe_key = $2 LIMIT 1",
+    [target.userId, notificationDedupeKey],
+  );
+  if (!existingNotification.rows[0]) {
+    const notification = await notificationCreator({
+      userId: target.userId,
+      title: `Nhắc nhẹ: ${target.title} sắp đến hạn`,
+      message: `Bạn chưa nộp bài này. Hạn hoàn thành: ${formatDeadline(target.dueDate)}. Vào làm khi thuận tiện nhé!`,
+      eventType: target.kind === "quiz" ? "quiz.due_12h" : "assignment.due_12h",
+      linkUrl: target.linkPath,
+      data: { kind: "due_12h", itemId: target.itemId, dueDate: dueKey },
+      dedupeKey: notificationDedupeKey,
+    });
+    if (notification) notified = 1;
+  }
+
   try {
-    const candidates = await query(
+    const delivery = await emailSender({
+      email: target.email,
+      username: target.displayName,
+      homeworkKind: target.kind,
+      title: target.title,
+      dueDate: target.dueDate,
+      classTitle: target.classTitle,
+      courseTitle: target.courseTitle,
+      sessionTitle: target.sessionTitle,
+      actionUrl: `${(process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "")}${target.linkPath}`,
+    });
+    if (delivery?.success !== true || delivery?.mock === true) {
+      throw new Error(delivery?.mock ? "Email provider is in mock mode" : delivery?.error || "Email provider rejected reminder");
+    }
+    await db.query(
+      `UPDATE notification_outbox SET status = 'delivered', delivered_at = NOW(), payload = payload || $2::jsonb
+       WHERE id = $1`,
+      [outboxId, JSON.stringify({ providerMessageId: delivery.messageId || null })],
+    );
+    return { emailed: 1, notified };
+  } catch (error) {
+    await db.query(
+      `UPDATE notification_outbox SET status = 'failed', payload = payload || $2::jsonb WHERE id = $1`,
+      [outboxId, JSON.stringify({ lastError: String(error?.message || error).slice(0, 500) })],
+    );
+    console.error(`[AssignmentDeadlineNotification] 12-hour reminder failed for ${target.email}:`, error.message);
+    return { emailed: 0, notified };
+  }
+};
+
+export const processAssignmentDeadlineReminders = async ({
+  db = { query },
+  emailSender = sendHomeworkDueReminderEmail,
+  notificationCreator = createNotification,
+  now = new Date(),
+} = {}) => {
+  try {
+    const candidates = await db.query(
       `SELECT id, title, due_date
        FROM assignments a
        WHERE (due_date > NOW() - INTERVAL '48 hours' AND due_date <= NOW() + INTERVAL '24 hours')
@@ -404,11 +510,16 @@ export const processAssignmentDeadlineReminders = async () => {
     );
 
     let notifications = 0;
-    const now = Date.now();
+    let emails = 0;
+    const nowMs = now instanceof Date ? now.getTime() : Number(now);
     for (const assignment of candidates.rows) {
-      const recipients = await getAssignmentAudience({ assignmentId: assignment.id, excludeSubmitted: true });
+      const fullAssignment = await getAssignmentForNotification(assignment.id, db);
+      if (!fullAssignment) continue;
+      const recipients = await getAssignmentAudience({ assignmentId: assignment.id, excludeSubmitted: true, db });
       if (recipients.length === 0) continue;
-      const deadlines = await query(
+      const profiles = await getRecipientEmailProfiles(recipients, db);
+      const profileById = new Map(profiles.map((profile) => [String(profile.user_id), profile]));
+      const deadlines = await db.query(
         `SELECT u.id, COALESCE(CASE WHEN s.return_requested THEN s.resubmit_until END, ac.due_at, $3::timestamptz) AS due_at,
                 COALESCE(s.revision, 0) AS revision
          FROM users u LEFT JOIN assessment_accommodations ac ON ac.user_id = u.id AND ac.assessment_id = $1
@@ -419,20 +530,116 @@ export const processAssignmentDeadlineReminders = async () => {
       for (const recipient of deadlines.rows) {
         if (!recipient.due_at) continue;
         const effective = { ...assignment, due_date: recipient.due_at };
-        const stage = getDeadlineReminderStage(effective.due_date, now);
+        const stage = getDeadlineReminderStage(effective.due_date, nowMs);
         if (!stage) continue;
         const dueKey = new Date(effective.due_date).toISOString();
         const { delivered } = await notifyAudience({
           assignment: effective, recipients: [recipient.id], ...reminderCopy(effective, stage),
           dedupePrefix: `assignment:${assignment.id}:revision:${recipient.revision}:deadline:${dueKey}:${stage}`,
           data: { kind: stage, reminderStage: stage },
+          notificationCreator,
         });
         notifications += delivered;
+
+        if (isTwelveHourReminderDue(effective.due_date, nowMs)) {
+          const profile = profileById.get(String(recipient.id));
+          if (profile) {
+            const reminder = await deliverTwelveHourHomeworkReminder({
+              db,
+              emailSender,
+              notificationCreator,
+              target: {
+                kind: "assignment",
+                itemId: assignment.id,
+                userId: recipient.id,
+                email: profile.email,
+                displayName: profile.display_name || profile.username,
+                title: fullAssignment.title,
+                dueDate: effective.due_date,
+                classTitle: fullAssignment.class_title,
+                courseTitle: fullAssignment.course_title,
+                sessionTitle: fullAssignment.session_title,
+                linkPath: assignmentLink(assignment.id),
+              },
+            });
+            emails += reminder.emailed;
+            notifications += reminder.notified;
+          }
+        }
       }
     }
-    return { scanned: candidates.rows.length, notifications };
+
+    const quizCandidates = await db.query(
+      `SELECT q.id, q.title, q.due_date, q.available_until, q.live_class_id,
+              COALESCE(c.title, c.name) AS course_title, lc.title AS class_title, cs.title AS session_title
+       FROM quizzes q
+       JOIN live_classes lc ON lc.id = q.live_class_id
+       LEFT JOIN courses c ON c.id = q.course_id
+       LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
+       WHERE q.status = 'PUBLISHED' AND q.activity_scope = 'homework'
+         AND (
+           (COALESCE(q.available_until, q.due_date) > $1
+             AND COALESCE(q.available_until, q.due_date) <= $1::timestamptz + INTERVAL '12 hours')
+           OR EXISTS (
+             SELECT 1 FROM assessment_accommodations candidate_ac
+             WHERE candidate_ac.assessment_type = 'quiz' AND candidate_ac.assessment_id = q.id
+               AND candidate_ac.status = 'active' AND candidate_ac.due_at > $1
+               AND candidate_ac.due_at <= $1::timestamptz + INTERVAL '12 hours'
+           )
+         )
+       ORDER BY COALESCE(q.available_until, q.due_date)
+       LIMIT $2`,
+      [new Date(nowMs), MAX_REMINDER_ASSIGNMENTS],
+    );
+
+    for (const quiz of quizCandidates.rows) {
+      const recipients = await db.query(
+        `SELECT u.id AS user_id, u.email, u.username,
+                COALESCE(NULLIF(sp.full_name, ''), u.username, u.email) AS display_name,
+                COALESCE(ac.due_at, $2::timestamptz) AS due_at
+         FROM class_enrollments ce
+         JOIN users u ON u.id = ce.user_id
+         LEFT JOIN student_profiles sp ON sp.user_id = u.id
+         LEFT JOIN assessment_accommodations ac ON ac.user_id = u.id
+           AND ac.assessment_type = 'quiz' AND ac.assessment_id = $3 AND ac.status = 'active'
+         WHERE ce.live_class_id = $1 AND ce.status = 'active'
+           AND COALESCE(ce.is_internal_test, FALSE) = FALSE
+           AND COALESCE(u.is_internal_test_account, FALSE) = FALSE
+           AND u.email IS NOT NULL AND TRIM(u.email) <> ''
+           AND NOT EXISTS (
+             SELECT 1 FROM quiz_attempts qa
+             WHERE qa.quiz_id = $3 AND qa.user_id = u.id AND qa.status = 'submitted'
+           )`,
+        [quiz.live_class_id, quiz.available_until || quiz.due_date, quiz.id],
+      );
+      for (const recipient of recipients.rows) {
+        if (!isTwelveHourReminderDue(recipient.due_at, nowMs)) continue;
+        const reminder = await deliverTwelveHourHomeworkReminder({
+          db,
+          emailSender,
+          notificationCreator,
+          target: {
+            kind: "quiz",
+            itemId: quiz.id,
+            userId: recipient.user_id,
+            email: recipient.email,
+            displayName: recipient.display_name || recipient.username,
+            title: quiz.title,
+            dueDate: recipient.due_at,
+            classTitle: quiz.class_title,
+            courseTitle: quiz.course_title,
+            sessionTitle: quiz.session_title,
+            linkPath: quizLink(quiz.id),
+          },
+        });
+        emails += reminder.emailed;
+        notifications += reminder.notified;
+      }
+    }
+
+    return { scanned: candidates.rows.length, quizScanned: quizCandidates.rows.length, notifications, emails };
   } catch (error) {
     console.error("[AssignmentDeadlineNotification] Reminder processing failed:", error);
-    return { scanned: 0, notifications: 0, error: error?.message || "unknown" };
+    return { scanned: 0, quizScanned: 0, notifications: 0, emails: 0, error: error?.message || "unknown" };
   }
 };

@@ -262,6 +262,29 @@ test("LMS workflows execute against isolated PostgreSQL migrations", async (t) =
     assert.equal(rows[0].attempt_number,2);
     assert.equal(Number(rows[0].score),8);
   });
+  await t.test("twelve-hour quiz reminders email only learners who have not submitted and dedupe repeats",async()=>{
+    const completedStudent=await one("INSERT INTO users(username,email,role,is_management_managed,lms_account_status,external_student_id) VALUES ('completed-student','completed@example.test','user',TRUE,'active','party-completed') RETURNING *");
+    await db.query("INSERT INTO class_enrollments(user_id,live_class_id,management_membership_source_id) VALUES ($1,$2,'membership-completed')",[completedStudent.id,cls.id]);
+    const reminderQuiz=await one("INSERT INTO quizzes(title,course_id,live_class_id,class_session_id,instructor_id,status,activity_scope,attempt_limit,due_date,available_until) VALUES ('Quiz cần nhắc',$1,$2,$3,$4,'PUBLISHED','homework',3,NOW()+INTERVAL '6 hours',NOW()+INTERVAL '6 hours') RETURNING *",[course.id,cls.id,session.id,teacher.id]);
+    await db.query("INSERT INTO quiz_attempts(quiz_id,user_id,score,max_score,status,attempt_number,submitted_at) VALUES ($1,$2,9,10,'submitted',1,NOW())",[reminderQuiz.id,completedStudent.id]);
+    const sent=[];
+    const result=await reminders({
+      db:{query:(sql,params)=>db.query(sql,params)},
+      emailSender:async(payload)=>{sent.push(payload);return {success:true,messageId:`reminder-${sent.length}`};},
+      notificationCreator:async()=>({id:1}),
+      now:new Date(),
+    });
+    assert.equal(result.emails,1,JSON.stringify(result));
+    assert.deepEqual(sent.map((item)=>item.email),[student.email]);
+    const repeated=await reminders({
+      db:{query:(sql,params)=>db.query(sql,params)},
+      emailSender:async(payload)=>{sent.push(payload);return {success:true,messageId:"duplicate"};},
+      notificationCreator:async()=>({id:2}),
+      now:new Date(),
+    });
+    assert.equal(repeated.emails,0,JSON.stringify(repeated));
+    assert.equal(sent.length,1);
+  });
   await t.test("revoking a recorded lead overrides stale instructor_id",async()=>{
     await db.query("UPDATE class_teachers SET status='revoked' WHERE live_class_id=$1 AND teacher_id=$2",[cls.id,teacher.id]);
     let r=await invoke(reports,"get","/gradebook",{user:teacher,query:{classId:cls.id}});
