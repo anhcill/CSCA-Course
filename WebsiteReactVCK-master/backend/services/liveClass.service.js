@@ -102,6 +102,14 @@ const formatSessionNotification = (session, mode) => {
     };
   }
 
+  if (mode === "cancelled") {
+    return {
+      title: "Buổi học đã được hủy",
+      message: `Buổi học “${session.title}” lúc ${start} đã được hủy.${session.cancel_reason ? ` Lý do: ${session.cancel_reason}` : ""}`,
+      dedupeKey: `live-session:${session.id}:cancelled:${new Date(session.updated_at).getTime()}`,
+    };
+  }
+
   return {
     title: "Buổi học Live sắp bắt đầu",
     message: `Buổi học “${session.title}” sẽ bắt đầu lúc ${start}.`,

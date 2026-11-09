@@ -390,10 +390,35 @@ export const fetchMyLiveSchedule = async ({ courseId, classId, from, to } = {}) 
   });
 };
 
-export const createLiveSession = async ({ liveClassId, title, startTime, endTime, meetUrl, passcode, status, chapterId, newChapter }) => (
+export const createLiveSession = async ({
+  liveClassId,
+  title,
+  startTime,
+  endTime,
+  meetUrl,
+  passcode,
+  status,
+  chapterId,
+  newChapter,
+  sessionKind,
+  replacementForSessionId,
+  curriculumAction,
+}) => (
   requestCalendarMutation(`/live-classes/${encodeURIComponent(liveClassId)}/sessions`, {
     method: "POST",
-    body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status, chapterId, newChapter }),
+    body: JSON.stringify({
+      title,
+      startTime,
+      endTime,
+      meetUrl,
+      passcode,
+      status,
+      chapterId,
+      newChapter,
+      sessionKind,
+      replacementForSessionId,
+      curriculumAction,
+    }),
   }, { classId: liveClassId, type: "session-created" })
 );
 
@@ -406,6 +431,13 @@ export const updateLiveSession = async ({ sessionId, title, startTime, endTime, 
     method: "PATCH",
     body: JSON.stringify({ title, startTime, endTime, meetUrl, passcode, status, chapterId, changeReason, expectedVersion }),
   }, { sessionId, type: "session-updated" })
+);
+
+export const cancelLiveSession = async ({ sessionId, reason, shiftCurriculum, extendCourse = true }) => (
+  requestCalendarMutation(`/live-classes/sessions/${encodeURIComponent(sessionId)}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason, shiftCurriculum, extendCourse }),
+  }, { sessionId, type: "session-cancelled" })
 );
 
 // The teaching link is deliberately separate from timetable edits: class

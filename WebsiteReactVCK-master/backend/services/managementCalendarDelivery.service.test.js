@@ -38,4 +38,51 @@ test("session delivery includes the Management schedule source id", async () => 
   assert.equal(insertedPayload.lmsSession.managementSessionSourceId, "session-source-1");
   assert.equal(insertedPayload.lmsSession.managementScheduleSourceId, "schedule-source-1");
   assert.equal(insertedPayload.lmsSession.scheduleId, "4");
+  assert.equal(insertedPayload.lmsSession.sessionKind, "regular");
+  assert.equal(insertedPayload.lmsSession.isPayable, true);
+});
+
+test("cancelled session delivery includes payroll and replacement metadata", async () => {
+  let insertedPayload;
+  const client = {
+    async query(sql, params) {
+      if (sql.includes("FROM class_sessions WHERE id")) {
+        assert.deepEqual(params, [41]);
+        return { rows: [{ management_session_source_id: "cancelled-source-41" }] };
+      }
+      if (sql.includes("INSERT INTO lms_management_calendar_outbox")) {
+        insertedPayload = JSON.parse(params[2]);
+        return { rows: [{ id: 2, event_id: params[0], status: "PENDING" }] };
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+  };
+
+  await enqueueManagementCalendarDelivery(client, {
+    managementClassId: "class-source-1",
+    eventType: "lms.session.cancelled",
+    correlationId: "session:42:v2",
+    lmsSession: {
+      id: 42,
+      live_class_id: 3,
+      schedule_id: null,
+      replacement_for_session_id: 41,
+      session_kind: "makeup",
+      is_payable: false,
+      cancel_reason: "Giáo viên bận",
+      cancelled_at: "2026-10-09T09:00:00.000Z",
+      title: "Buổi học bù",
+      start_time: "2026-10-09T11:00:00.000Z",
+      end_time: "2026-10-09T13:00:00.000Z",
+      status: "cancelled",
+      version: 2,
+    },
+  });
+
+  assert.equal(insertedPayload.lmsSession.sessionKind, "makeup");
+  assert.equal(insertedPayload.lmsSession.replacementForSessionId, "41");
+  assert.equal(insertedPayload.lmsSession.replacementForSessionSourceId, "cancelled-source-41");
+  assert.equal(insertedPayload.lmsSession.isPayable, false);
+  assert.equal(insertedPayload.lmsSession.cancelReason, "Giáo viên bận");
+  assert.equal(insertedPayload.lmsSession.cancelledAt, "2026-10-09T09:00:00.000Z");
 });

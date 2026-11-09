@@ -127,6 +127,9 @@ test("isSessionCompleted checks status and end_time correctly", () => {
 
   // Future scheduled session is not completed
   assert.equal(isSessionCompleted({ status: "scheduled", end_time: new Date("2099-01-01") }), false);
+
+  // Explicit non-payable policy always wins, even for ended sessions.
+  assert.equal(isSessionCompleted({ status: "ended", is_payable: false }), false);
 });
 
 test("salary formula: 20 sessions, 2 taught sessions calculation verification", () => {
@@ -187,7 +190,8 @@ test("salary counts lead/co-teacher work, preserves legacy instructors, and refl
       title TEXT NOT NULL,
       start_time TIMESTAMPTZ NOT NULL,
       end_time TIMESTAMPTZ NOT NULL,
-      status TEXT NOT NULL
+      status TEXT NOT NULL,
+      is_payable BOOLEAN NOT NULL DEFAULT TRUE
     );
   `);
 
@@ -298,6 +302,7 @@ test("admin can edit class override rate, session duration, and salary settlemen
       end_time TIMESTAMPTZ NOT NULL,
       status TEXT NOT NULL,
       duration_hours NUMERIC(4,2),
+      is_payable BOOLEAN NOT NULL DEFAULT TRUE,
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE TABLE teacher_salary_settlements (

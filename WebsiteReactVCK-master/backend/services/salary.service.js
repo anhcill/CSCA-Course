@@ -23,7 +23,7 @@ export const calculateSessionDurationHours = (startTime, endTime, explicitDurati
  * Determines whether a session counts as completed/taught.
  */
 export const isSessionCompleted = (session) => {
-  if (!session || session.status === "cancelled") return false;
+  if (!session || session.status === "cancelled" || session.is_payable === false) return false;
   if (session.status === "ended") return true;
   if (session.end_time) {
     const end = new Date(session.end_time).getTime();
@@ -80,7 +80,7 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
     try {
       sessionsResult = await db.query(
         `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
-                cs.duration_hours
+                cs.duration_hours, cs.is_payable
          FROM class_sessions cs
          WHERE cs.live_class_id = ANY($1::bigint[])
            AND cs.status <> 'cancelled'
@@ -90,7 +90,7 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
     } catch {
       sessionsResult = await db.query(
         `SELECT cs.id, cs.live_class_id, cs.title, cs.start_time, cs.end_time, cs.status,
-                NULL::numeric(4,2) AS duration_hours
+                NULL::numeric(4,2) AS duration_hours, cs.is_payable
          FROM class_sessions cs
          WHERE cs.live_class_id = ANY($1::bigint[])
            AND cs.status <> 'cancelled'
@@ -148,7 +148,7 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
       const isLive = session.status === "live";
 
       const sessionSalary = completed ? Math.round(durationHours * effectiveRate) : 0;
-      const projectedSalary = Math.round(durationHours * effectiveRate);
+      const projectedSalary = session.is_payable === false ? 0 : Math.round(durationHours * effectiveRate);
 
       if (completed) {
         classCompletedSessions += 1;
@@ -324,12 +324,12 @@ export const getAllTeachersSalaryOverview = async (
     ${settlementJoin}
     LEFT JOIN LATERAL (
       SELECT COUNT(DISTINCT lc.id)::int AS classes_count,
-             COUNT(cs.id) FILTER (WHERE cs.status <> 'cancelled')::int AS total_sessions,
-             COUNT(cs.id) FILTER (WHERE cs.status = 'ended' OR (cs.status <> 'cancelled' AND cs.end_time <= NOW()))::int AS completed_sessions,
+             COUNT(cs.id) FILTER (WHERE cs.status <> 'cancelled' AND cs.is_payable = TRUE)::int AS total_sessions,
+             COUNT(cs.id) FILTER (WHERE cs.is_payable = TRUE AND (cs.status = 'ended' OR (cs.status <> 'cancelled' AND cs.end_time <= NOW())))::int AS completed_sessions,
              COALESCE(SUM(ROUND((EXTRACT(EPOCH FROM (cs.end_time - cs.start_time)) / 3600.0)::numeric, 2))
-               FILTER (WHERE cs.status = 'ended' OR (cs.status <> 'cancelled' AND cs.end_time <= NOW())), 0)::numeric(10,2) AS completed_hours,
+               FILTER (WHERE cs.is_payable = TRUE AND (cs.status = 'ended' OR (cs.status <> 'cancelled' AND cs.end_time <= NOW()))), 0)::numeric(10,2) AS completed_hours,
              COALESCE(SUM(ROUND((EXTRACT(EPOCH FROM (cs.end_time - cs.start_time)) / 3600.0)::numeric, 2))
-               FILTER (WHERE cs.status <> 'cancelled'), 0)::numeric(10,2) AS total_hours
+               FILTER (WHERE cs.status <> 'cancelled' AND cs.is_payable = TRUE), 0)::numeric(10,2) AS total_hours
       FROM live_classes lc
       LEFT JOIN class_sessions cs ON cs.live_class_id = lc.id
       WHERE (lc.instructor_id = u.id AND NOT EXISTS (
@@ -505,6 +505,7 @@ export const getManagementPayrollReport = async (
       cs.end_time,
       cs.status,
       cs.duration_hours,
+      cs.is_payable,
       cs.management_source_updated_at AS session_source_updated_at,
       u.updated_at AS teacher_updated_at,
       COALESCE(tss.bonus_amount, 0) AS bonus_amount,
@@ -527,7 +528,7 @@ export const getManagementPayrollReport = async (
     const effectiveHourlyRate = Number(row.teacher_class_rate_override ?? row.class_rate_override ?? row.teacher_hourly_rate ?? 0);
     const durationHours = calculateSessionDurationHours(row.start_time, row.end_time, row.duration_hours);
     const isCompleted = isSessionCompleted(row);
-    const amount = Math.round(durationHours * effectiveHourlyRate);
+    const amount = row.is_payable === false ? 0 : Math.round(durationHours * effectiveHourlyRate);
     const sourceUpdatedCandidates = [
       row.teacher_updated_at,
       row.class_source_updated_at,
@@ -557,6 +558,7 @@ export const getManagementPayrollReport = async (
       startTime: row.start_time,
       endTime: row.end_time,
       status: row.status,
+      isPayable: row.is_payable !== false,
       isCompleted,
       durationHours,
       effectiveHourlyRate,
@@ -824,7 +826,7 @@ export const updateSessionSalaryParameters = async ({
   }
 
   if (status !== undefined && status !== null && status !== "") {
-    const validStatuses = ["scheduled", "live", "ended", "cancelled"];
+    const validStatuses = ["scheduled", "live", "ended"];
     if (!validStatuses.includes(status)) {
       throw new Error("INVALID_STATUS");
     }

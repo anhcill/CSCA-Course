@@ -102,6 +102,11 @@ test("session move adopts the old generated occurrence instead of leaving a dupl
       management_source_updated_at TIMESTAMPTZ,
       change_reason TEXT,
       changed_at TIMESTAMPTZ,
+      session_kind TEXT NOT NULL DEFAULT 'regular',
+      replacement_for_session_id BIGINT,
+      is_payable BOOLEAN NOT NULL DEFAULT TRUE,
+      cancel_reason TEXT,
+      cancelled_at TIMESTAMPTZ,
       version INTEGER NOT NULL DEFAULT 1,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );

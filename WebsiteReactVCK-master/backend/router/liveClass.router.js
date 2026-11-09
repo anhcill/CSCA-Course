@@ -16,6 +16,10 @@ import { enqueueManagementCalendarDelivery } from "../services/managementCalenda
 import { buildClassCalendarIcs } from "../services/calendarIcs.service.js";
 import { getDeterministicClassCover } from "../utils/classWallpapers.js";
 import { recordAuditEvent } from "../services/audit.service.js";
+import {
+  normalizeSessionKind,
+  shiftCancelledSessionCurriculum,
+} from "../services/sessionCurriculumShift.service.js";
 
 const router = express.Router();
 
@@ -267,6 +271,8 @@ const safeSession = (row) => {
     meeting_managed_externally: Boolean(managementSessionSourceId || managementScheduleOwnerId),
   };
 };
+
+const parseSessionKind = (value, fallback = "supplemental") => normalizeSessionKind(value ?? fallback);
 
 const isManagementOwnedSession = (session) => Boolean(
   session.management_session_source_id || session.management_schedule_owner_id,
@@ -1723,6 +1729,36 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
 
     const { errors, startTime, endTime } = validateSessionInput(req.body || {});
     if (errors.length > 0) return validationError(res, errors.join("; "));
+    if (req.body?.status === "cancelled") {
+      return validationError(res, "Không thể tạo trực tiếp một buổi đã hủy");
+    }
+    const sessionKind = parseSessionKind(req.body?.sessionKind);
+    if (!sessionKind) return validationError(res, "sessionKind không hợp lệ");
+    if (sessionKind === "curriculum_insert") {
+      return validationError(res, "Chèn buổi giáo trình chưa hỗ trợ trên LMS; hãy thêm buổi supplemental hoặc thao tác từ InternalManagement");
+    }
+    const curriculumAction = String(req.body?.curriculumAction || (sessionKind === "curriculum_insert" ? "insert" : "none"))
+      .trim().toLowerCase();
+    if (!["none", "append", "insert"].includes(curriculumAction)) {
+      return validationError(res, "curriculumAction không hợp lệ");
+    }
+    if (sessionKind === "curriculum_insert" && curriculumAction !== "insert") {
+      return validationError(res, "Buổi chèn giáo trình phải dùng curriculumAction=insert");
+    }
+    if (sessionKind !== "curriculum_insert" && curriculumAction === "insert") {
+      return validationError(res, "Chỉ buổi curriculum_insert mới được chèn thêm nội dung giáo trình");
+    }
+    const replacementForSessionId = req.body?.replacementForSessionId == null
+      ? null : parsePositiveId(req.body.replacementForSessionId);
+    if (req.body?.replacementForSessionId != null && !replacementForSessionId) {
+      return validationError(res, "replacementForSessionId không hợp lệ");
+    }
+    if (sessionKind === "makeup" && !replacementForSessionId) {
+      return validationError(res, "Buổi học bù phải tham chiếu buổi đã hủy");
+    }
+    if (sessionKind !== "makeup" && replacementForSessionId) {
+      return validationError(res, "Chỉ buổi học bù mới được tham chiếu buổi đã hủy");
+    }
     const chapterId = req.body?.chapterId === undefined || req.body?.chapterId === null || req.body?.chapterId === ""
       ? null : parsePositiveId(req.body.chapterId);
     if (req.body?.chapterId !== undefined && req.body?.chapterId !== null && req.body?.chapterId !== "" && !chapterId) {
@@ -1747,6 +1783,28 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
     }
     client = await getClient();
     await client.query("BEGIN");
+    if (replacementForSessionId) {
+      const replacement = await client.query(
+        `SELECT id FROM class_sessions
+         WHERE id = $1 AND live_class_id = $2 AND status = 'cancelled'
+         FOR UPDATE`,
+        [replacementForSessionId, classId],
+      );
+      if (!replacement.rows.length) {
+        await client.query("ROLLBACK");
+        return validationError(res, "Buổi gốc của buổi học bù chưa được hủy hoặc không thuộc lớp này");
+      }
+      const existingMakeup = await client.query(
+        `SELECT 1 FROM class_sessions
+         WHERE replacement_for_session_id = $1 AND status <> 'cancelled'
+         LIMIT 1`,
+        [replacementForSessionId],
+      );
+      if (existingMakeup.rows.length) {
+        await client.query("ROLLBACK");
+        return validationError(res, "Buổi đã hủy này đã có một buổi học bù đang hoạt động");
+      }
+    }
     let selectedChapterId = chapterId;
     let selectedChapterTitle = null;
     if (chapterId) {
@@ -1788,14 +1846,16 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
     const result = await client.query(
       `INSERT INTO class_sessions (
          live_class_id, chapter_id, title, meet_url, passcode, start_time, end_time, status,
-         original_start_at, original_end_at
+         original_start_at, original_end_at, session_kind, replacement_for_session_id, is_payable
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $6, $7)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $6, $7, $9, $10, TRUE)
        RETURNING id, live_class_id, chapter_id, schedule_id, title, start_time, end_time, status,
                  original_start_at, original_end_at, change_reason, changed_at,
-                 meet_url, version, management_session_source_id, created_at, updated_at`,
+                 meet_url, version, management_session_source_id, session_kind,
+                 replacement_for_session_id, is_payable, created_at, updated_at`,
       [classId, selectedChapterId, selectedChapterTitle || req.body.title.trim(), req.body.meetUrl || null,
-        req.body.passcode || null, startTime, endTime, req.body.status || "scheduled"],
+        req.body.passcode || null, startTime, endTime, req.body.status || "scheduled",
+        sessionKind, replacementForSessionId],
     );
     const session = result.rows[0];
     await enqueueManagementCalendarDelivery(client, {
@@ -1937,6 +1997,165 @@ router.patch("/sessions/:sessionId/meeting-link", protectRoute, requireTeacher, 
   }
 });
 
+router.post("/sessions/:sessionId/cancel", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
+  let client;
+  try {
+    const sessionId = parsePositiveId(req.params.sessionId);
+    if (!sessionId) return validationError(res, "sessionId không hợp lệ");
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    if (!reason || reason.length > 2000) return validationError(res, "Lý do hủy buổi là bắt buộc và không quá 2000 ký tự");
+    const requestedShiftCurriculum = req.body?.shiftCurriculum;
+    const extendCourse = req.body?.extendCourse !== false;
+
+    client = await getClient();
+    await client.query("BEGIN");
+    const currentResult = await client.query(
+      `SELECT cs.*, recurring_schedule.management_schedule_source_id AS management_schedule_owner_id,
+              lc.instructor_id, lc.management_class_source_id, lc.course_id
+       FROM class_sessions cs
+       JOIN live_classes lc ON lc.id = cs.live_class_id
+       LEFT JOIN class_schedules recurring_schedule ON recurring_schedule.id = cs.schedule_id
+       WHERE cs.id = $1 FOR UPDATE OF cs`,
+      [sessionId],
+    );
+    const current = currentResult.rows[0];
+    if (!current) {
+      await client.query("ROLLBACK");
+      return notFound(res, "Không tìm thấy buổi học");
+    }
+    const isExtraSession = ["supplemental", "makeup"].includes(current.session_kind);
+    const shiftCurriculum = !isExtraSession && (requestedShiftCurriculum === undefined
+      ? true
+      : requestedShiftCurriculum !== false);
+    if (shiftCurriculum && !extendCourse) {
+      await client.query("ROLLBACK");
+      return validationError(res, "Dồn giáo trình cần cho phép kéo dài khóa học thêm một buổi");
+    }
+    if (isManagementOwnedSession(current)) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Buổi đồng bộ phải được hủy từ InternalManagement");
+    }
+    if (!(await canManageClass(current, req.user))) {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Bạn không có quyền hủy buổi học này");
+    }
+    if (current.schedule_id && req.user.role !== "admin") {
+      await client.query("ROLLBACK");
+      return forbidden(res, "Chỉ quản trị viên được hủy buổi thuộc lịch cố định");
+    }
+    if (["live", "ended"].includes(current.status)) {
+      await client.query("ROLLBACK");
+      return validationError(res, "Không thể hủy buổi đang diễn ra hoặc đã kết thúc");
+    }
+    if (current.status === "cancelled") {
+      const previousOperation = await client.query(
+        "SELECT result FROM session_curriculum_operations WHERE operation_key = $1",
+        [`lms:cancel-shift:${sessionId}`],
+      );
+      const previousShift = previousOperation.rows[0]?.result || null;
+      const previousExtension = previousShift?.extensionSessionId
+        ? await client.query("SELECT * FROM class_sessions WHERE id = $1", [previousShift.extensionSessionId])
+        : { rows: [] };
+      await client.query("COMMIT");
+      return res.json({
+        success: true,
+        idempotent: true,
+        data: {
+          cancelledSession: safeSession(current),
+          extensionSession: previousExtension.rows[0] ? safeSession(previousExtension.rows[0]) : null,
+          curriculumShift: previousShift,
+        },
+        message: "Buổi học đã được hủy trước đó",
+      });
+    }
+    const attendance = await client.query(
+      "SELECT 1 FROM class_attendance WHERE session_id = $1 LIMIT 1",
+      [sessionId],
+    );
+    if (attendance.rows.length) {
+      await client.query("ROLLBACK");
+      return validationError(res, "Buổi học đã có dữ liệu điểm danh nên không thể hủy");
+    }
+
+    const cancelledResult = await client.query(
+      `UPDATE class_sessions
+       SET status = 'cancelled', is_payable = FALSE, cancel_reason = $1,
+           cancelled_at = NOW(), cancelled_by = $2, change_reason = $1,
+           changed_by = $2, changed_at = NOW(), version = version + 1, updated_at = NOW()
+       WHERE id = $3 RETURNING *`,
+      [reason, req.user.id, sessionId],
+    );
+    const cancelled = cancelledResult.rows[0];
+    let curriculumShift = null;
+    let extension = null;
+    if (shiftCurriculum) {
+      curriculumShift = await shiftCancelledSessionCurriculum(client, {
+        sessionId,
+        operationKey: `lms:cancel-shift:${sessionId}`,
+        actorId: req.user.id,
+        extendCourse,
+      });
+      const extensionResult = await client.query(
+        "SELECT * FROM class_sessions WHERE id = $1",
+        [curriculumShift.extensionSessionId],
+      );
+      extension = extensionResult.rows[0] || null;
+    }
+    await client.query(
+      `INSERT INTO class_session_change_logs
+         (session_id, schedule_id, scope, before_state, after_state, reason, actor_id)
+       VALUES ($1, $2, 'single', $3::jsonb, $4::jsonb, $5, $6)`,
+      [sessionId, current.schedule_id,
+        JSON.stringify({ status: current.status, isPayable: current.is_payable !== false }),
+        JSON.stringify({ status: "cancelled", isPayable: false, curriculumShift }),
+        reason, req.user.id],
+    );
+    await enqueueManagementCalendarDelivery(client, {
+      managementClassId: current.management_class_source_id,
+      eventType: "lms.session.cancelled",
+      lmsSession: cancelled,
+      correlationId: `session:${sessionId}:v${cancelled.version || 1}`,
+    });
+    if (extension) {
+      await enqueueManagementCalendarDelivery(client, {
+        managementClassId: current.management_class_source_id,
+        eventType: "lms.session.upserted",
+        lmsSession: extension,
+        correlationId: `curriculum-extension:${sessionId}:${extension.id}`,
+      });
+    }
+    await recordAuditEvent({
+      db: client,
+      actorId: req.user.id,
+      action: "live_class.session_cancelled",
+      entityType: "class_session",
+      entityId: sessionId,
+      beforeState: { status: current.status, isPayable: current.is_payable !== false },
+      afterState: { status: "cancelled", isPayable: false, curriculumShift },
+      metadata: { reason, extensionSessionId: extension?.id || null },
+    });
+    await client.query("COMMIT");
+    await notifyClassStudents(cancelled, "cancelled");
+    return res.json({
+      success: true,
+      data: {
+        cancelledSession: safeSession(cancelled),
+        extensionSession: extension ? safeSession(extension) : null,
+        curriculumShift,
+      },
+      message: shiftCurriculum
+        ? "Đã hủy buổi, không tính lương và dồn giáo trình sang các buổi sau"
+        : "Đã hủy buổi và không tính lương",
+    });
+  } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
+    console.error("Error cancelling class session:", error);
+    return internalError(res, "Lỗi khi hủy buổi học");
+  } finally {
+    client?.release();
+  }
+});
+
 router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermission("lms.schedule.manage"), async (req, res) => {
   let client;
   try {
@@ -1963,6 +2182,14 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
       return notFound(res, "Không tìm thấy buổi học");
     }
     const body = req.body || {};
+    if (body.status === "cancelled") {
+      await client.query("ROLLBACK");
+      return validationError(res, "Hãy dùng chức năng hủy buổi để bảo đảm dồn giáo trình và không tính lương");
+    }
+    if (current.status === "cancelled") {
+      await client.query("ROLLBACK");
+      return validationError(res, "Không thể mở lại hoặc chỉnh sửa buổi học đã hủy");
+    }
     if (isManagementOwnedSession(current) && includesMeetingConfiguration(body)) {
       await client.query("ROLLBACK");
       return forbidden(res, "Link phòng học của buổi đồng bộ chỉ được thay đổi trong InternalManagement");

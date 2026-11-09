@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { getClient } from "../db/connect.js";
 import { recordAuditEvent } from "./audit.service.js";
 import { enqueueManagementCalendarDelivery } from "./managementCalendarDelivery.service.js";
+import { normalizeSessionKind, shiftCancelledSessionCurriculum } from "./sessionCurriculumShift.service.js";
 import { notifyClassStudents } from "./liveClass.service.js";
 import { createManagedUsername } from "../utils/usernameGenerator.js";
 
@@ -640,8 +641,20 @@ export const syncCalendarSession = async (client, event) => {
     title: optionalText(payload.title, 255, "title"),
     meetingUrl: optionalText(payload.meetingUrl, 1000, "meetingUrl"),
     changeReason: optionalText(payload.changeReason, 2000, "changeReason"),
+    sessionKind: normalizeSessionKind(payload.sessionKind),
+    replacementForSessionSourceId: payload.replacementForSessionSourceId == null
+      ? null : sourceId(payload.replacementForSessionSourceId, "replacementForSessionSourceId"),
+    curriculumAction: String(payload.curriculumAction || "none").trim().toLowerCase(),
+    extendCourse: payload.extendCourse !== false,
     sourceUpdatedAt: sourceDate(payload, event.occurredAt),
   };
+  if (!input.sessionKind) throw new SyncValidationError("sessionKind không hợp lệ");
+  if (input.sessionKind === "curriculum_insert" || input.curriculumAction === "insert") {
+    throw new SyncValidationError("Chèn buổi giáo trình chưa được hỗ trợ; hãy dùng supplemental hoặc makeup");
+  }
+  if (!["none", "append", "fillcancelled", "shiftforward"].includes(input.curriculumAction)) {
+    throw new SyncValidationError("curriculumAction không hợp lệ");
+  }
   if (input.endTime <= input.startTime) throw new SyncValidationError("endTime phải sau startTime");
   if (input.previousEndTime && input.previousEndTime <= input.previousStartTime) {
     throw new SyncValidationError("previousEndTime phải sau previousStartTime");
@@ -779,6 +792,38 @@ export const syncCalendarSession = async (client, event) => {
   const originalEndsAt = existing?.management_session_source_id
     ? (existing.original_end_at || previousEndsAt || endsAt)
     : (previousEndsAt || existing?.original_end_at || endsAt);
+  let replacementForSessionId = existing?.replacement_for_session_id || null;
+  if (input.replacementForSessionSourceId) {
+    const replacementResult = await client.query(
+      `SELECT id, status FROM class_sessions
+       WHERE live_class_id = $1 AND LOWER(management_session_source_id) = LOWER($2)
+       FOR UPDATE`,
+      [liveClass.id, input.replacementForSessionSourceId],
+    );
+    const replacement = replacementResult.rows[0];
+    if (!replacement || replacement.status !== "cancelled") {
+      throw new SyncDependencyError("Buổi gốc của buổi học bù chưa được hủy hoặc chưa đồng bộ");
+    }
+    replacementForSessionId = replacement.id;
+  }
+  if (input.sessionKind === "makeup" && !replacementForSessionId) {
+    throw new SyncValidationError("Buổi học bù phải tham chiếu một buổi đã hủy");
+  }
+  if (input.sessionKind !== "makeup" && replacementForSessionId) {
+    throw new SyncValidationError("Chỉ buổi học bù mới được tham chiếu một buổi đã hủy");
+  }
+  if (replacementForSessionId && status !== "cancelled") {
+    const activeMakeup = await client.query(
+      `SELECT 1 FROM class_sessions
+       WHERE replacement_for_session_id = $1 AND status <> 'cancelled'
+         AND ($2::bigint IS NULL OR id <> $2)
+       LIMIT 1`,
+      [replacementForSessionId, existing?.id || null],
+    );
+    if (activeMakeup.rows.length) {
+      throw new SyncValidationError("Buổi đã hủy này đã có một buổi học bù đang hoạt động");
+    }
+  }
   const result = existing
     ? await client.query(
       `UPDATE class_sessions SET schedule_id = $1, title = $2, meet_url = $3,
@@ -786,21 +831,46 @@ export const syncCalendarSession = async (client, event) => {
          management_session_source_id = $7, management_source_updated_at = $8,
          change_reason = COALESCE($10, change_reason), changed_at = NOW(),
          original_start_at = $11, original_end_at = $12,
+         session_kind = $13, replacement_for_session_id = $14,
+         is_payable = CASE WHEN $6 = 'cancelled' THEN FALSE ELSE TRUE END,
+         cancel_reason = CASE WHEN $6 = 'cancelled' THEN COALESCE($10, cancel_reason) ELSE cancel_reason END,
+         cancelled_at = CASE WHEN $6 = 'cancelled' THEN COALESCE(cancelled_at, NOW()) ELSE cancelled_at END,
          version = version + 1, updated_at = NOW()
        WHERE id = $9 RETURNING *`,
       [scheduleId, title, input.meetingUrl, startsAt, endsAt, status,
         input.sessionSourceId, input.sourceUpdatedAt, existing.id, input.changeReason,
-        originalStartsAt, originalEndsAt],
+        originalStartsAt, originalEndsAt, input.sessionKind, replacementForSessionId],
     )
     : await client.query(
       `INSERT INTO class_sessions
          (live_class_id, schedule_id, title, meet_url, start_time, end_time, status,
-          original_start_at, original_end_at, management_session_source_id, management_source_updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$10,$11,$8,$9) RETURNING *`,
+          original_start_at, original_end_at, management_session_source_id, management_source_updated_at,
+          session_kind, replacement_for_session_id, is_payable, cancel_reason, cancelled_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$10,$11,$8,$9,$12,$13,($7 <> 'cancelled'),$14,
+          CASE WHEN $7 = 'cancelled' THEN NOW() ELSE NULL END) RETURNING *`,
       [liveClass.id, scheduleId, title, input.meetingUrl, startsAt, endsAt, status,
-        input.sessionSourceId, input.sourceUpdatedAt, originalStartsAt, originalEndsAt],
+        input.sessionSourceId, input.sourceUpdatedAt, originalStartsAt, originalEndsAt,
+        input.sessionKind, replacementForSessionId, input.changeReason],
     );
   const session = result.rows[0];
+  let curriculumShift = null;
+  if (status === "cancelled" && input.curriculumAction === "shiftforward") {
+    curriculumShift = await shiftCancelledSessionCurriculum(client, {
+      sessionId: session.id,
+      operationKey: `management:cancel-shift:${input.sessionSourceId.toLowerCase()}`,
+      actorId: null,
+      extendCourse: input.extendCourse,
+    });
+    const extension = await client.query("SELECT * FROM class_sessions WHERE id = $1", [curriculumShift.extensionSessionId]);
+    if (extension.rows[0]) {
+      await enqueueManagementCalendarDelivery(client, {
+        managementClassId: input.classSourceId,
+        eventType: "lms.session.upserted",
+        lmsSession: extension.rows[0],
+        correlationId: `curriculum-extension:${session.id}:${curriculumShift.extensionSessionId}`,
+      });
+    }
+  }
   const scheduleChanged = existing && (new Date(existing.start_time).getTime() !== new Date(startsAt).getTime()
     || new Date(existing.end_time).getTime() !== new Date(endsAt).getTime());
   if (scheduleChanged) {
@@ -818,7 +888,7 @@ export const syncCalendarSession = async (client, event) => {
     lmsSession: session,
     correlationId: `management-session:${session.id}:v${session.version || 1}`,
   });
-  return { action: "class.session.synced", entityType: "class_session", entityId: Number(result.rows[0].id), data: { sessionSourceId: input.sessionSourceId, status, scheduleChanged: Boolean(scheduleChanged) } };
+  return { action: "class.session.synced", entityType: "class_session", entityId: Number(result.rows[0].id), data: { sessionSourceId: input.sessionSourceId, status, scheduleChanged: Boolean(scheduleChanged), curriculumShift } };
 };
 
 const syncClassTeacher = async (client, event) => {

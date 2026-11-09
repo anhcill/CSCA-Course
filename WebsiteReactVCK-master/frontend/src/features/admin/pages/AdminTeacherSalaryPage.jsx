@@ -25,6 +25,7 @@ import {
   updateTeacherHourlyRate,
   updateTeacherClassHourlyRate,
   updateSessionSalaryParameters,
+  cancelLiveSession,
   updateTeacherSalarySettlement,
   adminTeacherSalariesExportUrl,
 } from "../../api/lmsClient";
@@ -220,11 +221,22 @@ export default function AdminTeacherSalaryPage() {
 
     setSubmittingSession(true);
     try {
-      await updateSessionSalaryParameters(editingSession.id, {
-        durationHours: numH,
-        status: sessionStatusInput,
-      });
-      toast.success(`Đã cập nhật buổi học "${editingSession.title}" (${numH}h, ${sessionStatusInput})!`);
+      if (sessionStatusInput === "cancelled") {
+        const reason = window.prompt("Nhập lý do hủy buổi học (giáo trình sẽ tự dồn sang buổi tiếp theo):", "Giáo viên bận");
+        if (!reason?.trim()) {
+          setSubmittingSession(false);
+          return;
+        }
+        await cancelLiveSession({ sessionId: editingSession.id, reason: reason.trim() });
+      } else {
+        await updateSessionSalaryParameters(editingSession.id, {
+          durationHours: numH,
+          status: sessionStatusInput,
+        });
+      }
+      toast.success(sessionStatusInput === "cancelled"
+        ? `Đã hủy buổi "${editingSession.title}", không tính lương và xử lý lại tiến độ giáo trình.`
+        : `Đã cập nhật buổi học "${editingSession.title}" (${numH}h, ${sessionStatusInput})!`);
       setEditingSession(null);
       loadDetailData(teacherDetail.teacher.id);
       loadSalaries();

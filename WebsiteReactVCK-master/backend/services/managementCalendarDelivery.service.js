@@ -166,7 +166,7 @@ const schedulePayload = (schedule) => ({
   version: Number(schedule.version || 1),
 });
 
-const sessionPayload = (session, managementScheduleSourceId = null) => ({
+const sessionPayload = (session, managementScheduleSourceId = null, replacementForSessionSourceId = null) => ({
   id: String(session.id),
   managementSessionSourceId: session.management_session_source_id || null,
   managementScheduleSourceId: managementScheduleSourceId || null,
@@ -178,6 +178,13 @@ const sessionPayload = (session, managementScheduleSourceId = null) => ({
   status: session.status,
   meetingUrl: session.meet_url || null,
   changeReason: session.change_reason || null,
+  sessionKind: session.session_kind || "regular",
+  replacementForSessionId: session.replacement_for_session_id == null
+    ? null : String(session.replacement_for_session_id),
+  replacementForSessionSourceId,
+  isPayable: session.is_payable !== false,
+  cancelReason: session.cancel_reason || null,
+  cancelledAt: timestamp(session.cancelled_at),
   version: Number(session.version || 1),
 });
 
@@ -201,6 +208,14 @@ export const enqueueManagementCalendarDelivery = async (client, {
     );
     managementScheduleSourceId = scheduleResult.rows[0]?.management_schedule_source_id || null;
   }
+  let replacementForSessionSourceId = null;
+  if (lmsSession?.replacement_for_session_id) {
+    const replacementResult = await client.query(
+      "SELECT management_session_source_id FROM class_sessions WHERE id = $1",
+      [lmsSession.replacement_for_session_id],
+    );
+    replacementForSessionSourceId = replacementResult.rows[0]?.management_session_source_id || null;
+  }
 
   const eventId = crypto.randomUUID();
   const payload = {
@@ -210,7 +225,9 @@ export const enqueueManagementCalendarDelivery = async (client, {
     correlationId,
     managementClassId: String(managementClassId),
     lmsSchedule: lmsSchedule ? schedulePayload(lmsSchedule) : null,
-    lmsSession: lmsSession ? sessionPayload(lmsSession, managementScheduleSourceId) : null,
+    lmsSession: lmsSession
+      ? sessionPayload(lmsSession, managementScheduleSourceId, replacementForSessionSourceId)
+      : null,
   };
   const payloadJson = JSON.stringify(payload);
   const entity = lmsSession || lmsSchedule;
