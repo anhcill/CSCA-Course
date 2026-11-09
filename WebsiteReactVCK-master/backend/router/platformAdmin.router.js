@@ -3,6 +3,7 @@ import protectRoute from "../middleware/protectRoute.js";
 import requireAdmin from "../middleware/requireAdmin.js";
 import { getClient, query } from "../db/connect.js";
 import { recordAuditEvent } from "../services/audit.service.js";
+import { notifyApprovedManagementEnrollment } from "../services/managementEnrollmentNotification.service.js";
 
 const router = express.Router();
 const adminOnly = [protectRoute, requireAdmin];
@@ -396,8 +397,10 @@ router.post("/membership-approvals/:id", ...adminOnly, async (req, res) => {
   if (!membershipId || !["approved", "rejected"].includes(decision)) {
     return errorResponse(res, 422, "Quyết định duyệt học viên không hợp lệ", "VALIDATION_ERROR");
   }
+  const client = await getClient();
   try {
-    const result = await query(
+    await client.query("BEGIN");
+    const result = await client.query(
       `UPDATE class_enrollments ce
        SET management_approval_status = $1::varchar,
            status = CASE WHEN $1::varchar = 'approved' THEN COALESCE(ce.management_membership_status, 'suspended') ELSE 'revoked' END,
@@ -409,16 +412,29 @@ router.post("/membership-approvals/:id", ...adminOnly, async (req, res) => {
        RETURNING ce.id, ce.live_class_id, ce.user_id, ce.status, ce.management_approval_status`,
       [decision, req.user.id, membershipId],
     );
-    if (!result.rows[0]) return errorResponse(res, 409, "Ghi danh không còn ở trạng thái chờ duyệt", "APPROVAL_CONFLICT");
+    if (!result.rows[0]) {
+      await client.query("ROLLBACK");
+      return errorResponse(res, 409, "Ghi danh không còn ở trạng thái chờ duyệt", "APPROVAL_CONFLICT");
+    }
     await recordAuditEvent({
+      db: client,
       actorId: req.user.id, action: `class.membership.${decision}`,
       entityType: "class_enrollment", entityId: membershipId,
       afterState: result.rows[0], metadata: { ip: req.ip },
     });
+    await client.query("COMMIT");
+    if (decision === "approved" && result.rows[0].status === "active") {
+      notifyApprovedManagementEnrollment({ membershipId }).catch((error) => {
+        console.error("[MANAGEMENT ENROLLMENT APPROVAL EMAIL WARNING]", error.message);
+      });
+    }
     return res.json({ success: true, data: result.rows[0] });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Error reviewing Management membership:", error);
     return errorResponse(res, 500, "Không thể duyệt ghi danh", "INTERNAL_ERROR");
+  } finally {
+    client.release();
   }
 });
 

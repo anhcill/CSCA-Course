@@ -4,8 +4,14 @@ import fs from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 
 test("admin can approve a Management class and its enrollment", async (t) => {
+  const previousBrevoKey = process.env.BREVO_API_KEY;
+  process.env.BREVO_API_KEY = "";
   const db = new PGlite();
-  t.after(() => db.close());
+  t.after(async () => {
+    if (previousBrevoKey === undefined) delete process.env.BREVO_API_KEY;
+    else process.env.BREVO_API_KEY = previousBrevoKey;
+    await db.close();
+  });
   await db.exec(await fs.readFile("database/schema.sql", "utf8"));
   const registry = await fs.readFile("run_sql.js", "utf8");
   const migrations = [...registry.matchAll(/"database\/migrations\/[^\"]+\.sql"/g)].map((match) => JSON.parse(match[0]));

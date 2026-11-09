@@ -515,6 +515,72 @@ const escapeEmailHtml = (value) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+/**
+ * Gửi email sau khi Moly Course duyệt học viên vào một lớp từ Internal.
+ */
+export const sendClassEnrollmentApprovedEmail = async ({
+  email,
+  username,
+  className,
+  courseName,
+  instructorName,
+  classUrl,
+  isTest = false,
+}) => {
+  const safeUsername = escapeEmailHtml(username || "học viên");
+  const safeClassName = escapeEmailHtml(className || "lớp học của bạn");
+  const safeCourseName = escapeEmailHtml(courseName || "Moly Course");
+  const safeInstructorName = escapeEmailHtml(instructorName || "Đang cập nhật");
+  const safeClassUrl = classUrl ? escapeEmailHtml(classUrl) : "";
+  const title = isTest ? "Email Kiểm Tra Xác Nhận Ghi Danh" : "Chúc Mừng Bạn Đã Được Thêm Vào Lớp!";
+  const bodyContent = `
+    ${isTest
+      ? `<div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 10px; padding: 12px 14px; margin: 0 0 20px 0; color: #92400e; font-size: 13px; line-height: 1.6;"><strong>Đây là email kiểm tra.</strong> Không có dữ liệu ghi danh nào được thay đổi.</div>`
+      : ""}
+    <p style="font-size: 15px; margin-top: 0;">Xin chào <strong>${safeUsername}</strong>,</p>
+    <p style="font-size: 14px; color: #475569; line-height: 1.7;">
+      Chúc mừng bạn! Yêu cầu ghi danh từ hệ thống Internal đã được Moly Course xác nhận và bạn đã được thêm thành công vào lớp <strong>${safeClassName}</strong>.
+    </p>
+
+    <div style="background: linear-gradient(135deg, #fff7ed 0%, #fff1f2 100%); border: 1px solid #fed7aa; border-radius: 14px; padding: 20px; margin: 24px 0;">
+      <p style="font-size: 12px; color: #9a3412; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 10px 0;">Thông tin lớp học</p>
+      <p style="font-size: 19px; font-weight: 800; color: #c2410c; margin: 0 0 12px 0;">${safeClassName}</p>
+      <p style="font-size: 13px; color: #475569; margin: 5px 0;"><strong>Khóa học:</strong> ${safeCourseName}</p>
+      <p style="font-size: 13px; color: #475569; margin: 5px 0;"><strong>Giảng viên:</strong> ${safeInstructorName}</p>
+    </div>
+
+    ${safeClassUrl
+      ? `<div style="text-align: center; margin: 28px 0;">
+          <a href="${safeClassUrl}" class="btn">Mở Lớp Học →</a>
+        </div>`
+      : ""}
+
+    <p style="font-size: 13px; color: #64748b; line-height: 1.7;">
+      Bạn có thể đăng nhập Moly Course để xem lịch học, tài liệu, bài tập và các thông báo mới nhất của lớp.
+    </p>
+  `;
+
+  return sendBrevoEmail({
+    to: email,
+    toName: username,
+    subject: `[Moly Course] ${isTest ? "[KIỂM TRA] " : ""}Chúc mừng bạn đã được thêm vào lớp ${className || ""}`,
+    htmlContent: createBaseEmailHtml({
+      title,
+      preheader: `Bạn đã được thêm vào lớp ${className || "trên Moly Course"}.`,
+      bodyContent,
+      showSecurityNote: false,
+    }),
+    textContent: [
+      isTest ? "ĐÂY LÀ EMAIL KIỂM TRA - Không có dữ liệu ghi danh nào được thay đổi." : null,
+      `Xin chào ${username || "học viên"},`,
+      `Chúc mừng bạn đã được thêm vào lớp ${className || "trên Moly Course"}.`,
+      courseName ? `Khóa học: ${courseName}.` : null,
+      instructorName ? `Giảng viên: ${instructorName}.` : null,
+      classUrl ? `Mở lớp học: ${classUrl}` : null,
+    ].filter(Boolean).join("\n"),
+  });
+};
+
 const formatVietnamDeadlineForEmail = (value) => {
   if (!value) return "Chưa đặt hạn nộp cụ thể";
   const date = new Date(value);
@@ -782,6 +848,7 @@ export default {
   sendPasswordChangedNotificationEmail,
   sendNotificationEmail,
   sendCourseEnrollmentEmail,
+  sendClassEnrollmentApprovedEmail,
   sendHomeworkAssignedEmail,
   sendQuizClosedReportEmail,
 };
