@@ -166,14 +166,14 @@ export default function TeacherSessionWorkspacePage() {
 
   const executeUploadFile = async (file) => {
     if (!file) return;
-    if (file.size > 100 * 1024 * 1024) {
+    if (file.size > 400 * 1024 * 1024) {
       setUploadFile(file);
       setUploadProgress({
         status: "error",
         percent: 0,
         stage: "error",
         message: "Kích thước tệp vượt quá giới hạn",
-        errorMessage: "Kích thước tài liệu không được vượt quá 100MB theo quy định.",
+        errorMessage: "Kích thước tài liệu không được vượt quá 400MB theo quy định.",
       });
       return;
     }

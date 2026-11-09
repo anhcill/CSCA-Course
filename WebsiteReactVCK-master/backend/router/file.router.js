@@ -559,7 +559,7 @@ router.post("/teacher/courses/:courseId/files/upload-url", protectRoute, require
     return errorResponse(res, 422, "Đề quiz phải là file PDF hợp lệ", "VALIDATION_ERROR");
   }
   if (!Number.isSafeInteger(Number(sizeBytes)) || Number(sizeBytes) <= 0 || Number(sizeBytes) > MAX_LEARNING_FILE_SIZE_BYTES) {
-    return errorResponse(res, 422, "Kích thước file PDF phải từ 1 byte đến 100MB", "VALIDATION_ERROR");
+    return errorResponse(res, 422, "Kích thước file PDF phải từ 1 byte đến 400MB", "VALIDATION_ERROR");
   }
   try {
     const access = await courseAccess(courseId, req.user);
@@ -814,7 +814,7 @@ router.post("/teacher/classes/:classId/files/upload-url", protectRoute, requireT
   }
   if (req.body?.classSessionId !== undefined && !classSessionId) return errorResponse(res, 422, "classSessionId không hợp lệ", "VALIDATION_ERROR");
   if (!Number.isSafeInteger(Number(sizeBytes)) || Number(sizeBytes) <= 0 || Number(sizeBytes) > MAX_LEARNING_FILE_SIZE_BYTES) {
-    return errorResponse(res, 422, "Kích thước tài liệu phải từ 1 byte đến 100MB", "VALIDATION_ERROR");
+    return errorResponse(res, 422, "Kích thước tài liệu phải từ 1 byte đến 400MB", "VALIDATION_ERROR");
   }
   if (!["CLASS_ONLY", "COURSE", "PRIVATE"].includes(visibility)) return errorResponse(res, 422, "visibility không hợp lệ", "VALIDATION_ERROR");
   try {

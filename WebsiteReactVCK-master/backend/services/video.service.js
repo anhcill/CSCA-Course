@@ -63,7 +63,7 @@ export const ALLOWED_LEARNING_FILE_MIME_TYPES = new Set([
   "audio/ogg",
 ]);
 
-export const MAX_LEARNING_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+export const MAX_LEARNING_FILE_SIZE_BYTES = 400 * 1024 * 1024;
 
 export const ALLOWED_IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
@@ -318,7 +318,7 @@ export const generateLearningFileUploadPresignedUrl = async ({ userId, filename,
   if (typeof filename !== "string" || !filename.trim()) throw new Error("filename không hợp lệ");
   if (!ALLOWED_LEARNING_FILE_MIME_TYPES.has(mimeType)) throw new Error("Định dạng tài liệu không được hỗ trợ");
   if (!Number.isSafeInteger(Number(sizeBytes)) || Number(sizeBytes) <= 0 || Number(sizeBytes) > MAX_LEARNING_FILE_SIZE_BYTES) {
-    throw new Error("Kích thước tài liệu không hợp lệ hoặc vượt quá 100MB");
+    throw new Error("Kích thước tài liệu không hợp lệ hoặc vượt quá 400MB");
   }
   const safeFilename = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 180);
   const fileKey = `learning-files/${Number(userId)}/${Date.now()}_${crypto.randomBytes(8).toString("hex")}_${safeFilename}`;

@@ -1610,14 +1610,14 @@ export default function TeacherQuizPage() {
       toast.error("Chỉ chấp nhận file PDF làm đề quiz.");
       return;
     }
-    if (file.size > 100 * 1024 * 1024) {
+    if (file.size > 400 * 1024 * 1024) {
       setPaperFile(file);
       setPaperProgress({
         status: "error",
         percent: 0,
         stage: "error",
         message: "Kích thước tệp vượt quá giới hạn",
-        errorMessage: "File đề PDF không được vượt quá 100MB.",
+        errorMessage: "File đề PDF không được vượt quá 400MB.",
       });
       return;
     }
@@ -1704,14 +1704,14 @@ export default function TeacherQuizPage() {
       toast.error("Chỉ chấp nhận file PDF làm lời giải chi tiết.");
       return;
     }
-    if (file.size > 100 * 1024 * 1024) {
+    if (file.size > 400 * 1024 * 1024) {
       setSolutionFile(file);
       setSolutionProgress({
         status: "error",
         percent: 0,
         stage: "error",
         message: "Kích thước tệp vượt quá giới hạn",
-        errorMessage: "File lời giải PDF không được vượt quá 100MB.",
+        errorMessage: "File lời giải PDF không được vượt quá 400MB.",
       });
       return;
     }

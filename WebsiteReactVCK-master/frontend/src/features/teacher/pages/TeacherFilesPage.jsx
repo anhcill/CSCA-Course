@@ -532,13 +532,13 @@ export default function TeacherFilesPage() {
     if (!uploadClassId) return toast.error("Vui lòng chọn lớp học.");
     if (!selectedUploadFile) return toast.error("Vui lòng chọn file cần tải lên.");
 
-    if (selectedUploadFile.size > 100 * 1024 * 1024) {
+    if (selectedUploadFile.size > 400 * 1024 * 1024) {
       setUploadProgress({
         status: "error",
         percent: 0,
         stage: "error",
         message: "Kích thước tệp vượt quá giới hạn",
-        errorMessage: "Kích thước tài liệu không được vượt quá 100MB theo quy định.",
+        errorMessage: "Kích thước tài liệu không được vượt quá 400MB theo quy định.",
       });
       return;
     }
@@ -1644,7 +1644,7 @@ export default function TeacherFilesPage() {
                         Nhấp để chọn file từ máy tính
                       </p>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                        Hỗ trợ PDF, Word, Excel, Slide, Ảnh (Tối đa 100MB)
+                        Hỗ trợ PDF, Word, Excel, Slide, Ảnh (Tối đa 400MB)
                       </p>
                     </label>
                   )}

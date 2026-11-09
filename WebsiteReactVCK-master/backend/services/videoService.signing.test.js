@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCanonicalQuery,
+  generateLearningFileUploadPresignedUrl,
   generateLearningFilePlaybackSignedUrl,
+  MAX_LEARNING_FILE_SIZE_BYTES,
 } from "./video.service.js";
 
 const R2_TEST_ENV = {
@@ -77,4 +79,34 @@ test("R2 learning PDF URL signs deterministic inline response overrides", async 
     "response-content-type",
     "X-Amz-Signature",
   ]);
+});
+
+test("R2 learning file upload accepts 400 MB and rejects larger files", async (t) => {
+  const originalEnv = Object.fromEntries(Object.keys(R2_TEST_ENV).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, R2_TEST_ENV);
+  t.after(() => {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  assert.equal(MAX_LEARNING_FILE_SIZE_BYTES, 400 * 1024 * 1024);
+  const accepted = await generateLearningFileUploadPresignedUrl({
+    userId: 42,
+    filename: "large-document.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: MAX_LEARNING_FILE_SIZE_BYTES,
+  });
+  assert.ok(accepted.uploadUrl.includes("test-bucket/learning-files/42/"));
+
+  await assert.rejects(
+    () => generateLearningFileUploadPresignedUrl({
+      userId: 42,
+      filename: "too-large.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: MAX_LEARNING_FILE_SIZE_BYTES + 1,
+    }),
+    /vượt quá 400MB/,
+  );
 });
