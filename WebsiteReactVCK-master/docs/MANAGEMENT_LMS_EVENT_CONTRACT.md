@@ -95,8 +95,46 @@ LMS tự map vào `courses.external_course_id`, nhưng không tự tạo lesson/
   "title": "CSCA Toán K01",
   "description": "Lớp tối thứ Ba, Năm",
   "maxStudents": 30,
+  "classType": "LIVE",
+  "sourceClassSourceId": null,
   "status": "active",
   "leadTeacherSourceId": "teacher-anh-01",
+  "sourceUpdatedAt": "2026-09-21T08:00:00.000Z"
+}
+```
+
+`classType` nhận một trong hai giá trị:
+
+- `LIVE`: lớp chính có lịch học, link phòng học và điểm danh.
+- `RECORDING`: lớp bán qua hình thức xem bản ghi. InternalManagement bắt buộc gửi
+  `sourceClassSourceId` trỏ tới `classSourceId` của lớp `LIVE` làm nguồn.
+
+Lớp `RECORDING` là một alias thương mại/quản trị, không tạo bản sao nội dung trong
+LMS. Mọi buổi học, tài liệu, từ vựng, lý thuyết/công thức, bản ghi, bài tập và quiz
+đều dùng trực tiếp lớp `LIVE` nguồn. InternalManagement phải ngăn chọn một lớp
+`RECORDING` khác làm nguồn và không được tạo vòng ánh xạ. Lớp nguồn có thể đang
+`active` hoặc đã `completed`; học viên Record vẫn xem nội dung và bản ghi sau khi
+lớp nguồn kết thúc, nhưng không được mở lịch, điểm danh hoặc phòng học trực tuyến.
+Nếu đổi lớp nguồn của alias, LMS chuyển các ghi danh Record sang nguồn mới trong
+cùng giao dịch và giữ nguyên quyền Live mạnh hơn nếu học viên đã có sẵn.
+
+`RECORDING` vẫn là một sản phẩm/lớp có thu phí bình thường. InternalManagement
+phải ghi nhận doanh thu, công nợ, thanh toán, hoàn tiền và trạng thái học phí giống
+như lớp `LIVE`. Việc ánh xạ nội dung không đồng nghĩa với dùng chung giao dịch và
+không được tạo đường tắt cấp quyền miễn phí. Học viên Record chỉ được kích hoạt sau
+khi producer phát đầy đủ `student.provisioned`, `class.membership.changed` và
+`entitlement.changed` hợp lệ theo luồng thanh toán hiện hành.
+
+Ví dụ lớp Record ánh xạ tới lớp chính:
+
+```json
+{
+  "classSourceId": "csca-math-k01-record",
+  "courseSourceId": "csca-math-2026",
+  "title": "CSCA Toán K01 - Học qua bản ghi",
+  "classType": "RECORDING",
+  "sourceClassSourceId": "csca-math-k01",
+  "status": "active",
   "sourceUpdatedAt": "2026-09-21T08:00:00.000Z"
 }
 ```
@@ -135,12 +173,43 @@ LMS tự map vào `courses.external_course_id`, nhưng không tự tạo lesson/
   "membershipSourceId": "membership-5001",
   "classSourceId": "csca-math-k01",
   "studentSourceId": "student-1001",
+  "learningMode": "LIVE",
   "status": "active",
   "sourceUpdatedAt": "2026-09-21T08:00:00.000Z"
 }
 ```
 
 `status` có thể là `active`, `suspended`, `revoked`. LMS không xóa roster history khi học viên chuyển/hủy lớp.
+
+`learningMode` nhận `LIVE` hoặc `RECORDING`:
+
+- Membership gửi tới lớp `LIVE` thường dùng `LIVE`.
+- Membership gửi tới alias lớp Record dùng `RECORDING`; LMS resolve alias về lớp
+  `LIVE` nguồn và lưu học viên trong roster của lớp chính với nhãn Record.
+- Payload cũ không có `learningMode` mặc định là `LIVE` để giữ tương thích luồng cũ,
+  bao gồm tài khoản kiểm thử `khlyp06`.
+- `learningMode: "RECORDING"` không thay thế `entitlement.changed`. Nếu chưa có
+  entitlement đang hoạt động cho khóa học nguồn, LMS vẫn từ chối quyền học.
+- `khlyp06` là tài khoản kiểm thử nội bộ theo cơ chế legacy hiện có; ngoại lệ này
+  không được áp dụng cho học viên Record thật hoặc dùng để bỏ qua công nợ/thanh toán.
+
+Ví dụ ghi danh học qua bản ghi:
+
+```json
+{
+  "membershipSourceId": "membership-5002",
+  "classSourceId": "csca-math-k01-record",
+  "studentSourceId": "student-1002",
+  "learningMode": "RECORDING",
+  "status": "active",
+  "sourceUpdatedAt": "2026-09-21T08:05:00.000Z"
+}
+```
+
+InternalManagement UI cần hiển thị trường “Loại lớp” khi tạo lớp. Khi chọn
+“Lớp xem bản ghi”, trường “Ánh xạ từ lớp chính” là bắt buộc và chỉ liệt kê lớp
+`LIVE` cùng khóa học. Khi xếp học viên vào alias này, producer tự gửi
+`learningMode: "RECORDING"`; người vận hành không phải chọn lại lần hai.
 
 ### `entitlement.changed`
 

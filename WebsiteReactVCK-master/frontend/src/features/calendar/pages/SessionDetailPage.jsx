@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Bell, Binary, CalendarDays, CheckCircle2, ClipboardList, Clock,
@@ -19,6 +19,7 @@ import { classCalendarIcsUrl, googleCalendarEventUrl } from "../calendarLinks";
 import SessionVocabularyTab from "../../learning/components/SessionVocabularyTab";
 import SessionFormulaTab from "../../learning/components/SessionFormulaTab";
 import VocabularyPracticeModal from "../../learning/components/VocabularyPracticeModal";
+import { getLearningCapabilities } from "../../learning/utils/learningMode.js";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
@@ -107,6 +108,9 @@ export default function SessionDetailPage() {
   const { authUser } = useAuthContext();
   const isTeacher = isTeacherRole(authUser?.role);
   const isAdmin = authUser?.role === "admin";
+  const workspace = useOutletContext() || {};
+  const learningCapabilities = workspace.learningCapabilities || getLearningCapabilities(workspace);
+  const { recordingMode, canJoinLive, canCheckIn, showCalendar } = learningCapabilities;
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab : "overview";
@@ -192,13 +196,16 @@ export default function SessionDetailPage() {
   useEffect(() => { loadVocabulary({ silent: true }); }, [loadVocabulary]);
   useEffect(() => { loadFormulas({ silent: true }); }, [loadFormulas]);
   useEffect(() => {
-    if (isTeacher || !sessionId) return undefined;
+    if (isTeacher || !sessionId || !canCheckIn) {
+      setCheckIn(null);
+      return undefined;
+    }
     let active = true;
     fetchMySessionCheckIn(sessionId)
       .then((response) => { if (active) setCheckIn(response?.data || null); })
       .catch(() => { if (active) setCheckIn(null); });
     return () => { active = false; };
-  }, [isTeacher, sessionId]);
+  }, [canCheckIn, isTeacher, sessionId]);
 
   const handleCheckIn = async () => {
     setCheckingIn(true);
@@ -236,7 +243,7 @@ export default function SessionDetailPage() {
 
   const basePath = `/lms/courses/${courseId}/classes/${classId}`;
   const meetingWindow = getMeetingWindowState(session);
-  const isJoinable = isAdmin || meetingWindow.isOpen;
+  const isJoinable = canJoinLive && (isAdmin || meetingWindow.isOpen);
   const isEnded = meetingWindow.isClosed;
   const completeTasks = tasks.filter((task) => ["submitted", "graded"].includes(task.status));
   const tabClass = (isActive) =>
@@ -252,7 +259,7 @@ export default function SessionDetailPage() {
         to={basePath}
         className="inline-flex items-center gap-2 rounded-xl border border-white/85 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] shadow-2xs backdrop-blur-md transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
       >
-        <ArrowLeft className="h-3.5 w-3.5" /> Quay lại lớp và lịch học
+        <ArrowLeft className="h-3.5 w-3.5" /> {recordingMode ? "Quay lại lớp học" : "Quay lại lớp và lịch học"}
       </Link>
 
       {/* Hero Banner: Oriental Scholar Glassmorphic Theme */}
@@ -265,9 +272,9 @@ export default function SessionDetailPage() {
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs dark:bg-sky-950/60 dark:border-sky-800/60 dark:text-sky-300">
-                <Video className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" /> Không gian buổi học
+                <Video className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" /> {recordingMode ? "Nội dung buổi học" : "Không gian buổi học"}
               </span>
-              {session.provider && (
+              {!recordingMode && session.provider && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-bold text-emerald-700 shadow-2xs dark:bg-emerald-950/60 dark:border-emerald-800/60 dark:text-emerald-300">
                   {session.provider}
                 </span>
@@ -278,14 +285,28 @@ export default function SessionDetailPage() {
               {session.title}
             </h1>
 
-            <p className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#244866] dark:text-slate-300">
-              <Clock className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
-              {formatDateTime(session.start_time)}
-            </p>
+            {!recordingMode && (
+              <p className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#244866] dark:text-slate-300">
+                <Clock className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                {formatDateTime(session.start_time)}
+              </p>
+            )}
+            {recordingMode && (
+              <p className="text-xs sm:text-sm font-semibold text-[#244866] dark:text-slate-300">
+                Xem bản ghi, từ vựng, lý thuyết, tài liệu và hoàn thành bài tập của buổi này.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            {isJoinable ? (
+            {recordingMode ? (
+              <Link
+                to="/lms/recordings"
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-amber-500/25 transition hover:brightness-105 active:scale-95"
+              >
+                <Play className="h-4 w-4 fill-current" /> Mở danh sách bản ghi
+              </Link>
+            ) : isJoinable ? (
               <button
                 type="button"
                 onClick={handleJoin}
@@ -299,7 +320,7 @@ export default function SessionDetailPage() {
                 {isEnded ? "Phòng đã đóng sau giờ học" : "Phòng mở trước 15 phút"}
               </span>
             )}
-            <a
+            {showCalendar && <a
               href={googleCalendarEventUrl({
                 title: session.title,
                 startTime: session.start_time,
@@ -311,13 +332,13 @@ export default function SessionDetailPage() {
               className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
             >
               <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Thêm Google Calendar
-            </a>
-            <a
+            </a>}
+            {showCalendar && <a
               href={classCalendarIcsUrl(classId)}
               className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
             >
               <FileText className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Tải lịch .ics
-            </a>
+            </a>}
             {isTeacher && (
               <Link
                 to={`/lms/teach/classes/${classId}/attendance?sessionId=${session.id}`}
@@ -331,7 +352,7 @@ export default function SessionDetailPage() {
       </section>
 
       {/* Check-in attendance bar */}
-      {!isTeacher && checkIn && String(checkIn.status || checkIn.attendance_status || "").toLowerCase() !== "present" && (
+      {!isTeacher && canCheckIn && checkIn && String(checkIn.status || checkIn.attendance_status || "").toLowerCase() !== "present" && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50/70 via-white to-amber-50/40 p-3.5 sm:px-5 shadow-2xs backdrop-blur-sm">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 className={`h-4 w-4 shrink-0 ${checkIn.status === "present" ? "text-emerald-500" : "text-amber-500"}`} />

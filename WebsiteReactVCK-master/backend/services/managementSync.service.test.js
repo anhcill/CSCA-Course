@@ -52,6 +52,192 @@ test("parseManagementEvent accepts inbound Management calendar events", () => {
   }
 });
 
+test("recording class aliases enroll paid learners into the source LMS class", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^\"]+\.sql"/g)].map((match) => JSON.parse(match[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('record-teacher','record-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const student = (await db.query(
+    `INSERT INTO users(username,email,external_student_id,is_management_managed,lms_account_status)
+     VALUES ('record-student','record-student@example.test','record-student-source',TRUE,'active') RETURNING id`,
+  )).rows[0];
+  const course = (await db.query(
+    `INSERT INTO courses(name,slug,author_id,external_course_id,is_published,is_management_managed)
+     VALUES ('Record course','record-course',$1,'record-course-source',TRUE,TRUE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const sourceClass = (await db.query(
+    `INSERT INTO live_classes
+       (title,course_id,instructor_id,status,management_class_source_id,management_course_source_id,
+        management_source_updated_at,management_approval_status)
+     VALUES ('Main class',$1,$2,'active','main-class-source','record-course-source',NOW(),'approved') RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+
+  const aliasResult = await applyManagementEvent(db, {
+    eventType: "class.upserted",
+    occurredAt: new Date("2026-11-09T05:00:00Z"),
+    payload: {
+      classSourceId: "record-class-source",
+      courseSourceId: "record-course-source",
+      title: "Main class - Record",
+      classType: "RECORDING",
+      sourceClassSourceId: "main-class-source",
+      status: "active",
+      sourceUpdatedAt: "2026-11-09T05:00:00Z",
+    },
+  });
+  assert.equal(aliasResult.action, "class.recording_alias.synced");
+  assert.equal(Number(aliasResult.data.live_class_id), Number(sourceClass.id));
+
+  const membershipResult = await applyManagementEvent(db, {
+    eventType: "class.membership.changed",
+    occurredAt: new Date("2026-11-09T05:01:00Z"),
+    payload: {
+      membershipSourceId: "record-membership-source",
+      classSourceId: "record-class-source",
+      studentSourceId: "record-student-source",
+      status: "active",
+      sourceUpdatedAt: "2026-11-09T05:01:00Z",
+    },
+  });
+  assert.equal(membershipResult.data.learning_mode, "recording");
+  const enrollment = (await db.query(
+    "SELECT * FROM class_enrollments WHERE user_id=$1",
+    [student.id],
+  )).rows[0];
+  assert.equal(Number(enrollment.live_class_id), Number(sourceClass.id));
+  assert.equal(enrollment.learning_mode, "recording");
+  assert.ok(enrollment.management_class_alias_id);
+  assert.equal(enrollment.status, "suspended", "normal approval/payment flow remains required");
+  assert.equal((await db.query("SELECT COUNT(*)::int AS count FROM live_classes")).rows[0].count, 1);
+
+  const completedSourceClass = (await db.query(
+    `INSERT INTO live_classes
+       (title,course_id,instructor_id,status,management_class_source_id,management_course_source_id,
+        management_source_updated_at,management_approval_status)
+     VALUES ('Completed source',$1,$2,'completed','completed-source','record-course-source',NOW(),'approved') RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+  const remappedAlias = await applyManagementEvent(db, {
+    eventType: "class.upserted",
+    occurredAt: new Date("2026-11-09T05:01:30Z"),
+    payload: {
+      classSourceId: "record-class-source",
+      courseSourceId: "record-course-source",
+      title: "Completed source - Record",
+      classType: "RECORDING",
+      sourceClassSourceId: "completed-source",
+      status: "active",
+      sourceUpdatedAt: "2026-11-09T05:01:30Z",
+    },
+  });
+  assert.equal(remappedAlias.data.migratedEnrollmentCount, 1);
+  assert.equal(Number((await db.query(
+    "SELECT live_class_id FROM class_enrollments WHERE user_id=$1",
+    [student.id],
+  )).rows[0].live_class_id), Number(completedSourceClass.id));
+
+  await applyManagementEvent(db, {
+    eventType: "class.membership.changed",
+    occurredAt: new Date("2026-11-09T05:02:00Z"),
+    payload: {
+      membershipSourceId: "live-membership-source",
+      classSourceId: "completed-source",
+      studentSourceId: "record-student-source",
+      learningMode: "LIVE",
+      status: "active",
+      sourceUpdatedAt: "2026-11-09T05:02:00Z",
+    },
+  });
+  assert.equal((await db.query(
+    "SELECT learning_mode FROM class_enrollments WHERE user_id=$1",
+    [student.id],
+  )).rows[0].learning_mode, "live", "LIVE membership may upgrade an existing RECORD enrollment");
+});
+
+test("recording alias never downgrades or revokes an active live enrollment", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^\"]+\.sql"/g)].map((match) => JSON.parse(match[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('live-teacher','live-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const student = (await db.query(
+    `INSERT INTO users(username,email,external_student_id,is_management_managed,lms_account_status)
+     VALUES ('khlyp06','khlyp06@gmail.com','khlyp06-source',TRUE,'active') RETURNING id`,
+  )).rows[0];
+  const course = (await db.query(
+    `INSERT INTO courses(name,slug,author_id,external_course_id,is_published,is_management_managed)
+     VALUES ('Dual course','dual-course',$1,'dual-course-source',TRUE,TRUE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const sourceClass = (await db.query(
+    `INSERT INTO live_classes
+       (title,course_id,instructor_id,status,management_class_source_id,management_course_source_id,
+        management_source_updated_at,management_approval_status)
+     VALUES ('Live source',$1,$2,'active','dual-live-source','dual-course-source',NOW(),'approved') RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO class_enrollments
+       (user_id,live_class_id,status,is_internal_test,learning_mode,management_membership_source_id,
+        management_membership_status,management_approval_status,management_source_updated_at)
+     VALUES ($1,$2,'active',TRUE,'live','khlyp06-live-membership','active','approved','2026-11-09T04:00:00Z')`,
+    [student.id, sourceClass.id],
+  );
+  await applyManagementEvent(db, {
+    eventType: "class.upserted",
+    occurredAt: new Date("2026-11-09T05:00:00Z"),
+    payload: {
+      classSourceId: "dual-record-source",
+      courseSourceId: "dual-course-source",
+      title: "Live source - Record",
+      classType: "RECORDING",
+      sourceClassSourceId: "dual-live-source",
+      status: "active",
+      sourceUpdatedAt: "2026-11-09T05:00:00Z",
+    },
+  });
+
+  for (const [status, timestamp] of [["active", "2026-11-09T05:01:00Z"], ["revoked", "2026-11-09T05:02:00Z"]]) {
+    const result = await applyManagementEvent(db, {
+      eventType: "class.membership.changed",
+      occurredAt: new Date(timestamp),
+      payload: {
+        membershipSourceId: "khlyp06-record-membership",
+        classSourceId: "dual-record-source",
+        studentSourceId: "khlyp06-source",
+        status,
+        sourceUpdatedAt: timestamp,
+      },
+    });
+    assert.equal(result.action, "class.membership.live_preserved");
+  }
+
+  const enrollment = (await db.query(
+    `SELECT status,is_internal_test,learning_mode,management_membership_source_id
+     FROM class_enrollments WHERE user_id=$1 AND live_class_id=$2`,
+    [student.id, sourceClass.id],
+  )).rows[0];
+  assert.deepEqual(enrollment, {
+    status: "active",
+    is_internal_test: true,
+    learning_mode: "live",
+    management_membership_source_id: "khlyp06-live-membership",
+  });
+});
+
 test("session move requires the complete previous date and time tuple", async () => {
   const event = parseManagementEvent(validEvent({
     eventType: "class.session.upserted",

@@ -35,6 +35,7 @@ export default function ClassWorkspaceHero({
   isTodaySession = false,
   otherSessions = [],
   basePath,
+  recordingMode = false,
 }) {
   const classDisplayName = formatClassTitle(classTitle);
   const clampedPercent = Math.max(0, Math.min(100, Number(percent || 0)));
@@ -67,7 +68,7 @@ export default function ClassWorkspaceHero({
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 px-3 py-1 text-xs font-bold text-emerald-700 shadow-2xs dark:border-emerald-800/60 dark:bg-emerald-950/70 dark:text-emerald-300">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              Đang theo học
+              {recordingMode ? "Học qua bản ghi" : "Đang theo học"}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 border border-sky-200/80 px-3 py-1 text-xs font-bold text-sky-700 shadow-2xs dark:border-sky-800/60 dark:bg-sky-950/70 dark:text-sky-300">
               <Sparkles className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
@@ -77,15 +78,33 @@ export default function ClassWorkspaceHero({
 
           <div className="pt-2">
             <Link
-              to={`${basePath}/calendar`}
+              to={recordingMode ? "/lms/recordings" : `${basePath}/calendar`}
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#17365f] via-[#102f63] to-[#0d2754] px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-950/20 transition hover:shadow-lg hover:brightness-105 active:scale-95 dark:from-sky-700 dark:via-blue-800 dark:to-slate-900"
             >
-              <CalendarDays className="h-3.5 w-3.5 text-sky-300" /> Lịch học của lớp
+              {recordingMode
+                ? <><Video className="h-3.5 w-3.5 text-amber-300" /> Xem bản ghi lớp học</>
+                : <><CalendarDays className="h-3.5 w-3.5 text-sky-300" /> Lịch học của lớp</>}
             </Link>
           </div>
         </div>
 
         {/* Right Side (Col 7-12): Buổi học hôm nay / gần nhất / tiếp theo */}
+        {recordingMode ? (
+          <div className="lg:col-span-6 flex flex-col justify-between rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50/80 via-white/90 to-sky-50/60 p-4 sm:p-5 shadow-2xs backdrop-blur-sm dark:border-slate-800 dark:from-slate-900/90 dark:via-slate-900/60 dark:to-slate-800/50">
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-wider text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/70 dark:text-amber-300 dark:ring-amber-800/60">
+              <Video className="h-3 w-3" /> Hình thức học qua bản ghi
+            </span>
+            <div className="py-3">
+              <h2 className="text-base sm:text-lg font-black text-[#102f63] dark:text-white">Học theo lộ trình của lớp chính</h2>
+              <p className="mt-1.5 text-xs leading-5 text-[#244866] dark:text-slate-300">
+                Video bản ghi được cập nhật theo từng buổi. Bạn vẫn xem đầy đủ từ vựng, lý thuyết, tài liệu và nộp bài tập hoặc quiz cho giáo viên lớp chính.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-100 bg-white/80 px-3.5 py-2.5 text-xs font-semibold text-[#17365f] dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200">
+              Lớp Record không có link vào phòng học và không yêu cầu điểm danh.
+            </div>
+          </div>
+        ) : (
         <div className="lg:col-span-6 flex flex-col justify-between rounded-2xl border border-sky-100/90 bg-gradient-to-br from-sky-50/60 via-white/80 to-blue-50/40 p-4 sm:p-5 shadow-2xs backdrop-blur-sm dark:border-slate-800 dark:from-slate-900/90 dark:via-slate-900/60 dark:to-slate-800/50">
           <div className="flex flex-wrap items-center gap-2">
             <span
@@ -174,6 +193,7 @@ export default function ClassWorkspaceHero({
             </div>
           )}
         </div>
+        )}
       </div>
     </section>
   );

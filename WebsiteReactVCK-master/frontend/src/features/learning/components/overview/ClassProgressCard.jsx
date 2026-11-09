@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, CalendarDays, CheckCircle2, Sparkles } from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, Sparkles, Video } from "lucide-react";
 
 export default function ClassProgressCard({
   percent = 0,
@@ -7,6 +7,7 @@ export default function ClassProgressCard({
   totalLessons = 0,
   basePath = "",
   unitType = "buổi học",
+  recordingMode = false,
 }) {
   const unitLabel = unitType === "lessons" ? "bài học" : "buổi học";
 
@@ -16,7 +17,11 @@ export default function ClassProgressCard({
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3.5 dark:border-slate-800">
           <div>
             <h3 className="text-base sm:text-lg font-black text-[#102f63] dark:text-white">Tiến độ học tập</h3>
-            <p className="mt-0.5 text-xs text-[#487291] dark:text-slate-400">Tham gia đầy đủ các buổi học để nắm vững kiến thức trọng tâm.</p>
+            <p className="mt-0.5 text-xs text-[#487291] dark:text-slate-400">
+              {recordingMode
+                ? "Theo dõi bản ghi và hoàn thành bài tập theo lộ trình của lớp."
+                : "Tham gia đầy đủ các buổi học để nắm vững kiến thức trọng tâm."}
+            </p>
           </div>
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-50 text-sky-600 dark:bg-sky-950/60 dark:text-sky-400">
             <Sparkles className="h-4 w-4" />
@@ -49,17 +54,23 @@ export default function ClassProgressCard({
         {basePath && (
           <div className="mt-4">
             <Link
-              to={`${basePath}/calendar`}
+              to={recordingMode ? "/lms/recordings" : `${basePath}/calendar`}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-50 px-4 py-2.5 text-xs font-bold text-sky-700 transition hover:bg-sky-600 hover:text-white dark:bg-sky-950/70 dark:text-sky-300 dark:hover:bg-sky-600 dark:hover:text-white"
             >
-              <CalendarDays className="h-4 w-4" /> Xem thời khóa biểu lớp học <ArrowRight className="h-3.5 w-3.5" />
+              {recordingMode
+                ? <><Video className="h-4 w-4" /> Tiếp tục xem bản ghi <ArrowRight className="h-3.5 w-3.5" /></>
+                : <><CalendarDays className="h-4 w-4" /> Xem thời khóa biểu lớp học <ArrowRight className="h-3.5 w-3.5" /></>}
             </Link>
           </div>
         )}
       </div>
 
       <div className="mt-4 border-t border-slate-100 pt-3 text-xs text-[#487291] dark:border-slate-800 dark:text-slate-400">
-        <span>Theo dõi lịch trình các buổi học ở danh sách bên dưới để chuẩn bị bài trước giờ lên lớp.</span>
+        <span>
+          {recordingMode
+            ? "Bản ghi, tài liệu, từ vựng và bài tập đều được sắp xếp theo từng buổi của lớp chính."
+            : "Theo dõi lịch trình các buổi học ở danh sách bên dưới để chuẩn bị bài trước giờ lên lớp."}
+        </span>
       </div>
     </section>
   );

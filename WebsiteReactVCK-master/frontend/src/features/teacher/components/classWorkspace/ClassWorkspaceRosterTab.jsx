@@ -15,7 +15,8 @@ export default function ClassWorkspaceRosterTab({ students = [] }) {
     const q = search.trim().toLowerCase();
     return students.filter((s) => {
       const matchSearch = !q || [s.name, s.fullName, s.email, s.username].filter(Boolean).some((txt) => txt.toLowerCase().includes(q));
-      const matchFilter = filter === "all" || s.riskLevel === filter;
+      const learningMode = String(s.learningMode || s.learning_mode || "LIVE").toUpperCase();
+      const matchFilter = filter === "all" || (filter === "recording" ? learningMode === "RECORDING" : s.riskLevel === filter);
       return matchSearch && matchFilter;
     });
   }, [students, search, filter]);
@@ -38,6 +39,7 @@ export default function ClassWorkspaceRosterTab({ students = [] }) {
         <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
           {[
             ["all", "Tất cả học viên"],
+            ["recording", "Học viên Record"],
             ["danger", "Báo động"],
             ["warning", "Cần chú ý"],
             ["good", "Ổn định"],
@@ -80,6 +82,7 @@ export default function ClassWorkspaceRosterTab({ students = [] }) {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-300">
               {filteredStudents.map((st) => {
                 const badge = riskBadge[st.riskLevel] || riskBadge.good;
+                const isRecording = String(st.learningMode || st.learning_mode || "LIVE").toUpperCase() === "RECORDING";
                 return (
                   <tr key={st.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition">
                     <td className="py-3 px-4 font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
@@ -87,12 +90,21 @@ export default function ClassWorkspaceRosterTab({ students = [] }) {
                         {(st.fullName || st.name || st.username || "U")[0].toUpperCase()}
                       </span>
                       <span>{st.fullName || st.name || st.username}</span>
+                      {isRecording && (
+                        <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700 dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-300">
+                          Record
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-slate-500 dark:text-slate-400">{st.email || "—"}</td>
                     <td className="py-3 px-4 text-center font-bold">
-                      <span className={(st.attendanceRate || 0) < 70 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}>
-                        {st.attendanceRate ?? "—"}%
-                      </span>
+                      {isRecording ? (
+                        <span className="text-violet-600 dark:text-violet-300">Không áp dụng</span>
+                      ) : (
+                        <span className={(st.attendanceRate || 0) < 70 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}>
+                          {st.attendanceRate ?? "—"}%
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-center">
                       {st.completedAssignments ?? 0} bài

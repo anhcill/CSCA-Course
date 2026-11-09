@@ -4,6 +4,8 @@ import ClassWorkspaceHero from "../components/overview/ClassWorkspaceHero";
 import ClassPendingTasksCard from "../components/overview/ClassPendingTasksCard";
 import ClassProgressCard from "../components/overview/ClassProgressCard";
 import ClassChaptersCard from "../components/overview/ClassChaptersCard";
+import ClassRecordingsCard from "../components/overview/ClassRecordingsCard";
+import { getLearningCapabilities } from "../utils/learningMode.js";
 
 export default function CourseWorkspaceOverviewPage() {
   const { courseId, classId } = useParams();
@@ -13,7 +15,10 @@ export default function CourseWorkspaceOverviewPage() {
     assignments = [],
     selectedClass = {},
     upcomingSessions = [],
+    learningCapabilities: suppliedCapabilities,
   } = workspace;
+  const learningCapabilities = suppliedCapabilities || getLearningCapabilities(workspace);
+  const { recordingMode } = learningCapabilities;
 
   const basePath = `/lms/courses/${courseId}/classes/${classId}`;
   const totalLessons = Number(progress.totalLessons || 0);
@@ -49,10 +54,13 @@ export default function CourseWorkspaceOverviewPage() {
         isTodaySession={isTodaySession}
         otherSessions={activeUpcomingSessions.slice(1, 3)}
         basePath={basePath}
+        recordingMode={recordingMode}
       />
 
+      {recordingMode && <ClassRecordingsCard classId={classId} recordingMode />}
+
       {/* Danh sách các chương và buổi học của lớp */}
-      <ClassChaptersCard classId={classId} basePath={basePath} />
+      <ClassChaptersCard classId={classId} basePath={basePath} recordingMode={recordingMode} />
 
       {/* 2 Cột: Việc cần hoàn thành & Tiến độ học tập */}
       <div className="grid gap-5 lg:grid-cols-2">
@@ -64,6 +72,7 @@ export default function CourseWorkspaceOverviewPage() {
           totalLessons={totalLessons}
           unitType={progress.unitType || "sessions"}
           basePath={basePath}
+          recordingMode={recordingMode}
         />
       </div>
     </div>

@@ -525,6 +525,7 @@ export const sendClassEnrollmentApprovedEmail = async ({
   courseName,
   instructorName,
   classUrl,
+  learningMode = "live",
   isTest = false,
 }) => {
   const safeUsername = escapeEmailHtml(username || "học viên");
@@ -532,6 +533,8 @@ export const sendClassEnrollmentApprovedEmail = async ({
   const safeCourseName = escapeEmailHtml(courseName || "Moly Course");
   const safeInstructorName = escapeEmailHtml(instructorName || "Đang cập nhật");
   const safeClassUrl = classUrl ? escapeEmailHtml(classUrl) : "";
+  const isRecording = String(learningMode).toLowerCase() === "recording";
+  const learningModeLabel = isRecording ? "Học qua bản ghi" : "Học trực tiếp";
   const title = isTest ? "Email Kiểm Tra Xác Nhận Ghi Danh" : "Chúc Mừng Bạn Đã Được Thêm Vào Lớp!";
   const bodyContent = `
     ${isTest
@@ -547,6 +550,7 @@ export const sendClassEnrollmentApprovedEmail = async ({
       <p style="font-size: 19px; font-weight: 800; color: #c2410c; margin: 0 0 12px 0;">${safeClassName}</p>
       <p style="font-size: 13px; color: #475569; margin: 5px 0;"><strong>Khóa học:</strong> ${safeCourseName}</p>
       <p style="font-size: 13px; color: #475569; margin: 5px 0;"><strong>Giảng viên:</strong> ${safeInstructorName}</p>
+      <p style="font-size: 13px; color: #475569; margin: 5px 0;"><strong>Hình thức:</strong> ${learningModeLabel}</p>
     </div>
 
     ${safeClassUrl
@@ -556,7 +560,9 @@ export const sendClassEnrollmentApprovedEmail = async ({
       : ""}
 
     <p style="font-size: 13px; color: #64748b; line-height: 1.7;">
-      Bạn có thể đăng nhập Moly Course để xem lịch học, tài liệu, bài tập và các thông báo mới nhất của lớp.
+      ${isRecording
+        ? "Bạn có thể đăng nhập Moly Course để xem bản ghi, lộ trình buổi học, tài liệu và hoàn thành bài tập/quiz đúng hạn."
+        : "Bạn có thể đăng nhập Moly Course để xem lịch học, tài liệu, bài tập và các thông báo mới nhất của lớp."}
     </p>
   `;
 
@@ -863,6 +869,7 @@ export const sendQuizClosedReportEmail = async ({
 
   const studentRowsHtml = students.map((student, index) => {
     const status = quizReportStudentStatus(student);
+    const learningMode = student.learningMode === "recording" ? "Record" : "Live";
     const hasScore = student.score !== null && student.score !== undefined
       && student.maxScore !== null && student.maxScore !== undefined;
     const result = student.passed === true ? "Đạt" : student.passed === false ? "Chưa đạt" : "—";
@@ -870,6 +877,7 @@ export const sendQuizClosedReportEmail = async ({
       <tr>
         <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 12px; text-align: center;">${index + 1}</td>
         <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 12px; font-weight: 700;">${escapeEmailHtml(student.name || student.email || `Học viên #${student.userId || index + 1}`)}</td>
+        <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #475569; font-size: 12px; text-align: center; font-weight: 700;">${learningMode}</td>
         <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; text-align: center;"><span style="display: inline-block; padding: 3px 7px; border-radius: 999px; color: ${status.color}; background: ${status.background}; font-weight: 800; white-space: nowrap;">${escapeEmailHtml(status.label)}</span></td>
         <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 12px; font-weight: 800; text-align: center; white-space: nowrap;">${hasScore ? `${formatQuizReportNumber(student.score)}/${formatQuizReportNumber(student.maxScore)}` : "—"}</td>
         <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-size: 12px; text-align: center;">${formatQuizReportNumber(student.percentage, "%")}</td>
@@ -888,6 +896,7 @@ export const sendQuizClosedReportEmail = async ({
               <tr style="background: #f8fafc;">
                 <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">STT</th>
                 <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: left;">Học viên</th>
+                <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">Hình thức</th>
                 <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">Trạng thái</th>
                 <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">Điểm</th>
                 <th style="padding: 9px 8px; color: #475569; font-size: 11px; text-align: center;">Tỷ lệ</th>
@@ -937,7 +946,8 @@ export const sendQuizClosedReportEmail = async ({
       const score = student.score !== null && student.score !== undefined
         ? `${formatQuizReportNumber(student.score)}/${formatQuizReportNumber(student.maxScore)}`
         : "—";
-      return `${index + 1}. ${student.name || student.email || `Học viên #${student.userId || index + 1}`} | ${status} | Điểm: ${score} | ${formatQuizReportNumber(student.percentage, "%")} | Nộp: ${formatQuizReportDateTime(student.submittedAt)}`;
+      const learningMode = student.learningMode === "recording" ? "Record" : "Live";
+      return `${index + 1}. ${student.name || student.email || `Học viên #${student.userId || index + 1}`} | ${learningMode} | ${status} | Điểm: ${score} | ${formatQuizReportNumber(student.percentage, "%")} | Nộp: ${formatQuizReportDateTime(student.submittedAt)}`;
     }),
     `Xem chi tiết: ${reportUrl}`,
   ].filter(Boolean).join("\n");

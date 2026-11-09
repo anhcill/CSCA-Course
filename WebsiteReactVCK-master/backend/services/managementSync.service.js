@@ -27,6 +27,7 @@ const EVENT_TYPES = new Set([
 const ACCOUNT_STATUSES = new Set(["pending_payment", "active", "suspended", "revoked"]);
 const CLASS_STATUSES = new Set(["active", "completed", "cancelled"]);
 const MEMBERSHIP_STATUSES = new Set(["active", "suspended", "revoked"]);
+const LEARNING_MODES = new Set(["live", "recording"]);
 const COURSE_LEVELS = new Set(["beginner", "intermediate", "advanced"]);
 const TEACHING_ROLES = new Set(["lead", "co_teacher", "assistant"]);
 
@@ -239,6 +240,76 @@ const findClass = async (client, classSourceId) => {
   return liveClass;
 };
 
+const resolveMembershipClass = async (client, classSourceId) => {
+  const direct = await client.query(
+    `SELECT id, title, instructor_id, management_source_updated_at,
+            'live'::text AS default_learning_mode,
+            NULL::bigint AS management_class_alias_id,
+            NULL::text AS management_alias_title
+     FROM live_classes WHERE LOWER(management_class_source_id) = LOWER($1) FOR UPDATE`,
+    [classSourceId],
+  );
+  if (direct.rows[0]) return direct.rows[0];
+  const alias = await client.query(
+    `SELECT lc.id, lc.title, lc.instructor_id, alias.management_source_updated_at,
+            alias.learning_mode AS default_learning_mode, alias.status AS alias_status,
+            alias.id AS management_class_alias_id, alias.title AS management_alias_title
+     FROM management_class_learning_aliases alias
+     JOIN live_classes lc ON lc.id = alias.live_class_id
+     WHERE LOWER(alias.alias_class_source_id) = LOWER($1)
+     FOR UPDATE OF alias`,
+    [classSourceId],
+  );
+  if (!alias.rows[0] || alias.rows[0].alias_status === "cancelled") {
+    throw new SyncDependencyError(`Chưa có mapping lớp Management ${classSourceId}`);
+  }
+  return alias.rows[0];
+};
+
+const migrateRecordingAliasEnrollments = async (client, {
+  aliasId,
+  previousLiveClassId,
+  nextLiveClassId,
+}) => {
+  if (!previousLiveClassId || Number(previousLiveClassId) === Number(nextLiveClassId)) return 0;
+  const enrollments = await client.query(
+    `SELECT id, user_id, status, learning_mode
+     FROM class_enrollments
+     WHERE management_class_alias_id = $1 AND learning_mode = 'recording'
+     ORDER BY id ASC FOR UPDATE`,
+    [aliasId],
+  );
+  let migrated = 0;
+  for (const enrollment of enrollments.rows) {
+    const target = await client.query(
+      `SELECT id, status, learning_mode
+       FROM class_enrollments
+       WHERE user_id = $1 AND live_class_id = $2
+       FOR UPDATE`,
+      [enrollment.user_id, nextLiveClassId],
+    );
+    if (!target.rows[0]) {
+      await client.query(
+        "UPDATE class_enrollments SET live_class_id = $1 WHERE id = $2",
+        [nextLiveClassId, enrollment.id],
+      );
+      migrated += 1;
+      continue;
+    }
+    if (target.rows[0].learning_mode === "live" && target.rows[0].status === "active") {
+      // The learner already has stronger Live access to the new source. Remove
+      // the obsolete Record projection so the unique class enrollment remains valid.
+      await client.query("DELETE FROM class_enrollments WHERE id = $1", [enrollment.id]);
+      migrated += 1;
+      continue;
+    }
+    throw new SyncValidationError(
+      `Không thể đổi lớp nguồn RECORDING vì học viên ${enrollment.user_id} đã có ghi danh khác ở lớp đích`,
+    );
+  }
+  return migrated;
+};
+
 const assertEmailAvailableForUser = async (client, nextEmail, userId, identityLabel) => {
   const conflict = await client.query(
     "SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2 FOR UPDATE",
@@ -380,16 +451,34 @@ const syncCourse = async (client, event) => {
   return { action: "course.synced", entityType: "course", entityId: Number(created.rows[0].id), data: created.rows[0] };
 };
 
-const parseClass = (payload, occurredAt) => ({
-  classSourceId: sourceId(payload.classSourceId, "classSourceId"),
-  courseSourceId: sourceId(payload.courseSourceId, "courseSourceId"),
-  title: text(payload.title, 255, "title"),
-  description: learnerSafeDescription(payload.description),
-  maxStudents: payload.maxStudents === undefined ? 30 : Number(payload.maxStudents),
-  status: enumValue(payload.status, CLASS_STATUSES, "active", "status"),
-  leadTeacherSourceId: optionalText(payload.leadTeacherSourceId || payload.teacherSourceId, 128, "leadTeacherSourceId"),
-  sourceUpdatedAt: sourceDate(payload, occurredAt),
-});
+const parseClass = (payload, occurredAt) => {
+  const learningMode = enumValue(
+    String(payload.learningMode || payload.classType || "live").toLowerCase(),
+    LEARNING_MODES,
+    "live",
+    "learningMode",
+  );
+  const sourceClassSourceId = optionalText(
+    payload.sourceClassSourceId || payload.mainClassSourceId,
+    128,
+    "sourceClassSourceId",
+  );
+  if (learningMode === "recording" && !sourceClassSourceId) {
+    throw new SyncValidationError("Lớp RECORDING phải chọn sourceClassSourceId của lớp chính");
+  }
+  return {
+    classSourceId: sourceId(payload.classSourceId, "classSourceId"),
+    courseSourceId: sourceId(payload.courseSourceId, "courseSourceId"),
+    title: text(payload.title, 255, "title"),
+    description: learnerSafeDescription(payload.description),
+    maxStudents: payload.maxStudents === undefined ? 30 : Number(payload.maxStudents),
+    status: enumValue(payload.status, CLASS_STATUSES, "active", "status"),
+    leadTeacherSourceId: optionalText(payload.leadTeacherSourceId || payload.teacherSourceId, 128, "leadTeacherSourceId"),
+    learningMode,
+    sourceClassSourceId,
+    sourceUpdatedAt: sourceDate(payload, occurredAt),
+  };
+};
 
 const setClassTeacher = async (client, { liveClassId, teacher, teacherSourceId, teachingRole, status, sourceUpdatedAt }) => {
   if (status === "active" && teachingRole === "lead") {
@@ -449,6 +538,61 @@ const syncClass = async (client, event) => {
   if (!Number.isInteger(input.maxStudents) || input.maxStudents < 1 || input.maxStudents > 1000) {
     throw new SyncValidationError("maxStudents phải từ 1 đến 1000");
   }
+  if (input.learningMode === "recording") {
+    const sourceClass = await findClass(client, input.sourceClassSourceId);
+    const sourceCourse = await client.query("SELECT course_id FROM live_classes WHERE id = $1", [sourceClass.id]);
+    if (Number(sourceCourse.rows[0]?.course_id) !== Number(course.id)) {
+      throw new SyncValidationError("Lớp RECORDING phải ánh xạ tới lớp chính cùng khóa học");
+    }
+    const conflictingLiveClass = await client.query(
+      "SELECT id FROM live_classes WHERE LOWER(management_class_source_id) = LOWER($1)",
+      [input.classSourceId],
+    );
+    if (conflictingLiveClass.rows[0]) {
+      throw new SyncValidationError("classSourceId đã được dùng cho một lớp LIVE");
+    }
+    const existingAlias = await client.query(
+      `SELECT id, live_class_id, management_source_updated_at
+       FROM management_class_learning_aliases
+       WHERE LOWER(alias_class_source_id) = LOWER($1) FOR UPDATE`,
+      [input.classSourceId],
+    );
+    if (existingAlias.rows[0] && !sameOrNewer(existingAlias.rows[0].management_source_updated_at, input.sourceUpdatedAt)) {
+      return { action: "class.recording_alias.stale_ignored", entityType: "class_learning_alias", entityId: Number(existingAlias.rows[0].id), data: { classSourceId: input.classSourceId } };
+    }
+    const alias = await client.query(
+      `INSERT INTO management_class_learning_aliases
+         (alias_class_source_id, source_class_source_id, live_class_id, learning_mode,
+          title, status, management_source_updated_at)
+       VALUES ($1, $2, $3, 'recording', $4, $5, $6)
+       ON CONFLICT (LOWER(alias_class_source_id)) DO UPDATE SET
+         source_class_source_id = EXCLUDED.source_class_source_id,
+         live_class_id = EXCLUDED.live_class_id,
+         title = EXCLUDED.title,
+         status = EXCLUDED.status,
+         management_source_updated_at = EXCLUDED.management_source_updated_at
+       RETURNING id, alias_class_source_id, source_class_source_id, live_class_id,
+                 learning_mode, title, status`,
+      [input.classSourceId, input.sourceClassSourceId, sourceClass.id, input.title, input.status, input.sourceUpdatedAt],
+    );
+    const migratedEnrollmentCount = await migrateRecordingAliasEnrollments(client, {
+      aliasId: alias.rows[0].id,
+      previousLiveClassId: existingAlias.rows[0]?.live_class_id,
+      nextLiveClassId: sourceClass.id,
+    });
+    return {
+      action: "class.recording_alias.synced",
+      entityType: "class_learning_alias",
+      entityId: Number(alias.rows[0].id),
+      data: { ...alias.rows[0], migratedEnrollmentCount },
+    };
+  }
+
+  const conflictingAlias = await client.query(
+    "SELECT id FROM management_class_learning_aliases WHERE LOWER(alias_class_source_id) = LOWER($1)",
+    [input.classSourceId],
+  );
+  if (conflictingAlias.rows[0]) throw new SyncValidationError("classSourceId đã được dùng cho một lớp RECORDING");
   const leadTeacher = input.leadTeacherSourceId ? await findTeacher(client, input.leadTeacherSourceId) : null;
   const existing = await client.query(
     `SELECT id, management_source_updated_at, management_approval_status
@@ -1010,12 +1154,19 @@ const parseMembership = (payload, occurredAt) => ({
   classSourceId: sourceId(payload.classSourceId, "classSourceId"),
   studentSourceId: sourceId(payload.studentSourceId || payload.externalStudentId, "studentSourceId"),
   status: enumValue(payload.status, MEMBERSHIP_STATUSES, "active", "status"),
+  learningMode: payload.learningMode === undefined
+    ? null
+    : enumValue(String(payload.learningMode).toLowerCase(), LEARNING_MODES, null, "learningMode"),
   sourceUpdatedAt: sourceDate(payload, occurredAt),
 });
 
 const syncMembership = async (client, event) => {
   const input = parseMembership(event.payload, event.occurredAt);
-  const liveClass = await findClass(client, input.classSourceId);
+  const liveClass = await resolveMembershipClass(client, input.classSourceId);
+  const learningMode = input.learningMode || liveClass.default_learning_mode || "live";
+  if (liveClass.default_learning_mode === "recording" && learningMode !== "recording") {
+    throw new SyncValidationError("Membership của lớp RECORDING phải có learningMode=recording");
+  }
   const studentResult = await client.query(
     `SELECT id FROM users WHERE LOWER(external_student_id) = LOWER($1) FOR UPDATE`,
     [input.studentSourceId],
@@ -1023,7 +1174,9 @@ const syncMembership = async (client, event) => {
   const student = studentResult.rows[0];
   if (!student) throw new SyncDependencyError(`Chưa có học viên Management ${input.studentSourceId}`);
   const existing = await client.query(
-    `SELECT id, management_source_updated_at, management_approval_status
+    `SELECT id, user_id, live_class_id, status, management_membership_source_id,
+            management_source_updated_at, management_approval_status, learning_mode,
+            management_class_alias_id
      FROM class_enrollments
      WHERE LOWER(management_membership_source_id) = LOWER($1)
         OR (live_class_id = $2 AND user_id = $3)
@@ -1033,6 +1186,27 @@ const syncMembership = async (client, event) => {
   const membership = existing.rows[0];
   if (membership && !sameOrNewer(membership.management_source_updated_at, input.sourceUpdatedAt)) {
     return { action: "class.membership.stale_ignored", entityType: "class_enrollment", entityId: Number(membership.id), data: { membershipSourceId: input.membershipSourceId } };
+  }
+  // A RECORDING alias resolves to the same LMS class row as its LIVE source.
+  // Preserve an active LIVE enrollment instead of letting the alias remove
+  // meeting, schedule and attendance access. This also protects legacy test
+  // learners such as khlyp06 and makes a later RECORDING revoke a no-op for
+  // their independent LIVE membership. A LIVE event may still upgrade RECORD.
+  if (membership && learningMode === "recording"
+      && membership.learning_mode === "live" && membership.status === "active") {
+    return {
+      action: "class.membership.live_preserved",
+      entityType: "class_enrollment",
+      entityId: Number(membership.id),
+      data: {
+        id: membership.id,
+        user_id: membership.user_id,
+        live_class_id: membership.live_class_id,
+        status: membership.status,
+        management_membership_source_id: membership.management_membership_source_id,
+        learning_mode: membership.learning_mode,
+      },
+    };
   }
   const approval = membership?.management_approval_status || "pending";
   const effectiveStatus = approval === "pending" ? "suspended"
@@ -1044,11 +1218,14 @@ const syncMembership = async (client, event) => {
       `UPDATE class_enrollments
        SET user_id = $1, live_class_id = $2, status = $3,
            management_membership_source_id = $4, management_membership_status = $5,
-           management_source_updated_at = $6, ended_at = $7
+           management_source_updated_at = $6, ended_at = $7, learning_mode = $9,
+           management_class_alias_id = $10
        WHERE id = $8
-       RETURNING id, user_id, live_class_id, status, management_membership_source_id`,
+       RETURNING id, user_id, live_class_id, status, management_membership_source_id,
+                 learning_mode, management_class_alias_id`,
       [student.id, liveClass.id, effectiveStatus, input.membershipSourceId, input.status,
-        input.sourceUpdatedAt, endedAt, membership.id],
+        input.sourceUpdatedAt, endedAt, membership.id, learningMode,
+        liveClass.management_class_alias_id],
     );
     row = updated.rows[0];
   } else {
@@ -1056,10 +1233,12 @@ const syncMembership = async (client, event) => {
       `INSERT INTO class_enrollments
          (user_id, live_class_id, status, management_membership_source_id,
           management_membership_status, management_source_updated_at, ended_at,
-          management_approval_status)
-       VALUES ($1, $2, 'suspended', $3, $4, $5, NULL, 'pending')
-       RETURNING id, user_id, live_class_id, status, management_membership_source_id`,
-      [student.id, liveClass.id, input.membershipSourceId, input.status, input.sourceUpdatedAt],
+          management_approval_status, learning_mode, management_class_alias_id)
+       VALUES ($1, $2, 'suspended', $3, $4, $5, NULL, 'pending', $6, $7)
+       RETURNING id, user_id, live_class_id, status, management_membership_source_id,
+                 learning_mode, management_class_alias_id`,
+      [student.id, liveClass.id, input.membershipSourceId, input.status, input.sourceUpdatedAt,
+        learningMode, liveClass.management_class_alias_id],
     );
     row = created.rows[0];
   }

@@ -118,7 +118,7 @@ router.get("/mine", protectRoute, requireActiveStudentLmsAccess, async (req, res
   try {
     const [classes, recordings] = await Promise.all([
       query(
-        `SELECT lc.id, lc.title, lc.course_id,
+        `SELECT lc.id, COALESCE(record_alias.title, lc.title) AS title, lc.course_id,
                 COALESCE(c.title, c.name) AS course_title,
                 rf.drive_url AS folder_url, rf.is_published AS folder_published,
                 COUNT(r.id) FILTER (
@@ -134,7 +134,9 @@ router.get("/mine", protectRoute, requireActiveStudentLmsAccess, async (req, res
          LEFT JOIN class_sessions cs ON cs.id = r.class_session_id
          JOIN class_enrollments ce ON ce.live_class_id = lc.id
            AND ce.user_id = $1 AND ce.status = 'active'
-         WHERE lc.status = 'active'
+         LEFT JOIN management_class_learning_aliases record_alias
+           ON record_alias.id = ce.management_class_alias_id
+         WHERE (lc.status = 'active' OR (lc.status = 'completed' AND ce.learning_mode = 'recording'))
            AND ($2::bigint IS NULL OR lc.id = $2)
            AND EXISTS (
              SELECT 1 FROM lms_access_grants g
@@ -147,12 +149,12 @@ router.get("/mine", protectRoute, requireActiveStudentLmsAccess, async (req, res
                AND visible_recording.is_published = TRUE
                AND visible_recording.drive_url IS NOT NULL
            ))
-         GROUP BY lc.id, lc.title, lc.course_id, c.title, c.name, rf.drive_url, rf.is_published
+         GROUP BY lc.id, lc.title, record_alias.title, lc.course_id, c.title, c.name, rf.drive_url, rf.is_published
          ORDER BY latest_recording_at DESC NULLS LAST, lc.title`,
         [req.user.id, classId],
       ),
       query(
-      `SELECT r.*, lc.title AS class_title, lc.course_id,
+      `SELECT r.*, COALESCE(record_alias.title, lc.title) AS class_title, lc.course_id,
               COALESCE(c.title, c.name) AS course_title,
               cs.title AS session_title, cs.start_time AS session_start_time
        FROM class_recordings r
@@ -162,8 +164,10 @@ router.get("/mine", protectRoute, requireActiveStudentLmsAccess, async (req, res
        LEFT JOIN class_recording_folders rf ON rf.live_class_id = lc.id
        JOIN class_enrollments ce ON ce.live_class_id = lc.id
          AND ce.user_id = $1 AND ce.status = 'active'
+       LEFT JOIN management_class_learning_aliases record_alias
+         ON record_alias.id = ce.management_class_alias_id
        WHERE r.is_published = TRUE AND (r.drive_url IS NOT NULL OR rf.is_published = TRUE)
-         AND lc.status = 'active'
+          AND (lc.status = 'active' OR (lc.status = 'completed' AND ce.learning_mode = 'recording'))
          AND ($2::bigint IS NULL OR lc.id = $2)
          AND EXISTS (
            SELECT 1 FROM lms_access_grants g

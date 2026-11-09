@@ -300,7 +300,7 @@ export const buildQuizReportSnapshot = async ({
   const authoredQuestions = await loadQuestions(db, quizId);
   const rosterResult = quiz.live_class_id
     ? await db.query(
-      `SELECT u.id AS user_id, u.email, u.username,
+      `SELECT u.id AS user_id, u.email, u.username, ce.learning_mode,
               COALESCE(NULLIF(sp.full_name, ''), NULLIF(u.username, ''), u.email) AS display_name
        FROM class_enrollments ce
        JOIN users u ON u.id = ce.user_id
@@ -352,6 +352,7 @@ export const buildQuizReportSnapshot = async ({
       userId: Number(learner.user_id),
       name: learner.display_name || learner.username || learner.email || `#${learner.user_id}`,
       email: learner.email || null,
+      learningMode: learner.learning_mode || "live",
     };
     if (!selected) {
       students.push({ ...base, status: "not_started", attemptId: null, pendingEssay: false });

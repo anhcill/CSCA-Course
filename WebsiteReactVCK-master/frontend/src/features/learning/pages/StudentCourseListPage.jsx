@@ -16,6 +16,7 @@ import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import { fetchMyEnrolledCourses } from "../../api/lmsClient";
 import { getClassCoverImage } from "../../../utils/classWallpapers";
+import { isRecordingMode } from "../utils/learningMode.js";
 
 const TONES = [
   { bar: "bg-sky-500", badge: "bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300 dark:border-sky-800/60", button: "bg-sky-600 hover:bg-sky-700" },
@@ -174,6 +175,7 @@ export default function StudentCourseListPage() {
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {classCards.map(({ course, liveClass }, index) => {
               const targetItem = liveClass || course;
+              const recordingMode = isRecordingMode(liveClass, course);
               const progressTotal = liveClass
                 ? Number(liveClass.progress_total || 0)
                 : Number(course.progress_total || 0);
@@ -200,7 +202,7 @@ export default function StudentCourseListPage() {
                     <div className="absolute inset-0 bg-gradient-to-t from-[#102f63]/75 via-transparent to-white/5 dark:from-slate-950/90 dark:to-transparent" />
                     <span className={`absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black shadow-sm ${completed ? "bg-violet-100 text-violet-700 dark:bg-violet-950/70 dark:text-violet-300" : started ? tone.badge : "bg-white/90 text-slate-600 dark:bg-slate-800/90 dark:text-slate-300"}`}>
                       {completed ? <CheckCircle2 className="h-3 w-3" /> : <Sparkles className="h-3 w-3" />}
-                      {completed ? "Đã hoàn thành" : started ? "Đang học" : "Sắp bắt đầu"}
+                      {completed ? "Đã hoàn thành" : recordingMode ? "Học qua bản ghi" : started ? "Đang học" : "Sắp bắt đầu"}
                     </span>
                     <div className="absolute inset-x-3 bottom-3">
                       <p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-white/80 dark:text-slate-300">{course.title}</p>
@@ -228,7 +230,7 @@ export default function StudentCourseListPage() {
                     </div>
 
                     <span className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold text-white transition ${tone.button}`}>
-                      <BookOpen className="h-4 w-4" /> {completed ? "Xem lại lớp học" : "Vào lớp học"} <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                      <BookOpen className="h-4 w-4" /> {completed ? "Xem lại lớp học" : recordingMode ? "Mở lớp Record" : "Vào lớp học"} <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
                     </span>
                   </div>
                 </Link>

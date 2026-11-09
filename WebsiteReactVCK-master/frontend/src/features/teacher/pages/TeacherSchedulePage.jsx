@@ -811,14 +811,23 @@ export default function TeacherSchedulePage() {
                       )}
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-slate-900 dark:text-white">{stu.username || stu.email}</p>
+                      <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+                        <span>{stu.username || stu.email}</span>
+                        {String(stu.learningMode || stu.learning_mode || "").toUpperCase() === "RECORDING" && (
+                          <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700 dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-300">
+                            Học viên Record
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{stu.email}</p>
                     </div>
                   </div>
 
                   <div className="text-right">
-                    <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 px-2.5 py-1 rounded-full border border-emerald-500/25">
-                      Chuyên cần: {stu.attendance_rate || 0}%
+                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${String(stu.learningMode || stu.learning_mode || "").toUpperCase() === "RECORDING" ? "border-violet-500/25 bg-violet-500/15 text-violet-700 dark:text-violet-300" : "border-emerald-500/25 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"}`}>
+                      {String(stu.learningMode || stu.learning_mode || "").toUpperCase() === "RECORDING"
+                        ? "Chuyên cần: Không áp dụng"
+                        : `Chuyên cần: ${stu.attendance_rate || 0}%`}
                     </span>
                   </div>
                 </div>

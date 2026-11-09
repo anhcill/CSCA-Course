@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, Outlet, useLocation, useParams } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   CalendarDays,
@@ -9,6 +9,7 @@ import { fetchCourseWorkspace } from "../../api/lmsClient";
 import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
 import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
+import { getLearningCapabilities } from "../utils/learningMode.js";
 
 const formatClassTitle = (title) => {
   if (!title) return "Lớp học";
@@ -87,6 +88,7 @@ export default function CourseWorkspaceLayout() {
   }
 
   const { course = {}, selectedClass = {} } = workspace;
+  const learningCapabilities = getLearningCapabilities(workspace);
   const basePath = `/lms/courses/${courseId}/classes/${classId}`;
   const isOverviewPage =
     location.pathname === basePath ||
@@ -99,6 +101,13 @@ export default function CourseWorkspaceLayout() {
   const isFocusedView = isSessionWorkspace || isSubmittingOrQuiz;
 
   const classDisplayName = formatClassTitle(selectedClass.title);
+
+  if (!learningCapabilities.showCalendar && (
+    location.pathname === `${basePath}/calendar`
+    || location.pathname === `${basePath}/schedule`
+  )) {
+    return <Navigate to={basePath} replace />;
+  }
 
   return (
     <div className="min-h-full px-3 pb-12 pt-3 sm:px-5 lg:px-6">
@@ -158,18 +167,20 @@ export default function CourseWorkspaceLayout() {
               <ArrowLeft className="h-4 w-4" /> Quay lại {classDisplayName}
             </Link>
             <div className="flex items-center gap-2">
-              <Link
-                to={`${basePath}/calendar`}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 dark:border-slate-700 bg-white/80 dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-[#17365f] dark:text-slate-200 shadow-2xs hover:bg-white dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-white transition"
-              >
-                <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Lịch học của lớp
-              </Link>
+              {learningCapabilities.showCalendar && (
+                <Link
+                  to={`${basePath}/calendar`}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 dark:border-slate-700 bg-white/80 dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-[#17365f] dark:text-slate-200 shadow-2xs hover:bg-white dark:hover:bg-slate-700 hover:text-blue-700 dark:hover:text-white transition"
+                >
+                  <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Lịch học của lớp
+                </Link>
+              )}
             </div>
           </div>
         )}
 
         {/* Child Route Outlet */}
-        <Outlet context={workspace} />
+        <Outlet context={{ ...workspace, learningCapabilities }} />
       </div>
     </div>
   );

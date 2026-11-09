@@ -407,7 +407,7 @@ const getStudentCheckIn = async (db, sessionId, userId, { lock = false } = {}) =
      FROM class_sessions cs
      JOIN live_classes lc ON lc.id = cs.live_class_id
      JOIN class_enrollments ce ON ce.live_class_id = lc.id AND ce.user_id = $2
-       AND ce.status = 'active'
+       AND ce.status = 'active' AND ce.learning_mode = 'live'
        AND (lc.management_class_source_id IS NULL OR ce.management_approval_status = 'approved')
      JOIN lms_access_grants grant_access ON grant_access.user_id = $2 AND grant_access.course_id = lc.course_id
        AND grant_access.access_status = 'active' AND grant_access.valid_from <= NOW()
@@ -525,7 +525,7 @@ router.get("/session/:sessionId", protectRoute, requireTeacher, requirePermissio
            ON ca2.session_id = cs2.id AND ca2.user_id = ce.user_id
          WHERE cs2.live_class_id = ce.live_class_id AND cs2.status <> 'cancelled'
        ) stats ON true
-       WHERE ce.live_class_id = $2 AND ce.status = 'active'
+       WHERE ce.live_class_id = $2 AND ce.status = 'active' AND ce.learning_mode = 'live'
          AND ($3::boolean OR ce.is_internal_test = FALSE)
        ORDER BY LOWER(COALESCE(u.username, u.email)) ASC`,
       [sessionId, session.live_class_id, req.user.role === "admin"],
@@ -986,7 +986,7 @@ router.post("/check", protectRoute, requireTeacher, requirePermission("lms.atten
     const enrolledResult = await client.query(
       `SELECT ce.user_id, ce.management_membership_source_id
        FROM class_enrollments ce
-       WHERE ce.live_class_id = $1 AND ce.status = 'active'
+       WHERE ce.live_class_id = $1 AND ce.status = 'active' AND ce.learning_mode = 'live'
          AND ($2::boolean OR ce.is_internal_test = FALSE)`,
       [session.live_class_id, req.user.role === "admin"],
     );

@@ -5,6 +5,7 @@ import { fetchCourseWorkspace } from "../../api/lmsClient";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import { getClassTheme } from "../../../utils/classThemes";
+import { isRecordingMode } from "../utils/learningMode.js";
 
 export default function CourseClassListPage() {
   const { courseId } = useParams();
@@ -88,6 +89,7 @@ export default function CourseClassListPage() {
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 sm:gap-4.5">
             {classes.map((liveClass, index) => {
               const theme = getClassTheme(liveClass, index);
+              const recordingMode = isRecordingMode(liveClass);
               const displayTitle = liveClass.title?.startsWith("Lớp") ? liveClass.title : `Lớp ${liveClass.title}`;
               return (
                 <Link
@@ -111,9 +113,11 @@ export default function CourseClassListPage() {
                       >
                         <BookOpen className="h-5 w-5" />
                       </div>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200/80 shadow-2xs dark:bg-emerald-950/70 dark:text-emerald-300 dark:ring-emerald-800/60">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Đã cấp quyền
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 shadow-2xs ${recordingMode
+                        ? "bg-amber-50 text-amber-700 ring-amber-200/80 dark:bg-amber-950/70 dark:text-amber-300 dark:ring-amber-800/60"
+                        : "bg-emerald-50 text-emerald-700 ring-emerald-200/80 dark:bg-emerald-950/70 dark:text-emerald-300 dark:ring-emerald-800/60"}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${recordingMode ? "bg-amber-500" : "bg-emerald-500 animate-pulse"}`} />
+                        {recordingMode ? "Học qua bản ghi" : "Đã cấp quyền"}
                       </span>
                     </div>
 
@@ -140,12 +144,12 @@ export default function CourseClassListPage() {
                   {/* Footer Action */}
                   <div className="relative mt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3 text-xs">
                     <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#487291] dark:text-slate-400">
-                      <Sparkles className="h-3 w-3 text-amber-500" /> Trực tuyến
+                      <Sparkles className="h-3 w-3 text-amber-500" /> {recordingMode ? "Xem bản ghi" : "Trực tuyến"}
                     </span>
                     <span
                       className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-white shadow-md transition-all duration-200 ${theme.buttonBg} group-hover:scale-105`}
                     >
-                      Vào lớp <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" />
+                      {recordingMode ? "Mở lớp" : "Vào lớp"} <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" />
                     </span>
                   </div>
                 </Link>

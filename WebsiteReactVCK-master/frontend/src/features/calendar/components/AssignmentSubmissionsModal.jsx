@@ -97,6 +97,7 @@ export default function AssignmentSubmissionsModal({
                 submittedAt: s.submittedAt,
                 attemptNumber: s.attemptNumber,
                 attemptId: s.attemptId,
+                learningMode: s.learningMode || s.learning_mode || "LIVE",
               };
             });
             setStudentsData(mapped);
@@ -139,6 +140,7 @@ export default function AssignmentSubmissionsModal({
                 submittedAt: sub?.submittedAt || null,
                 submissionId: sub?.id,
                 fileAssets: sub?.fileAssets || (sub?.fileName ? [{ fileName: sub.fileName, fileUrl: sub.fileUrl }] : []),
+                learningMode: member.learningMode || member.learning_mode || sub?.learningMode || sub?.learning_mode || "LIVE",
               };
             });
             setStudentsData(merged);
@@ -159,6 +161,7 @@ export default function AssignmentSubmissionsModal({
                 submittedAt: sub.submittedAt,
                 submissionId: sub.id,
                 fileAssets: sub.fileAssets || (sub.fileName ? [{ fileName: sub.fileName, fileUrl: sub.fileUrl }] : []),
+                learningMode: sub.learningMode || sub.learning_mode || "LIVE",
               };
             });
             setStudentsData(mapped);
@@ -441,6 +444,11 @@ export default function AssignmentSubmissionsModal({
                             <div className="min-w-0">
                               <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">
                                 {st.name}
+                                {String(st.learningMode || "").toUpperCase() === "RECORDING" && (
+                                  <span className="ml-2 inline-flex rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 align-middle text-[9px] font-black uppercase tracking-wide text-violet-700 dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-300">
+                                    Học viên Record
+                                  </span>
+                                )}
                               </h4>
                               <p className="text-[11px] text-slate-400 truncate">
                                 {st.email || st.username}

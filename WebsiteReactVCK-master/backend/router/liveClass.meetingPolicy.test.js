@@ -218,3 +218,194 @@ test("session history is visible only to users who can view the class", async (t
   assert.equal(allowed.body.data.history.length, 1);
   assert.equal(historyQueryCount, 1);
 });
+
+test("recording learners cannot export the source live class calendar", async (t) => {
+  const oldQuery = pool.query;
+  pool.query = async (sql) => {
+    if (sql.includes("FROM live_classes lc")) {
+      return { rows: [{ id: 8, title: "Source live class", course_id: 2, status: "active" }] };
+    }
+    if (sql.includes("SELECT 1") && sql.includes("FROM class_enrollments ce")) {
+      return { rows: [{ '?column?': 1 }] };
+    }
+    if (sql.includes("SELECT learning_mode")) return { rows: [{ learning_mode: "recording" }] };
+    assert.fail(`Unexpected query: ${sql}`);
+  };
+  t.after(() => { pool.query = oldQuery; });
+
+  const res = response();
+  await routeFor("get", "/:classId/calendar.ics").stack.at(-1).handle(
+    { user: { id: 12, role: "user" }, params: { classId: 8 } },
+    res,
+  );
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.body.errorCode, "RECORDING_ONLY");
+});
+
+test("recording learners cannot fetch the recurring source schedule", async (t) => {
+  const oldQuery = pool.query;
+  let scheduleQueryCount = 0;
+  pool.query = async (sql) => {
+    if (sql.includes("FROM live_classes lc")) {
+      return { rows: [{ id: 8, title: "Source live class", course_id: 2, status: "active" }] };
+    }
+    if (sql.includes("SELECT 1") && sql.includes("FROM class_enrollments ce")) {
+      return { rows: [{ '?column?': 1 }] };
+    }
+    if (sql.includes("SELECT learning_mode FROM class_enrollments")) {
+      return { rows: [{ learning_mode: "recording" }] };
+    }
+    if (sql.includes("FROM class_schedules")) {
+      scheduleQueryCount += 1;
+      return { rows: [] };
+    }
+    assert.fail(`Unexpected query: ${sql}`);
+  };
+  t.after(() => { pool.query = oldQuery; });
+
+  const res = response();
+  await routeFor("get", "/:classId/schedules").stack.at(-1).handle(
+    { user: { id: 12, role: "user" }, params: { classId: 8 } },
+    res,
+  );
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.body.errorCode, "RECORDING_ONLY");
+  assert.equal(scheduleQueryCount, 0);
+});
+
+test("recording learners retain class content access after the source class completes", async (t) => {
+  const oldQuery = pool.query;
+  pool.query = async (sql, params = []) => {
+    if (sql.includes("FROM live_classes lc")) {
+      return { rows: [{
+        id: 8,
+        title: "Completed source class",
+        course_id: 2,
+        status: "completed",
+      }] };
+    }
+    if (sql.includes("FROM class_enrollments ce")) {
+      assert.match(sql, /completed.*ce\.learning_mode = 'recording'/s);
+      assert.equal(params[3], "completed");
+      return { rows: [{ '?column?': 1 }] };
+    }
+    if (sql.includes("FROM class_chapters cc")) {
+      return { rows: [{ id: 3, live_class_id: 8, title: "Chương 1", position: 1 }] };
+    }
+    if (sql.includes("FROM class_sessions cs")) return { rows: [] };
+    assert.fail(`Unexpected query: ${sql}`);
+  };
+  t.after(() => { pool.query = oldQuery; });
+
+  const res = response();
+  await routeFor("get", "/:classId/chapters").stack.at(-1).handle(
+    { user: { id: 12, role: "user" }, params: { classId: 8 } },
+    res,
+  );
+
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(res.body.data[0].title, "Chương 1");
+});
+
+test("learner class list uses the Record alias title without changing staff views", async (t) => {
+  const oldQuery = pool.query;
+  pool.query = async (sql, params = []) => {
+    assert.deepEqual(params, [12]);
+    assert.match(sql, /COALESCE\(\(SELECT record_alias\.title/);
+    assert.match(sql, /record_enrollment\.management_class_alias_id/);
+    return { rows: [{
+      id: 8,
+      title: "Source class - Record",
+      course_id: 2,
+      status: "completed",
+      max_students: 30,
+      enrolled_count: 1,
+    }] };
+  };
+  t.after(() => { pool.query = oldQuery; });
+
+  const res = response();
+  await routeFor("get", "/").stack.at(-1).handle(
+    { user: { id: 12, role: "user" } },
+    res,
+  );
+
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(res.body.data[0].title, "Source class - Record");
+});
+
+test("recording admin enrollment does not consume a live seat", async (t) => {
+  const oldConnect = pool.connect;
+  const queries = [];
+  pool.connect = async () => ({
+    query: async (sql) => {
+      queries.push(sql);
+      if (sql.includes("FROM live_classes WHERE id")) {
+        return { rows: [{ id: 8, course_id: 2, instructor_id: 5, max_students: 1, status: "active" }] };
+      }
+      if (sql.includes("FROM users WHERE id")) {
+        return { rows: [{ id: 12, role: "user", is_locked: false, is_management_managed: true, lms_account_status: "active" }] };
+      }
+      if (sql.includes("FROM class_enrollments WHERE user_id")) return { rows: [] };
+      if (sql.includes("INSERT INTO class_enrollments")) return { rows: [{ id: 91 }] };
+      return { rows: [] };
+    },
+    release() {},
+  });
+  t.after(() => { pool.connect = oldConnect; });
+
+  const res = response();
+  await routeFor("post", "/:classId/enrollments").stack.at(-1).handle(
+    {
+      user: { id: 1, role: "admin" },
+      params: { classId: 8 },
+      body: { userId: 12, learningMode: "recording" },
+      ip: "127.0.0.1",
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 201, JSON.stringify(res.body));
+  assert.equal(res.body.data.learningMode, "recording");
+  assert.equal(queries.some((sql) => sql.includes("COUNT(*)::int AS count FROM class_enrollments")), false);
+});
+
+test("live seat capacity ignores recording enrollments", async (t) => {
+  const oldConnect = pool.connect;
+  let capacitySql = "";
+  pool.connect = async () => ({
+    query: async (sql) => {
+      if (sql.includes("FROM live_classes WHERE id")) {
+        return { rows: [{ id: 8, course_id: 2, instructor_id: 5, max_students: 1, status: "active" }] };
+      }
+      if (sql.includes("FROM users WHERE id")) {
+        return { rows: [{ id: 12, role: "user", is_locked: false, is_management_managed: true, lms_account_status: "active" }] };
+      }
+      if (sql.includes("FROM class_enrollments WHERE user_id")) return { rows: [] };
+      if (sql.includes("COUNT(*)::int AS count FROM class_enrollments")) {
+        capacitySql = sql;
+        return { rows: [{ count: 1 }] };
+      }
+      return { rows: [] };
+    },
+    release() {},
+  });
+  t.after(() => { pool.connect = oldConnect; });
+
+  const res = response();
+  await routeFor("post", "/:classId/enrollments").stack.at(-1).handle(
+    {
+      user: { id: 1, role: "admin" },
+      params: { classId: 8 },
+      body: { userId: 12, learningMode: "live" },
+      ip: "127.0.0.1",
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.errorCode, "CAPACITY_REACHED");
+  assert.match(capacitySql, /learning_mode = 'live'/);
+});

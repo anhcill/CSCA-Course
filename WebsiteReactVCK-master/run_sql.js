@@ -65,6 +65,7 @@ const migrationFiles = [
   "database/migrations/068_session_vocabulary_topics.sql",
   "database/migrations/069_quiz_close_reports.sql",
   "database/migrations/070_session_cancellation_curriculum_shift.sql",
+  "database/migrations/071_recording_class_enrollments.sql",
 ];
 
 // Git may check out SQL with CRLF on Windows while Railway reads LF. A

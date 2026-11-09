@@ -9,8 +9,10 @@ test("approved active Management enrollment emails the student with the exact cl
     membershipId: 42,
     frontendUrl: "https://www.molycourse.online/",
     db: {
-      query: async (_sql, params) => {
+      query: async (sql, params) => {
         assert.deepEqual(params, [42]);
+        assert.match(sql, /COALESCE\(record_alias\.title, lc\.title\) AS class_title/);
+        assert.match(sql, /record_alias\.id = ce\.management_class_alias_id/);
         return { rows: [{
           id: 42,
           status: "active",
@@ -22,6 +24,7 @@ test("approved active Management enrollment emails the student with the exact cl
           course_id: 2,
           course_title: "Toán CSCA",
           instructor_name: "Giảng viên Nguyễn Minh Đức",
+          learning_mode: "recording",
         }] };
       },
     },
@@ -40,6 +43,7 @@ test("approved active Management enrollment emails the student with the exact cl
     courseName: "Toán CSCA",
     instructorName: "Giảng viên Nguyễn Minh Đức",
     classUrl: "https://www.molycourse.online/lms/courses/2/classes/5",
+    learningMode: "recording",
   }]);
 });
 

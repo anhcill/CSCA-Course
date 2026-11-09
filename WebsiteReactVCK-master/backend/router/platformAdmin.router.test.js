@@ -40,6 +40,28 @@ test("admin can approve a Management class and its enrollment", async (t) => {
   const membership = (await db.query("INSERT INTO class_enrollments(user_id,live_class_id,status,management_membership_source_id,management_membership_status,management_approval_status) VALUES ($1,$2,'suspended','membership-source-1','active','pending') RETURNING id", [student.id, cls.id])).rows[0];
 
   await invoke("/classes/:id/approval", cls.id, admin.id);
+  const recordAlias = (await db.query(
+    `INSERT INTO management_class_learning_aliases
+       (alias_class_source_id,source_class_source_id,live_class_id,title,status,management_source_updated_at)
+     VALUES ('record-class-source','class-source-1',$1,'Class for review - Record','active',NOW()) RETURNING id`,
+    [cls.id],
+  )).rows[0];
+  await db.query(
+    "UPDATE class_enrollments SET learning_mode='recording',management_class_alias_id=$1 WHERE id=$2",
+    [recordAlias.id, membership.id],
+  );
+  const listMembershipApprovals = router.stack.find((layer) => (
+    layer.route?.path === "/membership-approvals" && layer.route.methods.get
+  )).route.stack.at(-1).handle;
+  const approvalListResponse = {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; return this; },
+  };
+  await listMembershipApprovals({ user: admin }, approvalListResponse);
+  assert.equal(approvalListResponse.statusCode, 200, JSON.stringify(approvalListResponse.body));
+  assert.equal(approvalListResponse.body.data[0].class_title, "Class for review - Record");
   await invoke("/membership-approvals/:id", membership.id, admin.id);
   assert.deepEqual((await db.query("SELECT status,management_approval_status FROM live_classes WHERE id=$1", [cls.id])).rows[0],
     { status: "active", management_approval_status: "approved" });

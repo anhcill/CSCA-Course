@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarDays, ChevronRight, Layers, RefreshCw } from "lucide-react";
+import { BookOpen, CalendarDays, ChevronRight, Layers, RefreshCw } from "lucide-react";
 import { fetchClassChapters } from "../../../api/lmsClient";
 import { subscribeToCalendarChanges } from "../../../calendar/calendarSync";
 
@@ -24,7 +24,7 @@ const objectiveLines = (value) =>
     .map((line) => line.trim().replace(/^[-•*]\s*/, ""))
     .filter(Boolean);
 
-export default function ClassChaptersCard({ classId, basePath }) {
+export default function ClassChaptersCard({ classId, basePath, recordingMode = false }) {
   const [chapters, setChapters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -65,7 +65,11 @@ export default function ClassChaptersCard({ classId, basePath }) {
             <h2 id="class-chapters-title" className="text-lg font-black text-[#102f63] dark:text-white">
               Lộ trình & Các chương học
             </h2>
-            <p className="text-xs text-[#487291] dark:text-slate-400">Chi tiết từng chương, buổi học và mục tiêu trọng tâm</p>
+            <p className="text-xs text-[#487291] dark:text-slate-400">
+              {recordingMode
+                ? "Lộ trình nội dung của lớp chính, sắp xếp theo từng buổi học"
+                : "Chi tiết từng chương, buổi học và mục tiêu trọng tâm"}
+            </p>
           </div>
         </div>
         {!loading && !error && (
@@ -155,8 +159,10 @@ export default function ClassChaptersCard({ classId, basePath }) {
                                 {session.title || `Buổi học ${sIdx + 1}`}
                               </p>
                               <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[#487291] dark:text-slate-400">
-                                <CalendarDays size={13} className="text-sky-500" />
-                                <span>{sessionDate(session.start_time)}</span>
+                                {recordingMode
+                                  ? <BookOpen size={13} className="text-amber-500" />
+                                  : <CalendarDays size={13} className="text-sky-500" />}
+                                <span>{recordingMode ? "Mở nội dung, học liệu và bài tập của buổi" : sessionDate(session.start_time)}</span>
                                 {session.status === "cancelled" && (
                                   <span className="font-bold text-rose-500">· Đã hủy</span>
                                 )}

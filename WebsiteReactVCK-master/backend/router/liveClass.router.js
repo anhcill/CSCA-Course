@@ -306,18 +306,19 @@ const canViewClass = async (liveClass, user) => {
   if (!liveClass) return false;
   if (user.role === "admin") return true;
   if (user.role === "creator") return canManageClass(liveClass, user);
-  if (user.role !== "user" || liveClass.status !== "active") return false;
+  if (user.role !== "user" || liveClass.status === "cancelled") return false;
 
   const result = await query(
     `SELECT 1
      FROM class_enrollments ce
      WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
+       AND ($4::text = 'active' OR ($4::text = 'completed' AND ce.learning_mode = 'recording'))
        AND EXISTS (
          SELECT 1 FROM lms_access_grants g
          WHERE g.user_id = $2 AND g.course_id = $3 AND g.access_status = 'active'
            AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
        )`,
-    [liveClass.id, user.id, liveClass.course_id],
+    [liveClass.id, user.id, liveClass.course_id, liveClass.status],
   );
   return result.rows.length > 0;
 };
@@ -388,6 +389,7 @@ const sessionVisibility = (user) => {
       SELECT 1 FROM class_enrollments ce
       LEFT JOIN courses course_access ON course_access.id = lc.course_id
       WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
+        AND ce.learning_mode = 'live'
         AND EXISTS (
           SELECT 1 FROM lms_access_grants g
           WHERE g.user_id = $1 AND g.course_id = course_access.id AND g.access_status = 'active'
@@ -513,8 +515,24 @@ const canTeachSessionChapter = async (client, session, user) => {
 router.get("/", protectRoute, requireManagedLearner, async (req, res) => {
   try {
     const visibility = classListVisibility(req.user);
+    const classTitleSelect = req.user.role === "user"
+      ? `COALESCE((SELECT record_alias.title
+          FROM class_enrollments record_enrollment
+          JOIN management_class_learning_aliases record_alias
+            ON record_alias.id = record_enrollment.management_class_alias_id
+          WHERE record_enrollment.live_class_id = lc.id AND record_enrollment.user_id = $1
+            AND record_enrollment.status = 'active' AND record_enrollment.learning_mode = 'recording'
+          LIMIT 1), lc.title) AS title`
+      : "lc.title AS title";
+    const classStatusVisibility = req.user.role === "user"
+      ? `(lc.status = 'active' OR (lc.status = 'completed' AND EXISTS (
+          SELECT 1 FROM class_enrollments record_access
+          WHERE record_access.live_class_id = lc.id AND record_access.user_id = $1
+            AND record_access.status = 'active' AND record_access.learning_mode = 'recording'
+        )))`
+      : "lc.status = 'active'";
     const result = await query(
-      `SELECT lc.id, lc.title, lc.course_id, lc.instructor_id, lc.description,
+      `SELECT lc.id, ${classTitleSelect}, lc.course_id, lc.instructor_id, lc.description,
               lc.max_students, lc.status, lc.created_at, lc.updated_at,
               lc.teacher_display_name, lc.cover_image_url,
               COALESCE(c.title, c.name) AS course_title,
@@ -522,7 +540,7 @@ router.get("/", protectRoute, requireManagedLearner, async (req, res) => {
        FROM live_classes lc
        LEFT JOIN courses c ON c.id = lc.course_id
        LEFT JOIN class_enrollments ce ON ce.live_class_id = lc.id
-       WHERE lc.status = 'active'
+       WHERE ${classStatusVisibility}
          AND (${req.user.role === 'admin' ? 'TRUE' : '(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true)'})
          AND ${visibility.clause}
        GROUP BY lc.id, c.title, c.name, lc.teacher_display_name, lc.cover_image_url
@@ -757,7 +775,8 @@ router.post("/:classId/join", protectRoute, requireRole("user"), requireActiveSt
 
     const countResult = await client.query(
       `SELECT COUNT(*)::int AS count FROM class_enrollments
-       WHERE live_class_id = $1 AND status = 'active' AND is_internal_test = FALSE`,
+       WHERE live_class_id = $1 AND status = 'active' AND is_internal_test = FALSE
+         AND learning_mode = 'live'`,
       [classId],
     );
     if (countResult.rows[0].count >= liveClass.max_students) {
@@ -799,8 +818,8 @@ router.get("/:classId/enrollments", protectRoute, requireTeacher, requirePermiss
 
     const result = await query(
       `SELECT u.id, u.username, u.email, u.avatar_url,
-              ce.status AS enrollment_status, ce.enrolled_at, ce.is_internal_test,
-              COUNT(DISTINCT cs.id) FILTER (WHERE cs.status <> 'cancelled')::int AS total_sessions,
+              ce.status AS enrollment_status, ce.enrolled_at, ce.is_internal_test, ce.learning_mode,
+              COUNT(DISTINCT cs.id) FILTER (WHERE cs.status <> 'cancelled' AND ce.learning_mode = 'live')::int AS total_sessions,
               COUNT(DISTINCT ca.session_id) FILTER (WHERE ca.status = 'present')::int AS present_sessions
        FROM class_enrollments ce
        JOIN users u ON u.id = ce.user_id
@@ -808,16 +827,17 @@ router.get("/:classId/enrollments", protectRoute, requireTeacher, requirePermiss
        LEFT JOIN class_attendance ca ON ca.user_id = ce.user_id AND ca.session_id = cs.id
        WHERE ce.live_class_id = $1 AND ce.status = 'active'
          AND ($2::boolean OR NOT ce.is_internal_test)
-       GROUP BY u.id, ce.status, ce.enrolled_at, ce.is_internal_test
+       GROUP BY u.id, ce.status, ce.enrolled_at, ce.is_internal_test, ce.learning_mode
        ORDER BY LOWER(COALESCE(u.username, u.email)) ASC`,
       [classId, req.user.role === 'admin'],
     );
 
     return res.json({ success: true, data: result.rows.map((row) => ({
       ...row,
-      attendance_rate: Number(row.total_sessions) > 0
+      attendance_rate: row.learning_mode === "recording" ? null : Number(row.total_sessions) > 0
         ? Math.round((Number(row.present_sessions) / Number(row.total_sessions)) * 100)
         : 0,
+      attendance_applicable: row.learning_mode !== "recording",
     })) });
   } catch (error) {
     console.error("Error fetching live class roster:", error);
@@ -829,7 +849,9 @@ router.get("/:classId/enrollments", protectRoute, requireTeacher, requirePermiss
 router.post("/:classId/enrollments", protectRoute, requireRole("admin"), async (req, res) => {
   const classId = parsePositiveId(req.params.classId);
   const userId = parsePositiveId(req.body?.userId);
+  const learningMode = String(req.body?.learningMode || "live").trim().toLowerCase();
   if (!classId || !userId) return validationError(res, "classId hoặc userId không hợp lệ");
+  if (!["live", "recording"].includes(learningMode)) return validationError(res, "learningMode không hợp lệ");
 
   const client = await getClient();
   try {
@@ -874,14 +896,18 @@ router.post("/:classId/enrollments", protectRoute, requireRole("admin"), async (
     }
 
     const existing = await client.query(
-      "SELECT id, status FROM class_enrollments WHERE user_id = $1 AND live_class_id = $2 FOR UPDATE",
+      "SELECT id, status, learning_mode FROM class_enrollments WHERE user_id = $1 AND live_class_id = $2 FOR UPDATE",
       [userId, classId],
     );
     const alreadyActive = existing.rows[0]?.status === "active";
+    const needsLiveSeat = learningMode === "live"
+      && (!alreadyActive || existing.rows[0]?.learning_mode !== "live");
     let enrollmentId = existing.rows[0]?.id || null;
-    if (!alreadyActive) {
+    if (needsLiveSeat) {
       const countResult = await client.query(
-        "SELECT COUNT(*)::int AS count FROM class_enrollments WHERE live_class_id = $1 AND status = 'active' AND is_internal_test = FALSE",
+        `SELECT COUNT(*)::int AS count FROM class_enrollments
+         WHERE live_class_id = $1 AND status = 'active' AND is_internal_test = FALSE
+           AND learning_mode = 'live'`,
         [classId],
       );
       if (countResult.rows[0].count >= liveClass.max_students) {
@@ -889,22 +915,27 @@ router.post("/:classId/enrollments", protectRoute, requireRole("admin"), async (
         return res.status(409).json({ success: false, message: "Lớp học đã đủ số lượng", errorCode: "CAPACITY_REACHED" });
       }
 
+    }
+
+    if (!alreadyActive) {
       if (existing.rows[0]) {
         const restored = await client.query(
           `UPDATE class_enrollments
-           SET status = 'active', enrolled_at = NOW(), ended_at = NULL
+           SET status = 'active', enrolled_at = NOW(), ended_at = NULL, learning_mode = $2
            WHERE id = $1 RETURNING id`,
-          [existing.rows[0].id],
+          [existing.rows[0].id, learningMode],
         );
         enrollmentId = restored.rows[0].id;
       } else {
         const inserted = await client.query(
-          `INSERT INTO class_enrollments (user_id, live_class_id, status)
-           VALUES ($1, $2, 'active') RETURNING id`,
-          [userId, classId],
+          `INSERT INTO class_enrollments (user_id, live_class_id, status, learning_mode)
+           VALUES ($1, $2, 'active', $3) RETURNING id`,
+          [userId, classId, learningMode],
         );
         enrollmentId = inserted.rows[0].id;
       }
+    } else if (existing.rows[0].learning_mode !== learningMode) {
+      await client.query("UPDATE class_enrollments SET learning_mode = $2 WHERE id = $1", [enrollmentId, learningMode]);
     }
 
     // Admin enrollment is an explicit LMS access override. Keep the course and
@@ -941,11 +972,11 @@ router.post("/:classId/enrollments", protectRoute, requireRole("admin"), async (
       action: "class.enrollment.added",
       entityType: "class_enrollment",
       entityId: enrollmentId,
-      afterState: { classId, userId, courseId: Number(liveClass.course_id), status: "active" },
+      afterState: { classId, userId, courseId: Number(liveClass.course_id), status: "active", learningMode },
       metadata: { ip: req.ip, accessSource: "admin_override" },
     });
     await client.query("COMMIT");
-    return res.status(alreadyActive ? 200 : 201).json({ success: true, data: { userId, classId, isEnrolled: true } });
+    return res.status(alreadyActive ? 200 : 201).json({ success: true, data: { userId, classId, isEnrolled: true, learningMode } });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Error enrolling student in live class:", error);
@@ -1055,6 +1086,20 @@ router.get("/:classId/schedules", protectRoute, requireManagedLearner, async (re
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
     if (!(await canViewClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xem lịch lớp này");
+    if (req.user.role === "user") {
+      const enrollment = await query(
+        `SELECT learning_mode FROM class_enrollments
+         WHERE live_class_id = $1 AND user_id = $2 AND status = 'active'`,
+        [classId, req.user.id],
+      );
+      if (enrollment.rows[0]?.learning_mode === "recording") {
+        return res.status(403).json({
+          success: false,
+          message: "Học viên Record không sử dụng lịch học trực tuyến",
+          errorCode: "RECORDING_ONLY",
+        });
+      }
+    }
     const result = await query(
       `SELECT id, live_class_id, title, day_of_week, start_time, end_time,
               timezone, start_date, end_date, status, version,
@@ -1379,6 +1424,21 @@ router.get("/:classId/calendar.ics", protectRoute, requireManagedLearner, async 
     const liveClass = await getClassById(classId);
     if (!liveClass) return notFound(res, "Không tìm thấy lớp học trực tuyến");
     if (!(await canViewClass(liveClass, req.user))) return forbidden(res, "Bạn không có quyền xuất lịch của lớp này");
+    if (req.user.role === "user") {
+      const enrollment = await query(
+        `SELECT learning_mode
+         FROM class_enrollments
+         WHERE live_class_id = $1 AND user_id = $2 AND status = 'active'`,
+        [classId, req.user.id],
+      );
+      if (enrollment.rows[0]?.learning_mode === "recording") {
+        return res.status(403).json({
+          success: false,
+          message: "Học viên Record không sử dụng lịch học trực tuyến",
+          errorCode: "RECORDING_ONLY",
+        });
+      }
+    }
     const sessions = await query(
       `SELECT id, title, start_time, end_time, status, change_reason
        FROM class_sessions
@@ -2369,6 +2429,11 @@ router.get("/sessions/:sessionId/access", protectRoute, requireManagedLearner, a
                   AND ce.user_id = $2 AND ce.status = 'active'
               ) AS is_enrolled,
               EXISTS (
+                SELECT 1 FROM class_enrollments ce
+                WHERE ce.live_class_id = cs.live_class_id
+                  AND ce.user_id = $2 AND ce.status = 'active' AND ce.learning_mode = 'live'
+              ) AS is_live_enrolled,
+              EXISTS (
                 SELECT 1 FROM lms_access_grants g
                 WHERE g.user_id = $2 AND g.course_id = lc.course_id AND g.access_status = 'active'
                   AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
@@ -2391,9 +2456,14 @@ router.get("/sessions/:sessionId/access", protectRoute, requireManagedLearner, a
     const isAdmin = req.user.role === "admin";
     const isOwner = isAdmin
       || (req.user.role === "creator" && (String(session.instructor_id) === String(req.user.id) || session.is_class_teacher));
-    const canAccess = isOwner || (req.user.role === "user" && session.is_enrolled && session.course_is_published
+    const canAccess = isOwner || (req.user.role === "user" && session.is_live_enrolled && session.course_is_published
       && session.has_management_entitlement);
-    if (!canAccess) return forbidden(res, "Bạn không có quyền vào buổi học này");
+    if (!canAccess) {
+      if (req.user.role === "user" && session.is_enrolled && !session.is_live_enrolled) {
+        return res.status(403).json({ success: false, message: "Học viên Record chỉ xem bản ghi và không vào phòng học trực tuyến", errorCode: "RECORDING_ONLY" });
+      }
+      return forbidden(res, "Bạn không có quyền vào buổi học này");
+    }
     if (!session.meet_url) return notFound(res, "Buổi học chưa có link tham gia");
 
     const accessWindow = getMeetingAccessWindow(session.start_time, session.end_time);

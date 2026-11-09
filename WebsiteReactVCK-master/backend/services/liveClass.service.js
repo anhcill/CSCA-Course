@@ -126,6 +126,7 @@ export const notifyClassStudents = async (session, mode = "upcoming") => {
      JOIN live_classes lc ON lc.id = ce.live_class_id
      LEFT JOIN courses c ON c.id = lc.course_id
      WHERE ce.live_class_id = $1 AND ce.status = 'active'
+       AND ce.learning_mode = 'live'
        AND (
          COALESCE(c.is_management_managed, FALSE) = FALSE
          OR EXISTS (

@@ -4,7 +4,7 @@ export const buildGradebook = async (db, classId, sessionId = null) => {
   const classInfo = (await db.query("SELECT lc.id, lc.title, lc.course_id, COALESCE(c.title, c.name) AS course_title FROM live_classes lc LEFT JOIN courses c ON c.id = lc.course_id WHERE lc.id = $1", [classId])).rows[0];
   const stored = (await db.query("SELECT policy FROM class_gradebook_policies WHERE class_id = $1", [classId])).rows[0];
   const policy = stored?.policy || DEFAULT_GRADEBOOK_POLICY;
-  const students = (await db.query(`SELECT u.id, COALESCE(u.username, u.email) AS name, u.email FROM class_enrollments ce
+  const students = (await db.query(`SELECT u.id, COALESCE(u.username, u.email) AS name, u.email, ce.learning_mode FROM class_enrollments ce
     JOIN users u ON u.id = ce.user_id WHERE ce.live_class_id = $1 AND ce.status = 'active'
       AND ce.is_internal_test = FALSE ORDER BY LOWER(COALESCE(u.username,u.email)),u.id`, [classId])).rows;
   const sessions = (await db.query(`SELECT id FROM class_sessions WHERE live_class_id = $1 AND status <> 'cancelled'
@@ -52,16 +52,19 @@ export const buildGradebook = async (db, classId, sessionId = null) => {
       return { activityId: activity.id, value: value === null ? null : Math.round(value * 100) / 100, state };
     });
     let present = 0, excused = 0, unrecorded = 0;
-    for (const session of sessions) {
-      const status = attendanceMap.get(`${student.id}:${session.id}`);
-      if (status === "excused") { excused++; continue; }
-      if (status === "present") present++;
-      if (!status) unrecorded++;
-      categories.attendance.push(status === "present" ? 100 : status === "absent" ? 0 : null);
+    const attendanceApplicable = student.learning_mode !== "recording";
+    if (attendanceApplicable) {
+      for (const session of sessions) {
+        const status = attendanceMap.get(`${student.id}:${session.id}`);
+        if (status === "excused") { excused++; continue; }
+        if (status === "present") present++;
+        if (!status) unrecorded++;
+        categories.attendance.push(status === "present" ? 100 : status === "absent" ? 0 : null);
+      }
     }
     const recorded = categories.attendance.filter((value) => value !== null);
     const attendancePercent = recorded.length ? present / recorded.length * 100 : null;
-    return { ...student, cells, present, excused, unrecorded, attendancePercent, ...calculateGradebookTotal(categories, policy) };
+    return { ...student, cells, present, excused, unrecorded, attendancePercent, attendanceApplicable, ...calculateGradebookTotal(categories, policy) };
   });
   return { classInfo, sessionId, policy, activities, rows, generatedAt: new Date().toISOString() };
 };
@@ -69,7 +72,7 @@ export const buildGradebook = async (db, classId, sessionId = null) => {
 export const gradebookTable = (book) => [
   ["Khóa học", "Lớp", "Học viên", "Email", "Chuyên cần (%)", "Buổi chưa điểm danh", ...book.activities.map((a) => `${a.title} (%)`), "Tổng điểm (%)", "Kết quả"],
   ...book.rows.map((row) => [book.classInfo.course_title || "", book.classInfo.title, row.name, row.email,
-    row.attendancePercent === null ? "Chưa có điểm danh" : Math.round(row.attendancePercent * 100) / 100, row.unrecorded,
+    row.attendanceApplicable === false ? "Không áp dụng" : row.attendancePercent === null ? "Chưa có điểm danh" : Math.round(row.attendancePercent * 100) / 100, row.attendanceApplicable === false ? "Không áp dụng" : row.unrecorded,
     ...row.cells.map((cell) => cell.value === null ? cell.state : cell.value),
     row.total ?? "Chưa có điểm", row.passed === null ? "Chưa xác định" : row.passed ? "Đạt" : "Chưa đạt"]),
 ];

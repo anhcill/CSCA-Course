@@ -372,12 +372,15 @@ router.post("/classes/:id/approval", ...adminOnly, async (req, res) => {
 router.get("/membership-approvals", ...adminOnly, async (req, res) => {
   try {
     const result = await query(
-      `SELECT ce.id, ce.status, ce.management_membership_status,
-              ce.management_membership_source_id, lc.id AS class_id, lc.title AS class_title,
+      `SELECT ce.id, ce.status, ce.management_membership_status, ce.learning_mode,
+              ce.management_membership_source_id, lc.id AS class_id,
+              COALESCE(record_alias.title, lc.title) AS class_title,
               lc.management_approval_status AS class_approval_status,
               COALESCE(sp.full_name, u.username) AS student_name, u.email
        FROM class_enrollments ce
        JOIN live_classes lc ON lc.id = ce.live_class_id
+       LEFT JOIN management_class_learning_aliases record_alias
+         ON record_alias.id = ce.management_class_alias_id
        JOIN users u ON u.id = ce.user_id
        LEFT JOIN student_profiles sp ON sp.user_id = u.id
        WHERE ce.management_approval_status = 'pending'
@@ -409,7 +412,7 @@ router.post("/membership-approvals/:id", ...adminOnly, async (req, res) => {
            management_approved_by = $2, management_approved_at = NOW()
        WHERE ce.id = $3 AND ce.management_membership_source_id IS NOT NULL
          AND ce.management_approval_status = 'pending'
-       RETURNING ce.id, ce.live_class_id, ce.user_id, ce.status, ce.management_approval_status`,
+       RETURNING ce.id, ce.live_class_id, ce.user_id, ce.status, ce.management_approval_status, ce.learning_mode`,
       [decision, req.user.id, membershipId],
     );
     if (!result.rows[0]) {

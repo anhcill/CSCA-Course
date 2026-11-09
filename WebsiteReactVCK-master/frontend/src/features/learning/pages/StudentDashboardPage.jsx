@@ -17,6 +17,7 @@ import { useAuthContext } from "../../../context/AuthContext";
 import { ErrorState, LoadingState } from "../../../components/common/StateView";
 import { fetchMyEnrolledCourses, fetchMyLiveSchedule, fetchNotifications, markNotificationAsRead } from "../../api/lmsClient";
 import { getClassCoverImage } from "../../../utils/classWallpapers";
+import { isRecordingMode } from "../utils/learningMode.js";
 
 const QUICK_LINKS = [
   { label: "Khóa học", description: "Tiếp tục học tập", icon: BookOpen, to: "/lms/my-learning", tone: "blue" },
@@ -155,6 +156,7 @@ const formatClassTitle = (title) => {
 
 function DashboardClassCard({ course, liveClass, index }) {
   const targetItem = liveClass || course;
+  const recordingMode = isRecordingMode(liveClass, course);
   const progressTotal = liveClass
     ? Number(liveClass.progress_total || 0)
     : Number(course.progress_total || 0);
@@ -199,7 +201,7 @@ function DashboardClassCard({ course, liveClass, index }) {
           }`}
         >
           {completed ? <CheckCircle2 className="h-2.5 w-2.5" /> : <Sparkles className="h-2.5 w-2.5" />}
-          {completed ? "Đã hoàn thành" : started ? "Đang học" : "Sắp bắt đầu"}
+          {completed ? "Đã hoàn thành" : recordingMode ? "Học qua bản ghi" : started ? "Đang học" : "Sắp bắt đầu"}
         </span>
 
         {/* Titles overlaid on banner */}
