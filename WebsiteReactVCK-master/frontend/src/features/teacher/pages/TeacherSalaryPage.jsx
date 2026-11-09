@@ -4,7 +4,6 @@ import { fetchTeacherSalarySummary } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { ErrorState, PermissionDeniedState } from "../../../components/common/StateView";
 import TeacherSalarySection from "../components/TeacherSalarySection.jsx";
-import { normalizeLmsWallpaper } from "../../../utils/classWallpapers";
 
 export default function TeacherSalaryPage() {
   const { authUser } = useAuthContext();
@@ -12,22 +11,6 @@ export default function TeacherSalaryPage() {
   const [salaryData, setSalaryData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const [currentWallpaper, setCurrentWallpaper] = useState(() => {
-    if (typeof window !== "undefined") {
-      return normalizeLmsWallpaper(localStorage.getItem("csca_lms_wallpaper"));
-    }
-    return "/student-campus-spring.webp";
-  });
-
-  useEffect(() => {
-    const handleWallpaperChange = (event) => {
-      const newWp = normalizeLmsWallpaper(event?.detail || localStorage.getItem("csca_lms_wallpaper"));
-      setCurrentWallpaper(newWp);
-    };
-    window.addEventListener("csca_wallpaper_changed", handleWallpaperChange);
-    return () => window.removeEventListener("csca_wallpaper_changed", handleWallpaperChange);
-  }, []);
 
   const loadSalary = useCallback(async () => {
     setLoading(true);
@@ -59,17 +42,8 @@ export default function TeacherSalaryPage() {
   }
 
   return (
-    <div
-      className="relative min-h-[calc(100vh-6.5rem)] -mx-4 -mt-2 p-2.5 sm:p-3.5 xl:px-4 xl:py-3 text-slate-900 dark:text-slate-100 transition-colors duration-200"
-      style={{
-        backgroundImage: `linear-gradient(to bottom, rgba(222,241,255,0.06) 0%, rgba(230,244,253,0.14) 50%, rgba(237,246,252,0.22) 100%), url('${currentWallpaper}')`,
-        backgroundPosition: "center top",
-        backgroundRepeat: "no-repeat",
-        backgroundSize: "cover",
-        backgroundAttachment: "fixed",
-      }}
-    >
-      <div className="mx-auto max-w-[1440px] space-y-2.5">
+    <div className="min-h-full px-3 pb-12 pt-1 sm:px-5 lg:px-6 text-slate-900 dark:text-slate-100 transition-colors">
+      <div className="mx-auto max-w-[1440px] space-y-3.5">
         {/* Floating Hero Title directly on wallpaper - matching Student style */}
         <div className="pt-0.5 pb-1">
           <h1 className="font-['Dancing_Script',cursive] text-4xl font-extrabold tracking-tight text-[#102f63] dark:text-sky-200 drop-shadow-xs sm:text-5xl">
