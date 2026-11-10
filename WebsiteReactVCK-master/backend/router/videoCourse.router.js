@@ -1174,7 +1174,7 @@ export const computeCoursePublishChecklist = async (courseId) => {
             COALESCE(c.thumbnail_url, c.image_url) AS thumbnail_url,
             c.is_published, c.is_management_managed, c.external_course_id,
             vcp.mode, vcp.source_live_class_id, vcp.management_class_id, vcp.status AS profile_status,
-            lc.course_id AS source_class_course_id, lc.status AS source_class_status
+            lc.status AS source_class_status
      FROM courses c
      LEFT JOIN video_course_profiles vcp ON vcp.course_id = c.id
      LEFT JOIN live_classes lc ON lc.id = vcp.source_live_class_id
@@ -1186,7 +1186,6 @@ export const computeCoursePublishChecklist = async (courseId) => {
 
   const mode = course.mode || "MIRROR";
   let sourceLiveClassId = course.source_live_class_id || null;
-  let sourceClassCourseId = course.source_class_course_id || null;
   let sourceClassStatus = course.source_class_status || null;
 
   if (mode === "MIRROR" && !sourceLiveClassId) {
@@ -1198,7 +1197,6 @@ export const computeCoursePublishChecklist = async (courseId) => {
     );
     if (fallbackClass.rows[0]) {
       sourceLiveClassId = fallbackClass.rows[0].id;
-      sourceClassCourseId = fallbackClass.rows[0].course_id;
       sourceClassStatus = fallbackClass.rows[0].status;
     }
   }
@@ -1272,11 +1270,10 @@ export const computeCoursePublishChecklist = async (courseId) => {
   if (mode === "MIRROR") {
     if (
       !sourceLiveClassId
-      || Number(sourceClassCourseId) !== Number(courseId)
       || sourceClassStatus === "cancelled"
     ) {
       hasValidManagementMapping = false;
-      mappingDetail = "Chưa chọn lớp Live nguồn hợp lệ cùng khóa học";
+      mappingDetail = "Chưa chọn lớp Live nguồn hợp lệ";
     }
   } else if (mode === "INDEPENDENT") {
     if (course.source_live_class_id !== null && course.source_live_class_id !== undefined) {
@@ -1786,9 +1783,6 @@ router.post("/admin/profiles", protectRoute, requireAdmin, async (req, res) => {
       );
       if (!srcCheck.rows[0]) {
         return validationError(res, "Không tìm thấy lớp Live nguồn");
-      }
-      if (Number(srcCheck.rows[0].course_id) !== Number(parsedCourseId)) {
-        return validationError(res, "Lớp Live nguồn phải thuộc cùng khóa học");
       }
       if (srcCheck.rows[0].status === "cancelled") {
         return validationError(res, "Không được chọn lớp Live nguồn đã hủy");

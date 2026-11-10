@@ -184,13 +184,17 @@ const Courses = () => {
     }
   }, [fetchCourseRating, selectedCourseForRating, t]);
 
-  // Phân loại khóa học thành các mục nhỏ: CSCA, Tiếng Trung (HSK/HSKK), Khác
+  const visibleVideoCourses = useMemo(() => (
+    (courses || []).filter((course) => videoOfferingByCourseId.has(String(course._id || course.id)))
+  ), [courses, videoOfferingByCourseId]);
+
+  // Trang catalog chỉ hiển thị sản phẩm Record đã có profile video hoạt động.
   const { cscaCourses, chineseCourses, otherCourses } = useMemo(() => {
     const csca = [];
     const chinese = [];
     const other = [];
 
-    (courses || []).forEach((c) => {
+    visibleVideoCourses.forEach((c) => {
       const cat = (c.category || '').toUpperCase();
       const name = (c.nameCourse || c.title || c.name || '').toUpperCase();
 
@@ -204,7 +208,7 @@ const Courses = () => {
     });
 
     return { cscaCourses: csca, chineseCourses: chinese, otherCourses: other };
-  }, [courses]);
+  }, [visibleVideoCourses]);
 
   // Chỉ những khóa có profile video thực từ API mới được mở workspace video.
   const renderCourseCard = (course) => {
@@ -215,9 +219,8 @@ const Courses = () => {
     const name = course.nameCourse || course.title || course.name;
     const isCsca = (course.category || '').toUpperCase().includes('CSCA') || (name || '').toUpperCase().includes('CSCA');
     const videoOffering = videoOfferingByCourseId.get(String(courseId));
-    const isVideoCourse = true; // All courses route directly to video player
-    const isIndependent = videoOffering?.videoMode === 'INDEPENDENT';
-    const targetUrl = `/video-courses/${videoOffering?.offeringId || courseId}`;
+    const isVideoCourse = Boolean(videoOffering);
+    const targetUrl = `/video-courses/${videoOffering.offeringId}`;
     const userProgress = filterProgress?.find((item) => String(item.courseId) === String(courseId));
     const progressPercent = userProgress?.progressPercentage || 0;
     const isCompleted = progressPercent >= 100;

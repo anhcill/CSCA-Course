@@ -54,7 +54,7 @@ const renderKaTeX = (latex, displayMode = true) => {
       throwOnError: false,
       strict: "ignore",
     });
-  } catch (err) {
+  } catch {
     return latex;
   }
 };
@@ -530,7 +530,6 @@ export default function VideoCourseWorkspacePage() {
   const {
     course,
     sourceClass,
-    mode,
     units = [],
     activeUnit,
     progress = {},
@@ -542,7 +541,6 @@ export default function VideoCourseWorkspacePage() {
       canSubmitAssignments: true,
     },
   } = workspaceData;
-  const isMirrorMode = mode === "RECORD_MIRROR";
   const slideFiles = (activeUnit?.files || []).filter((f) =>
     /\.(pdf|ppt|pptx|doc|docx)$/i.test(f.fileName || ""),
   );
@@ -872,7 +870,7 @@ export default function VideoCourseWorkspacePage() {
                 {[
                   { id: "formulas", label: "Công thức trọng tâm", icon: Calculator, badge: (activeUnit?.formulas?.length || 0) || null },
                   { id: "files", label: "Tài liệu đính kèm", icon: FolderOpen, badge: (activeUnit?.files?.length || 0) || null },
-                  { id: "notes", label: "Ghi chú cá nhân", icon: StickyNote, badge: (unitNotes?.length || 0) || null },
+                  { id: "notes", label: "Ghi chú cá nhân", icon: StickyNote, badge: (notes?.length || 0) || null },
                   { id: "results", label: "Kết quả học tập", icon: BarChart3 },
                 ].map(({ id, label, icon: Icon, badge }) => (
                   <button

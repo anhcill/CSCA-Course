@@ -630,9 +630,6 @@ const syncClass = async (client, event) => {
 
     const sourceClass = await findClass(client, input.sourceClassSourceId);
     const sourceCourse = await client.query("SELECT course_id, status FROM live_classes WHERE id = $1", [sourceClass.id]);
-    if (Number(sourceCourse.rows[0]?.course_id) !== Number(course.id)) {
-      throw new SyncValidationError("Lớp RECORDING phải ánh xạ tới lớp chính cùng khóa học");
-    }
     if (sourceCourse.rows[0]?.status === "cancelled") {
       throw new SyncValidationError("Lớp RECORDING không được ánh xạ tới lớp nguồn đã hủy");
     }
