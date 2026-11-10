@@ -5,7 +5,7 @@ import { recordAuditEvent } from "./audit.service.js";
 export const BUNNY_TUS_ENDPOINT = "https://video.bunnycdn.com/tusupload";
 export const MAX_BUNNY_VIDEO_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 export const PLAYBACK_TOKEN_TTL_SECONDS = 600; // 10 minutes
-export const COMPLETION_THRESHOLD_PERCENT = 85;
+export const COMPLETION_THRESHOLD_PERCENT = 80;
 export const MAX_SINGLE_HEARTBEAT_SECONDS = 90;
 
 export const ALLOWED_BUNNY_VIDEO_MIME_TYPES = new Set([
@@ -592,9 +592,20 @@ export const recordVideoWatchProgress = async ({
     throw new BunnyStreamError("NOT_FOUND", "Không tìm thấy video", { status: 404 });
   }
 
+  const reportedDuration = Math.max(0, Math.round(Number(durationSeconds || 0)));
+  if (Number(asset.duration_seconds || 0) <= 0 && reportedDuration > 0) {
+    await db.query(
+      `UPDATE video_assets
+       SET duration_seconds = $1, updated_at = NOW()
+       WHERE id = $2 AND (duration_seconds IS NULL OR duration_seconds <= 0)`,
+      [reportedDuration, videoAssetId],
+    );
+    asset.duration_seconds = reportedDuration;
+  }
+
   const effectiveDuration = Math.max(
     1,
-    Number(asset.duration_seconds || 0) || Number(durationSeconds || 0) || 600,
+    Number(asset.duration_seconds || 0) || reportedDuration || 600,
   );
 
   const clampedPosition = Math.min(
@@ -611,22 +622,14 @@ export const recordVideoWatchProgress = async ({
   );
   const existing = existingRes.rows[0] || null;
   const prevWatched = Number(existing?.watched_seconds || 0);
-  const prevPosition = Number(existing?.last_position_seconds || 0);
 
-  // Validate watched delta so a client cannot spoof 100% completion in a single request
+  // Validate watched delta so a client cannot spoof completion or seek to 80% to unlock
+  // Only actual playback delta (watchedDeltaSeconds) is credited; scrubbing/seeking position changes alone add 0s.
   let validDelta = 0;
   if (watchedDeltaSeconds !== null && watchedDeltaSeconds !== undefined) {
     const rawDelta = Number(watchedDeltaSeconds);
     if (Number.isFinite(rawDelta) && rawDelta > 0) {
       validDelta = Math.min(rawDelta, MAX_SINGLE_HEARTBEAT_SECONDS);
-    }
-  } else {
-    const positionDiff = clampedPosition - prevPosition;
-    if (positionDiff > 0 && positionDiff <= MAX_SINGLE_HEARTBEAT_SECONDS) {
-      validDelta = positionDiff;
-    } else if (positionDiff > MAX_SINGLE_HEARTBEAT_SECONDS) {
-      // User scrubbed far ahead without watching the middle; cap credited watch time
-      validDelta = 15;
     }
   }
 

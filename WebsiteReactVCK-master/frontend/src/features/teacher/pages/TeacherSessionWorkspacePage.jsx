@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  ArrowLeft, Bell, BookOpen, Binary, CalendarDays, CheckCircle2, ClipboardList, Clock,
-  Download, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Languages, Library, Link2, Play, Search, Trash2, Trophy, UploadCloud, Users, Video, X,
+  ArrowLeft, Bell, BookOpen, Binary, CalendarDays, Check, CheckCircle2, ClipboardList, Clock,
+  Download, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Languages, Library, Link2, Play, RefreshCw, Search, Trash2, Trophy, UploadCloud, UserCheck, Users, Video, X,
 } from "lucide-react";
 import {
   attachTeacherFile, batchImportSessionVocabulary, createClassAnnouncement, createSessionVocabulary, deleteClassFile,
   detachTeacherFile,
-  deleteSessionVocabulary, fetchClassAnnouncements, fetchClassDetails, fetchClassFiles,
-  fetchLiveClassSessions, fetchReusableTeacherFiles, fetchSessionFormulas, fetchSessionVocabulary, getLiveSessionAccess, suggestSessionVocabulary,
+  deleteSessionVocabulary, fetchAttendanceRoster, fetchClassAnnouncements, fetchClassDetails, fetchClassFiles,
+  fetchLiveClassSessions, fetchReusableTeacherFiles, fetchSessionFormulas, fetchSessionVocabulary, getLiveSessionAccess, markAttendance, suggestSessionVocabulary,
   updateSessionVocabulary, uploadClassFile, createSessionFormulaApi, deleteFormulaApi,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
@@ -19,12 +19,13 @@ import CreateAssignmentModal from "../components/CreateAssignmentModal";
 import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
 import { closeReservedMeeting, getMeetingWindowState, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
 import { classCalendarIcsUrl, googleCalendarEventUrl } from "../../calendar/calendarLinks";
+import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
 import TeacherSessionVocabularyTab from "../components/TeacherSessionVocabularyTab";
 import TeacherSessionFormulaTab from "../components/TeacherSessionFormulaTab";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
-  { id: "students", label: "Học viên", icon: Users },
+  { id: "students", label: "Học viên & Điểm danh", icon: UserCheck },
   { id: "content", label: "Nội dung", icon: BookOpen },
   { id: "vocabulary", label: "Từ vựng", icon: Languages },
   { id: "formulas", label: "Công thức", icon: Binary },
@@ -95,9 +96,132 @@ export default function TeacherSessionWorkspacePage() {
   const [attachingFileId, setAttachingFileId] = useState(null);
   const [currentVocabSession, setCurrentVocabSession] = useState(null);
   const [currentFormulaSession, setCurrentFormulaSession] = useState(null);
+  const [attendanceRoster, setAttendanceRoster] = useState([]);
+  const [attendanceRecords, setAttendanceRecords] = useState({});
+  const [attendancePolicy, setAttendancePolicy] = useState(null);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [savingAttendance, setSavingAttendance] = useState(false);
+  const [studentSearch, setStudentSearch] = useState("");
 
   const sessionVocabs = currentVocabSession?.vocabularies || [];
   const sessionFormulas = currentFormulaSession?.formulas || [];
+
+  const loadAttendance = useCallback(async () => {
+    if (!sessionId) return;
+    setLoadingAttendance(true);
+    try {
+      const res = await fetchAttendanceRoster(sessionId);
+      if (res?.success && res.data) {
+        const roster = res.data.students || [];
+        setAttendanceRoster(roster);
+        setAttendancePolicy(res.data.attendancePolicy || null);
+        setAttendanceRecords(
+          Object.fromEntries(
+            roster.map((st) => [
+              st.id,
+              {
+                userId: st.id,
+                status: st.attendance_status || "present",
+                note: st.attendance_note || "",
+              },
+            ])
+          )
+        );
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingAttendance(false);
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (activeTab === "students") {
+      loadAttendance();
+    }
+  }, [activeTab, loadAttendance]);
+
+  const handleAttendanceStatusChange = (userId, status) => {
+    setAttendanceRecords((prev) => ({
+      ...prev,
+      [userId]: {
+        userId,
+        status,
+        note: prev[userId]?.note || "",
+      },
+    }));
+  };
+
+  const handleAttendanceNoteChange = (userId, note) => {
+    setAttendanceRecords((prev) => ({
+      ...prev,
+      [userId]: {
+        userId,
+        status: prev[userId]?.status || "present",
+        note,
+      },
+    }));
+  };
+
+  const handleMarkAllAttendance = (status) => {
+    setAttendanceRecords((prev) => {
+      const next = { ...prev };
+      attendanceRoster.forEach((st) => {
+        next[st.id] = {
+          userId: st.id,
+          status,
+          note: prev[st.id]?.note || "",
+        };
+      });
+      return next;
+    });
+    toast.success(`Đã đánh dấu tất cả học viên: ${status === "present" ? "Có mặt" : "Vắng"}`);
+  };
+
+  const handleSaveAttendance = async () => {
+    setSavingAttendance(true);
+    try {
+      const attendanceList = Object.values(attendanceRecords).map((r) => ({
+        userId: r.userId,
+        status: r.status,
+        note: r.note || "",
+      }));
+      const res = await markAttendance({ sessionId, attendanceList });
+      if (!res?.success) throw new Error(res?.message || "Không thể lưu điểm danh.");
+      toast.success("Đã lưu điểm danh buổi học thành công!");
+      await loadAttendance();
+    } catch (err) {
+      toast.error(err.message || "Lưu điểm danh thất bại.");
+    } finally {
+      setSavingAttendance(false);
+    }
+  };
+
+  const sessionAttendanceStats = useMemo(() => {
+    const total = attendanceRoster.length;
+    let present = 0;
+    let absent = 0;
+    let excused = 0;
+    attendanceRoster.forEach((st) => {
+      const rec = attendanceRecords[st.id];
+      const status = rec?.status || st.attendance_status || "present";
+      if (status === "present") present += 1;
+      else if (status === "absent") absent += 1;
+      else if (status === "excused") excused += 1;
+    });
+    const rate = total > 0 ? Math.round((present / total) * 100) : 100;
+    return { total, present, absent, excused, rate };
+  }, [attendanceRoster, attendanceRecords]);
+
+  const filteredAttendanceStudents = useMemo(() => {
+    const q = studentSearch.trim().toLowerCase();
+    if (!q) return attendanceRoster;
+    return attendanceRoster.filter((st) => {
+      const name = (st.name || st.username || st.email || "").toLowerCase();
+      const email = (st.email || "").toLowerCase();
+      return name.includes(q) || email.includes(q);
+    });
+  }, [attendanceRoster, studentSearch]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -374,10 +498,10 @@ export default function TeacherSessionWorkspacePage() {
             </a>
             <button
               type="button"
-              onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)}
+              onClick={() => setSearchParams({ tab: "students" })}
               className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
             >
-              <CheckCircle2 className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Điểm danh
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Điểm danh buổi này
             </button>
           </div>
         </div>
@@ -438,33 +562,201 @@ export default function TeacherSessionWorkspacePage() {
         )}
         {activeTab === "students" && (
           <section className="rounded-3xl border border-white/80 bg-white/92 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
               <div>
                 <h2 className="text-base font-black text-[#102f63] dark:text-white flex items-center gap-2">
-                  <Users className="h-4 w-4 text-blue-600" />
-                  Học Viên Ghi Danh Của Buổi Học ({students.length})
+                  <UserCheck className="h-5 w-5 text-blue-600 dark:text-sky-400" />
+                  Điểm Danh Học Viên Buổi Này ({attendanceRoster.length})
                 </h2>
-                <p className="mt-0.5 text-xs text-slate-500">Điểm danh và theo dõi chuyên cần theo đúng buổi học này.</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Ghi nhận chuyên cần trực tiếp cho học viên trong không gian buổi học này.
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => navigate(`${classBasePath}/attendance?sessionId=${sessionId}`)}
-                className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-500/20 transition hover:from-blue-700 hover:to-indigo-700"
-              >
-                Mở sổ điểm danh
-              </button>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {students.map((student) => (
-                <div
-                  key={student.id}
-                  className="flex items-center justify-between rounded-2xl border border-white/80 bg-white/85 p-3.5 shadow-2xs dark:border-slate-800 dark:bg-slate-800/60"
+
+              <div className="flex items-center gap-2">
+                <Link
+                  to={`${classBasePath}?tab=attendance_grades`}
+                  className="rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition"
                 >
-                  <span className="text-xs font-bold text-[#102f63] dark:text-white">{student.name || student.email}</span>
-                  <span className="text-[11px] font-mono text-slate-400">{student.email}</span>
-                </div>
-              ))}
+                  Xem bảng điểm cả lớp
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleSaveAttendance}
+                  disabled={savingAttendance || loadingAttendance || attendanceRoster.length === 0}
+                  className="rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-1.5 text-xs font-bold text-white shadow-md shadow-blue-500/20 transition active:scale-95 disabled:opacity-50"
+                >
+                  {savingAttendance ? "Đang lưu..." : "Lưu điểm danh"}
+                </button>
+              </div>
             </div>
+
+            {/* Quick KPI stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              <div className="rounded-2xl border border-slate-200/70 dark:border-slate-800 bg-white/70 dark:bg-slate-800/60 p-2.5 text-center shadow-2xs">
+                <p className="text-lg font-black text-[#102f63] dark:text-white leading-tight">
+                  {sessionAttendanceStats.total}
+                </p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold mt-0.5">Sĩ số</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/70 dark:bg-emerald-950/40 p-2.5 text-center shadow-2xs">
+                <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 leading-tight">
+                  {sessionAttendanceStats.present}
+                </p>
+                <p className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold mt-0.5">Có mặt</p>
+              </div>
+              <div className="rounded-2xl border border-rose-200/70 dark:border-rose-900/50 bg-rose-50/70 dark:bg-rose-950/40 p-2.5 text-center shadow-2xs">
+                <p className="text-lg font-black text-rose-600 dark:text-rose-400 leading-tight">
+                  {sessionAttendanceStats.absent}
+                </p>
+                <p className="text-[10px] text-rose-700 dark:text-rose-300 font-bold mt-0.5">Vắng</p>
+              </div>
+              <div className="rounded-2xl border border-amber-200/70 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/40 p-2.5 text-center shadow-2xs">
+                <p className="text-lg font-black text-amber-600 dark:text-amber-400 leading-tight">
+                  {sessionAttendanceStats.excused}
+                </p>
+                <p className="text-[10px] text-amber-700 dark:text-amber-300 font-bold mt-0.5">Có phép</p>
+              </div>
+              <div className="rounded-2xl border border-blue-200/70 dark:border-blue-900/50 bg-blue-50/70 dark:bg-blue-950/40 p-2.5 text-center shadow-2xs col-span-2 sm:col-span-1">
+                <p className="text-lg font-black text-blue-600 dark:text-sky-400 leading-tight">
+                  {sessionAttendanceStats.rate}%
+                </p>
+                <p className="text-[10px] text-blue-700 dark:text-sky-300 font-bold mt-0.5">Chuyên cần</p>
+              </div>
+            </div>
+
+            {/* Quick Actions & Search */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={studentSearch}
+                  onChange={(e) => setStudentSearch(e.target.value)}
+                  placeholder="Tìm học viên..."
+                  className="w-full rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none focus:border-blue-500 shadow-2xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleMarkAllAttendance("present")}
+                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 hover:bg-emerald-100 transition"
+                >
+                  <Check className="inline h-3 w-3 mr-0.5" /> Tất cả Có mặt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMarkAllAttendance("absent")}
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300 hover:bg-rose-100 transition"
+                >
+                  <X className="inline h-3 w-3 mr-0.5" /> Tất cả Vắng
+                </button>
+                <button
+                  type="button"
+                  onClick={loadAttendance}
+                  disabled={loadingAttendance}
+                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition"
+                  title="Tải lại"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingAttendance ? "animate-spin" : ""}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Attendance Table */}
+            {loadingAttendance ? (
+              <div className="py-8">
+                <Loading loading text="Đang tải danh sách điểm danh..." fullScreen={false} />
+              </div>
+            ) : filteredAttendanceStudents.length === 0 ? (
+              <p className="py-8 text-center text-xs text-slate-400">Không có học viên nào.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200/80 dark:border-slate-700 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      <th className="py-2.5 px-3 w-10 text-center">STT</th>
+                      <th className="py-2.5 px-3 min-w-[180px]">Học Viên</th>
+                      <th className="py-2.5 px-3 w-64 text-center">Trạng Thái</th>
+                      <th className="py-2.5 px-3 min-w-[160px]">Ghi Chú</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {filteredAttendanceStudents.map((st, idx) => {
+                      const record = attendanceRecords[st.id] || { status: "present", note: "" };
+                      const displayName = st.name || st.username || st.email || "Học viên";
+                      return (
+                        <tr key={st.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition">
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-400">{idx + 1}</td>
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2.5">
+                              <img
+                                src={getAvatarUrl(st)}
+                                onError={handleAvatarError}
+                                alt={displayName}
+                                className="w-7 h-7 rounded-full object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <p className="font-bold text-[#102f63] dark:text-white truncate text-xs">{displayName}</p>
+                                <p className="text-[10px] text-slate-400 font-mono truncate">{st.email}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleAttendanceStatusChange(st.id, "present")}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                                  record.status === "present"
+                                    ? "bg-emerald-600 text-white shadow-2xs"
+                                    : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100"
+                                }`}
+                              >
+                                <Check className="inline h-2.5 w-2.5 mr-0.5" /> Có mặt
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAttendanceStatusChange(st.id, "absent")}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                                  record.status === "absent"
+                                    ? "bg-rose-600 text-white shadow-2xs"
+                                    : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100"
+                                }`}
+                              >
+                                <X className="inline h-2.5 w-2.5 mr-0.5" /> Vắng
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAttendanceStatusChange(st.id, "excused")}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                                  record.status === "excused"
+                                    ? "bg-amber-500 text-white shadow-2xs"
+                                    : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100"
+                                }`}
+                              >
+                                <Clock className="inline h-2.5 w-2.5 mr-0.5" /> Phép
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <input
+                              type="text"
+                              value={record.note || ""}
+                              onChange={(e) => handleAttendanceNoteChange(st.id, e.target.value)}
+                              placeholder="Ghi chú buổi này..."
+                              className="w-full rounded-lg border border-slate-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
         {activeTab === "content" && (

@@ -334,20 +334,92 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
     let units = [];
     let activeUnitData = null;
 
+    const applySequentialLocks = (rawUnits) => {
+      const result = [];
+      for (let idx = 0; idx < rawUnits.length; idx += 1) {
+        const current = rawUnits[idx];
+        if (idx === 0) {
+          result.push({
+            ...current,
+            isLocked: false,
+            lockReason: null,
+            requiredPrevUnitId: null,
+            requiredPrevUnitTitle: null,
+            requiredPrevUnitNumber: null,
+          });
+          continue;
+        }
+
+        const prev = result[idx - 1];
+        const prevLabel = prev.sessionNumber ? `Buổi ${prev.sessionNumber}` : `Bài ${idx}`;
+        let isLocked = false;
+        let lockReason = null;
+
+        if (prev.isLocked) {
+          isLocked = true;
+          lockReason = `Cần hoàn thành các buổi học trước theo thứ tự (tối thiểu 80% thời gian xem video và hoàn thành bài trắc nghiệm).`;
+        } else if (!prev.isVideoCompleted && !prev.isQuizCompleted) {
+          isLocked = true;
+          lockReason = `Cần xem tối thiểu 80% thời lượng video (hiện đạt ${Math.round(prev.progressPercent || 0)}%) và hoàn thành ${prev.completedQuizCount}/${prev.quizCount} bài trắc nghiệm của ${prevLabel}.`;
+        } else if (!prev.isVideoCompleted) {
+          isLocked = true;
+          lockReason = `Cần xem thực tế tối thiểu 80% thời lượng video của ${prevLabel} (hiện đạt ${Math.round(prev.progressPercent || 0)}%).`;
+        } else if (!prev.isQuizCompleted) {
+          isLocked = true;
+          lockReason = `Cần hoàn thành ${prev.completedQuizCount}/${prev.quizCount} bài trắc nghiệm của ${prevLabel} để mở khóa buổi tiếp theo.`;
+        }
+
+        result.push({
+          ...current,
+          isLocked,
+          lockReason,
+          requiredPrevUnitId: isLocked ? prev.id : null,
+          requiredPrevUnitTitle: isLocked ? prev.title : null,
+          requiredPrevUnitNumber: isLocked ? (prev.sessionNumber || idx) : null,
+        });
+      }
+      return result;
+    };
+
     if (mode === "MIRROR" && sourceLiveClassId) {
       // MIRROR: Units are the class_sessions of the source live class
       const sessionsRes = await query(
         `SELECT cs.id, cs.live_class_id,
                 ROW_NUMBER() OVER (ORDER BY cs.start_time ASC, cs.id ASC)::int AS session_number,
                 cs.title, cs.start_time, cs.end_time,
-                COALESCE(ROUND(EXTRACT(EPOCH FROM (cs.end_time - cs.start_time)) / 60), 60)::int AS duration_minutes,
                 cs.course_section_id, cs.lesson_id,
                 csv.id AS session_video_id, csv.video_asset_id, csv.video_type, csv.is_published AS video_is_published,
                 va.provider, va.provider_library_id, va.provider_video_id,
                 va.playback_status, va.duration_seconds AS video_duration,
+                COALESCE((
+                  SELECT SUM(va2.duration_seconds)::int
+                  FROM class_session_videos csv2
+                  JOIN video_assets va2 ON va2.id = csv2.video_asset_id AND va2.deleted_at IS NULL
+                  WHERE csv2.class_session_id = cs.id
+                    AND ($3::boolean = true OR csv2.is_published = true)
+                ), va.duration_seconds, 0)::int AS total_video_duration_seconds,
                 va.thumbnail_url AS video_thumbnail, va.available_resolutions, va.processing_error,
                 vwp.last_position_seconds, vwp.watched_seconds, vwp.completion_percent,
-                vwp.is_completed
+                vwp.is_completed,
+                (
+                  SELECT COUNT(*)::int
+                  FROM quizzes q
+                  WHERE q.class_session_id = cs.id
+                    AND q.status = 'PUBLISHED'
+                ) AS quiz_count,
+                (
+                  SELECT COUNT(*)::int
+                  FROM quizzes q
+                  WHERE q.class_session_id = cs.id
+                    AND q.status = 'PUBLISHED'
+                    AND EXISTS (
+                      SELECT 1
+                      FROM quiz_attempts qa
+                      WHERE qa.quiz_id = q.id
+                        AND qa.user_id = $2
+                        AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                    )
+                ) AS completed_quiz_count
          FROM class_sessions cs
          LEFT JOIN LATERAL (
            SELECT * FROM class_session_videos csv_inner
@@ -363,21 +435,41 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         [sourceLiveClassId, req.user.id, !isLearner],
       );
 
-      units = sessionsRes.rows.map((row) => ({
-        id: String(row.id),
-        type: "class_session",
-        sessionNumber: row.session_number,
-        title: row.title || `Buổi ${row.session_number}`,
-        description: row.description || "",
-        startTime: row.start_time,
-        durationMinutes: row.duration_minutes || 90,
-        hasVideo: Boolean(row.video_asset_id || row.provider_video_id),
-        videoStatus: row.playback_status || (row.video_asset_id ? "ready" : "none"),
-        isPublished: Boolean(row.video_is_published),
-        progressPercent: Number(row.completion_percent || 0),
-        isCompleted: Boolean(row.is_completed),
-        lastPositionSeconds: Number(row.last_position_seconds || 0),
-      }));
+      const rawUnits = sessionsRes.rows.map((row) => {
+        const videoDurationSeconds = Number(row.total_video_duration_seconds || row.video_duration || 0);
+        const watchedSeconds = Number(row.watched_seconds || 0);
+        const progressPercent = Number(row.completion_percent || 0);
+        const hasVideo = Boolean(row.video_asset_id || row.provider_video_id);
+        const quizCount = Number(row.quiz_count || 0);
+        const completedQuizCount = Number(row.completed_quiz_count || 0);
+        const isVideoCompleted = Boolean(row.is_completed) || (hasVideo && progressPercent >= 80);
+        const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
+        const isCompleted = isVideoCompleted && isQuizCompleted;
+
+        return {
+          id: String(row.id),
+          type: "class_session",
+          sessionNumber: row.session_number,
+          title: row.title || `Buổi ${row.session_number}`,
+          description: row.description || "",
+          startTime: row.start_time,
+          videoDurationSeconds,
+          watchedSeconds,
+          durationMinutes: videoDurationSeconds > 0 ? Math.max(1, Math.round(videoDurationSeconds / 60)) : 0,
+          hasVideo,
+          videoStatus: row.playback_status || (row.video_asset_id ? "ready" : "none"),
+          isPublished: Boolean(row.video_is_published),
+          progressPercent,
+          isVideoCompleted,
+          quizCount,
+          completedQuizCount,
+          isQuizCompleted,
+          isCompleted,
+          lastPositionSeconds: Number(row.last_position_seconds || 0),
+        };
+      });
+
+      units = applySequentialLocks(rawUnits);
 
       // Find active unit: match unitId or first unit
       const selectedSession = (unitId && sessionsRes.rows.find((r) => String(r.id) === String(unitId)))
@@ -386,6 +478,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
 
       if (selectedSession) {
         const sessId = selectedSession.id;
+        const selectedUnitMeta = units.find((u) => String(u.id) === String(sessId)) || null;
         // Fetch unit details: all videos, theory, files, assignments, quizzes, vocabulary, formulas, notes
         const [videosRes, theoryRes, filesRes, assignRes, quizRes, vocabRes, formulaRes, notesRes] = await Promise.all([
           query(
@@ -425,11 +518,33 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             [courseId, req.user.id, sourceLiveClassId],
           ),
           query(
-            `SELECT q.id, q.title, q.duration_minutes, q.passing_score
+            `SELECT q.id, q.title, q.duration_minutes, q.passing_score,
+                    (
+                      SELECT COUNT(*)::int
+                      FROM quiz_attempts qa
+                      WHERE qa.quiz_id = q.id
+                        AND qa.user_id = $2
+                        AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                    ) AS attempts_count,
+                    (
+                      SELECT MAX(qa.score)
+                      FROM quiz_attempts qa
+                      WHERE qa.quiz_id = q.id
+                        AND qa.user_id = $2
+                        AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                    ) AS best_score,
+                    (
+                      SELECT MAX(qa.max_score)
+                      FROM quiz_attempts qa
+                      WHERE qa.quiz_id = q.id
+                        AND qa.user_id = $2
+                        AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                    ) AS max_score
              FROM quizzes q
-             WHERE (q.class_session_id = $1 OR (q.live_class_id = $2 AND q.class_session_id IS NULL))
-               AND q.status = 'PUBLISHED'`,
-            [sessId, sourceLiveClassId],
+             WHERE q.class_session_id = $1
+               AND q.status = 'PUBLISHED'
+             ORDER BY q.id ASC`,
+            [sessId, req.user.id],
           ),
           query(
             `SELECT sv.id, sv.term, sv.pinyin, sv.sino_vietnamese, sv.meaning,
@@ -501,13 +616,20 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           title: selectedSession.title || `Buổi ${selectedSession.session_number}`,
           description: selectedSession.description || "",
           sessionNumber: selectedSession.session_number,
+          isLocked: Boolean(selectedUnitMeta?.isLocked),
+          lockReason: selectedUnitMeta?.lockReason || null,
+          requiredPrevUnitId: selectedUnitMeta?.requiredPrevUnitId || null,
+          requiredPrevUnitTitle: selectedUnitMeta?.requiredPrevUnitTitle || null,
+          requiredPrevUnitNumber: selectedUnitMeta?.requiredPrevUnitNumber || null,
           video: primaryVideo,
           videos: unitVideos,
           watchProgress: {
             lastPositionSeconds: Number(selectedSession.last_position_seconds || 0),
             watchedSeconds: Number(selectedSession.watched_seconds || 0),
             completionPercent: Number(selectedSession.completion_percent || 0),
-            isCompleted: Boolean(selectedSession.is_completed),
+            isCompleted: Boolean(selectedUnitMeta?.isCompleted),
+            isVideoCompleted: Boolean(selectedUnitMeta?.isVideoCompleted),
+            isQuizCompleted: Boolean(selectedUnitMeta?.isQuizCompleted),
           },
           theory: theoryRes.rows[0] ? {
             title: theoryRes.rows[0].title,
@@ -541,6 +663,10 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             title: q.title,
             durationMinutes: q.duration_minutes,
             passingScore: Number(q.passing_score || 60),
+            attemptsCount: Number(q.attempts_count || 0),
+            isCompleted: Number(q.attempts_count || 0) > 0,
+            bestScore: q.best_score !== null && q.best_score !== undefined ? Number(q.best_score) : null,
+            maxScore: q.max_score !== null && q.max_score !== undefined ? Number(q.max_score) : null,
           })),
           vocabulary: vocabRes.rows.map((v) => ({
             id: String(v.id),
@@ -581,10 +707,31 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                 COALESCE(csv.is_published, l.is_published) AS video_is_published,
                 l.learning_url,
                 va.provider, va.provider_library_id, va.provider_video_id,
-                va.playback_status, va.thumbnail_url AS video_thumbnail,
+                va.playback_status,
+                COALESCE(va.duration_seconds, l.duration_seconds, 0)::int AS resolved_duration_seconds,
+                va.thumbnail_url AS video_thumbnail,
                 va.available_resolutions, va.processing_error,
                 vwp.last_position_seconds, vwp.watched_seconds, vwp.completion_percent,
-                vwp.is_completed
+                vwp.is_completed,
+                (
+                  SELECT COUNT(*)::int
+                  FROM quizzes q
+                  WHERE q.lesson_id = l.id
+                    AND q.status = 'PUBLISHED'
+                ) AS quiz_count,
+                (
+                  SELECT COUNT(*)::int
+                  FROM quizzes q
+                  WHERE q.lesson_id = l.id
+                    AND q.status = 'PUBLISHED'
+                    AND EXISTS (
+                      SELECT 1
+                      FROM quiz_attempts qa
+                      WHERE qa.quiz_id = q.id
+                        AND qa.user_id = $2
+                        AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                    )
+                ) AS completed_quiz_count
          FROM lessons l
          LEFT JOIN sections s ON s.id = l.section_id
          LEFT JOIN LATERAL (
@@ -601,21 +748,42 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         [courseId, req.user.id, !isLearner],
       );
 
-      units = lessonsRes.rows.map((row) => ({
-        id: String(row.id),
-        type: "lesson",
-        sectionId: row.section_id ? String(row.section_id) : null,
-        sectionTitle: row.section_title || "Chương 1",
-        title: row.title,
-        description: row.description || "",
-        durationMinutes: Math.round((row.duration_seconds || 600) / 60),
-        hasVideo: Boolean(row.resolved_video_asset_id || row.learning_url),
-        videoStatus: row.playback_status || (row.resolved_video_asset_id ? "ready" : "none"),
-        isPublished: Boolean(row.video_is_published),
-        progressPercent: Number(row.completion_percent || 0),
-        isCompleted: Boolean(row.is_completed),
-        lastPositionSeconds: Number(row.last_position_seconds || 0),
-      }));
+      const rawUnits = lessonsRes.rows.map((row, idx) => {
+        const videoDurationSeconds = Number(row.resolved_duration_seconds || row.duration_seconds || 0);
+        const watchedSeconds = Number(row.watched_seconds || 0);
+        const progressPercent = Number(row.completion_percent || 0);
+        const hasVideo = Boolean(row.resolved_video_asset_id || row.learning_url);
+        const quizCount = Number(row.quiz_count || 0);
+        const completedQuizCount = Number(row.completed_quiz_count || 0);
+        const isVideoCompleted = Boolean(row.is_completed) || (hasVideo && progressPercent >= 80);
+        const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
+        const isCompleted = isVideoCompleted && isQuizCompleted;
+
+        return {
+          id: String(row.id),
+          type: "lesson",
+          sessionNumber: idx + 1,
+          sectionId: row.section_id ? String(row.section_id) : null,
+          sectionTitle: row.section_title || "Chương 1",
+          title: row.title,
+          description: row.description || "",
+          videoDurationSeconds,
+          watchedSeconds,
+          durationMinutes: videoDurationSeconds > 0 ? Math.max(1, Math.round(videoDurationSeconds / 60)) : 0,
+          hasVideo,
+          videoStatus: row.playback_status || (row.resolved_video_asset_id ? "ready" : "none"),
+          isPublished: Boolean(row.video_is_published),
+          progressPercent,
+          isVideoCompleted,
+          quizCount,
+          completedQuizCount,
+          isQuizCompleted,
+          isCompleted,
+          lastPositionSeconds: Number(row.last_position_seconds || 0),
+        };
+      });
+
+      units = applySequentialLocks(rawUnits);
 
       const selectedLesson = (unitId && lessonsRes.rows.find((r) => String(r.id) === String(unitId)))
         || lessonsRes.rows[0]
@@ -623,6 +791,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
 
       if (selectedLesson) {
         const lId = selectedLesson.id;
+        const selectedUnitMeta = units.find((u) => String(u.id) === String(lId)) || null;
         const [videosRes, theoryRes, filesRes, assignRes, quizRes, vocabRes, formulaRes, notesRes] = await Promise.all([
           query(
             `SELECT csv.id AS placement_id, csv.title AS part_title, csv.video_type, csv.sort_order, csv.is_published,
@@ -658,10 +827,32 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             [lId, req.user.id, courseId],
           ),
           query(
-            `SELECT q.id, q.title, q.duration_minutes, q.passing_score
+            `SELECT q.id, q.title, q.duration_minutes, q.passing_score,
+                    (
+                      SELECT COUNT(*)::int
+                      FROM quiz_attempts qa
+                      WHERE qa.quiz_id = q.id
+                        AND qa.user_id = $2
+                        AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                    ) AS attempts_count,
+                    (
+                      SELECT MAX(qa.score)
+                      FROM quiz_attempts qa
+                      WHERE qa.quiz_id = q.id
+                        AND qa.user_id = $2
+                        AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                    ) AS best_score,
+                    (
+                      SELECT MAX(qa.max_score)
+                      FROM quiz_attempts qa
+                      WHERE qa.quiz_id = q.id
+                        AND qa.user_id = $2
+                        AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                    ) AS max_score
              FROM quizzes q
-             WHERE q.lesson_id = $1 AND q.status = 'PUBLISHED'`,
-            [lId],
+             WHERE q.lesson_id = $1 AND q.status = 'PUBLISHED'
+             ORDER BY q.id ASC`,
+            [lId, req.user.id],
           ),
           query(
             `SELECT sv.id, sv.term, sv.pinyin, sv.sino_vietnamese, sv.meaning,
@@ -722,7 +913,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           videoId: selectedLesson.provider_video_id,
           playbackStatus: selectedLesson.playback_status || "ready",
           isPublished: Boolean(selectedLesson.video_is_published),
-          durationSeconds: Number(selectedLesson.duration_seconds || 0),
+          durationSeconds: Number(selectedLesson.resolved_duration_seconds || selectedLesson.duration_seconds || 0),
           thumbnailUrl: selectedLesson.video_thumbnail,
           processingError: selectedLesson.processing_error || null,
         } : null);
@@ -733,6 +924,12 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           sectionTitle: selectedLesson.section_title || "Chương 1",
           title: selectedLesson.title,
           description: selectedLesson.description || "",
+          sessionNumber: selectedUnitMeta?.sessionNumber || 1,
+          isLocked: Boolean(selectedUnitMeta?.isLocked),
+          lockReason: selectedUnitMeta?.lockReason || null,
+          requiredPrevUnitId: selectedUnitMeta?.requiredPrevUnitId || null,
+          requiredPrevUnitTitle: selectedUnitMeta?.requiredPrevUnitTitle || null,
+          requiredPrevUnitNumber: selectedUnitMeta?.requiredPrevUnitNumber || null,
           video: primaryVideo,
           videos: unitVideos.length > 0 ? unitVideos : (primaryVideo ? [primaryVideo] : []),
           learningUrl: selectedLesson.learning_url || null,
@@ -740,7 +937,9 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             lastPositionSeconds: Number(selectedLesson.last_position_seconds || 0),
             watchedSeconds: Number(selectedLesson.watched_seconds || 0),
             completionPercent: Number(selectedLesson.completion_percent || 0),
-            isCompleted: Boolean(selectedLesson.is_completed),
+            isCompleted: Boolean(selectedUnitMeta?.isCompleted),
+            isVideoCompleted: Boolean(selectedUnitMeta?.isVideoCompleted),
+            isQuizCompleted: Boolean(selectedUnitMeta?.isQuizCompleted),
           },
           theory: theoryRes.rows[0] ? {
             title: theoryRes.rows[0].title,
@@ -772,6 +971,10 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             title: q.title,
             durationMinutes: q.duration_minutes,
             passingScore: Number(q.passing_score || 60),
+            attemptsCount: Number(q.attempts_count || 0),
+            isCompleted: Number(q.attempts_count || 0) > 0,
+            bestScore: q.best_score !== null && q.best_score !== undefined ? Number(q.best_score) : null,
+            maxScore: q.max_score !== null && q.max_score !== undefined ? Number(q.max_score) : null,
           })),
           vocabulary: vocabRes.rows.map((v) => ({
             id: String(v.id),

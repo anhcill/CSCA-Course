@@ -40,7 +40,7 @@ import { hasStudentLmsAccess } from '../utils/lmsAccess';
 // Ai cung thay (ke ca guest)
 const PUBLIC_LINKS = [
   { label: 'Trang chủ', path: '/', icon: HomeIcon },
-  { label: 'Khóa học', path: '/courses', icon: GraduationCap, badge: 'Coming Soon' },
+  { label: 'Khóa học', path: '/courses', icon: GraduationCap },
   { label: 'Cộng đồng', path: '/post', icon: UsersRound },
 ];
 

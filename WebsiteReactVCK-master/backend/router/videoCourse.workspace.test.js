@@ -190,3 +190,184 @@ test("video course workspace: INDEPENDENT mode returns lessons without live clas
   assert.equal(res.body.data.capabilities.canPlayVideo, true);
   assert.equal(res.body.data.capabilities.canJoinLive, false);
 });
+
+test("video course workspace: sequential lesson unlocking requires >=80% verified watch time (anti-seek) AND quiz completion", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^\"]+\.sql"/g)]
+    .map((match) => JSON.parse(match[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
+  const { pool } = await import("../db/connect.js");
+  pool.query = (sql, params) => db.query(sql, params);
+  const videoCourseRouter = (await import("./videoCourse.router.js")).default;
+  const { recordVideoWatchProgress } = await import("../services/bunnyStream.service.js");
+
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('seq-teacher','seq-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const student = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('seq-student','seq-student@example.test','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
+  const course = (await db.query(
+    `INSERT INTO courses(name,slug,author_id,is_published,is_management_managed)
+     VALUES ('CSCA TTXH Sequential','csca-ttxh-seq',$1,TRUE,TRUE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await db.query(
+    `INSERT INTO live_classes(title,course_id,instructor_id,status)
+     VALUES ('CSCA Live Source',$1,$2,'active') RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+
+  // Create 2 sessions (even though live class schedule is 120 mins, real video is 200s = 3 mins)
+  const session1 = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status)
+     VALUES ($1, 'Buổi 1: Từ đa âm và bộ thủ', NOW() - INTERVAL '4 hours', NOW() - INTERVAL '2 hours', 'ended') RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+  const session2 = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status)
+     VALUES ($1, 'Buổi 2: Từ đồng nghĩa, trái nghĩa', NOW() - INTERVAL '2 hours', NOW(), 'ended') RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+
+  // Attach a 200-second video to Session 1 and a 300-second video to Session 2
+  const asset1 = (await db.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds)
+     VALUES ('Video Buổi 1','bunny_stream','111','guid-1','ready',200) RETURNING id`,
+  )).rows[0];
+  const asset2 = (await db.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds)
+     VALUES ('Video Buổi 2','bunny_stream','111','guid-2','ready',300) RETURNING id`,
+  )).rows[0];
+
+  await db.query(
+    `INSERT INTO class_session_videos(class_session_id,video_asset_id,video_type,is_published)
+     VALUES ($1,$2,'primary',TRUE), ($3,$4,'primary',TRUE)`,
+    [session1.id, asset1.id, session2.id, asset2.id],
+  );
+
+  // Attach 1 published quiz to Session 1
+  const quiz1 = (await db.query(
+    `INSERT INTO quizzes(title,class_session_id,live_class_id,duration_minutes,passing_score,status)
+     VALUES ('Quiz Buổi 1',$1,$2,15,60,'PUBLISHED') RETURNING id`,
+    [session1.id, liveClass.id],
+  )).rows[0];
+
+  await db.query(
+    `INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,status)
+     VALUES ($1,'MIRROR',$2,'active')`,
+    [course.id, liveClass.id],
+  );
+  await db.query(
+    `INSERT INTO class_enrollments(user_id,live_class_id,status,learning_mode)
+     VALUES ($1,$2,'active','recording')`,
+    [student.id, liveClass.id],
+  );
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - INTERVAL '1 day',NOW())`,
+    [student.id, course.id],
+  );
+
+  const route = videoCourseRouter.stack.find((layer) => (
+    layer.route?.path === "/:offeringId/workspace" && layer.route.methods.get
+  )).route;
+
+  const fetchWorkspace = async () => {
+    const res = {
+      statusCode: 200,
+      body: null,
+      status(code) { this.statusCode = code; return this; },
+      json(body) { this.body = body; return this; },
+    };
+    await route.stack.at(-1).handle({
+      user: {
+        id: student.id,
+        role: "user",
+        is_management_managed: true,
+        lms_account_status: "active",
+      },
+      params: { offeringId: String(course.id) },
+      query: {},
+    }, res);
+    return res.body.data;
+  };
+
+  // Step 1: Initially Session 1 is unlocked, Session 2 is locked, and durations match real video duration (not 120m)
+  let ws = await fetchWorkspace();
+  assert.equal(ws.units[0].isLocked, false);
+  assert.equal(ws.units[0].videoDurationSeconds, 200);
+  assert.equal(ws.units[0].durationMinutes, 3); // 200s -> 3 mins, NOT 120 mins!
+  assert.equal(ws.units[1].isLocked, true);
+  assert.equal(ws.units[1].videoDurationSeconds, 300);
+  assert.equal(ws.units[1].durationMinutes, 5);
+
+  // Step 2: Anti-seek check: Seeking playhead to 180s/200s (90%) with watchedDeltaSeconds = 0 MUST NOT unlock or add watch time
+  const seekResult = await recordVideoWatchProgress({
+    userId: student.id,
+    videoAssetId: asset1.id,
+    courseId: course.id,
+    liveClassId: liveClass.id,
+    classSessionId: session1.id,
+    currentTimeSeconds: 180,
+    watchedDeltaSeconds: 0,
+    durationSeconds: 200,
+  });
+  assert.equal(seekResult.watchedSeconds, 0);
+  assert.equal(seekResult.completionPercent, 0);
+  assert.equal(seekResult.isCompleted, false);
+
+  ws = await fetchWorkspace();
+  assert.equal(ws.units[1].isLocked, true);
+
+  // Step 3: Real watch time reaches 164s / 200s = 82% (>= 80%), so video is completed,
+  // BUT Quiz 1 is not completed yet -> Session 2 MUST STILL BE LOCKED!
+  await recordVideoWatchProgress({
+    userId: student.id,
+    videoAssetId: asset1.id,
+    courseId: course.id,
+    liveClassId: liveClass.id,
+    classSessionId: session1.id,
+    currentTimeSeconds: 90,
+    watchedDeltaSeconds: 90,
+    durationSeconds: 200,
+  });
+  const watch82 = await recordVideoWatchProgress({
+    userId: student.id,
+    videoAssetId: asset1.id,
+    courseId: course.id,
+    liveClassId: liveClass.id,
+    classSessionId: session1.id,
+    currentTimeSeconds: 164,
+    watchedDeltaSeconds: 74,
+    durationSeconds: 200,
+  });
+  assert.equal(watch82.watchedSeconds, 164);
+  assert.equal(watch82.completionPercent, 82);
+  assert.equal(watch82.isCompleted, true);
+
+  ws = await fetchWorkspace();
+  assert.equal(ws.units[0].isVideoCompleted, true);
+  assert.equal(ws.units[0].isQuizCompleted, false);
+  assert.equal(ws.units[0].isCompleted, false);
+  assert.equal(ws.units[1].isLocked, true, "Session 2 must remain locked until Quiz 1 is completed");
+
+  // Step 4: Learner submits Quiz 1 -> Session 1 is fully completed and Session 2 unlocks!
+  await db.query(
+    `INSERT INTO quiz_attempts(quiz_id,user_id,score,max_score,status,submitted_at)
+     VALUES ($1,$2,9,10,'submitted',NOW())`,
+    [quiz1.id, student.id],
+  );
+
+  ws = await fetchWorkspace();
+  assert.equal(ws.units[0].isVideoCompleted, true);
+  assert.equal(ws.units[0].isQuizCompleted, true);
+  assert.equal(ws.units[0].isCompleted, true);
+  assert.equal(ws.units[1].isLocked, false, "Session 2 must unlock after >=80% watch time AND quiz completion");
+});

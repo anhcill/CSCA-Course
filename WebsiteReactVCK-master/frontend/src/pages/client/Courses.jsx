@@ -215,23 +215,12 @@ const Courses = () => {
     const name = course.nameCourse || course.title || course.name;
     const isCsca = (course.category || '').toUpperCase().includes('CSCA') || (name || '').toUpperCase().includes('CSCA');
     const videoOffering = videoOfferingByCourseId.get(String(courseId));
-    const isVideoCourse = Boolean(videoOffering);
+    const isVideoCourse = true; // All courses route directly to video player
     const isIndependent = videoOffering?.videoMode === 'INDEPENDENT';
-    const targetUrl = isVideoCourse
-      ? `/video-courses/${videoOffering.offeringId || courseId}`
-      : null;
+    const targetUrl = `/video-courses/${videoOffering?.offeringId || courseId}`;
     const userProgress = filterProgress?.find((item) => String(item.courseId) === String(courseId));
     const progressPercent = userProgress?.progressPercentage || 0;
     const isCompleted = progressPercent >= 100;
-
-    const handleLockedClick = (event) => {
-      event?.preventDefault?.();
-      event?.stopPropagation?.();
-      toast('Khóa học đang được chuẩn bị và sẽ sớm ra mắt (Coming Soon)!', {
-        icon: '🔒',
-        duration: 4000,
-      });
-    };
 
     const CardContent = (
       <div>
@@ -253,32 +242,20 @@ const Courses = () => {
             </span>
             {isVideoCourse && (
               <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-900/80 text-amber-300 border border-amber-400/30 backdrop-blur-md flex items-center gap-1">
-                <Video className="w-2.5 h-2.5" /> Video Record
+                <Video className="w-2.5 h-2.5" /> Bài giảng Video
               </span>
             )}
           </div>
 
-          <div className={`absolute top-3 right-3 flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-lg border z-10 ${
-            isVideoCourse
-              ? isIndependent
-                ? 'bg-purple-950/90 text-purple-200 border-purple-400/40'
-                : 'bg-blue-950/90 text-sky-200 border-sky-400/40'
-              : 'bg-amber-500/95 text-slate-950 border-amber-300/50'
-          }`}>
-            {isVideoCourse ? <Sparkles className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-            <span>{isVideoCourse ? (isIndependent ? 'Video độc lập' : 'Record kế thừa') : 'Coming Soon'}</span>
+          <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide backdrop-blur-md shadow-lg border z-10 bg-slate-950/80 text-emerald-400 border-emerald-500/30">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Học trực tuyến</span>
           </div>
 
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
-            <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-black shadow-xl transform group-hover:scale-105 transition-transform ${
-              isVideoCourse
-                ? 'bg-gradient-to-r from-red-600 to-amber-500 text-white shadow-red-950/50'
-                : 'border border-amber-500/40 bg-slate-900/90 text-amber-400'
-            }`}>
-              {isVideoCourse ? <Play className="h-4 w-4 fill-white" /> : <Lock className="h-4 w-4" />}
-              {isVideoCourse
-                ? authUser && progressPercent > 0 ? 'Tiếp tục bài học' : 'Vào xem bài giảng'
-                : 'Khóa học sắp ra mắt'}
+            <span className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-black shadow-xl transform group-hover:scale-105 transition-transform bg-gradient-to-r from-red-600 to-amber-500 text-white shadow-red-950/50">
+              <Play className="h-4 w-4 fill-white" />
+              {authUser && progressPercent > 0 ? 'Tiếp tục bài học' : 'Vào xem bài giảng'}
             </span>
           </div>
         </div>
@@ -356,23 +333,9 @@ const Courses = () => {
             : 'bg-white border-slate-100 hover:border-amber-300 shadow-slate-200/50'
         }`}
       >
-        {isVideoCourse ? (
-          <Link to={targetUrl} className="block flex-1 text-left focus:outline-none">
-            {CardContent}
-          </Link>
-        ) : (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={handleLockedClick}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') handleLockedClick(event);
-            }}
-            className="block flex-1 cursor-pointer text-left focus:outline-none"
-          >
-            {CardContent}
-          </div>
-        )}
+        <Link to={targetUrl} className="block flex-1 text-left focus:outline-none">
+          {CardContent}
+        </Link>
 
         {/* Card Footer */}
         <div className={`p-4 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'} flex items-center justify-between gap-2`}>
@@ -395,34 +358,23 @@ const Courses = () => {
             </button>
           </div>
 
-          {isVideoCourse ? (
-            <Link
-              to={targetUrl}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white text-xs font-black transition shadow-md shadow-red-950/20 active:scale-95"
-            >
-              {authUser && progressPercent > 0 ? (
-                <>
-                  <Play className="w-3.5 h-3.5 fill-white" />
-                  <span>Tiếp tục học</span>
-                </>
-              ) : (
-                <>
-                  <Video className="w-3.5 h-3.5" />
-                  <span>Vào học ngay</span>
-                  <ArrowRight className="w-3 h-3" />
-                </>
-              )}
-            </Link>
-          ) : (
-            <button
-              type="button"
-              onClick={handleLockedClick}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-black transition shadow-sm border border-amber-500/30 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Coming Soon</span>
-            </button>
-          )}
+          <Link
+            to={targetUrl}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white text-xs font-black transition shadow-md shadow-red-950/20 active:scale-95"
+          >
+            {authUser && progressPercent > 0 ? (
+              <>
+                <Play className="w-3.5 h-3.5 fill-white" />
+                <span>Tiếp tục học</span>
+              </>
+            ) : (
+              <>
+                <Video className="w-3.5 h-3.5" />
+                <span>Vào học ngay</span>
+                <ArrowRight className="w-3 h-3" />
+              </>
+            )}
+          </Link>
         </div>
       </div>
     );

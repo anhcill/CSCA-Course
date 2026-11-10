@@ -155,6 +155,7 @@ function AppRoutes({ pathname }) {
       <Route path="/shedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
       <Route path="/video-courses/:offeringId" element={<ProtectedRoute><VideoCourseWorkspacePage /></ProtectedRoute>} />
       <Route path="/video-courses/:offeringId/units/:unitId" element={<ProtectedRoute><VideoCourseWorkspacePage /></ProtectedRoute>} />
+      <Route path="/quizzes/:quizId" element={<ProtectedRoute><MoliQuizPlayerPage /></ProtectedRoute>} />
 
       {/* === Student LMS === */}
       <Route path="/lms" element={<Navigate to="/lms/dashboard" replace />} />

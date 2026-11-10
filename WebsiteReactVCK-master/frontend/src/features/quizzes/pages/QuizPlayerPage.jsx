@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   FiClock,
   FiCheckCircle,
@@ -86,7 +86,9 @@ const hasChineseContent = (item) => {
 
 export default function QuizPlayerPage() {
   const { courseId, classId, quizId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const backUrl = searchParams.get('backUrl') || searchParams.get('returnUrl');
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -588,9 +590,9 @@ export default function QuizPlayerPage() {
   }
 
   if (loadError) {
-    const backPath = (courseId && classId)
+    const backPath = backUrl || ((courseId && classId)
       ? `/lms/courses/${courseId}/classes/${classId}/assignments`
-      : '/lms/assignments';
+      : '/lms/assignments');
 
     return (
       <div className="fixed inset-0 z-[1000] flex h-dvh items-center justify-center overflow-y-auto bg-slate-100 p-4 dark:bg-slate-950">
@@ -934,10 +936,10 @@ export default function QuizPlayerPage() {
               )}
               <button
                 type="button"
-                onClick={() => (courseId && classId ? navigate(`/lms/courses/${courseId}/classes/${classId}/assignments`) : navigate('/lms/assignments'))}
+                onClick={() => (backUrl ? navigate(backUrl) : courseId && classId ? navigate(`/lms/courses/${courseId}/classes/${classId}/assignments`) : navigate('/lms/assignments'))}
                 className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors shadow-sm"
               >
-                Quay lại danh sách bài tập
+                {backUrl ? 'Quay lại bài giảng video' : 'Quay lại danh sách bài tập'}
               </button>
             </div>
           </div>
@@ -1241,6 +1243,21 @@ export default function QuizPlayerPage() {
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2 sm:py-2.5 shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
           <div className="flex items-center gap-2 sm:gap-3 overflow-hidden">
+            {backUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Bạn có chắc muốn tạm dừng bài thi để quay lại bài giảng video?")) {
+                    navigate(backUrl);
+                  }
+                }}
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition shrink-0"
+                title="Quay lại bài giảng video"
+              >
+                <FiChevronLeft size={14} />
+                <span className="hidden sm:inline">Bài học</span>
+              </button>
+            )}
             <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 uppercase shrink-0">
               {quiz.activityScope === 'session'
                 ? 'Bài trên lớp'

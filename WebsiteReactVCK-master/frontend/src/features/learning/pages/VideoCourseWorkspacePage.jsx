@@ -28,6 +28,7 @@ import {
   Eye,
   Copy,
   Layers,
+  Lock,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { useTheme } from "../../../context/ThemeContext";
@@ -42,6 +43,21 @@ import BunnyStreamPlayer from "../components/BunnyStreamPlayer";
 import { formatTimeMMSS } from "../utils/videoTime";
 import DocumentPreviewModal from "../components/DocumentPreviewModal";
 import { speakChinese } from "../utils/speech";
+import katex from "katex";
+import "katex/dist/katex.min.css";
+
+const renderKaTeX = (latex, displayMode = true) => {
+  if (!latex || typeof latex !== "string") return "";
+  try {
+    return katex.renderToString(latex.trim(), {
+      displayMode,
+      throwOnError: false,
+      strict: "ignore",
+    });
+  } catch (err) {
+    return latex;
+  }
+};
 
 const sanitizeTheoryHtml = (html) => {
   if (!html || typeof html !== "string") return "";
@@ -72,6 +88,82 @@ const sanitizeTheoryHtml = (html) => {
     }
   });
   return documentNode.body.innerHTML;
+};
+
+const REQUIRED_WATCH_PERCENT = 80;
+
+const formatVideoDurationLabel = (unit) => {
+  const sec = Number(unit?.videoDurationSeconds || 0);
+  if (sec > 0) {
+    const mins = Math.max(1, Math.round(sec / 60));
+    return `${formatTimeMMSS(sec)} (${mins}p)`;
+  }
+  const minsFallback = Number(unit?.durationMinutes || 0);
+  if (minsFallback > 0 && minsFallback !== 120) {
+    return `${minsFallback} phút`;
+  }
+  return unit?.hasVideo ? "Video HD" : "Chưa có video";
+};
+
+const recomputeSequentialLocks = (rawUnits = []) => {
+  const result = [];
+  for (let idx = 0; idx < rawUnits.length; idx += 1) {
+    const unit = rawUnits[idx];
+    const progressPercent = Number(unit.progressPercent || 0);
+    const hasVideo = Boolean(unit.hasVideo);
+    const quizCount = Number(unit.quizCount || 0);
+    const completedQuizCount = Number(unit.completedQuizCount || 0);
+    const isVideoCompleted = Boolean(unit.isVideoCompleted) || (hasVideo && progressPercent >= REQUIRED_WATCH_PERCENT);
+    const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
+    const isCompleted = isVideoCompleted && isQuizCompleted;
+
+    if (idx === 0) {
+      result.push({
+        ...unit,
+        isVideoCompleted,
+        isQuizCompleted,
+        isCompleted,
+        isLocked: false,
+        lockReason: null,
+        requiredPrevUnitId: null,
+        requiredPrevUnitTitle: null,
+        requiredPrevUnitNumber: null,
+      });
+      continue;
+    }
+
+    const prev = result[idx - 1];
+    const prevLabel = prev.sessionNumber ? `Buổi ${prev.sessionNumber}` : `Bài ${idx}`;
+    let isLocked = false;
+    let lockReason = null;
+
+    if (prev.isLocked) {
+      isLocked = true;
+      lockReason = `Cần hoàn thành các buổi học trước theo thứ tự (tối thiểu 80% thời gian xem thực tế & hoàn thành trắc nghiệm).`;
+    } else if (!prev.isVideoCompleted && !prev.isQuizCompleted) {
+      isLocked = true;
+      lockReason = `Cần xem thực tế tối thiểu 80% thời lượng video (hiện đạt ${Math.round(prev.progressPercent || 0)}%) và hoàn thành ${prev.completedQuizCount || 0}/${prev.quizCount || 0} bài trắc nghiệm của ${prevLabel}.`;
+    } else if (!prev.isVideoCompleted) {
+      isLocked = true;
+      lockReason = `Cần xem thực tế tối thiểu 80% thời lượng video của ${prevLabel} (hiện đạt ${Math.round(prev.progressPercent || 0)}% - không tính tua nhanh).`;
+    } else if (!prev.isQuizCompleted) {
+      isLocked = true;
+      lockReason = `Cần hoàn thành ${prev.completedQuizCount || 0}/${prev.quizCount || 0} bài trắc nghiệm của ${prevLabel} để mở khóa buổi tiếp theo.`;
+    }
+
+    result.push({
+      ...unit,
+      isVideoCompleted,
+      isQuizCompleted,
+      isCompleted,
+      isLocked,
+      lockReason,
+      requiredPrevUnitId: isLocked ? prev.id : null,
+      requiredPrevUnitTitle: isLocked ? prev.title : null,
+      requiredPrevUnitNumber: isLocked ? (prev.sessionNumber || idx) : null,
+    });
+  }
+  return result;
 };
 
 export default function VideoCourseWorkspacePage() {
@@ -121,11 +213,26 @@ export default function VideoCourseWorkspacePage() {
     try {
       const res = await fetchVideoCourseWorkspace(offeringId, { unitId: unitTarget });
       if (res?.success && res.data) {
-        setWorkspaceData(res.data);
-        if (res.data.activeUnit?.id) {
-          const au = res.data.activeUnit;
+        const normalizedUnits = recomputeSequentialLocks(res.data.units || []);
+        const au = res.data.activeUnit;
+        const activeMeta = au ? normalizedUnits.find((u) => String(u.id) === String(au.id)) : null;
+
+        setWorkspaceData({
+          ...res.data,
+          units: normalizedUnits,
+          activeUnit: au ? {
+            ...au,
+            isLocked: Boolean(activeMeta?.isLocked ?? au.isLocked),
+            lockReason: activeMeta?.lockReason ?? au.lockReason ?? null,
+            requiredPrevUnitId: activeMeta?.requiredPrevUnitId ?? au.requiredPrevUnitId ?? null,
+            requiredPrevUnitTitle: activeMeta?.requiredPrevUnitTitle ?? au.requiredPrevUnitTitle ?? null,
+            requiredPrevUnitNumber: activeMeta?.requiredPrevUnitNumber ?? au.requiredPrevUnitNumber ?? null,
+          } : null,
+        });
+
+        if (au?.id) {
           setActiveUnitId(au.id);
-          setIsCompletedUnit(Boolean(au.watchProgress?.isCompleted));
+          setIsCompletedUnit(Boolean(activeMeta?.isCompleted ?? au.watchProgress?.isCompleted));
           setCurrentProgressSeconds(Number(au.watchProgress?.lastPositionSeconds || 0));
           setUnitWatchPercent(Number(au.watchProgress?.completionPercent || 0));
           setNotes((au.notes || []).map((n) => ({
@@ -151,42 +258,118 @@ export default function VideoCourseWorkspacePage() {
     loadWorkspace(paramUnitId);
   }, [loadWorkspace, paramUnitId]);
 
-  // Handle switching unit
+  // Handle switching unit (enforcing sequential 80% watch time + quiz completion lock)
   const handleSelectUnit = (unit) => {
+    if (!unit) return;
     if (String(unit.id) === String(activeUnitId)) return;
+
+    if (unit.isLocked) {
+      toast.error(
+        unit.lockReason
+        || "Bài học đang khóa! Bạn cần xem tối thiểu 80% thời gian thực của video và hoàn thành bài trắc nghiệm của buổi trước.",
+        { duration: 4500 },
+      );
+
+      // If the learner already finished >=80% video on the current lesson and only needs the quiz, open the Quiz tab automatically!
+      const currentMeta = (workspaceData?.units || []).find((u) => String(u.id) === String(activeUnitId));
+      if (
+        currentMeta
+        && String(unit.requiredPrevUnitId) === String(currentMeta.id)
+        && currentMeta.isVideoCompleted
+        && !currentMeta.isQuizCompleted
+      ) {
+        setActiveTab("exercises");
+      }
+      return;
+    }
+
     setActiveUnitId(unit.id);
     navigate(`/video-courses/${offeringId}/units/${unit.id}`, { replace: true });
     loadWorkspace(unit.id);
   };
 
-  // Sync live progress updates from BunnyStreamPlayer into workspace state
-  const handlePlayerProgressChange = useCallback(({
-    currentTimeSeconds,
-    completionPercent,
-    isCompleted,
-  }) => {
-    setCurrentProgressSeconds(currentTimeSeconds);
-    setUnitWatchPercent(completionPercent);
-    if (isCompleted) {
-      setIsCompletedUnit(true);
-    }
+  // Sync detected real video duration from player metadata into sidebar
+  const handleDurationDetected = useCallback((targetUnitId, detectedSeconds) => {
+    const cleanSec = Math.round(Number(detectedSeconds || 0));
+    if (!targetUnitId || cleanSec <= 0) return;
 
     setWorkspaceData((prev) => {
       if (!prev) return prev;
-      const updatedUnits = (prev.units || []).map((u) => {
-        if (String(u.id) !== String(activeUnitId)) return u;
+      let changed = false;
+      const nextUnits = (prev.units || []).map((u) => {
+        if (String(u.id) !== String(targetUnitId)) return u;
+        if (Number(u.videoDurationSeconds || 0) === cleanSec) return u;
+        changed = true;
         return {
           ...u,
-          progressPercent: Math.max(u.progressPercent || 0, completionPercent),
-          isCompleted: u.isCompleted || isCompleted,
+          videoDurationSeconds: cleanSec,
+          durationMinutes: Math.max(1, Math.round(cleanSec / 60)),
+        };
+      });
+      if (!changed) return prev;
+      return {
+        ...prev,
+        units: recomputeSequentialLocks(nextUnits),
+      };
+    });
+  }, []);
+
+  // Sync live progress updates from BunnyStreamPlayer into workspace state
+  const handlePlayerProgressChange = useCallback(({
+    unitId: reportedUnitId,
+    currentTimeSeconds,
+    watchedSeconds,
+    durationSeconds,
+    completionPercent,
+    isCompleted: videoReached80,
+  }) => {
+    const targetId = reportedUnitId || activeUnitId;
+    setCurrentProgressSeconds(currentTimeSeconds);
+    setUnitWatchPercent((prev) => Math.max(prev, Number(completionPercent || 0)));
+
+    setWorkspaceData((prev) => {
+      if (!prev) return prev;
+      const rawUpdated = (prev.units || []).map((u) => {
+        if (String(u.id) !== String(targetId)) return u;
+        const mergedPercent = Math.max(Number(u.progressPercent || 0), Number(completionPercent || 0));
+        const mergedWatched = Math.max(Number(u.watchedSeconds || 0), Number(watchedSeconds || 0));
+        const mergedDuration = Number(durationSeconds || u.videoDurationSeconds || 0);
+        const videoDone = Boolean(u.isVideoCompleted) || Boolean(videoReached80) || mergedPercent >= REQUIRED_WATCH_PERCENT;
+        const quizDone = Number(u.quizCount || 0) === 0 || Number(u.completedQuizCount || 0) >= Number(u.quizCount || 0);
+
+        if (videoDone && quizDone) {
+          setIsCompletedUnit(true);
+        }
+
+        return {
+          ...u,
+          progressPercent: mergedPercent,
+          watchedSeconds: mergedWatched,
+          videoDurationSeconds: mergedDuration,
+          durationMinutes: mergedDuration > 0 ? Math.max(1, Math.round(mergedDuration / 60)) : u.durationMinutes,
+          isVideoCompleted: videoDone,
+          isQuizCompleted: quizDone,
+          isCompleted: videoDone && quizDone,
           lastPositionSeconds: currentTimeSeconds,
         };
       });
+
+      const updatedUnits = recomputeSequentialLocks(rawUpdated);
       const completedCount = updatedUnits.filter((u) => u.isCompleted).length;
       const totalCount = updatedUnits.length || 1;
+      const activeMeta = updatedUnits.find((u) => String(u.id) === String(activeUnitId));
+
       return {
         ...prev,
         units: updatedUnits,
+        activeUnit: prev.activeUnit ? {
+          ...prev.activeUnit,
+          isLocked: Boolean(activeMeta?.isLocked),
+          lockReason: activeMeta?.lockReason || null,
+          requiredPrevUnitId: activeMeta?.requiredPrevUnitId || null,
+          requiredPrevUnitTitle: activeMeta?.requiredPrevUnitTitle || null,
+          requiredPrevUnitNumber: activeMeta?.requiredPrevUnitNumber || null,
+        } : prev.activeUnit,
         progress: {
           completedUnits: completedCount,
           totalUnits: updatedUnits.length,
@@ -217,6 +400,7 @@ export default function VideoCourseWorkspacePage() {
     return workspaceData.units.findIndex((u) => String(u.id) === String(activeUnitId));
   }, [workspaceData?.units, activeUnitId]);
 
+  const activeUnitMeta = currentIndex >= 0 ? workspaceData?.units[currentIndex] : null;
   const prevUnit = currentIndex > 0 ? workspaceData?.units[currentIndex - 1] : null;
   const nextUnit = currentIndex >= 0 && currentIndex < (workspaceData?.units?.length || 0) - 1
     ? workspaceData?.units[currentIndex + 1]
@@ -380,20 +564,14 @@ export default function VideoCourseWorkspacePage() {
 
             <div className="truncate">
               <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider border ${
-                  isMirrorMode
-                    ? "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800"
-                    : "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800"
-                }`}>
-                  <Sparkles className="h-2.5 w-2.5" />
-                  {isMirrorMode ? "Record kế thừa" : "Video độc lập"}
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-bold text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  <Sparkles className="h-3 w-3" />
+                  Bài giảng Trực tuyến
                 </span>
-
-                {isMirrorMode && sourceClass && (
-                  <span className="hidden sm:inline-flex text-[11px] text-slate-500 dark:text-slate-400">
-                    Nguồn: <strong className="ml-1 text-slate-700 dark:text-slate-300 font-semibold">{sourceClass.title}</strong>
-                  </span>
-                )}
+                <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-medium text-slate-400">
+                  <Video className="h-3 w-3 text-slate-400" />
+                  Video chất lượng cao 1080p
+                </span>
               </div>
 
               <h1 className="truncate text-sm sm:text-base font-extrabold text-slate-900 dark:text-white mt-0.5">
@@ -456,140 +634,345 @@ export default function VideoCourseWorkspacePage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT 8/12: Active Unit Media & 8-Tab Content Workspace */}
           <main className="lg:col-span-8 space-y-5 min-w-0">
-            {/* Active unit title & action bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm">
-              <div className="space-y-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 dark:text-sky-400">
-                    {activeUnit?.sectionTitle || (activeUnit?.sessionNumber ? `Buổi ${activeUnit.sessionNumber}` : "Bài học")}
+            {/* 1. MEDIA PLAYER OR SEQUENTIAL LOCK GATE */}
+            {activeUnit?.isLocked ? (
+              <div className="rounded-3xl border border-amber-500/30 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 sm:p-10 text-center text-white shadow-2xl space-y-5">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-500/40 bg-amber-500/15 text-amber-400 shadow-lg shadow-amber-500/10">
+                  <Lock className="h-8 w-8" />
+                </div>
+                <div className="space-y-2 max-w-xl mx-auto">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-amber-300 border border-amber-500/30">
+                    Cơ chế mở khóa bài giảng tuần tự
                   </span>
-                  {isCompletedUnit && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                      <CheckCircle2 className="h-3 w-3" /> Đã hoàn thành
+                  <h3 className="text-xl sm:text-2xl font-black text-white">
+                    {activeUnit?.title || "Buổi học này đang tạm khóa"}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                    {activeUnit?.lockReason || "Bạn cần xem thực tế tối thiểu 80% thời lượng video và hoàn thành bài trắc nghiệm của buổi học trước để mở khóa buổi này."}
+                  </p>
+                </div>
+
+                <div className="mx-auto max-w-lg grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5 space-y-1">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-400">Điều kiện 1</p>
+                    <p className="text-xs font-bold text-white">Xem thực tế ≥ 80% thời lượng video</p>
+                    <p className="text-[11px] text-slate-400">Hệ thống đo thời gian ngồi xem thực tế, không tính kéo/tua thanh thời gian.</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5 space-y-1">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-sky-400">Điều kiện 2</p>
+                    <p className="text-xs font-bold text-white">Hoàn thành Trắc nghiệm (Quiz)</p>
+                    <p className="text-[11px] text-slate-400">Nộp xong bài trắc nghiệm củng cố (nếu buổi học đó có bài trắc nghiệm).</p>
+                  </div>
+                </div>
+
+                {(() => {
+                  const firstUnlockedIncomplete = units.find((u) => !u.isLocked && !u.isCompleted) || units[0];
+                  if (!firstUnlockedIncomplete) return null;
+                  return (
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectUnit(firstUnlockedIncomplete)}
+                        className="inline-flex items-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-400 px-6 py-3 text-xs sm:text-sm font-black text-slate-950 shadow-lg shadow-amber-500/20 transition"
+                      >
+                        <Play className="h-4 w-4 fill-current" />
+                        <span>
+                          Quay về {firstUnlockedIncomplete.sessionNumber ? `Buổi ${firstUnlockedIncomplete.sessionNumber}` : "bài đang học"}: {firstUnlockedIncomplete.title}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : capabilities.canPlayVideo !== false && (
+              <div className="rounded-3xl overflow-hidden shadow-2xl border border-slate-200/80 dark:border-slate-800 bg-black">
+                <BunnyStreamPlayer
+                  video={activeUnit?.video}
+                  videos={activeUnit?.videos || []}
+                  unitId={activeUnit?.id}
+                  unitTitle={activeUnit?.title}
+                  courseId={course?.id}
+                  liveClassId={sourceClass?.id}
+                  initialProgress={activeUnit?.watchProgress}
+                  userEmail={authUser?.email || authUser?.username || "student@molycourse.online"}
+                  prevUnit={prevUnit}
+                  nextUnit={nextUnit}
+                  seekRequest={seekRequest}
+                  onSelectUnit={handleSelectUnit}
+                  onProgressChange={handlePlayerProgressChange}
+                  onDurationDetected={handleDurationDetected}
+                  onQuickNoteAtTime={handleQuickNoteAtTime}
+                />
+              </div>
+            )}
+
+            {/* 2. ACTIVE UNIT TITLE & SEQUENTIAL UNLOCK CONDITIONS BAR (BELOW VIDEO) */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 dark:text-sky-400">
+                      {activeUnit?.sectionTitle || (activeUnit?.sessionNumber ? `Buổi ${activeUnit.sessionNumber}` : "Bài học")}
                     </span>
-                  )}
+                    {activeUnitMeta && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                        <Clock className="h-3 w-3 text-amber-500" />
+                        {formatVideoDurationLabel(activeUnitMeta)}
+                      </span>
+                    )}
+                    {isCompletedUnit && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                        <CheckCircle2 className="h-3 w-3" /> Đã mở khóa bài tiếp theo
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white leading-snug break-words">
+                    {activeUnit?.title || "Đang tải bài học..."}
+                  </h2>
                 </div>
-                <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white leading-snug break-words">
-                  {activeUnit?.title || "Đang tải bài học..."}
-                </h2>
-              </div>
 
-              {/* Completion is derived from verified playback progress. */}
-              <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                <span className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border ${
-                    isCompletedUnit
-                      ? "bg-emerald-600 text-white border-emerald-600"
-                      : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
-                  }`}
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  <span>{isCompletedUnit ? "Đã hoàn thành" : `${Math.round(unitWatchPercent)}% đã xem`}</span>
-                </span>
-
-                <div className="flex items-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5">
-                  <button
-                    type="button"
-                    disabled={!prevUnit}
-                    onClick={() => prevUnit && handleSelectUnit(prevUnit)}
-                    className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition"
-                    title={prevUnit ? `Bài trước: ${prevUnit.title}` : "Hết bài"}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!nextUnit}
-                    onClick={() => nextUnit && handleSelectUnit(nextUnit)}
-                    className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition"
-                    title={nextUnit ? `Bài tiếp: ${nextUnit.title}` : "Hết bài"}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* TAB BAR: 8 tabs as specified in Section 4.2 */}
-            <div className="border-b border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 rounded-2xl p-1.5 backdrop-blur-sm shadow-sm overflow-x-auto scrollbar-none">
-              <nav className="flex gap-1 min-w-max">
-                {[
-                  { id: "video", label: "Video bài giảng", icon: Video },
-                  { id: "theory", label: "Lý thuyết & Slide", icon: BookOpen },
-                  { id: "exercises", label: "Bài tập & Quiz", icon: FileCheck2 },
-                  { id: "vocabulary", label: "Từ vựng", icon: Languages },
-                  { id: "formulas", label: "Công thức / Trọng tâm", icon: Calculator },
-                  { id: "files", label: "Tài liệu", icon: FolderOpen },
-                  { id: "notes", label: "Ghi chú cá nhân", icon: StickyNote },
-                  { id: "results", label: "Kết quả", icon: BarChart3 },
-                ].map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    onClick={() => setActiveTab(id)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                      activeTab === id
-                        ? "bg-slate-900 text-white shadow dark:bg-amber-500 dark:text-slate-950"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60"
+                {/* Completion & Unit Switcher */}
+                <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border ${
+                      isCompletedUnit
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
                     }`}
                   >
-                    <Icon className="h-3.5 w-3.5" />
-                    <span>{label}</span>
-                  </button>
-                ))}
-              </nav>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>
+                      {isCompletedUnit ? "Đã hoàn thành buổi học" : `${Math.round(unitWatchPercent)}% / 80% video`}
+                    </span>
+                  </span>
+
+                  <div className="flex items-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5">
+                    <button
+                      type="button"
+                      disabled={!prevUnit}
+                      onClick={() => prevUnit && handleSelectUnit(prevUnit)}
+                      className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition"
+                      title={prevUnit ? `Bài trước: ${prevUnit.title}` : "Hết bài"}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!nextUnit}
+                      onClick={() => nextUnit && handleSelectUnit(nextUnit)}
+                      className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition"
+                      title={
+                        nextUnit
+                          ? nextUnit.isLocked
+                            ? nextUnit.lockReason || "Hoàn thành >= 80% video và bài trắc nghiệm để mở khóa"
+                            : `Bài tiếp: ${nextUnit.title}`
+                          : "Hết bài"
+                      }
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2-Condition Unlock Checklist Strip for Current Unit */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div
+                  className={`flex items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-xs ${
+                    activeUnitMeta?.isVideoCompleted || unitWatchPercent >= REQUIRED_WATCH_PERCENT
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : "border-amber-500/30 bg-amber-500/5 text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {activeUnitMeta?.isVideoCompleted || unitWatchPercent >= REQUIRED_WATCH_PERCENT ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                    ) : (
+                      <Clock className="h-4 w-4 shrink-0 text-amber-500" />
+                    )}
+                    <span className="font-bold truncate">
+                      1. Xem video thực tế ≥ 80% (chống tua)
+                    </span>
+                  </div>
+                  <span className="font-mono font-black shrink-0">
+                    {Math.round(unitWatchPercent)}% / 80%
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if ((activeUnit?.quizzes?.length || 0) > 0) setActiveTab("exercises");
+                  }}
+                  className={`flex items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-xs text-left transition ${
+                    (activeUnitMeta?.quizCount || activeUnit?.quizzes?.length || 0) === 0 || activeUnitMeta?.isQuizCompleted
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : "border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {(activeUnitMeta?.quizCount || activeUnit?.quizzes?.length || 0) === 0 || activeUnitMeta?.isQuizCompleted ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                    ) : (
+                      <FileCheck2 className="h-4 w-4 shrink-0 text-amber-500" />
+                    )}
+                    <span className="font-bold truncate">
+                      {(activeUnitMeta?.quizCount || activeUnit?.quizzes?.length || 0) > 0
+                        ? "2. Hoàn thành bài Trắc nghiệm (Quiz)"
+                        : "2. Trắc nghiệm: Không bắt buộc ở buổi này"}
+                    </span>
+                  </div>
+                  {(activeUnitMeta?.quizCount || activeUnit?.quizzes?.length || 0) > 0 && (
+                    <span className="font-mono font-black shrink-0">
+                      {activeUnitMeta?.completedQuizCount ?? (activeUnit?.quizzes || []).filter((q) => q.isCompleted).length}/
+                      {activeUnitMeta?.quizCount ?? (activeUnit?.quizzes || []).length} bài →
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
 
-            {/* TAB CONTENTS */}
-            <div className="min-h-[460px]">
-              {/* TAB 1: VIDEO BÀI GIẢNG (BUNNY STREAM PLAYER) */}
-              {activeTab === "video" && capabilities.canPlayVideo !== false && (
-                <div className="space-y-4">
-                  <BunnyStreamPlayer
-                    video={activeUnit?.video}
-                    videos={activeUnit?.videos || []}
-                    unitId={activeUnit?.id}
-                    unitTitle={activeUnit?.title}
-                    courseId={course?.id}
-                    liveClassId={sourceClass?.id}
-                    initialProgress={activeUnit?.watchProgress}
-                    userEmail={authUser?.email || authUser?.username || "student@molycourse.online"}
-                    prevUnit={prevUnit}
-                    nextUnit={nextUnit}
-                    seekRequest={seekRequest}
-                    onSelectUnit={handleSelectUnit}
-                    onProgressChange={handlePlayerProgressChange}
-                    onQuickNoteAtTime={handleQuickNoteAtTime}
-                  />
+            {/* 3. TABS BAR: 2 DÃY GỌN GÀNG, KHÔNG CUỘN NGANG */}
+            <div className="space-y-2 rounded-2xl bg-white/80 dark:bg-slate-900/80 p-2.5 sm:p-3 border border-slate-200/80 dark:border-slate-800 shadow-sm backdrop-blur-sm">
+              {/* Dãy 1: Nội dung học tập chính */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
+                {[
+                  { id: "video", label: "Video bài giảng", icon: Video, badge: activeUnit?.video ? "HD" : null },
+                  { id: "theory", label: "Lý thuyết & Slide", icon: BookOpen, badge: slideFiles.length > 0 ? "Slide" : null },
+                  { id: "exercises", label: "Bài tập & Quiz", icon: FileCheck2, badge: (activeUnit?.quizzes?.length || 0) + (activeUnit?.assignments?.length || 0) || null },
+                  { id: "vocabulary", label: "Từ vựng CSCA", icon: Languages, badge: (activeUnit?.vocabulary?.length || 0) || null },
+                ].map(({ id, label, icon: Icon, badge }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setActiveTab(id)}
+                    className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition duration-150 ${
+                      activeTab === id
+                        ? "bg-slate-900 text-white shadow-md dark:bg-amber-500 dark:text-slate-950 shadow-amber-500/10 ring-2 ring-amber-500/30"
+                        : "bg-slate-100/90 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{label}</span>
+                    {badge && (
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold shrink-0 ${
+                        activeTab === id
+                          ? "bg-white/20 text-white dark:bg-black/20 dark:text-slate-950"
+                          : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                      }`}>
+                        {badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
 
+              {/* Dãy 2: Tài nguyên bổ trợ & Đánh giá */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
+                {[
+                  { id: "formulas", label: "Công thức trọng tâm", icon: Calculator, badge: (activeUnit?.formulas?.length || 0) || null },
+                  { id: "files", label: "Tài liệu đính kèm", icon: FolderOpen, badge: (activeUnit?.files?.length || 0) || null },
+                  { id: "notes", label: "Ghi chú cá nhân", icon: StickyNote, badge: (unitNotes?.length || 0) || null },
+                  { id: "results", label: "Kết quả học tập", icon: BarChart3 },
+                ].map(({ id, label, icon: Icon, badge }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setActiveTab(id)}
+                    className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition duration-150 ${
+                      activeTab === id
+                        ? "bg-slate-900 text-white shadow-md dark:bg-amber-500 dark:text-slate-950 shadow-amber-500/10 ring-2 ring-amber-500/30"
+                        : "bg-slate-100/90 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{label}</span>
+                    {badge && (
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold shrink-0 ${
+                        activeTab === id
+                          ? "bg-white/20 text-white dark:bg-black/20 dark:text-slate-950"
+                          : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                      }`}>
+                        {badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 4. TAB CONTENTS */}
+            <div className="min-h-[380px]">
+              {/* TAB 1: PHÂN ĐOẠN BÀI GIẢNG & TỔNG QUAN */}
+              {activeTab === "video" && (
+                <div className="space-y-4">
                   {/* Interactive Video Chapters / Timestamps if available */}
-                  {activeUnit?.theory?.timestamps && activeUnit.theory.timestamps.length > 0 && (
-                    <div className="rounded-2xl bg-white dark:bg-slate-900 p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3">
-                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                        <Clock className="h-3.5 w-3.5 text-amber-500" />
-                        Phân đoạn nội dung bài giảng (Chapters)
-                      </h3>
-                      <div className="grid gap-2 sm:grid-cols-2">
+                  {activeUnit?.theory?.timestamps && activeUnit.theory.timestamps.length > 0 ? (
+                    <div className="rounded-3xl bg-white dark:bg-slate-900 p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-amber-500" />
+                          Phân đoạn nội dung bài giảng (Chapters)
+                        </h3>
+                        <span className="text-xs text-slate-400 font-mono">
+                          {activeUnit.theory.timestamps.length} mốc nội dung
+                        </span>
+                      </div>
+                      <div className="grid gap-2.5 sm:grid-cols-2">
                         {activeUnit.theory.timestamps.map((ts, idx) => (
                           <button
                             key={idx}
                             type="button"
                             onClick={() => handleJumpToTimestamp(ts.seconds)}
-                            className="flex items-center gap-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-2.5 text-left hover:border-amber-400 transition"
+                            className="flex items-center gap-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-3 text-left hover:border-amber-400 hover:bg-amber-50/30 dark:hover:bg-slate-800 transition group"
                           >
-                            <span className="rounded-lg bg-amber-500/15 px-2 py-1 font-mono text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                            <span className="rounded-xl bg-amber-500/15 group-hover:bg-amber-500 group-hover:text-slate-950 px-2.5 py-1 font-mono text-xs font-bold text-amber-600 dark:text-amber-400 transition">
                               {formatTimeMMSS(ts.seconds)}
                             </span>
-                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate group-hover:text-amber-600 dark:group-hover:text-amber-400 transition">
                               {ts.label}
                             </span>
                           </button>
                         ))}
                       </div>
                     </div>
+                  ) : (
+                    <div className="rounded-3xl bg-white dark:bg-slate-900 p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm text-center space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto text-xl">
+                        <Video className="h-6 w-6" />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                        Đang phát video bài giảng
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+                        Bạn có thể dùng các phím tắt <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono">Space</kbd> (Phát/Dừng), <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono">←</kbd> <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono">→</kbd> (Tua 5s), và chuyển qua các tab bên dưới để vừa nghe giảng vừa xem Từ vựng, Slide hoặc Ghi chú.
+                      </p>
+                    </div>
                   )}
+
+                  {/* Quick Note Box while watching */}
+                  <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-gradient-to-r from-amber-500/5 via-transparent to-blue-500/5 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
+                        <StickyNote className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">Ghi chú tại phút hiện tại?</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">Lưu lại kiến thức quan trọng kèm mốc thời gian để xem lại dễ dàng.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("notes")}
+                      className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-slate-950 font-bold text-xs transition shadow-xs shrink-0"
+                    >
+                      Mở Ghi chú cá nhân →
+                    </button>
+                  </div>
                 </div>
               )}
-
-              {/* TAB 2: LÝ THUYẾT & SLIDE */}
+            
+{/* TAB 2: LÝ THUYẾT & SLIDE */}
               {activeTab === "theory" && (
                 <div className="space-y-5">
                   <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-5">
@@ -666,40 +1049,76 @@ export default function VideoCourseWorkspacePage() {
                 <div className="space-y-6">
                   {/* Quizzes Section */}
                   <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
-                        <FileCheck2 className="h-4 w-4 text-amber-500" />
-                        Trắc nghiệm & Quiz củng cố
-                      </h3>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                          <FileCheck2 className="h-4 w-4 text-amber-500" />
+                          Trắc nghiệm & Quiz củng cố (Điều kiện mở khóa buổi tiếp theo)
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Nếu buổi học có bài trắc nghiệm, bạn cần hoàn thành bài trắc nghiệm kèm xem tối thiểu 80% thời lượng video để mở khóa buổi kế tiếp.
+                        </p>
+                      </div>
                       <span className="text-xs text-slate-400 font-mono">
                         {(activeUnit?.quizzes || []).length} bài test
                       </span>
                     </div>
 
                     {(activeUnit?.quizzes || []).length === 0 ? (
-                      <p className="text-xs text-slate-400 italic py-3">Chưa có bài quiz nào cho bài học này.</p>
+                      <p className="text-xs text-slate-400 italic py-3">
+                        Buổi học này không yêu cầu bài trắc nghiệm (chỉ cần xem đủ ≥ 80% thời gian thực của video).
+                      </p>
                     ) : (
                       <div className="space-y-3">
                         {activeUnit.quizzes.map((quiz) => (
                           <div
                             key={quiz.id}
-                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 hover:border-amber-400 transition"
+                            className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border transition ${
+                              quiz.isCompleted
+                                ? "border-emerald-300/70 bg-emerald-50/50 dark:border-emerald-800/60 dark:bg-emerald-950/20"
+                                : "border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 hover:border-amber-400"
+                            }`}
                           >
                             <div className="space-y-1">
-                              <h4 className="text-sm font-bold text-slate-900 dark:text-white">{quiz.title}</h4>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="text-sm font-bold text-slate-900 dark:text-white">{quiz.title}</h4>
+                                {quiz.isCompleted ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Đã hoàn thành
+                                    {quiz.bestScore !== null && quiz.bestScore !== undefined
+                                      ? ` • ${quiz.bestScore}${quiz.maxScore ? `/${quiz.maxScore}` : ""}`
+                                      : ""}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-300">
+                                    Cần hoàn thành để mở khóa bài tiếp
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-3">
                                 <span>Thời gian: {quiz.durationMinutes} phút</span>
                                 <span>•</span>
                                 <span>Điểm đạt: {quiz.passingScore}%</span>
+                                {quiz.attemptsCount > 0 && (
+                                  <>
+                                    <span>•</span>
+                                    <span>Số lần nộp: {quiz.attemptsCount}</span>
+                                  </>
+                                )}
                               </p>
                             </div>
 
                             <button
                               type="button"
-                              onClick={() => navigate(`/lms/quizzes/${quiz.id}`)}
-                              className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-slate-950 font-bold text-xs transition shadow-sm self-start sm:self-auto shrink-0"
+                              onClick={() => navigate(`/quizzes/${quiz.id}?backUrl=${encodeURIComponent(window.location.pathname)}`)}
+                              className={`px-4 py-2 rounded-xl font-bold text-xs transition shadow-sm self-start sm:self-auto shrink-0 ${
+                                quiz.isCompleted
+                                  ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                                  : "bg-slate-900 hover:bg-slate-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-slate-950"
+                              }`}
                             >
-                              Làm bài quiz →
+                              {quiz.isCompleted ? "Làm lại quiz →" : "Làm bài quiz →"}
                             </button>
                           </div>
                         ))}
@@ -741,11 +1160,7 @@ export default function VideoCourseWorkspacePage() {
                                       Chưa nộp
                                     </span>
                                   )}
-                                  {isMirrorMode && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                                      Học viên Record
-                                    </span>
-                                  )}
+                                  
                                 </div>
                                 <p className="text-xs text-slate-500 dark:text-slate-400">
                                   Thang điểm: {assignment.maxScore}đ {assignment.dueDate ? `• Hạn nộp: ${new Date(assignment.dueDate).toLocaleDateString("vi-VN")}` : ""}
@@ -897,45 +1312,51 @@ export default function VideoCourseWorkspacePage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                       {filteredVocabulary.map((v) => (
                         <div
                           key={v.id}
-                          className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 p-4 space-y-2 hover:shadow-md transition"
+                          className="group relative flex flex-col justify-between rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-4 shadow-sm hover:shadow-md hover:border-indigo-400/50 transition-all duration-200"
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="text-2xl font-black text-slate-900 dark:text-white font-serif">{v.term}</span>
-                            <button
-                              type="button"
-                              onClick={() => speakChinese(v.term)}
-                              className="p-2 rounded-xl bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 hover:text-blue-600 shadow-sm transition"
-                              title="Nghe phát âm"
-                            >
-                              <Volume2 className="h-4 w-4" />
-                            </button>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-2 text-xs">
-                            <span className="font-mono text-red-600 dark:text-amber-400 font-bold">{v.pinyin}</span>
-                            {v.sinoVietnamese && (
-                              <span className="text-slate-400">({v.sinoVietnamese})</span>
-                            )}
-                            {v.partOfSpeech && (
-                              <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-[10px] font-semibold text-slate-700 dark:text-slate-300">
-                                {v.partOfSpeech}
+                          <div>
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-2xl font-black text-slate-900 dark:text-white font-serif tracking-wide group-hover:text-indigo-500 transition-colors">
+                                {v.term}
                               </span>
-                            )}
-                          </div>
+                              <button
+                                type="button"
+                                onClick={() => speakChinese(v.term)}
+                                className="p-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white transition shadow-xs"
+                                title="Phát âm"
+                              >
+                                <Volume2 className="h-4 w-4" />
+                              </button>
+                            </div>
 
-                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 pt-1">
-                            {v.meaning}
-                          </p>
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs mt-1">
+                              <span className="font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-200/40 dark:border-amber-900/40">
+                                {v.pinyin}
+                              </span>
+                              {v.sinoVietnamese && (
+                                <span className="text-slate-400 text-[11px] font-medium">({v.sinoVietnamese})</span>
+                              )}
+                              {v.partOfSpeech && (
+                                <span className="px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                  {v.partOfSpeech}
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 pt-2.5">
+                              {v.meaning}
+                            </p>
+                          </div>
 
                           {v.exampleSentence && (
-                            <div className="text-xs pt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-0.5">
+                            <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 text-xs space-y-0.5 bg-slate-50/50 dark:bg-slate-800/30 p-2 rounded-xl">
                               <p className="text-slate-700 dark:text-slate-300 font-medium">{v.exampleSentence}</p>
                               {v.exampleMeaning && (
-                                <p className="text-slate-500 italic text-[11px]">{v.exampleMeaning}</p>
+                                <p className="text-slate-400 italic text-[11px]">{v.exampleMeaning}</p>
                               )}
                             </div>
                           )}
@@ -989,61 +1410,83 @@ export default function VideoCourseWorkspacePage() {
                       <p className="text-sm">Chưa có công thức nào trong danh mục này.</p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {filteredFormulas.map((fm) => (
-                        <div
-                          key={fm.id}
-                          className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-5 space-y-3"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                                {fm.subject} • {fm.chapterName}
-                              </span>
-                              <h4 className="text-sm font-black text-slate-900 dark:text-white mt-0.5">
-                                {fm.nameVi} {fm.nameZh ? `(${fm.nameZh})` : ""}
-                              </h4>
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {filteredFormulas.map((fm) => {
+                        const renderedLatex = renderKaTeX(fm.latexExpression || fm.latex, true);
+                        return (
+                          <div
+                            key={fm.id}
+                            className="group relative flex flex-col justify-between rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-4 sm:p-5 shadow-sm hover:shadow-md hover:border-amber-400/50 transition-all duration-200"
+                          >
+                            <div className="space-y-3">
+                              {/* Header Card: Subject badge + Name + Copy button */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                      {fm.subject || "CSCA"}
+                                    </span>
+                                    {fm.chapterName && (
+                                      <span className="text-[11px] font-medium text-slate-400">
+                                        • {fm.chapterName}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-white mt-1">
+                                    {fm.nameVi} {fm.nameZh && <span className="text-slate-500 dark:text-slate-400 font-normal">({fm.nameZh})</span>}
+                                  </h4>
+                                </div>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard?.writeText(fm.latexExpression);
-                                toast.success("Đã sao chép biểu thức công thức!");
-                              }}
-                              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 transition"
-                              title="Sao chép LaTeX"
-                            >
-                              <Copy className="h-3 w-3" />
-                              <span>Copy</span>
-                            </button>
-                          </div>
-
-                          {/* Formula Expression Box */}
-                          <div className="rounded-xl bg-white dark:bg-slate-950 p-4 text-center font-mono text-base sm:text-lg font-bold border border-slate-200/80 dark:border-slate-800 text-indigo-600 dark:text-sky-300 overflow-x-auto">
-                            {fm.latexExpression}
-                          </div>
-
-                          {fm.description && (
-                            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                              {fm.description}
-                            </p>
-                          )}
-
-                          {fm.variablesExplanation && fm.variablesExplanation.length > 0 && (
-                            <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
-                              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Chú giải biến số:</p>
-                              <div className="flex flex-wrap gap-2">
-                                {fm.variablesExplanation.map((v, i) => (
-                                  <span key={i} className="text-xs bg-slate-200/70 dark:bg-slate-700/70 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">
-                                    <strong className="font-mono">{v.symbol}</strong>: {v.meaning}
-                                  </span>
-                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard?.writeText(fm.latexExpression || fm.latex || "");
+                                    toast.success("Đã sao chép công thức LaTeX!");
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:bg-amber-500 hover:text-slate-950 dark:hover:bg-amber-400 transition"
+                                  title="Sao chép mã LaTeX"
+                                >
+                                  <Copy className="h-3 w-3" />
+                                  <span>Copy</span>
+                                </button>
                               </div>
+
+                              {/* Công thức KaTeX Display Box */}
+                              <div className="rounded-xl bg-slate-950 dark:bg-black/70 p-3.5 text-center border border-slate-800 shadow-inner overflow-x-auto min-h-[58px] flex items-center justify-center text-amber-300 dark:text-amber-200">
+                                {renderedLatex ? (
+                                  <div
+                                    className="katex-formula-rendered text-base sm:text-lg"
+                                    dangerouslySetInnerHTML={{ __html: renderedLatex }}
+                                  />
+                                ) : (
+                                  <span className="text-xs text-slate-500 italic">Chưa có biểu thức</span>
+                                )}
+                              </div>
+
+                              {/* Mô tả */}
+                              {fm.description && (
+                                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-3">
+                                  {fm.description}
+                                </p>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      ))}
+
+                            {/* Chú giải biến số nếu có */}
+                            {fm.variablesExplanation && fm.variablesExplanation.length > 0 && (
+                              <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800/80">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Chú giải:</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {fm.variablesExplanation.map((v, i) => (
+                                    <span key={i} className="text-[11px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg text-slate-700 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50">
+                                      <strong className="font-mono text-amber-600 dark:text-amber-400">{v.symbol}</strong>: {v.meaning}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1207,28 +1650,33 @@ export default function VideoCourseWorkspacePage() {
                       Kết quả & Tiến độ bài học
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      Thống kê tiến độ xem video (chuẩn hoàn thành ≥ 85%) và điểm số bài tập của bạn.
+                      Thống kê thời gian xem thực tế (chuẩn mở khóa ≥ 80%, không tính tua nhanh) và kết quả bài trắc nghiệm.
                     </p>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-3">
                     <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 text-center space-y-1">
-                      <p className="text-xs text-slate-400 font-bold uppercase">Tiến độ xem Video</p>
+                      <p className="text-xs text-slate-400 font-bold uppercase">Thời gian xem Video</p>
                       <p className="text-xl font-black text-amber-500 font-mono">
                         {Math.round(unitWatchPercent)}%
                       </p>
                       <p className="text-[11px] text-slate-500">
-                        {isCompletedUnit ? "Đã đạt chuẩn ≥ 85%" : "Cần đạt 85% để hoàn thành"}
+                        {unitWatchPercent >= REQUIRED_WATCH_PERCENT ? "Đã đạt chuẩn ≥ 80%" : "Cần đạt 80% thời gian thực"}
                       </p>
                     </div>
 
                     <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 text-center space-y-1">
-                      <p className="text-xs text-slate-400 font-bold uppercase">Bài tập nộp</p>
+                      <p className="text-xs text-slate-400 font-bold uppercase">Trắc nghiệm (Quiz)</p>
                       <p className="text-xl font-black text-slate-900 dark:text-white font-mono">
-                        {(activeUnit?.assignments || []).filter((a) => a.isSubmitted).length}/{(activeUnit?.assignments || []).length}
+                        {activeUnitMeta?.completedQuizCount ?? (activeUnit?.quizzes || []).filter((q) => q.isCompleted).length}/
+                        {activeUnitMeta?.quizCount ?? (activeUnit?.quizzes || []).length}
                       </p>
                       <p className="text-[11px] text-slate-500">
-                        {isMirrorMode ? "Giáo viên lớp nguồn chấm" : "Hệ thống chấm điểm"}
+                        {(activeUnitMeta?.quizCount ?? (activeUnit?.quizzes || []).length) === 0
+                          ? "Không yêu cầu ở buổi này"
+                          : activeUnitMeta?.isQuizCompleted
+                            ? "Đã hoàn thành Quiz"
+                            : "Cần hoàn thành để mở bài tiếp"}
                       </p>
                     </div>
 
@@ -1249,14 +1697,24 @@ export default function VideoCourseWorkspacePage() {
 
           {/* RIGHT 4/12: Curriculum & Lessons Sidebar */}
           <aside className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-amber-500" />
-                Danh sách bài học
-              </h3>
-              <span className="text-xs font-mono font-bold text-slate-400">
-                {units.length} bài
-              </span>
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-amber-500" />
+                  Lộ trình bài giảng
+                </h3>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  {progress.completedUnits || 0}/{units.length} hoàn thành
+                </span>
+              </div>
+
+              {/* Sequential Unlock Policy Mini Banner */}
+              <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2">
+                <ShieldCheck className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="leading-snug">
+                  Mở khóa tuần tự: Xem thực tế <strong>≥ 80% thời lượng video</strong> (không tính tua) và <strong>hoàn thành Quiz</strong> để học bài kế tiếp.
+                </p>
+              </div>
             </div>
 
             {/* Search filter in curriculum */}
@@ -1272,79 +1730,192 @@ export default function VideoCourseWorkspacePage() {
             </div>
 
             {/* Units list */}
-            <div className="space-y-2 max-h-[640px] overflow-y-auto pr-1">
+            <div className="space-y-2.5 max-h-[680px] overflow-y-auto pr-1">
               {filteredUnits.map((unit, index) => {
                 const isCurrent = String(unit.id) === String(activeUnitId);
-                const isDone = unit.isCompleted;
-                const statusBadge = unit.videoStatus && unit.videoStatus !== "ready" && unit.videoStatus !== "none"
-                  ? unit.videoStatus
-                  : null;
+                const isDone = Boolean(unit.isCompleted);
+                const isLocked = Boolean(unit.isLocked);
+                const pct = Math.min(100, Math.max(0, Math.round(unit.progressPercent || 0)));
+                const videoDone = Boolean(unit.isVideoCompleted) || pct >= REQUIRED_WATCH_PERCENT;
+                const hasQuiz = Number(unit.quizCount || 0) > 0;
+                const quizDone = !hasQuiz || Number(unit.completedQuizCount || 0) >= Number(unit.quizCount || 0);
+                const watchedSec = Number(unit.watchedSeconds || 0);
+                const totalSec = Number(unit.videoDurationSeconds || 0);
+                const durationLabel = formatVideoDurationLabel(unit);
 
                 return (
                   <button
                     key={unit.id}
                     type="button"
                     onClick={() => handleSelectUnit(unit)}
-                    className={`w-full text-left p-3.5 rounded-2xl transition flex items-start gap-3 border ${
+                    title={isLocked ? unit.lockReason || "Hoàn thành bài trước để mở khóa" : unit.title}
+                    className={`group w-full text-left p-3.5 rounded-2xl transition-all duration-200 flex items-start gap-3 border ${
                       isCurrent
-                        ? "bg-slate-900 text-white shadow-lg shadow-slate-950/20 border-slate-900 dark:bg-amber-500 dark:text-slate-950 dark:border-amber-500"
+                        ? "bg-gradient-to-br from-amber-500 to-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 border-amber-400"
                         : isDone
-                          ? "bg-emerald-50/50 text-slate-800 border-emerald-200/60 dark:bg-emerald-950/20 dark:text-slate-200 dark:border-emerald-900/40 hover:bg-emerald-50"
-                          : "bg-slate-50/80 text-slate-700 border-slate-200/70 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-800 hover:bg-slate-100"
+                          ? "bg-emerald-50/60 text-slate-800 border-emerald-200/80 dark:bg-emerald-950/20 dark:text-slate-100 dark:border-emerald-800/50 hover:border-emerald-400"
+                          : isLocked
+                            ? "bg-slate-100/70 text-slate-400 border-slate-200/60 dark:bg-slate-900/60 dark:text-slate-500 dark:border-slate-800/80 opacity-80 hover:opacity-100"
+                            : "bg-slate-50/90 text-slate-800 border-slate-200/80 dark:bg-slate-800/60 dark:text-slate-200 dark:border-slate-800 hover:border-amber-400/60 hover:bg-white dark:hover:bg-slate-800"
                     }`}
                   >
-                    {/* Status Icon */}
-                    <span className="mt-0.5 shrink-0">
-                      {isDone ? (
-                        <CheckCircle2 className={`h-4 w-4 ${isCurrent ? "text-white dark:text-slate-950" : "text-emerald-500"}`} />
+                    {/* Status Icon Badge */}
+                    <span
+                      className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border text-xs font-black transition ${
+                        isCurrent
+                          ? "border-slate-950/20 bg-slate-950 text-amber-400"
+                          : isDone
+                            ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                            : isLocked
+                              ? "border-slate-300 bg-slate-200/70 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
+                              : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
+                      {isLocked ? (
+                        <Lock className="h-3.5 w-3.5" />
+                      ) : isDone ? (
+                        <CheckCircle2 className="h-4 w-4" />
                       ) : isCurrent ? (
-                        <Play className="h-4 w-4 fill-current text-white dark:text-slate-950" />
+                        <Play className="h-3.5 w-3.5 fill-current" />
                       ) : (
-                        <span className="flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 dark:border-slate-600 text-[10px] font-bold text-slate-400">
-                          {index + 1}
-                        </span>
+                        <span>{unit.sessionNumber || index + 1}</span>
                       )}
                     </span>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider truncate ${
-                          isCurrent ? "text-white/80 dark:text-slate-900/80" : "text-slate-400"
-                        }`}>
-                          {unit.sectionTitle || `Buổi ${unit.sessionNumber || index + 1}`}
-                        </span>
-                        <span className={`text-[10px] font-mono shrink-0 ${
-                          isCurrent ? "text-white/80 dark:text-slate-900/80" : "text-slate-400"
-                        }`}>
-                          {unit.durationMinutes}p
-                        </span>
-                      </div>
-
-                      <h4 className={`text-xs font-bold truncate mt-0.5 ${
-                        isCurrent ? "text-white dark:text-slate-950" : "text-slate-900 dark:text-white"
-                      }`}>
-                        {unit.title}
-                      </h4>
-
-                      {(unit.progressPercent > 0 || statusBadge) && (
-                        <div className="mt-1.5 flex items-center gap-2">
-                          {unit.progressPercent > 0 && (
-                            <div className="flex-1 h-1 rounded-full bg-black/15 dark:bg-white/15 overflow-hidden">
-                              <div
-                                style={{ width: `${Math.min(100, unit.progressPercent)}%` }}
-                                className={`h-full rounded-full ${
-                                  isCurrent ? "bg-amber-400 dark:bg-slate-950" : "bg-emerald-500"
-                                }`}
-                              />
-                            </div>
-                          )}
-                          {statusBadge && (
-                            <span className="rounded px-1.5 py-0.2 text-[9px] font-bold uppercase bg-amber-500/20 text-amber-400">
-                              {statusBadge}
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      {/* Row 1: Session Label + Real Video Duration */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className={`text-[10px] font-black uppercase tracking-wider truncate ${
+                              isCurrent
+                                ? "text-slate-950/80"
+                                : isLocked
+                                  ? "text-slate-400 dark:text-slate-500"
+                                  : "text-amber-600 dark:text-amber-400"
+                            }`}
+                          >
+                            {unit.sectionTitle || `Buổi ${unit.sessionNumber || index + 1}`}
+                          </span>
+                          {isLocked && (
+                            <span className="inline-flex items-center gap-0.5 rounded bg-slate-200/90 dark:bg-slate-800 px-1.5 py-0.2 text-[9px] font-bold uppercase text-slate-500 dark:text-slate-400">
+                              Khóa
                             </span>
                           )}
                         </div>
-                      )}
+
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-mono font-bold shrink-0 ${
+                            isCurrent
+                              ? "bg-slate-950/15 text-slate-950"
+                              : "bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                          }`}
+                        >
+                          <Clock className="h-2.5 w-2.5" />
+                          <span>{durationLabel}</span>
+                        </span>
+                      </div>
+
+                      {/* Row 2: Lesson Title (2 lines max) */}
+                      <h4
+                        className={`text-xs font-extrabold leading-snug line-clamp-2 ${
+                          isCurrent
+                            ? "text-slate-950"
+                            : isLocked
+                              ? "text-slate-500 dark:text-slate-400"
+                              : "text-slate-900 dark:text-white"
+                        }`}
+                      >
+                        {unit.title}
+                      </h4>
+
+                      {/* Row 3: Sleek Progress Bar with 80% Marker & Detailed Watch/Quiz Pills */}
+                      <div
+                        className={`pt-2 border-t space-y-1.5 ${
+                          isCurrent
+                            ? "border-slate-950/15"
+                            : "border-slate-200/70 dark:border-slate-800"
+                        }`}
+                      >
+                        <div
+                          className={`relative h-2 w-full rounded-full overflow-hidden ${
+                            isCurrent
+                              ? "bg-slate-950/20"
+                              : "bg-slate-200/90 dark:bg-slate-700/70"
+                          }`}
+                        >
+                          <div
+                            style={{ width: `${pct}%` }}
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              isCurrent
+                                ? "bg-slate-950"
+                                : videoDone
+                                  ? "bg-gradient-to-r from-emerald-500 to-teal-400"
+                                  : pct > 0
+                                    ? "bg-gradient-to-r from-amber-500 to-orange-400"
+                                    : "bg-transparent"
+                            }`}
+                          />
+                          {/* 80% threshold tick mark */}
+                          <div
+                            className={`pointer-events-none absolute inset-y-0 w-0.5 ${
+                              isCurrent ? "bg-white/75" : "bg-slate-900/40 dark:bg-white/40"
+                            }`}
+                            style={{ left: `${REQUIRED_WATCH_PERCENT}%` }}
+                            title="Mốc 80% mở khóa"
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-1 text-[10px]">
+                          <span
+                            className={`font-mono font-semibold ${
+                              isCurrent
+                                ? "text-slate-950/85"
+                                : "text-slate-500 dark:text-slate-400"
+                            }`}
+                          >
+                            {totalSec > 0
+                              ? `Đã xem: ${formatTimeMMSS(watchedSec)} / ${formatTimeMMSS(totalSec)}`
+                              : watchedSec > 0
+                                ? `Đã xem: ${formatTimeMMSS(watchedSec)}`
+                                : isLocked
+                                  ? "Hoàn thành buổi trước để mở"
+                                  : "Chưa xem"}
+                          </span>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`rounded-md px-1.5 py-0.5 font-mono font-black ${
+                                isCurrent
+                                  ? "bg-slate-950 text-amber-400"
+                                  : videoDone
+                                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
+                                    : pct > 0
+                                      ? "bg-amber-500/15 text-amber-600 dark:text-amber-300"
+                                      : "bg-slate-200/70 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                              }`}
+                            >
+                              {pct}%/80%
+                            </span>
+
+                            {hasQuiz && (
+                              <span
+                                className={`rounded-md px-1.5 py-0.5 font-bold ${
+                                  isCurrent
+                                    ? quizDone
+                                      ? "bg-slate-950 text-emerald-300"
+                                      : "bg-slate-950/20 text-slate-950"
+                                    : quizDone
+                                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
+                                      : "bg-amber-500/15 text-amber-600 dark:text-amber-300"
+                                }`}
+                              >
+                                {quizDone ? "✓" : "📝"} Quiz {unit.completedQuizCount || 0}/{unit.quizCount}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </button>
                 );
