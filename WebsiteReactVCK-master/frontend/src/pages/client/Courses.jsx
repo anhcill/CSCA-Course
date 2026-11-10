@@ -2,7 +2,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { HiStar } from "react-icons/hi2";
 import toast from 'react-hot-toast';
-import { GraduationCap, BookOpen, Sparkles, Trophy, Lock } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { GraduationCap, BookOpen, Sparkles, Trophy, Play, Video, ArrowRight, ShieldCheck, Lock } from 'lucide-react';
 import useGetCourse from '../../hooks/useGetCourse';
 import useGetProgress from '../../hooks/useGetProgress';
 import { useTheme } from '../../context/ThemeContext';
@@ -13,6 +14,7 @@ import CourseSeoGuide from '../../components/course/CourseSeoGuide.jsx';
 import Meta from '../../components/Meta.jsx';
 import Loading from '../../components/Loading';
 import { getClassCoverImage } from '../../utils/classWallpapers';
+import { fetchVideoCourseCatalog } from '../../features/api/lmsClient';
 
 const CATEGORIES = [
   { id: 'ALL', label: 'Tất Cả Khóa Học', icon: BookOpen },
@@ -97,7 +99,7 @@ const COURSES_STRUCTURED_DATA = {
 
 const Courses = () => {
   const { t } = useTranslation();
-  const { courses, loading, isDemo } = useGetCourse({ demoFallback: true });
+  const { courses, loading, error: coursesError } = useGetCourse();
   const { progress } = useGetProgress();
   const { isDarkMode } = useTheme();
   const { authUser } = useAuthContext();
@@ -106,6 +108,39 @@ const Courses = () => {
   const [ratingFormVisible, setRatingFormVisible] = useState(false);
   const [selectedCourseForRating, setSelectedCourseForRating] = useState(null);
   const [courseRatings, setCourseRatings] = useState({});
+  const [videoOfferings, setVideoOfferings] = useState([]);
+  const [videoCatalogError, setVideoCatalogError] = useState('');
+  const [videoCatalogLoading, setVideoCatalogLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchVideoCourseCatalog()
+      .then((response) => {
+        if (cancelled) return;
+        setVideoOfferings(Array.isArray(response?.data) ? response.data : []);
+        setVideoCatalogError('');
+      })
+      .catch((catalogError) => {
+        if (cancelled) return;
+        setVideoOfferings([]);
+        setVideoCatalogError(catalogError?.message || 'Không thể tải danh sách khóa video');
+      })
+      .finally(() => {
+        if (!cancelled) setVideoCatalogLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const videoOfferingByCourseId = useMemo(() => {
+    const map = new Map();
+    videoOfferings.forEach((offering) => {
+      const courseId = String(offering?.id || '');
+      if (courseId && !map.has(courseId)) map.set(courseId, offering);
+    });
+    return map;
+  }, [videoOfferings]);
 
   const filterProgress = authUser ? progress?.filter((item) => {
     return item.userId === authUser?._id;
@@ -171,7 +206,7 @@ const Courses = () => {
     return { cscaCourses: csca, chineseCourses: chinese, otherCourses: other };
   }, [courses]);
 
-  // Render một thẻ khóa học đơn lẻ (Chế độ Coming Soon: khóa lại)
+  // Chỉ những khóa có profile video thực từ API mới được mở workspace video.
   const renderCourseCard = (course) => {
     const courseId = course._id || course.id;
     const courseRatingData = courseRatings[courseId] || {};
@@ -179,130 +214,177 @@ const Courses = () => {
     const totalRatings = courseRatingData.totalRatings || 0;
     const name = course.nameCourse || course.title || course.name;
     const isCsca = (course.category || '').toUpperCase().includes('CSCA') || (name || '').toUpperCase().includes('CSCA');
+    const videoOffering = videoOfferingByCourseId.get(String(courseId));
+    const isVideoCourse = Boolean(videoOffering);
+    const isIndependent = videoOffering?.videoMode === 'INDEPENDENT';
+    const targetUrl = isVideoCourse ? `/lms/video-courses/${courseId}` : null;
+    const userProgress = filterProgress?.find((item) => String(item.courseId) === String(courseId));
+    const progressPercent = userProgress?.progressPercentage || 0;
+    const isCompleted = progressPercent >= 100;
 
-    const handleLockedClick = (e) => {
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-      toast('Khóa học đang được chuẩn bị và sẽ sớm ra mắt (Coming Soon)! Vui lòng đón chờ nhé! 🚀', {
+    const handleLockedClick = (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      toast('Khóa học đang được chuẩn bị và sẽ sớm ra mắt (Coming Soon)!', {
         icon: '🔒',
         duration: 4000,
       });
     };
 
+    const CardContent = (
+      <div>
+        <div className="relative pb-[56.25%] overflow-hidden bg-slate-950">
+          <img
+            src={course.imageCourse || course.thumbnail_url || videoOffering?.thumbnailUrl || getClassCoverImage(course, course.slug || course.id)}
+            alt={name}
+            className="absolute inset-0 w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent"></div>
+
+          <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 z-10">
+            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-sm border ${
+              isCsca
+                ? 'bg-indigo-600/90 text-white border-indigo-400/40'
+                : 'bg-red-600/90 text-white border-red-400/40'
+            }`}>
+              {isCsca ? 'Mục CSCA' : 'Mục Tiếng Trung'}
+            </span>
+            {isVideoCourse && (
+              <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-900/80 text-amber-300 border border-amber-400/30 backdrop-blur-md flex items-center gap-1">
+                <Video className="w-2.5 h-2.5" /> Video Record
+              </span>
+            )}
+          </div>
+
+          <div className={`absolute top-3 right-3 flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-lg border z-10 ${
+            isVideoCourse
+              ? isIndependent
+                ? 'bg-purple-950/90 text-purple-200 border-purple-400/40'
+                : 'bg-blue-950/90 text-sky-200 border-sky-400/40'
+              : 'bg-amber-500/95 text-slate-950 border-amber-300/50'
+          }`}>
+            {isVideoCourse ? <Sparkles className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+            <span>{isVideoCourse ? (isIndependent ? 'Video độc lập' : 'Record kế thừa') : 'Coming Soon'}</span>
+          </div>
+
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
+            <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-black shadow-xl transform group-hover:scale-105 transition-transform ${
+              isVideoCourse
+                ? 'bg-gradient-to-r from-red-600 to-amber-500 text-white shadow-red-950/50'
+                : 'border border-amber-500/40 bg-slate-900/90 text-amber-400'
+            }`}>
+              {isVideoCourse ? <Play className="h-4 w-4 fill-white" /> : <Lock className="h-4 w-4" />}
+              {isVideoCourse
+                ? authUser && progressPercent > 0 ? 'Tiếp tục bài học' : 'Vào xem bài giảng'
+                : 'Khóa học sắp ra mắt'}
+            </span>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 truncate">
+              {course.authorName || videoOffering?.instructorName || 'Moly Course'}
+            </p>
+            {isVideoCourse && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                <ShieldCheck className="w-3 h-3" /> {videoOffering?.deviceLimit || 2} thiết bị
+              </span>
+            )}
+          </div>
+
+          <h2 className={`font-bold text-base sm:text-lg line-clamp-2 leading-snug group-hover:text-amber-500 transition-colors ${
+            isDarkMode ? 'text-gray-100' : 'text-gray-900'
+          }`}>
+            {name}
+          </h2>
+
+          {course.description && (
+            <p className={`line-clamp-2 min-h-[38px] text-xs leading-relaxed ${
+              isDarkMode ? 'text-gray-400' : 'text-gray-600'
+            }`}>
+              {course.description}
+            </p>
+          )}
+
+          {(course.level || course.duration || course.lessonsCount || videoOffering?.totalLessons) && (
+            <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold pt-1">
+              {course.level && (
+                <span className="rounded-md bg-red-50 dark:bg-red-950/40 px-2.5 py-0.5 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/50">
+                  {course.level}
+                </span>
+              )}
+              {course.duration && (
+                <span className="rounded-md bg-amber-50 dark:bg-amber-950/40 px-2.5 py-0.5 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/50">
+                  {course.duration}
+                </span>
+              )}
+              {(course.lessonsCount || videoOffering?.totalLessons) && (
+                <span className="rounded-md bg-blue-50 dark:bg-blue-950/40 px-2.5 py-0.5 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/50">
+                  {course.lessonsCount || videoOffering.totalLessons} bài học
+                </span>
+              )}
+            </div>
+          )}
+
+          {authUser && isVideoCourse && (
+            <div className="space-y-1.5 pt-2">
+              <div className="flex justify-between items-center text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                <span>Tiến độ học</span>
+                <span className="font-bold text-amber-500">{progressPercent}%</span>
+              </div>
+              <div className={`h-1.5 rounded-full overflow-hidden ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                <div
+                  className={`h-full transition-all duration-300 ${isCompleted ? 'bg-emerald-500' : 'bg-gradient-to-r from-red-500 to-amber-500'}`}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+
     return (
       <div
         key={courseId}
         className={`group rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transform hover:-translate-y-1.5 transition-all duration-300 flex flex-col justify-between border ${
-          isDarkMode ? 'bg-gray-800/90 border-gray-700/80 hover:border-amber-500/50' : 'bg-white border-gray-100 hover:border-amber-300'
+          isDarkMode
+            ? 'bg-slate-900/90 border-slate-800 hover:border-amber-500/50 shadow-black/40'
+            : 'bg-white border-slate-100 hover:border-amber-300 shadow-slate-200/50'
         }`}
       >
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={handleLockedClick}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleLockedClick(e); }}
-          className="block flex-1 cursor-pointer text-left focus:outline-none"
-        >
-          <div>
-            <div className="relative pb-[56.25%] overflow-hidden bg-slate-900">
-              <img
-                src={course.imageCourse || course.thumbnail_url || getClassCoverImage(course, course.slug || course.id)}
-                alt={name}
-                className="absolute inset-0 w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent"></div>
-
-              {/* Category Badge on image */}
-              <div className="absolute top-3 left-3 flex gap-1.5">
-                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-sm border ${
-                  isCsca ? 'bg-indigo-600/80 text-white border-indigo-400/40' : 'bg-red-600/80 text-white border-red-400/40'
-                }`}>
-                  {isCsca ? 'Mục CSCA' : 'Mục Tiếng Trung'}
-                </span>
-                {course.isDemo && (
-                  <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/85 text-white border border-amber-300/40">
-                    Xem trước
-                  </span>
-                )}
-              </div>
-
-              {/* Locked Coming Soon Pill on Top Right */}
-              <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-lg bg-amber-500/95 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-950 backdrop-blur-md shadow-lg border border-amber-300/50">
-                <Lock className="h-3 w-3" />
-                <span>Coming Soon</span>
-              </div>
-
-              {/* Hover lock overlay */}
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/40 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/90 px-3.5 py-1.5 text-xs font-black text-amber-400 shadow-xl border border-amber-500/40">
-                  <Lock className="h-3.5 w-3.5" /> Khóa học sắp ra mắt
-                </span>
-              </div>
-            </div>
-
-            <div className="p-5 space-y-3">
-              <h2 className={`font-bold text-base sm:text-lg line-clamp-2 leading-snug group-hover:text-amber-500 transition-colors ${
-                isDarkMode ? 'text-gray-100' : 'text-gray-900'
-              }`}>
-                {name}
-              </h2>
-
-              <p className={`text-xs font-semibold text-slate-500 dark:text-slate-400`}>
-                {course.authorName || 'Moly Course'}
-              </p>
-
-              {course.description && (
-                <p className={`line-clamp-2 min-h-[38px] text-xs leading-relaxed ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                }`}>
-                  {course.description}
-                </p>
-              )}
-
-              {(course.level || course.duration || course.lessonsCount) && (
-                <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold pt-1">
-                  {course.level && (
-                    <span className="rounded-md bg-red-50 dark:bg-red-950/40 px-2.5 py-0.5 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/50">
-                      {course.level}
-                    </span>
-                  )}
-                  {course.duration && (
-                    <span className="rounded-md bg-amber-50 dark:bg-amber-950/40 px-2.5 py-0.5 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/50">
-                      {course.duration}
-                    </span>
-                  )}
-                  {course.lessonsCount && (
-                    <span className="rounded-md bg-blue-50 dark:bg-blue-950/40 px-2.5 py-0.5 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/50">
-                      {course.lessonsCount} bài học
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {authUser && (
-                <div className="space-y-1.5 pt-2">
-                  <div className={`h-1.5 rounded-full overflow-hidden ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                    <div
-                      className="h-full bg-gradient-to-r from-red-500 to-amber-500 transition-all duration-300"
-                      style={{
-                        width: `${filterProgress?.find((item) => item.courseId === courseId)?.progressPercentage || 0}%`
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+        {isVideoCourse ? (
+          <Link to={targetUrl} className="block flex-1 text-left focus:outline-none">
+            {CardContent}
+          </Link>
+        ) : (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={handleLockedClick}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') handleLockedClick(event);
+            }}
+            className="block flex-1 cursor-pointer text-left focus:outline-none"
+          >
+            {CardContent}
           </div>
-        </div>
+        )}
 
         {/* Card Footer */}
-        <div className={`p-4 border-t ${isDarkMode ? 'border-gray-700/60' : 'border-gray-100'} flex items-center justify-between gap-2`}>
+        <div className={`p-4 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'} flex items-center justify-between gap-2`}>
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               className="flex items-center gap-1 text-xs text-amber-500 font-semibold"
               onClick={() => {
-                toast('Đánh giá sẽ mở khi khóa học chính thức phát hành.', { icon: 'ℹ️' });
+                if (isVideoCourse) {
+                  setSelectedCourseForRating(course);
+                  setRatingFormVisible(true);
+                } else {
+                  toast('Đánh giá sẽ mở khi khóa học chính thức phát hành.', { icon: 'ℹ️' });
+                }
               }}
             >
               <HiStar className="text-amber-400 text-base" />
@@ -311,14 +393,34 @@ const Courses = () => {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleLockedClick}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-black transition shadow-sm border border-amber-500/30 dark:bg-slate-800 dark:hover:bg-slate-700"
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span>Coming Soon</span>
-          </button>
+          {isVideoCourse ? (
+            <Link
+              to={targetUrl}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white text-xs font-black transition shadow-md shadow-red-950/20 active:scale-95"
+            >
+              {authUser && progressPercent > 0 ? (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                  <span>Tiếp tục học</span>
+                </>
+              ) : (
+                <>
+                  <Video className="w-3.5 h-3.5" />
+                  <span>Vào học ngay</span>
+                  <ArrowRight className="w-3 h-3" />
+                </>
+              )}
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLockedClick}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-black transition shadow-sm border border-amber-500/30 dark:bg-slate-800 dark:hover:bg-slate-700"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Coming Soon</span>
+            </button>
+          )}
         </div>
       </div>
     );
@@ -334,7 +436,7 @@ const Courses = () => {
         structuredData={COURSES_STRUCTURED_DATA}
       />
 
-      {loading ? (
+      {loading || videoCatalogLoading ? (
         <Loading loading={true} text="Đang tải danh sách khóa học..." fullScreen={false} className="min-h-[60vh] py-16" />
       ) : (
         <div className="container mx-auto px-4 pb-20 pt-24 max-w-7xl space-y-10">
@@ -348,8 +450,8 @@ const Courses = () => {
                   Moly Course • Lộ Trình Học Tập
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-400 text-slate-950 shadow-md">
-                  <Lock className="w-3.5 h-3.5" />
-                  Coming Soon · Đang Hoàn Thiện
+                  {videoOfferings.length > 0 ? <Video className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                  {videoOfferings.length > 0 ? 'Khóa video đang mở' : 'Coming Soon · Đang Hoàn Thiện'}
                 </span>
               </div>
               <h1 className="mt-3 max-w-3xl text-2xl sm:text-4xl font-black tracking-tight leading-tight">
@@ -358,9 +460,9 @@ const Courses = () => {
               <p className="mt-3 max-w-2xl text-sm leading-6 text-white/90 sm:text-base font-light">
                 Chọn mục bạn cần học: Chuẩn bị thi CSCA Toán & Dự bị Đại học, hoặc Luyện thi Tiếng Trung chuẩn HSK 1–6 và HSKK.
               </p>
-              {isDemo && (
-                <div className="mt-5 inline-flex rounded-full border border-white/25 bg-white/15 px-4 py-1.5 text-xs font-bold backdrop-blur-sm">
-                  Chế độ xem trước · Đang sử dụng dữ liệu khóa học mẫu
+              {(coursesError || videoCatalogError) && (
+                <div className="mt-5 rounded-xl border border-white/25 bg-white/15 px-4 py-2 text-xs font-semibold backdrop-blur-sm">
+                  {coursesError || videoCatalogError}
                 </div>
               )}
             </div>

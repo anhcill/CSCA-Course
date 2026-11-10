@@ -28,6 +28,7 @@ const ACCOUNT_STATUSES = new Set(["pending_payment", "active", "suspended", "rev
 const CLASS_STATUSES = new Set(["active", "completed", "cancelled"]);
 const MEMBERSHIP_STATUSES = new Set(["active", "suspended", "revoked"]);
 const LEARNING_MODES = new Set(["live", "recording"]);
+const RECORDING_CONTENT_MODES = new Set(["MIRROR", "INDEPENDENT"]);
 const COURSE_LEVELS = new Set(["beginner", "intermediate", "advanced"]);
 const TEACHING_ROLES = new Set(["lead", "co_teacher", "assistant"]);
 
@@ -242,8 +243,9 @@ const findClass = async (client, classSourceId) => {
 
 const resolveMembershipClass = async (client, classSourceId) => {
   const direct = await client.query(
-    `SELECT id, title, instructor_id, management_source_updated_at,
+    `SELECT id, title, instructor_id, course_id, management_source_updated_at,
             'live'::text AS default_learning_mode,
+            NULL::text AS recording_content_mode,
             NULL::bigint AS management_class_alias_id,
             NULL::text AS management_alias_title
      FROM live_classes WHERE LOWER(management_class_source_id) = LOWER($1) FOR UPDATE`,
@@ -251,11 +253,16 @@ const resolveMembershipClass = async (client, classSourceId) => {
   );
   if (direct.rows[0]) return direct.rows[0];
   const alias = await client.query(
-    `SELECT lc.id, lc.title, lc.instructor_id, alias.management_source_updated_at,
-            alias.learning_mode AS default_learning_mode, alias.status AS alias_status,
-            alias.id AS management_class_alias_id, alias.title AS management_alias_title
+    `SELECT lc.id, COALESCE(lc.title, alias.title) AS title, lc.instructor_id,
+            COALESCE(lc.course_id, alias.course_id) AS course_id,
+            alias.management_source_updated_at,
+            alias.learning_mode AS default_learning_mode,
+            alias.recording_content_mode,
+            alias.status AS alias_status,
+            alias.id AS management_class_alias_id,
+            alias.title AS management_alias_title
      FROM management_class_learning_aliases alias
-     JOIN live_classes lc ON lc.id = alias.live_class_id
+     LEFT JOIN live_classes lc ON lc.id = alias.live_class_id
      WHERE LOWER(alias.alias_class_source_id) = LOWER($1)
      FOR UPDATE OF alias`,
     [classSourceId],
@@ -463,8 +470,32 @@ const parseClass = (payload, occurredAt) => {
     128,
     "sourceClassSourceId",
   );
-  if (learningMode === "recording" && !sourceClassSourceId) {
-    throw new SyncValidationError("Lớp RECORDING phải chọn sourceClassSourceId của lớp chính");
+  const rawRecordingContentMode = optionalText(
+    payload.recordingContentMode,
+    30,
+    "recordingContentMode",
+  );
+  let recordingContentMode = null;
+  if (learningMode === "live") {
+    if (rawRecordingContentMode) {
+      throw new SyncValidationError("Lớp LIVE không được cấu hình recordingContentMode");
+    }
+    if (sourceClassSourceId) {
+      throw new SyncValidationError("Lớp LIVE không được cấu hình sourceClassSourceId");
+    }
+  } else {
+    recordingContentMode = rawRecordingContentMode
+      ? rawRecordingContentMode.toUpperCase()
+      : "MIRROR";
+    if (!RECORDING_CONTENT_MODES.has(recordingContentMode)) {
+      throw new SyncValidationError("recordingContentMode không hợp lệ (chỉ chấp nhận MIRROR hoặc INDEPENDENT)");
+    }
+    if (recordingContentMode === "MIRROR" && !sourceClassSourceId) {
+      throw new SyncValidationError("Lớp RECORDING phải chọn sourceClassSourceId của lớp chính");
+    }
+    if (recordingContentMode === "INDEPENDENT" && sourceClassSourceId) {
+      throw new SyncValidationError("Lớp RECORDING chế độ INDEPENDENT không được có sourceClassSourceId");
+    }
   }
   return {
     classSourceId: sourceId(payload.classSourceId, "classSourceId"),
@@ -475,6 +506,7 @@ const parseClass = (payload, occurredAt) => {
     status: enumValue(payload.status, CLASS_STATUSES, "active", "status"),
     leadTeacherSourceId: optionalText(payload.leadTeacherSourceId || payload.teacherSourceId, 128, "leadTeacherSourceId"),
     learningMode,
+    recordingContentMode,
     sourceClassSourceId,
     sourceUpdatedAt: sourceDate(payload, occurredAt),
   };
@@ -539,11 +571,6 @@ const syncClass = async (client, event) => {
     throw new SyncValidationError("maxStudents phải từ 1 đến 1000");
   }
   if (input.learningMode === "recording") {
-    const sourceClass = await findClass(client, input.sourceClassSourceId);
-    const sourceCourse = await client.query("SELECT course_id FROM live_classes WHERE id = $1", [sourceClass.id]);
-    if (Number(sourceCourse.rows[0]?.course_id) !== Number(course.id)) {
-      throw new SyncValidationError("Lớp RECORDING phải ánh xạ tới lớp chính cùng khóa học");
-    }
     const conflictingLiveClass = await client.query(
       "SELECT id FROM live_classes WHERE LOWER(management_class_source_id) = LOWER($1)",
       [input.classSourceId],
@@ -552,7 +579,7 @@ const syncClass = async (client, event) => {
       throw new SyncValidationError("classSourceId đã được dùng cho một lớp LIVE");
     }
     const existingAlias = await client.query(
-      `SELECT id, live_class_id, management_source_updated_at
+      `SELECT id, live_class_id, course_id, recording_content_mode, management_source_updated_at
        FROM management_class_learning_aliases
        WHERE LOWER(alias_class_source_id) = LOWER($1) FOR UPDATE`,
       [input.classSourceId],
@@ -560,20 +587,83 @@ const syncClass = async (client, event) => {
     if (existingAlias.rows[0] && !sameOrNewer(existingAlias.rows[0].management_source_updated_at, input.sourceUpdatedAt)) {
       return { action: "class.recording_alias.stale_ignored", entityType: "class_learning_alias", entityId: Number(existingAlias.rows[0].id), data: { classSourceId: input.classSourceId } };
     }
+
+    const profileStatus = input.status === "cancelled" ? "archived" : "active";
+
+    if (input.recordingContentMode === "INDEPENDENT") {
+      const alias = await client.query(
+        `INSERT INTO management_class_learning_aliases
+           (alias_class_source_id, source_class_source_id, live_class_id, course_id,
+            learning_mode, recording_content_mode, title, status, management_source_updated_at)
+         VALUES ($1, NULL, NULL, $2, 'recording', 'INDEPENDENT', $3, $4, $5)
+         ON CONFLICT (LOWER(alias_class_source_id)) DO UPDATE SET
+           source_class_source_id = NULL,
+           live_class_id = NULL,
+           course_id = EXCLUDED.course_id,
+           recording_content_mode = 'INDEPENDENT',
+           title = EXCLUDED.title,
+           status = EXCLUDED.status,
+           management_source_updated_at = EXCLUDED.management_source_updated_at
+         RETURNING id, alias_class_source_id, source_class_source_id, live_class_id,
+                   course_id, learning_mode, recording_content_mode, title, status`,
+        [input.classSourceId, course.id, input.title, input.status, input.sourceUpdatedAt],
+      );
+      await client.query(
+        `INSERT INTO video_course_profiles
+           (course_id, management_class_id, mode, source_live_class_id, status)
+         VALUES ($1, $2, 'INDEPENDENT', NULL, $3)
+         ON CONFLICT (LOWER(management_class_id)) WHERE management_class_id IS NOT NULL DO UPDATE SET
+           course_id = EXCLUDED.course_id,
+           mode = 'INDEPENDENT',
+           source_live_class_id = NULL,
+           status = EXCLUDED.status,
+           updated_at = NOW()`,
+        [course.id, input.classSourceId, profileStatus],
+      );
+      return {
+        action: "class.recording_alias.synced",
+        entityType: "class_learning_alias",
+        entityId: Number(alias.rows[0].id),
+        data: { ...alias.rows[0], migratedEnrollmentCount: 0 },
+      };
+    }
+
+    const sourceClass = await findClass(client, input.sourceClassSourceId);
+    const sourceCourse = await client.query("SELECT course_id, status FROM live_classes WHERE id = $1", [sourceClass.id]);
+    if (Number(sourceCourse.rows[0]?.course_id) !== Number(course.id)) {
+      throw new SyncValidationError("Lớp RECORDING phải ánh xạ tới lớp chính cùng khóa học");
+    }
+    if (sourceCourse.rows[0]?.status === "cancelled") {
+      throw new SyncValidationError("Lớp RECORDING không được ánh xạ tới lớp nguồn đã hủy");
+    }
     const alias = await client.query(
       `INSERT INTO management_class_learning_aliases
-         (alias_class_source_id, source_class_source_id, live_class_id, learning_mode,
-          title, status, management_source_updated_at)
-       VALUES ($1, $2, $3, 'recording', $4, $5, $6)
+         (alias_class_source_id, source_class_source_id, live_class_id, course_id,
+          learning_mode, recording_content_mode, title, status, management_source_updated_at)
+       VALUES ($1, $2, $3, $4, 'recording', 'MIRROR', $5, $6, $7)
        ON CONFLICT (LOWER(alias_class_source_id)) DO UPDATE SET
          source_class_source_id = EXCLUDED.source_class_source_id,
          live_class_id = EXCLUDED.live_class_id,
+         course_id = EXCLUDED.course_id,
+         recording_content_mode = 'MIRROR',
          title = EXCLUDED.title,
          status = EXCLUDED.status,
          management_source_updated_at = EXCLUDED.management_source_updated_at
        RETURNING id, alias_class_source_id, source_class_source_id, live_class_id,
-                 learning_mode, title, status`,
-      [input.classSourceId, input.sourceClassSourceId, sourceClass.id, input.title, input.status, input.sourceUpdatedAt],
+                 course_id, learning_mode, recording_content_mode, title, status`,
+      [input.classSourceId, input.sourceClassSourceId, sourceClass.id, course.id, input.title, input.status, input.sourceUpdatedAt],
+    );
+    await client.query(
+      `INSERT INTO video_course_profiles
+         (course_id, management_class_id, mode, source_live_class_id, status)
+       VALUES ($1, $2, 'MIRROR', $3, $4)
+       ON CONFLICT (LOWER(management_class_id)) WHERE management_class_id IS NOT NULL DO UPDATE SET
+         course_id = EXCLUDED.course_id,
+         mode = 'MIRROR',
+         source_live_class_id = EXCLUDED.source_live_class_id,
+         status = EXCLUDED.status,
+         updated_at = NOW()`,
+      [course.id, input.classSourceId, sourceClass.id, profileStatus],
     );
     const migratedEnrollmentCount = await migrateRecordingAliasEnrollments(client, {
       aliasId: alias.rows[0].id,
@@ -1174,14 +1264,15 @@ const syncMembership = async (client, event) => {
   const student = studentResult.rows[0];
   if (!student) throw new SyncDependencyError(`Chưa có học viên Management ${input.studentSourceId}`);
   const existing = await client.query(
-    `SELECT id, user_id, live_class_id, status, management_membership_source_id,
+    `SELECT id, user_id, live_class_id, course_id, status, management_membership_source_id,
             management_source_updated_at, management_approval_status, learning_mode,
             management_class_alias_id
      FROM class_enrollments
      WHERE LOWER(management_membership_source_id) = LOWER($1)
-        OR (live_class_id = $2 AND user_id = $3)
+        OR ($2::bigint IS NOT NULL AND live_class_id = $2 AND user_id = $3)
+        OR ($2::bigint IS NULL AND $4::bigint IS NOT NULL AND management_class_alias_id = $4 AND user_id = $3)
      ORDER BY id ASC LIMIT 1 FOR UPDATE`,
-    [input.membershipSourceId, liveClass.id, student.id],
+    [input.membershipSourceId, liveClass.id || null, student.id, liveClass.management_class_alias_id || null],
   );
   const membership = existing.rows[0];
   if (membership && !sameOrNewer(membership.management_source_updated_at, input.sourceUpdatedAt)) {
@@ -1216,29 +1307,29 @@ const syncMembership = async (client, event) => {
   if (membership) {
     const updated = await client.query(
       `UPDATE class_enrollments
-       SET user_id = $1, live_class_id = $2, status = $3,
+       SET user_id = $1, live_class_id = $2, course_id = $11, status = $3,
            management_membership_source_id = $4, management_membership_status = $5,
            management_source_updated_at = $6, ended_at = $7, learning_mode = $9,
            management_class_alias_id = $10
        WHERE id = $8
-       RETURNING id, user_id, live_class_id, status, management_membership_source_id,
+       RETURNING id, user_id, live_class_id, course_id, status, management_membership_source_id,
                  learning_mode, management_class_alias_id`,
-      [student.id, liveClass.id, effectiveStatus, input.membershipSourceId, input.status,
+      [student.id, liveClass.id || null, effectiveStatus, input.membershipSourceId, input.status,
         input.sourceUpdatedAt, endedAt, membership.id, learningMode,
-        liveClass.management_class_alias_id],
+        liveClass.management_class_alias_id, liveClass.course_id || null],
     );
     row = updated.rows[0];
   } else {
     const created = await client.query(
       `INSERT INTO class_enrollments
-         (user_id, live_class_id, status, management_membership_source_id,
+         (user_id, live_class_id, course_id, status, management_membership_source_id,
           management_membership_status, management_source_updated_at, ended_at,
           management_approval_status, learning_mode, management_class_alias_id)
-       VALUES ($1, $2, 'suspended', $3, $4, $5, NULL, 'pending', $6, $7)
-       RETURNING id, user_id, live_class_id, status, management_membership_source_id,
+       VALUES ($1, $2, $8, 'suspended', $3, $4, $5, NULL, 'pending', $6, $7)
+       RETURNING id, user_id, live_class_id, course_id, status, management_membership_source_id,
                  learning_mode, management_class_alias_id`,
-      [student.id, liveClass.id, input.membershipSourceId, input.status, input.sourceUpdatedAt,
-        learningMode, liveClass.management_class_alias_id],
+      [student.id, liveClass.id || null, input.membershipSourceId, input.status, input.sourceUpdatedAt,
+        learningMode, liveClass.management_class_alias_id, liveClass.course_id || null],
     );
     row = created.rows[0];
   }

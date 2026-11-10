@@ -1275,9 +1275,7 @@ router.patch("/users/:id", ...adminOnly, async (req, res) => {
   }
 });
 
-// Trusted-device slots are intentionally admin-managed. End users can inspect
-// their devices, but only this route can release a slot.
-router.get("/users/:id/devices", ...adminOnly, async (req, res) => {
+const getTrustedDevicesHandler = async (req, res) => {
   const userId = parseId(req.params.id);
   if (!userId) return sendError(res, 422, "userId không hợp lệ", "VALIDATION_ERROR");
 
@@ -1304,9 +1302,9 @@ router.get("/users/:id/devices", ...adminOnly, async (req, res) => {
   } catch (error) {
     return handleDbError(res, error, "Không thể tải danh sách thiết bị tin cậy");
   }
-});
+};
 
-router.delete("/users/:id/devices/:deviceId", ...adminOnly, async (req, res) => {
+const deleteTrustedDeviceHandler = async (req, res) => {
   const userId = parseId(req.params.id);
   const deviceId = parseId(req.params.deviceId);
   if (!userId || !deviceId) return sendError(res, 422, "Thông tin thiết bị không hợp lệ", "VALIDATION_ERROR");
@@ -1362,7 +1360,12 @@ router.delete("/users/:id/devices/:deviceId", ...adminOnly, async (req, res) => 
   } finally {
     client.release();
   }
-});
+};
+
+router.get("/users/:id/devices", ...adminOnly, getTrustedDevicesHandler);
+router.get("/users/:id/trusted-devices", ...adminOnly, getTrustedDevicesHandler);
+router.delete("/users/:id/devices/:deviceId", ...adminOnly, deleteTrustedDeviceHandler);
+router.delete("/users/:id/trusted-devices/:deviceId", ...adminOnly, deleteTrustedDeviceHandler);
 
 router.delete("/users/:id", ...adminOnly, async (req, res) => {
   const userId = parseId(req.params.id);

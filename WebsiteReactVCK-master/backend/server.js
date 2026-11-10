@@ -4,7 +4,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
 import { pool } from "./db/connect.js";
-import userRouter from "./router/user.router.js";
+import userRouter, { accountRouter } from "./router/user.router.js";
 import profileRouter from "./router/profile.router.js";
 import courseRouter from "./router/course.router.js";
 import enrollmentRouter from "./router/enrollment.router.js";
@@ -33,6 +33,8 @@ import recordingRouter from "./router/recording.router.js";
 import aiRouter from "./router/ai.router.js";
 import vocabularyRouter from "./router/vocabulary.router.js";
 import formulaRouter from "./router/formula.router.js";
+import videoCourseRouter from "./router/videoCourse.router.js";
+import bunnyVideoRouter from "./router/bunnyVideo.router.js";
 import { isAllowedOrigin, securityHeaders } from "./middleware/security.js";
 import { missingAssetNotFound } from "./middleware/missingAsset.js";
 import { renderHtmlWithSeo } from "./services/seoPrerender.service.js";
@@ -111,6 +113,7 @@ app.use("/api/integrations/v1", managementIntegrationRouter);
 app.use("/api/v1/admin", platformAdminRouter);
 app.use("/api/v1/application-orchestration", orchestrationRouter);
 app.use("/api/auth", userRouter);
+app.use("/api/account", accountRouter);
 app.use("/api/profile", profileRouter);
 app.use("/api/courses", courseRouter);
 app.use("/api/enrollments", enrollmentRouter);
@@ -137,6 +140,8 @@ app.use("/api/ai", aiRouter);
 app.use("/api/lms", vocabularyRouter);
 app.use("/api", formulaRouter);
 app.use("/api", fileRouter);
+app.use("/api", bunnyVideoRouter);
+app.use("/api/video-courses", videoCourseRouter);
 
 app.use("/api", (req, res) => {
   return res.status(404).json({

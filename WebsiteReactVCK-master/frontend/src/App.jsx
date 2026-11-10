@@ -51,6 +51,7 @@ const AdminSyncPage = lazy(() => import("./pages/admin/AdminSyncPage.jsx"));
 const AdminAuditLogPage = lazy(() => import("./pages/admin/AdminAuditLogPage.jsx"));
 const AdminCalendarPage = lazy(() => import("./features/admin/pages/AdminCalendarPage.jsx"));
 const ClassroomPage = lazy(() => import("./features/learning/pages/ClassroomPage.jsx"));
+const VideoCourseWorkspacePage = lazy(() => import("./features/learning/pages/VideoCourseWorkspacePage.jsx"));
 const StudentDashboardPage = lazy(() => import("./features/learning/pages/StudentDashboardPage.jsx"));
 const StudentCourseListPage = lazy(() => import("./features/learning/pages/StudentCourseListPage.jsx"));
 const CourseClassListPage = lazy(() => import("./features/learning/pages/CourseClassListPage.jsx"));
@@ -85,6 +86,7 @@ const TeacherQuizPage = lazy(() => import("./features/teacher/pages/TeacherQuizP
 const NotificationCenterPage = lazy(() => import("./features/notifications/pages/NotificationCenterPage.jsx"));
 const StudentRecordingsPage = lazy(() => import("./features/learning/pages/StudentRecordingsPage.jsx"));
 const AdminRecordingsPage = lazy(() => import("./pages/admin/AdminRecordingsPage.jsx"));
+const AdminVideoCoursesPage = lazy(() => import("./pages/admin/AdminVideoCoursesPage.jsx"));
 const AdminWelcomeScreenPage = lazy(() => import("./pages/admin/AdminWelcomeScreenPage.jsx"));
 const MoliQuizEditorPage = lazy(() => import("./features/quizzes/pages/QuizEditorPage.jsx"));
 const MoliQuizPlayerPage = lazy(() => import("./features/quizzes/pages/QuizPlayerPage.jsx"));
@@ -163,6 +165,8 @@ function AppRoutes({ pathname }) {
       <Route path="/lms/notifications" element={<NotificationCenterPage />} />
       <Route path="/lms/discussions" element={<Post />} />
       <Route path="/lms/settings" element={<StudentSettingsPage />} />
+      <Route path="/lms/video-courses/:offeringId" element={<VideoCourseWorkspacePage />} />
+      <Route path="/lms/video-courses/:offeringId/units/:unitId" element={<VideoCourseWorkspacePage />} />
       <Route path="/lms/courses/:courseId" element={<CourseClassListPage />} />
       <Route path="/lms/courses/:courseId/classes" element={<CourseClassListPage />} />
       <Route path="/lms/courses/:courseId/classes/:classId" element={<CourseWorkspaceLayout />}>
@@ -235,6 +239,7 @@ function AppRoutes({ pathname }) {
         <Route path="courses/:courseId/lessons" element={<Navigate to="/admin/curriculum" replace />} />
         <Route path="lessons/:lessonId/exercises" element={<Navigate to="/admin/curriculum" replace />} />
         <Route path="curriculum" element={<AdminCurriculumPage />} />
+        <Route path="video-courses" element={<AdminVideoCoursesPage />} />
         <Route path="files" element={<TeacherFilesPage />} />
         <Route path="quizzes" element={<TeacherQuizPage />} />
         <Route path="quizzes/new" element={<MoliQuizEditorPage />} />

@@ -486,7 +486,7 @@ const FeaturedCourses = () => {
     <div className="mx-auto max-w-7xl">
       <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
         <div className="max-w-2xl">
-          <p className="text-sm font-bold uppercase tracking-[0.22em] text-red-600 dark:text-amber-400">Khóa học nổi bật</p>
+          <p className="mb-1 text-sm font-bold uppercase tracking-[0.22em] text-red-600 dark:text-amber-400">Khóa học nổi bật</p>
           <h2 className="mt-3 text-3xl font-black tracking-tight text-gray-950 dark:text-white sm:text-5xl">Lộ trình phù hợp với từng mục tiêu</h2>
           <p className="mt-4 text-base leading-7 text-gray-600 dark:text-gray-400">Bắt đầu từ nền tảng, bứt phá điểm số và chuẩn bị vững vàng cho hành trình học tập tại Trung Quốc.</p>
         </div>

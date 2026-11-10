@@ -167,6 +167,16 @@ export const fetchCourseWorkspace = async (courseId, { classId } = {}) => {
   return request(`/courses/${encodeURIComponent(courseId)}/workspace${params.size ? `?${params.toString()}` : ""}`);
 };
 
+export const fetchVideoCourseWorkspace = async (offeringId, { unitId } = {}) => {
+  const params = new URLSearchParams();
+  if (unitId) params.set("unitId", unitId);
+  return request(`/video-courses/${encodeURIComponent(offeringId)}/workspace${params.size ? `?${params.toString()}` : ""}`);
+};
+
+export const fetchVideoCourseCatalog = async () => {
+  return request("/video-courses");
+};
+
 export const checkEnrollmentStatus = async (courseId) => (
   request(`/enrollments/check/${encodeURIComponent(courseId)}`)
 );
@@ -1702,5 +1712,182 @@ export const batchImportFormulasApi = async (formulas) => (
   })
 );
 
+// Day 2: Bunny Stream Playback, Progress Heartbeat, Upload Intent & Unit Notes
+export const requestVideoPlaybackToken = async (videoId, { unitId = null, courseId = null, liveClassId = null } = {}) => (
+  request(`/videos/${encodeURIComponent(videoId)}/playback-token`, {
+    method: "POST",
+    body: JSON.stringify({ unitId, courseId, liveClassId }),
+  })
+);
 
+export const updateVideoWatchProgress = async (
+  videoId,
+  { unitId = null, currentTimeSeconds = 0, watchedDeltaSeconds = null, durationSeconds = null } = {},
+) => (
+  request(`/videos/${encodeURIComponent(videoId)}/progress`, {
+    method: "PUT",
+    body: JSON.stringify({
+      unitId,
+      currentTimeSeconds,
+      watchedDeltaSeconds,
+      durationSeconds,
+    }),
+  })
+);
+
+export const createBunnyVideoUploadIntent = async (payload) => (
+  request("/admin/video-assets/upload-intent", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const attachVideoToLearningUnit = async (unitId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/videos`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const publishAdminVideo = async (videoId) => (
+  request(`/admin/videos/${encodeURIComponent(videoId)}/publish`, {
+    method: "POST",
+  })
+);
+
+export const unpublishAdminVideo = async (videoId) => (
+  request(`/admin/videos/${encodeURIComponent(videoId)}/unpublish`, {
+    method: "POST",
+  })
+);
+
+export const replaceAdminVideo = async (videoId, newVideoAssetId) => (
+  request(`/admin/videos/${encodeURIComponent(videoId)}/replace`, {
+    method: "POST",
+    body: JSON.stringify({ newVideoAssetId }),
+  })
+);
+
+export const deleteAdminVideo = async (videoId) => (
+  request(`/admin/videos/${encodeURIComponent(videoId)}`, {
+    method: "DELETE",
+  })
+);
+
+export const saveVideoCourseUnitNote = async (offeringId, unitId, payload) => (
+  request(`/video-courses/${encodeURIComponent(offeringId)}/units/${encodeURIComponent(unitId)}/notes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const deleteVideoCourseUnitNote = async (offeringId, unitId, noteId) => (
+  request(`/video-courses/${encodeURIComponent(offeringId)}/units/${encodeURIComponent(unitId)}/notes/${encodeURIComponent(noteId)}`, {
+    method: "DELETE",
+  })
+);
+
+// Day 3: Admin Video Course Studio, Independent Curriculum Builder & 5-Point Publish Checklist
+export const fetchAdminVideoCoursesOverview = async () => (
+  request("/video-courses/admin/courses")
+);
+
+export const fetchAdminVideoCourseDetail = async (courseId) => (
+  request(`/video-courses/admin/courses/${encodeURIComponent(courseId)}`)
+);
+
+export const saveAdminVideoCourseProfile = async (payload) => (
+  request("/video-courses/admin/profiles", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const createAdminVideoCourseSection = async (courseId, payload) => (
+  request(`/video-courses/admin/courses/${encodeURIComponent(courseId)}/sections`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const updateAdminVideoCourseSection = async (sectionId, payload) => (
+  request(`/video-courses/admin/sections/${encodeURIComponent(sectionId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const deleteAdminVideoCourseSection = async (sectionId) => (
+  request(`/video-courses/admin/sections/${encodeURIComponent(sectionId)}`, {
+    method: "DELETE",
+  })
+);
+
+export const createAdminVideoCourseLesson = async (courseId, payload) => (
+  request(`/video-courses/admin/courses/${encodeURIComponent(courseId)}/lessons`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const updateAdminVideoCourseLesson = async (lessonId, payload) => (
+  request(`/video-courses/admin/lessons/${encodeURIComponent(lessonId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const deleteAdminVideoCourseLesson = async (lessonId) => (
+  request(`/video-courses/admin/lessons/${encodeURIComponent(lessonId)}`, {
+    method: "DELETE",
+  })
+);
+
+export const reorderAdminVideoCourseCurriculum = async (courseId, payload) => (
+  request(`/video-courses/admin/courses/${encodeURIComponent(courseId)}/reorder`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const publishAdminVideoCourse = async (courseId, payload = { isPublished: true, autoPublishReadyVideos: true }) => (
+  request(`/video-courses/admin/courses/${encodeURIComponent(courseId)}/publish`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const saveAdminLearningUnitTheory = async (unitId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/theory`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const createAdminLearningUnitVocabulary = async (unitId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/vocabulary`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const createAdminLearningUnitFormula = async (unitId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/formulas`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const attachAdminLearningUnitFile = async (unitId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/files`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const revokeAdminUserTrustedDevice = async (userId, deviceId) => (
+  request(`/video-courses/admin/users/${encodeURIComponent(userId)}/trusted-devices/${encodeURIComponent(deviceId)}`, {
+    method: "DELETE",
+  })
+);
 

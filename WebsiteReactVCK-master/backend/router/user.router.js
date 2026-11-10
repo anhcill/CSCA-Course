@@ -25,6 +25,7 @@ import requireAdmin from "../middleware/requireAdmin.js";
 import { createRateLimiter } from "../middleware/security.js";
 
 const router = express.Router();
+export const accountRouter = express.Router();
 const authRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -51,6 +52,7 @@ router.post("/reset-password", sensitiveAuthRateLimit, resetPassword);
 // Current user
 router.get("/me", protectRoute, getCurrentUser);
 router.get("/me/devices", protectRoute, getTrustedDevices);
+accountRouter.get("/trusted-devices", protectRoute, getTrustedDevices);
 router.get("/me/lms-permissions", protectRoute, getCurrentLmsPermissions);
 router.patch("/me", protectRoute, updateOwnProfile);
 router.patch("/me/student-profile", protectRoute, updateStudentProfile);

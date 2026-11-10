@@ -1,9 +1,10 @@
 import crypto from "crypto";
 import net from "node:net";
 import { getClient, query } from "../db/connect.js";
+import { recordAuditEvent } from "./audit.service.js";
 
 export const TRUSTED_DEVICE_COOKIE = "csca_trusted_device";
-export const TRUSTED_DEVICE_LIMIT = 3;
+export const TRUSTED_DEVICE_LIMIT = 2;
 export const DEVICE_LIMIT_LOCK_THRESHOLD = 3;
 
 export const getTrustedDeviceLimitForRole = (role) => (
@@ -139,50 +140,46 @@ export const establishLoginSession = async ({
       const usedSlots = Number(countResult.rows[0]?.count || 0);
 
       if (deviceLimit !== null && usedSlots >= deviceLimit) {
+        // The legacy column is constrained to 0..3. Keep the audit counter
+        // saturated instead of turning a fourth rejected login into a DB 500.
         const attemptCount = Math.min(
           DEVICE_LIMIT_LOCK_THRESHOLD,
           Number(user.device_limit_attempts || 0) + 1,
         );
-        const shouldLock = attemptCount >= DEVICE_LIMIT_LOCK_THRESHOLD;
 
         await client.query(
           `UPDATE users
            SET device_limit_attempts = $1,
                device_limit_last_attempt_at = NOW(),
-               is_locked = CASE WHEN $2 THEN TRUE ELSE is_locked END,
-               locked_reason = CASE WHEN $2 THEN 'DEVICE_LIMIT_ABUSE' ELSE locked_reason END,
-               locked_at = CASE WHEN $2 THEN NOW() ELSE locked_at END,
                updated_at = NOW()
-           WHERE id = $3`,
-          [attemptCount, shouldLock, userId],
+           WHERE id = $2`,
+          [attemptCount, userId],
         );
-        if (shouldLock) {
-          await client.query(
-            `UPDATE user_sessions
-             SET revoked_at = COALESCE(revoked_at, NOW())
-             WHERE user_id = $1 AND revoked_at IS NULL`,
-            [userId],
-          );
-        }
+
+        await recordAuditEvent({
+          db: client,
+          actorId: userId,
+          action: "user.trusted_device.rejected",
+          entityType: "trusted_login_device",
+          metadata: {
+            ip: normalizedIp,
+            userAgent: normalizedUserAgent,
+            usedSlots,
+            deviceLimit,
+            attemptCount,
+          },
+        });
 
         await client.query("COMMIT");
         committed = true;
 
-        if (shouldLock) {
-          throw new TrustedDeviceAuthError(
-            "ACCOUNT_LOCKED_DEVICE_LIMIT",
-            "Tài khoản đã bị khóa vì đăng nhập từ thiết bị thứ tư 3 lần. Vui lòng liên hệ quản trị viên.",
-            { details: { attempts: attemptCount, attemptsRemaining: 0, deviceLimit } },
-          );
-        }
-
         throw new TrustedDeviceAuthError(
           "DEVICE_LIMIT_REACHED",
-          `Tài khoản đã đủ ${deviceLimit} thiết bị tin cậy. Còn ${DEVICE_LIMIT_LOCK_THRESHOLD - attemptCount} lần thử trước khi tài khoản bị khóa; hãy liên hệ quản trị viên để xóa thiết bị cũ.`,
+          `Tài khoản đã đạt giới hạn tối đa ${deviceLimit} thiết bị tin cậy. Vui lòng liên hệ quản trị viên để gỡ thiết bị cũ.`,
           {
             details: {
               attempts: attemptCount,
-              attemptsRemaining: DEVICE_LIMIT_LOCK_THRESHOLD - attemptCount,
+              usedSlots,
               deviceLimit,
             },
           },
@@ -197,6 +194,19 @@ export const establishLoginSession = async ({
         [userId, deviceTokenHash, describeDevice(normalizedUserAgent), normalizedUserAgent || null, normalizedIp],
       );
       trustedDeviceId = insertedDevice.rows[0].id;
+
+      await recordAuditEvent({
+        db: client,
+        actorId: userId,
+        action: "user.trusted_device.registered",
+        entityType: "trusted_login_device",
+        entityId: trustedDeviceId,
+        metadata: {
+          ip: normalizedIp,
+          userAgent: normalizedUserAgent,
+          deviceName: describeDevice(normalizedUserAgent),
+        },
+      });
     } else {
       await client.query(
         `UPDATE trusted_login_devices
@@ -343,4 +353,45 @@ export const revokeSessionFromJwtPayload = async (payload, db = { query }) => {
     [payload.sessionId, payload.userId, hashOpaqueToken(payload.sessionToken)],
   );
   return Boolean(result.rows[0]);
+};
+
+export const revokeTrustedDevice = async ({
+  deviceId,
+  userId,
+  revokedBy,
+  db = { query },
+}) => {
+  const deviceResult = await db.query(
+    `SELECT id, user_id, device_name, user_agent, host(first_ip) AS first_ip,
+            host(last_ip) AS last_ip, first_seen_at, last_seen_at, last_login_at
+     FROM trusted_login_devices
+     WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+    [deviceId, userId],
+  );
+  const device = deviceResult.rows[0];
+  if (!device) return null;
+
+  await db.query(
+    `UPDATE user_sessions
+     SET revoked_at = COALESCE(revoked_at, NOW())
+     WHERE trusted_device_id = $1 AND revoked_at IS NULL`,
+    [deviceId],
+  );
+  await db.query(
+    `UPDATE trusted_login_devices
+     SET revoked_at = NOW(), revoked_by = $1
+     WHERE id = $2`,
+    [revokedBy, deviceId],
+  );
+  await recordAuditEvent({
+    db,
+    actorId: revokedBy,
+    action: "user.trusted_device.removed",
+    entityType: "trusted_login_device",
+    entityId: deviceId,
+    beforeState: device,
+    afterState: { ...device, revoked: true },
+    metadata: { targetUserId: userId },
+  });
+  return device;
 };

@@ -56,6 +56,11 @@ const Sidebar = ({ mobileOpen, collapsed, closeMobileSidebar }) => {
           path: '/admin/curriculum',
         },
         {
+          title: 'Khóa video',
+          icon: <FiVideo className="w-4 h-4 shrink-0" />,
+          path: '/admin/video-courses',
+        },
+        {
           title: 'Tài liệu học tập',
           icon: <FiFileText className="w-4 h-4 shrink-0" />,
           path: '/admin/files',
