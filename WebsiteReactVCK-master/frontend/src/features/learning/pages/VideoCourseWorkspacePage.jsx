@@ -155,7 +155,7 @@ export default function VideoCourseWorkspacePage() {
   const handleSelectUnit = (unit) => {
     if (String(unit.id) === String(activeUnitId)) return;
     setActiveUnitId(unit.id);
-    navigate(`/lms/video-courses/${offeringId}/units/${unit.id}`, { replace: true });
+    navigate(`/video-courses/${offeringId}/units/${unit.id}`, { replace: true });
     loadWorkspace(unit.id);
   };
 

@@ -217,7 +217,9 @@ const Courses = () => {
     const videoOffering = videoOfferingByCourseId.get(String(courseId));
     const isVideoCourse = Boolean(videoOffering);
     const isIndependent = videoOffering?.videoMode === 'INDEPENDENT';
-    const targetUrl = isVideoCourse ? `/lms/video-courses/${courseId}` : null;
+    const targetUrl = isVideoCourse
+      ? `/video-courses/${videoOffering.offeringId || courseId}`
+      : null;
     const userProgress = filterProgress?.find((item) => String(item.courseId) === String(courseId));
     const progressPercent = userProgress?.progressPercentage || 0;
     const isCompleted = progressPercent >= 100;

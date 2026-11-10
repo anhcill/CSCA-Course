@@ -125,6 +125,14 @@ function CourseClassRedirect() {
   return <Navigate to={`/lms/courses/${courseId}/classes`} replace />;
 }
 
+function LegacyVideoCourseRedirect() {
+  const { offeringId, unitId } = useParams();
+  const target = unitId
+    ? `/video-courses/${offeringId}/units/${unitId}`
+    : `/video-courses/${offeringId}`;
+  return <Navigate to={target} replace />;
+}
+
 function AppRoutes({ pathname }) {
   return (
     <AppErrorBoundary resetKey={pathname}>
@@ -145,6 +153,8 @@ function AppRoutes({ pathname }) {
       <Route path="/select-course" element={<ProtectedRoute><SelectCourse /></ProtectedRoute>} />
       <Route path="/select-level" element={<ProtectedRoute><SelectLevel /></ProtectedRoute>} />
       <Route path="/shedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
+      <Route path="/video-courses/:offeringId" element={<ProtectedRoute><VideoCourseWorkspacePage /></ProtectedRoute>} />
+      <Route path="/video-courses/:offeringId/units/:unitId" element={<ProtectedRoute><VideoCourseWorkspacePage /></ProtectedRoute>} />
 
       {/* === Student LMS === */}
       <Route path="/lms" element={<Navigate to="/lms/dashboard" replace />} />
@@ -165,8 +175,8 @@ function AppRoutes({ pathname }) {
       <Route path="/lms/notifications" element={<NotificationCenterPage />} />
       <Route path="/lms/discussions" element={<Post />} />
       <Route path="/lms/settings" element={<StudentSettingsPage />} />
-      <Route path="/lms/video-courses/:offeringId" element={<VideoCourseWorkspacePage />} />
-      <Route path="/lms/video-courses/:offeringId/units/:unitId" element={<VideoCourseWorkspacePage />} />
+      <Route path="/lms/video-courses/:offeringId" element={<LegacyVideoCourseRedirect />} />
+      <Route path="/lms/video-courses/:offeringId/units/:unitId" element={<LegacyVideoCourseRedirect />} />
       <Route path="/lms/courses/:courseId" element={<CourseClassListPage />} />
       <Route path="/lms/courses/:courseId/classes" element={<CourseClassListPage />} />
       <Route path="/lms/courses/:courseId/classes/:classId" element={<CourseWorkspaceLayout />}>
@@ -293,6 +303,7 @@ function AppContent() {
 
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
   const isLiveRoomPage = pathname.startsWith("/lms/live-room/");
+  const isVideoCoursePage = pathname.startsWith("/video-courses/");
   const isLmsPage = pathname === "/lms" || pathname.startsWith("/lms/");
   const isTeacherPage = isTeacherLmsPath(pathname) || isSharedTeacherPath(pathname, authUser);
 
@@ -317,6 +328,24 @@ function AppContent() {
         <LmsRouteGuard allowedRoles={[...TEACHER_ROLES, USER_ROLES.STUDENT]}>
           <AppRoutes pathname={pathname} />
         </LmsRouteGuard>
+        <SessionExpiredModal
+          isOpen={sessionExpired}
+          onClose={dismissSessionExpired}
+          onLoginAgain={() => {
+            dismissSessionExpired();
+            navigate("/", { replace: true, state: { openAuthModal: "login" } });
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (isVideoCoursePage) {
+    return (
+      <div className="min-h-screen">
+        <Toaster position="top-center" reverseOrder={false} />
+        <AppRoutes pathname={pathname} />
+        <PwaInstallPrompt />
         <SessionExpiredModal
           isOpen={sessionExpired}
           onClose={dismissSessionExpired}
