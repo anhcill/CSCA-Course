@@ -126,9 +126,6 @@ export const getVideoCourseUnitAccessContext = async ({ db, userId, unitType, un
   if (profiles.length === 0) {
     return { isVideoCourseUnit: false, isPublicPreview: false, isRecordMember: false, isUnlocked: true, profile: null };
   }
-  if (profiles[0].is_public_preview === true) {
-    return { isVideoCourseUnit: true, isPublicPreview: true, isRecordMember: false, isUnlocked: true, profile: profiles[0] };
-  }
   let profile = null;
   for (const candidate of profiles) {
     if (await hasRecordingMembership(db, candidate, userId)) {
@@ -136,7 +133,12 @@ export const getVideoCourseUnitAccessContext = async ({ db, userId, unitType, un
       break;
     }
   }
+
+  const isPublicPreview = profiles[0].is_public_preview === true;
   if (!profile) {
+    if (isPublicPreview) {
+      return { isVideoCourseUnit: true, isPublicPreview: true, isRecordMember: false, isUnlocked: true, profile: profiles[0] };
+    }
     return { isVideoCourseUnit: true, isPublicPreview: false, isRecordMember: false, isUnlocked: true, profile: null };
   }
 
@@ -144,9 +146,10 @@ export const getVideoCourseUnitAccessContext = async ({ db, userId, unitType, un
     ? await loadMirrorUnits(db, profile, userId)
     : await loadIndependentUnits(db, profile, userId);
   const targetIndex = units.findIndex((unit) => String(unit.id) === String(unitId));
-  const isUnlocked = targetIndex === 0
+  const isUnlocked = isPublicPreview
+    || targetIndex === 0
     || (targetIndex > 0 && units.slice(0, targetIndex).every(completed));
-  return { isVideoCourseUnit: true, isPublicPreview: false, isRecordMember: true, isUnlocked, profile };
+  return { isVideoCourseUnit: true, isPublicPreview, isRecordMember: true, isUnlocked, profile };
 };
 
 export const isVideoCourseUnitUnlocked = async (options) => {
