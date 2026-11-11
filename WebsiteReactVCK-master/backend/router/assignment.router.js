@@ -2510,21 +2510,24 @@ const getQuiz = async (quizId, db = { query }) => {
   const result = await db.query(
     `SELECT q.id, q.title, q.description, q.status AS quiz_status, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.solution_file_id, q.live_class_id, q.class_session_id, q.course_id AS quiz_course_id, q.lesson_id,
             q.attempt_limit, q.available_from, q.available_until, q.review_policy, q.shuffle_questions,
-            COALESCE(q.course_id, l.course_id) AS resolved_course_id,
-            c.is_published AS course_is_published,
+            COALESCE(q.course_id, l.course_id, lc.course_id, class_course.id) AS resolved_course_id,
+            COALESCE(c.is_published, class_course.is_published, FALSE) AS course_is_published,
             COALESCE(c.is_management_managed, FALSE) AS course_is_management_managed,
             c.author_id AS course_author_id,
             l.is_published AS lesson_is_published,
             paper.status AS paper_status,
             solution.status AS solution_status,
             lc.title AS class_title,
-            cs.title AS session_title, cs.start_time AS session_start, cs.end_time AS session_end
+            cs.title AS session_title, cs.start_time AS session_start, cs.end_time AS session_end,
+            COALESCE(cs.is_public_preview, FALSE) AS session_is_public_preview,
+            COALESCE(l.is_public_preview, FALSE) AS lesson_is_public_preview
      FROM quizzes q LEFT JOIN lessons l ON l.id = q.lesson_id
+     LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
+     LEFT JOIN live_classes lc ON lc.id = COALESCE(q.live_class_id, cs.live_class_id)
      LEFT JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
+     LEFT JOIN courses class_course ON class_course.id = lc.course_id
      LEFT JOIN lms_learning_files paper ON paper.id = q.paper_file_id
      LEFT JOIN lms_learning_files solution ON solution.id = q.solution_file_id
-     LEFT JOIN live_classes lc ON lc.id = q.live_class_id
-     LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
      WHERE q.id = $1`,
     [quizId],
   );
@@ -2536,7 +2539,10 @@ const ensureQuizAccess = async (quiz, user, db = { query }) => {
   if (user.role === "creator") return quiz.live_class_id
     ? await isAssignedTeacher(quiz.live_class_id, user.id, db)
     : String(quiz.course_author_id) === String(user.id) || String(quiz.instructor_id) === String(user.id);
-  if (user.role !== "user" || quiz.quiz_status !== "PUBLISHED" || !quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
+  if (user.role !== "user" || String(quiz.quiz_status || "").toUpperCase() !== "PUBLISHED") return false;
+  if (quiz.session_is_public_preview) return true;
+  if (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false) return true;
+  if (!quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
   const enrollment = await db.query(
     `SELECT 1 FROM lms_access_grants
      WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
@@ -2767,15 +2773,16 @@ const quizWindowError = (res, error) => {
 // GET /api/assignments/quizzes/:quizId — creates one server-timed attempt only
 // after the learner is eligible and the configured window is open.
 router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
-  if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
-    return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
-  }
   const client = req.user.role === "user" ? await getClient() : null;
   try {
     const quizId = parsePositiveId(req.params.quizId);
     if (!quizId) return validationError(res, "quizId không hợp lệ");
     const quiz = await getQuiz(quizId);
     if (!quiz) return notFound(res, "Không tìm thấy đề thi");
+    const isPreview = Boolean(quiz.session_is_public_preview || (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false));
+    if (req.user.role === "user" && !isPreview && !hasActiveStudentLmsAccess(req.user)) {
+      return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
+    }
     if (!(await ensureQuizAccess(quiz, req.user))) return forbidden(res, "Bạn chưa được cấp quyền làm đề thi này");
     const questions = await getQuizQuestions(quizId);
     if (questions.length === 0) return notFound(res, "Đề thi chưa có câu hỏi");

@@ -38,7 +38,7 @@ const isQuizPublicPreview = async (db, quizId) => Boolean((await db.query(
    LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
    LEFT JOIN lessons l ON l.id = q.lesson_id
    WHERE q.id = $1
-     AND q.status = 'PUBLISHED'
+     AND UPPER(COALESCE(q.status, 'PUBLISHED')) = 'PUBLISHED'
      AND (COALESCE(cs.is_public_preview, FALSE) = TRUE
        OR COALESCE(l.is_public_preview, FALSE) = TRUE)
    LIMIT 1`,
@@ -79,8 +79,8 @@ const getQuiz = async (db, quizId, { lock = false } = {}) => (await db.query(
           q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.solution_file_id,
           q.live_class_id, q.class_session_id, q.course_id AS quiz_course_id, q.lesson_id,
           q.attempt_limit, q.available_from, q.available_until, q.review_policy, q.shuffle_questions,
-          COALESCE(q.course_id, l.course_id) AS resolved_course_id,
-          c.is_published AS course_is_published,
+          COALESCE(q.course_id, l.course_id, lc.course_id, class_course.id) AS resolved_course_id,
+          COALESCE(c.is_published, class_course.is_published, FALSE) AS course_is_published,
           COALESCE(c.is_management_managed, FALSE) AS course_is_management_managed,
           l.is_published AS lesson_is_published,
           paper.status AS paper_status, solution.status AS solution_status,
@@ -90,18 +90,21 @@ const getQuiz = async (db, quizId, { lock = false } = {}) => (await db.query(
           COALESCE(l.is_public_preview, FALSE) AS lesson_is_public_preview
    FROM quizzes q
    LEFT JOIN lessons l ON l.id = q.lesson_id
+   LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
+   LEFT JOIN live_classes lc ON lc.id = COALESCE(q.live_class_id, cs.live_class_id)
    LEFT JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
+   LEFT JOIN courses class_course ON class_course.id = lc.course_id
    LEFT JOIN lms_learning_files paper ON paper.id = q.paper_file_id
    LEFT JOIN lms_learning_files solution ON solution.id = q.solution_file_id
-   LEFT JOIN live_classes lc ON lc.id = q.live_class_id
-   LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
    WHERE q.id = $1${lock ? " FOR UPDATE OF q" : ""}`,
   [quizId],
 )).rows[0] || null;
 
 const ensureQuizAccess = async (db, quiz, userId) => {
-  if (quiz.quiz_status !== "PUBLISHED" || !quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
-  if (quiz.session_is_public_preview || quiz.lesson_is_public_preview) return true;
+  if (String(quiz.quiz_status || "").toUpperCase() !== "PUBLISHED") return false;
+  if (quiz.session_is_public_preview) return true;
+  if (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false) return true;
+  if (!quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
   const access = await db.query(
     `SELECT 1 FROM lms_access_grants
      WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
@@ -109,12 +112,13 @@ const ensureQuizAccess = async (db, quiz, userId) => {
     [userId, quiz.resolved_course_id],
   );
   if (!access.rows[0]) return false;
-  if (!quiz.live_class_id) return true;
+  const liveClassId = quiz.live_class_id;
+  if (!liveClassId) return true;
   const enrolled = await db.query(
     `SELECT 1 FROM class_enrollments ce
      JOIN live_classes lc ON lc.id = ce.live_class_id
      WHERE ce.user_id = $1 AND ce.live_class_id = $2 AND ce.status = 'active' AND lc.status = 'active'`,
-    [userId, quiz.live_class_id],
+    [userId, liveClassId],
   );
   return Boolean(enrolled.rows[0]);
 };
@@ -451,9 +455,10 @@ router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireA
     const quiz = await getQuiz(client, quizId);
     if (!quiz) throw Object.assign(new Error("Không tìm thấy đề thi"), { status: 404 });
     if (!(await ensureQuizAccess(client, quiz, req.user.id))) throw Object.assign(new Error("Bạn chưa được cấp quyền làm đề thi này"), { status: 403 });
+    const isPublicPreview = Boolean(quiz.session_is_public_preview || (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false));
     const unitType = quiz.class_session_id ? "class_session" : (quiz.lesson_id ? "lesson" : null);
     const unitId = quiz.class_session_id || quiz.lesson_id;
-    if (unitType && !(await isVideoCourseUnitUnlocked({
+    if (!isPublicPreview && unitType && !(await isVideoCourseUnitUnlocked({
       db: client,
       userId: req.user.id,
       unitType,

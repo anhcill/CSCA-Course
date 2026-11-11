@@ -408,3 +408,60 @@ test("overdue unsubmitted quiz allows learner to review questions, answers and e
   assert.equal(response.body.data.result.review[0].explanation, "Giải thích chi tiết cho câu hỏi");
   assert.equal(response.body.data.quiz.items.length, 1);
 });
+
+test("public preview quiz is accessible when quiz has null course_id and course.is_published is false", async (t) => {
+  const db = await loadDatabase();
+  t.after(() => db.close());
+
+  const teacher = (await db.query("INSERT INTO users(username,email,role) VALUES ('prev-teacher','prev-teacher@example.com','creator') RETURNING id")).rows[0];
+  const visitor = (await db.query("INSERT INTO users(username,email,role,is_management_managed,lms_account_status) VALUES ('prev-visitor','prev-visitor@example.com','user',FALSE,'pending_payment') RETURNING id")).rows[0];
+
+  // Base course has is_published = FALSE
+  const course = (await db.query(
+    "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Draft course','draft-course',$1,FALSE) RETURNING id",
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await db.query(
+    "INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('Preview class',$1,$2,'active') RETURNING id",
+    [course.id, teacher.id],
+  )).rows[0];
+  const session = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status,is_public_preview)
+     VALUES ($1,'Buổi học thử miễn phí',NOW(),NOW() + interval '1 hour','scheduled',TRUE) RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+
+  // Quiz has class_session_id and live_class_id but course_id is NULL
+  const quiz = (await db.query(
+    `INSERT INTO quizzes(title,class_session_id,live_class_id,instructor_id,status,duration_minutes,passing_score)
+     VALUES ('Quiz buổi học thử',$1,$2,$3,'PUBLISHED',20,6) RETURNING id`,
+    [session.id, liveClass.id, teacher.id],
+  )).rows[0];
+  const q = (await db.query(
+    `INSERT INTO quiz_questions(quiz_id,question_text,question_type,options_json,correct_answer,points,sort_order)
+     VALUES ($1,'1 + 1 = ?','single_choice',$2::jsonb,'2',10,1) RETURNING id`,
+    [quiz.id, JSON.stringify([{ key: "1", text: "1" }, { key: "2", text: "2" }])],
+  )).rows[0];
+
+  // Visitor starts quiz in free preview session
+  const started = await invoke("get", "/quizzes/:quizId/start", { user: visitor, params: { quizId: quiz.id } });
+  assert.equal(started.statusCode, 200, JSON.stringify(started.body));
+  assert.equal(started.body.data.quiz.title, "Quiz buổi học thử");
+
+  const attemptId = started.body.data.attempt.id;
+  const saved = await invoke("put", "/attempts/:attemptId/answers", {
+    user: visitor,
+    params: { attemptId },
+    body: { questionId: q.id, answer: "2" },
+  });
+  assert.equal(saved.statusCode, 200, JSON.stringify(saved.body));
+
+  const submitted = await invoke("post", "/attempts/:attemptId/submit", {
+    user: visitor,
+    params: { attemptId },
+    body: { answers: {} },
+  });
+  assert.equal(submitted.statusCode, 200, JSON.stringify(submitted.body));
+  assert.equal(submitted.body.data.score, 10);
+  assert.equal(submitted.body.data.passed, true);
+});
