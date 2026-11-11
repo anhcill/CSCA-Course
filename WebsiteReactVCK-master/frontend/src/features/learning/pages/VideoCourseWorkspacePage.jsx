@@ -105,7 +105,19 @@ const formatVideoDurationLabel = (unit) => {
   return unit?.hasVideo ? "Video HD" : "Chưa có video";
 };
 
-const recomputeSequentialLocks = (rawUnits = []) => {
+const recomputeSequentialLocks = (rawUnits = [], previewOnly = false) => {
+  if (previewOnly) {
+    return rawUnits.map((unit) => ({
+      ...unit,
+      isLocked: !unit.isPublicPreview,
+      lockReason: unit.isPublicPreview
+        ? null
+        : "Buổi này dành cho học viên của khóa. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙",
+      requiredPrevUnitId: null,
+      requiredPrevUnitTitle: null,
+      requiredPrevUnitNumber: null,
+    }));
+  }
   const result = [];
   for (let idx = 0; idx < rawUnits.length; idx += 1) {
     const unit = rawUnits[idx];
@@ -177,6 +189,7 @@ export default function VideoCourseWorkspacePage() {
   const [activeTab, setActiveTab] = useState("video");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [errorCode, setErrorCode] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
   // Video Player & Watch Progress state
@@ -210,10 +223,12 @@ export default function VideoCourseWorkspacePage() {
   const loadWorkspace = useCallback(async (unitTarget) => {
     setLoading(true);
     setErrorMessage("");
+    setErrorCode("");
     try {
       const res = await fetchVideoCourseWorkspace(offeringId, { unitId: unitTarget });
       if (res?.success && res.data) {
-        const normalizedUnits = recomputeSequentialLocks(res.data.units || []);
+        const previewOnly = Boolean(res.data.capabilities?.isPublicPreviewAccess);
+        const normalizedUnits = recomputeSequentialLocks(res.data.units || [], previewOnly);
         const au = res.data.activeUnit;
         const activeMeta = au ? normalizedUnits.find((u) => String(u.id) === String(au.id)) : null;
 
@@ -249,6 +264,7 @@ export default function VideoCourseWorkspacePage() {
       setWorkspaceData(null);
       setNotes([]);
       setErrorMessage(err?.message || "Không thể tải không gian khóa học video.");
+      setErrorCode(err?.errorCode || "");
     } finally {
       setLoading(false);
     }
@@ -309,7 +325,7 @@ export default function VideoCourseWorkspacePage() {
       if (!changed) return prev;
       return {
         ...prev,
-        units: recomputeSequentialLocks(nextUnits),
+        units: recomputeSequentialLocks(nextUnits, Boolean(prev.capabilities?.isPublicPreviewAccess)),
       };
     });
   }, []);
@@ -354,7 +370,7 @@ export default function VideoCourseWorkspacePage() {
         };
       });
 
-      const updatedUnits = recomputeSequentialLocks(rawUpdated);
+      const updatedUnits = recomputeSequentialLocks(rawUpdated, Boolean(prev.capabilities?.isPublicPreviewAccess));
       const completedCount = updatedUnits.filter((u) => u.isCompleted).length;
       const totalCount = updatedUnits.length || 1;
       const activeMeta = updatedUnits.find((u) => String(u.id) === String(activeUnitId));
@@ -509,20 +525,42 @@ export default function VideoCourseWorkspacePage() {
 
   if (loading && !workspaceData) {
     return (
-      <div className="flex min-h-[70vh] items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
-        <LoadingState message="Đang khởi tạo không gian khóa học video Bunny Stream..." count={3} />
+      <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] p-6 dark:bg-slate-950">
+        <LoadingState message="Đang chuẩn bị không gian học của bạn..." />
       </div>
     );
   }
 
   if (errorMessage && !workspaceData) {
+    const isAccessError = [
+      "VIDEO_COURSE_ACCESS_REQUIRED",
+      "LMS_ACCESS_INACTIVE",
+      "ENTITLEMENT_INACTIVE",
+      "RECORD_MEMBERSHIP_REQUIRED",
+    ].includes(errorCode);
     return (
-      <div className="flex min-h-[70vh] items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
-        <ErrorState
-          title="Không thể mở không gian học video"
-          message={errorMessage}
-          onRetry={() => loadWorkspace(activeUnitId)}
-        />
+      <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] p-6 dark:bg-slate-950">
+        <div className="w-full max-w-3xl">
+          <ErrorState
+            title={isAccessError ? "Bạn chưa được cấp quyền học khóa này" : "Không thể mở không gian học video"}
+            message={isAccessError
+              ? "Khóa học này chưa được mở cho tài khoản của bạn. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙"
+              : errorMessage}
+            onRetry={isAccessError ? undefined : () => loadWorkspace(activeUnitId)}
+          />
+          {isAccessError && (
+            <div className="mt-4 flex justify-center">
+              <a
+                href="https://zalo.me/0812352005"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-500"
+              >
+                Liên hệ Zalo 0812352005
+              </a>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -541,12 +579,18 @@ export default function VideoCourseWorkspacePage() {
       canSubmitAssignments: true,
     },
   } = workspaceData;
+  const isPublicPreviewAccess = Boolean(capabilities.isPublicPreviewAccess);
   const slideFiles = (activeUnit?.files || []).filter((f) =>
     /\.(pdf|ppt|pptx|doc|docx)$/i.test(f.fileName || ""),
   );
 
   return (
     <div className={`min-h-screen ${isDarkMode ? "bg-slate-950 text-slate-100" : "bg-[#f8fafc] text-slate-900"} font-sans antialiased transition-colors duration-200`}>
+      {isPublicPreviewAccess && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-semibold text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+          Bạn đang xem buổi học thử miễn phí. Muốn học toàn bộ khóa, hãy nhắn Zalo 0812352005 nhé 💙
+        </div>
+      )}
       {/* 1. TOP HEADER / SHELL */}
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 px-4 py-3 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 sm:px-6">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">

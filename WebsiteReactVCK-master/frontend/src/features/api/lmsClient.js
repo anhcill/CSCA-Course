@@ -1796,6 +1796,13 @@ export const fetchAdminVideoCourseDetail = async (courseId) => (
   request(`/video-courses/admin/courses/${encodeURIComponent(courseId)}`)
 );
 
+export const updateAdminVideoCourseUnitPreview = async (unitType, unitId, isPublicPreview) => (
+  request(`/video-courses/admin/units/${encodeURIComponent(unitType)}/${encodeURIComponent(unitId)}/public-preview`, {
+    method: "PUT",
+    body: JSON.stringify({ isPublicPreview: Boolean(isPublicPreview) }),
+  })
+);
+
 export const saveAdminVideoCourseProfile = async (payload) => (
   request("/video-courses/admin/profiles", {
     method: "POST",

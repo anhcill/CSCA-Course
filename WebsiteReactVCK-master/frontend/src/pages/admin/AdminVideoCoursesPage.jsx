@@ -8,6 +8,8 @@ import {
   FiCheckCircle,
   FiCopy,
   FiEdit3,
+  FiEye,
+  FiEyeOff,
   FiExternalLink,
   FiFilm,
   FiFolderPlus,
@@ -46,6 +48,7 @@ import {
   saveAdminLearningUnitTheory,
   saveAdminVideoCourseProfile,
   unpublishAdminVideo,
+  updateAdminVideoCourseUnitPreview,
 } from "../../features/api/lmsClient";
 
 const TUS_VERSION = "1.0.0";
@@ -542,6 +545,17 @@ const AdminVideoCoursesPage = () => {
       await Promise.all([loadOverview(selectedCourseId), loadCourseDetail(selectedCourseId)]);
     } catch (error) {
       toast.error(error?.message || "Không thể xóa video");
+    }
+  };
+
+  const handleTogglePublicPreview = async (unit, unitType) => {
+    try {
+      const nextValue = !unit.isPublicPreview;
+      const res = await updateAdminVideoCourseUnitPreview(unitType, unit.id, nextValue);
+      toast.success(res?.message || (nextValue ? "Đã mở buổi học thử" : "Đã tắt buổi học thử"));
+      await loadCourseDetail(selectedCourseId);
+    } catch (error) {
+      toast.error(error?.message || "Không thể cập nhật quyền xem thử");
     }
   };
 
@@ -1151,6 +1165,19 @@ const AdminVideoCoursesPage = () => {
                             <div className="flex flex-wrap items-center gap-2">
                               <button
                                 type="button"
+                                onClick={() => handleTogglePublicPreview(sess, "class_session")}
+                                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                                  sess.isPublicPreview
+                                    ? "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-200"
+                                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                }`}
+                                title="Cho mọi tài khoản xem buổi này như bài học thử"
+                              >
+                                {sess.isPublicPreview ? <FiEyeOff className="h-3.5 w-3.5" /> : <FiEye className="h-3.5 w-3.5" />}
+                                <span>{sess.isPublicPreview ? "Tắt xem thử" : "Mở xem thử"}</span>
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => openContentEditor(sess, "class_session")}
                                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                               >
@@ -1326,6 +1353,19 @@ const AdminVideoCoursesPage = () => {
                                     </div>
 
                                     <div className="flex flex-wrap items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTogglePublicPreview(lesson, "lesson")}
+                                        className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold transition ${
+                                          lesson.isPublicPreview
+                                            ? "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-200"
+                                            : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                                        }`}
+                                        title="Cho mọi tài khoản xem bài này như bài học thử"
+                                      >
+                                        {lesson.isPublicPreview ? <FiEyeOff className="h-3.5 w-3.5" /> : <FiEye className="h-3.5 w-3.5" />}
+                                        <span>{lesson.isPublicPreview ? "Tắt xem thử" : "Mở xem thử"}</span>
+                                      </button>
                                       <button
                                         type="button"
                                         onClick={() => handleMoveLesson(sec, lIdx, -1)}

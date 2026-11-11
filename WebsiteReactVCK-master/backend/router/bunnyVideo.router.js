@@ -661,8 +661,10 @@ const resolvePlaybackVideoContext = async (videoIdParam, requestedUnitId = null)
   // Find placements in class_session_videos or lessons
   const placementsRes = await query(
     `SELECT csv.id AS placement_id, csv.class_session_id, csv.lesson_id, csv.is_published,
-            cs.live_class_id, lc.course_id AS session_course_id,
-            l.course_id AS lesson_course_id, l.is_published AS lesson_is_published
+            cs.live_class_id, cs.is_public_preview AS session_is_public_preview,
+            lc.course_id AS session_course_id,
+            l.course_id AS lesson_course_id, l.is_published AS lesson_is_published,
+            l.is_public_preview AS lesson_is_public_preview
      FROM class_session_videos csv
      LEFT JOIN class_sessions cs ON cs.id = csv.class_session_id
      LEFT JOIN live_classes lc ON lc.id = cs.live_class_id
@@ -685,17 +687,19 @@ const resolvePlaybackVideoContext = async (videoIdParam, requestedUnitId = null)
   let classSessionId = placement?.class_session_id || null;
   let lessonId = placement?.lesson_id || null;
   let isPublished = Boolean(placement?.is_published || asset.published_at);
+  let isPublicPreview = Boolean(placement?.session_is_public_preview || placement?.lesson_is_public_preview);
 
   // Fallback: check direct lessons.video_asset_id link
   if (!courseId) {
     const directLessonRes = await query(
-      `SELECT id, course_id, is_published FROM lessons WHERE video_asset_id = $1 ORDER BY id DESC LIMIT 1`,
+      `SELECT id, course_id, is_published, is_public_preview FROM lessons WHERE video_asset_id = $1 ORDER BY id DESC LIMIT 1`,
       [asset.id],
     );
     if (directLessonRes.rows[0]) {
       lessonId = directLessonRes.rows[0].id;
       courseId = directLessonRes.rows[0].course_id;
       isPublished = isPublished || Boolean(directLessonRes.rows[0].is_published);
+      isPublicPreview = Boolean(directLessonRes.rows[0].is_public_preview);
     }
   }
 
@@ -706,6 +710,7 @@ const resolvePlaybackVideoContext = async (videoIdParam, requestedUnitId = null)
     classSessionId,
     lessonId,
     isPublished,
+    isPublicPreview,
   };
 };
 
@@ -781,27 +786,29 @@ router.post("/videos/:videoId/playback-token", protectRoute, async (req, res) =>
         return sendError(res, 403, "Video bài giảng này chưa được phát hành", "VIDEO_UNPUBLISHED");
       }
 
-      const accessCheck = await verifyLearnerVideoAccess({
-        user: req.user,
-        courseId: effectiveCourseId,
-        liveClassId: effectiveLiveClassId,
-        requireRecordingMode: true,
-        req,
-      });
-
-      if (!accessCheck.allowed) {
-        await recordAuditEvent({
-          actorId: req.user.id,
-          action: "video.playback.rejected",
-          entityType: "video_asset",
-          entityId: String(asset.id),
-          metadata: {
-            reason: accessCheck.errorCode,
-            courseId: effectiveCourseId,
-            liveClassId: effectiveLiveClassId,
-          },
+      if (!ctx.isPublicPreview) {
+        const accessCheck = await verifyLearnerVideoAccess({
+          user: req.user,
+          courseId: effectiveCourseId,
+          liveClassId: effectiveLiveClassId,
+          requireRecordingMode: true,
+          req,
         });
-        return sendError(res, accessCheck.status, accessCheck.reason, accessCheck.errorCode);
+
+        if (!accessCheck.allowed) {
+          await recordAuditEvent({
+            actorId: req.user.id,
+            action: "video.playback.rejected",
+            entityType: "video_asset",
+            entityId: String(asset.id),
+            metadata: {
+              reason: accessCheck.errorCode,
+              courseId: effectiveCourseId,
+              liveClassId: effectiveLiveClassId,
+            },
+          });
+          return sendError(res, accessCheck.status, accessCheck.reason, accessCheck.errorCode);
+        }
       }
     }
 
@@ -883,7 +890,7 @@ router.put("/videos/:videoId/progress", protectRoute, async (req, res) => {
       return sendError(res, 403, "Video chưa sẵn sàng hoặc chưa được phát hành", "VIDEO_UNAVAILABLE");
     }
 
-    if (req.user.role === "user") {
+    if (req.user.role === "user" && !ctx.isPublicPreview) {
       const accessCheck = await verifyLearnerVideoAccess({
         user: req.user,
         courseId: ctx.courseId,

@@ -9,6 +9,7 @@ import {
 import { useAuthContext } from "../../context/AuthContext.jsx";
 import { USER_ROLES } from "../../constants/roles.js";
 import { fetchWelcomeSettingsApi } from "../../features/api/lmsClient.js";
+import { hasStudentLmsAccess } from "../../utils/lmsAccess.js";
 import { Lottie } from "lottie-react";
 import pigeonAnimation from "../../assets/pigeon.json";
 import magicBookAnimation from "../../assets/magic-book.json";
@@ -424,11 +425,13 @@ export default function FirstTimeWelcomeModal({
       // 2. Navigate smoothly to target destination
       if (isTeacher) {
         navigate("/lms/teach", { replace: true });
-      } else {
+      } else if (hasStudentLmsAccess(authUser)) {
         navigate("/lms/my-learning", { replace: true });
+      } else {
+        navigate("/", { replace: true });
       }
     }
-  }, [isSubmitting, isPreview, onClose, markWelcomeSeen, isTeacher, navigate]);
+  }, [isSubmitting, isPreview, onClose, markWelcomeSeen, isTeacher, authUser, navigate]);
 
   const durationSec = typeof activeConfig.autoTransitionDuration === "number"
     ? activeConfig.autoTransitionDuration

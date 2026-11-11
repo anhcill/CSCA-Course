@@ -343,7 +343,7 @@ function AppContent() {
 
   if (isVideoCoursePage) {
     return (
-      <div className="min-h-screen">
+      <div className="min-h-screen bg-[#f8fafc] dark:bg-slate-950">
         <Toaster position="top-center" reverseOrder={false} />
         <AppRoutes pathname={pathname} />
         <PwaInstallPrompt />

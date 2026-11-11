@@ -97,6 +97,78 @@ test("video course workspace: MIRROR mode returns sessions, theory and capabilit
   assert.equal(res.body.data.activeUnit.theory.title, "Lý thuyết Pinyin");
 });
 
+test("video course workspace: ordinary accounts can open only admin-selected preview units", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^"]+\.sql"/g)]
+    .map((match) => JSON.parse(match[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
+  const { pool } = await import("../db/connect.js");
+  pool.query = (sql, params) => db.query(sql, params);
+  const videoCourseRouter = (await import("./videoCourse.router.js")).default;
+
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('preview-teacher','preview-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const visitor = (await db.query(
+    "INSERT INTO users(username,email,role,is_management_managed,lms_account_status) VALUES ('preview-user','preview-user@example.test','user',FALSE,'pending_payment') RETURNING id",
+  )).rows[0];
+  const course = (await db.query(
+    "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Preview Course','preview-course',$1,TRUE) RETURNING id",
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await db.query(
+    "INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('Preview Source',$1,$2,'active') RETURNING id",
+    [course.id, teacher.id],
+  )).rows[0];
+  const lockedSession = (await db.query(
+    "INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status) VALUES ($1,'Buổi chỉ dành cho học viên',NOW(),NOW() + INTERVAL '1 hour','scheduled') RETURNING id",
+    [liveClass.id],
+  )).rows[0];
+  const previewSession = (await db.query(
+    "INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status,is_public_preview) VALUES ($1,'Buổi học thử',NOW() + INTERVAL '1 day',NOW() + INTERVAL '1 day 1 hour','scheduled',TRUE) RETURNING id",
+    [liveClass.id],
+  )).rows[0];
+  await db.query(
+    "INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,status) VALUES ($1,'MIRROR',$2,'active')",
+    [course.id, liveClass.id],
+  );
+
+  const route = videoCourseRouter.stack.find((layer) => (
+    layer.route?.path === "/:offeringId/workspace" && layer.route.methods.get
+  )).route;
+  const invoke = async (unitId = null) => {
+    const res = {
+      statusCode: 200,
+      body: null,
+      status(code) { this.statusCode = code; return this; },
+      json(body) { this.body = body; return this; },
+    };
+    await route.stack.at(-1).handle({
+      user: { id: visitor.id, role: "user", is_management_managed: false, lms_account_status: "pending_payment" },
+      params: { offeringId: String(course.id) },
+      query: unitId ? { unitId: String(unitId) } : {},
+    }, res);
+    return res;
+  };
+
+  const previewRes = await invoke();
+  assert.equal(previewRes.statusCode, 200, JSON.stringify(previewRes.body));
+  assert.equal(previewRes.body.data.activeUnit.id, String(previewSession.id));
+  assert.equal(previewRes.body.data.capabilities.isPublicPreviewAccess, true);
+  assert.equal(previewRes.body.data.units.find((unit) => unit.id === String(lockedSession.id)).isLocked, true);
+  assert.equal(previewRes.body.data.units.find((unit) => unit.id === String(previewSession.id)).isLocked, false);
+
+  const lockedRes = await invoke(lockedSession.id);
+  assert.equal(lockedRes.statusCode, 403);
+  assert.equal(lockedRes.body.errorCode, "LMS_ACCESS_INACTIVE");
+  assert.match(lockedRes.body.message, /0812352005/);
+});
+
 test("video course workspace: INDEPENDENT mode returns lessons without live class", async (t) => {
   const db = new PGlite();
   t.after(() => db.close());

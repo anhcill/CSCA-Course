@@ -434,12 +434,12 @@ export default function BunnyStreamPlayer({
   );
 
   if (!activeVideo) return statusPanel(<Play className="h-9 w-9 text-slate-500" />, "Chưa có video bài giảng", "Bạn vẫn có thể xem lý thuyết, tài liệu và bài tập của buổi học này.");
-  if (rawStatus === "uploading") return statusPanel(<UploadCloud className="h-9 w-9 text-sky-400" />, "Video đang được tải lên", "File video được upload trực tiếp lên Bunny Stream, không đi qua máy chủ ứng dụng.");
-  if (["created", "processing"].includes(rawStatus)) return statusPanel(<Loader2 className="h-9 w-9 animate-spin text-amber-400" />, "Bunny Stream đang xử lý video", "Video sẽ tự động sẵn sàng sau khi quá trình mã hóa hoàn tất.");
+  if (rawStatus === "uploading") return statusPanel(<UploadCloud className="h-9 w-9 text-sky-400" />, "Video đang được tải lên", "Bài giảng đang được chuẩn bị, bạn vui lòng quay lại sau nhé.");
+  if (["created", "processing"].includes(rawStatus)) return statusPanel(<Loader2 className="h-9 w-9 animate-spin text-amber-400" />, "Video đang được xử lý", "Video sẽ tự động sẵn sàng sau khi quá trình chuẩn bị hoàn tất.");
   if (rawStatus === "failed") return statusPanel(<AlertTriangle className="h-9 w-9 text-red-400" />, "Không thể xử lý video", activeVideo.processingError || "Quản trị viên cần thay thế hoặc tải lại video này.");
   if (!isPublished) return statusPanel(<Lock className="h-9 w-9 text-amber-400" />, "Video chưa được phát hành", "Quản trị viên chưa mở video này cho học viên.");
-  if (tokenLoading && !signedData) return statusPanel(<Loader2 className="h-9 w-9 animate-spin text-amber-400" />, "Đang xác thực quyền xem", "Hệ thống đang kiểm tra enrollment, thiết bị và quyền học.");
-  if (tokenError) return statusPanel(<Lock className="h-9 w-9 text-red-400" />, tokenError.errorCode, tokenError.message);
+  if (tokenLoading && !signedData) return statusPanel(<Loader2 className="h-9 w-9 animate-spin text-amber-400" />, "Đang chuẩn bị bài giảng", "Hệ thống đang kiểm tra quyền xem và thiết bị của bạn.");
+  if (tokenError) return statusPanel(<Lock className="h-9 w-9 text-red-400" />, "Chưa thể mở video", tokenError.message);
 
   const clampedPercent = Math.min(100, Math.max(0, Math.round(completionPercent)));
   const requiredSeconds = durationSeconds > 0 ? Math.ceil(durationSeconds * (REQUIRED_WATCH_PERCENT / 100)) : 0;
@@ -486,7 +486,7 @@ export default function BunnyStreamPlayer({
           <iframe
             ref={iframeRef}
             src={signedData?.embedUrl}
-            title={unitTitle || "Bunny Stream video"}
+            title={unitTitle || "Video bài giảng"}
             className="h-full w-full border-0"
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
             allowFullScreen

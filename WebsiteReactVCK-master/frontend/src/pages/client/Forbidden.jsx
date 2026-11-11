@@ -46,7 +46,7 @@ export default function Forbidden() {
 
         <p className="text-xs text-slate-500 mb-8">
           {isUnprovisionedLearner
-            ? 'Bạn vẫn có thể xem website và khóa học record công khai. Vui lòng liên hệ Management để được cấp quyền học LMS.'
+            ? 'Bạn chưa được cấp quyền học phần này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙'
             : 'Nếu bạn là giảng viên phụ trách lớp học nhưng gặp lỗi này, vui lòng liên hệ ban quản trị để được nâng cấp quyền.'}
         </p>
 

@@ -6,6 +6,7 @@ import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLms
 import { revokeTrustedDevice } from "../services/trustedDevice.service.js";
 
 const router = express.Router();
+const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
 
 const validationError = (res, message) => res.status(422).json({
   success: false,
@@ -229,7 +230,7 @@ router.get("/", async (req, res) => {
 router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
   try {
     const { offeringId } = req.params;
-    const { unitId } = req.query;
+    let { unitId } = req.query;
 
     const directOffering = await resolveProfileOffering(offeringId);
     const resolved = directOffering || await resolveOffering(offeringId);
@@ -239,17 +240,6 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
 
     const courseId = Number(course.id);
     const isLearner = req.user.role === "user";
-
-    // Learner gate check
-    if (isLearner) {
-      if (!hasActiveStudentLmsAccess(req.user)) {
-        return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực", "LMS_ACCESS_INACTIVE");
-      }
-      const hasEntitlement = await checkCourseEntitlement(courseId, req.user.id);
-      if (!hasEntitlement) {
-        return forbidden(res, "Bạn chưa được cấp quyền học khóa video này", "ENTITLEMENT_INACTIVE");
-      }
-    }
 
     // Load video course profile if any
     const profileRes = directOffering ? { rows: [directOffering.profile] } : await query(
@@ -275,10 +265,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
          ORDER BY vcp.id ASC LIMIT 1`,
         [courseId, req.user.id],
       );
-      profile = membershipProfile.rows[0] || null;
-      if (!profile) {
-        return forbidden(res, "Bạn chưa được gán vào lớp Record tương ứng", "RECORD_MEMBERSHIP_REQUIRED");
-      }
+      profile = membershipProfile.rows[0] || profile;
     }
     if (!profile) return notFound(res, "Khóa học này chưa được cấu hình khóa video");
 
@@ -302,10 +289,22 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
       }
     }
 
-    // Learner membership verification for MIRROR mode
-    // Section 4.1 & 12: Live class learners without Record membership cannot access sibling Record course
+    // Full learners keep the normal entitlement + Record membership flow. Other
+    // signed-in users may enter only units explicitly opened by an admin as previews.
     let memberAlias = null;
-    if (isLearner && mode === "MIRROR" && sourceLiveClassId) {
+    let hasFullLearnerAccess = !isLearner;
+    let isPublicPreviewAccess = false;
+    let learnerAccessErrorCode = "VIDEO_COURSE_ACCESS_REQUIRED";
+    if (isLearner) {
+      const hasActiveLmsAccount = hasActiveStudentLmsAccess(req.user);
+      const hasEntitlement = hasActiveLmsAccount
+        && await checkCourseEntitlement(courseId, req.user.id);
+      hasFullLearnerAccess = hasActiveLmsAccount && hasEntitlement;
+      learnerAccessErrorCode = !hasActiveLmsAccount
+        ? "LMS_ACCESS_INACTIVE"
+        : (hasEntitlement ? "RECORD_MEMBERSHIP_REQUIRED" : "ENTITLEMENT_INACTIVE");
+    }
+    if (isLearner && hasFullLearnerAccess && mode === "MIRROR" && sourceLiveClassId) {
       memberAlias = await checkRecordMembership({
         userId: req.user.id,
         liveClassId: sourceLiveClassId,
@@ -313,28 +312,61 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         managementClassId: profile.management_class_id || null,
         mode,
       });
-      if (!memberAlias) {
-        return forbidden(
-          res,
-          "Học viên lớp Live không được truy cập khóa Record nếu chưa đăng ký membership lớp Record",
-          "RECORD_MEMBERSHIP_REQUIRED",
-        );
-      }
-    } else if (isLearner && mode === "INDEPENDENT") {
-      // Independent mode: ensure a sibling Live-only learner cannot open Record workspace without a Record membership
+      hasFullLearnerAccess = Boolean(memberAlias);
+      if (!hasFullLearnerAccess) learnerAccessErrorCode = "RECORD_MEMBERSHIP_REQUIRED";
+    } else if (isLearner && hasFullLearnerAccess && mode === "INDEPENDENT") {
       memberAlias = await checkRecordMembership({
         userId: req.user.id,
         courseId,
         managementClassId: profile.management_class_id || null,
         mode,
       });
-      if (!memberAlias) return forbidden(res, "Bạn chưa được gán vào khóa video độc lập này", "RECORD_MEMBERSHIP_REQUIRED");
+      hasFullLearnerAccess = Boolean(memberAlias);
+      if (!hasFullLearnerAccess) learnerAccessErrorCode = "RECORD_MEMBERSHIP_REQUIRED";
+    }
+
+    if (isLearner && !hasFullLearnerAccess) {
+      const previewRes = mode === "MIRROR" && sourceLiveClassId
+        ? await query(
+          `SELECT cs.id
+           FROM class_sessions cs
+           WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
+             AND cs.is_public_preview = TRUE
+             AND ($2::bigint IS NULL OR cs.id = $2)
+           ORDER BY cs.start_time ASC, cs.id ASC LIMIT 1`,
+          [sourceLiveClassId, parsePositiveId(unitId)],
+        )
+        : await query(
+          `SELECT l.id
+           FROM lessons l
+           WHERE l.course_id = $1 AND l.is_published = TRUE
+             AND l.is_public_preview = TRUE
+             AND ($2::bigint IS NULL OR l.id = $2)
+           ORDER BY l.sort_order ASC, l.id ASC LIMIT 1`,
+          [courseId, parsePositiveId(unitId)],
+        );
+      const previewUnit = previewRes.rows[0] || null;
+      if (!previewUnit) {
+        return forbidden(res, ACCESS_HELP_MESSAGE, learnerAccessErrorCode);
+      }
+      unitId = String(previewUnit.id);
+      isPublicPreviewAccess = true;
     }
 
     let units = [];
     let activeUnitData = null;
 
     const applySequentialLocks = (rawUnits) => {
+      if (isPublicPreviewAccess) {
+        return rawUnits.map((current) => ({
+          ...current,
+          isLocked: !current.isPublicPreview,
+          lockReason: current.isPublicPreview ? null : ACCESS_HELP_MESSAGE,
+          requiredPrevUnitId: null,
+          requiredPrevUnitTitle: null,
+          requiredPrevUnitNumber: null,
+        }));
+      }
       const result = [];
       for (let idx = 0; idx < rawUnits.length; idx += 1) {
         const current = rawUnits[idx];
@@ -384,7 +416,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
     if (mode === "MIRROR" && sourceLiveClassId) {
       // MIRROR: Units are the class_sessions of the source live class
       const sessionsRes = await query(
-        `SELECT cs.id, cs.live_class_id,
+        `SELECT cs.id, cs.live_class_id, cs.is_public_preview,
                 ROW_NUMBER() OVER (ORDER BY cs.start_time ASC, cs.id ASC)::int AS session_number,
                 cs.title, cs.start_time, cs.end_time,
                 cs.course_section_id, cs.lesson_id,
@@ -459,6 +491,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           hasVideo,
           videoStatus: row.playback_status || (row.video_asset_id ? "ready" : "none"),
           isPublished: Boolean(row.video_is_published),
+          isPublicPreview: Boolean(row.is_public_preview),
           progressPercent,
           isVideoCompleted,
           quizCount,
@@ -702,6 +735,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
       // INDEPENDENT: Units are sections -> lessons
       const lessonsRes = await query(
         `SELECT l.id, l.section_id, l.title, l.description, l.duration_seconds,
+                l.is_public_preview,
                 l.sort_order, s.title AS section_title, s.sort_order AS section_sort_order,
                 COALESCE(csv.video_asset_id, l.video_asset_id) AS resolved_video_asset_id,
                 COALESCE(csv.is_published, l.is_published) AS video_is_published,
@@ -773,6 +807,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           hasVideo,
           videoStatus: row.playback_status || (row.resolved_video_asset_id ? "ready" : "none"),
           isPublished: Boolean(row.video_is_published),
+          isPublicPreview: Boolean(row.is_public_preview),
           progressPercent,
           isVideoCompleted,
           quizCount,
@@ -1059,7 +1094,8 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           canJoinLive: false,
           canCheckIn: false,
           showCalendar: false,
-          canSubmitAssignments: true,
+          canSubmitAssignments: !isPublicPreviewAccess,
+          isPublicPreviewAccess,
         },
       },
     });
@@ -1507,7 +1543,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
     let mirrorSessions = [];
     if (activeSourceClassId) {
       const sessRes = await query(
-        `SELECT cs.id, cs.live_class_id,
+        `SELECT cs.id, cs.live_class_id, cs.is_public_preview,
                 ROW_NUMBER() OVER (ORDER BY cs.start_time ASC, cs.id ASC)::int AS session_number,
                 cs.title, cs.start_time, cs.end_time, cs.status,
                 (SELECT COUNT(*)::int FROM learning_unit_theory lut WHERE lut.class_session_id = cs.id) AS theory_count,
@@ -1569,6 +1605,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
           startTime: s.start_time,
           endTime: s.end_time,
           status: s.status,
+          isPublicPreview: Boolean(s.is_public_preview),
           videoStatus: computeUnitVideoStatus(vids),
           videos: vids,
           counts: {
@@ -1594,6 +1631,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
       query(
         `SELECT l.id, l.course_id, l.section_id, COALESCE(l.title, l.name) AS title,
                 l.description, l.duration_seconds, l.sort_order, l.is_published,
+                l.is_public_preview,
                 l.video_asset_id, l.learning_url,
                 lut.title AS theory_title, lut.content_html AS theory_html,
                 lut.summary AS theory_summary, lut.key_takeaways AS theory_takeaways,
@@ -1658,6 +1696,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
         durationSeconds: Number(l.duration_seconds || 0),
         sortOrder: Number(l.sort_order || 0),
         isPublished: Boolean(l.is_published),
+        isPublicPreview: Boolean(l.is_public_preview),
         learningUrl: l.learning_url || null,
         videoStatus: computeUnitVideoStatus(vids),
         videos: vids,
@@ -1751,6 +1790,43 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
   } catch (error) {
     console.error("Admin get video course detail error:", error);
     return res.status(500).json({ success: false, message: "Lỗi máy chủ", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+// Admin: open or close one learning unit as a public marketing preview.
+router.put("/admin/units/:unitType/:unitId/public-preview", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const unitId = parsePositiveId(req.params.unitId);
+    const unitType = String(req.params.unitType || "").trim().toLowerCase();
+    const isPublicPreview = req.body?.isPublicPreview;
+    if (!unitId || !["class_session", "lesson"].includes(unitType) || typeof isPublicPreview !== "boolean") {
+      return validationError(res, "Thông tin buổi xem thử không hợp lệ");
+    }
+
+    const table = unitType === "class_session" ? "class_sessions" : "lessons";
+    const updateRes = await query(
+      `UPDATE ${table}
+       SET is_public_preview = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, is_public_preview`,
+      [isPublicPreview, unitId],
+    );
+    if (!updateRes.rows[0]) return notFound(res, "Không tìm thấy buổi học hoặc bài học");
+
+    return res.json({
+      success: true,
+      data: {
+        id: String(updateRes.rows[0].id),
+        unitType,
+        isPublicPreview: Boolean(updateRes.rows[0].is_public_preview),
+      },
+      message: isPublicPreview
+        ? "Đã mở buổi học thử cho mọi tài khoản"
+        : "Đã tắt quyền xem thử công khai",
+    });
+  } catch (error) {
+    console.error("Update public preview unit error:", error);
+    return res.status(500).json({ success: false, message: "Không thể cập nhật buổi xem thử", errorCode: "INTERNAL_ERROR" });
   }
 });
 
