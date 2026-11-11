@@ -79,6 +79,11 @@ test("player resumes one attempt, protects review, submits idempotently and feed
     "INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('Player class',$1,$2,'active') RETURNING id",
     [course.id, teacher.id],
   )).rows[0];
+  const classSession = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status,is_public_preview)
+     VALUES ($1,'Preview session',NOW(),NOW() + interval '1 hour','scheduled',FALSE) RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
   await db.query("INSERT INTO class_enrollments(user_id,live_class_id,status) VALUES ($1,$2,'active')", [learner.id, liveClass.id]);
   await db.query(
     `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
@@ -87,11 +92,11 @@ test("player resumes one attempt, protects review, submits idempotently and feed
   );
   const quiz = (await db.query(
     `INSERT INTO quizzes(
-       title,description,course_id,live_class_id,instructor_id,status,activity_scope,
+       title,description,course_id,live_class_id,class_session_id,instructor_id,status,activity_scope,
        duration_minutes,passing_score,attempt_limit,available_from,available_until,review_policy
-     ) VALUES ('Player quiz','Review later',$1,$2,$3,'PUBLISHED','homework',30,60,1,
+     ) VALUES ('Player quiz','Review later',$1,$2,$3,$4,'PUBLISHED','homework',30,60,1,
        NOW() - interval '1 hour',NOW() + interval '1 hour','after_close') RETURNING id`,
-    [course.id, liveClass.id, teacher.id],
+    [course.id, liveClass.id, classSession.id, teacher.id],
   )).rows[0];
   const question = (await db.query(
     `INSERT INTO quiz_questions(quiz_id,question_text,question_type,options_json,correct_answer,explanation,points,sort_order)
@@ -101,6 +106,19 @@ test("player resumes one attempt, protects review, submits idempotently and feed
 
   const denied = await invoke("get", "/quizzes/:quizId/start", { user: outsider, params: { quizId: quiz.id } });
   assert.equal(denied.statusCode, 403);
+
+  await db.query("UPDATE class_sessions SET is_public_preview = TRUE WHERE id = $1", [classSession.id]);
+  const previewRoute = quizPlayerRouter.stack.find((item) => item.route?.path === "/quizzes/:quizId/start" && item.route.methods.get);
+  let previewMiddlewarePassed = false;
+  await previewRoute.route.stack.at(-2).handle(
+    { params: { quizId: String(quiz.id) }, user: outsider },
+    { status() { return this; }, json() { return this; } },
+    () => { previewMiddlewarePassed = true; },
+  );
+  assert.equal(previewMiddlewarePassed, true, "public preview quiz must bypass paid LMS middleware");
+  const previewAttempt = await invoke("get", "/quizzes/:quizId/start", { user: outsider, params: { quizId: quiz.id } });
+  assert.equal(previewAttempt.statusCode, 200, JSON.stringify(previewAttempt.body));
+  await db.query("DELETE FROM quiz_attempts WHERE user_id = $1 AND quiz_id = $2", [outsider.id, quiz.id]);
 
   const first = await invoke("get", "/quizzes/:quizId/start", { user: learner, params: { quizId: quiz.id } });
   const second = await invoke("get", "/quizzes/:quizId/start", { user: learner, params: { quizId: quiz.id } });

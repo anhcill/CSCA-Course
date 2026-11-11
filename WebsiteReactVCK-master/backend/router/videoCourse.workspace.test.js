@@ -351,7 +351,7 @@ test("video course workspace: sequential lesson unlocking requires >=80% verifie
     layer.route?.path === "/:offeringId/workspace" && layer.route.methods.get
   )).route;
 
-  const fetchWorkspace = async () => {
+  const fetchWorkspace = async (unitId = null) => {
     const res = {
       statusCode: 200,
       body: null,
@@ -366,7 +366,7 @@ test("video course workspace: sequential lesson unlocking requires >=80% verifie
         lms_account_status: "active",
       },
       params: { offeringId: String(course.id) },
-      query: {},
+      query: unitId ? { unitId: String(unitId) } : {},
     }, res);
     return res.body.data;
   };
@@ -379,6 +379,12 @@ test("video course workspace: sequential lesson unlocking requires >=80% verifie
   assert.equal(ws.units[1].isLocked, true);
   assert.equal(ws.units[1].videoDurationSeconds, 300);
   assert.equal(ws.units[1].durationMinutes, 5);
+  const lockedWorkspace = await fetchWorkspace(session2.id);
+  assert.equal(lockedWorkspace.activeUnit.isLocked, true);
+  assert.equal(lockedWorkspace.activeUnit.video, null);
+  assert.deepEqual(lockedWorkspace.activeUnit.videos, []);
+  assert.deepEqual(lockedWorkspace.activeUnit.files, []);
+  assert.deepEqual(lockedWorkspace.activeUnit.quizzes, []);
 
   // Step 2: Anti-seek check: Seeking playhead to 180s/200s (90%) with watchedDeltaSeconds = 0 MUST NOT unlock or add watch time
   const seekResult = await recordVideoWatchProgress({

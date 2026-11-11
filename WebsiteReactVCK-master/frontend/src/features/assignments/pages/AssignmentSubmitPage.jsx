@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   confirmSubmissionAsset,
@@ -88,9 +88,12 @@ import SubmissionAnnotations from "../components/SubmissionAnnotations";
 
 export default function AssignmentSubmitPage() {
   const { id, courseId, classId } = useParams();
-  const assignmentListPath = courseId && classId
+  const [searchParams] = useSearchParams();
+  const requestedBackUrl = searchParams.get("backUrl") || "";
+  const safeBackUrl = requestedBackUrl.startsWith("/video-courses/") ? requestedBackUrl : "";
+  const assignmentListPath = safeBackUrl || (courseId && classId
     ? `/lms/courses/${courseId}/classes/${classId}/assignments`
-    : "/lms/assignments";
+    : "/lms/assignments");
 
   const [assignment, setAssignment] = useState(null);
   const [loading, setLoading] = useState(true);

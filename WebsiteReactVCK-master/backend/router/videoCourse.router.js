@@ -77,6 +77,7 @@ const resolveProfileOffering = async (offeringParam) => {
   const result = await query(
     `SELECT vcp.id AS profile_id, c.id, vcp.course_id, vcp.management_class_id, vcp.mode,
             vcp.source_live_class_id, vcp.enforce_trusted_devices,
+            vcp.allow_file_download,
             vcp.device_limit, vcp.status,
             c.name, COALESCE(c.title, c.name) AS title, c.slug,
             c.description, c.category, c.level, c.price, c.is_free,
@@ -244,6 +245,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
     // Load video course profile if any
     const profileRes = directOffering ? { rows: [directOffering.profile] } : await query(
       `SELECT vcp.id, vcp.mode, vcp.source_live_class_id, vcp.enforce_trusted_devices,
+              vcp.allow_file_download,
               vcp.device_limit, vcp.status, vcp.management_class_id,
               lc.title AS source_class_title, lc.status AS source_class_status
        FROM video_course_profiles vcp
@@ -355,6 +357,28 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
 
     let units = [];
     let activeUnitData = null;
+
+    const lockedUnitPayload = ({ id, type, title, sessionNumber, sectionTitle = null, meta }) => ({
+      id: String(id),
+      type,
+      title,
+      sessionNumber,
+      sectionTitle,
+      isLocked: true,
+      lockReason: meta?.lockReason || ACCESS_HELP_MESSAGE,
+      requiredPrevUnitId: meta?.requiredPrevUnitId || null,
+      requiredPrevUnitTitle: meta?.requiredPrevUnitTitle || null,
+      requiredPrevUnitNumber: meta?.requiredPrevUnitNumber || null,
+      video: null,
+      videos: [],
+      theory: null,
+      files: [],
+      assignments: [],
+      quizzes: [],
+      vocabulary: [],
+      formulas: [],
+      notes: [],
+    });
 
     const applySequentialLocks = (rawUnits) => {
       if (isPublicPreviewAccess) {
@@ -512,6 +536,15 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
       if (selectedSession) {
         const sessId = selectedSession.id;
         const selectedUnitMeta = units.find((u) => String(u.id) === String(sessId)) || null;
+        if (selectedUnitMeta?.isLocked && isLearner) {
+          activeUnitData = lockedUnitPayload({
+            id: selectedSession.id,
+            type: "class_session",
+            title: selectedSession.title || `Buổi ${selectedSession.session_number}`,
+            sessionNumber: selectedSession.session_number,
+            meta: selectedUnitMeta,
+          });
+        } else {
         // Fetch unit details: all videos, theory, files, assignments, quizzes, vocabulary, formulas, notes
         const [videosRes, theoryRes, filesRes, assignRes, quizRes, vocabRes, formulaRes, notesRes] = await Promise.all([
           query(
@@ -677,10 +710,10 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             fileName: f.file_name,
             sizeBytes: Number(f.file_size_bytes || 0),
             mimeType: f.mime_type,
-            viewUrl: `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}`,
-            downloadUrl: f.allow_file_download === false
+            viewUrl: `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&videoCourseId=${encodeURIComponent(courseId)}`,
+            downloadUrl: isPublicPreviewAccess || profile.allow_file_download !== true || f.allow_file_download === false
               ? null
-              : `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&download=1`,
+              : `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&videoCourseId=${encodeURIComponent(courseId)}&download=1`,
           })),
           assignments: assignRes.rows.map((a) => ({
             id: String(a.id),
@@ -730,6 +763,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             createdAt: n.created_at,
           })),
         };
+        }
       }
     } else {
       // INDEPENDENT: Units are sections -> lessons
@@ -827,6 +861,16 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
       if (selectedLesson) {
         const lId = selectedLesson.id;
         const selectedUnitMeta = units.find((u) => String(u.id) === String(lId)) || null;
+        if (selectedUnitMeta?.isLocked && isLearner) {
+          activeUnitData = lockedUnitPayload({
+            id: selectedLesson.id,
+            type: "lesson",
+            title: selectedLesson.title,
+            sessionNumber: selectedUnitMeta?.sessionNumber || 1,
+            sectionTitle: selectedLesson.section_title || "Chương 1",
+            meta: selectedUnitMeta,
+          });
+        } else {
         const [videosRes, theoryRes, filesRes, assignRes, quizRes, vocabRes, formulaRes, notesRes] = await Promise.all([
           query(
             `SELECT csv.id AS placement_id, csv.title AS part_title, csv.video_type, csv.sort_order, csv.is_published,
@@ -989,8 +1033,10 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             fileName: f.file_name,
             sizeBytes: Number(f.file_size_bytes || 0),
             mimeType: f.mime_type,
-            viewUrl: `/api/files/${f.id}/download`,
-            downloadUrl: `/api/files/${f.id}/download?download=1`,
+            viewUrl: `/api/files/${f.id}/download?videoCourseId=${encodeURIComponent(courseId)}`,
+            downloadUrl: isPublicPreviewAccess || profile.allow_file_download !== true
+              ? null
+              : `/api/files/${f.id}/download?videoCourseId=${encodeURIComponent(courseId)}&download=1`,
           })),
           assignments: assignRes.rows.map((a) => ({
             id: String(a.id),
@@ -1040,6 +1086,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             createdAt: n.created_at,
           })),
         };
+        }
       }
     }
 
@@ -1094,7 +1141,8 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           canJoinLive: false,
           canCheckIn: false,
           showCalendar: false,
-          canSubmitAssignments: !isPublicPreviewAccess,
+          canSubmitAssignments: true,
+          allowFileDownload: !isPublicPreviewAccess && profile.allow_file_download === true,
           isPublicPreviewAccess,
         },
       },
@@ -1398,6 +1446,7 @@ router.get("/admin/courses", protectRoute, requireAdmin, async (req, res) => {
               u.username AS instructor_name,
               vcp.id AS profile_id, vcp.mode, vcp.source_live_class_id,
               vcp.management_class_id, vcp.device_limit, vcp.enforce_trusted_devices,
+              vcp.allow_file_download,
               vcp.status AS profile_status,
               lc.title AS source_class_title, lc.status AS source_class_status
        FROM courses c
@@ -1434,6 +1483,7 @@ router.get("/admin/courses", protectRoute, requireAdmin, async (req, res) => {
             managementClassId: row.management_class_id || null,
             deviceLimit: Number(row.device_limit || 2),
             enforceTrustedDevices: row.enforce_trusted_devices !== false,
+            allowFileDownload: row.allow_file_download === true,
             status: row.profile_status || "active",
           },
           stats: checklist?.stats || {
@@ -1504,6 +1554,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
               u.username AS instructor_name,
               vcp.id AS profile_id, vcp.mode, vcp.source_live_class_id,
               vcp.management_class_id, vcp.device_limit, vcp.enforce_trusted_devices,
+              vcp.allow_file_download,
               vcp.status AS profile_status
        FROM courses c
        LEFT JOIN users u ON u.id = c.author_id
@@ -1762,6 +1813,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
           managementClassId: course.management_class_id || null,
           deviceLimit: Number(course.device_limit || 2),
           enforceTrustedDevices: course.enforce_trusted_devices !== false,
+          allowFileDownload: course.allow_file_download === true,
           status: course.profile_status || "active",
         },
         availableLiveClasses: liveClassesRes.rows.map((lc) => ({
@@ -1840,6 +1892,7 @@ router.post("/admin/profiles", protectRoute, requireAdmin, async (req, res) => {
       managementClassId = null,
       deviceLimit = 2,
       enforceTrustedDevices = true,
+      allowFileDownload = false,
       status = "active",
       thumbnailUrl = undefined,
     } = req.body || {};
@@ -1883,8 +1936,8 @@ router.post("/admin/profiles", protectRoute, requireAdmin, async (req, res) => {
       : `ON CONFLICT (course_id) WHERE management_class_id IS NULL`;
     const upsertRes = await query(
       `INSERT INTO video_course_profiles
-         (course_id, mode, source_live_class_id, management_class_id, device_limit, enforce_trusted_devices, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (course_id, mode, source_live_class_id, management_class_id, device_limit, enforce_trusted_devices, allow_file_download, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ${conflictClause}
        DO UPDATE SET
          course_id = EXCLUDED.course_id,
@@ -1893,6 +1946,7 @@ router.post("/admin/profiles", protectRoute, requireAdmin, async (req, res) => {
          management_class_id = EXCLUDED.management_class_id,
          device_limit = EXCLUDED.device_limit,
          enforce_trusted_devices = EXCLUDED.enforce_trusted_devices,
+         allow_file_download = EXCLUDED.allow_file_download,
          status = EXCLUDED.status,
          updated_at = NOW()
        RETURNING *`,
@@ -1903,6 +1957,7 @@ router.post("/admin/profiles", protectRoute, requireAdmin, async (req, res) => {
         normalizedManagementClassId,
         parsedLimit,
         Boolean(enforceTrustedDevices),
+        Boolean(allowFileDownload),
         status,
       ],
     );

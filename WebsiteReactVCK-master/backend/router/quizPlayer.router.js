@@ -2,7 +2,7 @@ import express from "express";
 import { getClient, query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireRole from "../middleware/requireRole.js";
-import requireActiveStudentLmsAccess from "../middleware/requireActiveStudentLmsAccess.js";
+import requireActiveStudentLmsAccess, { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
 import { awardXp, XP_VALUES } from "../services/gamification.service.js";
 import {
   getAttemptExpiry,
@@ -31,6 +31,35 @@ const parsePositiveId = (value) => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const isQuizPublicPreview = async (db, quizId) => Boolean((await db.query(
+  `SELECT 1
+   FROM quizzes q
+   LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
+   LEFT JOIN lessons l ON l.id = q.lesson_id
+   WHERE q.id = $1
+     AND q.status = 'PUBLISHED'
+     AND (COALESCE(cs.is_public_preview, FALSE) = TRUE
+       OR COALESCE(l.is_public_preview, FALSE) = TRUE)
+   LIMIT 1`,
+  [quizId],
+)).rows[0]);
+
+const requireActiveStudentLmsAccessOrPreview = async (req, res, next) => {
+  if (hasActiveStudentLmsAccess(req.user)) return next();
+  try {
+    const quizId = req.params.quizId
+      ? parsePositiveId(req.params.quizId)
+      : (await query(
+        "SELECT quiz_id FROM quiz_attempts WHERE id = $1 AND user_id = $2",
+        [parsePositiveId(req.params.attemptId), req.user?.id],
+      )).rows[0]?.quiz_id;
+    if (quizId && await isQuizPublicPreview({ query }, quizId)) return next();
+  } catch (error) {
+    console.error("Error checking public preview quiz access:", error);
+  }
+  return requireActiveStudentLmsAccess(req, res, next);
+};
+
 const isPlainObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 const parseJsonArray = (value) => {
@@ -55,7 +84,9 @@ const getQuiz = async (db, quizId, { lock = false } = {}) => (await db.query(
           l.is_published AS lesson_is_published,
           paper.status AS paper_status, solution.status AS solution_status,
           lc.title AS class_title, cs.title AS session_title,
-          cs.start_time AS session_start, cs.end_time AS session_end
+          cs.start_time AS session_start, cs.end_time AS session_end,
+          COALESCE(cs.is_public_preview, FALSE) AS session_is_public_preview,
+          COALESCE(l.is_public_preview, FALSE) AS lesson_is_public_preview
    FROM quizzes q
    LEFT JOIN lessons l ON l.id = q.lesson_id
    LEFT JOIN courses c ON c.id = COALESCE(q.course_id, l.course_id)
@@ -69,6 +100,7 @@ const getQuiz = async (db, quizId, { lock = false } = {}) => (await db.query(
 
 const ensureQuizAccess = async (db, quiz, userId) => {
   if (quiz.quiz_status !== "PUBLISHED" || !quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
+  if (quiz.session_is_public_preview || quiz.lesson_is_public_preview) return true;
   const access = await db.query(
     `SELECT 1 FROM lms_access_grants
      WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
@@ -408,7 +440,7 @@ const quizWindowError = (res, error) => {
   );
 };
 
-router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
+router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireActiveStudentLmsAccessOrPreview, async (req, res) => {
   const client = await getClient();
   let committed = false;
   try {
@@ -467,7 +499,7 @@ router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireA
   }
 });
 
-router.put("/attempts/:attemptId/answers", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
+router.put("/attempts/:attemptId/answers", protectRoute, requireRole("user"), requireActiveStudentLmsAccessOrPreview, async (req, res) => {
   const client = await getClient();
   let committed = false;
   try {
@@ -520,7 +552,7 @@ router.put("/attempts/:attemptId/answers", protectRoute, requireRole("user"), re
   }
 });
 
-router.post("/attempts/:attemptId/submit", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
+router.post("/attempts/:attemptId/submit", protectRoute, requireRole("user"), requireActiveStudentLmsAccessOrPreview, async (req, res) => {
   const client = await getClient();
   let committed = false;
   try {

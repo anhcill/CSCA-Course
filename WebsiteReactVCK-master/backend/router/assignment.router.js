@@ -111,6 +111,7 @@ const getAssignment = async (assignmentId, db = { query }) => {
             COALESCE(a.course_id, lc.course_id) AS resolved_course_id,
             c.author_id AS course_author_id,
             lc.status AS live_class_status, cs.title AS session_title,
+            COALESCE(cs.is_public_preview, FALSE) AS session_is_public_preview,
             cs.start_time AS session_start, cs.end_time AS session_end,
             lc.instructor_id AS live_class_instructor_id,
             instructor.username AS instructor_name,
@@ -151,6 +152,15 @@ const ensureAssignmentVisibleToStudent = async (assignment, userId, db = { query
   }
   return courseId !== null || assignment.live_class_id !== null;
 };
+
+const assignmentIsPublicPreview = (assignment) => Boolean(
+  assignment?.class_session_id && assignment?.session_is_public_preview,
+);
+
+const studentCanAccessAssignment = async (assignment, user, db = { query }) => (
+  assignmentIsPublicPreview(assignment)
+  || (hasActiveStudentLmsAccess(user) && await ensureAssignmentVisibleToStudent(assignment, user.id, db))
+);
 
 const isAssignedTeacher = async (classId, userId, db = { query }) => Boolean((await db.query(
   `SELECT 1 FROM live_classes lc WHERE lc.id = $1 AND
@@ -1724,14 +1734,11 @@ router.post("/teacher/accommodations/:id/revoke", protectRoute, requireTeacher, 
 router.get("/:assignmentId", protectRoute, async (req, res, next) => {
   if (["all", "quizzes", "submissions", "submission-assets"].includes(req.params.assignmentId)) return next();
   try {
-    if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
-      return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
-    }
     const assignmentId = parsePositiveId(req.params.assignmentId);
     if (!assignmentId) return validationError(res, "assignmentId không hợp lệ");
     const assignment = await getAssignment(assignmentId);
     if (!assignment) return notFound(res, "Không tìm thấy bài tập");
-    if (req.user.role === "user" && !(await ensureAssignmentVisibleToStudent(assignment, req.user.id))) return forbidden(res, "Bạn chưa được cấp quyền truy cập bài tập này");
+    if (req.user.role === "user" && !(await studentCanAccessAssignment(assignment, req.user))) return forbidden(res, "Bạn chưa được cấp quyền truy cập bài tập này");
     if (req.user.role === "creator" && !(await canGradeAssignment(assignment, req.user))) return forbidden(res, "Bạn không có quyền xem bài tập này");
     const accommodation = req.user.role === "user"
       ? await getAssessmentAccommodation({ assessmentType: "assignment", assessmentId: assignmentId, userId: req.user.id })
@@ -2196,14 +2203,14 @@ router.patch("/:id", protectRoute, requireTeacher, requirePermission("lms.assign
 });
 
 // POST /api/assignments/:id/submit — one immutable student submission per assignment.
-router.post("/:id/submit", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
+router.post("/:id/submit", protectRoute, requireRole("user"), async (req, res) => {
   const client = await getClient();
   try {
     const assignmentId = parsePositiveId(req.params.id);
     if (!assignmentId) return validationError(res, "assignmentId không hợp lệ");
     const assignment = await getAssignment(assignmentId);
     if (!assignment) return notFound(res, "Không tìm thấy bài tập");
-    if (!(await ensureAssignmentVisibleToStudent(assignment, req.user.id))) return forbidden(res, "Bạn chưa được đăng ký vào khóa/lớp của bài tập này");
+    if (!(await studentCanAccessAssignment(assignment, req.user))) return forbidden(res, "Bạn chưa được đăng ký vào khóa/lớp của bài tập này");
     const {
       contentText,
       fileAssetId: rawFileAssetId,

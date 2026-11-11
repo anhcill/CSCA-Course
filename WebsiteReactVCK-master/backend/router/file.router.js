@@ -3,7 +3,7 @@ import multer from "multer";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
-import requireActiveStudentLmsAccess, { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
+import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
 import { query } from "../db/connect.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import {
@@ -54,10 +54,6 @@ const acceptSingleImage = (req, res, next) => {
 const errorResponse = (res, status, message, errorCode) => res.status(status).json({
   success: false, message, errorCode,
 });
-
-const requireManagedLearner = (req, res, next) => (
-  req.user?.role === "user" ? requireActiveStudentLmsAccess(req, res, next) : next()
-);
 
 const parseId = (value) => {
   const parsed = Number(value);
@@ -273,7 +269,41 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
      LIMIT 1`,
     [file.live_class_id, user.id, file.live_class_id ? file.class_course_id : file.course_id, file.visibility],
   );
-  if (!access.rows.length) return { error: "forbidden" };
+  if (!access.rows.length) {
+    const preview = await query(
+      `SELECT 1
+       WHERE EXISTS (
+         SELECT 1
+         FROM lms_learning_files direct_file
+         JOIN class_sessions cs ON cs.id = direct_file.class_session_id
+         WHERE direct_file.id = $1 AND cs.is_public_preview = TRUE
+           AND ($2::bigint IS NULL OR cs.live_class_id = $2)
+       ) OR EXISTS (
+         SELECT 1
+         FROM lms_learning_file_placements p
+         JOIN class_sessions cs ON cs.id = p.class_session_id
+         WHERE p.file_id = $1 AND cs.is_public_preview = TRUE
+           AND ($2::bigint IS NULL OR cs.live_class_id = $2)
+       ) OR EXISTS (
+         SELECT 1
+         FROM lesson_learning_file_placements p
+         JOIN lessons l ON l.id = p.lesson_id
+         WHERE p.file_id = $1 AND l.is_public_preview = TRUE AND l.is_published = TRUE
+       ) OR EXISTS (
+         SELECT 1
+         FROM quizzes q
+         LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
+         LEFT JOIN lessons l ON l.id = q.lesson_id
+         WHERE (q.paper_file_id = $1 OR q.solution_file_id = $1)
+           AND q.status = 'PUBLISHED'
+           AND (COALESCE(cs.is_public_preview, FALSE) = TRUE
+             OR COALESCE(l.is_public_preview, FALSE) = TRUE)
+       )`,
+      [fileId, requestedClassId],
+    );
+    if (!preview.rows.length) return { error: "forbidden" };
+    return { file, canDownload: false, isPublicPreview: true };
+  }
 
   if (file.visibility === "CLASS_ONLY" && file.live_class_id) {
     return { file, canDownload: file.allow_file_download !== false };
@@ -1081,22 +1111,40 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
   }
 });
 
-router.get("/files/:fileId/download", protectRoute, requireManagedLearner, async (req, res) => {
+router.get("/files/:fileId/download", protectRoute, async (req, res) => {
   const fileId = parseId(req.params.fileId);
   if (!fileId) return errorResponse(res, 422, "fileId không hợp lệ", "VALIDATION_ERROR");
   const requestedClassId = req.query?.classId === undefined ? null : parseId(req.query.classId);
   if (req.query?.classId !== undefined && !requestedClassId) {
     return errorResponse(res, 422, "classId không hợp lệ", "VALIDATION_ERROR");
   }
+  const videoCourseId = req.query?.videoCourseId === undefined ? null : parseId(req.query.videoCourseId);
+  if (req.query?.videoCourseId !== undefined && !videoCourseId) {
+    return errorResponse(res, 422, "videoCourseId không hợp lệ", "VALIDATION_ERROR");
+  }
   try {
     const access = await fileAccess(fileId, req.user, requestedClassId);
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
     if (access.error) return errorResponse(res, 403, "Bạn chưa được cấp quyền tải tài liệu", "FORBIDDEN");
-    const forceDownload = ["1", "true"].includes(String(req.query?.download || "").toLowerCase());
-    if (req.user.role === "user" && forceDownload && access.canDownload === false) {
-      return errorResponse(res, 403, "Lớp này chỉ cho phép xem tài liệu trực tuyến", "FILE_DOWNLOAD_DISABLED");
+    let videoCourseAllowsDownload = true;
+    if (videoCourseId) {
+      const policyRes = await query(
+        `SELECT BOOL_AND(allow_file_download) AS allow_file_download
+         FROM video_course_profiles
+         WHERE course_id = $1 AND status = 'active'`,
+        [videoCourseId],
+      );
+      if (policyRes.rows[0]?.allow_file_download === null) {
+        return errorResponse(res, 404, "Không tìm thấy cấu hình khóa học video", "NOT_FOUND");
+      }
+      videoCourseAllowsDownload = policyRes.rows[0].allow_file_download === true;
     }
-    if (req.user.role === "user" && access.canDownload === false
+    const canDownload = access.canDownload !== false && videoCourseAllowsDownload;
+    const forceDownload = ["1", "true"].includes(String(req.query?.download || "").toLowerCase());
+    if (req.user.role === "user" && forceDownload && !canDownload) {
+      return errorResponse(res, 403, "Khóa học này chỉ cho phép xem tài liệu trực tuyến", "FILE_DOWNLOAD_DISABLED");
+    }
+    if (req.user.role === "user" && !canDownload
         && !INLINE_VIEW_MIME_TYPES.has(access.file.mime_type)) {
       return errorResponse(res, 415, "Định dạng tài liệu này chưa hỗ trợ xem trực tuyến", "INLINE_VIEW_UNSUPPORTED");
     }
@@ -1114,7 +1162,7 @@ router.get("/files/:fileId/download", protectRoute, requireManagedLearner, async
         "Expires": "0",
       });
     }
-    if (req.user.role === "user" && access.canDownload === false
+    if (req.user.role === "user" && !canDownload
         && access.file.mime_type === "application/pdf" && !forceDownload) {
       if (typeof res.set === "function") {
         res.set({

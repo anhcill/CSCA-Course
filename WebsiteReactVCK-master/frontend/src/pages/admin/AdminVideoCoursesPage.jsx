@@ -192,6 +192,7 @@ const AdminVideoCoursesPage = () => {
   const [thumbnailUrlInput, setThumbnailUrlInput] = useState("");
   const [deviceLimitInput, setDeviceLimitInput] = useState(2);
   const [enforceDevicesInput, setEnforceDevicesInput] = useState(true);
+  const [allowFileDownloadInput, setAllowFileDownloadInput] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [publishingCourse, setPublishingCourse] = useState(false);
 
@@ -264,6 +265,7 @@ const AdminVideoCoursesPage = () => {
         setThumbnailUrlInput(data.course?.thumbnailUrl || "");
         setDeviceLimitInput(Number(data.profile?.deviceLimit || 2));
         setEnforceDevicesInput(data.profile?.enforceTrustedDevices !== false);
+        setAllowFileDownloadInput(data.profile?.allowFileDownload === true);
       }
     } catch (error) {
       toast.error(error?.message || "Không thể tải chi tiết khóa học video");
@@ -299,6 +301,7 @@ const AdminVideoCoursesPage = () => {
         sourceLiveClassId: modeInput === "MIRROR" ? Number(sourceLiveClassIdInput) : null,
         deviceLimit: Number(deviceLimitInput || 2),
         enforceTrustedDevices: Boolean(enforceDevicesInput),
+        allowFileDownload: Boolean(allowFileDownloadInput),
         thumbnailUrl: thumbnailUrlInput,
       });
       toast.success("Đã lưu cấu hình chế độ Khóa học Video!");
@@ -1013,6 +1016,25 @@ const AdminVideoCoursesPage = () => {
                         <span>Bắt buộc kiểm tra</span>
                       </label>
                     </div>
+                  </div>
+
+                  <div className="sm:col-span-3">
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 dark:border-slate-700 dark:bg-slate-800/60">
+                      <input
+                        type="checkbox"
+                        checked={allowFileDownloadInput}
+                        onChange={(e) => setAllowFileDownloadInput(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-300 text-blue-600"
+                      />
+                      <span>
+                        <span className="block text-xs font-bold text-slate-800 dark:text-slate-100">
+                          Cho phép học viên tải tài liệu xuống
+                        </span>
+                        <span className="mt-0.5 block text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                          Tắt: tài liệu mở trong tab Chỉ xem và backend chặn tải xuống. Bật: học viên có thêm nút tải file.
+                        </span>
+                      </span>
+                    </label>
                   </div>
 
                   <div className="sm:col-span-3">

@@ -283,7 +283,7 @@ export default function VideoCourseWorkspacePage() {
       toast.error(
         unit.lockReason
         || "Bài học đang khóa! Bạn cần xem tối thiểu 80% thời gian thực của video và hoàn thành bài trắc nghiệm của buổi trước.",
-        { duration: 4500 },
+        { duration: 8000 },
       );
 
       // If the learner already finished >=80% video on the current lesson and only needs the quiz, open the Quiz tab automatically!
@@ -587,7 +587,7 @@ export default function VideoCourseWorkspacePage() {
   return (
     <div className={`min-h-screen ${isDarkMode ? "bg-slate-950 text-slate-100" : "bg-[#f8fafc] text-slate-900"} font-sans antialiased transition-colors duration-200`}>
       {isPublicPreviewAccess && (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-semibold text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+        <div className="border-b border-sky-200 bg-sky-50/90 px-4 py-2 text-center text-xs font-semibold text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/35 dark:text-sky-200">
           Bạn đang xem buổi học thử miễn phí. Muốn học toàn bộ khóa, hãy nhắn Zalo 0812352005 nhé 💙
         </div>
       )}
@@ -874,6 +874,8 @@ export default function VideoCourseWorkspacePage() {
               </div>
             </div>
 
+            {!activeUnit?.isLocked && (
+              <>
             {/* 3. TABS BAR: 2 DÃY GỌN GÀNG, KHÔNG CUỘN NGANG */}
             <div className="space-y-2 rounded-2xl bg-white/80 dark:bg-slate-900/80 p-2.5 sm:p-3 border border-slate-200/80 dark:border-slate-800 shadow-sm backdrop-blur-sm">
               {/* Dãy 1: Nội dung học tập chính */}
@@ -890,7 +892,7 @@ export default function VideoCourseWorkspacePage() {
                     onClick={() => setActiveTab(id)}
                     className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition duration-150 ${
                       activeTab === id
-                        ? "bg-slate-900 text-white shadow-md dark:bg-amber-500 dark:text-slate-950 shadow-amber-500/10 ring-2 ring-amber-500/30"
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/15 ring-2 ring-indigo-500/20 dark:bg-indigo-400 dark:text-slate-950 dark:ring-indigo-300/20"
                         : "bg-slate-100/90 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800"
                     }`}
                   >
@@ -923,7 +925,7 @@ export default function VideoCourseWorkspacePage() {
                     onClick={() => setActiveTab(id)}
                     className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition duration-150 ${
                       activeTab === id
-                        ? "bg-slate-900 text-white shadow-md dark:bg-amber-500 dark:text-slate-950 shadow-amber-500/10 ring-2 ring-amber-500/30"
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/15 ring-2 ring-indigo-500/20 dark:bg-indigo-400 dark:text-slate-950 dark:ring-indigo-300/20"
                         : "bg-slate-100/90 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800"
                     }`}
                   >
@@ -1157,7 +1159,7 @@ export default function VideoCourseWorkspacePage() {
                               className={`px-4 py-2 rounded-xl font-bold text-xs transition shadow-sm self-start sm:self-auto shrink-0 ${
                                 quiz.isCompleted
                                   ? "bg-emerald-600 hover:bg-emerald-500 text-white"
-                                  : "bg-slate-900 hover:bg-slate-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-slate-950"
+                                  : "bg-indigo-600 hover:bg-indigo-500 text-white dark:bg-indigo-400 dark:hover:bg-indigo-300 dark:text-slate-950"
                               }`}
                             >
                               {quiz.isCompleted ? "Làm lại quiz →" : "Làm bài quiz →"}
@@ -1211,7 +1213,11 @@ export default function VideoCourseWorkspacePage() {
 
                               <button
                                 type="button"
-                                onClick={() => navigate(`/lms/assignments/${assignment.id}/submit`)}
+                                onClick={() => navigate(
+                                  isPublicPreviewAccess
+                                    ? `/assignments/${assignment.id}/submit?backUrl=${encodeURIComponent(window.location.pathname)}`
+                                    : `/lms/assignments/${assignment.id}/submit`,
+                                )}
                                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-sm self-start sm:self-auto shrink-0"
                               >
                                 {assignment.isSubmitted ? "Xem bài đã nộp" : "Nộp bài ngay"}
@@ -1735,6 +1741,8 @@ export default function VideoCourseWorkspacePage() {
                 </div>
               )}
             </div>
+              </>
+            )}
           </main>
 
           {/* RIGHT 4/12: Curriculum & Lessons Sidebar */}
@@ -1793,7 +1801,7 @@ export default function VideoCourseWorkspacePage() {
                     title={isLocked ? unit.lockReason || "Hoàn thành bài trước để mở khóa" : unit.title}
                     className={`group w-full text-left p-3.5 rounded-2xl transition-all duration-200 flex items-start gap-3 border ${
                       isCurrent
-                        ? "bg-gradient-to-br from-amber-500 to-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 border-amber-400"
+                        ? "bg-indigo-50 text-indigo-950 shadow-md shadow-indigo-500/10 border-indigo-200 dark:bg-indigo-950/35 dark:text-indigo-100 dark:border-indigo-800/70"
                         : isDone
                           ? "bg-emerald-50/60 text-slate-800 border-emerald-200/80 dark:bg-emerald-950/20 dark:text-slate-100 dark:border-emerald-800/50 hover:border-emerald-400"
                           : isLocked
@@ -1805,7 +1813,7 @@ export default function VideoCourseWorkspacePage() {
                     <span
                       className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border text-xs font-black transition ${
                         isCurrent
-                          ? "border-slate-950/20 bg-slate-950 text-amber-400"
+                          ? "border-indigo-600/30 bg-indigo-600 text-white dark:border-indigo-400/30 dark:bg-indigo-400 dark:text-slate-950"
                           : isDone
                             ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                             : isLocked
@@ -1831,7 +1839,7 @@ export default function VideoCourseWorkspacePage() {
                           <span
                             className={`text-[10px] font-black uppercase tracking-wider truncate ${
                               isCurrent
-                                ? "text-slate-950/80"
+                                ? "text-indigo-700 dark:text-indigo-300"
                                 : isLocked
                                   ? "text-slate-400 dark:text-slate-500"
                                   : "text-amber-600 dark:text-amber-400"
@@ -1849,7 +1857,7 @@ export default function VideoCourseWorkspacePage() {
                         <span
                           className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-mono font-bold shrink-0 ${
                             isCurrent
-                              ? "bg-slate-950/15 text-slate-950"
+                              ? "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/70 dark:text-indigo-200"
                               : "bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
                           }`}
                         >
@@ -1862,7 +1870,7 @@ export default function VideoCourseWorkspacePage() {
                       <h4
                         className={`text-xs font-extrabold leading-snug line-clamp-2 ${
                           isCurrent
-                            ? "text-slate-950"
+                            ? "text-indigo-950 dark:text-indigo-100"
                             : isLocked
                               ? "text-slate-500 dark:text-slate-400"
                               : "text-slate-900 dark:text-white"
@@ -1875,14 +1883,14 @@ export default function VideoCourseWorkspacePage() {
                       <div
                         className={`pt-2 border-t space-y-1.5 ${
                           isCurrent
-                            ? "border-slate-950/15"
+                            ? "border-indigo-200/80 dark:border-indigo-800/70"
                             : "border-slate-200/70 dark:border-slate-800"
                         }`}
                       >
                         <div
                           className={`relative h-2 w-full rounded-full overflow-hidden ${
                             isCurrent
-                              ? "bg-slate-950/20"
+                              ? "bg-indigo-200/80 dark:bg-indigo-900/70"
                               : "bg-slate-200/90 dark:bg-slate-700/70"
                           }`}
                         >
@@ -1890,7 +1898,7 @@ export default function VideoCourseWorkspacePage() {
                             style={{ width: `${pct}%` }}
                             className={`h-full rounded-full transition-all duration-300 ${
                               isCurrent
-                                ? "bg-slate-950"
+                                ? "bg-indigo-600 dark:bg-indigo-300"
                                 : videoDone
                                   ? "bg-gradient-to-r from-emerald-500 to-teal-400"
                                   : pct > 0
@@ -1912,7 +1920,7 @@ export default function VideoCourseWorkspacePage() {
                           <span
                             className={`font-mono font-semibold ${
                               isCurrent
-                                ? "text-slate-950/85"
+                                ? "text-indigo-800 dark:text-indigo-200"
                                 : "text-slate-500 dark:text-slate-400"
                             }`}
                           >
@@ -1929,7 +1937,7 @@ export default function VideoCourseWorkspacePage() {
                             <span
                               className={`rounded-md px-1.5 py-0.5 font-mono font-black ${
                                 isCurrent
-                                  ? "bg-slate-950 text-amber-400"
+                                  ? "bg-indigo-600 text-white dark:bg-indigo-300 dark:text-indigo-950"
                                   : videoDone
                                     ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
                                     : pct > 0
@@ -1945,8 +1953,8 @@ export default function VideoCourseWorkspacePage() {
                                 className={`rounded-md px-1.5 py-0.5 font-bold ${
                                   isCurrent
                                     ? quizDone
-                                      ? "bg-slate-950 text-emerald-300"
-                                      : "bg-slate-950/20 text-slate-950"
+                                      ? "bg-emerald-600 text-white dark:bg-emerald-400 dark:text-emerald-950"
+                                      : "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/70 dark:text-indigo-200"
                                     : quizDone
                                       ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
                                       : "bg-amber-500/15 text-amber-600 dark:text-amber-300"

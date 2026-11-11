@@ -134,6 +134,32 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   assert.match(listedB.body.data.find((file) => file.id === String(otherClass.id)).viewUrl, new RegExp(`classId=${classB.id}$`));
   assert.ok(listedB.body.data.find((file) => file.id === String(courseWide.id)).viewUrl.endsWith("/download"));
   await db.query("UPDATE courses SET is_published=TRUE WHERE id=$1", [course.id]);
+  await db.query(
+    `INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,allow_file_download,status)
+     VALUES ($1,'MIRROR',$2,FALSE,'active')`,
+    [course.id, classA.id],
+  );
+  const videoCourseInline = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: managedLearnerA,
+    params: { fileId: courseWide.id },
+    query: { videoCourseId: course.id },
+  });
+  assert.equal(videoCourseInline.statusCode, 200);
+  assert.match(videoCourseInline.body, /CHỈ XEM/);
+  const blockedVideoCourseDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: managedLearnerA,
+    params: { fileId: courseWide.id },
+    query: { videoCourseId: course.id, download: "1" },
+  });
+  assert.equal(blockedVideoCourseDownload.statusCode, 403);
+  assert.equal(blockedVideoCourseDownload.body.errorCode, "FILE_DOWNLOAD_DISABLED");
+  await db.query("UPDATE video_course_profiles SET allow_file_download = TRUE WHERE course_id = $1", [course.id]);
+  const allowedVideoCourseDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: managedLearnerA,
+    params: { fileId: courseWide.id },
+    query: { videoCourseId: course.id, download: "1" },
+  });
+  assert.equal(allowedVideoCourseDownload.statusCode, 302);
 
   const reusableFiles = await invoke(fileRouter, "get", "/teacher/files/reusable", {
     user: teacher, query: { classId: classB.id, sessionId: classBSession.id },
