@@ -207,7 +207,8 @@ const AdminVideoCoursesPage = () => {
   const [uploadVideoTitle, setUploadVideoTitle] = useState("");
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStage, setUploadStage] = useState("idle"); // idle | intent | tus | attaching | done
+  const [uploadStage, setUploadStage] = useState("idle"); // idle | intent | tus | attaching | done | error
+  const [uploadStatusMessage, setUploadStatusMessage] = useState("");
   const [uploadAutoPublish, setUploadAutoPublish] = useState(true);
 
   // Content Editor Modal (Theory, Vocabulary, Formulas) for Independent / Mirror unit
@@ -464,6 +465,7 @@ const AdminVideoCoursesPage = () => {
     setUploadFile(null);
     setUploadProgress(0);
     setUploadStage("idle");
+    setUploadStatusMessage("");
     setUploadAutoPublish(true);
   };
 
@@ -478,6 +480,7 @@ const AdminVideoCoursesPage = () => {
     try {
       setUploadStage("intent");
       setUploadProgress(5);
+      setUploadStatusMessage("Đang tạo phiên tải video an toàn...");
 
       const intentRes = await createBunnyVideoUploadIntent({
         title: uploadVideoTitle.trim(),
@@ -491,6 +494,7 @@ const AdminVideoCoursesPage = () => {
 
       setUploadStage("tus");
       setUploadProgress(10);
+      setUploadStatusMessage("Đang tải video lên kho lưu trữ...");
       await uploadFileToBunnyTus({
         file: uploadFile,
         intent,
@@ -499,6 +503,7 @@ const AdminVideoCoursesPage = () => {
 
       setUploadStage("attaching");
       setUploadProgress(92);
+      setUploadStatusMessage("Video đã tải xong. Đang gắn vào buổi học...");
       if (uploadModalUnit.replaceVideoId) {
         await replaceAdminVideo(uploadModalUnit.replaceVideoId, Number(intent.assetId));
       } else {
@@ -513,16 +518,27 @@ const AdminVideoCoursesPage = () => {
 
       setUploadProgress(100);
       setUploadStage("done");
+      const successMessage = uploadModalUnit.replaceVideoId
+        ? "Upload thành công! Video mới đã thay thế video cũ."
+        : "Upload thành công! Video đã được gắn vào đúng buổi học.";
+      setUploadStatusMessage(successMessage);
       toast.success(
-        uploadModalUnit.replaceVideoId
-          ? "Đã thay thế video bài giảng qua Bunny Stream!"
-          : "Đã tạo phiên TUS & gắn video Bunny Stream vào bài học!",
+        successMessage,
+        { duration: 7000 },
       );
-      setUploadModalUnit(null);
-      await Promise.all([loadOverview(selectedCourseId), loadCourseDetail(selectedCourseId)]);
+      try {
+        await Promise.all([loadOverview(selectedCourseId), loadCourseDetail(selectedCourseId)]);
+      } catch {
+        toast("Video đã lên thành công nhưng danh sách chưa làm mới. Bạn có thể đóng cửa sổ rồi tải lại trang.", {
+          icon: "ℹ️",
+          duration: 7000,
+        });
+      }
     } catch (error) {
-      setUploadStage("idle");
-      toast.error(error?.message || "Lỗi khi upload/gắn video Bunny Stream");
+      const errorMessage = error?.message || "Không thể tải hoặc gắn video vào buổi học.";
+      setUploadStage("error");
+      setUploadStatusMessage(errorMessage);
+      toast.error(`Upload thất bại: ${errorMessage}`, { duration: 9000 });
     }
   };
 
@@ -677,6 +693,7 @@ const AdminVideoCoursesPage = () => {
     () => checklistEntries.filter((c) => c.passed).length,
     [checklistEntries],
   );
+  const uploadBusy = ["intent", "tus", "attaching"].includes(uploadStage);
 
   return (
     <div className="space-y-6 pb-12">
@@ -1526,7 +1543,9 @@ const AdminVideoCoursesPage = () => {
               <button
                 type="button"
                 onClick={() => setUploadModalUnit(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                disabled={uploadBusy}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-slate-800"
+                title={uploadBusy ? "Vui lòng chờ quá trình upload hoàn tất" : "Đóng"}
               >
                 <FiX className="h-5 w-5" />
               </button>
@@ -1549,6 +1568,7 @@ const AdminVideoCoursesPage = () => {
                 <input
                   type="text"
                   required
+                  disabled={uploadBusy || uploadStage === "done"}
                   value={uploadVideoTitle}
                   onChange={(e) => setUploadVideoTitle(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
@@ -1562,6 +1582,7 @@ const AdminVideoCoursesPage = () => {
                 <input
                   type="file"
                   required
+                  disabled={uploadBusy || uploadStage === "done"}
                   accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
                   onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                   className="mt-1 w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
@@ -1571,6 +1592,7 @@ const AdminVideoCoursesPage = () => {
               <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300">
                 <input
                   type="checkbox"
+                  disabled={uploadBusy || uploadStage === "done"}
                   checked={uploadAutoPublish}
                   onChange={(e) => setUploadAutoPublish(e.target.checked)}
                   className="rounded border-slate-300 text-blue-600"
@@ -1579,22 +1601,57 @@ const AdminVideoCoursesPage = () => {
               </label>
 
               {uploadStage !== "idle" && (
-                <div className="space-y-1.5 rounded-xl bg-blue-50 p-3 dark:bg-blue-950/40">
-                  <div className="flex items-center justify-between text-xs font-semibold text-blue-800 dark:text-blue-200">
-                    <span>
-                      {uploadStage === "intent" && "Đang xin chữ ký TUS từ Bunny Stream..."}
-                      {uploadStage === "tus" && "Đang tải luồng TUS trực tiếp lên Bunny CDN..."}
-                      {uploadStage === "attaching" && "Đang gắn Video Asset vào bài học..."}
-                      {uploadStage === "done" && "Hoàn tất!"}
-                    </span>
-                    <span>{uploadProgress}%</span>
+                <div className={`space-y-2 rounded-xl border p-3.5 ${
+                  uploadStage === "done"
+                    ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/35"
+                    : uploadStage === "error"
+                      ? "border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/35"
+                      : "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/40"
+                }`}
+                >
+                  <div className={`flex items-start gap-2 text-xs font-bold ${
+                    uploadStage === "done"
+                      ? "text-emerald-800 dark:text-emerald-200"
+                      : uploadStage === "error"
+                        ? "text-rose-800 dark:text-rose-200"
+                        : "text-blue-800 dark:text-blue-200"
+                  }`}
+                  >
+                    {uploadStage === "done" ? (
+                      <FiCheckCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : uploadStage === "error" ? (
+                      <FiXCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : (
+                      <FiRefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+                    )}
+                    <div className="flex-1">
+                      <p>
+                        {uploadStage === "done"
+                          ? "Upload video thành công"
+                          : uploadStage === "error"
+                            ? "Upload video thất bại"
+                            : "Đang upload video"}
+                      </p>
+                      <p className="mt-0.5 font-medium opacity-90">{uploadStatusMessage}</p>
+                      {uploadStage === "done" && uploadAutoPublish && (
+                        <p className="mt-1 text-[11px] font-medium opacity-80">
+                          Video có thể cần thêm vài phút để xử lý chất lượng trước khi phát được.
+                        </p>
+                      )}
+                    </div>
+                    {uploadStage !== "error" && <span className="shrink-0 font-mono">{uploadProgress}%</span>}
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-blue-200 dark:bg-blue-900">
-                    <div
-                      className="h-full bg-blue-600 transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
+                  {uploadStage !== "error" && (
+                    <div className={`h-2 w-full overflow-hidden rounded-full ${
+                      uploadStage === "done" ? "bg-emerald-200 dark:bg-emerald-900" : "bg-blue-200 dark:bg-blue-900"
+                    }`}
+                    >
+                      <div
+                        className={`h-full transition-all duration-300 ${uploadStage === "done" ? "bg-emerald-600" : "bg-blue-600"}`}
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1602,18 +1659,21 @@ const AdminVideoCoursesPage = () => {
                 <button
                   type="button"
                   onClick={() => setUploadModalUnit(null)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300"
+                  disabled={uploadBusy}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300"
                 >
-                  Hủy
+                  {uploadStage === "done" ? "Đóng" : "Hủy"}
                 </button>
-                <button
-                  type="submit"
-                  disabled={uploadStage !== "idle"}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-blue-500 disabled:opacity-50"
-                >
-                  <FiUploadCloud className="h-4 w-4" />
-                  <span>Tải lên Bunny & Gắn Video</span>
-                </button>
+                {uploadStage !== "done" && (
+                  <button
+                    type="submit"
+                    disabled={uploadBusy}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FiUploadCloud className="h-4 w-4" />
+                    <span>{uploadStage === "error" ? "Thử upload lại" : "Tải lên & Gắn Video"}</span>
+                  </button>
+                )}
               </div>
             </form>
           </div>
