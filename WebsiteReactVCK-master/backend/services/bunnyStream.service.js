@@ -455,6 +455,33 @@ export const processBunnyWebhookEvent = async ({
     );
   }
 
+  if (nextStatus === "ready") {
+    const autoPublishRes = await db.query(
+      `UPDATE class_session_videos
+       SET is_published = TRUE,
+           published_at = COALESCE(published_at, NOW()),
+           updated_at = NOW()
+       WHERE video_asset_id = $1
+         AND EXISTS (
+           SELECT 1 FROM video_assets
+           WHERE id = $1
+             AND COALESCE(provider_metadata ->> 'publishWhenReady', 'false') = 'true'
+         )
+       RETURNING id`,
+      [asset.id],
+    );
+    if (autoPublishRes.rows.length > 0) {
+      await db.query(
+        `UPDATE video_assets
+         SET published_at = COALESCE(published_at, NOW()),
+             provider_metadata = COALESCE(provider_metadata, '{}'::jsonb) - 'publishWhenReady',
+             updated_at = NOW()
+         WHERE id = $1`,
+        [asset.id],
+      );
+    }
+  }
+
   await db.query(
     `UPDATE video_provider_webhook_events
      SET status = 'processed', processed_at = NOW()

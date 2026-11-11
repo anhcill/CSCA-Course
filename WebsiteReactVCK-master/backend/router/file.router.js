@@ -1167,7 +1167,8 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
       if (typeof res.set === "function") {
         res.set({
           "Content-Type": "text/html; charset=utf-8",
-          "Content-Security-Policy": "default-src 'none'; frame-src https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+          "X-Frame-Options": "SAMEORIGIN",
+          "Content-Security-Policy": "default-src 'none'; frame-ancestors 'self'; frame-src https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
         });
       }
       return res.status(200).send(protectedPdfViewerHtml({

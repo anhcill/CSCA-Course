@@ -7,11 +7,15 @@ const invoke = async (router, method, path, { params = {}, query = {}, body = {}
   const layer = router.stack.find((item) => item.route?.path === path && item.route.methods[method]);
   assert.ok(layer, `${method} ${path}`);
   const response = {
-    statusCode: 200, body: null, location: null,
+    statusCode: 200, body: null, location: null, headers: {},
     status(code) { this.statusCode = code; return this; },
     json(value) { this.body = value; return this; },
     send(value) { this.body = value; return this; },
     redirect(code, location) { this.statusCode = code; this.location = location; return this; },
+    set(values) {
+      for (const [key, value] of Object.entries(values || {})) this.headers[key.toLowerCase()] = value;
+      return this;
+    },
   };
   await layer.route.stack.at(-1).handle({ params, query, body, user, file, ip: "127.0.0.1" }, response);
   return response;
@@ -146,6 +150,8 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   });
   assert.equal(videoCourseInline.statusCode, 200);
   assert.match(videoCourseInline.body, /CHỈ XEM/);
+  assert.equal(videoCourseInline.headers["x-frame-options"], "SAMEORIGIN");
+  assert.match(videoCourseInline.headers["content-security-policy"], /frame-ancestors 'self'/);
   const blockedVideoCourseDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
     user: managedLearnerA,
     params: { fileId: courseWide.id },

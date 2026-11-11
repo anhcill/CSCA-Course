@@ -165,6 +165,46 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   });
   assert.equal(attachRes.statusCode, 201, JSON.stringify(attachRes.body));
 
+  // Auto-publish requests must attach immediately while Bunny is still processing,
+  // then become published when the ready webhook arrives.
+  const pendingAutoAsset = (await db.query(
+    `INSERT INTO video_assets
+       (title, provider, provider_library_id, provider_video_id, playback_status, status)
+     VALUES ('Auto publish supplemental','bunny_stream','998877','guid-auto-publish','uploading','pending')
+     RETURNING id`,
+  )).rows[0];
+  const pendingAutoAttach = await invokeRoute(bunnyVideoRouter, "post", "/admin/learning-units/:unitId/videos", {
+    user: admin,
+    params: { unitId: String(session1.id) },
+    body: {
+      videoAssetId: pendingAutoAsset.id,
+      unitType: "class_session",
+      title: "Video tự phát hành",
+      videoType: "supplemental",
+      isPublished: true,
+    },
+  });
+  assert.equal(pendingAutoAttach.statusCode, 201, JSON.stringify(pendingAutoAttach.body));
+  assert.equal(pendingAutoAttach.body.data.isPublished, false);
+  assert.equal(pendingAutoAttach.body.data.publishWhenReady, true);
+
+  const pendingAutoReady = await invokeRoute(bunnyVideoRouter, "post", "/webhooks/bunny-stream", {
+    body: {
+      EventId: "evt-auto-ready",
+      VideoLibraryId: "998877",
+      VideoGuid: "guid-auto-publish",
+      Status: 3,
+      Length: 120,
+    },
+  });
+  assert.equal(pendingAutoReady.statusCode, 200, JSON.stringify(pendingAutoReady.body));
+  const autoPlacement = (await db.query(
+    "SELECT is_published, published_at FROM class_session_videos WHERE video_asset_id = $1",
+    [pendingAutoAsset.id],
+  )).rows[0];
+  assert.equal(autoPlacement.is_published, true);
+  assert.ok(autoPlacement.published_at);
+
   // 3. Attempting to publish while still 'uploading' must fail with 409 VIDEO_NOT_READY
   const prematurePublishRes = await invokeRoute(bunnyVideoRouter, "post", "/admin/videos/:videoId/publish", {
     user: admin,

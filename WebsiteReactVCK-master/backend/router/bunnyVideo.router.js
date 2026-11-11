@@ -270,9 +270,8 @@ router.post("/admin/learning-units/:unitId/videos", protectRoute, requireAdmin, 
     const asset = assetRes.rows[0];
     if (!asset) return sendError(res, 404, "Không tìm thấy video asset", "NOT_FOUND");
 
-    if (isPublished && asset.playback_status !== "ready") {
-      return sendError(res, 409, "Chỉ được publish khi video đã encode hoàn tất (ready)", "VIDEO_NOT_READY");
-    }
+    const publishWhenReady = Boolean(isPublished) && asset.playback_status !== "ready";
+    let publishNow = Boolean(isPublished) && asset.playback_status === "ready";
 
     // Determine whether unitId is a class_session or a lesson
     let resolvedType = unitType;
@@ -307,9 +306,40 @@ router.post("/admin/learning-units/:unitId/videos", protectRoute, requireAdmin, 
         title ? String(title).trim().slice(0, 255) : asset.title,
         videoType,
         Math.max(0, Number(sortOrder || 0)),
-        Boolean(isPublished),
+        publishNow,
       ],
     );
+
+    if (publishWhenReady) {
+      const pendingRes = await query(
+        `UPDATE video_assets
+         SET provider_metadata = COALESCE(provider_metadata, '{}'::jsonb)
+               || '{"publishWhenReady":true}'::jsonb,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING playback_status`,
+        [parsedAssetId],
+      );
+
+      // Cover the race where Bunny becomes ready while the placement is being created.
+      if (pendingRes.rows[0]?.playback_status === "ready") {
+        publishNow = true;
+        await query(
+          `UPDATE class_session_videos
+           SET is_published = TRUE, published_at = COALESCE(published_at, NOW()), updated_at = NOW()
+           WHERE id = $1`,
+          [placementRes.rows[0].id],
+        );
+        await query(
+          `UPDATE video_assets
+           SET published_at = COALESCE(published_at, NOW()),
+               provider_metadata = COALESCE(provider_metadata, '{}'::jsonb) - 'publishWhenReady',
+               updated_at = NOW()
+           WHERE id = $1`,
+          [parsedAssetId],
+        );
+      }
+    }
 
     // If lesson primary video, also link lessons.video_asset_id for unified lookup
     if (lessonId && videoType === "primary") {
@@ -323,9 +353,13 @@ router.post("/admin/learning-units/:unitId/videos", protectRoute, requireAdmin, 
       );
     }
 
-    if (isPublished) {
+    if (publishNow) {
       await query(
-        `UPDATE video_assets SET published_at = COALESCE(published_at, NOW()), updated_at = NOW() WHERE id = $1`,
+        `UPDATE video_assets
+         SET published_at = COALESCE(published_at, NOW()),
+             provider_metadata = COALESCE(provider_metadata, '{}'::jsonb) - 'publishWhenReady',
+             updated_at = NOW()
+         WHERE id = $1`,
         [parsedAssetId],
       );
     }
@@ -341,7 +375,8 @@ router.post("/admin/learning-units/:unitId/videos", protectRoute, requireAdmin, 
         videoAssetId: parsedAssetId,
         unitType: resolvedType,
         unitId,
-        isPublished: placement.is_published,
+        isPublished: publishNow,
+        publishWhenReady: publishWhenReady && !publishNow,
       },
     });
 
@@ -355,10 +390,13 @@ router.post("/admin/learning-units/:unitId/videos", protectRoute, requireAdmin, 
         title: placement.title || asset.title,
         videoType: placement.video_type,
         sortOrder: placement.sort_order,
-        isPublished: placement.is_published,
+        isPublished: publishNow,
+        publishWhenReady: publishWhenReady && !publishNow,
         playbackStatus: asset.playback_status,
       },
-      message: "Gắn video vào bài học thành công",
+      message: publishWhenReady && !publishNow
+        ? "Đã gắn video vào bài học. Video sẽ tự phát hành sau khi Bunny encode xong."
+        : "Gắn video vào bài học thành công",
     });
   } catch (error) {
     console.error("Attach video to unit error:", error);
@@ -429,7 +467,9 @@ router.post("/admin/videos/:videoId/publish", protectRoute, requireAdmin, async 
 
     await query(
       `UPDATE video_assets
-       SET published_at = COALESCE(published_at, NOW()), updated_at = NOW()
+       SET published_at = COALESCE(published_at, NOW()),
+           provider_metadata = COALESCE(provider_metadata, '{}'::jsonb) - 'publishWhenReady',
+           updated_at = NOW()
        WHERE id = $1`,
       [target.assetId],
     );
@@ -479,7 +519,9 @@ router.post("/admin/videos/:videoId/unpublish", protectRoute, requireAdmin, asyn
 
     await query(
       `UPDATE video_assets
-       SET published_at = NULL, updated_at = NOW()
+       SET published_at = NULL,
+           provider_metadata = COALESCE(provider_metadata, '{}'::jsonb) - 'publishWhenReady',
+           updated_at = NOW()
        WHERE id = $1`,
       [target.assetId],
     );
