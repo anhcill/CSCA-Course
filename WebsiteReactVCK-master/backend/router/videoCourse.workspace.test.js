@@ -63,6 +63,13 @@ test("video course workspace: MIRROR mode returns sessions, theory and capabilit
      VALUES ($1, 'Lý thuyết Pinyin', '<p>Nội dung thanh mẫu</p>', 'Tóm tắt bài', '["Thanh mẫu", "Vận mẫu"]'::jsonb)`,
     [session.id],
   );
+  const directSessionFile = (await db.query(
+    `INSERT INTO lms_learning_files
+       (live_class_id,course_id,class_session_id,uploaded_by,original_name,storage_key,mime_type,size_bytes,visibility,status)
+     VALUES ($1,$2,$3,$4,'slide-buoi-hoc.pdf','learning-files/direct-slide.pdf','application/pdf',1024,'CLASS_ONLY','ready')
+     RETURNING id`,
+    [liveClass.id, course.id, session.id, teacher.id],
+  )).rows[0];
 
   const route = videoCourseRouter.stack.find((layer) => (
     layer.route?.path === "/:offeringId/workspace" && layer.route.methods.get
@@ -95,6 +102,8 @@ test("video course workspace: MIRROR mode returns sessions, theory and capabilit
   assert.equal(res.body.data.units.length, 1);
   assert.equal(res.body.data.activeUnit.title, "Chương 1: Khởi động phát âm Pinyin");
   assert.equal(res.body.data.activeUnit.theory.title, "Lý thuyết Pinyin");
+  assert.deepEqual(res.body.data.activeUnit.files.map((file) => file.id), [String(directSessionFile.id)]);
+  assert.equal(res.body.data.activeUnit.files[0].fileName, "slide-buoi-hoc.pdf");
 });
 
 test("video course workspace: ordinary accounts can open only admin-selected preview units", async (t) => {

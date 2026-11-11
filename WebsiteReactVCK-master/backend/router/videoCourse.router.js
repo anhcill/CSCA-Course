@@ -566,13 +566,33 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             [sessId],
           ),
           query(
-            `SELECT lf.id, lf.original_name AS file_name, lf.size_bytes AS file_size_bytes, lf.mime_type, lf.storage_key,
-                    COALESCE(lc.allow_file_download, TRUE) AS allow_file_download
-             FROM lms_learning_file_placements lfp
-             JOIN lms_learning_files lf ON lf.id = lfp.file_id
-             JOIN class_sessions cs ON cs.id = lfp.class_session_id
-             JOIN live_classes lc ON lc.id = cs.live_class_id
-             WHERE lfp.class_session_id = $1 AND lf.status = 'ready'`,
+            `SELECT DISTINCT ON (session_files.id)
+                    session_files.id, session_files.file_name, session_files.file_size_bytes,
+                    session_files.mime_type, session_files.storage_key,
+                    session_files.allow_file_download
+             FROM (
+               SELECT lf.id, lf.original_name AS file_name, lf.size_bytes AS file_size_bytes,
+                      lf.mime_type, lf.storage_key,
+                      COALESCE(lc.allow_file_download, TRUE) AS allow_file_download,
+                      0 AS source_priority
+               FROM lms_learning_files lf
+               JOIN class_sessions cs ON cs.id = lf.class_session_id
+               JOIN live_classes lc ON lc.id = cs.live_class_id
+               WHERE lf.class_session_id = $1 AND lf.status = 'ready'
+
+               UNION ALL
+
+               SELECT lf.id, lf.original_name AS file_name, lf.size_bytes AS file_size_bytes,
+                      lf.mime_type, lf.storage_key,
+                      COALESCE(lc.allow_file_download, TRUE) AS allow_file_download,
+                      1 AS source_priority
+               FROM lms_learning_file_placements lfp
+               JOIN lms_learning_files lf ON lf.id = lfp.file_id
+               JOIN class_sessions cs ON cs.id = lfp.class_session_id
+               JOIN live_classes lc ON lc.id = cs.live_class_id
+               WHERE lfp.class_session_id = $1 AND lf.status = 'ready'
+             ) session_files
+             ORDER BY session_files.id, session_files.source_priority DESC`,
             [sessId],
           ),
           query(

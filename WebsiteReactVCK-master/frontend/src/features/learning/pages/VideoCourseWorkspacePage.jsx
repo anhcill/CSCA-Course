@@ -20,14 +20,12 @@ import {
   ShieldCheck,
   Laptop,
   Smartphone,
-  Info,
   Volume2,
   Search,
   RotateCcw,
   Video,
   Eye,
   Copy,
-  Layers,
   Lock,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
@@ -57,37 +55,6 @@ const renderKaTeX = (latex, displayMode = true) => {
   } catch {
     return latex;
   }
-};
-
-const sanitizeTheoryHtml = (html) => {
-  if (!html || typeof html !== "string") return "";
-  if (typeof DOMParser === "undefined") return "";
-
-  const documentNode = new DOMParser().parseFromString(html, "text/html");
-  const allowedTags = new Set([
-    "a", "b", "blockquote", "br", "code", "div", "em", "h1", "h2", "h3", "h4", "h5", "h6",
-    "hr", "i", "li", "ol", "p", "pre", "span", "strong", "sub", "sup", "table", "tbody", "td",
-    "th", "thead", "tr", "u", "ul",
-  ]);
-  const allowedAttributes = new Set(["colspan", "href", "rel", "rowspan", "target", "title"]);
-  documentNode.body.querySelectorAll("*").forEach((node) => {
-    if (!allowedTags.has(node.tagName.toLowerCase())) {
-      node.replaceWith(...node.childNodes);
-      return;
-    }
-    [...node.attributes].forEach((attribute) => {
-      const name = attribute.name.toLowerCase();
-      const value = attribute.value.trim().toLowerCase();
-      if (!allowedAttributes.has(name) || (name === "href" && !value.startsWith("https://") && !value.startsWith("http://") && !value.startsWith("/api/"))) {
-        node.removeAttribute(attribute.name);
-      }
-    });
-    if (node.tagName.toLowerCase() === "a") {
-      node.setAttribute("target", "_blank");
-      node.setAttribute("rel", "noopener noreferrer");
-    }
-  });
-  return documentNode.body.innerHTML;
 };
 
 const REQUIRED_WATCH_PERCENT = 80;
@@ -186,7 +153,7 @@ export default function VideoCourseWorkspacePage() {
 
   const [workspaceData, setWorkspaceData] = useState(null);
   const [activeUnitId, setActiveUnitId] = useState(paramUnitId || null);
-  const [activeTab, setActiveTab] = useState("video");
+  const [activeTab, setActiveTab] = useState("files");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [errorCode, setErrorCode] = useState("");
@@ -198,9 +165,8 @@ export default function VideoCourseWorkspacePage() {
   const [unitWatchPercent, setUnitWatchPercent] = useState(0);
   const [seekRequest, setSeekRequest] = useState(null);
 
-  // Document / Slide Preview Modal State
+  // Document preview modal state
   const [previewFile, setPreviewFile] = useState(null);
-  const [showInlineSlidePreview, setShowInlineSlidePreview] = useState(true);
 
   // Vocabulary & Formula interactive filters
   const [vocabSearch, setVocabSearch] = useState("");
@@ -580,10 +546,6 @@ export default function VideoCourseWorkspacePage() {
     },
   } = workspaceData;
   const isPublicPreviewAccess = Boolean(capabilities.isPublicPreviewAccess);
-  const slideFiles = (activeUnit?.files || []).filter((f) =>
-    /\.(pdf|ppt|pptx|doc|docx)$/i.test(f.fileName || ""),
-  );
-
   return (
     <div className={`min-h-screen ${isDarkMode ? "bg-slate-950 text-slate-100" : "bg-[#f8fafc] text-slate-900"} font-sans antialiased transition-colors duration-200`}>
       {isPublicPreviewAccess && (
@@ -879,10 +841,9 @@ export default function VideoCourseWorkspacePage() {
             {/* 3. TABS BAR: 2 DÃY GỌN GÀNG, KHÔNG CUỘN NGANG */}
             <div className="space-y-2 rounded-2xl bg-white/80 dark:bg-slate-900/80 p-2.5 sm:p-3 border border-slate-200/80 dark:border-slate-800 shadow-sm backdrop-blur-sm">
               {/* Dãy 1: Nội dung học tập chính */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
                 {[
-                  { id: "video", label: "Video bài giảng", icon: Video, badge: activeUnit?.video ? "HD" : null },
-                  { id: "theory", label: "Lý thuyết & Slide", icon: BookOpen, badge: slideFiles.length > 0 ? "Slide" : null },
+                  { id: "files", label: "Tài liệu đính kèm", icon: FolderOpen, badge: (activeUnit?.files?.length || 0) || null },
                   { id: "exercises", label: "Bài tập & Quiz", icon: FileCheck2, badge: (activeUnit?.quizzes?.length || 0) + (activeUnit?.assignments?.length || 0) || null },
                   { id: "vocabulary", label: "Từ vựng CSCA", icon: Languages, badge: (activeUnit?.vocabulary?.length || 0) || null },
                 ].map(({ id, label, icon: Icon, badge }) => (
@@ -912,10 +873,9 @@ export default function VideoCourseWorkspacePage() {
               </div>
 
               {/* Dãy 2: Tài nguyên bổ trợ & Đánh giá */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
                 {[
                   { id: "formulas", label: "Công thức trọng tâm", icon: Calculator, badge: (activeUnit?.formulas?.length || 0) || null },
-                  { id: "files", label: "Tài liệu đính kèm", icon: FolderOpen, badge: (activeUnit?.files?.length || 0) || null },
                   { id: "notes", label: "Ghi chú cá nhân", icon: StickyNote, badge: (notes?.length || 0) || null },
                   { id: "results", label: "Kết quả học tập", icon: BarChart3 },
                 ].map(({ id, label, icon: Icon, badge }) => (
@@ -947,148 +907,7 @@ export default function VideoCourseWorkspacePage() {
 
             {/* 4. TAB CONTENTS */}
             <div className="min-h-[380px]">
-              {/* TAB 1: PHÂN ĐOẠN BÀI GIẢNG & TỔNG QUAN */}
-              {activeTab === "video" && (
-                <div className="space-y-4">
-                  {/* Interactive Video Chapters / Timestamps if available */}
-                  {activeUnit?.theory?.timestamps && activeUnit.theory.timestamps.length > 0 ? (
-                    <div className="rounded-3xl bg-white dark:bg-slate-900 p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-amber-500" />
-                          Phân đoạn nội dung bài giảng (Chapters)
-                        </h3>
-                        <span className="text-xs text-slate-400 font-mono">
-                          {activeUnit.theory.timestamps.length} mốc nội dung
-                        </span>
-                      </div>
-                      <div className="grid gap-2.5 sm:grid-cols-2">
-                        {activeUnit.theory.timestamps.map((ts, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => handleJumpToTimestamp(ts.seconds)}
-                            className="flex items-center gap-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-3 text-left hover:border-amber-400 hover:bg-amber-50/30 dark:hover:bg-slate-800 transition group"
-                          >
-                            <span className="rounded-xl bg-amber-500/15 group-hover:bg-amber-500 group-hover:text-slate-950 px-2.5 py-1 font-mono text-xs font-bold text-amber-600 dark:text-amber-400 transition">
-                              {formatTimeMMSS(ts.seconds)}
-                            </span>
-                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate group-hover:text-amber-600 dark:group-hover:text-amber-400 transition">
-                              {ts.label}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-3xl bg-white dark:bg-slate-900 p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm text-center space-y-3">
-                      <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto text-xl">
-                        <Video className="h-6 w-6" />
-                      </div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                        Đang phát video bài giảng
-                      </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-                        Bạn có thể dùng các phím tắt <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono">Space</kbd> (Phát/Dừng), <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono">←</kbd> <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono">→</kbd> (Tua 5s), và chuyển qua các tab bên dưới để vừa nghe giảng vừa xem Từ vựng, Slide hoặc Ghi chú.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Quick Note Box while watching */}
-                  <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-gradient-to-r from-amber-500/5 via-transparent to-blue-500/5 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
-                        <StickyNote className="h-4 w-4" />
-                      </span>
-                      <div>
-                        <p className="text-xs font-bold text-slate-900 dark:text-white">Ghi chú tại phút hiện tại?</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">Lưu lại kiến thức quan trọng kèm mốc thời gian để xem lại dễ dàng.</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("notes")}
-                      className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-amber-500 dark:hover:bg-amber-400 text-white dark:text-slate-950 font-bold text-xs transition shadow-xs shrink-0"
-                    >
-                      Mở Ghi chú cá nhân →
-                    </button>
-                  </div>
-                </div>
-              )}
-            
-{/* TAB 2: LÝ THUYẾT & SLIDE */}
-              {activeTab === "theory" && (
-                <div className="space-y-5">
-                  <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-5">
-                    {/* Summary Box */}
-                    {activeUnit?.theory?.summary && (
-                      <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-900/60 dark:bg-blue-950/30">
-                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-sky-300 mb-1">
-                          <Info className="h-4 w-4" /> Tóm tắt cốt lõi
-                        </div>
-                        <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                          {activeUnit.theory.summary}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Key Takeaways */}
-                    {activeUnit?.theory?.keyTakeaways && activeUnit.theory.keyTakeaways.length > 0 && (
-                      <div className="space-y-2">
-                        <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">Kiến thức trọng tâm</h3>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {activeUnit.theory.keyTakeaways.map((takeaway, idx) => (
-                            <div key={idx} className="flex items-start gap-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 border border-slate-100 dark:border-slate-800">
-                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold">✓</span>
-                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{takeaway}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Theory Content Body */}
-                    <div className="prose prose-sm dark:prose-invert max-w-none pt-2 border-t border-slate-100 dark:border-slate-800">
-                      <div
-                        dangerouslySetInnerHTML={{
-                          __html: sanitizeTheoryHtml(activeUnit?.theory?.contentHtml) || "<p>Chưa có văn bản lý thuyết cho bài học này.</p>",
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Embedded Slide / PDF Preview Section */}
-                  {slideFiles.length > 0 && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between px-1">
-                        <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                          <Layers className="h-4 w-4 text-amber-500" />
-                          <span>Slide & Giáo trình trình chiếu trực tiếp</span>
-                        </h3>
-                        <button
-                          type="button"
-                          onClick={() => setShowInlineSlidePreview((s) => !s)}
-                          className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                        >
-                          {showInlineSlidePreview ? "Thu gọn trình chiếu" : "Mở trình chiếu Slide"}
-                        </button>
-                      </div>
-
-                      {showInlineSlidePreview && (
-                        <DocumentPreviewModal
-                          file={slideFiles[0]}
-                          courseTitle={course?.title}
-                          unitTitle={activeUnit?.title}
-                          onDownload={slideFiles[0].downloadUrl ? () => openFileUrl(slideFiles[0].downloadUrl) : undefined}
-                          inline
-                        />
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 3: BÀI TẬP & QUIZ */}
+              {/* TAB 1: BÀI TẬP & QUIZ */}
               {activeTab === "exercises" && (
                 <div className="space-y-6">
                   {/* Quizzes Section */}
