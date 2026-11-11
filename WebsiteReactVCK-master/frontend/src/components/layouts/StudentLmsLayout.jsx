@@ -443,13 +443,22 @@ export default function StudentLmsLayout({ children }) {
                 </button>
                 {profileMenuOpen && (
                   <div role="menu" className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-white/80 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-xl dark:text-slate-100">
-                    <Link to="/lms/settings" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-800 hover:text-blue-700 dark:hover:text-white">
+                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">Chuyển đổi khu vực</div>
+                    <Link to="/" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-blue-700 dark:text-sky-300 hover:bg-blue-50 dark:hover:bg-slate-800">
+                      <Home className="h-4 w-4" /> Trang chủ Website
+                    </Link>
+                    <Link to="/courses" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-slate-800">
+                      <Video className="h-4 w-4" /> Khóa học & Record
+                    </Link>
+                    <div className="my-1.5 h-px bg-slate-100 dark:bg-slate-800" />
+                    <Link to="/lms/settings" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-800 hover:text-blue-700 dark:hover:text-white">
                       <Settings className="h-4 w-4" /> Cài đặt
                     </Link>
-                    <Link to="/lms/settings" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-800 hover:text-blue-700 dark:hover:text-white">
+                    <Link to="/lms/settings" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-800 hover:text-blue-700 dark:hover:text-white">
                       <UserRound className="h-4 w-4" /> Hồ sơ cá nhân
                     </Link>
-                    <button type="button" onClick={() => { setProfileMenuOpen(false); logout(); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40">
+                    <div className="my-1.5 h-px bg-slate-100 dark:bg-slate-800" />
+                    <button type="button" onClick={() => { setProfileMenuOpen(false); logout(); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40">
                       <LogOut className="h-4 w-4" /> Đăng xuất
                     </button>
                   </div>
