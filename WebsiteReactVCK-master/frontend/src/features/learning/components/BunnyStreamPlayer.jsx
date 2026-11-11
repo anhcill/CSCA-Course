@@ -156,6 +156,15 @@ export default function BunnyStreamPlayer({
     hlsRef.current = null;
     if (!player || !signedData?.hlsUrl) return undefined;
 
+    const fallbackToEmbed = () => {
+      hlsRef.current?.destroy?.();
+      hlsRef.current = null;
+      player.pause();
+      player.removeAttribute("src");
+      player.load();
+      setNativePlayback(false);
+    };
+
     const startAt = Number(signedData.watchProgress?.lastPositionSeconds || initialProgress?.lastPositionSeconds || 0);
     const applyStart = () => {
       if (Number.isFinite(player.duration) && player.duration > 0) {
@@ -169,9 +178,16 @@ export default function BunnyStreamPlayer({
 
     if (player.canPlayType("application/vnd.apple.mpegurl")) {
       player.src = signedData.hlsUrl;
-      player.addEventListener("loadedmetadata", applyStart, { once: true });
-      setNativePlayback(true);
-      return () => player.removeEventListener("loadedmetadata", applyStart);
+      const handleNativeReady = () => {
+        applyStart();
+        setNativePlayback(true);
+      };
+      player.addEventListener("loadedmetadata", handleNativeReady, { once: true });
+      player.addEventListener("error", fallbackToEmbed, { once: true });
+      return () => {
+        player.removeEventListener("loadedmetadata", handleNativeReady);
+        player.removeEventListener("error", fallbackToEmbed);
+      };
     }
 
     import("hls.js").then(({ default: Hls }) => {
@@ -180,8 +196,13 @@ export default function BunnyStreamPlayer({
       hlsRef.current = instance;
       instance.loadSource(signedData.hlsUrl);
       instance.attachMedia(player);
-      instance.on(Hls.Events.MANIFEST_PARSED, applyStart);
-      setNativePlayback(true);
+      instance.on(Hls.Events.MANIFEST_PARSED, () => {
+        applyStart();
+        setNativePlayback(true);
+      });
+      instance.on(Hls.Events.ERROR, (_event, data) => {
+        if (data?.fatal) fallbackToEmbed();
+      });
     }).catch(() => setNativePlayback(false));
 
     return () => {
