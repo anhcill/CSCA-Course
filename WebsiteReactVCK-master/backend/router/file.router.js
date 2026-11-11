@@ -23,6 +23,7 @@ import {
   getR2PublicUrl,
 } from "../services/video.service.js";
 import { createCloudinaryUploadSignature } from "../services/cloudinary.service.js";
+import { isVideoCourseUnitUnlocked } from "../services/videoCourseUnitAccess.service.js";
 
 const router = express.Router();
 
@@ -1122,22 +1123,120 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
   if (req.query?.videoCourseId !== undefined && !videoCourseId) {
     return errorResponse(res, 422, "videoCourseId không hợp lệ", "VALIDATION_ERROR");
   }
+  const videoCourseProfileId = req.query?.videoCourseProfileId === undefined
+    ? null
+    : parseId(req.query.videoCourseProfileId);
+  if (req.query?.videoCourseProfileId !== undefined && !videoCourseProfileId) {
+    return errorResponse(res, 422, "videoCourseProfileId không hợp lệ", "VALIDATION_ERROR");
+  }
   try {
     const access = await fileAccess(fileId, req.user, requestedClassId);
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
     if (access.error) return errorResponse(res, 403, "Bạn chưa được cấp quyền tải tài liệu", "FORBIDDEN");
     let videoCourseAllowsDownload = true;
-    if (videoCourseId) {
+    let selectedVideoProfile = null;
+    const fileCourseId = access.file.course_id || access.file.class_course_id;
+    if (videoCourseProfileId) {
       const policyRes = await query(
-        `SELECT BOOL_AND(allow_file_download) AS allow_file_download
+        `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
+         FROM video_course_profiles
+         WHERE id = $1 AND course_id = $2 AND status = 'active'
+           AND ($3::bigint IS NULL OR course_id = $3)`,
+        [videoCourseProfileId, fileCourseId, videoCourseId],
+      );
+      if (!policyRes.rows[0]) {
+        return errorResponse(res, 404, "Không tìm thấy cấu hình khóa học video", "NOT_FOUND");
+      }
+      selectedVideoProfile = policyRes.rows[0];
+      videoCourseAllowsDownload = selectedVideoProfile.allow_file_download === true;
+    } else if (videoCourseId) {
+      if (String(videoCourseId) !== String(fileCourseId)) {
+        return errorResponse(res, 403, "Tài liệu không thuộc khóa học video này", "FORBIDDEN");
+      }
+      const policyRes = await query(
+        `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
          FROM video_course_profiles
          WHERE course_id = $1 AND status = 'active'`,
         [videoCourseId],
       );
-      if (policyRes.rows[0]?.allow_file_download === null) {
+      if (policyRes.rows.length === 0) {
         return errorResponse(res, 404, "Không tìm thấy cấu hình khóa học video", "NOT_FOUND");
       }
-      videoCourseAllowsDownload = policyRes.rows[0].allow_file_download === true;
+      selectedVideoProfile = policyRes.rows[0];
+      videoCourseAllowsDownload = policyRes.rows.every((row) => row.allow_file_download === true);
+    } else if (req.user.role === "user") {
+      // Do not trust the browser to preserve video-course query parameters.
+      // A Record learner must keep the selected profile's download policy even
+      // when a direct file URL is copied or manually edited.
+      const inferredPolicy = await query(
+        `SELECT vcp.id, vcp.course_id, vcp.mode, vcp.source_live_class_id,
+                vcp.management_class_id, vcp.allow_file_download
+         FROM video_course_profiles vcp
+         WHERE vcp.course_id = $1 AND vcp.status = 'active'
+           AND EXISTS (
+             SELECT 1
+             FROM class_enrollments ce
+             LEFT JOIN management_class_learning_aliases alias
+               ON alias.id = ce.management_class_alias_id AND alias.status = 'active'
+             WHERE ce.user_id = $2 AND ce.status = 'active' AND ce.learning_mode = 'recording'
+               AND (
+                 (vcp.management_class_id IS NOT NULL
+                   AND LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id))
+                 OR (vcp.management_class_id IS NULL AND vcp.mode = 'MIRROR'
+                   AND ce.live_class_id = vcp.source_live_class_id)
+                 OR (vcp.management_class_id IS NULL AND vcp.mode = 'INDEPENDENT'
+                   AND ce.course_id = vcp.course_id)
+               )
+           )
+         ORDER BY vcp.id`,
+        [fileCourseId, req.user.id],
+      );
+      if (inferredPolicy.rows.length > 0) {
+        selectedVideoProfile = inferredPolicy.rows[0];
+        videoCourseAllowsDownload = inferredPolicy.rows.every((row) => row.allow_file_download === true);
+      }
+    }
+
+    if (req.user.role === "user" && selectedVideoProfile) {
+      let unit = null;
+      if (selectedVideoProfile.mode === "MIRROR") {
+        unit = (await query(
+          `SELECT cs.id
+           FROM class_sessions cs
+           WHERE cs.live_class_id = $2
+             AND (cs.id = $3 OR EXISTS (
+               SELECT 1 FROM lms_learning_file_placements placement
+               WHERE placement.file_id = $1 AND placement.class_session_id = cs.id
+             ))
+           ORDER BY cs.start_time, cs.id LIMIT 1`,
+          [fileId, selectedVideoProfile.source_live_class_id, access.file.class_session_id],
+        )).rows[0] || null;
+        if (unit && !(await isVideoCourseUnitUnlocked({
+          db: { query },
+          userId: req.user.id,
+          unitType: "class_session",
+          unitId: unit.id,
+        }))) {
+          return errorResponse(res, 403, "Tài liệu này sẽ mở sau khi bạn hoàn thành buổi học trước nhé.", "VIDEO_UNIT_LOCKED");
+        }
+      } else {
+        unit = (await query(
+          `SELECT l.id
+           FROM lessons l
+           JOIN lesson_learning_file_placements placement ON placement.lesson_id = l.id
+           WHERE placement.file_id = $1 AND l.course_id = $2 AND l.is_published = TRUE
+           ORDER BY l.sort_order, l.id LIMIT 1`,
+          [fileId, selectedVideoProfile.course_id],
+        )).rows[0] || null;
+        if (unit && !(await isVideoCourseUnitUnlocked({
+          db: { query },
+          userId: req.user.id,
+          unitType: "lesson",
+          unitId: unit.id,
+        }))) {
+          return errorResponse(res, 403, "Tài liệu này sẽ mở sau khi bạn hoàn thành bài học trước nhé.", "VIDEO_UNIT_LOCKED");
+        }
+      }
     }
     const canDownload = access.canDownload !== false && videoCourseAllowsDownload;
     const forceDownload = ["1", "true"].includes(String(req.query?.download || "").toLowerCase());

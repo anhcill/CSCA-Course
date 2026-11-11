@@ -5,8 +5,8 @@ import requireAdmin from "../middleware/requireAdmin.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import {
-  TRUSTED_DEVICE_COOKIE,
-  hashOpaqueToken,
+  authorizeRecordDevice,
+  TrustedDeviceAuthError,
 } from "../services/trustedDevice.service.js";
 import {
   BunnyStreamError,
@@ -74,26 +74,6 @@ export const verifyLearnerVideoAccess = async ({
     };
   }
 
-  // Trusted device check: if user has registered trusted devices, verify current device or active session isn't revoked
-  const deviceToken = req?.cookies?.[TRUSTED_DEVICE_COOKIE] || null;
-  if (deviceToken) {
-    const tokenHash = hashOpaqueToken(deviceToken);
-    const devRes = await db.query(
-      `SELECT id, revoked_at FROM trusted_login_devices
-       WHERE user_id = $1 AND device_token_hash = $2
-       ORDER BY id DESC LIMIT 1`,
-      [user.id, tokenHash],
-    );
-    if (devRes.rows[0] && devRes.rows[0].revoked_at !== null) {
-      return {
-        allowed: false,
-        status: 403,
-        errorCode: "TRUSTED_DEVICE_REVOKED",
-        reason: "Thiết bị này đã bị quản trị viên gỡ quyền truy cập",
-      };
-    }
-  }
-
   if (courseId) {
     const grantRes = await db.query(
       `SELECT 1 FROM lms_access_grants g
@@ -156,6 +136,36 @@ export const verifyLearnerVideoAccess = async ({
         errorCode: "RECORD_MEMBERSHIP_REQUIRED",
         reason: "Bạn chưa có membership lớp Record đang hoạt động cho khóa học này",
       };
+    }
+  }
+
+  if (requireRecordingMode) {
+    const profileRes = await db.query(
+      `SELECT COALESCE(BOOL_OR(enforce_trusted_devices), TRUE) AS enforce_trusted_devices,
+              COALESCE(MIN(device_limit) FILTER (WHERE enforce_trusted_devices = TRUE), $2)::int AS device_limit
+       FROM video_course_profiles
+       WHERE course_id = $1 AND status = 'active'`,
+      [courseId, 2],
+    );
+    const profile = profileRes.rows[0] || {};
+    try {
+      await authorizeRecordDevice({
+        userId: user.id,
+        trustedDeviceId: req?.authSession?.trustedDeviceId,
+        deviceLimit: Number(profile.device_limit || 2),
+        enforce: profile.enforce_trusted_devices !== false,
+      });
+    } catch (error) {
+      if (error instanceof TrustedDeviceAuthError) {
+        return {
+          allowed: false,
+          status: error.status,
+          errorCode: error.errorCode,
+          reason: error.message,
+          details: error.details,
+        };
+      }
+      throw error;
     }
   }
 
@@ -849,7 +859,7 @@ router.post("/videos/:videoId/playback-token", protectRoute, async (req, res) =>
               liveClassId: effectiveLiveClassId,
             },
           });
-          return sendError(res, accessCheck.status, accessCheck.reason, accessCheck.errorCode);
+          return sendError(res, accessCheck.status, accessCheck.reason, accessCheck.errorCode, accessCheck.details);
         }
       }
     }
@@ -941,7 +951,7 @@ router.put("/videos/:videoId/progress", protectRoute, async (req, res) => {
         req,
       });
       if (!accessCheck.allowed) {
-        return sendError(res, accessCheck.status, accessCheck.reason, accessCheck.errorCode);
+        return sendError(res, accessCheck.status, accessCheck.reason, accessCheck.errorCode, accessCheck.details);
       }
     }
 

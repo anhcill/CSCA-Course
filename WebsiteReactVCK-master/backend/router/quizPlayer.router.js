@@ -16,6 +16,7 @@ import {
   parseQuizDescriptionMetadata,
   publicQuizItems,
 } from "../services/quizAttempt.service.js";
+import { isVideoCourseUnitUnlocked } from "../services/videoCourseUnitAccess.service.js";
 
 const router = express.Router();
 
@@ -450,6 +451,19 @@ router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireA
     const quiz = await getQuiz(client, quizId);
     if (!quiz) throw Object.assign(new Error("Không tìm thấy đề thi"), { status: 404 });
     if (!(await ensureQuizAccess(client, quiz, req.user.id))) throw Object.assign(new Error("Bạn chưa được cấp quyền làm đề thi này"), { status: 403 });
+    const unitType = quiz.class_session_id ? "class_session" : (quiz.lesson_id ? "lesson" : null);
+    const unitId = quiz.class_session_id || quiz.lesson_id;
+    if (unitType && !(await isVideoCourseUnitUnlocked({
+      db: client,
+      userId: req.user.id,
+      unitType,
+      unitId,
+    }))) {
+      throw Object.assign(
+        new Error("Bài này sẽ mở sau khi bạn hoàn thành buổi học trước nhé."),
+        { status: 403 },
+      );
+    }
     if (quiz.live_class_id) await client.query("SELECT id FROM live_classes WHERE id=$1 FOR UPDATE", [quiz.live_class_id]);
     await client.query("SELECT id FROM quizzes WHERE id=$1 FOR UPDATE", [quiz.id]);
     const questions = await getQuizQuestions(client, quizId);

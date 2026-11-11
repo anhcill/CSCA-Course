@@ -1369,7 +1369,9 @@ export default function VideoCourseWorkspacePage() {
                         Tài liệu, PDF, Word & Slide đính kèm
                       </h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Xem trực tiếp trên trình duyệt hoặc tải về máy để ôn luyện.
+                        {capabilities.allowFileDownload
+                          ? "Xem trực tiếp trên trình duyệt hoặc tải về máy để ôn luyện."
+                          : "Tài liệu được mở trực tiếp trên trình duyệt để bạn học thuận tiện."}
                       </p>
                     </div>
                     <span className="text-xs text-slate-400 font-mono">
@@ -1411,15 +1413,21 @@ export default function VideoCourseWorkspacePage() {
                               <span>Xem trực tiếp</span>
                             </button>
 
-                            <button
-                              type="button"
-                              onClick={() => openFileUrl(file.downloadUrl)}
-                              disabled={!file.downloadUrl}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm border border-slate-200 dark:border-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 transition"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                              <span>{file.downloadUrl ? "Tải về" : "Chỉ xem"}</span>
-                            </button>
+                            {file.downloadUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => openFileUrl(file.downloadUrl)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm border border-slate-200 dark:border-slate-600 hover:bg-slate-50 transition"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                <span>Tải về</span>
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                <Eye className="h-3.5 w-3.5" />
+                                Chỉ xem
+                              </span>
+                            )}
                           </div>
                         </div>
                       ))}

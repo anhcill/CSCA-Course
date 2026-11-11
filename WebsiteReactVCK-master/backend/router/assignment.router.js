@@ -42,6 +42,7 @@ import {
   publicQuizQuestion,
 } from "../services/quizAttempt.service.js";
 import { buildQuizReportSnapshot } from "../services/quizCloseReport.service.js";
+import { isVideoCourseUnitUnlocked } from "../services/videoCourseUnitAccess.service.js";
 
 const router = express.Router();
 const QUIZ_ATTEMPT_SCORE_POLICIES = new Set(["best", "latest", "first"]);
@@ -102,7 +103,7 @@ const normalizeAssignmentType = (value) => {
 
 const getAssignment = async (assignmentId, db = { query }) => {
   const result = await db.query(
-    `SELECT a.id, a.title, a.assignment_type, a.course_id, a.live_class_id, a.class_session_id, a.instructor_id,
+    `SELECT a.id, a.title, a.assignment_type, a.course_id, a.live_class_id, a.class_session_id, a.lesson_id, a.instructor_id,
             a.description, a.max_score, a.due_date, a.attachment_url,
             a.created_at, a.updated_at,
             COALESCE(c.title, c.name) AS course_title,
@@ -112,6 +113,7 @@ const getAssignment = async (assignmentId, db = { query }) => {
             c.author_id AS course_author_id,
             lc.status AS live_class_status, cs.title AS session_title,
             COALESCE(cs.is_public_preview, FALSE) AS session_is_public_preview,
+            COALESCE(l.is_public_preview, FALSE) AS lesson_is_public_preview,
             cs.start_time AS session_start, cs.end_time AS session_end,
             lc.instructor_id AS live_class_instructor_id,
             instructor.username AS instructor_name,
@@ -121,6 +123,7 @@ const getAssignment = async (assignmentId, db = { query }) => {
      LEFT JOIN courses c ON c.id = a.course_id
      LEFT JOIN live_classes lc ON lc.id = a.live_class_id
      LEFT JOIN class_sessions cs ON cs.id = a.class_session_id
+     LEFT JOIN lessons l ON l.id = a.lesson_id
      LEFT JOIN courses class_course ON class_course.id = lc.course_id
      LEFT JOIN users instructor ON instructor.id = a.instructor_id
      LEFT JOIN assignment_rubrics rubric ON rubric.assignment_id = a.id
@@ -154,13 +157,19 @@ const ensureAssignmentVisibleToStudent = async (assignment, userId, db = { query
 };
 
 const assignmentIsPublicPreview = (assignment) => Boolean(
-  assignment?.class_session_id && assignment?.session_is_public_preview,
+  (assignment?.class_session_id && assignment?.session_is_public_preview)
+  || (assignment?.lesson_id && assignment?.lesson_is_public_preview),
 );
 
-const studentCanAccessAssignment = async (assignment, user, db = { query }) => (
-  assignmentIsPublicPreview(assignment)
-  || (hasActiveStudentLmsAccess(user) && await ensureAssignmentVisibleToStudent(assignment, user.id, db))
-);
+const studentCanAccessAssignment = async (assignment, user, db = { query }) => {
+  if (assignmentIsPublicPreview(assignment)) return true;
+  if (!hasActiveStudentLmsAccess(user) || !(await ensureAssignmentVisibleToStudent(assignment, user.id, db))) {
+    return false;
+  }
+  const unitType = assignment.class_session_id ? "class_session" : (assignment.lesson_id ? "lesson" : null);
+  const unitId = assignment.class_session_id || assignment.lesson_id;
+  return !unitType || isVideoCourseUnitUnlocked({ db, userId: user.id, unitType, unitId });
+};
 
 const isAssignedTeacher = async (classId, userId, db = { query }) => Boolean((await db.query(
   `SELECT 1 FROM live_classes lc WHERE lc.id = $1 AND

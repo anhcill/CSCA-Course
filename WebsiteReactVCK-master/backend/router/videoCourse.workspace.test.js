@@ -3,6 +3,17 @@ import test from "node:test";
 import fs from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 
+const bindPoolToDb = (pool, db) => {
+  pool.query = (sql, params) => db.query(sql, params);
+  pool.connect = async () => ({ query: (sql, params) => db.query(sql, params), release() {} });
+};
+
+const addTrustedDevice = async (db, userId, suffix) => (await db.query(
+  `INSERT INTO trusted_login_devices(user_id,device_token_hash,device_name)
+   VALUES ($1,$2,$3) RETURNING id`,
+  [userId, String(suffix).padEnd(64, "0"), `Test browser ${suffix}`],
+)).rows[0].id;
+
 test("video course workspace: MIRROR mode returns sessions, theory and capabilities", async (t) => {
   const db = new PGlite();
   t.after(() => db.close());
@@ -14,7 +25,7 @@ test("video course workspace: MIRROR mode returns sessions, theory and capabilit
 
   process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
   const { pool } = await import("../db/connect.js");
-  pool.query = (sql, params) => db.query(sql, params);
+  bindPoolToDb(pool, db);
   const videoCourseRouter = (await import("./videoCourse.router.js")).default;
 
   const teacher = (await db.query(
@@ -24,6 +35,7 @@ test("video course workspace: MIRROR mode returns sessions, theory and capabilit
     `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
      VALUES ('mirror-student','mirror-student@example.test','user',TRUE,'active') RETURNING id`,
   )).rows[0];
+  const trustedDeviceId = await addTrustedDevice(db, student.id, "mirror");
   const course = (await db.query(
     `INSERT INTO courses(name,slug,author_id,is_published,is_management_managed)
      VALUES ('HSK Video Mirror','hsk-video-mirror',$1,TRUE,TRUE) RETURNING id`,
@@ -89,6 +101,7 @@ test("video course workspace: MIRROR mode returns sessions, theory and capabilit
       is_management_managed: true,
       lms_account_status: "active",
     },
+    authSession: { trustedDeviceId },
     params: { offeringId: String(course.id) },
     query: {},
   }, res);
@@ -117,7 +130,7 @@ test("video course workspace: ordinary accounts can open only admin-selected pre
 
   process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
   const { pool } = await import("../db/connect.js");
-  pool.query = (sql, params) => db.query(sql, params);
+  bindPoolToDb(pool, db);
   const videoCourseRouter = (await import("./videoCourse.router.js")).default;
 
   const teacher = (await db.query(
@@ -189,7 +202,7 @@ test("video course workspace: INDEPENDENT mode returns lessons without live clas
 
   process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
   const { pool } = await import("../db/connect.js");
-  pool.query = (sql, params) => db.query(sql, params);
+  bindPoolToDb(pool, db);
   const videoCourseRouter = (await import("./videoCourse.router.js")).default;
 
   const author = (await db.query(
@@ -199,6 +212,7 @@ test("video course workspace: INDEPENDENT mode returns lessons without live clas
     `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
      VALUES ('independent-student','independent-student@example.test','user',TRUE,'active') RETURNING id`,
   )).rows[0];
+  const trustedDeviceId = await addTrustedDevice(db, student.id, "independent");
   const course = (await db.query(
     `INSERT INTO courses(name,slug,author_id,is_published,is_management_managed)
      VALUES ('CSCA Toan Độc Lập','csca-math-independent',$1,TRUE,TRUE) RETURNING id`,
@@ -259,6 +273,7 @@ test("video course workspace: INDEPENDENT mode returns lessons without live clas
       is_management_managed: true,
       lms_account_status: "active",
     },
+    authSession: { trustedDeviceId },
     params: { offeringId: String(course.id) },
     query: {},
   }, res);
@@ -283,7 +298,7 @@ test("video course workspace: sequential lesson unlocking requires >=60% credite
 
   process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
   const { pool } = await import("../db/connect.js");
-  pool.query = (sql, params) => db.query(sql, params);
+  bindPoolToDb(pool, db);
   const videoCourseRouter = (await import("./videoCourse.router.js")).default;
   const { recordVideoWatchProgress } = await import("../services/bunnyStream.service.js");
 
@@ -294,6 +309,7 @@ test("video course workspace: sequential lesson unlocking requires >=60% credite
     `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
      VALUES ('seq-student','seq-student@example.test','user',TRUE,'active') RETURNING id`,
   )).rows[0];
+  const trustedDeviceId = await addTrustedDevice(db, student.id, "sequential");
   const course = (await db.query(
     `INSERT INTO courses(name,slug,author_id,is_published,is_management_managed)
      VALUES ('CSCA TTXH Sequential','csca-ttxh-seq',$1,TRUE,TRUE) RETURNING id`,
@@ -374,6 +390,7 @@ test("video course workspace: sequential lesson unlocking requires >=60% credite
         is_management_managed: true,
         lms_account_status: "active",
       },
+      authSession: { trustedDeviceId },
       params: { offeringId: String(course.id) },
       query: unitId ? { unitId: String(unitId) } : {},
     }, res);
@@ -392,8 +409,13 @@ test("video course workspace: sequential lesson unlocking requires >=60% credite
   assert.equal(lockedWorkspace.activeUnit.isLocked, true);
   assert.equal(lockedWorkspace.activeUnit.video, null);
   assert.deepEqual(lockedWorkspace.activeUnit.videos, []);
+  assert.equal(lockedWorkspace.activeUnit.theory, null);
   assert.deepEqual(lockedWorkspace.activeUnit.files, []);
+  assert.deepEqual(lockedWorkspace.activeUnit.assignments, []);
   assert.deepEqual(lockedWorkspace.activeUnit.quizzes, []);
+  assert.deepEqual(lockedWorkspace.activeUnit.vocabulary, []);
+  assert.deepEqual(lockedWorkspace.activeUnit.formulas, []);
+  assert.deepEqual(lockedWorkspace.activeUnit.notes, []);
 
   // Step 2: Moving the playhead alone must not unlock or add credited watch time.
   const seekResult = await recordVideoWatchProgress({

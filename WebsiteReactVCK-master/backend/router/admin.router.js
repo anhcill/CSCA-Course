@@ -1288,7 +1288,7 @@ const getTrustedDevicesHandler = async (req, res) => {
       success: true,
       data: {
         limit: getTrustedDeviceLimitForRole(user.role),
-        used: devices.length,
+        used: devices.filter((device) => device.isRecordDevice).length,
         devices,
         security: {
           isLocked: Boolean(user.is_locked),

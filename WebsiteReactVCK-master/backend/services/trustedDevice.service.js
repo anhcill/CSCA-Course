@@ -113,8 +113,6 @@ export const establishLoginSession = async ({
       );
     }
 
-    const deviceLimit = getTrustedDeviceLimitForRole(user.role);
-
     const suppliedToken = normalizeDeviceToken(deviceToken);
     const effectiveToken = suppliedToken || crypto.randomBytes(32).toString("base64url");
     const deviceTokenHash = hashOpaqueToken(effectiveToken);
@@ -131,61 +129,6 @@ export const establishLoginSession = async ({
 
     let trustedDeviceId = knownDeviceResult.rows[0]?.id || null;
     if (!trustedDeviceId) {
-      const countResult = await client.query(
-        `SELECT COUNT(*)::int AS count
-         FROM trusted_login_devices
-         WHERE user_id = $1 AND revoked_at IS NULL`,
-        [userId],
-      );
-      const usedSlots = Number(countResult.rows[0]?.count || 0);
-
-      if (deviceLimit !== null && usedSlots >= deviceLimit) {
-        // The legacy column is constrained to 0..3. Keep the audit counter
-        // saturated instead of turning a fourth rejected login into a DB 500.
-        const attemptCount = Math.min(
-          DEVICE_LIMIT_LOCK_THRESHOLD,
-          Number(user.device_limit_attempts || 0) + 1,
-        );
-
-        await client.query(
-          `UPDATE users
-           SET device_limit_attempts = $1,
-               device_limit_last_attempt_at = NOW(),
-               updated_at = NOW()
-           WHERE id = $2`,
-          [attemptCount, userId],
-        );
-
-        await recordAuditEvent({
-          db: client,
-          actorId: userId,
-          action: "user.trusted_device.rejected",
-          entityType: "trusted_login_device",
-          metadata: {
-            ip: normalizedIp,
-            userAgent: normalizedUserAgent,
-            usedSlots,
-            deviceLimit,
-            attemptCount,
-          },
-        });
-
-        await client.query("COMMIT");
-        committed = true;
-
-        throw new TrustedDeviceAuthError(
-          "DEVICE_LIMIT_REACHED",
-          `Tài khoản đã đạt giới hạn tối đa ${deviceLimit} thiết bị tin cậy. Vui lòng liên hệ quản trị viên để gỡ thiết bị cũ.`,
-          {
-            details: {
-              attempts: attemptCount,
-              usedSlots,
-              deviceLimit,
-            },
-          },
-        );
-      }
-
       const insertedDevice = await client.query(
         `INSERT INTO trusted_login_devices
            (user_id, device_token_hash, device_name, user_agent, first_ip, last_ip)
@@ -262,9 +205,131 @@ export const establishLoginSession = async ({
   }
 };
 
+export const authorizeRecordDevice = async ({
+  userId,
+  trustedDeviceId,
+  deviceLimit = TRUSTED_DEVICE_LIMIT,
+  enforce = true,
+  clientFactory = getClient,
+}) => {
+  if (!enforce) return { enforced: false, authorized: true };
+
+  const parsedLimit = Number(deviceLimit);
+  const effectiveLimit = Number.isSafeInteger(parsedLimit) && parsedLimit > 0
+    ? parsedLimit
+    : TRUSTED_DEVICE_LIMIT;
+  if (!userId || !trustedDeviceId) {
+    throw new TrustedDeviceAuthError(
+      "TRUSTED_DEVICE_REQUIRED",
+      "Vui lòng đăng nhập lại để hệ thống ghi nhớ thiết bị học của bạn.",
+      { status: 401 },
+    );
+  }
+
+  const client = await clientFactory();
+  let committed = false;
+  try {
+    await client.query("BEGIN");
+    const deviceRes = await client.query(
+      `SELECT d.id, d.user_id, d.record_access_granted_at, u.role
+       FROM trusted_login_devices d
+       JOIN users u ON u.id = d.user_id
+       WHERE d.id = $1 AND d.user_id = $2 AND d.revoked_at IS NULL
+       FOR UPDATE`,
+      [trustedDeviceId, userId],
+    );
+    const device = deviceRes.rows[0];
+    if (!device) {
+      throw new TrustedDeviceAuthError(
+        "TRUSTED_DEVICE_REQUIRED",
+        "Thiết bị hiện tại chưa được ghi nhớ. Vui lòng đăng nhập lại để tiếp tục.",
+        { status: 401 },
+      );
+    }
+    if (device.role !== "user") {
+      await client.query("COMMIT");
+      committed = true;
+      return { enforced: false, authorized: true, trustedDeviceId: device.id };
+    }
+
+    if (device.record_access_granted_at) {
+      await client.query(
+        `UPDATE trusted_login_devices
+         SET last_seen_at = NOW()
+         WHERE id = $1`,
+        [device.id],
+      );
+      await client.query("COMMIT");
+      committed = true;
+      return {
+        enforced: true,
+        authorized: true,
+        trustedDeviceId: device.id,
+        deviceLimit: effectiveLimit,
+      };
+    }
+
+    const usedRes = await client.query(
+      `SELECT COUNT(*)::int AS count
+       FROM trusted_login_devices
+       WHERE user_id = $1
+         AND revoked_at IS NULL
+         AND record_access_granted_at IS NOT NULL`,
+      [userId],
+    );
+    const usedSlots = Number(usedRes.rows[0]?.count || 0);
+    if (usedSlots >= effectiveLimit) {
+      await recordAuditEvent({
+        db: client,
+        actorId: userId,
+        action: "user.record_device.rejected",
+        entityType: "trusted_login_device",
+        entityId: device.id,
+        metadata: { usedSlots, deviceLimit: effectiveLimit },
+      });
+      await client.query("COMMIT");
+      committed = true;
+      throw new TrustedDeviceAuthError(
+        "DEVICE_LIMIT_REACHED",
+        `Bạn đã sử dụng đủ ${effectiveLimit} thiết bị cho khóa Record. Nhắn admin để được hỗ trợ đổi thiết bị nhé.`,
+        { details: { usedSlots, deviceLimit: effectiveLimit } },
+      );
+    }
+
+    await client.query(
+      `UPDATE trusted_login_devices
+       SET record_access_granted_at = NOW(), last_seen_at = NOW()
+       WHERE id = $1`,
+      [device.id],
+    );
+    await recordAuditEvent({
+      db: client,
+      actorId: userId,
+      action: "user.record_device.authorized",
+      entityType: "trusted_login_device",
+      entityId: device.id,
+      metadata: { usedSlots: usedSlots + 1, deviceLimit: effectiveLimit },
+    });
+    await client.query("COMMIT");
+    committed = true;
+    return {
+      enforced: true,
+      authorized: true,
+      trustedDeviceId: device.id,
+      usedSlots: usedSlots + 1,
+      deviceLimit: effectiveLimit,
+    };
+  } catch (error) {
+    if (!committed) await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
 export const listTrustedDevicesForUser = async (userId, currentDeviceId = null, db = { query }) => {
   const result = await db.query(
-    `SELECT d.id, d.device_name, d.user_agent,
+    `SELECT d.id, d.device_name, d.user_agent, d.record_access_granted_at,
             host(d.first_ip) AS first_ip, host(d.last_ip) AS last_ip,
             d.first_seen_at, d.last_seen_at, d.last_login_at,
             COUNT(s.id) FILTER (
@@ -287,6 +352,8 @@ export const listTrustedDevicesForUser = async (userId, currentDeviceId = null, 
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
     lastLoginAt: row.last_login_at,
+    recordAccessGrantedAt: row.record_access_granted_at || null,
+    isRecordDevice: Boolean(row.record_access_granted_at),
     activeSessions: Number(row.active_sessions || 0),
     isCurrent: String(row.id) === String(currentDeviceId),
   }));

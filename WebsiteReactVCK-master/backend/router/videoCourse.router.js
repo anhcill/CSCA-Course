@@ -3,7 +3,11 @@ import { query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireAdmin from "../middleware/requireAdmin.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
-import { revokeTrustedDevice } from "../services/trustedDevice.service.js";
+import {
+  authorizeRecordDevice,
+  revokeTrustedDevice,
+  TrustedDeviceAuthError,
+} from "../services/trustedDevice.service.js";
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
@@ -326,6 +330,15 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
       });
       hasFullLearnerAccess = Boolean(memberAlias);
       if (!hasFullLearnerAccess) learnerAccessErrorCode = "RECORD_MEMBERSHIP_REQUIRED";
+    }
+
+    if (isLearner && hasFullLearnerAccess) {
+      await authorizeRecordDevice({
+        userId: req.user.id,
+        trustedDeviceId: req.authSession?.trustedDeviceId,
+        deviceLimit: Number(profile.device_limit || 2),
+        enforce: profile.enforce_trusted_devices !== false,
+      });
     }
 
     if (isLearner && !hasFullLearnerAccess) {
@@ -731,10 +744,10 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             fileName: f.file_name,
             sizeBytes: Number(f.file_size_bytes || 0),
             mimeType: f.mime_type,
-            viewUrl: `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&videoCourseId=${encodeURIComponent(courseId)}`,
+            viewUrl: `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(profile.id)}`,
             downloadUrl: isPublicPreviewAccess || profile.allow_file_download !== true || f.allow_file_download === false
               ? null
-              : `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&videoCourseId=${encodeURIComponent(courseId)}&download=1`,
+              : `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(profile.id)}&download=1`,
           })),
           assignments: assignRes.rows.map((a) => ({
             id: String(a.id),
@@ -1054,10 +1067,10 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             fileName: f.file_name,
             sizeBytes: Number(f.file_size_bytes || 0),
             mimeType: f.mime_type,
-            viewUrl: `/api/files/${f.id}/download?videoCourseId=${encodeURIComponent(courseId)}`,
+            viewUrl: `/api/files/${f.id}/download?videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(profile.id)}`,
             downloadUrl: isPublicPreviewAccess || profile.allow_file_download !== true
               ? null
-              : `/api/files/${f.id}/download?videoCourseId=${encodeURIComponent(courseId)}&download=1`,
+              : `/api/files/${f.id}/download?videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(profile.id)}&download=1`,
           })),
           assignments: assignRes.rows.map((a) => ({
             id: String(a.id),
@@ -1169,6 +1182,14 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
       },
     });
   } catch (error) {
+    if (error instanceof TrustedDeviceAuthError) {
+      return res.status(error.status).json({
+        success: false,
+        message: error.message,
+        errorCode: error.errorCode,
+        ...(error.details ? { details: error.details } : {}),
+      });
+    }
     console.error("Video course workspace error:", error);
     return res.status(500).json({ success: false, message: "Lỗi máy chủ", errorCode: "INTERNAL_ERROR" });
   }
@@ -1536,7 +1557,7 @@ router.get("/admin/courses", protectRoute, requireAdmin, async (req, res) => {
               ) AS devices
        FROM trusted_login_devices d
        JOIN users u ON u.id = d.user_id
-       WHERE d.revoked_at IS NULL
+       WHERE d.revoked_at IS NULL AND d.record_access_granted_at IS NOT NULL
        GROUP BY u.id, u.username, u.email
        HAVING COUNT(d.id) > 2
        ORDER BY COUNT(d.id) DESC, u.id ASC`,

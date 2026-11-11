@@ -67,6 +67,7 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
 
   const { pool } = await import("../db/connect.js");
   pool.query = (sql, params) => db.query(sql, params);
+  pool.connect = async () => ({ query: (sql, params) => db.query(sql, params), release() {} });
 
   const bunnyVideoRouter = (await import("./bunnyVideo.router.js")).default;
   const videoCourseRouter = (await import("./videoCourse.router.js")).default;
@@ -84,6 +85,11 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
     `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
      VALUES ('live-only-learner','liveonly@moly.test','user',TRUE,'active')
      RETURNING id, email, role, is_management_managed, lms_account_status`,
+  )).rows[0];
+  const recordDevice = (await db.query(
+    `INSERT INTO trusted_login_devices(user_id,device_token_hash,device_name)
+     VALUES ($1,$2,'Record learner browser') RETURNING id`,
+    [recordStudent.id, "record-device".padEnd(64, "0")],
   )).rows[0];
 
   // Seed MIRROR course & source live class
@@ -308,6 +314,7 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   // 8. Record learner gets signed playback token -> 200 OK with private no-store header and signed URLs
   const playbackRes = await invokeRoute(bunnyVideoRouter, "post", "/videos/:videoId/playback-token", {
     user: recordStudent,
+    authSession: { trustedDeviceId: recordDevice.id },
     params: { videoId: assetId },
     body: { unitId: String(session1.id) },
   });
@@ -322,6 +329,7 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   // Spoof attempt: sending 200s watched in a single heartbeat on a 200s video is clamped to max 90s (45%)
   const spoofProgressRes = await invokeRoute(bunnyVideoRouter, "put", "/videos/:videoId/progress", {
     user: recordStudent,
+    authSession: { trustedDeviceId: recordDevice.id },
     params: { videoId: assetId },
     body: {
       unitId: String(session1.id),
@@ -338,6 +346,7 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   // Second heartbeat (+35s -> total 125s / 200s = 62.5%) marks completed = true.
   const completeProgressRes = await invokeRoute(bunnyVideoRouter, "put", "/videos/:videoId/progress", {
     user: recordStudent,
+    authSession: { trustedDeviceId: recordDevice.id },
     params: { videoId: assetId },
     body: {
       unitId: String(session1.id),
@@ -451,6 +460,7 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   // Verify Independent workspace returns theory, vocabulary, formulas, and notes
   const indWorkspaceRes = await invokeRoute(videoCourseRouter, "get", "/:offeringId/workspace", {
     user: recordStudent,
+    authSession: { trustedDeviceId: recordDevice.id },
     params: { offeringId: String(indCourse.id) },
   });
   assert.equal(indWorkspaceRes.statusCode, 200);

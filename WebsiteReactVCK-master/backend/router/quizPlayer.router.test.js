@@ -60,6 +60,83 @@ test("new player endpoints require authentication", async () => {
   });
 });
 
+test("Record quiz follows the same sequential unit lock as video and learning materials", async (t) => {
+  const db = await loadDatabase();
+  t.after(() => db.close());
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('locked-quiz-teacher','locked-quiz-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const learner = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('locked-quiz-learner','locked-quiz-learner@example.test','user') RETURNING id,role",
+  )).rows[0];
+  const course = (await db.query(
+    "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Locked Record','locked-record',$1,TRUE) RETURNING id",
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await db.query(
+    "INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('Locked Record Source',$1,$2,'active') RETURNING id",
+    [course.id, teacher.id],
+  )).rows[0];
+  const firstSession = (await db.query(
+    "INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status) VALUES ($1,'Buổi 1',NOW(),NOW() + interval '1 hour','ended') RETURNING id",
+    [liveClass.id],
+  )).rows[0];
+  const secondSession = (await db.query(
+    "INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status) VALUES ($1,'Buổi 2',NOW() + interval '1 day',NOW() + interval '1 day 1 hour','scheduled') RETURNING id",
+    [liveClass.id],
+  )).rows[0];
+  const firstVideo = (await db.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds)
+     VALUES ('Buổi 1','bunny_stream','test','locked-unit-video','ready',100) RETURNING id`,
+  )).rows[0];
+  await db.query(
+    "INSERT INTO class_session_videos(class_session_id,video_asset_id,video_type,is_published) VALUES ($1,$2,'primary',TRUE)",
+    [firstSession.id, firstVideo.id],
+  );
+  await db.query(
+    "INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,status) VALUES ($1,'MIRROR',$2,'active')",
+    [course.id, liveClass.id],
+  );
+  await db.query(
+    "INSERT INTO class_enrollments(user_id,live_class_id,status,learning_mode) VALUES ($1,$2,'active','recording')",
+    [learner.id, liveClass.id],
+  );
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - interval '1 day',NOW())`,
+    [learner.id, course.id],
+  );
+  const quiz = (await db.query(
+    `INSERT INTO quizzes(title,course_id,live_class_id,class_session_id,instructor_id,status,duration_minutes,passing_score)
+     VALUES ('Quiz Buổi 2',$1,$2,$3,$4,'PUBLISHED',15,60) RETURNING id`,
+    [course.id, liveClass.id, secondSession.id, teacher.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO quiz_questions(quiz_id,question_text,question_type,options_json,correct_answer,points,sort_order)
+     VALUES ($1,'Câu hỏi buổi 2','single_choice',$2::jsonb,'A',1,1)`,
+    [quiz.id, JSON.stringify([{ key: "A", text: "Đúng" }, { key: "B", text: "Sai" }])],
+  );
+
+  const locked = await invoke("get", "/quizzes/:quizId/start", {
+    user: learner,
+    params: { quizId: quiz.id },
+  });
+  assert.equal(locked.statusCode, 403, JSON.stringify(locked.body));
+  assert.match(locked.body.message, /hoàn thành buổi học trước/);
+
+  await db.query(
+    `INSERT INTO video_watch_progress
+       (user_id,video_asset_id,course_id,live_class_id,class_session_id,last_position_seconds,watched_seconds,completion_percent,is_completed)
+     VALUES ($1,$2,$3,$4,$5,60,60,60,TRUE)`,
+    [learner.id, firstVideo.id, course.id, liveClass.id, firstSession.id],
+  );
+  const unlocked = await invoke("get", "/quizzes/:quizId/start", {
+    user: learner,
+    params: { quizId: quiz.id },
+  });
+  assert.equal(unlocked.statusCode, 200, JSON.stringify(unlocked.body));
+});
+
 test("player resumes one attempt, protects review, submits idempotently and feeds the gradebook", async (t) => {
   const db = await loadDatabase();
   t.after(() => db.close());
@@ -118,6 +195,20 @@ test("player resumes one attempt, protects review, submits idempotently and feed
   assert.equal(previewMiddlewarePassed, true, "public preview quiz must bypass paid LMS middleware");
   const previewAttempt = await invoke("get", "/quizzes/:quizId/start", { user: outsider, params: { quizId: quiz.id } });
   assert.equal(previewAttempt.statusCode, 200, JSON.stringify(previewAttempt.body));
+  const previewAttemptId = previewAttempt.body.data.attempt.id;
+  const previewSaved = await invoke("put", "/attempts/:attemptId/answers", {
+    user: outsider,
+    params: { attemptId: previewAttemptId },
+    body: { questionId: question.id, answer: "A" },
+  });
+  assert.equal(previewSaved.statusCode, 200, JSON.stringify(previewSaved.body));
+  const previewSubmitted = await invoke("post", "/attempts/:attemptId/submit", {
+    user: outsider,
+    params: { attemptId: previewAttemptId },
+    body: { answers: {} },
+  });
+  assert.equal(previewSubmitted.statusCode, 200, JSON.stringify(previewSubmitted.body));
+  assert.equal(previewSubmitted.body.data.score, 1);
   await db.query("DELETE FROM quiz_attempts WHERE user_id = $1 AND quiz_id = $2", [outsider.id, quiz.id]);
 
   const first = await invoke("get", "/quizzes/:quizId/start", { user: learner, params: { quizId: quiz.id } });

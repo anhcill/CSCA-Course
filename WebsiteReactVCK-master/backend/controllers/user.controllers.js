@@ -474,7 +474,7 @@ export const getTrustedDevices = async (req, res) => {
       success: true,
       data: {
         limit: getTrustedDeviceLimitForRole(req.user.role),
-        used: devices.length,
+        used: devices.filter((device) => device.isRecordDevice).length,
         devices,
         removalPolicy: "ADMIN_ONLY",
       },

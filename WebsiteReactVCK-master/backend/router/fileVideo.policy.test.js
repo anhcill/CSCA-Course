@@ -138,15 +138,19 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   assert.match(listedB.body.data.find((file) => file.id === String(otherClass.id)).viewUrl, new RegExp(`classId=${classB.id}$`));
   assert.ok(listedB.body.data.find((file) => file.id === String(courseWide.id)).viewUrl.endsWith("/download"));
   await db.query("UPDATE courses SET is_published=TRUE WHERE id=$1", [course.id]);
-  await db.query(
+  const videoProfile = (await db.query(
     `INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,allow_file_download,status)
-     VALUES ($1,'MIRROR',$2,FALSE,'active')`,
+     VALUES ($1,'MIRROR',$2,FALSE,'active') RETURNING id`,
     [course.id, classA.id],
+  )).rows[0];
+  await db.query(
+    "UPDATE class_enrollments SET learning_mode='recording' WHERE user_id=$1 AND live_class_id=$2",
+    [learnerA.id, classA.id],
   );
   const videoCourseInline = await invoke(fileRouter, "get", "/files/:fileId/download", {
     user: managedLearnerA,
     params: { fileId: courseWide.id },
-    query: { videoCourseId: course.id },
+    query: { videoCourseId: course.id, videoCourseProfileId: videoProfile.id },
   });
   assert.equal(videoCourseInline.statusCode, 200);
   assert.match(videoCourseInline.body, /CHỈ XEM/);
@@ -155,15 +159,70 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   const blockedVideoCourseDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
     user: managedLearnerA,
     params: { fileId: courseWide.id },
-    query: { videoCourseId: course.id, download: "1" },
+    query: { videoCourseId: course.id, videoCourseProfileId: videoProfile.id, download: "1" },
   });
   assert.equal(blockedVideoCourseDownload.statusCode, 403);
   assert.equal(blockedVideoCourseDownload.body.errorCode, "FILE_DOWNLOAD_DISABLED");
+  const blockedStrippedVideoCourseDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: managedLearnerA,
+    params: { fileId: courseWide.id },
+    query: { download: "1" },
+  });
+  assert.equal(blockedStrippedVideoCourseDownload.statusCode, 403);
+  assert.equal(blockedStrippedVideoCourseDownload.body.errorCode, "FILE_DOWNLOAD_DISABLED");
+
+  const firstRecordSession = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status)
+     VALUES ($1,'Record buổi 1',NOW(),NOW() + interval '1 hour','ended') RETURNING id`,
+    [classA.id],
+  )).rows[0];
+  const secondRecordSession = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status)
+     VALUES ($1,'Record buổi 2',NOW() + interval '1 day',NOW() + interval '1 day 1 hour','scheduled') RETURNING id`,
+    [classA.id],
+  )).rows[0];
+  const firstRecordVideo = (await db.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds)
+     VALUES ('Record video 1','bunny_stream','test','file-lock-video','ready',100) RETURNING id`,
+  )).rows[0];
+  await db.query(
+    "INSERT INTO class_session_videos(class_session_id,video_asset_id,video_type,is_published) VALUES ($1,$2,'primary',TRUE)",
+    [firstRecordSession.id, firstRecordVideo.id],
+  );
+  const lockedSessionFile = (await db.query(
+    `INSERT INTO lms_learning_files
+       (live_class_id,course_id,class_session_id,uploaded_by,original_name,storage_key,mime_type,size_bytes,visibility,status)
+     VALUES ($1,$2,$3,$4,'locked-session.pdf','learning-files/locked-session.pdf','application/pdf',10,'CLASS_ONLY','ready')
+     RETURNING id`,
+    [classA.id, course.id, secondRecordSession.id, teacher.id],
+  )).rows[0];
+  const lockedSessionFileResponse = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: managedLearnerA,
+    params: { fileId: lockedSessionFile.id },
+    query: { classId: classA.id, videoCourseId: course.id, videoCourseProfileId: videoProfile.id },
+  });
+  assert.equal(lockedSessionFileResponse.statusCode, 403);
+  assert.equal(lockedSessionFileResponse.body.errorCode, "VIDEO_UNIT_LOCKED");
+  await db.query(
+    `INSERT INTO video_watch_progress
+       (user_id,video_asset_id,course_id,live_class_id,class_session_id,last_position_seconds,watched_seconds,completion_percent,is_completed)
+     VALUES ($1,$2,$3,$4,$5,60,60,60,TRUE)`,
+    [learnerA.id, firstRecordVideo.id, course.id, classA.id, firstRecordSession.id],
+  );
+  const unlockedSessionFileResponse = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: managedLearnerA,
+    params: { fileId: lockedSessionFile.id },
+    query: { classId: classA.id, videoCourseId: course.id, videoCourseProfileId: videoProfile.id },
+  });
+  assert.equal(unlockedSessionFileResponse.statusCode, 200);
+  assert.match(unlockedSessionFileResponse.body, /CHỈ XEM/);
+  await db.query("UPDATE lms_learning_files SET status='deleted' WHERE id=$1", [lockedSessionFile.id]);
+
   await db.query("UPDATE video_course_profiles SET allow_file_download = TRUE WHERE course_id = $1", [course.id]);
   const allowedVideoCourseDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
     user: managedLearnerA,
     params: { fileId: courseWide.id },
-    query: { videoCourseId: course.id, download: "1" },
+    query: { videoCourseId: course.id, videoCourseProfileId: videoProfile.id, download: "1" },
   });
   assert.equal(allowedVideoCourseDownload.statusCode, 302);
 

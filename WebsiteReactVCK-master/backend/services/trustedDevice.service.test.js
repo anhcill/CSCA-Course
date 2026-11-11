@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
 import {
   TrustedDeviceAuthError,
+  authorizeRecordDevice,
   establishLoginSession,
   listTrustedDevicesForUser,
   resolveAuthenticatedSession,
@@ -44,6 +45,7 @@ const schema = `
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    record_access_granted_at TIMESTAMPTZ,
     revoked_at TIMESTAMPTZ,
     revoked_by BIGINT REFERENCES users(id) ON DELETE SET NULL
   );
@@ -91,7 +93,13 @@ const setup = async (role = "user") => {
     expiresAt: new Date(Date.now() + 60_000),
     clientFactory,
   });
-  return { db, userId, login };
+  const authorize = (session, deviceLimit = 2) => authorizeRecordDevice({
+    userId,
+    trustedDeviceId: session.trustedDeviceId,
+    deviceLimit,
+    clientFactory,
+  });
+  return { db, userId, login, authorize };
 };
 
 test("does not apply the learner device limit to teachers or admins", async () => {
@@ -121,14 +129,17 @@ test("does not apply the learner device limit to teachers or admins", async () =
   }
 });
 
-test("accepts two devices and rejects a third without creating another slot", async () => {
-  const { db, userId, login } = await setup();
+test("ordinary login allows extra browsers while Record access is limited to two devices", async () => {
+  const { db, userId, login, authorize } = await setup();
   try {
-    await login("a".repeat(43));
-    await login("b".repeat(43));
+    const first = await login("a".repeat(43));
+    const second = await login("b".repeat(43));
+    const third = await login("c".repeat(43));
+    await authorize(first);
+    await authorize(second);
 
     await assert.rejects(
-      () => login("c".repeat(43)),
+      () => authorize(third),
       (error) => {
         assert.ok(error instanceof TrustedDeviceAuthError);
         assert.equal(error.errorCode, "DEVICE_LIMIT_REACHED");
@@ -142,7 +153,13 @@ test("accepts two devices and rejects a third without creating another slot", as
       "SELECT COUNT(*)::int AS count FROM trusted_login_devices WHERE user_id = $1 AND revoked_at IS NULL",
       [userId],
     );
-    assert.equal(count.rows[0].count, 2);
+    assert.equal(count.rows[0].count, 3, "Preview-only browsers remain allowed to sign in");
+    const recordCount = await db.query(
+      `SELECT COUNT(*)::int AS count FROM trusted_login_devices
+       WHERE user_id = $1 AND revoked_at IS NULL AND record_access_granted_at IS NOT NULL`,
+      [userId],
+    );
+    assert.equal(recordCount.rows[0].count, 2);
   } finally {
     await db.close();
   }
@@ -165,21 +182,24 @@ test("recognizes the same trusted device after its previous JWT session expires"
   }
 });
 
-test("rejects subsequent third-device logins without auto-locking the account", async () => {
-  const { db, userId, login } = await setup();
+test("rejects subsequent third Record devices without blocking ordinary login or locking the account", async () => {
+  const { db, userId, login, authorize } = await setup();
   try {
-    await login("a".repeat(43));
-    await login("b".repeat(43));
-    await assert.rejects(() => login("c".repeat(43)), { errorCode: "DEVICE_LIMIT_REACHED" });
-    await assert.rejects(() => login("c".repeat(43)), { errorCode: "DEVICE_LIMIT_REACHED" });
-    await assert.rejects(() => login("c".repeat(43)), { errorCode: "DEVICE_LIMIT_REACHED" });
+    const first = await login("a".repeat(43));
+    const second = await login("b".repeat(43));
+    const third = await login("c".repeat(43));
+    await authorize(first);
+    await authorize(second);
+    await assert.rejects(() => authorize(third), { errorCode: "DEVICE_LIMIT_REACHED" });
+    await assert.rejects(() => authorize(third), { errorCode: "DEVICE_LIMIT_REACHED" });
+    await assert.rejects(() => authorize(third), { errorCode: "DEVICE_LIMIT_REACHED" });
 
     const user = await db.query(
       "SELECT is_locked, locked_reason, device_limit_attempts FROM users WHERE id = $1",
       [userId],
     );
     assert.equal(user.rows[0].is_locked, false, "Account should not be locked automatically");
-    assert.equal(user.rows[0].device_limit_attempts, 3);
+    assert.equal(user.rows[0].device_limit_attempts, 0);
 
     const audits = await db.query(
       "SELECT action FROM audit_events WHERE actor_id = $1 ORDER BY id ASC",
@@ -187,7 +207,8 @@ test("rejects subsequent third-device logins without auto-locking the account", 
     );
     const actions = audits.rows.map((r) => r.action);
     assert.ok(actions.includes("user.trusted_device.registered"));
-    assert.ok(actions.includes("user.trusted_device.rejected"));
+    assert.ok(actions.includes("user.record_device.authorized"));
+    assert.ok(actions.includes("user.record_device.rejected"));
   } finally {
     await db.close();
   }
@@ -230,11 +251,13 @@ test("logout revokes only the session and retains the trusted device", async () 
   }
 });
 
-test("revoking a trusted device invalidates its session and frees one slot", async () => {
-  const { db, userId, login } = await setup();
+test("revoking a trusted device invalidates its session and frees one Record slot", async () => {
+  const { db, userId, login, authorize } = await setup();
   try {
     const first = await login("a".repeat(43));
-    await login("b".repeat(43));
+    const second = await login("b".repeat(43));
+    await authorize(first);
+    await authorize(second);
 
     const authenticated = await resolveAuthenticatedSession({
       userId,
@@ -263,7 +286,8 @@ test("revoking a trusted device invalidates its session and frees one slot", asy
     });
     assert.equal(rejectedSession, null);
 
-    await login("c".repeat(43));
+    const third = await login("c".repeat(43));
+    await authorize(third);
     const activeDevices = await db.query(
       "SELECT COUNT(*)::int AS count FROM trusted_login_devices WHERE user_id = $1 AND revoked_at IS NULL",
       [userId],

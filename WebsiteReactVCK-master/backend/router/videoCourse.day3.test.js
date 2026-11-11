@@ -65,6 +65,10 @@ test("Day 3 Bunny Stream E2E: InternalManagement MIRROR & INDEPENDENT sync, Fina
 
   const { pool } = await import("../db/connect.js");
   pool.query = (sql, params) => db.query(sql, params);
+  pool.connect = async () => ({
+    query: (sql, params) => db.query(sql, params),
+    release() {},
+  });
 
   const { applyManagementEvent, SyncValidationError } = await import("../services/managementSync.service.js");
   const bunnyVideoRouter = (await import("./bunnyVideo.router.js")).default;
@@ -393,6 +397,11 @@ test("Day 3 Bunny Stream E2E: InternalManagement MIRROR & INDEPENDENT sync, Fina
     },
   });
   const indepLearnerId = provRes.entityId;
+  const recordDevice = (await db.query(
+    `INSERT INTO trusted_login_devices(user_id,device_token_hash,device_name)
+     VALUES ($1,$2,'Day 3 record browser') RETURNING id`,
+    [indepLearnerId, "day3-record-browser".padEnd(64, "0")],
+  )).rows[0];
 
   const memRes = await applyManagementEvent(db, {
     eventType: "class.membership.changed",
@@ -429,6 +438,7 @@ test("Day 3 Bunny Stream E2E: InternalManagement MIRROR & INDEPENDENT sync, Fina
     "/videos/:videoId/playback-token",
     {
       user: learnerUser,
+      authSession: { trustedDeviceId: recordDevice.id },
       params: { videoId: String(assetIds[0]) },
       body: { unitId: Number(lesson1Id), courseId: Number(indepCourseId) },
     },
@@ -462,6 +472,7 @@ test("Day 3 Bunny Stream E2E: InternalManagement MIRROR & INDEPENDENT sync, Fina
     "/videos/:videoId/playback-token",
     {
       user: learnerUser,
+      authSession: { trustedDeviceId: recordDevice.id },
       params: { videoId: String(assetIds[0]) },
       body: { unitId: Number(lesson1Id), courseId: Number(indepCourseId) },
     },
@@ -501,11 +512,11 @@ test("Day 3 Bunny Stream E2E: InternalManagement MIRROR & INDEPENDENT sync, Fina
   assert.equal(refundedPlayRes.statusCode, 403);
 
   // 7. Test Section 5.1: Over-limit trusted devices (>2) warning & Admin manual device revoke
-  for (let i = 1; i <= 3; i += 1) {
+  for (let i = 1; i <= 2; i += 1) {
     await db.query(
       `INSERT INTO trusted_login_devices
-         (user_id, device_token_hash, device_name, first_ip, last_ip)
-       VALUES ($1, $2, $3, '10.0.0.1'::inet, '10.0.0.1'::inet)`,
+         (user_id, device_token_hash, device_name, first_ip, last_ip, record_access_granted_at)
+       VALUES ($1, $2, $3, '10.0.0.1'::inet, '10.0.0.1'::inet, NOW())`,
       [indepLearnerId, `legacy-hash-device-${i}`.padEnd(64, "0"), `Legacy Device #${i}`],
     );
   }
