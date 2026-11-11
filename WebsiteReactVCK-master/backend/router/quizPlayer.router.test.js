@@ -116,10 +116,10 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
     "INSERT INTO class_session_videos(class_session_id,video_asset_id,video_type,is_published) VALUES ($1,$2,'primary',TRUE)",
     [firstSession.id, firstVideo.id],
   );
-  await db.query(
-    "INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,status) VALUES ($1,'MIRROR',$2,'active')",
+  const videoProfile = (await db.query(
+    "INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,status) VALUES ($1,'MIRROR',$2,'active') RETURNING id",
     [course.id, liveClass.id],
-  );
+  )).rows[0];
   await db.query(
     "INSERT INTO class_enrollments(user_id,live_class_id,status,learning_mode) VALUES ($1,$2,'active','recording')",
     [learner.id, liveClass.id],
@@ -130,8 +130,8 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
     [learner.id, course.id],
   );
   const quiz = (await db.query(
-    `INSERT INTO quizzes(title,course_id,live_class_id,class_session_id,instructor_id,status,duration_minutes,passing_score)
-     VALUES ('Quiz Buổi 2',$1,$2,$3,$4,'PUBLISHED',15,60) RETURNING id`,
+    `INSERT INTO quizzes(title,course_id,live_class_id,class_session_id,instructor_id,status,duration_minutes,passing_score,available_until,review_policy)
+     VALUES ('Quiz Buổi 2',$1,$2,$3,$4,'PUBLISHED',15,60,NOW() - interval '1 day','after_close') RETURNING id`,
     [course.id, liveClass.id, secondSession.id, teacher.id],
   )).rows[0];
   await db.query(
@@ -143,6 +143,7 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
   const locked = await invoke("get", "/quizzes/:quizId/start", {
     user: learner,
     params: { quizId: quiz.id },
+    query: { videoCourseProfileId: videoProfile.id },
   });
   assert.equal(locked.statusCode, 403, JSON.stringify(locked.body));
   assert.match(locked.body.message, /hoàn thành buổi học trước/);
@@ -156,8 +157,17 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
   const unlocked = await invoke("get", "/quizzes/:quizId/start", {
     user: learner,
     params: { quizId: quiz.id },
+    query: { videoCourseProfileId: videoProfile.id },
   });
   assert.equal(unlocked.statusCode, 200, JSON.stringify(unlocked.body));
+  assert.equal(unlocked.body.data.quiz.availableUntil, null);
+  assert.equal(unlocked.body.data.quiz.dueDate, null);
+  assert.equal(unlocked.body.data.quiz.reviewPolicy, "after_submit");
+  const storedAttempt = (await db.query(
+    "SELECT video_course_profile_id FROM quiz_attempts WHERE id=$1",
+    [unlocked.body.data.attempt.id],
+  )).rows[0];
+  assert.equal(String(storedAttempt.video_course_profile_id), String(videoProfile.id));
 });
 
 test("player resumes one attempt, protects review, submits idempotently and feeds the gradebook", async (t) => {

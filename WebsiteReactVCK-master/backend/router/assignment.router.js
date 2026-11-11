@@ -590,7 +590,8 @@ router.get("/", protectRoute, async (req, res) => {
                    CASE
                      WHEN q.live_class_id IS NOT NULL THEN (
                        SELECT COUNT(*)::int FROM class_enrollments ce
-                       WHERE ce.live_class_id = q.live_class_id AND ce.status = 'active' AND ${visibleClassEnrollment}
+                       WHERE ce.live_class_id = q.live_class_id AND ce.status = 'active'
+                         AND COALESCE(ce.learning_mode, 'live') <> 'recording' AND ${visibleClassEnrollment}
                      )
                      WHEN COALESCE(q.course_id, l.course_id) IS NOT NULL THEN (
                        SELECT COUNT(*)::int FROM lms_access_grants g
@@ -604,12 +605,14 @@ router.get("/", protectRoute, async (req, res) => {
                  (
                    SELECT COUNT(DISTINCT qa_sub.user_id)::int FROM quiz_attempts qa_sub
                    JOIN users attempt_user ON attempt_user.id = qa_sub.user_id
-                   WHERE qa_sub.quiz_id = q.id AND qa_sub.status = 'submitted' AND ${visibleAttemptUser}
+                   WHERE qa_sub.quiz_id = q.id AND qa_sub.status = 'submitted'
+                     AND qa_sub.video_course_profile_id IS NULL AND ${visibleAttemptUser}
                  ) AS submitted_count,
                  (
                    SELECT COUNT(DISTINCT qa_sub.user_id)::int FROM quiz_attempts qa_sub
                    JOIN users attempt_user ON attempt_user.id = qa_sub.user_id
-                   WHERE qa_sub.quiz_id = q.id AND qa_sub.status = 'submitted' AND ${visibleAttemptUser}
+                   WHERE qa_sub.quiz_id = q.id AND qa_sub.status = 'submitted'
+                     AND qa_sub.video_course_profile_id IS NULL AND ${visibleAttemptUser}
                  ) AS graded_count,
                  CASE WHEN qa.status = 'submitted' THEN 'graded'
                       WHEN q.activity_scope = 'homework' AND COALESCE(quiz_accommodation.due_at, q.due_date) IS NOT NULL AND COALESCE(quiz_accommodation.due_at, q.due_date) < NOW() THEN 'late'
@@ -623,6 +626,7 @@ router.get("/", protectRoute, async (req, res) => {
             SELECT latest_attempt.*
             FROM quiz_attempts latest_attempt
             WHERE latest_attempt.quiz_id = q.id AND latest_attempt.user_id = $1
+              AND latest_attempt.video_course_profile_id IS NULL
             ORDER BY
               CASE WHEN COALESCE(q.attempt_score_policy, 'best') = 'first' THEN latest_attempt.attempt_number END ASC,
               CASE WHEN COALESCE(q.attempt_score_policy, 'best') = 'latest' THEN latest_attempt.attempt_number END DESC,
@@ -636,6 +640,7 @@ router.get("/", protectRoute, async (req, res) => {
             SELECT COUNT(*)::bigint AS attempt_count
             FROM quiz_attempts counted_attempt
             WHERE counted_attempt.quiz_id = q.id AND counted_attempt.user_id = $1
+              AND counted_attempt.video_course_profile_id IS NULL
           ) quiz_attempt_stats ON true
           LEFT JOIN assessment_accommodations quiz_accommodation
             ON quiz_accommodation.assessment_type = 'quiz' AND quiz_accommodation.assessment_id = q.id
@@ -681,6 +686,7 @@ router.get("/teacher/quizzes", protectRoute, requireTeacher, requirePermission("
        LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
        LEFT JOIN quiz_questions qq ON qq.quiz_id = q.id
        LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id AND qa.status = 'submitted'
+         AND qa.video_course_profile_id IS NULL
        LEFT JOIN users req_user ON req_user.id = qa.user_id
          AND (${req.user.role === "admin" ? "TRUE" : "COALESCE(req_user.is_internal_test_account, FALSE) = FALSE"})
        WHERE ${ownerFilter}
@@ -1955,8 +1961,10 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, requirePe
     const { assignmentId } = req.params;
     const classId = parseOptionalId(req.query.classId);
     const sessionId = parseOptionalId(req.query.sessionId);
+    const videoCourseProfileId = parseOptionalId(req.query.videoCourseProfileId);
     if (req.query.classId !== undefined && !classId) return validationError(res, "classId không hợp lệ");
     if (req.query.sessionId !== undefined && !sessionId) return validationError(res, "sessionId không hợp lệ");
+    if (req.query.videoCourseProfileId !== undefined && !videoCourseProfileId) return validationError(res, "videoCourseProfileId không hợp lệ");
     const values = [];
     const filters = [];
     if (assignmentId !== "all") {
@@ -1986,11 +1994,13 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, requirePe
       values.push(sessionId);
       filters.push(`a.class_session_id = $${values.length}`);
     }
+    values.push(videoCourseProfileId);
+    filters.push(`s.video_course_profile_id IS NOT DISTINCT FROM $${values.length}::bigint`);
     if (req.user.role !== "admin") filters.push("COALESCE(u.is_internal_test_account, FALSE) = FALSE");
     const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
     const result = await query(
       `SELECT s.id, s.assignment_id, s.user_id, s.content_text, s.status, s.submitted_at,
-              s.revision, s.return_requested, s.return_reason, s.resubmit_until, sg.annotations,
+              s.revision, s.return_requested, s.return_reason, s.resubmit_until, s.video_course_profile_id, sg.annotations,
               s.file_asset_id, s.file_asset_ids, s.audio_asset_id, a.title AS assignment_title, a.assignment_type, a.max_score, a.due_date,
               a.live_class_id, a.class_session_id, lc.title AS class_title,
               class_session.title AS session_title, class_session.start_time AS session_start,
@@ -2050,7 +2060,8 @@ router.get("/:assignmentId/submissions", protectRoute, requireTeacher, requirePe
       assignmentTitle: row.assignment_title,
       assignmentType: row.assignment_type,
       maxScore: Number(row.max_score),
-      dueDate: row.due_date,
+      dueDate: row.video_course_profile_id ? null : row.due_date,
+      videoCourseProfileId: row.video_course_profile_id ? String(row.video_course_profile_id) : null,
       classId: row.live_class_id ? String(row.live_class_id) : null,
       classTitle: row.class_title || null,
       sessionId: row.class_session_id ? String(row.class_session_id) : null,

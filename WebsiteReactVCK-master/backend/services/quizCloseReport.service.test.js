@@ -157,6 +157,51 @@ test("report snapshots exclude internal learners and preserve the chosen attempt
   assert.match(JSON.stringify(best), new RegExp(fixture.learner.email));
 });
 
+test("live and Record quiz reports keep separate rosters and attempts", async (t) => {
+  const db = await loadDatabase();
+  t.after(() => db.close());
+  const fixture = await seedQuiz(db, { suffix: "record-scope" });
+  const recordLearner = (await db.query(
+    `INSERT INTO users(username,email,role)
+     VALUES ('record-report-learner','record-report-learner@example.test','user') RETURNING id,email`,
+  )).rows[0];
+  await db.query(
+    `INSERT INTO class_enrollments(user_id,live_class_id,status,learning_mode,enrolled_at)
+     VALUES ($1,$2,'active','recording',NOW() - interval '1 day')`,
+    [recordLearner.id, fixture.liveClass.id],
+  );
+  const profile = (await db.query(
+    `INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,status)
+     VALUES ($1,'MIRROR',$2,'active') RETURNING id`,
+    [fixture.course.id, fixture.liveClass.id],
+  )).rows[0];
+  const snapshot = JSON.stringify(makeQuestionSnapshot([fixture.question]));
+  await db.query(
+    `INSERT INTO quiz_attempts
+       (quiz_id,user_id,video_course_profile_id,answers_json,score,max_score,status,submitted_at,question_snapshot,attempt_number)
+     VALUES
+       ($1,$2,NULL,$4::jsonb,2,2,'submitted',NOW(),$5::jsonb,1),
+       ($1,$3,$6,$4::jsonb,2,2,'submitted',NOW(),$5::jsonb,1)`,
+    [fixture.quiz.id, fixture.learner.id, recordLearner.id,
+      JSON.stringify({ [fixture.question.id]: "A" }), snapshot, profile.id],
+  );
+
+  const liveReport = await buildQuizReportSnapshot({ db, quizId: fixture.quiz.id });
+  assert.deepEqual(liveReport.students.map((student) => student.email), [fixture.learner.email]);
+  assert.equal(liveReport.report.rosterMode, "live");
+
+  const recordReport = await buildQuizReportSnapshot({
+    db,
+    quizId: fixture.quiz.id,
+    reportKind: "record",
+    videoCourseProfileId: profile.id,
+  });
+  assert.deepEqual(recordReport.students.map((student) => student.email), [recordLearner.email]);
+  assert.equal(recordReport.report.rosterMode, "record");
+  assert.equal(recordReport.report.videoCourseProfileId, Number(profile.id));
+  assert.equal(recordReport.report.closeAt, null);
+});
+
 test("report delivery is idempotent and retries a sender-declared failure", async (t) => {
   const db = await loadDatabase();
   t.after(() => db.close());

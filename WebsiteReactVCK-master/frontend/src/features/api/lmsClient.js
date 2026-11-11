@@ -649,10 +649,11 @@ export const submitAssignment = async ({ assignmentId, contentText, fileAssetId,
   })
 );
 
-export const fetchSubmissions = async (assignmentId = "all", { classId, sessionId } = {}) => {
+export const fetchSubmissions = async (assignmentId = "all", { classId, sessionId, videoCourseProfileId } = {}) => {
   const params = new URLSearchParams();
   if (classId) params.set("classId", classId);
   if (sessionId) params.set("sessionId", sessionId);
+  if (videoCourseProfileId) params.set("videoCourseProfileId", videoCourseProfileId);
   const suffix = params.size > 0 ? `?${params.toString()}` : "";
   return request(`/assignments/${encodeURIComponent(assignmentId)}/submissions${suffix}`);
 };
@@ -776,8 +777,8 @@ export const deleteTeacherQuiz = async (quizId) => request(
   { method: "DELETE" },
 );
 
-export const fetchTeacherQuizReport = async (quizId) => (
-  request(`/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/report`)
+export const fetchTeacherQuizReport = async (quizId, { videoCourseProfileId } = {}) => (
+  request(`/assignments/teacher/quizzes/${encodeURIComponent(quizId)}/report${videoCourseProfileId ? `?videoCourseProfileId=${encodeURIComponent(videoCourseProfileId)}` : ""}`)
 );
 
 export const fetchTeacherQuizAttempt = async (quizId, attemptId) => (

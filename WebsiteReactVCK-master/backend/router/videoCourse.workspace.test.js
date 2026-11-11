@@ -356,11 +356,11 @@ test("video course workspace: sequential lesson unlocking requires >=60% credite
     [session1.id, liveClass.id],
   )).rows[0];
 
-  await db.query(
+  const videoProfile = (await db.query(
     `INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,status)
-     VALUES ($1,'MIRROR',$2,'active')`,
+     VALUES ($1,'MIRROR',$2,'active') RETURNING id`,
     [course.id, liveClass.id],
-  );
+  )).rows[0];
   await db.query(
     `INSERT INTO class_enrollments(user_id,live_class_id,status,learning_mode)
      VALUES ($1,$2,'active','recording')`,
@@ -469,9 +469,9 @@ test("video course workspace: sequential lesson unlocking requires >=60% credite
 
   // Step 4: Learner submits Quiz 1 -> Session 1 is fully completed and Session 2 unlocks!
   await db.query(
-    `INSERT INTO quiz_attempts(quiz_id,user_id,score,max_score,status,submitted_at)
-     VALUES ($1,$2,9,10,'submitted',NOW())`,
-    [quiz1.id, student.id],
+    `INSERT INTO quiz_attempts(quiz_id,user_id,video_course_profile_id,score,max_score,status,submitted_at)
+     VALUES ($1,$2,$3,9,10,'submitted',NOW())`,
+    [quiz1.id, student.id, videoProfile.id],
   );
 
   ws = await fetchWorkspace();
