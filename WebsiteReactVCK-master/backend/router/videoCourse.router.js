@@ -7,6 +7,7 @@ import { revokeTrustedDevice } from "../services/trustedDevice.service.js";
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
+const VIDEO_COMPLETION_PERCENT = 60;
 
 const validationError = (res, message) => res.status(422).json({
   success: false,
@@ -413,13 +414,13 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
 
         if (prev.isLocked) {
           isLocked = true;
-          lockReason = `Cần hoàn thành các buổi học trước theo thứ tự (tối thiểu 80% thời gian xem video và hoàn thành bài trắc nghiệm).`;
+          lockReason = `Bạn hãy hoàn thành buổi học trước để tiếp tục nhé (xem khoảng ${VIDEO_COMPLETION_PERCENT}% video và hoàn thành bài trắc nghiệm nếu có).`;
         } else if (!prev.isVideoCompleted && !prev.isQuizCompleted) {
           isLocked = true;
-          lockReason = `Cần xem tối thiểu 80% thời lượng video (hiện đạt ${Math.round(prev.progressPercent || 0)}%) và hoàn thành ${prev.completedQuizCount}/${prev.quizCount} bài trắc nghiệm của ${prevLabel}.`;
+          lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video. Xem thêm đến ${VIDEO_COMPLETION_PERCENT}% và hoàn thành ${prev.completedQuizCount}/${prev.quizCount} bài trắc nghiệm của ${prevLabel} để tiếp tục nhé.`;
         } else if (!prev.isVideoCompleted) {
           isLocked = true;
-          lockReason = `Cần xem thực tế tối thiểu 80% thời lượng video của ${prevLabel} (hiện đạt ${Math.round(prev.progressPercent || 0)}%).`;
+          lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video của ${prevLabel}. Xem thêm đến ${VIDEO_COMPLETION_PERCENT}% là có thể tiếp tục bài kế tiếp nhé.`;
         } else if (!prev.isQuizCompleted) {
           isLocked = true;
           lockReason = `Cần hoàn thành ${prev.completedQuizCount}/${prev.quizCount} bài trắc nghiệm của ${prevLabel} để mở khóa buổi tiếp theo.`;
@@ -498,7 +499,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         const hasVideo = Boolean(row.video_asset_id || row.provider_video_id);
         const quizCount = Number(row.quiz_count || 0);
         const completedQuizCount = Number(row.completed_quiz_count || 0);
-        const isVideoCompleted = Boolean(row.is_completed) || (hasVideo && progressPercent >= 80);
+        const isVideoCompleted = Boolean(row.is_completed) || (hasVideo && progressPercent >= VIDEO_COMPLETION_PERCENT);
         const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
         const isCompleted = isVideoCompleted && isQuizCompleted;
 
@@ -843,7 +844,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         const hasVideo = Boolean(row.resolved_video_asset_id || row.learning_url);
         const quizCount = Number(row.quiz_count || 0);
         const completedQuizCount = Number(row.completed_quiz_count || 0);
-        const isVideoCompleted = Boolean(row.is_completed) || (hasVideo && progressPercent >= 80);
+        const isVideoCompleted = Boolean(row.is_completed) || (hasVideo && progressPercent >= VIDEO_COMPLETION_PERCENT);
         const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
         const isCompleted = isVideoCompleted && isQuizCompleted;
 

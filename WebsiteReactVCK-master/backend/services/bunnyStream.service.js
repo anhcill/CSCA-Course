@@ -5,7 +5,7 @@ import { recordAuditEvent } from "./audit.service.js";
 export const BUNNY_TUS_ENDPOINT = "https://video.bunnycdn.com/tusupload";
 export const MAX_BUNNY_VIDEO_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 export const PLAYBACK_TOKEN_TTL_SECONDS = 600; // 10 minutes
-export const COMPLETION_THRESHOLD_PERCENT = 80;
+export const COMPLETION_THRESHOLD_PERCENT = 60;
 export const MAX_SINGLE_HEARTBEAT_SECONDS = 90;
 
 export const ALLOWED_BUNNY_VIDEO_MIME_TYPES = new Set([
@@ -650,7 +650,7 @@ export const recordVideoWatchProgress = async ({
   const existing = existingRes.rows[0] || null;
   const prevWatched = Number(existing?.watched_seconds || 0);
 
-  // Validate watched delta so a client cannot spoof completion or seek to 80% to unlock
+  // Credit continuous playback time instead of changes to the playback position alone.
   // Only actual playback delta (watchedDeltaSeconds) is credited; scrubbing/seeking position changes alone add 0s.
   let validDelta = 0;
   if (watchedDeltaSeconds !== null && watchedDeltaSeconds !== undefined) {

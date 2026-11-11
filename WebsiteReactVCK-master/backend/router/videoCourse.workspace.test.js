@@ -272,7 +272,7 @@ test("video course workspace: INDEPENDENT mode returns lessons without live clas
   assert.equal(res.body.data.capabilities.canJoinLive, false);
 });
 
-test("video course workspace: sequential lesson unlocking requires >=80% verified watch time (anti-seek) AND quiz completion", async (t) => {
+test("video course workspace: sequential lesson unlocking requires >=60% credited watch time AND quiz completion", async (t) => {
   const db = new PGlite();
   t.after(() => db.close());
   await db.exec(await fs.readFile("database/schema.sql", "utf8"));
@@ -395,7 +395,7 @@ test("video course workspace: sequential lesson unlocking requires >=80% verifie
   assert.deepEqual(lockedWorkspace.activeUnit.files, []);
   assert.deepEqual(lockedWorkspace.activeUnit.quizzes, []);
 
-  // Step 2: Anti-seek check: Seeking playhead to 180s/200s (90%) with watchedDeltaSeconds = 0 MUST NOT unlock or add watch time
+  // Step 2: Moving the playhead alone must not unlock or add credited watch time.
   const seekResult = await recordVideoWatchProgress({
     userId: student.id,
     videoAssetId: asset1.id,
@@ -413,7 +413,7 @@ test("video course workspace: sequential lesson unlocking requires >=80% verifie
   ws = await fetchWorkspace();
   assert.equal(ws.units[1].isLocked, true);
 
-  // Step 3: Real watch time reaches 164s / 200s = 82% (>= 80%), so video is completed,
+  // Step 3: Credited watch time reaches 124s / 200s = 62% (>= 60%), so video is completed,
   // BUT Quiz 1 is not completed yet -> Session 2 MUST STILL BE LOCKED!
   await recordVideoWatchProgress({
     userId: student.id,
@@ -425,19 +425,19 @@ test("video course workspace: sequential lesson unlocking requires >=80% verifie
     watchedDeltaSeconds: 90,
     durationSeconds: 200,
   });
-  const watch82 = await recordVideoWatchProgress({
+  const watch62 = await recordVideoWatchProgress({
     userId: student.id,
     videoAssetId: asset1.id,
     courseId: course.id,
     liveClassId: liveClass.id,
     classSessionId: session1.id,
-    currentTimeSeconds: 164,
-    watchedDeltaSeconds: 74,
+    currentTimeSeconds: 124,
+    watchedDeltaSeconds: 34,
     durationSeconds: 200,
   });
-  assert.equal(watch82.watchedSeconds, 164);
-  assert.equal(watch82.completionPercent, 82);
-  assert.equal(watch82.isCompleted, true);
+  assert.equal(watch62.watchedSeconds, 124);
+  assert.equal(watch62.completionPercent, 62);
+  assert.equal(watch62.isCompleted, true);
 
   ws = await fetchWorkspace();
   assert.equal(ws.units[0].isVideoCompleted, true);
@@ -456,5 +456,5 @@ test("video course workspace: sequential lesson unlocking requires >=80% verifie
   assert.equal(ws.units[0].isVideoCompleted, true);
   assert.equal(ws.units[0].isQuizCompleted, true);
   assert.equal(ws.units[0].isCompleted, true);
-  assert.equal(ws.units[1].isLocked, false, "Session 2 must unlock after >=80% watch time AND quiz completion");
+  assert.equal(ws.units[1].isLocked, false, "Session 2 must unlock after >=60% watch time AND quiz completion");
 });

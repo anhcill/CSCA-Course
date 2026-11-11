@@ -57,7 +57,7 @@ const renderKaTeX = (latex, displayMode = true) => {
   }
 };
 
-const REQUIRED_WATCH_PERCENT = 80;
+const REQUIRED_WATCH_PERCENT = 60;
 
 const formatVideoDurationLabel = (unit) => {
   const sec = Number(unit?.videoDurationSeconds || 0);
@@ -118,13 +118,13 @@ const recomputeSequentialLocks = (rawUnits = [], previewOnly = false) => {
 
     if (prev.isLocked) {
       isLocked = true;
-      lockReason = `Cần hoàn thành các buổi học trước theo thứ tự (tối thiểu 80% thời gian xem thực tế & hoàn thành trắc nghiệm).`;
+      lockReason = `Bạn hãy hoàn thành buổi học trước để tiếp tục nhé (xem khoảng ${REQUIRED_WATCH_PERCENT}% video và hoàn thành trắc nghiệm nếu có).`;
     } else if (!prev.isVideoCompleted && !prev.isQuizCompleted) {
       isLocked = true;
-      lockReason = `Cần xem thực tế tối thiểu 80% thời lượng video (hiện đạt ${Math.round(prev.progressPercent || 0)}%) và hoàn thành ${prev.completedQuizCount || 0}/${prev.quizCount || 0} bài trắc nghiệm của ${prevLabel}.`;
+      lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video. Xem thêm đến ${REQUIRED_WATCH_PERCENT}% và hoàn thành ${prev.completedQuizCount || 0}/${prev.quizCount || 0} bài trắc nghiệm của ${prevLabel} để tiếp tục nhé.`;
     } else if (!prev.isVideoCompleted) {
       isLocked = true;
-      lockReason = `Cần xem thực tế tối thiểu 80% thời lượng video của ${prevLabel} (hiện đạt ${Math.round(prev.progressPercent || 0)}% - không tính tua nhanh).`;
+      lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video của ${prevLabel}. Xem thêm đến ${REQUIRED_WATCH_PERCENT}% là có thể tiếp tục bài kế tiếp nhé.`;
     } else if (!prev.isQuizCompleted) {
       isLocked = true;
       lockReason = `Cần hoàn thành ${prev.completedQuizCount || 0}/${prev.quizCount || 0} bài trắc nghiệm của ${prevLabel} để mở khóa buổi tiếp theo.`;
@@ -240,7 +240,7 @@ export default function VideoCourseWorkspacePage() {
     loadWorkspace(paramUnitId);
   }, [loadWorkspace, paramUnitId]);
 
-  // Handle switching unit (enforcing sequential 80% watch time + quiz completion lock)
+  // Keep lessons sequential while giving learners a clear, friendly target.
   const handleSelectUnit = (unit) => {
     if (!unit) return;
     if (String(unit.id) === String(activeUnitId)) return;
@@ -248,11 +248,11 @@ export default function VideoCourseWorkspacePage() {
     if (unit.isLocked) {
       toast.error(
         unit.lockReason
-        || "Bài học đang khóa! Bạn cần xem tối thiểu 80% thời gian thực của video và hoàn thành bài trắc nghiệm của buổi trước.",
+        || `Bạn xem thêm đến ${REQUIRED_WATCH_PERCENT}% video và hoàn thành bài trắc nghiệm của buổi trước để tiếp tục nhé.`,
         { duration: 8000 },
       );
 
-      // If the learner already finished >=80% video on the current lesson and only needs the quiz, open the Quiz tab automatically!
+      // If only the quiz remains, guide the learner directly to it.
       const currentMeta = (workspaceData?.units || []).find((u) => String(u.id) === String(activeUnitId));
       if (
         currentMeta
@@ -303,7 +303,7 @@ export default function VideoCourseWorkspacePage() {
     watchedSeconds,
     durationSeconds,
     completionPercent,
-    isCompleted: videoReached80,
+    isCompleted: videoReachedTarget,
   }) => {
     const targetId = reportedUnitId || activeUnitId;
     setCurrentProgressSeconds(currentTimeSeconds);
@@ -316,7 +316,7 @@ export default function VideoCourseWorkspacePage() {
         const mergedPercent = Math.max(Number(u.progressPercent || 0), Number(completionPercent || 0));
         const mergedWatched = Math.max(Number(u.watchedSeconds || 0), Number(watchedSeconds || 0));
         const mergedDuration = Number(durationSeconds || u.videoDurationSeconds || 0);
-        const videoDone = Boolean(u.isVideoCompleted) || Boolean(videoReached80) || mergedPercent >= REQUIRED_WATCH_PERCENT;
+        const videoDone = Boolean(u.isVideoCompleted) || Boolean(videoReachedTarget) || mergedPercent >= REQUIRED_WATCH_PERCENT;
         const quizDone = Number(u.quizCount || 0) === 0 || Number(u.completedQuizCount || 0) >= Number(u.quizCount || 0);
 
         if (videoDone && quizDone) {
@@ -646,21 +646,21 @@ export default function VideoCourseWorkspacePage() {
                 </div>
                 <div className="space-y-2 max-w-xl mx-auto">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-amber-300 border border-amber-500/30">
-                    Cơ chế mở khóa bài giảng tuần tự
+                    Điều kiện để tiếp tục bài kế tiếp
                   </span>
                   <h3 className="text-xl sm:text-2xl font-black text-white">
                     {activeUnit?.title || "Buổi học này đang tạm khóa"}
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                    {activeUnit?.lockReason || "Bạn cần xem thực tế tối thiểu 80% thời lượng video và hoàn thành bài trắc nghiệm của buổi học trước để mở khóa buổi này."}
+                    {activeUnit?.lockReason || `Bạn xem thêm đến ${REQUIRED_WATCH_PERCENT}% video và hoàn thành bài trắc nghiệm của buổi trước để tiếp tục nhé.`}
                   </p>
                 </div>
 
                 <div className="mx-auto max-w-lg grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5 space-y-1">
                     <p className="text-[10px] font-black uppercase tracking-wider text-amber-400">Điều kiện 1</p>
-                    <p className="text-xs font-bold text-white">Xem thực tế ≥ 80% thời lượng video</p>
-                    <p className="text-[11px] text-slate-400">Hệ thống đo thời gian ngồi xem thực tế, không tính kéo/tua thanh thời gian.</p>
+                    <p className="text-xs font-bold text-white">Xem khoảng {REQUIRED_WATCH_PERCENT}% video</p>
+                    <p className="text-[11px] text-slate-400">Tiến độ được ghi nhận tự động; bạn cứ học theo tốc độ phù hợp với mình nhé.</p>
                   </div>
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5 space-y-1">
                     <p className="text-[10px] font-black uppercase tracking-wider text-sky-400">Điều kiện 2</p>
@@ -746,7 +746,7 @@ export default function VideoCourseWorkspacePage() {
                   >
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     <span>
-                      {isCompletedUnit ? "Đã hoàn thành buổi học" : `${Math.round(unitWatchPercent)}% / 80% video`}
+                      {isCompletedUnit ? "Đã hoàn thành buổi học" : `${Math.round(unitWatchPercent)}% / ${REQUIRED_WATCH_PERCENT}% video`}
                     </span>
                   </span>
 
@@ -768,7 +768,7 @@ export default function VideoCourseWorkspacePage() {
                       title={
                         nextUnit
                           ? nextUnit.isLocked
-                            ? nextUnit.lockReason || "Hoàn thành >= 80% video và bài trắc nghiệm để mở khóa"
+                            ? nextUnit.lockReason || `Xem khoảng ${REQUIRED_WATCH_PERCENT}% video và hoàn thành bài trắc nghiệm để tiếp tục nhé`
                             : `Bài tiếp: ${nextUnit.title}`
                           : "Hết bài"
                       }
@@ -795,11 +795,11 @@ export default function VideoCourseWorkspacePage() {
                       <Clock className="h-4 w-4 shrink-0 text-amber-500" />
                     )}
                     <span className="font-bold truncate">
-                      1. Xem video thực tế ≥ 80% (chống tua)
+                      1. Xem khoảng {REQUIRED_WATCH_PERCENT}% video
                     </span>
                   </div>
                   <span className="font-mono font-black shrink-0">
-                    {Math.round(unitWatchPercent)}% / 80%
+                    {Math.round(unitWatchPercent)}% / {REQUIRED_WATCH_PERCENT}%
                   </span>
                 </div>
 
@@ -919,7 +919,7 @@ export default function VideoCourseWorkspacePage() {
                           Trắc nghiệm & Quiz củng cố (Điều kiện mở khóa buổi tiếp theo)
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          Nếu buổi học có bài trắc nghiệm, bạn cần hoàn thành bài trắc nghiệm kèm xem tối thiểu 80% thời lượng video để mở khóa buổi kế tiếp.
+                          Nếu buổi học có bài trắc nghiệm, bạn hãy hoàn thành bài và xem khoảng {REQUIRED_WATCH_PERCENT}% video để tiếp tục buổi kế tiếp nhé.
                         </p>
                       </div>
                       <span className="text-xs text-slate-400 font-mono">
@@ -929,7 +929,7 @@ export default function VideoCourseWorkspacePage() {
 
                     {(activeUnit?.quizzes || []).length === 0 ? (
                       <p className="text-xs text-slate-400 italic py-3">
-                        Buổi học này không yêu cầu bài trắc nghiệm (chỉ cần xem đủ ≥ 80% thời gian thực của video).
+                        Buổi học này không yêu cầu bài trắc nghiệm; xem khoảng {REQUIRED_WATCH_PERCENT}% video là bạn có thể tiếp tục.
                       </p>
                     ) : (
                       <div className="space-y-3">
@@ -1517,7 +1517,7 @@ export default function VideoCourseWorkspacePage() {
                       Kết quả & Tiến độ bài học
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      Thống kê thời gian xem thực tế (chuẩn mở khóa ≥ 80%, không tính tua nhanh) và kết quả bài trắc nghiệm.
+                      Tiến độ xem bài và kết quả trắc nghiệm của bạn trong buổi học này.
                     </p>
                   </div>
 
@@ -1528,7 +1528,7 @@ export default function VideoCourseWorkspacePage() {
                         {Math.round(unitWatchPercent)}%
                       </p>
                       <p className="text-[11px] text-slate-500">
-                        {unitWatchPercent >= REQUIRED_WATCH_PERCENT ? "Đã đạt chuẩn ≥ 80%" : "Cần đạt 80% thời gian thực"}
+                        {unitWatchPercent >= REQUIRED_WATCH_PERCENT ? "Đã sẵn sàng học bài tiếp" : `Mục tiêu ${REQUIRED_WATCH_PERCENT}%`}
                       </p>
                     </div>
 
@@ -1581,7 +1581,7 @@ export default function VideoCourseWorkspacePage() {
               <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2">
                 <ShieldCheck className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                 <p className="leading-snug">
-                  Mở khóa tuần tự: Xem thực tế <strong>≥ 80% thời lượng video</strong> (không tính tua) và <strong>hoàn thành Quiz</strong> để học bài kế tiếp.
+                  Học theo thứ tự: Xem khoảng <strong>{REQUIRED_WATCH_PERCENT}% video</strong> và <strong>hoàn thành Quiz</strong> để tiếp tục bài kế tiếp nhé.
                 </p>
               </div>
             </div>
@@ -1698,7 +1698,7 @@ export default function VideoCourseWorkspacePage() {
                         {unit.title}
                       </h4>
 
-                      {/* Row 3: Sleek Progress Bar with 80% Marker & Detailed Watch/Quiz Pills */}
+                      {/* Row 3: Progress bar with learning target and quiz status */}
                       <div
                         className={`pt-2 border-t space-y-1.5 ${
                           isCurrent
@@ -1725,13 +1725,13 @@ export default function VideoCourseWorkspacePage() {
                                     : "bg-transparent"
                             }`}
                           />
-                          {/* 80% threshold tick mark */}
+                          {/* Learning target tick mark */}
                           <div
                             className={`pointer-events-none absolute inset-y-0 w-0.5 ${
                               isCurrent ? "bg-white/75" : "bg-slate-900/40 dark:bg-white/40"
                             }`}
                             style={{ left: `${REQUIRED_WATCH_PERCENT}%` }}
-                            title="Mốc 80% mở khóa"
+                            title={`Mục tiêu ${REQUIRED_WATCH_PERCENT}% để tiếp tục`}
                           />
                         </div>
 
@@ -1764,7 +1764,7 @@ export default function VideoCourseWorkspacePage() {
                                       : "bg-slate-200/70 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
                               }`}
                             >
-                              {pct}%/80%
+                              {pct}%/{REQUIRED_WATCH_PERCENT}%
                             </span>
 
                             {hasQuiz && (

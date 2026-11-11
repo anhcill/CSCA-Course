@@ -15,7 +15,7 @@ import {
 import { requestVideoPlaybackToken, updateVideoWatchProgress } from "../../api/lmsClient";
 import { formatTimeMMSS } from "../utils/videoTime";
 
-const REQUIRED_WATCH_PERCENT = 80;
+const REQUIRED_WATCH_PERCENT = 60;
 
 export default function BunnyStreamPlayer({
   video,
@@ -518,7 +518,7 @@ export default function BunnyStreamPlayer({
         </div>
       </div>
 
-      {/* Verified Watch Time & 80% Unlock Progress Bar */}
+      {/* Learning progress and next-lesson target */}
       <div className="rounded-2xl border border-slate-200/90 bg-white/95 p-4 text-xs shadow-sm dark:border-slate-800/90 dark:bg-slate-900/90 sm:px-5">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div className="flex items-start gap-3">
@@ -534,7 +534,7 @@ export default function BunnyStreamPlayer({
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-black text-slate-900 dark:text-white">
-                  Thời gian xem thực tế: {clampedPercent}%
+                  Tiến độ xem bài: {clampedPercent}%
                 </span>
                 <span
                   className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
@@ -544,7 +544,7 @@ export default function BunnyStreamPlayer({
                   }`}
                 >
                   <ShieldCheck className="h-3 w-3" />
-                  {isCompleted ? "Đạt chuẩn >= 80%" : `Cần đạt ${REQUIRED_WATCH_PERCENT}%`}
+                  {isCompleted ? "Đã sẵn sàng học bài tiếp" : `Mục tiêu ${REQUIRED_WATCH_PERCENT}%`}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -559,7 +559,7 @@ export default function BunnyStreamPlayer({
                       {formatTimeMMSS(durationSeconds)}
                     </strong>
                     {" "}
-                    (Mốc mở khóa 80%: {formatTimeMMSS(requiredSeconds)})
+                    (Mục tiêu: {formatTimeMMSS(requiredSeconds)})
                   </>
                 )}
                 {" · "}Vị trí phát: {formatTimeMMSS(currentTime)}
@@ -594,7 +594,7 @@ export default function BunnyStreamPlayer({
               title={
                 nextUnit
                   ? nextUnit.isLocked
-                    ? nextUnit.lockReason || "Hoàn thành tối thiểu 80% video và bài trắc nghiệm để mở khóa"
+                    ? nextUnit.lockReason || `Xem khoảng ${REQUIRED_WATCH_PERCENT}% video và hoàn thành bài trắc nghiệm để tiếp tục nhé`
                     : `Buổi tiếp theo: ${nextUnit.title}`
                   : "Đã ở buổi cuối"
               }
@@ -619,7 +619,7 @@ export default function BunnyStreamPlayer({
           </div>
         </div>
 
-        {/* Visual Verified Watch Progress Bar with 80% Threshold Marker */}
+        {/* Visual learning progress with the next-lesson target */}
         <div className="mt-3.5 space-y-1.5">
           <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
             <div
@@ -630,17 +630,17 @@ export default function BunnyStreamPlayer({
               }`}
               style={{ width: `${clampedPercent}%` }}
             />
-            {/* 80% target marker */}
+            {/* Next-lesson target marker */}
             <div
               className="pointer-events-none absolute inset-y-0 w-0.5 bg-slate-900/60 dark:bg-white/70"
               style={{ left: `${REQUIRED_WATCH_PERCENT}%` }}
-              title="Mốc 80% thời gian xem thực tế để mở khóa bài tiếp theo"
+              title={`Mục tiêu ${REQUIRED_WATCH_PERCENT}% để tiếp tục bài tiếp theo`}
             />
           </div>
           <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 dark:text-slate-500">
             <span>0%</span>
             <span className="text-amber-600 dark:text-amber-400">
-              • Chống tua: Chỉ tính thời gian ngồi xem thực tế (Mốc mở khóa 80%)
+              Tiến độ được ghi nhận tự động để bạn tiếp tục bài học thuận tiện hơn
             </span>
             <span>100%</span>
           </div>

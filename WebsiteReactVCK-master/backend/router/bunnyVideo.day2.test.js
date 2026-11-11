@@ -318,7 +318,7 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   assert.ok(playbackRes.body.data.hlsUrl.includes("playlist.m3u8?token="));
   assert.equal(JSON.stringify(playbackRes.body).includes("super-secret-bunny-signing-key-never-leak"), false);
 
-  // 9. Progress heartbeat anti-cheat & completion at >= 85%
+  // 9. Progress heartbeat validation and completion at >= 60%
   // Spoof attempt: sending 200s watched in a single heartbeat on a 200s video is clamped to max 90s (45%)
   const spoofProgressRes = await invokeRoute(bunnyVideoRouter, "put", "/videos/:videoId/progress", {
     user: recordStudent,
@@ -335,20 +335,20 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   assert.equal(spoofProgressRes.body.data.completionPercent, 45);
   assert.equal(spoofProgressRes.body.data.isCompleted, false);
 
-  // Second heartbeat (+85s -> total 175s / 200s = 87.5% >= 85%) marks completed = true!
+  // Second heartbeat (+35s -> total 125s / 200s = 62.5%) marks completed = true.
   const completeProgressRes = await invokeRoute(bunnyVideoRouter, "put", "/videos/:videoId/progress", {
     user: recordStudent,
     params: { videoId: assetId },
     body: {
       unitId: String(session1.id),
-      currentTimeSeconds: 175,
-      watchedDeltaSeconds: 85,
+      currentTimeSeconds: 125,
+      watchedDeltaSeconds: 35,
       durationSeconds: 200,
     },
   });
   assert.equal(completeProgressRes.statusCode, 200);
-  assert.equal(completeProgressRes.body.data.watchedSeconds, 175);
-  assert.equal(completeProgressRes.body.data.completionPercent, 87.5);
+  assert.equal(completeProgressRes.body.data.watchedSeconds, 125);
+  assert.equal(completeProgressRes.body.data.completionPercent, 62.5);
   assert.equal(completeProgressRes.body.data.isCompleted, true);
 
   // 10. Refund / revoke entitlement blocks subsequent playback token requests immediately
