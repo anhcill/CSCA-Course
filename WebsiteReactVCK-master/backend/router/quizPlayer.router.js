@@ -45,7 +45,22 @@ const isQuizPublicPreview = async (db, quizId) => Boolean((await db.query(
   [quizId],
 )).rows[0]);
 
-const requireActiveStudentLmsAccessOrPreview = async (req, res, next) => {
+const requireQuizPlayerAccess = async (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: "Bạn cần đăng nhập để tiếp tục",
+      errorCode: "UNAUTHENTICATED",
+    });
+  }
+  if (!["user", "creator", "admin"].includes(req.user.role)) {
+    return res.status(403).json({
+      success: false,
+      message: "Bạn không có quyền thực hiện thao tác này",
+      errorCode: "FORBIDDEN",
+    });
+  }
+  if (req.user.role === "admin" || req.user.role === "creator") return next();
   if (hasActiveStudentLmsAccess(req.user)) return next();
   try {
     const quizId = req.params.quizId
@@ -100,7 +115,8 @@ const getQuiz = async (db, quizId, { lock = false } = {}) => (await db.query(
   [quizId],
 )).rows[0] || null;
 
-const ensureQuizAccess = async (db, quiz, userId) => {
+const ensureQuizAccess = async (db, quiz, user) => {
+  if (user?.role === "admin" || user?.role === "creator") return true;
   if (String(quiz.quiz_status || "").toUpperCase() !== "PUBLISHED") return false;
   if (quiz.session_is_public_preview) return true;
   if (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false) return true;
@@ -109,7 +125,7 @@ const ensureQuizAccess = async (db, quiz, userId) => {
     `SELECT 1 FROM lms_access_grants
      WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
        AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())`,
-    [userId, quiz.resolved_course_id],
+    [user.id, quiz.resolved_course_id],
   );
   if (!access.rows[0]) return false;
   const liveClassId = quiz.live_class_id;
@@ -118,7 +134,7 @@ const ensureQuizAccess = async (db, quiz, userId) => {
     `SELECT 1 FROM class_enrollments ce
      JOIN live_classes lc ON lc.id = ce.live_class_id
      WHERE ce.user_id = $1 AND ce.live_class_id = $2 AND ce.status = 'active' AND lc.status = 'active'`,
-    [userId, liveClassId],
+    [user.id, liveClassId],
   );
   return Boolean(enrolled.rows[0]);
 };
@@ -160,11 +176,14 @@ const attemptQuestions = (attempt, fallbackQuestions) => {
   return snapshot.length ? snapshot : fallbackQuestions;
 };
 
-const resolveAttemptExpiry = ({ attempt, quiz, now = new Date() }) => {
+const resolveAttemptExpiry = ({ attempt, quiz, user, now = new Date() }) => {
+  const isPrivileged = user?.role === "admin" || user?.role === "creator";
+  const isPreview = Boolean(quiz?.session_is_public_preview || quiz?.lesson_is_public_preview || quiz?.is_public_preview);
+  const closesAt = (isPrivileged || isPreview) ? null : getQuizAvailability(quiz, now).closesAt;
   const configured = getAttemptExpiry({
     startedAt: attempt.started_at,
     durationMinutes: quiz.duration_minutes,
-    closesAt: getQuizAvailability(quiz, now).closesAt,
+    closesAt,
   });
   const stored = attempt.expires_at ? new Date(attempt.expires_at) : null;
   // The current server policy is authoritative when a close time or an
@@ -189,7 +208,10 @@ const submitAttempt = async ({ client, attempt, questions, autoSubmitted = false
   return { attempt: updated.rows[0], computed };
 };
 
-const getStudentAttempt = async ({ client, quiz, userId, questions, startNewAttempt = false }) => {
+const getStudentAttempt = async ({ client, quiz, user, userId, questions, startNewAttempt = false }) => {
+  const isPrivileged = user?.role === "admin" || user?.role === "creator";
+  const isPreview = Boolean(quiz.session_is_public_preview || (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false));
+
   const active = await client.query(
     `SELECT * FROM quiz_attempts
      WHERE quiz_id=$1 AND user_id=$2 AND status='in_progress'
@@ -199,7 +221,7 @@ const getStudentAttempt = async ({ client, quiz, userId, questions, startNewAtte
   const now = new Date();
   let attempt = active.rows[0] || null;
   if (attempt) {
-    const { expiresAt, shouldPersist } = resolveAttemptExpiry({ attempt, quiz, now });
+    const { expiresAt, shouldPersist } = resolveAttemptExpiry({ attempt, quiz, user, now });
     if (shouldPersist) {
       attempt.expires_at = (await client.query(
         "UPDATE quiz_attempts SET expires_at=$1, updated_at=NOW() WHERE id=$2 RETURNING expires_at",
@@ -216,12 +238,14 @@ const getStudentAttempt = async ({ client, quiz, userId, questions, startNewAtte
     `SELECT * FROM quiz_attempts WHERE quiz_id=$1 AND user_id=$2 ORDER BY attempt_number DESC FOR UPDATE`,
     [quiz.id, userId],
   );
-  const finalized = quiz.live_class_id && (await client.query(
+  const finalized = !isPrivileged && !isPreview && quiz.live_class_id && (await client.query(
     "SELECT 1 FROM gradebook_finalizations WHERE class_id=$1 AND reopened_at IS NULL",
     [quiz.live_class_id],
   )).rows.length > 0;
-  const availability = getQuizAvailability(quiz, now);
-  const reachedLimit = submitted.rows.length >= Number(quiz.attempt_limit || 1);
+  const availability = (isPrivileged || isPreview)
+    ? { isOpen: true, reason: null, opensAt: null, closesAt: null }
+    : getQuizAvailability(quiz, now);
+  const reachedLimit = !isPrivileged && submitted.rows.length >= Number(quiz.attempt_limit || 1);
   const cannotStartNew = finalized || reachedLimit || !availability.isOpen;
 
   // Opening a completed quiz must remain a read-only review action. A new
@@ -314,8 +338,12 @@ const lockStudentAttempt = async (client, attemptId, userId) => {
             COALESCE(aa.due_at, q.available_until) AS available_until,
             COALESCE(aa.due_at, q.due_date) AS due_date,
             q.activity_scope, q.live_class_id,
-            q.review_policy, q.passing_score, q.solution_file_id, solution.status AS solution_status
+            q.review_policy, q.passing_score, q.solution_file_id, solution.status AS solution_status,
+            COALESCE(cs.is_public_preview, FALSE) AS session_is_public_preview,
+            COALESCE(l.is_public_preview, FALSE) AS lesson_is_public_preview
      FROM quiz_attempts qa JOIN quizzes q ON q.id=qa.quiz_id
+     LEFT JOIN class_sessions cs ON cs.id = q.class_session_id
+     LEFT JOIN lessons l ON l.id = q.lesson_id
      LEFT JOIN lms_learning_files solution ON solution.id=q.solution_file_id
      LEFT JOIN assessment_accommodations aa
        ON aa.assessment_type='quiz' AND aa.assessment_id=q.id
@@ -445,7 +473,7 @@ const quizWindowError = (res, error) => {
   );
 };
 
-router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireActiveStudentLmsAccessOrPreview, async (req, res) => {
+router.get("/quizzes/:quizId/start", protectRoute, requireQuizPlayerAccess, async (req, res) => {
   const client = await getClient();
   let committed = false;
   try {
@@ -454,11 +482,12 @@ router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireA
     await client.query("BEGIN");
     const quiz = await getQuiz(client, quizId);
     if (!quiz) throw Object.assign(new Error("Không tìm thấy đề thi"), { status: 404 });
-    if (!(await ensureQuizAccess(client, quiz, req.user.id))) throw Object.assign(new Error("Bạn chưa được cấp quyền làm đề thi này"), { status: 403 });
+    if (!(await ensureQuizAccess(client, quiz, req.user))) throw Object.assign(new Error("Bạn chưa được cấp quyền làm đề thi này"), { status: 403 });
+    const isPrivileged = req.user?.role === "admin" || req.user?.role === "creator";
     const isPublicPreview = Boolean(quiz.session_is_public_preview || (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false));
     const unitType = quiz.class_session_id ? "class_session" : (quiz.lesson_id ? "lesson" : null);
     const unitId = quiz.class_session_id || quiz.lesson_id;
-    if (!isPublicPreview && unitType && !(await isVideoCourseUnitUnlocked({
+    if (!isPrivileged && !isPublicPreview && unitType && !(await isVideoCourseUnitUnlocked({
       db: client,
       userId: req.user.id,
       unitType,
@@ -478,6 +507,7 @@ router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireA
     const state = await getStudentAttempt({
       client,
       quiz: effectiveQuiz,
+      user: req.user,
       userId: req.user.id,
       questions,
       startNewAttempt: req.query?.newAttempt === "1" || req.query?.newAttempt === "true",
@@ -518,7 +548,7 @@ router.get("/quizzes/:quizId/start", protectRoute, requireRole("user"), requireA
   }
 });
 
-router.put("/attempts/:attemptId/answers", protectRoute, requireRole("user"), requireActiveStudentLmsAccessOrPreview, async (req, res) => {
+router.put("/attempts/:attemptId/answers", protectRoute, requireQuizPlayerAccess, async (req, res) => {
   const client = await getClient();
   let committed = false;
   try {
@@ -531,7 +561,7 @@ router.put("/attempts/:attemptId/answers", protectRoute, requireRole("user"), re
     if (!attempt) throw Object.assign(new Error("Không tìm thấy lượt làm bài"), { status: 404 });
     if (attempt.status !== "in_progress") throw Object.assign(new Error("Lượt làm bài đã được nộp"), { status: 409, code: "QUIZ_ATTEMPT_SUBMITTED" });
     const questions = attemptQuestions(attempt, await getQuizQuestions(client, attempt.quiz_id));
-    const { expiresAt, shouldPersist } = resolveAttemptExpiry({ attempt, quiz: attempt });
+    const { expiresAt, shouldPersist } = resolveAttemptExpiry({ attempt, quiz: attempt, user: req.user });
     if (shouldPersist) attempt.expires_at = expiresAt;
     if (expiresAt && expiresAt.getTime() <= Date.now()) {
       await submitAttempt({ client, attempt, questions, autoSubmitted: true });
@@ -571,7 +601,7 @@ router.put("/attempts/:attemptId/answers", protectRoute, requireRole("user"), re
   }
 });
 
-router.post("/attempts/:attemptId/submit", protectRoute, requireRole("user"), requireActiveStudentLmsAccessOrPreview, async (req, res) => {
+router.post("/attempts/:attemptId/submit", protectRoute, requireQuizPlayerAccess, async (req, res) => {
   const client = await getClient();
   let committed = false;
   try {
@@ -588,7 +618,7 @@ router.post("/attempts/:attemptId/submit", protectRoute, requireRole("user"), re
       return res.json({ success: true, data: resultPayload({ quiz: attempt, attempt, computed, alreadySubmitted: true }) });
     }
 
-    const { expiresAt, shouldPersist } = resolveAttemptExpiry({ attempt, quiz: attempt });
+    const { expiresAt, shouldPersist } = resolveAttemptExpiry({ attempt, quiz: attempt, user: req.user });
     if (shouldPersist) attempt.expires_at = expiresAt;
     const expired = Boolean(expiresAt && expiresAt.getTime() <= Date.now());
     if (!expired) {

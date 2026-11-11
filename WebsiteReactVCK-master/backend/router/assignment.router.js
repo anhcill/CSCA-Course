@@ -2536,12 +2536,12 @@ const getQuiz = async (quizId, db = { query }) => {
 
 const ensureQuizAccess = async (quiz, user, db = { query }) => {
   if (user.role === "admin") return true;
+  if (quiz.session_is_public_preview) return true;
+  if (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false) return true;
   if (user.role === "creator") return quiz.live_class_id
     ? await isAssignedTeacher(quiz.live_class_id, user.id, db)
     : String(quiz.course_author_id) === String(user.id) || String(quiz.instructor_id) === String(user.id);
   if (user.role !== "user" || String(quiz.quiz_status || "").toUpperCase() !== "PUBLISHED") return false;
-  if (quiz.session_is_public_preview) return true;
-  if (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false) return true;
   if (!quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
   const enrollment = await db.query(
     `SELECT 1 FROM lms_access_grants
@@ -2805,9 +2805,30 @@ router.get("/quizzes/:quizId", protectRoute, async (req, res) => {
   }
 });
 
+const requireQuizPlayerAccess = async (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: "Bạn cần đăng nhập để tiếp tục", errorCode: "UNAUTHENTICATED" });
+  }
+  if (!["user", "creator", "admin"].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: "Bạn không có quyền thực hiện thao tác này", errorCode: "FORBIDDEN" });
+  }
+  if (req.user.role === "admin" || req.user.role === "creator") return next();
+  if (hasActiveStudentLmsAccess(req.user)) return next();
+  try {
+    const quizId = parsePositiveId(req.params.quizId);
+    if (quizId) {
+      const quiz = await getQuiz(quizId);
+      if (quiz && (quiz.session_is_public_preview || quiz.lesson_is_public_preview)) return next();
+    }
+  } catch (error) {
+    console.error("Error checking public preview quiz access:", error);
+  }
+  return requireActiveStudentLmsAccess(req, res, next);
+};
+
 // PUT /api/assignments/quizzes/:quizId/answers — server-side draft save.
 // Browser storage remains merely a resilience cache, never the authoritative answer sheet.
-router.put("/quizzes/:quizId/answers", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
+router.put("/quizzes/:quizId/answers", protectRoute, requireQuizPlayerAccess, async (req, res) => {
   const client = await getClient();
   try {
     const quizId = parsePositiveId(req.params.quizId);
@@ -2860,7 +2881,7 @@ router.put("/quizzes/:quizId/answers", protectRoute, requireRole("user"), requir
 });
 
 // POST /api/assignments/quizzes/:quizId/submit — one server-graded, timed and idempotent attempt.
-router.post("/quizzes/:quizId/submit", protectRoute, requireRole("user"), requireActiveStudentLmsAccess, async (req, res) => {
+router.post("/quizzes/:quizId/submit", protectRoute, requireQuizPlayerAccess, async (req, res) => {
   const client = await getClient();
   try {
     const quizId = parsePositiveId(req.params.quizId);

@@ -38,6 +38,29 @@ const invoke = async (method, path, { params = {}, query = {}, body = {}, user }
   return response;
 };
 
+const invokeWithMiddleware = async (method, path, { params = {}, query = {}, body = {}, user } = {}) => {
+  const layer = quizPlayerRouter.stack.find((item) => item.route?.path === path && item.route.methods[method]);
+  assert.ok(layer, `${method} ${path}`);
+  const response = {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; return this; },
+  };
+  const stack = layer.route.stack;
+  let idx = 1; // start after protectRoute
+  const next = async (err) => {
+    if (err) throw err;
+    idx++;
+    if (idx < stack.length) {
+      if (response.body !== null && response.statusCode !== 200) return;
+      await stack[idx].handle({ params, query, body, user, ip: "127.0.0.1" }, response, next);
+    }
+  };
+  await stack[1].handle({ params, query, body, user, ip: "127.0.0.1" }, response, next);
+  return response;
+};
+
 const loadDatabase = async () => {
   const db = new PGlite();
   await db.exec(await fs.readFile("database/schema.sql", "utf8"));
@@ -464,4 +487,63 @@ test("public preview quiz is accessible when quiz has null course_id and course.
   assert.equal(submitted.statusCode, 200, JSON.stringify(submitted.body));
   assert.equal(submitted.body.data.score, 10);
   assert.equal(submitted.body.data.passed, true);
+});
+
+test("admin and teacher roles can access and complete quiz player without enrollment", async (t) => {
+  const db = await loadDatabase();
+  t.after(() => db.close());
+
+  const admin = (await db.query("INSERT INTO users(username,email,role) VALUES ('test-admin','admin@example.com','admin') RETURNING id,role")).rows[0];
+  const teacher = (await db.query("INSERT INTO users(username,email,role) VALUES ('test-other-teacher','other-teacher@example.com','creator') RETURNING id,role")).rows[0];
+
+  const course = (await db.query(
+    "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Admin Test Course','admin-test-course',$1,TRUE) RETURNING id",
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await db.query(
+    "INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('Admin Test Class',$1,$2,'active') RETURNING id",
+    [course.id, teacher.id],
+  )).rows[0];
+  const session = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status)
+     VALUES ($1,'Session 1',NOW(),NOW() + interval '1 hour','scheduled') RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+  const quiz = (await db.query(
+    `INSERT INTO quizzes(title,class_session_id,live_class_id,instructor_id,status,duration_minutes,passing_score)
+     VALUES ('Quiz for Admin/Teacher',$1,$2,$3,'PUBLISHED',30,6) RETURNING id`,
+    [session.id, liveClass.id, teacher.id],
+  )).rows[0];
+  const q = (await db.query(
+    `INSERT INTO quiz_questions(quiz_id,question_text,question_type,options_json,correct_answer,points,sort_order)
+     VALUES ($1,'2 + 2 = ?','single_choice',$2::jsonb,'4',10,1) RETURNING id`,
+    [quiz.id, JSON.stringify([{ key: "3", text: "3" }, { key: "4", text: "4" }])],
+  )).rows[0];
+
+  // 1. Admin can start, answer, and submit through the middleware pipeline
+  const adminStart = await invokeWithMiddleware("get", "/quizzes/:quizId/start", { user: admin, params: { quizId: quiz.id } });
+  assert.equal(adminStart.statusCode, 200, JSON.stringify(adminStart.body));
+  assert.equal(adminStart.body.data.quiz.title, "Quiz for Admin/Teacher");
+
+  const adminAttemptId = adminStart.body.data.attempt.id;
+  const adminSave = await invokeWithMiddleware("put", "/attempts/:attemptId/answers", {
+    user: admin,
+    params: { attemptId: adminAttemptId },
+    body: { questionId: q.id, answer: "4" },
+  });
+  assert.equal(adminSave.statusCode, 200, JSON.stringify(adminSave.body));
+
+  const adminSubmit = await invokeWithMiddleware("post", "/attempts/:attemptId/submit", {
+    user: admin,
+    params: { attemptId: adminAttemptId },
+    body: { answers: {} },
+  });
+  assert.equal(adminSubmit.statusCode, 200, JSON.stringify(adminSubmit.body));
+  assert.equal(adminSubmit.body.data.score, 10);
+  assert.equal(adminSubmit.body.data.passed, true);
+
+  // 2. Creator can also start, answer, and submit through the middleware pipeline
+  const teacherStart = await invokeWithMiddleware("get", "/quizzes/:quizId/start", { user: teacher, params: { quizId: quiz.id } });
+  assert.equal(teacherStart.statusCode, 200, JSON.stringify(teacherStart.body));
+  assert.equal(teacherStart.body.data.quiz.title, "Quiz for Admin/Teacher");
 });
