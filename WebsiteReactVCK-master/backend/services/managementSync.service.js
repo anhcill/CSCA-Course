@@ -416,7 +416,7 @@ const parseCourse = (payload, occurredAt) => ({
   category: optionalText(payload.category, 50, "category") || "CSCA",
   level: enumValue(payload.level, COURSE_LEVELS, "beginner", "level"),
   teacherSourceId: sourceId(payload.teacherSourceId || payload.ownerTeacherSourceId, "teacherSourceId"),
-  isPublished: payload.isPublished === true,
+  isPublished: payload.isPublished !== undefined ? payload.isPublished === true : undefined,
   sourceUpdatedAt: sourceDate(payload, occurredAt),
 });
 

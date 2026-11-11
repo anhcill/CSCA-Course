@@ -474,7 +474,10 @@ router.get("/dashboard-stats", protectRoute, requireTeacher, requirePermission("
 // GET /api/teacher/salary-summary — full salary breakdown by class and session.
 router.get("/salary-summary", protectRoute, requireTeacher, async (req, res) => {
   try {
-    const salaryData = await getTeacherSalaryDetail(req.user.id);
+    const targetTeacherId = (req.user.role === "admin" && req.query.teacherId)
+      ? parsePositiveId(req.query.teacherId) || req.user.id
+      : req.user.id;
+    const salaryData = await getTeacherSalaryDetail(targetTeacherId);
     if (!salaryData) return notFound(res, "Không tìm thấy dữ liệu bảng lương giảng viên");
     return res.json({ success: true, data: salaryData });
   } catch (error) {

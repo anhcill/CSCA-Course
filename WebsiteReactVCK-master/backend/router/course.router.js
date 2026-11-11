@@ -514,7 +514,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       )).rows.length > 0
       : false;
     if (isLearner && !requireManagedLearnerAccess(res, req.user)) return;
-    if (isLearner && (!course.is_published || !(await checkEnrollment(courseId, req.user.id)))) {
+    if (isLearner && !(await checkEnrollment(courseId, req.user.id))) {
       return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
     }
     if (!isLearner && !isAdmin && !isTeacherOwner && !isAssignedTeacher) {
@@ -963,8 +963,8 @@ router.get("/:slug/classroom", protectRoute, async (req, res) => {
     let isEnrolled = false;
     if (req.user.role === "user") {
       if (!requireManagedLearnerAccess(res, req.user)) return;
-      if (!course.is_published) return notFound(res, "Không tìm thấy khóa học");
       isEnrolled = await checkEnrollment(course.id, req.user.id);
+      if (!isEnrolled && !course.is_published) return notFound(res, "Không tìm thấy khóa học");
       if (!isEnrolled) return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
     } else if (req.user.role === "creator" && String(course.author_id) !== String(req.user.id)) {
       return forbidden(res, "Bạn chỉ được xem phòng học của khóa học do mình phụ trách");

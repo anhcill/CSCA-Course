@@ -12,6 +12,7 @@ import {
   ChevronRight,
   FileCheck2,
   FolderOpen,
+  GraduationCap,
   Home,
   LogOut,
   Menu,
@@ -31,7 +32,7 @@ import { getAvatarUrl, handleAvatarError } from "../../utils/avatar";
 import { normalizeLmsWallpaper } from "../../utils/classWallpapers";
 
 const STUDENT_NAV = [
-  { label: "Trang chủ", path: "/lms/dashboard", icon: Home, end: true },
+  { label: "Tổng quan LMS", path: "/lms/dashboard", icon: Home, end: true },
   { label: "Khóa học", path: "/lms/my-learning", icon: BookOpen, end: true },
   { label: "Lịch học", path: "/lms/calendar", icon: CalendarDays },
   { label: "Bài tập & Kiểm tra", path: "/lms/assignments", icon: FileCheck2 },
@@ -148,13 +149,46 @@ function Sidebar({ onNavigate, unreadCount = 0, collapsed = false, onToggleColla
           </button>
         )}
       </div>
+
+      {/* Switcher: LMS vs Trang chủ Website */}
+      {!collapsed ? (
+        <div className="mt-3 shrink-0 rounded-2xl bg-slate-100/80 p-1 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+          <div className="flex items-center gap-1">
+            <span className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-white dark:bg-slate-700 py-1.5 px-2 text-xs font-black text-blue-700 dark:text-sky-300 shadow-xs">
+              <GraduationCap className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
+              <span>LMS Học viên</span>
+            </span>
+            <Link
+              to="/"
+              onClick={onNavigate}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-1.5 px-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-white/80 hover:text-blue-700 dark:hover:bg-slate-700/80 dark:hover:text-white transition"
+              title="Về Trang chủ Website (Khóa học & Record)"
+            >
+              <Home className="h-3.5 w-3.5" />
+              <span>Trang chủ</span>
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 shrink-0 flex justify-center">
+          <Link
+            to="/"
+            onClick={onNavigate}
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-100 hover:text-blue-700 dark:hover:bg-slate-700 transition"
+            title="Về Trang chủ Website (Khóa học & Record)"
+          >
+            <Home className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
+
       <div className="my-5 h-px shrink-0 bg-slate-100 dark:bg-slate-800" />
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Điều hướng LMS học viên">
         {STUDENT_NAV.map((item) => (
           <StudentNavItem key={item.path} item={item} onNavigate={onNavigate} unreadCount={unreadCount} collapsed={collapsed} />
         ))}
       </nav>
-      <div className="mt-4 shrink-0 border-t border-slate-200 dark:border-slate-800 pt-4">
+      <div className="mt-4 shrink-0 border-t border-slate-200 dark:border-slate-800 pt-4 space-y-1">
         <NavLink
           to="/lms/settings"
           onClick={onNavigate}
@@ -174,6 +208,17 @@ function Sidebar({ onNavigate, unreadCount = 0, collapsed = false, onToggleColla
             </>
           )}
         </NavLink>
+        <Link
+          to="/courses"
+          onClick={onNavigate}
+          title={collapsed ? "Xem Khóa học & Record" : undefined}
+          className={`flex items-center rounded-xl text-sm font-semibold transition ${
+            collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
+          } text-purple-700 hover:bg-purple-50/80 dark:text-purple-300 dark:hover:bg-purple-950/40`}
+        >
+          <Video className="h-5 w-5 shrink-0 text-purple-600 dark:text-purple-400" />
+          {!collapsed && <span className="min-w-0 flex-1 truncate font-bold">Khóa học Record</span>}
+        </Link>
       </div>
     </div>
   );
@@ -294,7 +339,7 @@ export default function StudentLmsLayout({ children }) {
           : "border-b border-slate-800/80 bg-slate-900/95 shadow-sm backdrop-blur-xl text-white"
       }`}>
         <div className="flex h-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => setMobileOpen((open) => !open)}
@@ -303,6 +348,40 @@ export default function StudentLmsLayout({ children }) {
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
+
+            {/* Chuyển đổi màn hình: Trang chủ & Khóa học Record */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <Link
+                to="/"
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition shadow-xs ${
+                  !isDarkMode
+                    ? (hasScenicBackground
+                        ? "border border-white/85 bg-[#e4f4ff]/85 text-[#102f63] shadow-[0_4px_14px_rgba(32,91,135,0.14)] backdrop-blur-md hover:bg-white hover:text-blue-600"
+                        : "border border-slate-200 bg-white/90 text-slate-700 hover:bg-white hover:text-blue-600")
+                    : "border border-slate-700 bg-slate-800/90 text-slate-200 hover:bg-slate-700 hover:text-white"
+                }`}
+                title="Về Trang chủ Website để xem tất cả khóa học và video record"
+              >
+                <Home className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400 shrink-0" />
+                <span className="hidden sm:inline">Về Trang chủ</span>
+                <span className="sm:hidden">Trang chủ</span>
+              </Link>
+
+              <Link
+                to="/courses"
+                className={`hidden md:inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition shadow-xs ${
+                  !isDarkMode
+                    ? (hasScenicBackground
+                        ? "border border-white/85 bg-[#e4f4ff]/85 text-[#102f63] shadow-[0_4px_14px_rgba(32,91,135,0.14)] backdrop-blur-md hover:bg-white hover:text-purple-600"
+                        : "border border-slate-200 bg-white/90 text-slate-700 hover:bg-white hover:text-purple-600")
+                    : "border border-slate-700 bg-slate-800/90 text-slate-200 hover:bg-slate-700 hover:text-white"
+                }`}
+                title="Xem danh mục Khóa học & Bản ghi Record"
+              >
+                <Video className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                <span>Khóa học Record</span>
+              </Link>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">

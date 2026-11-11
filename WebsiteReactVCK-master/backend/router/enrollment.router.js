@@ -145,7 +145,6 @@ router.get("/my", protectRoute, requireRole("user"), requireActiveStudentLmsAcce
        SELECT c.id AS enrollment_id, ac.access_granted_at AS enrolled_at, c.*
        FROM accessible_courses ac
        JOIN courses c ON c.id = ac.course_id
-       WHERE c.is_published = true
        ORDER BY ac.access_granted_at DESC`,
       [userId],
     );
@@ -313,7 +312,6 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
           ) AS last_lesson
         FROM accessible_courses ac
         JOIN courses c ON c.id = ac.course_id
-        WHERE c.is_published = true
         ORDER BY ac.access_granted_at DESC`,
         [userId]
       );

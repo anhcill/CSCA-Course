@@ -37,7 +37,7 @@ const TEACHER_NAV = [
   { label: 'Lịch dạy', path: '/lms/teach/calendar', icon: CalendarDays, permission: 'lms.schedule.manage' },
   { label: 'Điểm danh', path: '/lms/teach/attendance', icon: Users, permission: 'lms.attendance.manage' },
   { label: 'Điểm & chuyên cần', path: '/lms/teach/student-progress', icon: BarChart3, permission: 'lms.student.view' },
-  { label: 'Giáo trình lớp', path: '/lms/teach/classes', icon: BookOpen, permission: 'lms.course.manage' },
+  { label: 'Giáo trình lớp', path: '/lms/teach/classes', icon: BookOpen, permission: 'lms.student.view' },
   { label: 'Bảng lương', path: '/lms/teach/salary', icon: Wallet },
   { label: 'Tài liệu học tập', path: '/lms/teach/files', icon: FolderOpen, permission: 'lms.file.manage' },
   { label: 'Đăng đề & Quiz', path: '/lms/teacher/quizzes', icon: FileQuestion, end: true, permission: 'lms.quiz.manage' },
@@ -61,6 +61,12 @@ const getTeacherRouteAccess = (pathname) => {
     || /^\/lms\/teacher\/classes\/[^/]+\/attendance(?:\/|$)/.test(pathname)
   ) {
     return { label: 'điểm danh', permission: 'lms.attendance.manage' };
+  }
+  if (
+    /^\/lms\/teach\/classes(?:\/|$)/.test(pathname)
+    || /^\/lms\/teacher\/classes(?:\/|$)/.test(pathname)
+  ) {
+    return { label: 'lớp học & giáo trình', permission: 'lms.student.view' };
   }
   return null;
 };

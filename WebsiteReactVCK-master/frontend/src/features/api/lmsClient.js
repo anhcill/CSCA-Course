@@ -1543,7 +1543,12 @@ export const suggestSessionVocabulary = (sessionId, options = {}) => request(
 // TEACHER PAYROLL & SALARY API CLIENTS
 // ============================================================================
 
-export const fetchTeacherSalarySummary = async () => request("/teacher/salary-summary");
+export const fetchTeacherSalarySummary = async (params = {}) => {
+  const query = new URLSearchParams();
+  if (params?.teacherId) query.set("teacherId", params.teacherId);
+  const qs = query.toString();
+  return request(`/teacher/salary-summary${qs ? `?${qs}` : ""}`);
+};
 
 export const fetchAdminTeacherSalaries = async ({ search = "", rateStatus = "all", paymentStatus = "all" } = {}) => {
   const params = new URLSearchParams();

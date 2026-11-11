@@ -541,7 +541,7 @@ router.get("/", protectRoute, requireManagedLearner, async (req, res) => {
        LEFT JOIN courses c ON c.id = lc.course_id
        LEFT JOIN class_enrollments ce ON ce.live_class_id = lc.id
        WHERE ${classStatusVisibility}
-         AND (${req.user.role === 'admin' ? 'TRUE' : '(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true)'})
+         AND (${req.user.role === 'admin' || req.user.role === 'creator' ? 'TRUE' : `(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true OR EXISTS (SELECT 1 FROM class_enrollments ce_vis WHERE ce_vis.live_class_id = lc.id AND ce_vis.user_id = $1 AND ce_vis.status = 'active'))`})
          AND ${visibility.clause}
        GROUP BY lc.id, c.title, c.name, lc.teacher_display_name, lc.cover_image_url
        ORDER BY lc.created_at DESC`,
@@ -690,7 +690,7 @@ router.get("/my-schedule", protectRoute, requireManagedLearner, async (req, res)
        LEFT JOIN class_enrollments ce2 ON ce2.live_class_id = lc.id
        WHERE lc.status = 'active'
          AND cs.status <> 'cancelled'
-         AND (${req.user.role === 'admin' ? 'TRUE' : '(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true)'})
+         AND (${req.user.role === 'admin' || req.user.role === 'creator' ? 'TRUE' : `(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true OR EXISTS (SELECT 1 FROM class_enrollments ce_vis WHERE ce_vis.live_class_id = lc.id AND ce_vis.user_id = $1 AND ce_vis.status = 'active'))`})
          AND ${visibility.clause}
          ${courseScope}
          ${classScope}
