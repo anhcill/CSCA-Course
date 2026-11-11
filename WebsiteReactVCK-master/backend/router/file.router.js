@@ -128,6 +128,14 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
   </header>
   <main><iframe id="pdf-frame" title="${escapeHtml(filename)}" src="${escapeHtml(`${signedUrl}#toolbar=0&navpanes=0&scrollbar=1&zoom=100`)}"></iframe></main>
   <script>
+    window.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && ['s', 'p', 'u'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+      }
+    });
+    window.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+    });
     try {
       if (window.self !== window.top) {
         document.body.classList.add('is-embedded');
@@ -135,7 +143,7 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
     } catch (_) {}
     let zoom = 100;
     function changeZoom(delta) {
-      zoom = Math.max(50, Math.min(200, zoom + delta));
+      zoom = Math.max(30, Math.min(250, zoom + delta));
       document.getElementById('zoom-value').textContent = zoom + '%';
       const frame = document.getElementById('pdf-frame');
       const scale = zoom / 100;

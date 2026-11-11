@@ -25,6 +25,7 @@ import {
   RotateCcw,
   Video,
   Eye,
+  ExternalLink,
   Copy,
   Lock,
 } from "lucide-react";
@@ -1389,28 +1390,31 @@ export default function VideoCourseWorkspacePage() {
                       {activeUnit.files.map((file) => (
                         <div
                           key={file.id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                          onClick={() => openFileUrl(file.viewUrl)}
+                          className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
                         >
                           <div className="flex items-center gap-3 truncate">
                             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400 font-bold text-xs uppercase">
                               {file.fileName.split(".").pop() || "FILE"}
                             </span>
                             <div className="truncate">
-                              <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{file.fileName}</p>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white truncate group-hover:text-amber-500 transition">
+                                {file.fileName}
+                              </p>
                               <p className="text-xs text-slate-400 font-mono">
                                 {((file.sizeBytes || 1250000) / (1024 * 1024)).toFixed(2)} MB
                               </p>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                             <button
                               type="button"
-                              onClick={() => setPreviewFile(file)}
+                              onClick={() => openFileUrl(file.viewUrl)}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-sm transition"
                             >
-                              <Eye className="h-3.5 w-3.5" />
-                              <span>Xem trực tiếp</span>
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              <span>Mở xem tài liệu</span>
                             </button>
 
                             {file.downloadUrl ? (
