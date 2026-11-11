@@ -113,6 +113,7 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
     .controls{margin-left:auto;display:flex;align-items:center;gap:7px}.zoom-value{min-width:48px;text-align:center;color:#cbd5e1;font-size:12px;font-weight:800}
     button{flex:none;border:1px solid #475569;border-radius:9px;background:#1e293b;color:#e2e8f0;padding:7px 12px;font-weight:800;cursor:pointer}button:hover{background:#334155}.zoom-button{width:34px;padding:7px 0;font-size:18px;line-height:1}.close-button{margin-left:5px}
     main{position:fixed;inset:52px 0 0;overflow:hidden}iframe{position:absolute;top:-56px;left:0;width:100%;height:calc(100% + 56px);border:0;background:#334155;transform-origin:top left;transition:transform .15s ease}
+    body.is-embedded header{display:none}body.is-embedded main{inset:0}
   </style>
 </head>
 <body>
@@ -127,6 +128,11 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
   </header>
   <main><iframe id="pdf-frame" title="${escapeHtml(filename)}" src="${escapeHtml(`${signedUrl}#toolbar=0&navpanes=0&scrollbar=1&zoom=100`)}"></iframe></main>
   <script>
+    try {
+      if (window.self !== window.top) {
+        document.body.classList.add('is-embedded');
+      }
+    } catch (_) {}
     let zoom = 100;
     function changeZoom(delta) {
       zoom = Math.max(50, Math.min(200, zoom + delta));
@@ -1140,15 +1146,27 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
       const policyRes = await query(
         `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
          FROM video_course_profiles
-         WHERE id = $1 AND course_id = $2 AND status = 'active'
+         WHERE id = $1 AND course_id = $2
            AND ($3::bigint IS NULL OR course_id = $3)`,
         [videoCourseProfileId, fileCourseId, videoCourseId],
       );
       if (!policyRes.rows[0]) {
-        return errorResponse(res, 404, "Không tìm thấy cấu hình khóa học video", "NOT_FOUND");
+        const fallbackRes = await query(
+          `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
+           FROM video_course_profiles
+           WHERE course_id = $1 ORDER BY (status = 'active') DESC, id DESC LIMIT 1`,
+          [fileCourseId || videoCourseId],
+        );
+        if (fallbackRes.rows[0]) {
+          selectedVideoProfile = fallbackRes.rows[0];
+          videoCourseAllowsDownload = selectedVideoProfile.allow_file_download === true;
+        } else {
+          return errorResponse(res, 404, "Không tìm thấy cấu hình khóa học video", "NOT_FOUND");
+        }
+      } else {
+        selectedVideoProfile = policyRes.rows[0];
+        videoCourseAllowsDownload = selectedVideoProfile.allow_file_download === true;
       }
-      selectedVideoProfile = policyRes.rows[0];
-      videoCourseAllowsDownload = selectedVideoProfile.allow_file_download === true;
     } else if (videoCourseId) {
       if (String(videoCourseId) !== String(fileCourseId)) {
         return errorResponse(res, 403, "Tài liệu không thuộc khóa học video này", "FORBIDDEN");
@@ -1156,7 +1174,7 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
       const policyRes = await query(
         `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
          FROM video_course_profiles
-         WHERE course_id = $1 AND status = 'active'`,
+         WHERE course_id = $1 ORDER BY (status = 'active') DESC, id DESC`,
         [videoCourseId],
       );
       if (policyRes.rows.length === 0) {
@@ -1267,7 +1285,7 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
         res.set({
           "Content-Type": "text/html; charset=utf-8",
           "X-Frame-Options": "SAMEORIGIN",
-          "Content-Security-Policy": "default-src 'none'; frame-ancestors 'self'; frame-src https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+          "Content-Security-Policy": "default-src 'self' 'unsafe-inline' https: blob: data:; object-src 'self' https: blob: data:; frame-src 'self' https: blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' https: blob: data:; frame-ancestors 'self'",
         });
       }
       return res.status(200).send(protectedPdfViewerHtml({
