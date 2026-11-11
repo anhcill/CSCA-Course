@@ -120,16 +120,20 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => {
     button{flex:none;border:1px solid #475569;border-radius:9px;background:#1e293b;color:#e2e8f0;padding:7px 12px;font-weight:800;cursor:pointer}button:hover{background:#334155}.zoom-button{width:34px;padding:7px 0;font-size:18px;line-height:1}.close-button{margin-left:5px}
     main{position:fixed;inset:52px 0 0;overflow:hidden}iframe{position:absolute;top:-56px;left:0;width:100%;height:calc(100% + 56px);border:0;background:#334155;transform-origin:top left;transition:transform .15s ease}
     body.is-embedded header{display:none}body.is-embedded main{inset:0}
-    #loader{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#fff;z-index:10;transition:opacity .3s ease}
-    .spinner{width:46px;height:46px;border:3px solid rgba(56,189,248,.18);border-top-color:#38bdf8;border-radius:50%;animation:spin .85s linear infinite;margin-bottom:18px}
+    #loader{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#fff;z-index:20;transition:opacity .35s ease,visibility .35s ease;padding:24px}
+    .loader-card{display:flex;flex-direction:column;align-items:center;background:rgba(30,41,59,.85);border:1px solid rgba(71,85,105,.55);border-radius:24px;padding:32px 36px;box-shadow:0 24px 48px -12px rgba(0,0,0,.65);backdrop-filter:blur(14px);max-width:380px;width:100%;text-align:center}
+    .spinner{width:48px;height:48px;border:3px solid rgba(56,189,248,.18);border-top-color:#38bdf8;border-radius:50%;animation:spin .85s linear infinite;margin-bottom:18px}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .loader-title{font-size:14px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;margin-bottom:6px}
-    .loader-desc{font-size:12px;color:#94a3b8;max-width:320px;text-align:center;line-height:1.5}
-    .loader-bar{width:160px;height:3px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:16px;overflow:hidden;position:relative}
-    .loader-bar-fill{position:absolute;top:0;left:0;height:100%;background:linear-gradient(90deg,#38bdf8,#818cf8);border-radius:99px;animation:shimmer 1.4s ease-in-out infinite}
-    @keyframes shimmer{0%{left:-40%;width:40%}50%{left:35%;width:55%}100%{left:100%;width:30%}}
+    .loader-title{font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:-.01em;margin-bottom:6px}
+    .loader-desc{font-size:12px;color:#94a3b8;line-height:1.5;margin-bottom:16px}
+    .loader-progress-wrap{width:100%;margin-top:4px}
+    .loader-bar{width:100%;height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;position:relative}
+    .loader-bar-fill{position:absolute;top:0;left:0;height:100%;width:0%;background:linear-gradient(90deg,#38bdf8,#818cf8);border-radius:99px;transition:width .15s ease}
+    .loader-meta{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:#cbd5e1;margin-top:8px}
+    .loader-percent{color:#38bdf8;font-family:monospace;font-size:13px}
+    .loader-bytes{color:#64748b;font-family:monospace;font-size:11px}
     .reload-hint{margin-top:16px;font-size:11px;color:#64748b;display:none}
-    .reload-btn{background:#1e293b;border:1px solid #475569;border-radius:8px;color:#93c5fd;font-size:11px;font-weight:700;padding:5px 12px;cursor:pointer;margin-top:8px;display:none}
+    .reload-btn{background:#1e293b;border:1px solid #475569;border-radius:8px;color:#93c5fd;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;margin-top:8px;display:none}
     .reload-btn:hover{background:#334155}
   </style>
 </head>
@@ -145,14 +149,22 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => {
   </header>
   <main>
     <div id="loader">
-      <div class="spinner"></div>
-      <div class="loader-title">Đang mở tài liệu...</div>
-      <div class="loader-desc">Tài liệu đang được nạp bảo mật. Vui lòng chờ trong giây lát.</div>
-      <div class="loader-bar"><div class="loader-bar-fill"></div></div>
-      <div id="reload-hint" class="reload-hint">Nếu tải quá lâu, bạn có thể thử làm mới:</div>
-      <button id="reload-btn" class="reload-btn" type="button" onclick="location.reload()">Nhấn để làm mới</button>
+      <div class="loader-card">
+        <div class="spinner"></div>
+        <div id="loader-title" class="loader-title">Đang nạp dữ liệu tài liệu...</div>
+        <div class="loader-desc">Vui lòng chờ tiến trình nạp hoàn tất để xem nội dung mượt mà.</div>
+        <div class="loader-progress-wrap">
+          <div class="loader-bar"><div id="loader-bar-fill" class="loader-bar-fill"></div></div>
+          <div class="loader-meta">
+            <span id="loader-percent" class="loader-percent">0%</span>
+            <span id="loader-bytes" class="loader-bytes">Đang kết nối...</span>
+          </div>
+        </div>
+        <div id="reload-hint" class="reload-hint">Nếu nạp quá lâu, bạn có thể thử làm mới:</div>
+        <button id="reload-btn" class="reload-btn" type="button" onclick="location.reload()">Nhấn để làm mới</button>
+      </div>
     </div>
-    <iframe id="pdf-frame" title="${escapeHtml(filename)}" src="${escapeHtml(`${signedUrl}#toolbar=0&navpanes=0&scrollbar=1&zoom=100`)}" loading="eager"></iframe>
+    <iframe id="pdf-frame" title="${escapeHtml(filename)}" data-src="${escapeHtml(`${signedUrl}#toolbar=0&navpanes=0&scrollbar=1&zoom=100`)}" src="about:blank" loading="eager"></iframe>
   </main>
   <script>
     window.addEventListener('keydown', function(e) {
@@ -168,28 +180,97 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => {
         document.body.classList.add('is-embedded');
       }
     } catch (_) {}
+    const signedUrl = "${signedUrl.replace(/"/g, '\\"')}";
     const frame = document.getElementById('pdf-frame');
     const loader = document.getElementById('loader');
+    const titleEl = document.getElementById('loader-title');
+    const percentEl = document.getElementById('loader-percent');
+    const bytesEl = document.getElementById('loader-bytes');
+    const barFill = document.getElementById('loader-bar-fill');
     const reloadHint = document.getElementById('reload-hint');
     const reloadBtn = document.getElementById('reload-btn');
     let loaded = false;
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes <= 0) return '';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function setProgress(percent, loadedStr, totalStr) {
+      if (percentEl) percentEl.textContent = percent + '%';
+      if (bytesEl && loadedStr) bytesEl.textContent = loadedStr + (totalStr ? ' / ' + totalStr : '');
+      if (barFill) barFill.style.width = percent + '%';
+    }
+
     function hideLoader() {
       if (loaded) return;
       loaded = true;
       if (loader) {
         loader.style.opacity = '0';
         loader.style.pointerEvents = 'none';
-        setTimeout(function() { loader.style.display = 'none'; }, 300);
+        setTimeout(function() { loader.style.display = 'none'; }, 350);
       }
     }
-    frame.addEventListener('load', hideLoader);
-    setTimeout(hideLoader, 3500);
+
+    async function streamPdf() {
+      try {
+        const res = await fetch(signedUrl);
+        if (!res.ok) throw new Error('Fetch failed: ' + res.status);
+        const contentLength = res.headers.get('content-length');
+        const total = contentLength ? parseInt(contentLength, 10) : 0;
+        const totalStr = formatBytes(total);
+
+        if (!res.body || !res.body.getReader) {
+          const blob = await res.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          frame.src = blobUrl + '#toolbar=0&navpanes=0&scrollbar=1&zoom=100';
+          hideLoader();
+          return;
+        }
+
+        const reader = res.body.getReader();
+        const chunks = [];
+        let loadedBytes = 0;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          loadedBytes += value.length;
+          if (total > 0) {
+            const percent = Math.min(99, Math.round((loadedBytes / total) * 100));
+            setProgress(percent, formatBytes(loadedBytes), totalStr);
+          } else {
+            setProgress(50, formatBytes(loadedBytes), '');
+          }
+        }
+
+        setProgress(100, formatBytes(loadedBytes), totalStr);
+        if (titleEl) titleEl.textContent = 'Đang hiển thị tài liệu...';
+
+        const blob = new Blob(chunks, { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(blob);
+        frame.src = blobUrl + '#toolbar=0&navpanes=0&scrollbar=1&zoom=100';
+        setTimeout(hideLoader, 250);
+      } catch (err) {
+        console.warn('Progress load fallback:', err);
+        const fallbackUrl = frame.getAttribute('data-src') || signedUrl;
+        frame.src = fallbackUrl;
+        frame.addEventListener('load', hideLoader);
+        setTimeout(hideLoader, 5000);
+      }
+    }
+
+    streamPdf();
+
     setTimeout(function() {
       if (!loaded && reloadHint && reloadBtn) {
         reloadHint.style.display = 'block';
         reloadBtn.style.display = 'inline-block';
       }
-    }, 6000);
+    }, 8000);
+
     let zoom = 100;
     function changeZoom(delta) {
       zoom = Math.max(30, Math.min(250, zoom + delta));

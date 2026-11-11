@@ -487,6 +487,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
+                        AND qa.video_course_profile_id = $4
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     )
                 ) AS completed_quiz_count
@@ -502,7 +503,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
          LEFT JOIN video_watch_progress vwp ON vwp.user_id = $2 AND vwp.video_asset_id = va.id
          WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
          ORDER BY cs.start_time ASC, cs.id ASC`,
-        [sourceLiveClassId, req.user.id, !isLearner],
+        [sourceLiveClassId, req.user.id, !isLearner, profile.id],
       );
 
       const rawUnits = sessionsRes.rows.map((row) => {
@@ -611,11 +612,11 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           ),
           query(
             `SELECT a.id, a.title, a.description, a.max_score, a.due_date,
-                    (SELECT s.id FROM assignment_submissions s WHERE s.assignment_id = a.id AND s.user_id = $2 LIMIT 1) AS submission_id,
-                    (SELECT sg.score FROM assignment_submissions s JOIN submission_grades sg ON sg.submission_id = s.id WHERE s.assignment_id = a.id AND s.user_id = $2 ORDER BY sg.id DESC LIMIT 1) AS score
+                    (SELECT s.id FROM assignment_submissions s WHERE s.assignment_id = a.id AND s.user_id = $2 AND s.video_course_profile_id = $4 LIMIT 1) AS submission_id,
+                    (SELECT sg.score FROM assignment_submissions s JOIN submission_grades sg ON sg.submission_id = s.id WHERE s.assignment_id = a.id AND s.user_id = $2 AND s.video_course_profile_id = $4 ORDER BY sg.id DESC LIMIT 1) AS score
              FROM assignments a
              WHERE a.course_id = $1 OR a.live_class_id = $3`,
-            [courseId, req.user.id, sourceLiveClassId],
+            [courseId, req.user.id, sourceLiveClassId, profile.id],
           ),
           query(
             `SELECT q.id, q.title, q.duration_minutes, q.passing_score,
@@ -624,6 +625,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
+                        AND qa.video_course_profile_id = $3
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS attempts_count,
                     (
@@ -631,6 +633,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
+                        AND qa.video_course_profile_id = $3
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS best_score,
                     (
@@ -638,13 +641,14 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
+                        AND qa.video_course_profile_id = $3
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS max_score
              FROM quizzes q
              WHERE q.class_session_id = $1
                AND q.status = 'PUBLISHED'
              ORDER BY q.id ASC`,
-            [sessId, req.user.id],
+            [sessId, req.user.id, profile.id],
           ),
           query(
             `SELECT sv.id, sv.term, sv.pinyin, sv.sino_vietnamese, sv.meaning,
@@ -754,7 +758,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             title: a.title,
             description: a.description,
             maxScore: Number(a.max_score || 10),
-            dueDate: a.due_date,
+            dueDate: null,
             isSubmitted: Boolean(a.submission_id),
             score: a.score !== null ? Number(a.score) : null,
           })),
@@ -831,6 +835,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
+                        AND qa.video_course_profile_id = $4
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     )
                 ) AS completed_quiz_count
@@ -847,7 +852,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
          LEFT JOIN video_watch_progress vwp ON vwp.user_id = $2 AND (vwp.video_asset_id = va.id OR vwp.lesson_id = l.id)
          WHERE l.course_id = $1 AND l.is_published = true
          ORDER BY COALESCE(s.sort_order, 0) ASC, l.sort_order ASC, l.id ASC`,
-        [courseId, req.user.id, !isLearner],
+        [courseId, req.user.id, !isLearner, profile.id],
       );
 
       const rawUnits = lessonsRes.rows.map((row, idx) => {
@@ -933,11 +938,11 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           ),
           query(
             `SELECT a.id, a.title, a.description, a.max_score, a.due_date,
-                    (SELECT s.id FROM assignment_submissions s WHERE s.assignment_id = a.id AND s.user_id = $2 LIMIT 1) AS submission_id,
-                    (SELECT sg.score FROM assignment_submissions s JOIN submission_grades sg ON sg.submission_id = s.id WHERE s.assignment_id = a.id AND s.user_id = $2 ORDER BY sg.id DESC LIMIT 1) AS score
+                    (SELECT s.id FROM assignment_submissions s WHERE s.assignment_id = a.id AND s.user_id = $2 AND s.video_course_profile_id = $4 LIMIT 1) AS submission_id,
+                    (SELECT sg.score FROM assignment_submissions s JOIN submission_grades sg ON sg.submission_id = s.id WHERE s.assignment_id = a.id AND s.user_id = $2 AND s.video_course_profile_id = $4 ORDER BY sg.id DESC LIMIT 1) AS score
              FROM assignments a
              WHERE a.lesson_id = $1 OR (a.course_id = $3 AND a.lesson_id IS NULL AND a.live_class_id IS NULL)`,
-            [lId, req.user.id, courseId],
+            [lId, req.user.id, courseId, profile.id],
           ),
           query(
             `SELECT q.id, q.title, q.duration_minutes, q.passing_score,
@@ -946,6 +951,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
+                        AND qa.video_course_profile_id = $3
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS attempts_count,
                     (
@@ -953,6 +959,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
+                        AND qa.video_course_profile_id = $3
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS best_score,
                     (
@@ -960,12 +967,13 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
+                        AND qa.video_course_profile_id = $3
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS max_score
              FROM quizzes q
              WHERE q.lesson_id = $1 AND q.status = 'PUBLISHED'
              ORDER BY q.id ASC`,
-            [lId, req.user.id],
+            [lId, req.user.id, profile.id],
           ),
           query(
             `SELECT sv.id, sv.term, sv.pinyin, sv.sino_vietnamese, sv.meaning,
@@ -1077,7 +1085,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             title: a.title,
             description: a.description,
             maxScore: Number(a.max_score || 10),
-            dueDate: a.due_date,
+            dueDate: null,
             isSubmitted: Boolean(a.submission_id),
             score: a.score !== null ? Number(a.score) : null,
           })),
@@ -1152,6 +1160,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
     return res.json({
       success: true,
       data: {
+        videoCourseProfileId: String(profile.id),
         mode: mode === "MIRROR" ? "RECORD_MIRROR" : "RECORD_INDEPENDENT",
         course: {
           id: String(course.id),

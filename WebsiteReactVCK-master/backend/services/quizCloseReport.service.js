@@ -266,6 +266,7 @@ export const buildQuizReportSnapshot = async ({
   reportKind = "close",
   generatedAt = new Date(),
   includeInternal = false,
+  videoCourseProfileId = null,
 }) => {
   const quizResult = await db.query(
     `SELECT q.*, lc.title AS class_title, lc.instructor_id AS class_instructor_id,
@@ -296,9 +297,49 @@ export const buildQuizReportSnapshot = async ({
   const quiz = quizResult.rows[0];
   if (!quiz) throw new Error(`Quiz ${quizId} not found`);
 
+  const recordProfile = videoCourseProfileId ? (await db.query(
+    `SELECT vcp.id, vcp.course_id, vcp.mode, vcp.source_live_class_id, vcp.management_class_id,
+            COALESCE(alias.title, c.title, c.name) AS record_class_title
+     FROM video_course_profiles vcp
+     JOIN courses c ON c.id = vcp.course_id
+     LEFT JOIN management_class_learning_aliases alias
+       ON LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id)
+      AND alias.status = 'active'
+     WHERE vcp.id = $1 AND vcp.status = 'active'
+       AND vcp.course_id = COALESCE($2::bigint, vcp.course_id)
+       AND (vcp.mode <> 'MIRROR' OR vcp.source_live_class_id = $3)`,
+    [videoCourseProfileId, quiz.course_id, quiz.live_class_id],
+  )).rows[0] : null;
+  if (videoCourseProfileId && !recordProfile) {
+    throw new Error(`Video course profile ${videoCourseProfileId} does not match quiz ${quizId}`);
+  }
+
   const resolvedCloseAt = asDate(closeAt || quiz.effective_close_at || quiz.base_close_at || generatedAt, asDate(generatedAt, new Date()));
   const authoredQuestions = await loadQuestions(db, quizId);
-  const rosterResult = quiz.live_class_id
+  const rosterResult = recordProfile
+    ? await db.query(
+      `SELECT u.id AS user_id, u.email, u.username, ce.learning_mode,
+              COALESCE(NULLIF(sp.full_name, ''), NULLIF(u.username, ''), u.email) AS display_name
+       FROM class_enrollments ce
+       JOIN users u ON u.id = ce.user_id
+       LEFT JOIN student_profiles sp ON sp.user_id = u.id
+       LEFT JOIN management_class_learning_aliases alias
+         ON alias.id = ce.management_class_alias_id AND alias.status = 'active'
+       WHERE ce.status = 'active' AND ce.learning_mode = 'recording'
+         AND (
+           ($2::text IS NOT NULL AND LOWER(alias.alias_class_source_id) = LOWER($2))
+           OR ($2::text IS NULL AND $3 = 'MIRROR' AND ce.live_class_id = $4)
+           OR ($2::text IS NULL AND $3 = 'INDEPENDENT' AND ce.course_id = $5)
+         )
+         AND ($1::boolean OR (
+           COALESCE(ce.is_internal_test, FALSE) = FALSE
+           AND COALESCE(u.is_internal_test_account, FALSE) = FALSE
+         ))
+       ORDER BY u.id`,
+      [Boolean(includeInternal), recordProfile.management_class_id, recordProfile.mode,
+        recordProfile.source_live_class_id, recordProfile.course_id],
+    )
+    : quiz.live_class_id
     ? await db.query(
       `SELECT u.id AS user_id, u.email, u.username, ce.learning_mode,
               COALESCE(NULLIF(sp.full_name, ''), NULLIF(u.username, ''), u.email) AS display_name
@@ -306,6 +347,7 @@ export const buildQuizReportSnapshot = async ({
        JOIN users u ON u.id = ce.user_id
        LEFT JOIN student_profiles sp ON sp.user_id = u.id
        WHERE ce.live_class_id = $1
+         AND COALESCE(ce.learning_mode, 'live') <> 'recording'
          AND ce.enrolled_at <= $2
          AND (ce.status = 'active' OR ce.ended_at > $2)
          AND (ce.ended_at IS NULL OR ce.ended_at > $2)
@@ -323,8 +365,9 @@ export const buildQuizReportSnapshot = async ({
     ? await db.query(
       `SELECT * FROM quiz_attempts
        WHERE quiz_id = $1 AND user_id = ANY($2::bigint[])
+         AND video_course_profile_id IS NOT DISTINCT FROM $3::bigint
        ORDER BY user_id, attempt_number, id`,
-      [quizId, userIds],
+      [quizId, userIds, recordProfile?.id || null],
     )
     : { rows: [] };
 
@@ -469,16 +512,18 @@ export const buildQuizReportSnapshot = async ({
     report: {
       kind: reportKind,
       generatedAt: asIso(generatedAt),
-      closeAt: asIso(resolvedCloseAt),
+      closeAt: recordProfile ? null : asIso(resolvedCloseAt),
       provisional: pendingEssay > 0,
       attemptPolicy,
       attemptScorePolicy: attemptPolicy,
+      rosterMode: recordProfile ? "record" : "live",
+      videoCourseProfileId: recordProfile ? Number(recordProfile.id) : null,
     },
     quiz: {
       id: Number(quiz.id),
       title: quiz.title,
       classId: quiz.live_class_id ? Number(quiz.live_class_id) : null,
-      classTitle: quiz.class_title || null,
+      classTitle: recordProfile?.record_class_title || quiz.class_title || null,
       sessionId: quiz.class_session_id ? Number(quiz.class_session_id) : null,
       sessionTitle: quiz.session_title || null,
       instructorId: quiz.instructor_id ? Number(quiz.instructor_id) : null,

@@ -42,7 +42,7 @@ import {
   publicQuizQuestion,
 } from "../services/quizAttempt.service.js";
 import { buildQuizReportSnapshot } from "../services/quizCloseReport.service.js";
-import { isVideoCourseUnitUnlocked } from "../services/videoCourseUnitAccess.service.js";
+import { getVideoCourseUnitAccessContext } from "../services/videoCourseUnitAccess.service.js";
 
 const router = express.Router();
 const QUIZ_ATTEMPT_SCORE_POLICIES = new Set(["best", "latest", "first"]);
@@ -161,14 +161,26 @@ const assignmentIsPublicPreview = (assignment) => Boolean(
   || (assignment?.lesson_id && assignment?.lesson_is_public_preview),
 );
 
-const studentCanAccessAssignment = async (assignment, user, db = { query }) => {
-  if (assignmentIsPublicPreview(assignment)) return true;
+const studentCanAccessAssignment = async (assignment, user, db = { query }, videoCourseProfileId = null) => {
+  if (assignmentIsPublicPreview(assignment) && !videoCourseProfileId) return true;
+  const unitType = assignment.class_session_id ? "class_session" : (assignment.lesson_id ? "lesson" : null);
+  const unitId = assignment.class_session_id || assignment.lesson_id;
+  let recordAccess = null;
+  if (videoCourseProfileId && unitType) {
+    recordAccess = await getVideoCourseUnitAccessContext({
+      db,
+      userId: user.id,
+      unitType,
+      unitId,
+      videoCourseProfileId,
+    });
+    if (recordAccess.isPublicPreview) return recordAccess.isUnlocked;
+  }
   if (!hasActiveStudentLmsAccess(user) || !(await ensureAssignmentVisibleToStudent(assignment, user.id, db))) {
     return false;
   }
-  const unitType = assignment.class_session_id ? "class_session" : (assignment.lesson_id ? "lesson" : null);
-  const unitId = assignment.class_session_id || assignment.lesson_id;
-  return !unitType || isVideoCourseUnitUnlocked({ db, userId: user.id, unitType, unitId });
+  if (!videoCourseProfileId) return true;
+  return Boolean(recordAccess?.isVideoCourseUnit && recordAccess.isRecordMember && recordAccess.isUnlocked);
 };
 
 const isAssignedTeacher = async (classId, userId, db = { query }) => Boolean((await db.query(
@@ -909,6 +921,12 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
   try {
     const quizId = parsePositiveId(req.params.quizId);
     if (!quizId) return validationError(res, "quizId không hợp lệ");
+    const videoCourseProfileId = req.query?.videoCourseProfileId === undefined
+      ? null
+      : parsePositiveId(req.query.videoCourseProfileId);
+    if (req.query?.videoCourseProfileId !== undefined && !videoCourseProfileId) {
+      return validationError(res, "videoCourseProfileId không hợp lệ");
+    }
 
     const quizResult = await query(
       `SELECT q.id, q.title, q.description, q.activity_scope, q.due_date, q.duration_minutes, q.passing_score,
@@ -938,8 +956,9 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
     const snapshot = await buildQuizReportSnapshot({
       db: { query },
       quizId,
-      reportKind: "live",
+      reportKind: videoCourseProfileId ? "record" : "live",
       includeInternal: req.user.role === "admin",
+      videoCourseProfileId,
     });
     const snapshotStudents = snapshot.students.map((student) => {
       const submitted = student.status === "graded" || student.status === "pending_grading";
@@ -1015,7 +1034,8 @@ router.get("/teacher/quizzes/:quizId/report", protectRoute, requireTeacher, requ
         report: {
           ...snapshot.report,
           status: snapshotIsClosed ? (snapshot.report.provisional ? "provisional" : "final") : "live",
-          rosterMode: "live",
+          rosterMode: videoCourseProfileId ? "record" : "live",
+          videoCourseProfileId: videoCourseProfileId ? String(videoCourseProfileId) : null,
           emailDelivery: delivery ? {
             reportKind: delivery.report_kind,
             status: delivery.status,
@@ -1745,9 +1765,15 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
   try {
     const assignmentId = parsePositiveId(req.params.assignmentId);
     if (!assignmentId) return validationError(res, "assignmentId không hợp lệ");
+    const videoCourseProfileId = req.query?.videoCourseProfileId === undefined
+      ? null
+      : parsePositiveId(req.query.videoCourseProfileId);
+    if (req.query?.videoCourseProfileId !== undefined && !videoCourseProfileId) {
+      return validationError(res, "videoCourseProfileId không hợp lệ");
+    }
     const assignment = await getAssignment(assignmentId);
     if (!assignment) return notFound(res, "Không tìm thấy bài tập");
-    if (req.user.role === "user" && !(await studentCanAccessAssignment(assignment, req.user))) return forbidden(res, "Bạn chưa được cấp quyền truy cập bài tập này");
+    if (req.user.role === "user" && !(await studentCanAccessAssignment(assignment, req.user, { query }, videoCourseProfileId))) return forbidden(res, "Bạn chưa được cấp quyền truy cập bài tập này");
     if (req.user.role === "creator" && !(await canGradeAssignment(assignment, req.user))) return forbidden(res, "Bạn không có quyền xem bài tập này");
     const accommodation = req.user.role === "user"
       ? await getAssessmentAccommodation({ assessmentType: "assignment", assessmentId: assignmentId, userId: req.user.id })
@@ -1790,14 +1816,18 @@ router.get("/:assignmentId", protectRoute, async (req, res, next) => {
          FROM submission_grades sg LEFT JOIN users grader ON grader.id = sg.grader_id
          WHERE sg.submission_id = s.id AND sg.submission_revision = s.revision ORDER BY sg.graded_at DESC, sg.id DESC LIMIT 1
        ) sg ON true
-       WHERE s.assignment_id = $1 AND s.user_id = $2`,
-      [assignmentId, req.user.id],
+       WHERE s.assignment_id = $1 AND s.user_id = $2
+         AND s.video_course_profile_id IS NOT DISTINCT FROM $3::bigint`,
+      [assignmentId, req.user.id, videoCourseProfileId],
     );
     const row = {
       ...assignment,
       ...(submission.rows[0] || {}),
       file_assets: parseJsonArray(submission.rows[0]?.file_assets),
-      due_date: submission.rows[0]?.return_requested ? submission.rows[0].resubmit_until : effectiveAssignmentDueDate(assignment, accommodation),
+      due_date: videoCourseProfileId
+        ? null
+        : (submission.rows[0]?.return_requested ? submission.rows[0].resubmit_until : effectiveAssignmentDueDate(assignment, accommodation)),
+      video_course_profile_id: videoCourseProfileId,
       accommodation: serializeAccommodation(accommodation),
     };
     return res.json({
@@ -2217,9 +2247,15 @@ router.post("/:id/submit", protectRoute, requireRole("user"), async (req, res) =
   try {
     const assignmentId = parsePositiveId(req.params.id);
     if (!assignmentId) return validationError(res, "assignmentId không hợp lệ");
+    const videoCourseProfileId = req.query?.videoCourseProfileId === undefined
+      ? null
+      : parsePositiveId(req.query.videoCourseProfileId);
+    if (req.query?.videoCourseProfileId !== undefined && !videoCourseProfileId) {
+      return validationError(res, "videoCourseProfileId không hợp lệ");
+    }
     const assignment = await getAssignment(assignmentId);
     if (!assignment) return notFound(res, "Không tìm thấy bài tập");
-    if (!(await studentCanAccessAssignment(assignment, req.user))) return forbidden(res, "Bạn chưa được đăng ký vào khóa/lớp của bài tập này");
+    if (!(await studentCanAccessAssignment(assignment, req.user, { query }, videoCourseProfileId))) return forbidden(res, "Bạn chưa được đăng ký vào khóa/lớp của bài tập này");
     const {
       contentText,
       fileAssetId: rawFileAssetId,
@@ -2253,7 +2289,13 @@ router.post("/:id/submit", protectRoute, requireRole("user"), async (req, res) =
 
     await client.query("BEGIN");
     await assertGradebookOpen(client, assignment.live_class_id);
-    const existing = await client.query("SELECT * FROM assignment_submissions WHERE assignment_id = $1 AND user_id = $2 FOR UPDATE", [assignmentId, req.user.id]);
+    const existing = await client.query(
+      `SELECT * FROM assignment_submissions
+       WHERE assignment_id = $1 AND user_id = $2
+         AND video_course_profile_id IS NOT DISTINCT FROM $3::bigint
+       FOR UPDATE`,
+      [assignmentId, req.user.id, videoCourseProfileId],
+    );
     if (existing.rows.length > 0 && !canResubmit(existing.rows[0])) {
       await client.query("ROLLBACK");
       return conflict(res, existing.rows[0].status === "graded" ? "Bài đã được chấm và đã khóa" : "Bài đã được nộp, không thể nộp đè", "SUBMISSION_LOCKED");
@@ -2282,7 +2324,9 @@ router.post("/:id/submit", protectRoute, requireRole("user"), async (req, res) =
     }
 
     const accommodation = await getAssessmentAccommodation({ assessmentType: "assignment", assessmentId: assignmentId, userId: req.user.id, db: client });
-    const dueDate = existing.rows[0]?.return_requested ? existing.rows[0].resubmit_until : effectiveAssignmentDueDate(assignment, accommodation);
+    const dueDate = videoCourseProfileId
+      ? null
+      : (existing.rows[0]?.return_requested ? existing.rows[0].resubmit_until : effectiveAssignmentDueDate(assignment, accommodation));
     const isLate = dueDate && Date.now() > new Date(dueDate).getTime();
     let result;
     if (existing.rows[0]) {
@@ -2301,10 +2345,11 @@ router.post("/:id/submit", protectRoute, requireRole("user"), async (req, res) =
           link: `/lms/teacher/assignments/review?assignmentId=${assignmentId}`, key: `resubmission:${old.id}:${old.revision + 1}`, actorId: req.user.id });
       }
     } else result = await client.query(
-      `INSERT INTO assignment_submissions (assignment_id, user_id, content_text, file_asset_id, file_asset_ids, audio_asset_id, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, assignment_id, user_id, content_text, file_asset_id, file_asset_ids, audio_asset_id, status, submitted_at`,
-      [assignmentId, req.user.id, contentText?.trim() || "", fileAssetId, fileAssetIds, audioAssetId, isLate ? "late" : "submitted"],
+      `INSERT INTO assignment_submissions
+         (assignment_id, user_id, video_course_profile_id, content_text, file_asset_id, file_asset_ids, audio_asset_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, assignment_id, user_id, video_course_profile_id, content_text, file_asset_id, file_asset_ids, audio_asset_id, status, submitted_at`,
+      [assignmentId, req.user.id, videoCourseProfileId, contentText?.trim() || "", fileAssetId, fileAssetIds, audioAssetId, isLate ? "late" : "submitted"],
     );
     await client.query("UPDATE submission_assets SET assignment_id = $1, updated_at = NOW() WHERE id = ANY($2::bigint[]) AND user_id = $3", [assignmentId, allAssetIds, req.user.id]);
     await client.query("COMMIT");

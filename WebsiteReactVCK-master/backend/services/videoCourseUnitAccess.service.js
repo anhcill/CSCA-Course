@@ -28,6 +28,7 @@ const loadMirrorUnits = async (db, profile, userId) => (await db.query(
              AND EXISTS (
                SELECT 1 FROM quiz_attempts qa
                WHERE qa.quiz_id = q.id AND qa.user_id = $2
+                 AND qa.video_course_profile_id = $3
                  AND (qa.status IN ('SUBMITTED','GRADED','COMPLETED','submitted','graded','completed')
                    OR qa.submitted_at IS NOT NULL)
              )) AS completed_quiz_count
@@ -43,7 +44,7 @@ const loadMirrorUnits = async (db, profile, userId) => (await db.query(
      ON vwp.user_id = $2 AND vwp.video_asset_id = csv.video_asset_id
    WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
    ORDER BY cs.start_time, cs.id`,
-  [profile.source_live_class_id, userId],
+  [profile.source_live_class_id, userId, profile.id],
 )).rows;
 
 const loadIndependentUnits = async (db, profile, userId) => (await db.query(
@@ -58,6 +59,7 @@ const loadIndependentUnits = async (db, profile, userId) => (await db.query(
              AND EXISTS (
                SELECT 1 FROM quiz_attempts qa
                WHERE qa.quiz_id = q.id AND qa.user_id = $2
+                 AND qa.video_course_profile_id = $3
                  AND (qa.status IN ('SUBMITTED','GRADED','COMPLETED','submitted','graded','completed')
                    OR qa.submitted_at IS NOT NULL)
              )) AS completed_quiz_count
@@ -75,7 +77,7 @@ const loadIndependentUnits = async (db, profile, userId) => (await db.query(
        AND (vwp.video_asset_id = COALESCE(lva.video_asset_id, l.video_asset_id) OR vwp.lesson_id = l.id)
    WHERE l.course_id = $1 AND l.is_published = TRUE
    ORDER BY COALESCE(s.sort_order, 0), l.sort_order, l.id`,
-  [profile.course_id, userId],
+  [profile.course_id, userId, profile.id],
 )).rows;
 
 const completed = (unit) => {
@@ -86,8 +88,10 @@ const completed = (unit) => {
   return videoComplete && quizComplete;
 };
 
-export const isVideoCourseUnitUnlocked = async ({ db, userId, unitType, unitId }) => {
-  if (!userId || !unitId || !["class_session", "lesson"].includes(unitType)) return true;
+export const getVideoCourseUnitAccessContext = async ({ db, userId, unitType, unitId, videoCourseProfileId = null }) => {
+  if (!userId || !unitId || !["class_session", "lesson"].includes(unitType)) {
+    return { isVideoCourseUnit: false, isPublicPreview: false, isRecordMember: false, isUnlocked: true, profile: null };
+  }
 
   const profiles = unitType === "class_session"
     ? (await db.query(
@@ -96,8 +100,9 @@ export const isVideoCourseUnitUnlocked = async ({ db, userId, unitType, unitId }
        JOIN video_course_profiles vcp
          ON vcp.mode = 'MIRROR' AND vcp.source_live_class_id = cs.live_class_id
        WHERE cs.id = $1 AND vcp.status = 'active'
+         AND ($2::bigint IS NULL OR vcp.id = $2)
        ORDER BY vcp.id`,
-      [unitId],
+      [unitId, videoCourseProfileId],
     )).rows
     : (await db.query(
       `SELECT vcp.*, l.is_public_preview
@@ -105,11 +110,17 @@ export const isVideoCourseUnitUnlocked = async ({ db, userId, unitType, unitId }
        JOIN video_course_profiles vcp
          ON vcp.mode = 'INDEPENDENT' AND vcp.course_id = l.course_id
        WHERE l.id = $1 AND vcp.status = 'active'
+         AND ($2::bigint IS NULL OR vcp.id = $2)
        ORDER BY vcp.id`,
-      [unitId],
+      [unitId, videoCourseProfileId],
     )).rows;
 
-  if (profiles.length === 0 || profiles[0].is_public_preview === true) return true;
+  if (profiles.length === 0) {
+    return { isVideoCourseUnit: false, isPublicPreview: false, isRecordMember: false, isUnlocked: true, profile: null };
+  }
+  if (profiles[0].is_public_preview === true) {
+    return { isVideoCourseUnit: true, isPublicPreview: true, isRecordMember: false, isUnlocked: true, profile: profiles[0] };
+  }
   let profile = null;
   for (const candidate of profiles) {
     if (await hasRecordingMembership(db, candidate, userId)) {
@@ -117,14 +128,21 @@ export const isVideoCourseUnitUnlocked = async ({ db, userId, unitType, unitId }
       break;
     }
   }
-  if (!profile) return true;
+  if (!profile) {
+    return { isVideoCourseUnit: true, isPublicPreview: false, isRecordMember: false, isUnlocked: true, profile: null };
+  }
 
   const units = profile.mode === "MIRROR"
     ? await loadMirrorUnits(db, profile, userId)
     : await loadIndependentUnits(db, profile, userId);
   const targetIndex = units.findIndex((unit) => String(unit.id) === String(unitId));
-  if (targetIndex <= 0) return targetIndex === 0;
-  return units.slice(0, targetIndex).every(completed);
+  const isUnlocked = targetIndex === 0
+    || (targetIndex > 0 && units.slice(0, targetIndex).every(completed));
+  return { isVideoCourseUnit: true, isPublicPreview: false, isRecordMember: true, isUnlocked, profile };
 };
+
+export const isVideoCourseUnitUnlocked = async (options) => (
+  (await getVideoCourseUnitAccessContext(options)).isUnlocked
+);
 
 export default isVideoCourseUnitUnlocked;

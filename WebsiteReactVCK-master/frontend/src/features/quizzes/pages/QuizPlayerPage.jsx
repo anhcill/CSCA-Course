@@ -89,6 +89,7 @@ export default function QuizPlayerPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const backUrl = searchParams.get('backUrl') || searchParams.get('returnUrl');
+  const videoCourseProfileId = searchParams.get('videoCourseProfileId');
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -183,7 +184,7 @@ export default function QuizPlayerPage() {
       setShowChinese(true);
     }
 
-    fetchStudentQuizStart(quizId, { newAttempt })
+    fetchStudentQuizStart(quizId, { newAttempt, videoCourseProfileId })
       .then((res) => {
         if (!isMounted) return;
         const data = res?.data || res;
@@ -337,7 +338,7 @@ export default function QuizPlayerPage() {
     return () => {
       isMounted = false;
     };
-  }, [quizId]);
+  }, [quizId, videoCourseProfileId]);
 
   useEffect(() => {
     loadQuiz();

@@ -976,7 +976,13 @@ export default function VideoCourseWorkspacePage() {
 
                             <button
                               type="button"
-                              onClick={() => navigate(`/quizzes/${quiz.id}?backUrl=${encodeURIComponent(window.location.pathname)}`)}
+                              onClick={() => {
+                                const params = new URLSearchParams({ backUrl: window.location.pathname });
+                                if (workspaceData?.videoCourseProfileId) {
+                                  params.set("videoCourseProfileId", workspaceData.videoCourseProfileId);
+                                }
+                                navigate(`/quizzes/${quiz.id}?${params.toString()}`);
+                              }}
                               className={`px-4 py-2 rounded-xl font-bold text-xs transition shadow-sm self-start sm:self-auto shrink-0 ${
                                 quiz.isCompleted
                                   ? "bg-emerald-600 hover:bg-emerald-500 text-white"
@@ -1034,11 +1040,13 @@ export default function VideoCourseWorkspacePage() {
 
                               <button
                                 type="button"
-                                onClick={() => navigate(
-                                  isPublicPreviewAccess
-                                    ? `/assignments/${assignment.id}/submit?backUrl=${encodeURIComponent(window.location.pathname)}`
-                                    : `/lms/assignments/${assignment.id}/submit`,
-                                )}
+                                onClick={() => {
+                                  const params = new URLSearchParams({ backUrl: window.location.pathname });
+                                  if (workspaceData?.videoCourseProfileId) {
+                                    params.set("videoCourseProfileId", workspaceData.videoCourseProfileId);
+                                  }
+                                  navigate(`/assignments/${assignment.id}/submit?${params.toString()}`);
+                                }}
                                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-sm self-start sm:self-auto shrink-0"
                               >
                                 {assignment.isSubmitted ? "Xem bài đã nộp" : "Nộp bài ngay"}

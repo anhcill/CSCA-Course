@@ -619,8 +619,8 @@ export const createAssignment = async ({
   }),
 });
 
-export const fetchAssignmentDetail = async (assignmentId) => (
-  request(`/assignments/${encodeURIComponent(assignmentId)}`)
+export const fetchAssignmentDetail = async (assignmentId, { videoCourseProfileId } = {}) => (
+  request(`/assignments/${encodeURIComponent(assignmentId)}${videoCourseProfileId ? `?videoCourseProfileId=${encodeURIComponent(videoCourseProfileId)}` : ""}`)
 );
 
 export const requestSubmissionUploadUrl = async ({ filename, mimeType, sizeBytes, assetKind }) => (
@@ -637,8 +637,8 @@ export const confirmSubmissionAsset = async ({ assetId, mimeType, sizeBytes }) =
   })
 );
 
-export const submitAssignment = async ({ assignmentId, contentText, fileAssetId, fileAssetIds, audioAssetId }) => (
-  request(`/assignments/${encodeURIComponent(assignmentId)}/submit`, {
+export const submitAssignment = async ({ assignmentId, contentText, fileAssetId, fileAssetIds, audioAssetId, videoCourseProfileId }) => (
+  request(`/assignments/${encodeURIComponent(assignmentId)}/submit${videoCourseProfileId ? `?videoCourseProfileId=${encodeURIComponent(videoCourseProfileId)}` : ""}`, {
     method: "POST",
     body: JSON.stringify({
       contentText,
@@ -668,10 +668,11 @@ export const fetchQuiz = async (quizId) => (
   request(`/assignments/quizzes/${encodeURIComponent(quizId)}`)
 );
 
-export const fetchStudentQuizStart = async (quizId, { attemptId, newAttempt = false } = {}) => {
+export const fetchStudentQuizStart = async (quizId, { attemptId, newAttempt = false, videoCourseProfileId } = {}) => {
   const params = new URLSearchParams();
   if (attemptId) params.set("attemptId", attemptId);
   if (newAttempt) params.set("newAttempt", "1");
+  if (videoCourseProfileId) params.set("videoCourseProfileId", videoCourseProfileId);
   const query = params.size ? `?${params.toString()}` : "";
   return request(`/assignments/quizzes/${encodeURIComponent(quizId)}/start${query}`);
 };

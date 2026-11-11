@@ -16,7 +16,7 @@ import {
   parseQuizDescriptionMetadata,
   publicQuizItems,
 } from "../services/quizAttempt.service.js";
-import { isVideoCourseUnitUnlocked } from "../services/videoCourseUnitAccess.service.js";
+import { getVideoCourseUnitAccessContext } from "../services/videoCourseUnitAccess.service.js";
 
 const router = express.Router();
 
@@ -146,14 +146,21 @@ const getAccommodation = async (db, quizId, userId) => (await db.query(
   [quizId, userId],
 )).rows[0] || null;
 
-const effectiveQuizForStudent = (quiz, accommodation) => accommodation ? {
-  ...quiz,
-  due_date: accommodation.due_at || quiz.due_date,
-  available_until: accommodation.due_at || quiz.available_until,
-  duration_minutes: Number(quiz.duration_minutes || 0) + Number(accommodation.extra_time_minutes || 0),
-  attempt_limit: accommodation.attempt_limit_override || quiz.attempt_limit,
-  accommodation,
-} : { ...quiz, accommodation: null };
+const effectiveQuizForStudent = (quiz, accommodation, { recordScopeId = null } = {}) => {
+  const isRecordScope = Boolean(recordScopeId);
+  return {
+    ...quiz,
+    available_from: isRecordScope ? null : quiz.available_from,
+    due_date: accommodation?.due_at || (isRecordScope ? null : quiz.due_date),
+    available_until: accommodation?.due_at || (isRecordScope ? null : quiz.available_until),
+    duration_minutes: Number(quiz.duration_minutes || 0) + Number(accommodation?.extra_time_minutes || 0),
+    attempt_limit: accommodation?.attempt_limit_override || quiz.attempt_limit,
+    review_policy: isRecordScope && quiz.review_policy === "after_close" ? "after_submit" : quiz.review_policy,
+    video_course_profile_id: recordScopeId,
+    is_record_course_access: isRecordScope,
+    accommodation: accommodation || null,
+  };
+};
 
 const getQuizQuestions = async (db, quizId) => (await db.query(
   `SELECT qq.id, qq.quiz_id, qq.group_id, qq.item_order, qq.question_text,
@@ -178,8 +185,13 @@ const attemptQuestions = (attempt, fallbackQuestions) => {
 
 const resolveAttemptExpiry = ({ attempt, quiz, user, now = new Date() }) => {
   const isPrivileged = user?.role === "admin" || user?.role === "creator";
-  const isPreview = Boolean(quiz?.session_is_public_preview || quiz?.lesson_is_public_preview || quiz?.is_public_preview);
-  const closesAt = (isPrivileged || isPreview) ? null : getQuizAvailability(quiz, now).closesAt;
+  const hasOpenSchedule = Boolean(
+    quiz?.session_is_public_preview
+    || quiz?.lesson_is_public_preview
+    || quiz?.is_public_preview
+    || quiz?.is_record_course_access,
+  );
+  const closesAt = (isPrivileged || hasOpenSchedule) ? null : getQuizAvailability(quiz, now).closesAt;
   const configured = getAttemptExpiry({
     startedAt: attempt.started_at,
     durationMinutes: quiz.duration_minutes,
@@ -211,12 +223,15 @@ const submitAttempt = async ({ client, attempt, questions, autoSubmitted = false
 const getStudentAttempt = async ({ client, quiz, user, userId, questions, startNewAttempt = false }) => {
   const isPrivileged = user?.role === "admin" || user?.role === "creator";
   const isPreview = Boolean(quiz.session_is_public_preview || (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false));
+  const isRecordScope = Boolean(quiz.video_course_profile_id);
 
   const active = await client.query(
     `SELECT * FROM quiz_attempts
-     WHERE quiz_id=$1 AND user_id=$2 AND status='in_progress'
+     WHERE quiz_id=$1 AND user_id=$2
+       AND video_course_profile_id IS NOT DISTINCT FROM $3::bigint
+       AND status='in_progress'
      ORDER BY attempt_number DESC LIMIT 1 FOR UPDATE`,
-    [quiz.id, userId],
+    [quiz.id, userId, quiz.video_course_profile_id || null],
   );
   const now = new Date();
   let attempt = active.rows[0] || null;
@@ -235,14 +250,17 @@ const getStudentAttempt = async ({ client, quiz, user, userId, questions, startN
   }
 
   const submitted = await client.query(
-    `SELECT * FROM quiz_attempts WHERE quiz_id=$1 AND user_id=$2 ORDER BY attempt_number DESC FOR UPDATE`,
-    [quiz.id, userId],
+    `SELECT * FROM quiz_attempts
+     WHERE quiz_id=$1 AND user_id=$2
+       AND video_course_profile_id IS NOT DISTINCT FROM $3::bigint
+     ORDER BY attempt_number DESC FOR UPDATE`,
+    [quiz.id, userId, quiz.video_course_profile_id || null],
   );
-  const finalized = !isPrivileged && !isPreview && quiz.live_class_id && (await client.query(
+  const finalized = !isPrivileged && !isPreview && !isRecordScope && quiz.live_class_id && (await client.query(
     "SELECT 1 FROM gradebook_finalizations WHERE class_id=$1 AND reopened_at IS NULL",
     [quiz.live_class_id],
   )).rows.length > 0;
-  const availability = (isPrivileged || isPreview)
+  const availability = (isPrivileged || isPreview || isRecordScope)
     ? { isOpen: true, reason: null, opensAt: null, closesAt: null }
     : getQuizAvailability(quiz, now);
   const reachedLimit = !isPrivileged && submitted.rows.length >= Number(quiz.attempt_limit || 1);
@@ -315,9 +333,10 @@ const getStudentAttempt = async ({ client, quiz, user, userId, questions, startN
   const expiresAt = getAttemptExpiry({ startedAt: now, durationMinutes: quiz.duration_minutes, closesAt: availability.closesAt });
   const snapshot = makeQuestionSnapshot(questions, quiz.shuffle_questions);
   attempt = (await client.query(
-    `INSERT INTO quiz_attempts (quiz_id, user_id, attempt_number, expires_at, question_snapshot)
-     VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING *`,
-    [quiz.id, userId, attemptNumber, expiresAt?.toISOString() || null, JSON.stringify(snapshot)],
+    `INSERT INTO quiz_attempts
+       (quiz_id, user_id, video_course_profile_id, attempt_number, expires_at, question_snapshot)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING *`,
+    [quiz.id, userId, quiz.video_course_profile_id || null, attemptNumber, expiresAt?.toISOString() || null, JSON.stringify(snapshot)],
   )).rows[0];
   return { attempt, computed: null, created: true, timedOut: false, canStartNewAttempt: false };
 };
@@ -332,7 +351,7 @@ const lockStudentAttempt = async (client, attemptId, userId) => {
   if (!scope) return null;
   if (scope.live_class_id) await client.query("SELECT id FROM live_classes WHERE id=$1 FOR UPDATE", [scope.live_class_id]);
   await client.query("SELECT id FROM quizzes WHERE id=$1 FOR UPDATE", [scope.quiz_id]);
-  return (await client.query(
+  const attempt = (await client.query(
     `SELECT qa.*,
             q.duration_minutes + COALESCE(aa.extra_time_minutes, 0) AS duration_minutes,
             COALESCE(aa.due_at, q.available_until) AS available_until,
@@ -351,6 +370,13 @@ const lockStudentAttempt = async (client, attemptId, userId) => {
      WHERE qa.id=$1 AND qa.user_id=$2 FOR UPDATE OF qa`,
     [attemptId, userId],
   )).rows[0] || null;
+  if (attempt?.video_course_profile_id) {
+    attempt.available_until = null;
+    attempt.due_date = null;
+    attempt.is_record_course_access = true;
+    if (attempt.review_policy === "after_close") attempt.review_policy = "after_submit";
+  }
+  return attempt;
 };
 
 const validateEssayAssets = async (db, assetIds, userId) => {
@@ -479,6 +505,12 @@ router.get("/quizzes/:quizId/start", protectRoute, requireQuizPlayerAccess, asyn
   try {
     const quizId = parsePositiveId(req.params.quizId);
     if (!quizId) return validationError(res, "quizId không hợp lệ");
+    const requestedVideoCourseProfileId = req.query?.videoCourseProfileId === undefined
+      ? null
+      : parsePositiveId(req.query.videoCourseProfileId);
+    if (req.query?.videoCourseProfileId !== undefined && !requestedVideoCourseProfileId) {
+      return validationError(res, "videoCourseProfileId không hợp lệ");
+    }
     await client.query("BEGIN");
     const quiz = await getQuiz(client, quizId);
     if (!quiz) throw Object.assign(new Error("Không tìm thấy đề thi"), { status: 404 });
@@ -487,23 +519,34 @@ router.get("/quizzes/:quizId/start", protectRoute, requireQuizPlayerAccess, asyn
     const isPublicPreview = Boolean(quiz.session_is_public_preview || (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false));
     const unitType = quiz.class_session_id ? "class_session" : (quiz.lesson_id ? "lesson" : null);
     const unitId = quiz.class_session_id || quiz.lesson_id;
-    if (!isPrivileged && !isPublicPreview && unitType && !(await isVideoCourseUnitUnlocked({
-      db: client,
-      userId: req.user.id,
-      unitType,
-      unitId,
-    }))) {
-      throw Object.assign(
-        new Error("Bài này sẽ mở sau khi bạn hoàn thành buổi học trước nhé."),
-        { status: 403 },
-      );
+    let recordScopeId = null;
+    if (requestedVideoCourseProfileId && unitType && !isPrivileged) {
+      const recordAccess = await getVideoCourseUnitAccessContext({
+        db: client,
+        userId: req.user.id,
+        unitType,
+        unitId,
+        videoCourseProfileId: requestedVideoCourseProfileId,
+      });
+      if (!recordAccess.isVideoCourseUnit || (!recordAccess.isRecordMember && !recordAccess.isPublicPreview)) {
+        throw Object.assign(new Error("Bạn chưa được cấp quyền vào lớp Record này"), { status: 403 });
+      }
+      if (!recordAccess.isUnlocked) {
+        throw Object.assign(
+          new Error("Bài này sẽ mở sau khi bạn hoàn thành buổi học trước nhé."),
+          { status: 403 },
+        );
+      }
+      recordScopeId = requestedVideoCourseProfileId;
+    } else if (!isPrivileged && !isPublicPreview && unitType && requestedVideoCourseProfileId) {
+      throw Object.assign(new Error("Không tìm thấy bài học Record tương ứng"), { status: 403 });
     }
     if (quiz.live_class_id) await client.query("SELECT id FROM live_classes WHERE id=$1 FOR UPDATE", [quiz.live_class_id]);
     await client.query("SELECT id FROM quizzes WHERE id=$1 FOR UPDATE", [quiz.id]);
     const questions = await getQuizQuestions(client, quizId);
     if (questions.length === 0) throw Object.assign(new Error("Đề thi chưa có câu hỏi"), { status: 404 });
     const accommodation = await getAccommodation(client, quizId, req.user.id);
-    const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation);
+    const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation, { recordScopeId });
     const state = await getStudentAttempt({
       client,
       quiz: effectiveQuiz,
@@ -638,7 +681,7 @@ router.post("/attempts/:attemptId/submit", protectRoute, requireQuizPlayerAccess
     const gamification = await awardXp({
       db: client,
       userId: req.user.id,
-      eventKey: `quiz:${attempt.quiz_id}:attempt:${attempt.attempt_number}:submitted`,
+      eventKey: `quiz:${attempt.quiz_id}:scope:${attempt.video_course_profile_id || "live"}:attempt:${attempt.attempt_number}:submitted`,
       eventType: "quiz_submitted",
       xp: passed ? XP_VALUES.quizPassed : XP_VALUES.quizSubmitted,
       metadata: { quizId: attempt.quiz_id, attemptId: attempt.id, attemptNumber: attempt.attempt_number, passed, percentage: submitted.computed.percentage },

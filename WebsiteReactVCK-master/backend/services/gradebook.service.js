@@ -6,6 +6,7 @@ export const buildGradebook = async (db, classId, sessionId = null) => {
   const policy = stored?.policy || DEFAULT_GRADEBOOK_POLICY;
   const students = (await db.query(`SELECT u.id, COALESCE(u.username, u.email) AS name, u.email, ce.learning_mode FROM class_enrollments ce
     JOIN users u ON u.id = ce.user_id WHERE ce.live_class_id = $1 AND ce.status = 'active'
+      AND COALESCE(ce.learning_mode, 'live') <> 'recording'
       AND ce.is_internal_test = FALSE ORDER BY LOWER(COALESCE(u.username,u.email)),u.id`, [classId])).rows;
   const sessions = (await db.query(`SELECT id FROM class_sessions WHERE live_class_id = $1 AND status <> 'cancelled'
     AND end_time <= NOW() AND ($2::bigint IS NULL OR id = $2)`, [classId, sessionId])).rows;
@@ -27,7 +28,9 @@ export const buildGradebook = async (db, classId, sessionId = null) => {
   )).rows;
   const quizzes = (await db.query(
     `SELECT qa.*, CONCAT('quiz-', q.id) AS activity_id FROM quiz_attempts qa JOIN quizzes q ON q.id=qa.quiz_id
-     WHERE q.live_class_id=$1 AND q.status='PUBLISHED' AND qa.status='submitted' AND ($2::bigint IS NULL OR q.class_session_id=$2)`, [classId, sessionId],
+     WHERE q.live_class_id=$1 AND q.status='PUBLISHED' AND qa.status='submitted'
+       AND qa.video_course_profile_id IS NULL
+       AND ($2::bigint IS NULL OR q.class_session_id=$2)`, [classId, sessionId],
   )).rows;
   const attendance = (await db.query(
     `SELECT ca.* FROM class_attendance ca JOIN class_sessions cs ON cs.id=ca.session_id

@@ -90,6 +90,7 @@ export default function AssignmentSubmitPage() {
   const { id, courseId, classId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedBackUrl = searchParams.get("backUrl") || "";
+  const videoCourseProfileId = searchParams.get("videoCourseProfileId");
   const safeBackUrl = requestedBackUrl.startsWith("/video-courses/") ? requestedBackUrl : "";
   const assignmentListPath = safeBackUrl || (courseId && classId
     ? `/lms/courses/${courseId}/classes/${classId}/assignments`
@@ -132,7 +133,7 @@ export default function AssignmentSubmitPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const res = await fetchAssignmentDetail(id);
+      const res = await fetchAssignmentDetail(id, { videoCourseProfileId });
       if (res.success && res.data) {
         const currentAssignment = res.data;
         setAssignment(currentAssignment);
@@ -191,7 +192,7 @@ export default function AssignmentSubmitPage() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, videoCourseProfileId]);
 
   useEffect(() => {
     loadAssignment();
@@ -443,6 +444,7 @@ export default function AssignmentSubmitPage() {
     try {
       const res = await submitAssignment({
         assignmentId: id,
+        videoCourseProfileId,
         contentText: contentText.trim(),
         fileAssetId: readyAssetIds[0] || null,
         fileAssetIds: readyAssetIds,
