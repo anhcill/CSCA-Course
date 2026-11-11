@@ -465,8 +465,9 @@ export default function VideoCourseWorkspacePage() {
     }
   };
 
-  const openFileUrl = (url) => {
+  const openFileUrl = (url, title = "tài liệu") => {
     if (url && (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/api/"))) {
+      toast.loading(`Đang mở ${title}...`, { duration: 1800, id: "open-file" });
       window.open(url, "_blank", "noopener,noreferrer");
       return;
     }
@@ -1390,7 +1391,7 @@ export default function VideoCourseWorkspacePage() {
                       {activeUnit.files.map((file) => (
                         <div
                           key={file.id}
-                          onClick={() => openFileUrl(file.viewUrl)}
+                          onClick={() => openFileUrl(file.viewUrl, file.fileName)}
                           className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
                         >
                           <div className="flex items-center gap-3 truncate">
@@ -1410,7 +1411,7 @@ export default function VideoCourseWorkspacePage() {
                           <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                             <button
                               type="button"
-                              onClick={() => openFileUrl(file.viewUrl)}
+                              onClick={() => openFileUrl(file.viewUrl, file.fileName)}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-sm transition"
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
@@ -1420,7 +1421,7 @@ export default function VideoCourseWorkspacePage() {
                             {file.downloadUrl ? (
                               <button
                                 type="button"
-                                onClick={() => openFileUrl(file.downloadUrl)}
+                                onClick={() => openFileUrl(file.downloadUrl, file.fileName)}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm border border-slate-200 dark:border-slate-600 hover:bg-slate-50 transition"
                               >
                                 <Download className="h-3.5 w-3.5" />

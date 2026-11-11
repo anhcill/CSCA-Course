@@ -100,12 +100,18 @@ const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (character
   "'": "&#39;",
 }[character]));
 
-const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
+const protectedPdfViewerHtml = ({ filename, signedUrl }) => {
+  let r2Origin = "";
+  try {
+    r2Origin = new URL(signedUrl).origin;
+  } catch (_) {}
+  return `<!doctype html>
 <html lang="vi">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(filename)}</title>
+  ${r2Origin ? `<link rel="dns-prefetch" href="${r2Origin}"><link rel="preconnect" href="${r2Origin}" crossorigin>` : ""}
   <style>
     *{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden;background:#0f172a;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
     header{height:52px;display:flex;align-items:center;gap:12px;padding:0 16px;background:#0f172a;color:#fff;border-bottom:1px solid #334155}
@@ -114,6 +120,17 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
     button{flex:none;border:1px solid #475569;border-radius:9px;background:#1e293b;color:#e2e8f0;padding:7px 12px;font-weight:800;cursor:pointer}button:hover{background:#334155}.zoom-button{width:34px;padding:7px 0;font-size:18px;line-height:1}.close-button{margin-left:5px}
     main{position:fixed;inset:52px 0 0;overflow:hidden}iframe{position:absolute;top:-56px;left:0;width:100%;height:calc(100% + 56px);border:0;background:#334155;transform-origin:top left;transition:transform .15s ease}
     body.is-embedded header{display:none}body.is-embedded main{inset:0}
+    #loader{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#fff;z-index:10;transition:opacity .3s ease}
+    .spinner{width:46px;height:46px;border:3px solid rgba(56,189,248,.18);border-top-color:#38bdf8;border-radius:50%;animation:spin .85s linear infinite;margin-bottom:18px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .loader-title{font-size:14px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;margin-bottom:6px}
+    .loader-desc{font-size:12px;color:#94a3b8;max-width:320px;text-align:center;line-height:1.5}
+    .loader-bar{width:160px;height:3px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:16px;overflow:hidden;position:relative}
+    .loader-bar-fill{position:absolute;top:0;left:0;height:100%;background:linear-gradient(90deg,#38bdf8,#818cf8);border-radius:99px;animation:shimmer 1.4s ease-in-out infinite}
+    @keyframes shimmer{0%{left:-40%;width:40%}50%{left:35%;width:55%}100%{left:100%;width:30%}}
+    .reload-hint{margin-top:16px;font-size:11px;color:#64748b;display:none}
+    .reload-btn{background:#1e293b;border:1px solid #475569;border-radius:8px;color:#93c5fd;font-size:11px;font-weight:700;padding:5px 12px;cursor:pointer;margin-top:8px;display:none}
+    .reload-btn:hover{background:#334155}
   </style>
 </head>
 <body>
@@ -126,7 +143,17 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
       <button class="close-button" type="button" onclick="history.length > 1 ? history.back() : window.close()">Đóng</button>
     </div>
   </header>
-  <main><iframe id="pdf-frame" title="${escapeHtml(filename)}" src="${escapeHtml(`${signedUrl}#toolbar=0&navpanes=0&scrollbar=1&zoom=100`)}"></iframe></main>
+  <main>
+    <div id="loader">
+      <div class="spinner"></div>
+      <div class="loader-title">Đang mở tài liệu...</div>
+      <div class="loader-desc">Tài liệu đang được nạp bảo mật. Vui lòng chờ trong giây lát.</div>
+      <div class="loader-bar"><div class="loader-bar-fill"></div></div>
+      <div id="reload-hint" class="reload-hint">Nếu tải quá lâu, bạn có thể thử làm mới:</div>
+      <button id="reload-btn" class="reload-btn" type="button" onclick="location.reload()">Nhấn để làm mới</button>
+    </div>
+    <iframe id="pdf-frame" title="${escapeHtml(filename)}" src="${escapeHtml(`${signedUrl}#toolbar=0&navpanes=0&scrollbar=1&zoom=100`)}" loading="eager"></iframe>
+  </main>
   <script>
     window.addEventListener('keydown', function(e) {
       if ((e.ctrlKey || e.metaKey) && ['s', 'p', 'u'].includes(e.key.toLowerCase())) {
@@ -141,11 +168,32 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
         document.body.classList.add('is-embedded');
       }
     } catch (_) {}
+    const frame = document.getElementById('pdf-frame');
+    const loader = document.getElementById('loader');
+    const reloadHint = document.getElementById('reload-hint');
+    const reloadBtn = document.getElementById('reload-btn');
+    let loaded = false;
+    function hideLoader() {
+      if (loaded) return;
+      loaded = true;
+      if (loader) {
+        loader.style.opacity = '0';
+        loader.style.pointerEvents = 'none';
+        setTimeout(function() { loader.style.display = 'none'; }, 300);
+      }
+    }
+    frame.addEventListener('load', hideLoader);
+    setTimeout(hideLoader, 3500);
+    setTimeout(function() {
+      if (!loaded && reloadHint && reloadBtn) {
+        reloadHint.style.display = 'block';
+        reloadBtn.style.display = 'inline-block';
+      }
+    }, 6000);
     let zoom = 100;
     function changeZoom(delta) {
       zoom = Math.max(30, Math.min(250, zoom + delta));
       document.getElementById('zoom-value').textContent = zoom + '%';
-      const frame = document.getElementById('pdf-frame');
       const scale = zoom / 100;
       frame.style.top = (-56 * scale) + 'px';
       frame.style.width = (100 / scale) + '%';
@@ -155,6 +203,7 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => `<!doctype html>
   </script>
 </body>
 </html>`;
+};
 
 const classAccess = async (classId, user) => {
   const result = await query(
