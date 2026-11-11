@@ -37,19 +37,30 @@ const parsePositiveId = (value) => {
 };
 
 // Check if user has active LMS access grant for course
-const checkCourseEntitlement = async (courseId, userId) => {
+const checkCourseEntitlement = async (courseId, userId, { sourceLiveClassId = null } = {}) => {
   const result = await query(
     `SELECT 1 FROM lms_access_grants g
-     WHERE g.user_id = $1 AND g.course_id = $2
+     WHERE g.user_id = $1
+       AND (
+         g.course_id = $2
+         OR ($3::bigint IS NOT NULL AND EXISTS (
+           SELECT 1 FROM live_classes lc
+           WHERE lc.id = $3 AND lc.course_id = g.course_id
+         ))
+         OR ($3::bigint IS NOT NULL AND EXISTS (
+           SELECT 1 FROM class_enrollments ce
+           WHERE ce.user_id = $1 AND ce.live_class_id = $3 AND ce.status = 'active'
+         ))
+       )
        AND g.access_status = 'active'
        AND g.valid_from <= NOW()
        AND (g.valid_until IS NULL OR g.valid_until > NOW())`,
-    [userId, courseId],
+    [userId, courseId, sourceLiveClassId],
   );
   return result.rows.length > 0;
 };
 
-// Check if learner is enrolled in recording class or alias
+// Check if learner is enrolled in recording class or alias, or enrolled in the source live class that this video course mirrors
 const checkRecordMembership = async ({ userId, liveClassId = null, courseId, managementClassId = null, mode }) => {
   const result = await query(
     `SELECT ce.id, ce.learning_mode, ce.management_class_alias_id,
@@ -59,16 +70,28 @@ const checkRecordMembership = async ({ userId, liveClassId = null, courseId, man
      LEFT JOIN live_classes lc ON lc.id = ce.live_class_id
      WHERE ce.user_id = $1
        AND ce.status = 'active'
-       AND ce.learning_mode = 'recording'
-       AND (lc.course_id = $2 OR ce.course_id = $2)
-       AND ($3::text IS NULL OR LOWER(mcla.alias_class_source_id) = LOWER($3))
-       AND ($4::bigint IS NULL OR ce.live_class_id = $4)
        AND (
-         $5::text <> 'INDEPENDENT'
-         OR mcla.recording_content_mode = 'INDEPENDENT'
-         OR ($3::text IS NULL AND ce.live_class_id IS NULL)
+         -- Standard record enrollment
+         (
+           ce.learning_mode = 'recording'
+           AND (lc.course_id = $2 OR ce.course_id = $2)
+           AND ($3::text IS NULL OR LOWER(mcla.alias_class_source_id) = LOWER($3))
+           AND ($4::bigint IS NULL OR ce.live_class_id = $4)
+           AND (
+             $5::text <> 'INDEPENDENT'
+             OR mcla.recording_content_mode = 'INDEPENDENT'
+             OR ($3::text IS NULL AND ce.live_class_id IS NULL)
+           )
+         )
+         OR
+         -- Live class student whose class is mirrored by this record course
+         (
+           $5::text = 'MIRROR'
+           AND $4::bigint IS NOT NULL
+           AND ce.live_class_id = $4
+         )
        )
-     ORDER BY ce.id ASC
+     ORDER BY (ce.learning_mode = 'recording') DESC, ce.id ASC
      LIMIT 1`,
     [userId, courseId, managementClassId, liveClassId, mode],
   );
@@ -264,12 +287,15 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
       const membershipProfile = await query(
         `SELECT vcp.*
          FROM video_course_profiles vcp
-         JOIN management_class_learning_aliases alias
+         LEFT JOIN management_class_learning_aliases alias
            ON LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id)
-         JOIN class_enrollments ce ON ce.management_class_alias_id = alias.id
+         LEFT JOIN class_enrollments ce
+           ON ce.management_class_alias_id = alias.id AND ce.user_id = $2 AND ce.status = 'active' AND ce.learning_mode = 'recording'
+         LEFT JOIN class_enrollments ce_live
+           ON ce_live.live_class_id = vcp.source_live_class_id AND ce_live.user_id = $2 AND ce_live.status = 'active'
          WHERE vcp.course_id = $1 AND vcp.status = 'active'
-           AND ce.user_id = $2 AND ce.status = 'active' AND ce.learning_mode = 'recording'
-         ORDER BY vcp.id ASC LIMIT 1`,
+           AND (ce.id IS NOT NULL OR (vcp.mode = 'MIRROR' AND ce_live.id IS NOT NULL))
+         ORDER BY (ce.id IS NOT NULL) DESC, vcp.id ASC LIMIT 1`,
         [courseId, req.user.id],
       );
       profile = membershipProfile.rows[0] || profile;
@@ -305,7 +331,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
     if (isLearner) {
       const hasActiveLmsAccount = hasActiveStudentLmsAccess(req.user);
       const hasEntitlement = hasActiveLmsAccount
-        && await checkCourseEntitlement(courseId, req.user.id);
+        && await checkCourseEntitlement(courseId, req.user.id, { sourceLiveClassId });
       hasFullLearnerAccess = hasActiveLmsAccount && hasEntitlement;
       learnerAccessErrorCode = !hasActiveLmsAccount
         ? "LMS_ACCESS_INACTIVE"
@@ -400,6 +426,16 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           ...current,
           isLocked: !current.isPublicPreview,
           lockReason: current.isPublicPreview ? null : ACCESS_HELP_MESSAGE,
+          requiredPrevUnitId: null,
+          requiredPrevUnitTitle: null,
+          requiredPrevUnitNumber: null,
+        }));
+      }
+      if (!isLearner) {
+        return rawUnits.map((current) => ({
+          ...current,
+          isLocked: false,
+          lockReason: null,
           requiredPrevUnitId: null,
           requiredPrevUnitTitle: null,
           requiredPrevUnitNumber: null,
@@ -625,7 +661,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
-                        AND qa.video_course_profile_id = $3
+                        AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS attempts_count,
                     (
@@ -633,7 +669,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
-                        AND qa.video_course_profile_id = $3
+                        AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS best_score,
                     (
@@ -641,7 +677,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
-                        AND qa.video_course_profile_id = $3
+                        AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS max_score
              FROM quizzes q
@@ -951,7 +987,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
-                        AND qa.video_course_profile_id = $3
+                        AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS attempts_count,
                     (
@@ -959,7 +995,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
-                        AND qa.video_course_profile_id = $3
+                        AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS best_score,
                     (
@@ -967,7 +1003,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
-                        AND qa.video_course_profile_id = $3
+                        AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS max_score
              FROM quizzes q
@@ -1187,6 +1223,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           canSubmitAssignments: true,
           allowFileDownload: !isPublicPreviewAccess && profile.allow_file_download === true,
           isPublicPreviewAccess,
+          isAdminPreview: !isLearner,
         },
       },
     });

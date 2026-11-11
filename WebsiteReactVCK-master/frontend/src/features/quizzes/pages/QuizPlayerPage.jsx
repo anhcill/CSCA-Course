@@ -89,7 +89,15 @@ export default function QuizPlayerPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const backUrl = searchParams.get('backUrl') || searchParams.get('returnUrl');
-  const videoCourseProfileId = searchParams.get('videoCourseProfileId');
+  const rawProfileId = searchParams.get('videoCourseProfileId');
+  const videoCourseProfileId = useMemo(() => {
+    if (rawProfileId) return rawProfileId;
+    if (backUrl) {
+      const match = backUrl.match(/\/video-courses\/([^/?#]+)/);
+      if (match) return decodeURIComponent(match[1]);
+    }
+    return null;
+  }, [rawProfileId, backUrl]);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -184,7 +192,7 @@ export default function QuizPlayerPage() {
       setShowChinese(true);
     }
 
-    fetchStudentQuizStart(quizId, { newAttempt, videoCourseProfileId })
+    fetchStudentQuizStart(quizId, { newAttempt, videoCourseProfileId, backUrl })
       .then((res) => {
         if (!isMounted) return;
         const data = res?.data || res;
@@ -523,7 +531,7 @@ export default function QuizPlayerPage() {
       const closesAtValue = quiz.availableUntil || quiz.dueDate;
       const stillOpen = !closesAtValue || new Date(closesAtValue).getTime() > Date.now();
       setCanStartNewAttempt(
-        stillOpen && Number(result.attemptNumber || 1) < Number(quiz.attemptLimit || 1)
+        Boolean(videoCourseProfileId) || (stillOpen && Number(result.attemptNumber || 1) < Number(quiz.attemptLimit || 1))
       );
     } catch (err) {
       console.error('Submit quiz failed:', err);
@@ -804,7 +812,7 @@ export default function QuizPlayerPage() {
               </div>
             )}
 
-            {!isOverdue && canStartNewAttempt && (
+            {(!isOverdue || Boolean(videoCourseProfileId)) && canStartNewAttempt && (
               <button
                 type="button"
                 onClick={() => loadQuiz({ newAttempt: true })}

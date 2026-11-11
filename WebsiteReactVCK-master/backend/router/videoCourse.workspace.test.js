@@ -376,7 +376,7 @@ test("video course workspace: sequential lesson unlocking requires >=60% credite
     layer.route?.path === "/:offeringId/workspace" && layer.route.methods.get
   )).route;
 
-  const fetchWorkspace = async (unitId = null) => {
+  const fetchWorkspace = async (unitId = null, customUser = null) => {
     const res = {
       statusCode: 200,
       body: null,
@@ -384,7 +384,7 @@ test("video course workspace: sequential lesson unlocking requires >=60% credite
       json(body) { this.body = body; return this; },
     };
     await route.stack.at(-1).handle({
-      user: {
+      user: customUser || {
         id: student.id,
         role: "user",
         is_management_managed: true,
@@ -479,4 +479,17 @@ test("video course workspace: sequential lesson unlocking requires >=60% credite
   assert.equal(ws.units[0].isQuizCompleted, true);
   assert.equal(ws.units[0].isCompleted, true);
   assert.equal(ws.units[1].isLocked, false, "Session 2 must unlock after >=60% watch time AND quiz completion");
+
+  // Step 5: Admin access -> All units are unlocked regardless of watch time or quizzes
+  const adminWs = await fetchWorkspace(session2.id, {
+    id: 1,
+    role: "admin",
+    is_management_managed: true,
+    lms_account_status: "active",
+  });
+  assert.equal(adminWs.units[0].isLocked, false);
+  assert.equal(adminWs.units[1].isLocked, false, "Admin must have all units unlocked for quality review");
+  assert.equal(adminWs.capabilities.isAdminPreview, true);
+  assert.equal(adminWs.activeUnit.isLocked, false);
+  assert.notEqual(adminWs.activeUnit.video, null, "Admin must have full active unit payload");
 });

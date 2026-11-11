@@ -47,14 +47,19 @@ import "katex/dist/katex.min.css";
 
 const renderKaTeX = (latex, displayMode = true) => {
   if (!latex || typeof latex !== "string") return "";
+  const cleaned = latex.trim();
   try {
-    return katex.renderToString(latex.trim(), {
+    return katex.renderToString(cleaned, {
       displayMode,
       throwOnError: false,
       strict: "ignore",
+      output: "html",
     });
   } catch {
-    return latex;
+    return cleaned
+      .replace(/\\text\{([^}]+)\}/g, "$1")
+      .replace(/\\[a-zA-Z]+/g, " ")
+      .trim();
   }
 };
 
@@ -73,7 +78,17 @@ const formatVideoDurationLabel = (unit) => {
   return unit?.hasVideo ? "Video HD" : "Chưa có video";
 };
 
-const recomputeSequentialLocks = (rawUnits = [], previewOnly = false) => {
+const recomputeSequentialLocks = (rawUnits = [], previewOnly = false, isAdminOrTeacher = false) => {
+  if (isAdminOrTeacher) {
+    return rawUnits.map((unit) => ({
+      ...unit,
+      isLocked: false,
+      lockReason: null,
+      requiredPrevUnitId: null,
+      requiredPrevUnitTitle: null,
+      requiredPrevUnitNumber: null,
+    }));
+  }
   if (previewOnly) {
     return rawUnits.map((unit) => ({
       ...unit,
@@ -195,7 +210,8 @@ export default function VideoCourseWorkspacePage() {
       const res = await fetchVideoCourseWorkspace(offeringId, { unitId: unitTarget });
       if (res?.success && res.data) {
         const previewOnly = Boolean(res.data.capabilities?.isPublicPreviewAccess);
-        const normalizedUnits = recomputeSequentialLocks(res.data.units || [], previewOnly);
+        const isAdminOrTeacher = authUser?.role === "admin" || authUser?.role === "creator" || Boolean(res.data.capabilities?.isAdminPreview);
+        const normalizedUnits = recomputeSequentialLocks(res.data.units || [], previewOnly, isAdminOrTeacher);
         const au = res.data.activeUnit;
         const activeMeta = au ? normalizedUnits.find((u) => String(u.id) === String(au.id)) : null;
 
@@ -246,7 +262,8 @@ export default function VideoCourseWorkspacePage() {
     if (!unit) return;
     if (String(unit.id) === String(activeUnitId)) return;
 
-    if (unit.isLocked) {
+    const isAdminOrTeacher = authUser?.role === "admin" || authUser?.role === "creator" || Boolean(workspaceData?.capabilities?.isAdminPreview);
+    if (!isAdminOrTeacher && unit.isLocked) {
       toast.error(
         unit.lockReason
         || `Bạn xem thêm đến ${REQUIRED_WATCH_PERCENT}% video và hoàn thành bài trắc nghiệm của buổi trước để tiếp tục nhé.`,
@@ -292,7 +309,11 @@ export default function VideoCourseWorkspacePage() {
       if (!changed) return prev;
       return {
         ...prev,
-        units: recomputeSequentialLocks(nextUnits, Boolean(prev.capabilities?.isPublicPreviewAccess)),
+        units: recomputeSequentialLocks(
+          nextUnits,
+          Boolean(prev.capabilities?.isPublicPreviewAccess),
+          authUser?.role === "admin" || authUser?.role === "creator" || Boolean(prev.capabilities?.isAdminPreview),
+        ),
       };
     });
   }, []);
@@ -337,7 +358,11 @@ export default function VideoCourseWorkspacePage() {
         };
       });
 
-      const updatedUnits = recomputeSequentialLocks(rawUpdated, Boolean(prev.capabilities?.isPublicPreviewAccess));
+      const updatedUnits = recomputeSequentialLocks(
+        rawUpdated,
+        Boolean(prev.capabilities?.isPublicPreviewAccess),
+        authUser?.role === "admin" || authUser?.role === "creator" || Boolean(prev.capabilities?.isAdminPreview),
+      );
       const completedCount = updatedUnits.filter((u) => u.isCompleted).length;
       const totalCount = updatedUnits.length || 1;
       const activeMeta = updatedUnits.find((u) => String(u.id) === String(activeUnitId));
@@ -977,9 +1002,10 @@ export default function VideoCourseWorkspacePage() {
                             <button
                               type="button"
                               onClick={() => {
-                                const params = new URLSearchParams({ backUrl: window.location.pathname });
-                                if (workspaceData?.videoCourseProfileId) {
-                                  params.set("videoCourseProfileId", workspaceData.videoCourseProfileId);
+                                const profileId = workspaceData?.videoCourseProfileId || offeringId;
+                                const params = new URLSearchParams({ backUrl: window.location.pathname + window.location.search });
+                                if (profileId) {
+                                  params.set("videoCourseProfileId", profileId);
                                 }
                                 navigate(`/quizzes/${quiz.id}?${params.toString()}`);
                               }}
@@ -1041,9 +1067,10 @@ export default function VideoCourseWorkspacePage() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const params = new URLSearchParams({ backUrl: window.location.pathname });
-                                  if (workspaceData?.videoCourseProfileId) {
-                                    params.set("videoCourseProfileId", workspaceData.videoCourseProfileId);
+                                  const profileId = workspaceData?.videoCourseProfileId || offeringId;
+                                  const params = new URLSearchParams({ backUrl: window.location.pathname + window.location.search });
+                                  if (profileId) {
+                                    params.set("videoCourseProfileId", profileId);
                                   }
                                   navigate(`/assignments/${assignment.id}/submit?${params.toString()}`);
                                 }}

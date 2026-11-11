@@ -77,11 +77,26 @@ export const verifyLearnerVideoAccess = async ({
   if (courseId) {
     const grantRes = await db.query(
       `SELECT 1 FROM lms_access_grants g
-       WHERE g.user_id = $1 AND g.course_id = $2
+       WHERE g.user_id = $1
+         AND (
+           g.course_id = $2
+           OR ($3::bigint IS NOT NULL AND EXISTS (
+             SELECT 1 FROM live_classes lc WHERE lc.id = $3 AND lc.course_id = g.course_id
+           ))
+           OR ($3::bigint IS NOT NULL AND EXISTS (
+             SELECT 1 FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.live_class_id = $3 AND ce.status = 'active'
+           ))
+           OR EXISTS (
+             SELECT 1 FROM video_course_profiles vcp
+             JOIN live_classes lc ON lc.id = vcp.source_live_class_id
+             JOIN class_enrollments ce ON ce.live_class_id = lc.id
+             WHERE vcp.course_id = $2 AND vcp.status = 'active' AND ce.user_id = $1 AND ce.status = 'active'
+           )
+         )
          AND g.access_status = 'active'
          AND g.valid_from <= NOW()
          AND (g.valid_until IS NULL OR g.valid_until > NOW())`,
-      [user.id, courseId],
+      [user.id, courseId, liveClassId],
     );
     if (grantRes.rows.length === 0) {
       return {
@@ -110,26 +125,41 @@ export const verifyLearnerVideoAccess = async ({
       };
     }
     if (requireRecordingMode && enrollment.learning_mode !== "recording") {
-      return {
-        allowed: false,
-        status: 403,
-        errorCode: "RECORD_MEMBERSHIP_REQUIRED",
-        reason: "Học viên lớp Live không có quyền truy cập khóa Record nếu chưa đăng ký gói Record",
-      };
+      const mirrorRes = await db.query(
+        `SELECT 1 FROM video_course_profiles
+         WHERE source_live_class_id = $1 AND status = 'active' AND mode = 'MIRROR'
+         LIMIT 1`,
+        [liveClassId],
+      );
+      if (mirrorRes.rows.length === 0) {
+        return {
+          allowed: false,
+          status: 403,
+          errorCode: "RECORD_MEMBERSHIP_REQUIRED",
+          reason: "Học viên lớp Live không có quyền truy cập khóa Record nếu chưa đăng ký gói Record",
+        };
+      }
     }
   } else if (courseId && requireRecordingMode) {
     // Independent mode: an entitlement alone is insufficient. The learner
-    // must belong to an active paid Record offering for this course.
+    // must belong to an active paid Record offering or a live class mirrored by this course.
     const enrollsRes = await db.query(
       `SELECT ce.learning_mode
        FROM class_enrollments ce
        LEFT JOIN live_classes lc ON lc.id = ce.live_class_id
        WHERE ce.user_id = $1 AND ce.status = 'active'
-         AND (lc.course_id = $2 OR ce.course_id = $2)`,
+         AND (
+           lc.course_id = $2
+           OR ce.course_id = $2
+           OR EXISTS (
+             SELECT 1 FROM video_course_profiles vcp
+             WHERE vcp.course_id = $2 AND vcp.status = 'active'
+               AND (vcp.source_live_class_id = ce.live_class_id OR vcp.course_id = ce.course_id)
+           )
+         )`,
       [user.id, courseId],
     );
-    const hasRecordMode = enrollsRes.rows.some((r) => r.learning_mode === "recording");
-    if (!hasRecordMode) {
+    if (enrollsRes.rows.length === 0) {
       return {
         allowed: false,
         status: 403,

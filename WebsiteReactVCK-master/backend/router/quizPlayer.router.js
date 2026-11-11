@@ -32,6 +32,26 @@ const parsePositiveId = (value) => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const resolveVideoCourseProfile = async (db, rawInput, backUrl = null) => {
+  let profileIdentifier = rawInput;
+  if (!profileIdentifier && backUrl && typeof backUrl === "string") {
+    const match = backUrl.match(/\/video-courses\/([^/?#]+)/);
+    if (match) {
+      profileIdentifier = decodeURIComponent(match[1]);
+    }
+  }
+  if (!profileIdentifier) return null;
+  const numericId = parsePositiveId(profileIdentifier);
+  const rows = (await db.query(
+    `SELECT * FROM video_course_profiles
+     WHERE ($1::bigint IS NOT NULL AND id = $1)
+        OR LOWER(management_class_id) = LOWER($2)
+     LIMIT 1`,
+    [numericId, String(profileIdentifier).trim()],
+  )).rows;
+  return rows[0] || null;
+};
+
 const isQuizPublicPreview = async (db, quizId) => Boolean((await db.query(
   `SELECT 1
    FROM quizzes q
@@ -115,26 +135,96 @@ const getQuiz = async (db, quizId, { lock = false } = {}) => (await db.query(
   [quizId],
 )).rows[0] || null;
 
-const ensureQuizAccess = async (db, quiz, user) => {
+const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) => {
   if (user?.role === "admin" || user?.role === "creator") return true;
   if (String(quiz.quiz_status || "").toUpperCase() !== "PUBLISHED") return false;
   if (quiz.session_is_public_preview) return true;
   if (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false) return true;
   if (!quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
+
   const access = await db.query(
-    `SELECT 1 FROM lms_access_grants
-     WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
-       AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())`,
-    [user.id, quiz.resolved_course_id],
+    `SELECT 1 FROM lms_access_grants g
+     WHERE g.user_id = $1
+       AND (
+         g.course_id = $2
+         OR ($3::bigint IS NOT NULL AND EXISTS (
+           SELECT 1 FROM live_classes lc WHERE lc.id = $3 AND lc.course_id = g.course_id
+         ))
+         OR ($3::bigint IS NOT NULL AND EXISTS (
+           SELECT 1 FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.live_class_id = $3 AND ce.status = 'active'
+         ))
+         OR EXISTS (
+           SELECT 1 FROM video_course_profiles vcp
+           WHERE vcp.course_id = g.course_id AND vcp.status = 'active'
+             AND (vcp.source_live_class_id = $3 OR vcp.course_id = $2)
+         )
+         OR EXISTS (
+           SELECT 1 FROM video_course_profiles vcp
+           WHERE vcp.course_id = $2 AND vcp.status = 'active'
+             AND (
+               vcp.source_live_class_id IN (SELECT lc.id FROM live_classes lc WHERE lc.course_id = g.course_id)
+               OR vcp.source_live_class_id IN (SELECT ce.live_class_id FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.status = 'active')
+             )
+         )
+         OR ($4::bigint IS NOT NULL AND (
+           g.course_id = $4
+           OR EXISTS (
+             SELECT 1 FROM video_course_profiles vcp
+             WHERE vcp.id = $5 AND (
+               vcp.course_id = g.course_id
+               OR vcp.source_live_class_id IN (SELECT lc.id FROM live_classes lc WHERE lc.course_id = g.course_id)
+               OR vcp.source_live_class_id IN (SELECT ce.live_class_id FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.status = 'active')
+             )
+           )
+         ))
+       )
+       AND g.access_status = 'active'
+       AND g.valid_from <= NOW()
+       AND (g.valid_until IS NULL OR g.valid_until > NOW())`,
+    [user.id, quiz.resolved_course_id, quiz.live_class_id, recordProfile?.course_id || null, recordProfile?.id || null],
   );
   if (!access.rows[0]) return false;
+
   const liveClassId = quiz.live_class_id;
   if (!liveClassId) return true;
+
   const enrolled = await db.query(
     `SELECT 1 FROM class_enrollments ce
-     JOIN live_classes lc ON lc.id = ce.live_class_id
-     WHERE ce.user_id = $1 AND ce.live_class_id = $2 AND ce.status = 'active' AND lc.status = 'active'`,
-    [user.id, liveClassId],
+     LEFT JOIN live_classes lc ON lc.id = ce.live_class_id
+     WHERE ce.user_id = $1 AND ce.status = 'active'
+       AND (
+         ce.live_class_id = $2
+         OR ($3::bigint IS NOT NULL AND ce.live_class_id = $3)
+         OR EXISTS (
+           SELECT 1 FROM video_course_profiles vcp
+           LEFT JOIN management_class_learning_aliases alias
+             ON LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id)
+           WHERE vcp.source_live_class_id = $2 AND vcp.status = 'active'
+             AND (
+               (ce.learning_mode = 'recording' AND (
+                 ce.management_class_alias_id = alias.id
+                 OR ce.live_class_id = $2
+                 OR ce.course_id = vcp.course_id
+               ))
+               OR ce.live_class_id = vcp.source_live_class_id
+             )
+         )
+         OR ($4::bigint IS NOT NULL AND EXISTS (
+           SELECT 1 FROM video_course_profiles vcp
+           LEFT JOIN management_class_learning_aliases alias
+             ON LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id)
+           WHERE vcp.id = $4 AND vcp.status = 'active'
+             AND (
+               (ce.learning_mode = 'recording' AND (
+                 ce.management_class_alias_id = alias.id
+                 OR ce.live_class_id = vcp.source_live_class_id
+                 OR ce.course_id = vcp.course_id
+               ))
+               OR (vcp.mode = 'MIRROR' AND ce.live_class_id = vcp.source_live_class_id)
+             )
+         ))
+       )`,
+    [user.id, liveClassId, recordProfile?.source_live_class_id || null, recordProfile?.id || null],
   );
   return Boolean(enrolled.rows[0]);
 };
@@ -154,7 +244,7 @@ const effectiveQuizForStudent = (quiz, accommodation, { recordScopeId = null } =
     due_date: accommodation?.due_at || (isRecordScope ? null : quiz.due_date),
     available_until: accommodation?.due_at || (isRecordScope ? null : quiz.available_until),
     duration_minutes: Number(quiz.duration_minutes || 0) + Number(accommodation?.extra_time_minutes || 0),
-    attempt_limit: accommodation?.attempt_limit_override || quiz.attempt_limit,
+    attempt_limit: isRecordScope ? null : (accommodation?.attempt_limit_override || quiz.attempt_limit),
     review_policy: isRecordScope && quiz.review_policy === "after_close" ? "after_submit" : quiz.review_policy,
     video_course_profile_id: recordScopeId,
     is_record_course_access: isRecordScope,
@@ -263,7 +353,7 @@ const getStudentAttempt = async ({ client, quiz, user, userId, questions, startN
   const availability = (isPrivileged || isPreview || isRecordScope)
     ? { isOpen: true, reason: null, opensAt: null, closesAt: null }
     : getQuizAvailability(quiz, now);
-  const reachedLimit = !isPrivileged && submitted.rows.length >= Number(quiz.attempt_limit || 1);
+  const reachedLimit = !isPrivileged && !isRecordScope && quiz.attempt_limit && submitted.rows.length >= Number(quiz.attempt_limit);
   const cannotStartNew = finalized || reachedLimit || !availability.isOpen;
 
   // Opening a completed quiz must remain a read-only review action. A new
@@ -275,7 +365,7 @@ const getStudentAttempt = async ({ client, quiz, user, userId, questions, startN
       computed: latest ? buildQuizResult(attemptQuestions(latest, questions), latest.answers_json || {}) : null,
       created: false,
       timedOut: false,
-      canStartNewAttempt: !cannotStartNew,
+      canStartNewAttempt: isRecordScope || !cannotStartNew,
     };
   }
 
@@ -505,16 +595,20 @@ router.get("/quizzes/:quizId/start", protectRoute, requireQuizPlayerAccess, asyn
   try {
     const quizId = parsePositiveId(req.params.quizId);
     if (!quizId) return validationError(res, "quizId không hợp lệ");
-    const requestedVideoCourseProfileId = req.query?.videoCourseProfileId === undefined
-      ? null
-      : parsePositiveId(req.query.videoCourseProfileId);
-    if (req.query?.videoCourseProfileId !== undefined && !requestedVideoCourseProfileId) {
+    const rawProfileParam = req.query?.videoCourseProfileId || req.headers["x-video-course-profile-id"] || null;
+    const backUrl = req.query?.backUrl || null;
+    await client.query("BEGIN");
+    const resolvedProfile = await resolveVideoCourseProfile(client, rawProfileParam, backUrl);
+    const requestedVideoCourseProfileId = resolvedProfile ? Number(resolvedProfile.id) : null;
+    if (rawProfileParam && !resolvedProfile) {
+      await client.query("ROLLBACK");
       return validationError(res, "videoCourseProfileId không hợp lệ");
     }
-    await client.query("BEGIN");
     const quiz = await getQuiz(client, quizId);
     if (!quiz) throw Object.assign(new Error("Không tìm thấy đề thi"), { status: 404 });
-    if (!(await ensureQuizAccess(client, quiz, req.user))) throw Object.assign(new Error("Bạn chưa được cấp quyền làm đề thi này"), { status: 403 });
+    if (!(await ensureQuizAccess(client, quiz, req.user, { recordProfile: resolvedProfile }))) {
+      throw Object.assign(new Error("Bạn chưa được cấp quyền làm đề thi này"), { status: 403 });
+    }
     const isPrivileged = req.user?.role === "admin" || req.user?.role === "creator";
     const isPublicPreview = Boolean(quiz.session_is_public_preview || (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false));
     const unitType = quiz.class_session_id ? "class_session" : (quiz.lesson_id ? "lesson" : null);

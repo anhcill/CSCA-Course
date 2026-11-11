@@ -83,13 +83,20 @@ export default function SessionFormulaTab({
           <div className="space-y-5">
         {chapterFormulas.map((formula) => {
           let formulaHtml = '';
+          const cleanedLatex = (formula.latex || '').trim();
           try {
-            formulaHtml = katex.renderToString(formula.latex, {
+            formulaHtml = katex.renderToString(cleanedLatex, {
               displayMode: true,
               throwOnError: false,
+              strict: 'ignore',
+              output: 'html',
             });
           } catch {
-            formulaHtml = `<span>${formula.latex}</span>`;
+            const fallbackText = cleanedLatex
+              .replace(/\\text\{([^}]+)\}/g, '$1')
+              .replace(/\\[a-zA-Z]+/g, ' ')
+              .trim();
+            formulaHtml = `<span>${fallbackText || cleanedLatex}</span>`;
           }
 
           const isSolutionOpen = Boolean(expandedSolutions[formula.id]);

@@ -62,8 +62,8 @@ export default function DocumentPreviewModal({ file, onClose, onDownload, inline
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Chỉ hiển thị Mở tab mới khi file cho phép tải / chia sẻ ngoài tab */}
-            {canView && canDownload && (
+            {/* Mở tab mới xem toàn trang được bảo vệ chống tải xuống */}
+            {canView && (
               <button
                 type="button"
                 onClick={() => window.open(viewUrl, "_blank", "noopener,noreferrer")}

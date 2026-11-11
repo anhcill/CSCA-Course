@@ -669,11 +669,12 @@ export const fetchQuiz = async (quizId) => (
   request(`/assignments/quizzes/${encodeURIComponent(quizId)}`)
 );
 
-export const fetchStudentQuizStart = async (quizId, { attemptId, newAttempt = false, videoCourseProfileId } = {}) => {
+export const fetchStudentQuizStart = async (quizId, { attemptId, newAttempt = false, videoCourseProfileId, backUrl } = {}) => {
   const params = new URLSearchParams();
   if (attemptId) params.set("attemptId", attemptId);
   if (newAttempt) params.set("newAttempt", "1");
   if (videoCourseProfileId) params.set("videoCourseProfileId", videoCourseProfileId);
+  if (backUrl) params.set("backUrl", backUrl);
   const query = params.size ? `?${params.toString()}` : "";
   return request(`/assignments/quizzes/${encodeURIComponent(quizId)}/start${query}`);
 };

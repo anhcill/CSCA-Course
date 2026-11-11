@@ -100,7 +100,7 @@ const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (character
   "'": "&#39;",
 }[character]));
 
-const protectedPdfViewerHtml = ({ filename, signedUrl }) => {
+const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
   let r2Origin = "";
   try {
     r2Origin = new URL(signedUrl).origin;
@@ -181,6 +181,7 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => {
       }
     } catch (_) {}
     const signedUrl = "${signedUrl.replace(/"/g, '\\"')}";
+    const knownTotalBytes = ${Number(fileSizeBytes || 0)};
     const frame = document.getElementById('pdf-frame');
     const loader = document.getElementById('loader');
     const titleEl = document.getElementById('loader-title');
@@ -213,63 +214,87 @@ const protectedPdfViewerHtml = ({ filename, signedUrl }) => {
       }
     }
 
-    async function streamPdf() {
-      try {
-        const res = await fetch(signedUrl);
-        if (!res.ok) throw new Error('Fetch failed: ' + res.status);
-        const contentLength = res.headers.get('content-length');
-        const total = contentLength ? parseInt(contentLength, 10) : 0;
-        const totalStr = formatBytes(total);
+    const isVeryLargeFile = knownTotalBytes > 60 * 1024 * 1024; // > 60 MB
 
-        if (!res.body || !res.body.getReader) {
-          const blob = await res.blob();
+    if (isVeryLargeFile) {
+      if (titleEl) titleEl.textContent = 'Đang mở tài liệu dung lượng lớn...';
+      const sizeStr = formatBytes(knownTotalBytes);
+      setProgress(10, '0 MB', sizeStr);
+      const fallbackUrl = frame.getAttribute('data-src') || signedUrl;
+      frame.src = fallbackUrl;
+      frame.addEventListener('load', function() {
+        setProgress(100, sizeStr, sizeStr);
+        setTimeout(hideLoader, 400);
+      });
+      let currentProgress = 10;
+      const simTimer = setInterval(function() {
+        if (loaded) { clearInterval(simTimer); return; }
+        if (currentProgress < 95) {
+          currentProgress += 5;
+          const currentMb = formatBytes(Math.round((currentProgress / 100) * knownTotalBytes));
+          setProgress(currentProgress, currentMb, sizeStr);
+        }
+      }, 700);
+    } else {
+      async function streamPdf() {
+        try {
+          const res = await fetch(signedUrl);
+          if (!res.ok) throw new Error('Fetch failed: ' + res.status);
+          const headerLen = res.headers.get('content-length');
+          const total = knownTotalBytes || (headerLen ? parseInt(headerLen, 10) : 0);
+          const totalStr = formatBytes(total);
+
+          if (!res.body || !res.body.getReader) {
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            frame.src = blobUrl + '#toolbar=0&navpanes=0&scrollbar=1&zoom=100';
+            frame.addEventListener('load', hideLoader);
+            setTimeout(hideLoader, 500);
+            return;
+          }
+
+          const reader = res.body.getReader();
+          const chunks = [];
+          let loadedBytes = 0;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            loadedBytes += value.length;
+            if (total > 0) {
+              const percent = Math.min(99, Math.round((loadedBytes / total) * 100));
+              setProgress(percent, formatBytes(loadedBytes), totalStr);
+            } else {
+              setProgress(50, formatBytes(loadedBytes), '');
+            }
+          }
+
+          setProgress(100, formatBytes(loadedBytes), totalStr);
+          if (titleEl) titleEl.textContent = 'Đang hiển thị tài liệu...';
+
+          const blob = new Blob(chunks, { type: 'application/pdf' });
           const blobUrl = URL.createObjectURL(blob);
           frame.src = blobUrl + '#toolbar=0&navpanes=0&scrollbar=1&zoom=100';
-          hideLoader();
-          return;
+          frame.addEventListener('load', hideLoader);
+          setTimeout(hideLoader, 350);
+        } catch (err) {
+          console.warn('Progress load fallback:', err);
+          const fallbackUrl = frame.getAttribute('data-src') || signedUrl;
+          frame.src = fallbackUrl;
+          frame.addEventListener('load', hideLoader);
         }
-
-        const reader = res.body.getReader();
-        const chunks = [];
-        let loadedBytes = 0;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          loadedBytes += value.length;
-          if (total > 0) {
-            const percent = Math.min(99, Math.round((loadedBytes / total) * 100));
-            setProgress(percent, formatBytes(loadedBytes), totalStr);
-          } else {
-            setProgress(50, formatBytes(loadedBytes), '');
-          }
-        }
-
-        setProgress(100, formatBytes(loadedBytes), totalStr);
-        if (titleEl) titleEl.textContent = 'Đang hiển thị tài liệu...';
-
-        const blob = new Blob(chunks, { type: 'application/pdf' });
-        const blobUrl = URL.createObjectURL(blob);
-        frame.src = blobUrl + '#toolbar=0&navpanes=0&scrollbar=1&zoom=100';
-        setTimeout(hideLoader, 250);
-      } catch (err) {
-        console.warn('Progress load fallback:', err);
-        const fallbackUrl = frame.getAttribute('data-src') || signedUrl;
-        frame.src = fallbackUrl;
-        frame.addEventListener('load', hideLoader);
-        setTimeout(hideLoader, 5000);
       }
-    }
 
-    streamPdf();
+      streamPdf();
+    }
 
     setTimeout(function() {
       if (!loaded && reloadHint && reloadBtn) {
         reloadHint.style.display = 'block';
         reloadBtn.style.display = 'inline-block';
       }
-    }, 8000);
+    }, 12000);
 
     let zoom = 100;
     function changeZoom(delta) {
@@ -1429,6 +1454,7 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
       return res.status(200).send(protectedPdfViewerHtml({
         filename: access.file.original_name,
         signedUrl: downloadUrl,
+        fileSizeBytes: Number(access.file.file_size || access.file.file_size_bytes || 0),
       }));
     }
     return res.redirect(302, downloadUrl);

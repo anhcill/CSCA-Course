@@ -5,13 +5,18 @@ const hasRecordingMembership = async (db, profile, userId) => Boolean((await db.
    FROM class_enrollments ce
    LEFT JOIN management_class_learning_aliases alias
      ON alias.id = ce.management_class_alias_id AND alias.status = 'active'
-   WHERE ce.user_id = $1 AND ce.status = 'active' AND ce.learning_mode = 'recording'
+   WHERE ce.user_id = $1 AND ce.status = 'active'
      AND (
-       ($5::text IS NOT NULL
-         AND LOWER(alias.alias_class_source_id) = LOWER($5)
-         AND ($2::text <> 'MIRROR' OR ce.live_class_id = $3))
-       OR ($5::text IS NULL AND $2::text = 'MIRROR' AND ce.live_class_id = $3)
-       OR ($5::text IS NULL AND $2::text = 'INDEPENDENT' AND ce.course_id = $4)
+       (ce.learning_mode = 'recording' AND (
+         ($5::text IS NOT NULL
+           AND LOWER(alias.alias_class_source_id) = LOWER($5)
+           AND ($2::text <> 'MIRROR' OR ce.live_class_id = $3))
+         OR ($5::text IS NULL AND $2::text = 'MIRROR' AND ce.live_class_id = $3)
+         OR ($5::text IS NULL AND $2::text = 'INDEPENDENT' AND ce.course_id = $4)
+       ))
+       OR
+       -- Live class student whose class is mirrored by this record course profile
+       ($2::text = 'MIRROR' AND $3::bigint IS NOT NULL AND ce.live_class_id = $3)
      )
    LIMIT 1`,
   [userId, profile.mode, profile.source_live_class_id, profile.course_id, profile.management_class_id],
@@ -28,7 +33,7 @@ const loadMirrorUnits = async (db, profile, userId) => (await db.query(
              AND EXISTS (
                SELECT 1 FROM quiz_attempts qa
                WHERE qa.quiz_id = q.id AND qa.user_id = $2
-                 AND qa.video_course_profile_id = $3
+                 AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                  AND (qa.status IN ('SUBMITTED','GRADED','COMPLETED','submitted','graded','completed')
                    OR qa.submitted_at IS NOT NULL)
              )) AS completed_quiz_count
@@ -59,7 +64,7 @@ const loadIndependentUnits = async (db, profile, userId) => (await db.query(
              AND EXISTS (
                SELECT 1 FROM quiz_attempts qa
                WHERE qa.quiz_id = q.id AND qa.user_id = $2
-                 AND qa.video_course_profile_id = $3
+                 AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                  AND (qa.status IN ('SUBMITTED','GRADED','COMPLETED','submitted','graded','completed')
                    OR qa.submitted_at IS NOT NULL)
              )) AS completed_quiz_count
@@ -88,7 +93,10 @@ const completed = (unit) => {
   return videoComplete && quizComplete;
 };
 
-export const getVideoCourseUnitAccessContext = async ({ db, userId, unitType, unitId, videoCourseProfileId = null }) => {
+export const getVideoCourseUnitAccessContext = async ({ db, userId, unitType, unitId, videoCourseProfileId = null, userRole = null }) => {
+  if (userRole === "admin" || userRole === "creator") {
+    return { isVideoCourseUnit: true, isPublicPreview: false, isRecordMember: true, isUnlocked: true, profile: null };
+  }
   if (!userId || !unitId || !["class_session", "lesson"].includes(unitType)) {
     return { isVideoCourseUnit: false, isPublicPreview: false, isRecordMember: false, isUnlocked: true, profile: null };
   }
@@ -141,8 +149,9 @@ export const getVideoCourseUnitAccessContext = async ({ db, userId, unitType, un
   return { isVideoCourseUnit: true, isPublicPreview: false, isRecordMember: true, isUnlocked, profile };
 };
 
-export const isVideoCourseUnitUnlocked = async (options) => (
-  (await getVideoCourseUnitAccessContext(options)).isUnlocked
-);
+export const isVideoCourseUnitUnlocked = async (options) => {
+  if (options?.userRole === "admin" || options?.userRole === "creator") return true;
+  return (await getVideoCourseUnitAccessContext(options)).isUnlocked;
+};
 
 export default isVideoCourseUnitUnlocked;
