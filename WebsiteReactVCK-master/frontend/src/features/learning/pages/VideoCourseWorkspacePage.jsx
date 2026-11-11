@@ -251,7 +251,7 @@ export default function VideoCourseWorkspacePage() {
     } finally {
       setLoading(false);
     }
-  }, [offeringId]);
+  }, [authUser?.role, offeringId]);
 
   useEffect(() => {
     loadWorkspace(paramUnitId);
@@ -316,7 +316,7 @@ export default function VideoCourseWorkspacePage() {
         ),
       };
     });
-  }, []);
+  }, [authUser?.role]);
 
   // Sync live progress updates from BunnyStreamPlayer into workspace state
   const handlePlayerProgressChange = useCallback(({
@@ -385,7 +385,7 @@ export default function VideoCourseWorkspacePage() {
         },
       };
     });
-  }, [activeUnitId]);
+  }, [activeUnitId, authUser?.role]);
 
   // Seek video player to specific timestamp and switch to video tab if needed
   const handleJumpToTimestamp = (seconds) => {

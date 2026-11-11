@@ -91,6 +91,9 @@ const INLINE_VIEW_MIME_TYPES = new Set([
   "text/csv",
   "text/plain",
 ]);
+const isPdfFile = (file) => file?.mime_type === "application/pdf"
+  || /\.pdf$/i.test(String(file?.original_name || ""));
+const canDisplayInline = (file) => INLINE_VIEW_MIME_TYPES.has(file?.mime_type) || isPdfFile(file);
 
 const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;",
@@ -1421,19 +1424,20 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
     }
     const canDownload = access.canDownload !== false && videoCourseAllowsDownload;
     const forceDownload = ["1", "true"].includes(String(req.query?.download || "").toLowerCase());
-    if (req.user.role === "user" && forceDownload && !canDownload) {
+    const enforceViewOnly = !canDownload && (req.user.role === "user" || Boolean(selectedVideoProfile));
+    if (forceDownload && enforceViewOnly) {
       return errorResponse(res, 403, "Khóa học này chỉ cho phép xem tài liệu trực tuyến", "FILE_DOWNLOAD_DISABLED");
     }
-    if (req.user.role === "user" && !canDownload
-        && !INLINE_VIEW_MIME_TYPES.has(access.file.mime_type)) {
+    if (enforceViewOnly && !canDisplayInline(access.file)) {
       return errorResponse(res, 415, "Định dạng tài liệu này chưa hỗ trợ xem trực tuyến", "INLINE_VIEW_UNSUPPORTED");
     }
-    const displayInline = INLINE_VIEW_MIME_TYPES.has(access.file.mime_type) && !forceDownload;
+    const displayInline = canDisplayInline(access.file) && !forceDownload;
+    const playbackMimeType = isPdfFile(access.file) ? "application/pdf" : access.file.mime_type;
     const { downloadUrl } = await generateLearningFilePlaybackSignedUrl({
       r2Key: access.file.storage_key,
       filename: access.file.original_name,
       disposition: displayInline ? "inline" : "attachment",
-      mimeType: displayInline ? access.file.mime_type : undefined,
+      mimeType: displayInline ? playbackMimeType : undefined,
     });
     if (typeof res.set === "function") {
       res.set({
@@ -1442,8 +1446,7 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
         "Expires": "0",
       });
     }
-    if (req.user.role === "user" && !canDownload
-        && access.file.mime_type === "application/pdf" && !forceDownload) {
+    if (enforceViewOnly && isPdfFile(access.file) && !forceDownload) {
       if (typeof res.set === "function") {
         res.set({
           "Content-Type": "text/html; charset=utf-8",

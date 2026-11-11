@@ -89,6 +89,9 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
   const teacher = (await db.query(
     "INSERT INTO users(username,email,role) VALUES ('locked-quiz-teacher','locked-quiz-teacher@example.test','creator') RETURNING id",
   )).rows[0];
+  const admin = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('locked-quiz-admin','locked-quiz-admin@example.test','admin') RETURNING id,role",
+  )).rows[0];
   const learner = (await db.query(
     "INSERT INTO users(username,email,role) VALUES ('locked-quiz-learner','locked-quiz-learner@example.test','user') RETURNING id,role",
   )).rows[0];
@@ -139,6 +142,20 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
      VALUES ($1,'Câu hỏi buổi 2','single_choice',$2::jsonb,'A',1,1)`,
     [quiz.id, JSON.stringify([{ key: "A", text: "Đúng" }, { key: "B", text: "Sai" }])],
   );
+
+  const adminPreview = await invoke("get", "/quizzes/:quizId/start", {
+    user: admin,
+    params: { quizId: quiz.id },
+    query: { videoCourseProfileId: `profile-${videoProfile.id}` },
+  });
+  assert.equal(adminPreview.statusCode, 200, JSON.stringify(adminPreview.body));
+
+  const adminWithStaleOffering = await invoke("get", "/quizzes/:quizId/start", {
+    user: admin,
+    params: { quizId: quiz.id },
+    query: { videoCourseProfileId: "offering-khong-con-ton-tai" },
+  });
+  assert.equal(adminWithStaleOffering.statusCode, 200, JSON.stringify(adminWithStaleOffering.body));
 
   const locked = await invoke("get", "/quizzes/:quizId/start", {
     user: learner,

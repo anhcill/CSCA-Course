@@ -32,7 +32,7 @@ const parsePositiveId = (value) => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const resolveVideoCourseProfile = async (db, rawInput, backUrl = null) => {
+const resolveVideoCourseProfile = async (db, rawInput, backUrl = null, expectedCourseId = null) => {
   let profileIdentifier = rawInput;
   if (!profileIdentifier && backUrl && typeof backUrl === "string") {
     const match = backUrl.match(/\/video-courses\/([^/?#]+)/);
@@ -41,13 +41,27 @@ const resolveVideoCourseProfile = async (db, rawInput, backUrl = null) => {
     }
   }
   if (!profileIdentifier) return null;
-  const numericId = parsePositiveId(profileIdentifier);
+  const normalizedIdentifier = String(profileIdentifier).trim();
+  const prefixedProfileId = /^profile-(\d+)$/i.exec(normalizedIdentifier)?.[1] || null;
+  const numericIdentifier = parsePositiveId(normalizedIdentifier);
+  const profileId = parsePositiveId(prefixedProfileId || numericIdentifier);
+  const courseIdentifier = prefixedProfileId ? null : numericIdentifier;
   const rows = (await db.query(
     `SELECT * FROM video_course_profiles
-     WHERE ($1::bigint IS NOT NULL AND id = $1)
-        OR LOWER(management_class_id) = LOWER($2)
+     WHERE status = 'active'
+       AND ($3::bigint IS NULL OR course_id = $3)
+       AND (
+         ($1::bigint IS NOT NULL AND id = $1)
+         OR LOWER(management_class_id) = LOWER($2)
+         OR ($4::bigint IS NOT NULL AND course_id = $4)
+       )
+     ORDER BY CASE
+       WHEN $1::bigint IS NOT NULL AND id = $1 THEN 0
+       WHEN LOWER(management_class_id) = LOWER($2) THEN 1
+       ELSE 2
+     END, id
      LIMIT 1`,
-    [numericId, String(profileIdentifier).trim()],
+    [profileId, normalizedIdentifier, expectedCourseId, courseIdentifier],
   )).rows;
   return rows[0] || null;
 };
@@ -595,21 +609,26 @@ router.get("/quizzes/:quizId/start", protectRoute, requireQuizPlayerAccess, asyn
   try {
     const quizId = parsePositiveId(req.params.quizId);
     if (!quizId) return validationError(res, "quizId không hợp lệ");
-    const rawProfileParam = req.query?.videoCourseProfileId || req.headers["x-video-course-profile-id"] || null;
+    const rawProfileParam = req.query?.videoCourseProfileId || req.headers?.["x-video-course-profile-id"] || null;
     const backUrl = req.query?.backUrl || null;
     await client.query("BEGIN");
-    const resolvedProfile = await resolveVideoCourseProfile(client, rawProfileParam, backUrl);
+    const quiz = await getQuiz(client, quizId);
+    if (!quiz) throw Object.assign(new Error("Không tìm thấy đề thi"), { status: 404 });
+    const isPrivileged = req.user?.role === "admin" || req.user?.role === "creator";
+    const resolvedProfile = await resolveVideoCourseProfile(
+      client,
+      rawProfileParam,
+      backUrl,
+      quiz.resolved_course_id,
+    );
     const requestedVideoCourseProfileId = resolvedProfile ? Number(resolvedProfile.id) : null;
-    if (rawProfileParam && !resolvedProfile) {
+    if (rawProfileParam && !resolvedProfile && !isPrivileged) {
       await client.query("ROLLBACK");
       return validationError(res, "videoCourseProfileId không hợp lệ");
     }
-    const quiz = await getQuiz(client, quizId);
-    if (!quiz) throw Object.assign(new Error("Không tìm thấy đề thi"), { status: 404 });
     if (!(await ensureQuizAccess(client, quiz, req.user, { recordProfile: resolvedProfile }))) {
       throw Object.assign(new Error("Bạn chưa được cấp quyền làm đề thi này"), { status: 403 });
     }
-    const isPrivileged = req.user?.role === "admin" || req.user?.role === "creator";
     const isPublicPreview = Boolean(quiz.session_is_public_preview || (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false));
     const unitType = quiz.class_session_id ? "class_session" : (quiz.lesson_id ? "lesson" : null);
     const unitId = quiz.class_session_id || quiz.lesson_id;

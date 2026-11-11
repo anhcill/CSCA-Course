@@ -163,6 +163,20 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   });
   assert.equal(blockedVideoCourseDownload.statusCode, 403);
   assert.equal(blockedVideoCourseDownload.body.errorCode, "FILE_DOWNLOAD_DISABLED");
+  const adminVideoCourseInline = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: admin,
+    params: { fileId: courseWide.id },
+    query: { videoCourseId: course.id, videoCourseProfileId: videoProfile.id },
+  });
+  assert.equal(adminVideoCourseInline.statusCode, 200);
+  assert.match(adminVideoCourseInline.body, /CHỈ XEM/);
+  const blockedAdminVideoCourseDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
+    user: admin,
+    params: { fileId: courseWide.id },
+    query: { videoCourseId: course.id, videoCourseProfileId: videoProfile.id, download: "1" },
+  });
+  assert.equal(blockedAdminVideoCourseDownload.statusCode, 403);
+  assert.equal(blockedAdminVideoCourseDownload.body.errorCode, "FILE_DOWNLOAD_DISABLED");
   const blockedStrippedVideoCourseDownload = await invoke(fileRouter, "get", "/files/:fileId/download", {
     user: managedLearnerA,
     params: { fileId: courseWide.id },

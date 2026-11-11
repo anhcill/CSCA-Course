@@ -346,7 +346,7 @@ export default function QuizPlayerPage() {
     return () => {
       isMounted = false;
     };
-  }, [quizId, videoCourseProfileId]);
+  }, [backUrl, quizId, videoCourseProfileId]);
 
   useEffect(() => {
     loadQuiz();
