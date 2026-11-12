@@ -1426,7 +1426,7 @@ export default function VideoCourseWorkspacePage() {
                       {activeUnit.files.map((file) => (
                         <div
                           key={file.id}
-                          onClick={() => openFileUrl(file.viewUrl, file.fileName)}
+                          onClick={() => setPreviewFile(file)}
                           className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
                         >
                           <div className="flex items-center gap-3 truncate">
@@ -1446,11 +1446,21 @@ export default function VideoCourseWorkspacePage() {
                           <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                             <button
                               type="button"
-                              onClick={() => openFileUrl(file.viewUrl, file.fileName)}
+                              onClick={() => setPreviewFile(file)}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-sm transition"
                             >
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>Xem tài liệu</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => openFileUrl(file.viewUrl, file.fileName)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+                              title="Mở tài liệu trong tab mới"
+                            >
                               <ExternalLink className="h-3.5 w-3.5" />
-                              <span>Mở xem tài liệu</span>
+                              <span className="hidden md:inline">Tab mới</span>
                             </button>
 
                             {file.downloadUrl ? (

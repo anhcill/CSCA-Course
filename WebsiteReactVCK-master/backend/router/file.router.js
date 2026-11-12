@@ -108,6 +108,9 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
   try {
     r2Origin = new URL(signedUrl).origin;
   } catch (_) {}
+  const isSlide = /slide|bài giảng|bai giang|presentation|ppt/i.test(String(filename || ""));
+  const docTypeLabel = isSlide ? "slide bài giảng" : "tài liệu";
+
   return `<!doctype html>
 <html lang="vi">
 <head>
@@ -121,20 +124,28 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
     strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.badge{flex:none;border:1px solid #38bdf8;border-radius:999px;padding:4px 8px;color:#7dd3fc;font-size:10px;font-weight:800;letter-spacing:.08em}
     .controls{margin-left:auto;display:flex;align-items:center;gap:7px}.zoom-value{min-width:48px;text-align:center;color:#cbd5e1;font-size:12px;font-weight:800}
     button{flex:none;border:1px solid #475569;border-radius:9px;background:#1e293b;color:#e2e8f0;padding:7px 12px;font-weight:800;cursor:pointer}button:hover{background:#334155}.zoom-button{width:34px;padding:7px 0;font-size:18px;line-height:1}.close-button{margin-left:5px}
-    main{position:fixed;inset:52px 0 0;overflow:hidden}iframe{position:absolute;top:-56px;left:0;width:100%;height:calc(100% + 56px);border:0;background:#334155;transform-origin:top left;transition:transform .15s ease}
+    main{position:fixed;inset:52px 0 0;overflow:hidden;background:#0f172a}
+    iframe{position:absolute;top:-56px;left:0;width:100%;height:calc(100% + 56px);border:0;background:#0f172a;transform-origin:top left;transition:transform .15s ease}
     body.is-embedded header{display:none}body.is-embedded main{inset:0}
-    #loader{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#fff;z-index:20;transition:opacity .35s ease,visibility .35s ease;padding:24px}
-    .loader-card{display:flex;flex-direction:column;align-items:center;background:rgba(30,41,59,.85);border:1px solid rgba(71,85,105,.55);border-radius:24px;padding:32px 36px;box-shadow:0 24px 48px -12px rgba(0,0,0,.65);backdrop-filter:blur(14px);max-width:380px;width:100%;text-align:center}
-    .spinner{width:48px;height:48px;border:3px solid rgba(56,189,248,.18);border-top-color:#38bdf8;border-radius:50%;animation:spin .85s linear infinite;margin-bottom:18px}
+    #loader{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#fff;z-index:20;transition:opacity .45s cubic-bezier(0.16,1,0.3,1),visibility .45s cubic-bezier(0.16,1,0.3,1);padding:24px}
+    .loader-card{display:flex;flex-direction:column;align-items:center;background:rgba(30,41,59,.92);border:1px solid rgba(71,85,105,.55);border-radius:24px;padding:32px 36px;box-shadow:0 24px 48px -12px rgba(0,0,0,.65);backdrop-filter:blur(14px);max-width:400px;width:100%;text-align:center}
+    .spinner{width:48px;height:48px;border:3px solid rgba(56,189,248,.18);border-top-color:#38bdf8;border-radius:50%;animation:spin .85s linear infinite;margin-bottom:18px;transition:border-color .3s}
+    .spinner.rendering{border-top-color:#a855f7;border-right-color:#38bdf8;animation:spin .65s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .loader-title{font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:-.01em;margin-bottom:6px}
-    .loader-desc{font-size:12px;color:#94a3b8;line-height:1.5;margin-bottom:16px}
+    .loader-title{font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:-.01em;margin-bottom:6px;transition:color .2s}
+    .loader-desc{font-size:12px;color:#94a3b8;line-height:1.5;margin-bottom:16px;min-height:36px;display:flex;align-items:center;justify-content:center}
     .loader-progress-wrap{width:100%;margin-top:4px}
-    .loader-bar{width:100%;height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;position:relative}
-    .loader-bar-fill{position:absolute;top:0;left:0;height:100%;width:0%;background:linear-gradient(90deg,#38bdf8,#818cf8);border-radius:99px;transition:width .15s ease}
+    .loader-bar{width:100%;height:7px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;position:relative}
+    .loader-bar-fill{position:absolute;top:0;left:0;height:100%;width:0%;background:linear-gradient(90deg,#38bdf8,#818cf8);border-radius:99px;transition:width .2s ease,background .3s}
+    @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+    .loader-bar-fill.rendering{background:linear-gradient(90deg,#38bdf8 0%,#c084fc 50%,#38bdf8 100%);background-size:200% 100%;animation:shimmer 1.5s infinite linear}
+    .loader-bar-fill.done{background:linear-gradient(90deg,#10b981,#059669)}
     .loader-meta{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:#cbd5e1;margin-top:8px}
     .loader-percent{color:#38bdf8;font-family:monospace;font-size:13px}
     .loader-bytes{color:#64748b;font-family:monospace;font-size:11px}
+    .render-tag{display:none;align-items:center;gap:6px;margin-top:12px;padding:4px 12px;border-radius:999px;background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.3);color:#c084fc;font-size:11px;font-weight:700}
+    .pulse-dot{width:6px;height:6px;border-radius:50%;background:#c084fc;box-shadow:0 0 8px #c084fc;animation:pulseDot 1s infinite alternate}
+    @keyframes pulseDot{0%{transform:scale(0.8);opacity:.5}100%{transform:scale(1.25);opacity:1}}
     .reload-hint{margin-top:16px;font-size:11px;color:#64748b;display:none}
     .reload-btn{background:#1e293b;border:1px solid #475569;border-radius:8px;color:#93c5fd;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;margin-top:8px;display:none}
     .reload-btn:hover{background:#334155}
@@ -153,15 +164,19 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
   <main>
     <div id="loader">
       <div class="loader-card">
-        <div class="spinner"></div>
-        <div id="loader-title" class="loader-title">Đang nạp dữ liệu tài liệu...</div>
-        <div class="loader-desc">Vui lòng chờ tiến trình nạp hoàn tất để xem nội dung mượt mà.</div>
+        <div id="spinner" class="spinner"></div>
+        <div id="loader-title" class="loader-title">Đang nạp ${docTypeLabel}...</div>
+        <div id="loader-desc" class="loader-desc">Vui lòng chờ tiến trình nạp hoàn tất để xem nội dung mượt mà.</div>
         <div class="loader-progress-wrap">
           <div class="loader-bar"><div id="loader-bar-fill" class="loader-bar-fill"></div></div>
           <div class="loader-meta">
             <span id="loader-percent" class="loader-percent">0%</span>
             <span id="loader-bytes" class="loader-bytes">Đang kết nối...</span>
           </div>
+        </div>
+        <div id="render-tag" class="render-tag">
+          <span class="pulse-dot"></span>
+          <span id="render-tag-text">Đang dựng hình ảnh...</span>
         </div>
         <div id="reload-hint" class="reload-hint">Nếu nạp quá lâu, bạn có thể thử làm mới:</div>
         <button id="reload-btn" class="reload-btn" type="button" onclick="location.reload()">Nhấn để làm mới</button>
@@ -185,15 +200,24 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
     } catch (_) {}
     const signedUrl = "${signedUrl.replace(/"/g, '\\"')}";
     const knownTotalBytes = ${Number(fileSizeBytes || 0)};
+    const isSlideFile = ${isSlide};
+    const docLabel = "${docTypeLabel}";
     const frame = document.getElementById('pdf-frame');
     const loader = document.getElementById('loader');
+    const spinner = document.getElementById('spinner');
     const titleEl = document.getElementById('loader-title');
+    const descEl = document.getElementById('loader-desc');
     const percentEl = document.getElementById('loader-percent');
     const bytesEl = document.getElementById('loader-bytes');
     const barFill = document.getElementById('loader-bar-fill');
+    const renderTag = document.getElementById('render-tag');
+    const renderTagText = document.getElementById('render-tag-text');
     const reloadHint = document.getElementById('reload-hint');
     const reloadBtn = document.getElementById('reload-btn');
-    let loaded = false;
+
+    let isFinished = false;
+    let renderPhaseStarted = false;
+    let renderStartTime = 0;
 
     function formatBytes(bytes) {
       if (!bytes || bytes <= 0) return '';
@@ -208,30 +232,132 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
     }
 
     function hideLoader() {
-      if (loaded) return;
-      loaded = true;
+      if (isFinished) return;
+      isFinished = true;
       if (loader) {
         loader.style.opacity = '0';
         loader.style.pointerEvents = 'none';
-        setTimeout(function() { loader.style.display = 'none'; }, 350);
+        setTimeout(function() { loader.style.display = 'none'; }, 480);
       }
+    }
+
+    // Phase 2: Enter Rendering phase (Download completed, now waiting for browser/PDFium to paint the slide)
+    function enterRenderingPhase(totalBytes) {
+      if (renderPhaseStarted) return;
+      renderPhaseStarted = true;
+      renderStartTime = Date.now();
+
+      const totalMb = (totalBytes || knownTotalBytes || 0) / (1024 * 1024);
+      const isHeavy = totalMb >= 10;
+
+      // Update UI to clearly communicate that downloading is 100% complete,
+      // and the browser engine is now decoding & rendering the slides to avoid black screen confusion.
+      setProgress(100, formatBytes(totalBytes || knownTotalBytes), formatBytes(totalBytes || knownTotalBytes));
+      if (titleEl) {
+        titleEl.textContent = isSlideFile
+          ? 'Đang kết xuất và hiển thị slide...'
+          : 'Đang kết xuất tài liệu...';
+      }
+      if (descEl) {
+        descEl.textContent = isHeavy
+          ? 'Tải xong dữ liệu (' + totalMb.toFixed(1) + ' MB). Đang giải mã trang slide chất lượng cao, vui lòng đợi giây lát...'
+          : 'Tải xong dữ liệu. Trình duyệt đang giải mã trang để hiển thị lên màn hình...';
+      }
+      if (spinner) spinner.classList.add('rendering');
+      if (barFill) barFill.classList.add('rendering');
+      if (renderTag) {
+        renderTag.style.display = 'inline-flex';
+        if (renderTagText) {
+          renderTagText.textContent = isSlideFile
+            ? 'Đang dựng trang slide...'
+            : 'Đang khởi tạo trang...';
+        }
+      }
+      if (bytesEl) {
+        bytesEl.textContent = 'Hoàn tất tải về • Đang mở trang...';
+      }
+
+      // Calculate safe render wait time based on file size:
+      // Heavy slides take 2.2 - 3.8s in Chromium PDFium to parse font/vectors and paint page 1
+      const safeWaitMs = Math.max(1800, Math.min(4200, Math.round(totalMb * 90) + 1400));
+      const minSafeWaitMs = Math.max(1300, Math.min(2600, Math.round(totalMb * 50) + 1000));
+
+      let completeTimer = null;
+
+      function scheduleCompletion(extraBufferMs) {
+        if (isFinished) return;
+        if (completeTimer) clearTimeout(completeTimer);
+        const elapsed = Date.now() - renderStartTime;
+        const requiredWait = Math.max(minSafeWaitMs, (extraBufferMs || 0) + elapsed);
+        const waitRemaining = Math.max(300, requiredWait - elapsed);
+
+        completeTimer = setTimeout(function() {
+          if (isFinished) return;
+          if (titleEl) titleEl.textContent = isSlideFile ? 'Slide đã sẵn sàng!' : 'Tài liệu đã sẵn sàng!';
+          if (descEl) descEl.textContent = 'Đang mở trang hiển thị...';
+          if (bytesEl) bytesEl.textContent = '✓ Hoàn tất 100%';
+          if (barFill) {
+            barFill.classList.remove('rendering');
+            barFill.classList.add('done');
+          }
+          if (renderTagText) renderTagText.textContent = '✓ Đã hiển thị';
+          setTimeout(hideLoader, 350);
+        }, waitRemaining);
+      }
+
+      // Signal 1: Listen for postMessage from Chromium PDF Viewer (e.g. 'documentLoaded', 'loadProgress')
+      function onPdfMessage(evt) {
+        try {
+          const d = evt.data;
+          if (d && (d.type === 'documentLoaded' || d === 'documentLoaded' || (d.type === 'loadProgress' && d.progress === 100))) {
+            window.removeEventListener('message', onPdfMessage);
+            scheduleCompletion(500); // 500ms buffer for GPU rasterization / canvas paint
+          }
+        } catch (_) {}
+      }
+      window.addEventListener('message', onPdfMessage);
+
+      // Signal 2: DOM / Canvas detection for same-origin or Firefox PDF.js viewers
+      let pollCount = 0;
+      const pollInterval = setInterval(function() {
+        if (isFinished) { clearInterval(pollInterval); return; }
+        pollCount++;
+        try {
+          const doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+          if (doc && doc.querySelector('.page[data-loaded="true"], canvas, embed, .pdfViewer')) {
+            clearInterval(pollInterval);
+            window.removeEventListener('message', onPdfMessage);
+            scheduleCompletion(400);
+            return;
+          }
+        } catch (_) {}
+        if (pollCount > 50) clearInterval(pollInterval);
+      }, 100);
+
+      // Signal 3: Fallback timer guarantees it will reveal smoothly even if events don't fire
+      setTimeout(function() {
+        if (!isFinished) {
+          scheduleCompletion(0);
+        }
+      }, safeWaitMs);
     }
 
     const isVeryLargeFile = knownTotalBytes > 60 * 1024 * 1024; // > 60 MB
 
     if (isVeryLargeFile) {
-      if (titleEl) titleEl.textContent = 'Đang mở tài liệu dung lượng lớn...';
+      if (titleEl) titleEl.textContent = 'Đang nạp ' + docLabel + ' dung lượng lớn...';
       const sizeStr = formatBytes(knownTotalBytes);
       setProgress(10, '0 MB', sizeStr);
       const fallbackUrl = frame.getAttribute('data-src') || signedUrl;
       frame.src = fallbackUrl;
+
       frame.addEventListener('load', function() {
-        setProgress(100, sizeStr, sizeStr);
-        setTimeout(hideLoader, 400);
+        enterRenderingPhase(knownTotalBytes);
       });
+
       let currentProgress = 10;
       const simTimer = setInterval(function() {
-        if (loaded) { clearInterval(simTimer); return; }
+        if (renderPhaseStarted || isFinished) { clearInterval(simTimer); return; }
         if (currentProgress < 95) {
           currentProgress += 5;
           const currentMb = formatBytes(Math.round((currentProgress / 100) * knownTotalBytes));
@@ -251,8 +377,7 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
             const blob = await res.blob();
             const blobUrl = URL.createObjectURL(blob);
             frame.src = blobUrl + '#toolbar=0&navpanes=0&scrollbar=1&zoom=100';
-            frame.addEventListener('load', hideLoader);
-            setTimeout(hideLoader, 500);
+            enterRenderingPhase(total);
             return;
           }
 
@@ -273,19 +398,15 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
             }
           }
 
-          setProgress(100, formatBytes(loadedBytes), totalStr);
-          if (titleEl) titleEl.textContent = 'Đang hiển thị tài liệu...';
-
           const blob = new Blob(chunks, { type: 'application/pdf' });
           const blobUrl = URL.createObjectURL(blob);
           frame.src = blobUrl + '#toolbar=0&navpanes=0&scrollbar=1&zoom=100';
-          frame.addEventListener('load', hideLoader);
-          setTimeout(hideLoader, 350);
+          enterRenderingPhase(loadedBytes || total);
         } catch (err) {
           console.warn('Progress load fallback:', err);
           const fallbackUrl = frame.getAttribute('data-src') || signedUrl;
           frame.src = fallbackUrl;
-          frame.addEventListener('load', hideLoader);
+          enterRenderingPhase(knownTotalBytes);
         }
       }
 
@@ -293,11 +414,11 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
     }
 
     setTimeout(function() {
-      if (!loaded && reloadHint && reloadBtn) {
+      if (!isFinished && reloadHint && reloadBtn) {
         reloadHint.style.display = 'block';
         reloadBtn.style.display = 'inline-block';
       }
-    }, 12000);
+    }, 15000);
 
     let zoom = 100;
     function changeZoom(delta) {

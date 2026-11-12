@@ -108,13 +108,13 @@ export default function DocumentPreviewModal({ file, onClose, onDownload, inline
         </div>
 
         {/* Khung nội dung xem tài liệu */}
-        <div className={`flex min-h-[360px] flex-1 items-center justify-center overflow-hidden bg-slate-100 p-2 sm:p-4 dark:bg-slate-950/90 ${isFullscreen ? "h-[calc(100vh-56px)]" : ""}`}>
+        <div className={`flex min-h-[360px] flex-1 items-center justify-center overflow-hidden bg-slate-900 p-2 sm:p-4 ${isFullscreen ? "h-[calc(100vh-56px)]" : ""}`}>
           {canEmbed && kind === "pdf" && (
             <iframe
               src={viewUrl}
               title={file.fileName}
               allow="fullscreen"
-              className={`w-full rounded-2xl border border-slate-200 bg-white shadow-inner dark:border-slate-800 dark:bg-slate-900 ${
+              className={`w-full rounded-2xl border border-slate-200 bg-slate-900 shadow-inner dark:border-slate-800 ${
                 isFullscreen ? "h-full" : "h-[65vh] sm:h-[75vh]"
               }`}
             />
