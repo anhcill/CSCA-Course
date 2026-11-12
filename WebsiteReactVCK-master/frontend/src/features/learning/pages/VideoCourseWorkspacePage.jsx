@@ -65,6 +65,11 @@ const renderKaTeX = (latex, displayMode = true) => {
 
 const REQUIRED_WATCH_PERCENT = 60;
 
+const isVideoRequirementCompleted = (unit) => {
+  if (typeof unit?.isVideoCompleted === "boolean") return unit.isVideoCompleted;
+  return Boolean(unit?.hasVideo) && Number(unit?.progressPercent || 0) >= REQUIRED_WATCH_PERCENT;
+};
+
 const formatVideoDurationLabel = (unit) => {
   const sec = Number(unit?.videoDurationSeconds || 0);
   if (sec > 0) {
@@ -104,11 +109,9 @@ const recomputeSequentialLocks = (rawUnits = [], previewOnly = false, isAdminOrT
   const result = [];
   for (let idx = 0; idx < rawUnits.length; idx += 1) {
     const unit = rawUnits[idx];
-    const progressPercent = Number(unit.progressPercent || 0);
-    const hasVideo = Boolean(unit.hasVideo);
     const quizCount = Number(unit.quizCount || 0);
     const completedQuizCount = Number(unit.completedQuizCount || 0);
-    const isVideoCompleted = Boolean(unit.isVideoCompleted) || (hasVideo && progressPercent >= REQUIRED_WATCH_PERCENT);
+    const isVideoCompleted = isVideoRequirementCompleted(unit);
     const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
     const isCompleted = isVideoCompleted && isQuizCompleted;
 
@@ -329,21 +332,19 @@ export default function VideoCourseWorkspacePage() {
   }) => {
     const targetId = reportedUnitId || activeUnitId;
     setCurrentProgressSeconds(currentTimeSeconds);
-    setUnitWatchPercent((prev) => Math.max(prev, Number(completionPercent || 0)));
+    setUnitWatchPercent(Number(completionPercent || 0));
 
     setWorkspaceData((prev) => {
       if (!prev) return prev;
       const rawUpdated = (prev.units || []).map((u) => {
         if (String(u.id) !== String(targetId)) return u;
-        const mergedPercent = Math.max(Number(u.progressPercent || 0), Number(completionPercent || 0));
-        const mergedWatched = Math.max(Number(u.watchedSeconds || 0), Number(watchedSeconds || 0));
+        const mergedPercent = Math.min(100, Math.max(0, Number(completionPercent || 0)));
+        const mergedWatched = Math.max(0, Number(watchedSeconds || 0));
         const mergedDuration = Number(durationSeconds || u.videoDurationSeconds || 0);
-        const videoDone = Boolean(u.isVideoCompleted) || Boolean(videoReachedTarget) || mergedPercent >= REQUIRED_WATCH_PERCENT;
+        const videoDone = Boolean(videoReachedTarget);
         const quizDone = Number(u.quizCount || 0) === 0 || Number(u.completedQuizCount || 0) >= Number(u.quizCount || 0);
 
-        if (videoDone && quizDone) {
-          setIsCompletedUnit(true);
-        }
+        setIsCompletedUnit(videoDone && quizDone);
 
         return {
           ...u,
@@ -364,7 +365,6 @@ export default function VideoCourseWorkspacePage() {
         authUser?.role === "admin" || authUser?.role === "creator" || Boolean(prev.capabilities?.isAdminPreview),
       );
       const completedCount = updatedUnits.filter((u) => u.isCompleted).length;
-      const totalCount = updatedUnits.length || 1;
       const activeMeta = updatedUnits.find((u) => String(u.id) === String(activeUnitId));
 
       return {
@@ -377,11 +377,22 @@ export default function VideoCourseWorkspacePage() {
           requiredPrevUnitId: activeMeta?.requiredPrevUnitId || null,
           requiredPrevUnitTitle: activeMeta?.requiredPrevUnitTitle || null,
           requiredPrevUnitNumber: activeMeta?.requiredPrevUnitNumber || null,
+          watchProgress: String(prev.activeUnit.id) === String(targetId) ? {
+            ...prev.activeUnit.watchProgress,
+            lastPositionSeconds: currentTimeSeconds,
+            watchedSeconds: Number(watchedSeconds || 0),
+            durationSeconds: Number(durationSeconds || 0),
+            completionPercent: Number(completionPercent || 0),
+            isVideoCompleted: Boolean(videoReachedTarget),
+            isCompleted: Boolean(activeMeta?.isCompleted),
+          } : prev.activeUnit.watchProgress,
         } : prev.activeUnit,
         progress: {
           completedUnits: completedCount,
           totalUnits: updatedUnits.length,
-          overallPercent: Math.round((completedCount / totalCount) * 100),
+          overallPercent: updatedUnits.length > 0
+            ? Math.round(updatedUnits.reduce((sum, unit) => sum + Math.min(100, Math.max(0, Number(unit.progressPercent || 0))), 0) / updatedUnits.length)
+            : 0,
         },
       };
     });
@@ -409,6 +420,7 @@ export default function VideoCourseWorkspacePage() {
   }, [workspaceData?.units, activeUnitId]);
 
   const activeUnitMeta = currentIndex >= 0 ? workspaceData?.units[currentIndex] : null;
+  const activeVideoCompleted = isVideoRequirementCompleted(activeUnitMeta);
   const prevUnit = currentIndex > 0 ? workspaceData?.units[currentIndex - 1] : null;
   const nextUnit = currentIndex >= 0 && currentIndex < (workspaceData?.units?.length || 0) - 1
     ? workspaceData?.units[currentIndex + 1]
@@ -810,13 +822,13 @@ export default function VideoCourseWorkspacePage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <div
                   className={`flex items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-xs ${
-                    activeUnitMeta?.isVideoCompleted || unitWatchPercent >= REQUIRED_WATCH_PERCENT
+                    activeVideoCompleted
                       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                       : "border-amber-500/30 bg-amber-500/5 text-slate-700 dark:text-slate-300"
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    {activeUnitMeta?.isVideoCompleted || unitWatchPercent >= REQUIRED_WATCH_PERCENT ? (
+                    {activeVideoCompleted ? (
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
                     ) : (
                       <Clock className="h-4 w-4 shrink-0 text-amber-500" />
@@ -1586,7 +1598,7 @@ export default function VideoCourseWorkspacePage() {
                         {Math.round(unitWatchPercent)}%
                       </p>
                       <p className="text-[11px] text-slate-500">
-                        {unitWatchPercent >= REQUIRED_WATCH_PERCENT ? "Đã sẵn sàng học bài tiếp" : `Mục tiêu ${REQUIRED_WATCH_PERCENT}%`}
+                        {activeVideoCompleted ? "Đã sẵn sàng học bài tiếp" : `Mục tiêu ${REQUIRED_WATCH_PERCENT}% cho từng phần`}
                       </p>
                     </div>
 
@@ -1663,7 +1675,7 @@ export default function VideoCourseWorkspacePage() {
                 const isDone = Boolean(unit.isCompleted);
                 const isLocked = Boolean(unit.isLocked);
                 const pct = Math.min(100, Math.max(0, Math.round(unit.progressPercent || 0)));
-                const videoDone = Boolean(unit.isVideoCompleted) || pct >= REQUIRED_WATCH_PERCENT;
+                const videoDone = isVideoRequirementCompleted(unit);
                 const hasQuiz = Number(unit.quizCount || 0) > 0;
                 const quizDone = !hasQuiz || Number(unit.completedQuizCount || 0) >= Number(unit.quizCount || 0);
                 const watchedSec = Number(unit.watchedSeconds || 0);

@@ -8,6 +8,7 @@ import {
   revokeTrustedDevice,
   TrustedDeviceAuthError,
 } from "../services/trustedDevice.service.js";
+import { getUnitVideoProgressAggregate } from "../services/bunnyStream.service.js";
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
@@ -44,12 +45,13 @@ const checkCourseEntitlement = async (courseId, userId, { sourceLiveClassId = nu
        AND (
          g.course_id = $2
          OR ($3::bigint IS NOT NULL AND EXISTS (
-           SELECT 1 FROM live_classes lc
-           WHERE lc.id = $3 AND lc.course_id = g.course_id
-         ))
-         OR ($3::bigint IS NOT NULL AND EXISTS (
-           SELECT 1 FROM class_enrollments ce
-           WHERE ce.user_id = $1 AND ce.live_class_id = $3 AND ce.status = 'active'
+           SELECT 1
+           FROM live_classes lc
+           JOIN class_enrollments ce ON ce.live_class_id = lc.id
+           WHERE lc.id = $3
+             AND lc.course_id = g.course_id
+             AND ce.user_id = $1
+             AND ce.status = 'active'
          ))
        )
        AND g.access_status = 'active'
@@ -542,14 +544,18 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         [sourceLiveClassId, req.user.id, !isLearner, profile.id],
       );
 
-      const rawUnits = sessionsRes.rows.map((row) => {
-        const videoDurationSeconds = Number(row.total_video_duration_seconds || row.video_duration || 0);
-        const watchedSeconds = Number(row.watched_seconds || 0);
-        const progressPercent = Number(row.completion_percent || 0);
-        const hasVideo = Boolean(row.video_asset_id || row.provider_video_id);
+      const rawUnits = await Promise.all(sessionsRes.rows.map(async (row) => {
+        const aggregate = await getUnitVideoProgressAggregate({
+          userId: req.user.id,
+          classSessionId: row.id,
+        });
+        const videoDurationSeconds = Number(aggregate?.durationSeconds || row.total_video_duration_seconds || row.video_duration || 0);
+        const watchedSeconds = Number(aggregate?.watchedSeconds || 0);
+        const progressPercent = Number(aggregate?.completionPercent || 0);
+        const hasVideo = Number(aggregate?.partCount || 0) > 0 || Boolean(row.video_asset_id || row.provider_video_id);
         const quizCount = Number(row.quiz_count || 0);
         const completedQuizCount = Number(row.completed_quiz_count || 0);
-        const isVideoCompleted = Boolean(row.is_completed) || (hasVideo && progressPercent >= VIDEO_COMPLETION_PERCENT);
+        const isVideoCompleted = Boolean(aggregate?.isCompleted);
         const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
         const isCompleted = isVideoCompleted && isQuizCompleted;
 
@@ -575,7 +581,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           isCompleted,
           lastPositionSeconds: Number(row.last_position_seconds || 0),
         };
-      });
+      }));
 
       units = applySequentialLocks(rawUnits);
 
@@ -765,8 +771,10 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           videos: unitVideos,
           watchProgress: {
             lastPositionSeconds: Number(selectedSession.last_position_seconds || 0),
-            watchedSeconds: Number(selectedSession.watched_seconds || 0),
-            completionPercent: Number(selectedSession.completion_percent || 0),
+            watchedSeconds: Number(selectedUnitMeta?.watchedSeconds || 0),
+            durationSeconds: Number(selectedUnitMeta?.videoDurationSeconds || 0),
+            partCount: unitVideos.length,
+            completionPercent: Number(selectedUnitMeta?.progressPercent || 0),
             isCompleted: Boolean(selectedUnitMeta?.isCompleted),
             isVideoCompleted: Boolean(selectedUnitMeta?.isVideoCompleted),
             isQuizCompleted: Boolean(selectedUnitMeta?.isQuizCompleted),
@@ -891,14 +899,18 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         [courseId, req.user.id, !isLearner, profile.id],
       );
 
-      const rawUnits = lessonsRes.rows.map((row, idx) => {
-        const videoDurationSeconds = Number(row.resolved_duration_seconds || row.duration_seconds || 0);
-        const watchedSeconds = Number(row.watched_seconds || 0);
-        const progressPercent = Number(row.completion_percent || 0);
-        const hasVideo = Boolean(row.resolved_video_asset_id || row.learning_url);
+      const rawUnits = await Promise.all(lessonsRes.rows.map(async (row, idx) => {
+        const aggregate = await getUnitVideoProgressAggregate({
+          userId: req.user.id,
+          lessonId: row.id,
+        });
+        const videoDurationSeconds = Number(aggregate?.durationSeconds || row.resolved_duration_seconds || row.duration_seconds || 0);
+        const watchedSeconds = Number(aggregate?.watchedSeconds || 0);
+        const progressPercent = Number(aggregate?.completionPercent || 0);
+        const hasVideo = Number(aggregate?.partCount || 0) > 0 || Boolean(row.resolved_video_asset_id || row.learning_url);
         const quizCount = Number(row.quiz_count || 0);
         const completedQuizCount = Number(row.completed_quiz_count || 0);
-        const isVideoCompleted = Boolean(row.is_completed) || (hasVideo && progressPercent >= VIDEO_COMPLETION_PERCENT);
+        const isVideoCompleted = Boolean(aggregate?.isCompleted);
         const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
         const isCompleted = isVideoCompleted && isQuizCompleted;
 
@@ -925,7 +937,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           isCompleted,
           lastPositionSeconds: Number(row.last_position_seconds || 0),
         };
-      });
+      }));
 
       units = applySequentialLocks(rawUnits);
 
@@ -1092,8 +1104,10 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           learningUrl: selectedLesson.learning_url || null,
           watchProgress: {
             lastPositionSeconds: Number(selectedLesson.last_position_seconds || 0),
-            watchedSeconds: Number(selectedLesson.watched_seconds || 0),
-            completionPercent: Number(selectedLesson.completion_percent || 0),
+            watchedSeconds: Number(selectedUnitMeta?.watchedSeconds || 0),
+            durationSeconds: Number(selectedUnitMeta?.videoDurationSeconds || 0),
+            partCount: unitVideos.length || (primaryVideo ? 1 : 0),
+            completionPercent: Number(selectedUnitMeta?.progressPercent || 0),
             isCompleted: Boolean(selectedUnitMeta?.isCompleted),
             isVideoCompleted: Boolean(selectedUnitMeta?.isVideoCompleted),
             isQuizCompleted: Boolean(selectedUnitMeta?.isQuizCompleted),
@@ -1191,7 +1205,9 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
 
     const completedUnitsCount = units.filter((u) => u.isCompleted).length;
     const totalUnitsCount = units.length || 1;
-    const overallProgressPercent = Math.round((completedUnitsCount / totalUnitsCount) * 100);
+    const overallProgressPercent = totalUnitsCount > 0
+      ? Math.round(units.reduce((sum, unit) => sum + Math.min(100, Math.max(0, Number(unit.progressPercent || 0))), 0) / totalUnitsCount)
+      : 0;
 
     return res.json({
       success: true,

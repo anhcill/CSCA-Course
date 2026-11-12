@@ -13,6 +13,7 @@ import {
   createBunnyUploadIntent,
   processBunnyWebhookEvent,
   generateBunnySignedPlayback,
+  getUnitVideoProgressAggregate,
   recordVideoWatchProgress,
   deleteBunnyVideo,
 } from "../services/bunnyStream.service.js";
@@ -81,17 +82,14 @@ export const verifyLearnerVideoAccess = async ({
          AND (
            g.course_id = $2
            OR ($3::bigint IS NOT NULL AND EXISTS (
-             SELECT 1 FROM live_classes lc WHERE lc.id = $3 AND lc.course_id = g.course_id
-           ))
-           OR ($3::bigint IS NOT NULL AND EXISTS (
-             SELECT 1 FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.live_class_id = $3 AND ce.status = 'active'
-           ))
-           OR EXISTS (
-             SELECT 1 FROM video_course_profiles vcp
-             JOIN live_classes lc ON lc.id = vcp.source_live_class_id
+             SELECT 1
+             FROM live_classes lc
              JOIN class_enrollments ce ON ce.live_class_id = lc.id
-             WHERE vcp.course_id = $2 AND vcp.status = 'active' AND ce.user_id = $1 AND ce.status = 'active'
-           )
+             WHERE lc.id = $3
+               AND lc.course_id = g.course_id
+               AND ce.user_id = $1
+               AND ce.status = 'active'
+           ))
          )
          AND g.access_status = 'active'
          AND g.valid_from <= NOW()
@@ -127,9 +125,10 @@ export const verifyLearnerVideoAccess = async ({
     if (requireRecordingMode && enrollment.learning_mode !== "recording") {
       const mirrorRes = await db.query(
         `SELECT 1 FROM video_course_profiles
-         WHERE source_live_class_id = $1 AND status = 'active' AND mode = 'MIRROR'
+         WHERE source_live_class_id = $1 AND course_id = $2
+           AND status = 'active' AND mode = 'MIRROR'
          LIMIT 1`,
-        [liveClassId],
+        [liveClassId, courseId],
       );
       if (mirrorRes.rows.length === 0) {
         return {
@@ -922,12 +921,18 @@ router.post("/videos/:videoId/playback-token", protectRoute, async (req, res) =>
         completionPercent: 0,
         isCompleted: false,
       };
+    const unitProgress = await getUnitVideoProgressAggregate({
+      userId: req.user.id,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+    });
 
     return res.json({
       success: true,
       data: {
         ...signedPlayback,
         watchProgress,
+        unitProgress,
       },
     });
   } catch (error) {

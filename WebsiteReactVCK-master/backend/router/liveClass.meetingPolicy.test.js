@@ -275,26 +275,27 @@ test("recording learners cannot fetch the recurring source schedule", async (t) 
   assert.equal(scheduleQueryCount, 0);
 });
 
-test("recording learners retain class content access after the source class completes", async (t) => {
+test("recording-only learners cannot open Live class chapters", async (t) => {
   const oldQuery = pool.query;
+  let contentQueryCount = 0;
   pool.query = async (sql, params = []) => {
     if (sql.includes("FROM live_classes lc")) {
       return { rows: [{
         id: 8,
-        title: "Completed source class",
+        title: "Source live class",
         course_id: 2,
-        status: "completed",
+        status: "active",
       }] };
     }
     if (sql.includes("FROM class_enrollments ce")) {
-      assert.match(sql, /completed.*ce\.learning_mode = 'recording'/s);
-      assert.equal(params[3], "completed");
-      return { rows: [{ '?column?': 1 }] };
+      assert.match(sql, /ce\.learning_mode = 'live'/);
+      assert.deepEqual(params, [8, 12, 2, "active"]);
+      return { rows: [] };
     }
-    if (sql.includes("FROM class_chapters cc")) {
-      return { rows: [{ id: 3, live_class_id: 8, title: "Chương 1", position: 1 }] };
+    if (sql.includes("FROM class_chapters cc") || sql.includes("FROM class_sessions cs")) {
+      contentQueryCount += 1;
+      return { rows: [] };
     }
-    if (sql.includes("FROM class_sessions cs")) return { rows: [] };
     assert.fail(`Unexpected query: ${sql}`);
   };
   t.after(() => { pool.query = oldQuery; });
@@ -305,24 +306,19 @@ test("recording learners retain class content access after the source class comp
     res,
   );
 
-  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
-  assert.equal(res.body.data[0].title, "Chương 1");
+  assert.equal(res.statusCode, 403, JSON.stringify(res.body));
+  assert.equal(res.body.errorCode, "FORBIDDEN");
+  assert.equal(contentQueryCount, 0);
 });
 
-test("learner class list uses the Record alias title without changing staff views", async (t) => {
+test("learner Live class list excludes recording-only enrollments and Record aliases", async (t) => {
   const oldQuery = pool.query;
   pool.query = async (sql, params = []) => {
     assert.deepEqual(params, [12]);
-    assert.match(sql, /COALESCE\(\(SELECT record_alias\.title/);
-    assert.match(sql, /record_enrollment\.management_class_alias_id/);
-    return { rows: [{
-      id: 8,
-      title: "Source class - Record",
-      course_id: 2,
-      status: "completed",
-      max_students: 30,
-      enrolled_count: 1,
-    }] };
+    assert.match(sql, /ce\.learning_mode = 'live'/);
+    assert.doesNotMatch(sql, /record_alias|management_class_alias_id/);
+    assert.match(sql, /lc\.title AS title/);
+    return { rows: [] };
   };
   t.after(() => { pool.query = oldQuery; });
 
@@ -333,7 +329,7 @@ test("learner class list uses the Record alias title without changing staff view
   );
 
   assert.equal(res.statusCode, 200, JSON.stringify(res.body));
-  assert.equal(res.body.data[0].title, "Source class - Record");
+  assert.deepEqual(res.body.data, []);
 });
 
 test("recording admin enrollment does not consume a live seat", async (t) => {

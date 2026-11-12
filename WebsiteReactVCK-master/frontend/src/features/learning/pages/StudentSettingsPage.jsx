@@ -553,16 +553,16 @@ export default function StudentSettingsPage() {
                 </span>
               </div>
 
-              {/* Row 3: Thiết bị đăng nhập */}
+              {/* Record playback slots are separate from ordinary account sign-in. */}
               <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:bg-slate-800/60">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
                     <Laptop className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-800 sm:text-sm dark:text-white">Thiết bị đăng nhập</p>
+                    <p className="text-xs font-bold text-slate-800 sm:text-sm dark:text-white">Thiết bị xem khóa Record</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {trustedDevices.used}/{trustedDevices.limit} thiết bị tin cậy đã dùng
+                      Đã dùng {trustedDevices.used}/{trustedDevices.limit} slot Record
                     </p>
                   </div>
                 </div>
@@ -1147,9 +1147,9 @@ export default function StudentSettingsPage() {
                   <Laptop className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[#102f63] dark:text-white">Thiết bị tin cậy</h3>
+                  <h3 className="text-base font-bold text-[#102f63] dark:text-white">Thiết bị tài khoản</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Đã dùng {trustedDevices.used}/{trustedDevices.limit} thiết bị
+                    {trustedDevices.used}/{trustedDevices.limit} thiết bị đang dùng slot xem Record
                   </p>
                 </div>
               </div>
@@ -1215,6 +1215,13 @@ export default function StudentSettingsPage() {
                               Thiết bị này
                             </span>
                           )}
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+                            device.isRecordDevice
+                              ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300"
+                              : "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                          }`}>
+                            {device.isRecordDevice ? "Đang dùng slot Record" : "Chỉ đăng nhập"}
+                          </span>
                         </div>
                         <div className="mt-1.5 grid gap-1 text-[11px] text-slate-500 dark:text-slate-400 sm:grid-cols-2">
                           <span className="flex items-center gap-1"><Wifi className="h-3 w-3" />IP gần nhất: {device.lastIp || "Không xác định"}</span>
@@ -1233,8 +1240,8 @@ export default function StudentSettingsPage() {
               <div className="flex gap-2.5">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
                 <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-                  Thiết bị vẫn được ghi nhớ khi token đăng nhập hết hạn. Học viên không thể tự xóa thiết bị;
-                  chỉ quản trị viên mới có quyền giải phóng một trong 2 vị trí này.
+                  Giới hạn 2 thiết bị chỉ áp dụng khi xem khóa Record, không giới hạn số thiết bị đăng nhập thông thường.
+                  Học viên không thể tự giải phóng slot Record; vui lòng liên hệ quản trị viên khi cần đổi thiết bị.
                 </p>
               </div>
             </div>

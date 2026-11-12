@@ -237,7 +237,8 @@ const handleLeaderboard = async (req, res) => {
            FROM class_enrollments ce
            JOIN live_classes lc ON lc.id = ce.live_class_id
            LEFT JOIN courses c ON c.id = lc.course_id
-           WHERE ce.user_id = $1 AND ce.status = 'active'
+           WHERE ce.user_id = $1 AND ce.status = 'active' AND ce.learning_mode = 'live'
+             AND lc.status = 'active'
              AND (
                COALESCE(c.is_management_managed, FALSE) = FALSE
                OR EXISTS (
@@ -271,6 +272,7 @@ const handleLeaderboard = async (req, res) => {
           `SELECT 1
            FROM class_enrollments ce
            WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
+             AND ce.learning_mode = 'live'
              AND (
                $3::boolean = FALSE
                OR EXISTS (
@@ -290,7 +292,7 @@ const handleLeaderboard = async (req, res) => {
         JOIN live_classes lc_scope ON lc_scope.id = ce.live_class_id
         LEFT JOIN courses c_scope ON c_scope.id = lc_scope.course_id
         WHERE ce.live_class_id = $${values.length}
-          AND ce.user_id = u.id AND ce.status = 'active'
+          AND ce.user_id = u.id AND ce.status = 'active' AND ce.learning_mode = 'live'
           AND (
             COALESCE(c_scope.is_management_managed, FALSE) = FALSE
             OR EXISTS (
@@ -760,7 +762,8 @@ router.post("/amendments", protectRoute, requireTeacher, requirePermission("lms.
     const attendance = await client.query(
       `SELECT ca.status, COALESCE(ca.note, '') AS note, ce.is_internal_test
        FROM class_attendance ca
-       JOIN class_enrollments ce ON ce.live_class_id = $2 AND ce.user_id = ca.user_id AND ce.status = 'active'
+       JOIN class_enrollments ce ON ce.live_class_id = $2 AND ce.user_id = ca.user_id
+         AND ce.status = 'active' AND ce.learning_mode = 'live'
        WHERE ca.session_id = $1 AND ca.user_id = $3
          AND ($4::boolean OR ce.is_internal_test = FALSE)
        FOR UPDATE OF ca`,
@@ -872,7 +875,8 @@ router.post("/amendments/:amendmentId/review", protectRoute, requireTeacher, req
                 COALESCE(ca.note, '') AS note, ca.checked_at
          FROM class_attendance ca
          JOIN class_enrollments ce
-           ON ce.user_id = ca.user_id AND ce.live_class_id = $2 AND ce.is_internal_test = FALSE
+           ON ce.user_id = ca.user_id AND ce.live_class_id = $2
+          AND ce.status = 'active' AND ce.learning_mode = 'live' AND ce.is_internal_test = FALSE
          WHERE ca.session_id = $1 ORDER BY ca.user_id`, [amendment.session_id, amendment.live_class_id],
       );
       if (snapshot.rows.every((row) => row.management_membership_source_id)) {

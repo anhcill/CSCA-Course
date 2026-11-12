@@ -165,11 +165,21 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
     const userId = req.user.id;
     const result = await query(
         `WITH accessible_courses AS (
-           SELECT course_id, MIN(valid_from) AS access_granted_at
-           FROM lms_access_grants
-           WHERE user_id = $1 AND access_status = 'active'
-             AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
-           GROUP BY course_id
+           SELECT g.course_id, MIN(g.valid_from) AS access_granted_at
+           FROM lms_access_grants g
+           WHERE g.user_id = $1 AND g.access_status = 'active'
+             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+             AND EXISTS (
+               SELECT 1
+               FROM class_enrollments ce_live
+               JOIN live_classes lc_live ON lc_live.id = ce_live.live_class_id
+               WHERE ce_live.user_id = g.user_id
+                 AND ce_live.status = 'active'
+                 AND ce_live.learning_mode = 'live'
+                 AND lc_live.course_id = g.course_id
+                 AND lc_live.status = 'active'
+             )
+           GROUP BY g.course_id
          )
          SELECT
           c.id AS enrollment_id,
@@ -248,6 +258,7 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
               LEFT JOIN users instructor ON instructor.id = lc.instructor_id
               WHERE ce.user_id = $1
                 AND ce.status = 'active'
+                AND ce.learning_mode = 'live'
                 AND lc.course_id = c.id
                 AND lc.status = 'active'
             ),
@@ -269,6 +280,7 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
               JOIN class_enrollments ce ON ce.live_class_id = lc.id
               WHERE ce.user_id = $1
                 AND ce.status = 'active'
+                AND ce.learning_mode = 'live'
                 AND lc.course_id = c.id
                 AND lc.status = 'active'
                 AND cs.status <> 'cancelled'
@@ -283,6 +295,7 @@ router.get("/my-courses", protectRoute, requireRole("user"), requireActiveStuden
               JOIN class_enrollments ce ON ce.live_class_id = lc.id
               WHERE ce.user_id = $1
                 AND ce.status = 'active'
+                AND ce.learning_mode = 'live'
                 AND lc.course_id = c.id
                 AND lc.status = 'active'
                 AND cs.status <> 'cancelled'

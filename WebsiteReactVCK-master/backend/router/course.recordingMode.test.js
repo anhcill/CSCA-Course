@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 
-test("record learner opens a completed source workspace with the Record alias title", async (t) => {
+test("record enrollment never opens the Live LMS course workspace", async (t) => {
   const db = new PGlite();
   t.after(() => db.close());
   await db.exec(await fs.readFile("database/schema.sql", "utf8"));
@@ -74,11 +74,6 @@ test("record learner opens a completed source workspace with the Record alias ti
     query: { classId: String(liveClass.id) },
   }, res);
 
-  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
-  assert.equal(res.body.data.selectedClass.title, "Workspace course - Record");
-  assert.equal(res.body.data.selectedClass.learning_mode, "recording");
-  assert.equal(res.body.data.classes[0].title, "Workspace course - Record");
-  assert.equal(res.body.data.access.canJoinLive, false);
-  assert.equal(res.body.data.access.showCalendar, false);
-  assert.deepEqual(res.body.data.upcomingSessions, []);
+  assert.equal(res.statusCode, 403, JSON.stringify(res.body));
+  assert.equal(res.body.errorCode, "FORBIDDEN");
 });

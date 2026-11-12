@@ -173,8 +173,12 @@ export const fetchVideoCourseWorkspace = async (offeringId, { unitId } = {}) => 
   return request(`/video-courses/${encodeURIComponent(offeringId)}/workspace${params.size ? `?${params.toString()}` : ""}`);
 };
 
-export const fetchVideoCourseCatalog = async () => {
-  return request("/video-courses");
+export const fetchVideoCourseCatalog = async ({ signal } = {}) => {
+  return request("/video-courses", { signal });
+};
+
+export const fetchPublicCourseCatalog = async ({ signal } = {}) => {
+  return request("/courses", { signal });
 };
 
 export const checkEnrollmentStatus = async (courseId) => (
@@ -1731,9 +1735,12 @@ export const requestVideoPlaybackToken = async (videoId, { unitId = null, course
 export const updateVideoWatchProgress = async (
   videoId,
   { unitId = null, currentTimeSeconds = 0, watchedDeltaSeconds = null, durationSeconds = null } = {},
+  { keepalive = false } = {},
 ) => (
   request(`/videos/${encodeURIComponent(videoId)}/progress`, {
     method: "PUT",
+    keepalive,
+    timeoutMs: keepalive ? 0 : DEFAULT_REQUEST_TIMEOUT_MS,
     body: JSON.stringify({
       unitId,
       currentTimeSeconds,

@@ -312,7 +312,7 @@ const canViewClass = async (liveClass, user) => {
     `SELECT 1
      FROM class_enrollments ce
      WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
-       AND ($4::text = 'active' OR ($4::text = 'completed' AND ce.learning_mode = 'recording'))
+       AND ce.learning_mode = 'live' AND $4::text = 'active'
        AND EXISTS (
          SELECT 1 FROM lms_access_grants g
          WHERE g.user_id = $2 AND g.course_id = $3 AND g.access_status = 'active'
@@ -360,6 +360,7 @@ const classListVisibility = (user) => {
       SELECT 1 FROM class_enrollments ce
       LEFT JOIN courses course_access ON course_access.id = lc.course_id
       WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
+        AND ce.learning_mode = 'live'
         AND EXISTS (
           SELECT 1 FROM lms_access_grants g
           WHERE g.user_id = $1 AND g.course_id = course_access.id AND g.access_status = 'active'
@@ -515,33 +516,19 @@ const canTeachSessionChapter = async (client, session, user) => {
 router.get("/", protectRoute, requireManagedLearner, async (req, res) => {
   try {
     const visibility = classListVisibility(req.user);
-    const classTitleSelect = req.user.role === "user"
-      ? `COALESCE((SELECT record_alias.title
-          FROM class_enrollments record_enrollment
-          JOIN management_class_learning_aliases record_alias
-            ON record_alias.id = record_enrollment.management_class_alias_id
-          WHERE record_enrollment.live_class_id = lc.id AND record_enrollment.user_id = $1
-            AND record_enrollment.status = 'active' AND record_enrollment.learning_mode = 'recording'
-          LIMIT 1), lc.title) AS title`
-      : "lc.title AS title";
-    const classStatusVisibility = req.user.role === "user"
-      ? `(lc.status = 'active' OR (lc.status = 'completed' AND EXISTS (
-          SELECT 1 FROM class_enrollments record_access
-          WHERE record_access.live_class_id = lc.id AND record_access.user_id = $1
-            AND record_access.status = 'active' AND record_access.learning_mode = 'recording'
-        )))`
-      : "lc.status = 'active'";
+    const classTitleSelect = "lc.title AS title";
+    const classStatusVisibility = "lc.status = 'active'";
     const result = await query(
       `SELECT lc.id, ${classTitleSelect}, lc.course_id, lc.instructor_id, lc.description,
               lc.max_students, lc.status, lc.created_at, lc.updated_at,
               lc.teacher_display_name, lc.cover_image_url,
               COALESCE(c.title, c.name) AS course_title,
-              COUNT(ce.id) FILTER (WHERE ce.status = 'active' AND ce.is_internal_test = FALSE)::int AS enrolled_count
+              COUNT(ce.id) FILTER (WHERE ce.status = 'active' AND ce.learning_mode = 'live' AND ce.is_internal_test = FALSE)::int AS enrolled_count
        FROM live_classes lc
        LEFT JOIN courses c ON c.id = lc.course_id
        LEFT JOIN class_enrollments ce ON ce.live_class_id = lc.id
        WHERE ${classStatusVisibility}
-         AND (${req.user.role === 'admin' || req.user.role === 'creator' ? 'TRUE' : `(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true OR EXISTS (SELECT 1 FROM class_enrollments ce_vis WHERE ce_vis.live_class_id = lc.id AND ce_vis.user_id = $1 AND ce_vis.status = 'active'))`})
+         AND (${req.user.role === 'admin' || req.user.role === 'creator' ? 'TRUE' : `(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true OR EXISTS (SELECT 1 FROM class_enrollments ce_vis WHERE ce_vis.live_class_id = lc.id AND ce_vis.user_id = $1 AND ce_vis.status = 'active' AND ce_vis.learning_mode = 'live'))`})
          AND ${visibility.clause}
        GROUP BY lc.id, c.title, c.name, lc.teacher_display_name, lc.cover_image_url
        ORDER BY lc.created_at DESC`,
@@ -687,10 +674,10 @@ router.get("/my-schedule", protectRoute, requireManagedLearner, async (req, res)
        LEFT JOIN courses c ON c.id = lc.course_id
        LEFT JOIN sections course_section ON course_section.id = cs.course_section_id
        LEFT JOIN lessons lesson ON lesson.id = cs.lesson_id
-       LEFT JOIN class_enrollments ce2 ON ce2.live_class_id = lc.id
+       LEFT JOIN class_enrollments ce2 ON ce2.live_class_id = lc.id AND ce2.learning_mode = 'live'
        WHERE lc.status = 'active'
          AND cs.status <> 'cancelled'
-         AND (${req.user.role === 'admin' || req.user.role === 'creator' ? 'TRUE' : `(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true OR EXISTS (SELECT 1 FROM class_enrollments ce_vis WHERE ce_vis.live_class_id = lc.id AND ce_vis.user_id = $1 AND ce_vis.status = 'active'))`})
+         AND (${req.user.role === 'admin' || req.user.role === 'creator' ? 'TRUE' : `(lc.course_id IS NULL OR COALESCE(c.is_published, false) = true OR EXISTS (SELECT 1 FROM class_enrollments ce_vis WHERE ce_vis.live_class_id = lc.id AND ce_vis.user_id = $1 AND ce_vis.status = 'active' AND ce_vis.learning_mode = 'live'))`})
          AND ${visibility.clause}
          ${courseScope}
          ${classScope}
@@ -825,7 +812,7 @@ router.get("/:classId/enrollments", protectRoute, requireTeacher, requirePermiss
        JOIN users u ON u.id = ce.user_id
        LEFT JOIN class_sessions cs ON cs.live_class_id = ce.live_class_id
        LEFT JOIN class_attendance ca ON ca.user_id = ce.user_id AND ca.session_id = cs.id
-       WHERE ce.live_class_id = $1 AND ce.status = 'active'
+       WHERE ce.live_class_id = $1 AND ce.status = 'active' AND ce.learning_mode = 'live'
          AND ($2::boolean OR NOT ce.is_internal_test)
        GROUP BY u.id, ce.status, ce.enrolled_at, ce.is_internal_test, ce.learning_mode
        ORDER BY LOWER(COALESCE(u.username, u.email)) ASC`,
@@ -834,10 +821,10 @@ router.get("/:classId/enrollments", protectRoute, requireTeacher, requirePermiss
 
     return res.json({ success: true, data: result.rows.map((row) => ({
       ...row,
-      attendance_rate: row.learning_mode === "recording" ? null : Number(row.total_sessions) > 0
+      attendance_rate: Number(row.total_sessions) > 0
         ? Math.round((Number(row.present_sessions) / Number(row.total_sessions)) * 100)
         : 0,
-      attendance_applicable: row.learning_mode !== "recording",
+      attendance_applicable: true,
     })) });
   } catch (error) {
     console.error("Error fetching live class roster:", error);

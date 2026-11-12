@@ -15,7 +15,6 @@ import {
   LayoutDashboard,
   Users,
   ShieldCheck,
-  Bookmark,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
@@ -184,7 +183,7 @@ const Navbar = () => {
             <div className="flex h-16 items-center justify-between gap-4">
               <div className="flex items-center gap-4 flex-1">
                 <Logo />
-                <div className="hidden min-w-[240px] max-w-sm flex-1 lg:block">
+                <div className="hidden min-w-[280px] max-w-md flex-1 lg:block">
                   <SearchNavbar />
                 </div>
               </div>

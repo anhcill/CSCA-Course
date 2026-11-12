@@ -93,6 +93,20 @@ const checkEnrollment = async (courseId, userId) => {
   return result.rows.length > 0;
 };
 
+const checkLiveClassEnrollment = async (courseId, userId) => {
+  const result = await query(
+    `SELECT 1
+     FROM class_enrollments ce
+     JOIN live_classes lc ON lc.id = ce.live_class_id
+     WHERE ce.user_id = $1 AND lc.course_id = $2
+       AND ce.status = 'active' AND ce.learning_mode = 'live'
+       AND lc.status = 'active'
+     LIMIT 1`,
+    [userId, courseId],
+  );
+  return result.rows.length > 0;
+};
+
 const requireManagedLearnerAccess = (res, user) => {
   if (user.role !== "user" || hasActiveStudentLmsAccess(user)) return true;
   forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
@@ -514,7 +528,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       )).rows.length > 0
       : false;
     if (isLearner && !requireManagedLearnerAccess(res, req.user)) return;
-    if (isLearner && !(await checkEnrollment(courseId, req.user.id))) {
+    if (isLearner && (
+      !(await checkEnrollment(courseId, req.user.id))
+      || !(await checkLiveClassEnrollment(courseId, req.user.id))
+    )) {
       return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
     }
     if (!isLearner && !isAdmin && !isTeacherOwner && !isAssignedTeacher) {
@@ -530,6 +547,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         selectedClassVisibility = `EXISTS (
           SELECT 1 FROM class_enrollments ce
           WHERE ce.live_class_id = lc.id AND ce.user_id = $3 AND ce.status = 'active'
+            AND ce.learning_mode = 'live'
         )`;
       } else if (!isAdmin) {
         selectedClassParams.push(req.user.id);
@@ -542,32 +560,17 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         ))`;
       }
       const selectedClassModeSelect = isLearner
-        ? `(SELECT ce_mode.learning_mode FROM class_enrollments ce_mode
-            WHERE ce_mode.live_class_id = lc.id AND ce_mode.user_id = $3 AND ce_mode.status = 'active'
-            LIMIT 1) AS learning_mode`
+        ? "'live'::text AS learning_mode"
         : "NULL::text AS learning_mode";
-      const selectedClassTitleSelect = isLearner
-        ? `COALESCE((SELECT record_alias.title
-            FROM class_enrollments ce_title
-            JOIN management_class_learning_aliases record_alias
-              ON record_alias.id = ce_title.management_class_alias_id
-            WHERE ce_title.live_class_id = lc.id AND ce_title.user_id = $3
-              AND ce_title.status = 'active' AND ce_title.learning_mode = 'recording'
-            LIMIT 1), lc.title) AS title`
-        : "lc.title AS title";
-      const selectedClassStatusVisibility = isLearner
-        ? `(lc.status = 'active' OR (lc.status = 'completed' AND EXISTS (
-            SELECT 1 FROM class_enrollments completed_record
-            WHERE completed_record.live_class_id = lc.id AND completed_record.user_id = $3
-              AND completed_record.status = 'active' AND completed_record.learning_mode = 'recording'
-          )))`
-        : "lc.status = 'active'";
+      const selectedClassTitleSelect = "lc.title AS title";
+      const selectedClassStatusVisibility = "lc.status = 'active'";
       const selectedClassResult = await query(
         `SELECT lc.id, ${selectedClassTitleSelect}, lc.description, lc.instructor_id, lc.max_students,
                 lc.allow_file_download, ${selectedClassModeSelect},
                 COALESCE(NULLIF(lc.teacher_display_name, ''), u.username, u.email) AS instructor_name,
                 (SELECT COUNT(*)::int FROM class_enrollments ce
                  WHERE ce.live_class_id = lc.id AND ce.status = 'active'
+                   AND ce.learning_mode = 'live'
                    AND ce.is_internal_test = FALSE) AS student_count
          FROM live_classes lc
          LEFT JOIN users u ON u.id = lc.instructor_id
@@ -586,6 +589,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       scopedClassVisibility = `EXISTS (
         SELECT 1 FROM class_enrollments ce
         WHERE ce.live_class_id = lc.id AND ce.user_id = $2 AND ce.status = 'active'
+          AND ce.learning_mode = 'live'
       )`;
     } else if (!isAdmin) {
       scopedClassParams.push(req.user.id);
@@ -599,30 +603,12 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     }
     const selectedClassScope = selectedClassId ? ` AND lc.id = $${scopedClassParams.length + 1}` : "";
     if (selectedClassId) scopedClassParams.push(selectedClassId);
-    const sessionClassVisibility = isLearner
-      ? scopedClassVisibility.replace("ce.status = 'active'", "ce.status = 'active' AND ce.learning_mode = 'live'")
-      : scopedClassVisibility;
+    const sessionClassVisibility = scopedClassVisibility;
     const learnerModeSelect = isLearner
-      ? `(SELECT ce_mode.learning_mode FROM class_enrollments ce_mode
-          WHERE ce_mode.live_class_id = lc.id AND ce_mode.user_id = $2 AND ce_mode.status = 'active'
-          LIMIT 1) AS learning_mode`
+      ? "'live'::text AS learning_mode"
       : "NULL::text AS learning_mode";
-    const learnerClassTitleSelect = isLearner
-      ? `COALESCE((SELECT record_alias.title
-          FROM class_enrollments ce_title
-          JOIN management_class_learning_aliases record_alias
-            ON record_alias.id = ce_title.management_class_alias_id
-          WHERE ce_title.live_class_id = lc.id AND ce_title.user_id = $2
-            AND ce_title.status = 'active' AND ce_title.learning_mode = 'recording'
-          LIMIT 1), lc.title) AS title`
-      : "lc.title AS title";
-    const classStatusVisibility = isLearner
-      ? `(lc.status = 'active' OR (lc.status = 'completed' AND EXISTS (
-          SELECT 1 FROM class_enrollments completed_record
-          WHERE completed_record.live_class_id = lc.id AND completed_record.user_id = $2
-            AND completed_record.status = 'active' AND completed_record.learning_mode = 'recording'
-        )))`
-      : "lc.status = 'active'";
+    const learnerClassTitleSelect = "lc.title AS title";
+    const classStatusVisibility = "lc.status = 'active'";
 
     const assignmentParams = [courseId, req.user.id];
     let assignmentVisibility = "TRUE";
@@ -631,6 +617,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         a.live_class_id IS NULL OR EXISTS (
           SELECT 1 FROM class_enrollments ce
           WHERE ce.live_class_id = a.live_class_id AND ce.user_id = $2 AND ce.status = 'active'
+            AND ce.learning_mode = 'live'
         )
       )`;
     } else if (!isAdmin) {
@@ -650,8 +637,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         q.live_class_id IS NULL OR EXISTS (
           SELECT 1 FROM class_enrollments quiz_ce
           WHERE quiz_ce.live_class_id = q.live_class_id AND quiz_ce.user_id = $2 AND quiz_ce.status = 'active'
-            AND (quiz_lc.status = 'active'
-              OR (quiz_lc.status = 'completed' AND quiz_ce.learning_mode = 'recording'))
+            AND quiz_ce.learning_mode = 'live' AND quiz_lc.status = 'active'
         )
       )`;
     } else if (!isAdmin) {
@@ -677,7 +663,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         AND fi.effective_live_class_id IS NOT NULL AND EXISTS (
           SELECT 1 FROM class_enrollments ce
           WHERE ce.live_class_id = fi.effective_live_class_id AND ce.user_id = $2 AND ce.status = 'active'
-            AND (lc.status = 'active' OR (lc.status = 'completed' AND ce.learning_mode = 'recording'))
+            AND ce.learning_mode = 'live' AND lc.status = 'active'
         )))`;
     } else if (!isAdmin) {
       fileParams.push(req.user.id);
@@ -726,7 +712,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         `SELECT lc.id, ${learnerClassTitleSelect}, lc.description, lc.instructor_id, lc.max_students,
                 lc.allow_file_download, ${learnerModeSelect},
                 COALESCE(NULLIF(lc.teacher_display_name, ''), u.username, u.email) AS instructor_name,
-                COUNT(ce.id) FILTER (WHERE ce.status = 'active' AND ce.is_internal_test = FALSE)::int AS enrolled_count
+                 COUNT(ce.id) FILTER (WHERE ce.status = 'active' AND ce.learning_mode = 'live' AND ce.is_internal_test = FALSE)::int AS enrolled_count
          FROM live_classes lc
          LEFT JOIN users u ON u.id = lc.instructor_id
          LEFT JOIN class_enrollments ce ON ce.live_class_id = lc.id
@@ -838,22 +824,19 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
       ),
       query(
         `SELECT COUNT(cs.id)::int AS total_sessions,
-                COUNT(cs.id) FILTER (
-                  WHERE (ce.learning_mode = 'recording' AND EXISTS (
-                       SELECT 1 FROM class_recordings recording
-                       WHERE recording.class_session_id = cs.id AND recording.is_published = TRUE
-                     )) OR (ce.learning_mode = 'live' AND (
-                       cs.status = 'ended' OR cs.end_time <= NOW()
+                 COUNT(cs.id) FILTER (
+                   WHERE cs.status = 'ended' OR cs.end_time <= NOW()
                      OR EXISTS (
                        SELECT 1 FROM class_attendance ca
                        WHERE ca.session_id = cs.id AND ca.user_id = $2 AND ca.status = 'present'
-                     )))
+                      )
                 )::int AS completed_sessions
          FROM class_sessions cs
          JOIN live_classes lc ON lc.id = cs.live_class_id
-         JOIN class_enrollments ce ON ce.live_class_id = lc.id AND ce.user_id = $2 AND ce.status = 'active'
+         JOIN class_enrollments ce ON ce.live_class_id = lc.id AND ce.user_id = $2
+           AND ce.status = 'active' AND ce.learning_mode = 'live'
          WHERE lc.course_id = $1 AND cs.status <> 'cancelled'
-           AND (lc.status = 'active' OR (lc.status = 'completed' AND ce.learning_mode = 'recording'))
+            AND lc.status = 'active'
            AND ($3::bigint IS NULL OR lc.id = $3)`,
         [courseId, req.user.id, selectedClassId],
       ),
@@ -933,10 +916,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         access: {
           canLearn: true,
           learningMode: selectedClass?.learning_mode || null,
-          canJoinLive: !isLearner || selectedClass?.learning_mode !== "recording",
-          canCheckIn: !isLearner || selectedClass?.learning_mode !== "recording",
-          showCalendar: !isLearner || selectedClass?.learning_mode !== "recording",
-          prioritizeRecordings: isLearner && selectedClass?.learning_mode === "recording",
+          canJoinLive: true,
+          canCheckIn: true,
+          showCalendar: true,
+          prioritizeRecordings: false,
         },
       },
     });

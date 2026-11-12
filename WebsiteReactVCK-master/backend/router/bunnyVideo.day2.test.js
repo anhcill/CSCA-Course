@@ -91,6 +91,11 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
      VALUES ($1,$2,'Record learner browser') RETURNING id`,
     [recordStudent.id, "record-device".padEnd(64, "0")],
   )).rows[0];
+  const liveDevice = (await db.query(
+    `INSERT INTO trusted_login_devices(user_id,device_token_hash,device_name)
+     VALUES ($1,$2,'Live learner Record browser') RETURNING id`,
+    [liveOnlyStudent.id, "live-device".padEnd(64, "0")],
+  )).rows[0];
 
   // Seed MIRROR course & source live class
   const mirrorCourse = (await db.query(
@@ -296,20 +301,24 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   assert.equal(publishRes.statusCode, 200);
   assert.equal(publishRes.body.data.isPublished, true);
 
-  // 7. Live-only sibling learner trying to access Record workspace or playback token -> blocked 403 RECORD_MEMBERSHIP_REQUIRED
+  // 7. A source Live learner inherits this MIRROR offering only through the Record workspace/playback flow.
   const siblingWorkspaceRes = await invokeRoute(videoCourseRouter, "get", "/:offeringId/workspace", {
     user: liveOnlyStudent,
+    authSession: { trustedDeviceId: liveDevice.id },
     params: { offeringId: String(mirrorCourse.id) },
   });
-  assert.equal(siblingWorkspaceRes.statusCode, 403);
-  assert.equal(siblingWorkspaceRes.body.errorCode, "RECORD_MEMBERSHIP_REQUIRED");
+  assert.equal(siblingWorkspaceRes.statusCode, 200, JSON.stringify(siblingWorkspaceRes.body));
+  assert.equal(siblingWorkspaceRes.body.data.mode, "RECORD_MIRROR");
+  assert.equal(siblingWorkspaceRes.body.data.capabilities.canJoinLive, false);
 
   const siblingPlaybackRes = await invokeRoute(bunnyVideoRouter, "post", "/videos/:videoId/playback-token", {
     user: liveOnlyStudent,
+    authSession: { trustedDeviceId: liveDevice.id },
     params: { videoId: assetId },
+    body: { unitId: String(session1.id) },
   });
-  assert.equal(siblingPlaybackRes.statusCode, 403);
-  assert.equal(siblingPlaybackRes.body.errorCode, "RECORD_MEMBERSHIP_REQUIRED");
+  assert.equal(siblingPlaybackRes.statusCode, 200, JSON.stringify(siblingPlaybackRes.body));
+  assert.ok(siblingPlaybackRes.body.data.embedUrl.includes("https://iframe.mediadelivery.net/embed/998877/"));
 
   // 8. Record learner gets signed playback token -> 200 OK with private no-store header and signed URLs
   const playbackRes = await invokeRoute(bunnyVideoRouter, "post", "/videos/:videoId/playback-token", {
@@ -326,7 +335,7 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   assert.equal(JSON.stringify(playbackRes.body).includes("super-secret-bunny-signing-key-never-leak"), false);
 
   // 9. Progress heartbeat validation and completion at >= 60%
-  // Spoof attempt: sending 200s watched in a single heartbeat on a 200s video is clamped to max 90s (45%)
+  // A first-heartbeat spoof is capped to a small startup allowance; client duration is ignored.
   const spoofProgressRes = await invokeRoute(bunnyVideoRouter, "put", "/videos/:videoId/progress", {
     user: recordStudent,
     authSession: { trustedDeviceId: recordDevice.id },
@@ -335,15 +344,36 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
       unitId: String(session1.id),
       currentTimeSeconds: 200,
       watchedDeltaSeconds: 200,
-      durationSeconds: 200,
+      durationSeconds: 1,
     },
   });
   assert.equal(spoofProgressRes.statusCode, 200);
-  assert.equal(spoofProgressRes.body.data.watchedSeconds, 90);
-  assert.equal(spoofProgressRes.body.data.completionPercent, 45);
+  assert.equal(spoofProgressRes.body.data.watchedSeconds, 12.5);
+  assert.equal(spoofProgressRes.body.data.completionPercent, 6.25);
   assert.equal(spoofProgressRes.body.data.isCompleted, false);
+  assert.equal(spoofProgressRes.body.data.durationSeconds, 200);
 
-  // Second heartbeat (+35s -> total 125s / 200s = 62.5%) marks completed = true.
+  // Simulate two legitimate elapsed playback windows before sending their heartbeats.
+  await db.query(
+    `UPDATE video_watch_progress SET last_heartbeat_at = NOW() - INTERVAL '90 seconds'
+     WHERE user_id = $1 AND video_asset_id = $2`,
+    [recordStudent.id, assetId],
+  );
+  await invokeRoute(bunnyVideoRouter, "put", "/videos/:videoId/progress", {
+    user: recordStudent,
+    authSession: { trustedDeviceId: recordDevice.id },
+    params: { videoId: assetId },
+    body: {
+      unitId: String(session1.id),
+      currentTimeSeconds: 102.5,
+      watchedDeltaSeconds: 90,
+    },
+  });
+  await db.query(
+    `UPDATE video_watch_progress SET last_heartbeat_at = NOW() - INTERVAL '22.5 seconds'
+     WHERE user_id = $1 AND video_asset_id = $2`,
+    [recordStudent.id, assetId],
+  );
   const completeProgressRes = await invokeRoute(bunnyVideoRouter, "put", "/videos/:videoId/progress", {
     user: recordStudent,
     authSession: { trustedDeviceId: recordDevice.id },
@@ -351,7 +381,7 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
     body: {
       unitId: String(session1.id),
       currentTimeSeconds: 125,
-      watchedDeltaSeconds: 35,
+      watchedDeltaSeconds: 22.5,
       durationSeconds: 200,
     },
   });

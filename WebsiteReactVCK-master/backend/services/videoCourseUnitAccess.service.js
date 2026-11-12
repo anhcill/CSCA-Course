@@ -1,3 +1,5 @@
+import { getUnitVideoProgressAggregate } from "./bunnyStream.service.js";
+
 const REQUIRED_WATCH_PERCENT = 60;
 
 const hasRecordingMembership = async (db, profile, userId) => Boolean((await db.query(
@@ -22,7 +24,8 @@ const hasRecordingMembership = async (db, profile, userId) => Boolean((await db.
   [userId, profile.mode, profile.source_live_class_id, profile.course_id, profile.management_class_id],
 )).rows[0]);
 
-const loadMirrorUnits = async (db, profile, userId) => (await db.query(
+const loadMirrorUnits = async (db, profile, userId) => {
+  const rows = (await db.query(
   `SELECT cs.id, cs.is_public_preview, csv.video_asset_id,
           COALESCE(vwp.is_completed, FALSE) AS video_completed,
           COALESCE(vwp.completion_percent, 0) AS completion_percent,
@@ -49,10 +52,21 @@ const loadMirrorUnits = async (db, profile, userId) => (await db.query(
      ON vwp.user_id = $2 AND vwp.video_asset_id = csv.video_asset_id
    WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
    ORDER BY cs.start_time, cs.id`,
-  [profile.source_live_class_id, userId, profile.id],
-)).rows;
+    [profile.source_live_class_id, userId, profile.id],
+  )).rows;
+  return Promise.all(rows.map(async (unit) => {
+    const progress = await getUnitVideoProgressAggregate({ db, userId, classSessionId: unit.id });
+    return {
+      ...unit,
+      has_video: Number(progress?.partCount || 0) > 0,
+      video_completed: Boolean(progress?.isCompleted),
+      completion_percent: Number(progress?.completionPercent || 0),
+    };
+  }));
+};
 
-const loadIndependentUnits = async (db, profile, userId) => (await db.query(
+const loadIndependentUnits = async (db, profile, userId) => {
+  const rows = (await db.query(
   `SELECT l.id, l.is_public_preview, COALESCE(lva.video_asset_id, l.video_asset_id) AS video_asset_id,
           l.learning_url,
           COALESCE(vwp.is_completed, FALSE) AS video_completed,
@@ -82,11 +96,21 @@ const loadIndependentUnits = async (db, profile, userId) => (await db.query(
        AND (vwp.video_asset_id = COALESCE(lva.video_asset_id, l.video_asset_id) OR vwp.lesson_id = l.id)
    WHERE l.course_id = $1 AND l.is_published = TRUE
    ORDER BY COALESCE(s.sort_order, 0), l.sort_order, l.id`,
-  [profile.course_id, userId, profile.id],
-)).rows;
+    [profile.course_id, userId, profile.id],
+  )).rows;
+  return Promise.all(rows.map(async (unit) => {
+    const progress = await getUnitVideoProgressAggregate({ db, userId, lessonId: unit.id });
+    return {
+      ...unit,
+      has_video: Number(progress?.partCount || 0) > 0,
+      video_completed: Boolean(progress?.isCompleted),
+      completion_percent: Number(progress?.completionPercent || 0),
+    };
+  }));
+};
 
 const completed = (unit) => {
-  const videoComplete = Boolean(unit.video_asset_id || unit.learning_url)
+  const videoComplete = Boolean(unit.has_video || unit.video_asset_id || unit.learning_url)
     && (unit.video_completed === true || Number(unit.completion_percent || 0) >= REQUIRED_WATCH_PERCENT);
   const quizCount = Number(unit.quiz_count || 0);
   const quizComplete = quizCount === 0 || Number(unit.completed_quiz_count || 0) >= quizCount;

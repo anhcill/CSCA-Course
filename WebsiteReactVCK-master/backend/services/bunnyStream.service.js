@@ -7,6 +7,8 @@ export const MAX_BUNNY_VIDEO_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 export const PLAYBACK_TOKEN_TTL_SECONDS = 600; // 10 minutes
 export const COMPLETION_THRESHOLD_PERCENT = 60;
 export const MAX_SINGLE_HEARTBEAT_SECONDS = 90;
+const FIRST_HEARTBEAT_ALLOWANCE_SECONDS = 12;
+const HEARTBEAT_CLOCK_SKEW_SECONDS = 0.5;
 
 export const ALLOWED_BUNNY_VIDEO_MIME_TYPES = new Set([
   "video/mp4",
@@ -595,7 +597,89 @@ export const generateBunnySignedPlayback = ({
   };
 };
 
-// Record learner video watch progress with anti-cheat validation
+export const getUnitVideoProgressAggregate = async ({
+  db = { query },
+  userId,
+  classSessionId = null,
+  lessonId = null,
+}) => {
+  if (!userId || (!classSessionId && !lessonId)) return null;
+
+  let parts = [];
+  if (classSessionId) {
+    parts = (await db.query(
+      `SELECT va.id AS video_asset_id, va.duration_seconds,
+              COALESCE(vwp.watched_seconds, 0) AS watched_seconds,
+              COALESCE(vwp.completion_percent, 0) AS completion_percent,
+              COALESCE(vwp.is_completed, FALSE) AS is_completed
+       FROM class_session_videos csv
+       JOIN video_assets va ON va.id = csv.video_asset_id AND va.deleted_at IS NULL
+       LEFT JOIN video_watch_progress vwp
+         ON vwp.user_id = $2 AND vwp.video_asset_id = va.id
+       WHERE csv.class_session_id = $1 AND csv.is_published = TRUE
+       ORDER BY (csv.video_type = 'primary') DESC, csv.sort_order, csv.id`,
+      [classSessionId, userId],
+    )).rows;
+  } else {
+    parts = (await db.query(
+      `SELECT va.id AS video_asset_id, va.duration_seconds,
+              COALESCE(vwp.watched_seconds, 0) AS watched_seconds,
+              COALESCE(vwp.completion_percent, 0) AS completion_percent,
+              COALESCE(vwp.is_completed, FALSE) AS is_completed
+       FROM class_session_videos csv
+       JOIN video_assets va ON va.id = csv.video_asset_id AND va.deleted_at IS NULL
+       LEFT JOIN video_watch_progress vwp
+         ON vwp.user_id = $2 AND vwp.video_asset_id = va.id
+       WHERE csv.lesson_id = $1 AND csv.is_published = TRUE
+       ORDER BY (csv.video_type = 'primary') DESC, csv.sort_order, csv.id`,
+      [lessonId, userId],
+    )).rows;
+
+    if (parts.length === 0) {
+      parts = (await db.query(
+        `SELECT va.id AS video_asset_id, va.duration_seconds,
+                COALESCE(vwp.watched_seconds, 0) AS watched_seconds,
+                COALESCE(vwp.completion_percent, 0) AS completion_percent,
+                COALESCE(vwp.is_completed, FALSE) AS is_completed
+         FROM lessons l
+         JOIN video_assets va ON va.id = l.video_asset_id AND va.deleted_at IS NULL
+         LEFT JOIN video_watch_progress vwp
+           ON vwp.user_id = $2 AND vwp.video_asset_id = va.id
+         WHERE l.id = $1`,
+        [lessonId, userId],
+      )).rows;
+    }
+  }
+
+  const normalized = parts.map((part) => {
+    const duration = Math.max(0, Number(part.duration_seconds || 0));
+    const watched = Math.max(0, Number(part.watched_seconds || 0));
+    const percent = duration > 0
+      ? Math.min(100, (Math.min(watched, duration) / duration) * 100)
+      : 0;
+    return {
+      duration,
+      watched: duration > 0 ? Math.min(watched, duration) : watched,
+      completed: duration > 0
+        && (Boolean(part.is_completed) || Number(part.completion_percent || percent) >= COMPLETION_THRESHOLD_PERCENT),
+    };
+  });
+  const durationSeconds = normalized.reduce((sum, part) => sum + part.duration, 0);
+  const watchedSeconds = normalized.reduce((sum, part) => sum + part.watched, 0);
+  const completionPercent = durationSeconds > 0
+    ? Math.min(100, Math.round((watchedSeconds / durationSeconds) * 10_000) / 100)
+    : 0;
+
+  return {
+    partCount: normalized.length,
+    durationSeconds,
+    watchedSeconds: Math.round(watchedSeconds * 100) / 100,
+    completionPercent,
+    isCompleted: normalized.length > 0 && normalized.every((part) => part.completed),
+  };
+};
+
+// Record learner video watch progress with anti-cheat validation.
 export const recordVideoWatchProgress = async ({
   userId,
   videoAssetId,
@@ -619,30 +703,18 @@ export const recordVideoWatchProgress = async ({
     throw new BunnyStreamError("NOT_FOUND", "Không tìm thấy video", { status: 404 });
   }
 
-  const reportedDuration = Math.max(0, Math.round(Number(durationSeconds || 0)));
-  if (Number(asset.duration_seconds || 0) <= 0 && reportedDuration > 0) {
-    await db.query(
-      `UPDATE video_assets
-       SET duration_seconds = $1, updated_at = NOW()
-       WHERE id = $2 AND (duration_seconds IS NULL OR duration_seconds <= 0)`,
-      [reportedDuration, videoAssetId],
-    );
-    asset.duration_seconds = reportedDuration;
-  }
-
-  const effectiveDuration = Math.max(
-    1,
-    Number(asset.duration_seconds || 0) || reportedDuration || 600,
-  );
-
-  const clampedPosition = Math.min(
-    effectiveDuration,
-    Math.max(0, Number(currentTimeSeconds || 0)),
-  );
+  // Browser metadata is useful for display, but never authoritative for credit/completion.
+  void durationSeconds;
+  const effectiveDuration = Math.max(0, Number(asset.duration_seconds || 0));
+  const rawPosition = Math.max(0, Number(currentTimeSeconds || 0));
+  const clampedPosition = effectiveDuration > 0
+    ? Math.min(effectiveDuration, rawPosition)
+    : rawPosition;
 
   // Load existing progress if any
   const existingRes = await db.query(
-    `SELECT id, last_position_seconds, watched_seconds, completion_percent, is_completed, completed_at
+    `SELECT id, last_position_seconds, watched_seconds, completion_percent, is_completed, completed_at,
+            last_heartbeat_at
      FROM video_watch_progress
      WHERE user_id = $1 AND video_asset_id = $2`,
     [userId, videoAssetId],
@@ -656,21 +728,29 @@ export const recordVideoWatchProgress = async ({
   if (watchedDeltaSeconds !== null && watchedDeltaSeconds !== undefined) {
     const rawDelta = Number(watchedDeltaSeconds);
     if (Number.isFinite(rawDelta) && rawDelta > 0) {
-      validDelta = Math.min(rawDelta, MAX_SINGLE_HEARTBEAT_SECONDS);
+      const lastHeartbeatAt = existing?.last_heartbeat_at ? new Date(existing.last_heartbeat_at).getTime() : null;
+      const elapsedSeconds = lastHeartbeatAt && Number.isFinite(lastHeartbeatAt)
+        ? Math.max(0, (Date.now() - lastHeartbeatAt) / 1000)
+        : FIRST_HEARTBEAT_ALLOWANCE_SECONDS;
+      const elapsedCreditCap = Math.max(0, elapsedSeconds + HEARTBEAT_CLOCK_SKEW_SECONDS);
+      validDelta = Math.min(rawDelta, MAX_SINGLE_HEARTBEAT_SECONDS, elapsedCreditCap);
     }
   }
 
-  const newWatchedSeconds = Math.min(
-    effectiveDuration,
-    Math.round((prevWatched + validDelta) * 100) / 100,
-  );
+  const accumulatedWatched = Math.round((prevWatched + validDelta) * 100) / 100;
+  const newWatchedSeconds = effectiveDuration > 0
+    ? Math.min(effectiveDuration, accumulatedWatched)
+    : accumulatedWatched;
 
   const computedPercent = Math.min(
     100,
-    Math.round((newWatchedSeconds / effectiveDuration) * 100 * 100) / 100,
+    effectiveDuration > 0
+      ? Math.round((newWatchedSeconds / effectiveDuration) * 100 * 100) / 100
+      : 0,
   );
   const finalPercent = Math.max(Number(existing?.completion_percent || 0), computedPercent);
-  const isCompleted = Boolean(existing?.is_completed) || finalPercent >= COMPLETION_THRESHOLD_PERCENT;
+  const isCompleted = effectiveDuration > 0
+    && (Boolean(existing?.is_completed) || finalPercent >= COMPLETION_THRESHOLD_PERCENT);
 
   const upsertRes = await db.query(
     `INSERT INTO video_watch_progress
@@ -707,6 +787,12 @@ export const recordVideoWatchProgress = async ({
   );
 
   const row = upsertRes.rows[0];
+  const unitProgress = await getUnitVideoProgressAggregate({
+    db,
+    userId,
+    classSessionId,
+    lessonId,
+  });
 
   // Also sync lesson_progress table if this is an independent lesson
   if (lessonId && courseId) {
@@ -718,7 +804,7 @@ export const recordVideoWatchProgress = async ({
          last_position_seconds = EXCLUDED.last_position_seconds,
          is_completed = lesson_progress.is_completed OR EXCLUDED.is_completed,
          updated_at = NOW()`,
-      [userId, lessonId, courseId, Math.round(clampedPosition), isCompleted],
+      [userId, lessonId, courseId, Math.round(clampedPosition), Boolean(unitProgress?.isCompleted)],
     );
   }
 
@@ -730,5 +816,7 @@ export const recordVideoWatchProgress = async ({
     isCompleted: Boolean(row.is_completed),
     completedAt: row.completed_at,
     lastHeartbeatAt: row.last_heartbeat_at,
+    durationSeconds: effectiveDuration,
+    unitProgress,
   };
 };
