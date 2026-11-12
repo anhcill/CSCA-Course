@@ -33,7 +33,7 @@ const policySections = [
       ['Thông tin có thể được tiếp nhận', 'Tùy tương tác, thông tin có thể gồm họ tên, số điện thoại, email, mục tiêu học, lịch sử đăng ký, tiến độ học, nội dung trao đổi hỗ trợ và dữ liệu kỹ thuật cơ bản khi bạn sử dụng website.'],
       ['Mục đích sử dụng', 'Thông tin được dùng để xác nhận đăng ký, cung cấp quyền học, gửi thông báo liên quan, xử lý yêu cầu hỗ trợ, cải thiện chương trình và bảo vệ an toàn tài khoản. MOLY COURSE không dùng thông tin cho mục đích khác vượt ngoài phạm vi đã thông báo nếu chưa có căn cứ phù hợp.'],
       ['Lưu trữ và chia sẻ', 'Dữ liệu được lưu trong thời gian cần thiết cho các mục đích vận hành, chăm sóc học viên và tuân thủ nghĩa vụ pháp lý. Chỉ chia sẻ cho đơn vị cung cấp hạ tầng hoặc dịch vụ hỗ trợ cần thiết, hoặc khi có yêu cầu hợp pháp từ cơ quan có thẩm quyền.'],
-      ['Quyền của bạn', 'Bạn có thể yêu cầu kiểm tra, cập nhật hoặc đề nghị giải thích việc sử dụng thông tin cá nhân qua Zalo 0815913408. Một số dữ liệu cần được giữ lại để hoàn tất giao dịch, giải quyết tranh chấp hoặc đáp ứng yêu cầu pháp lý.']
+      ['Quyền của bạn', 'Bạn có thể yêu cầu kiểm tra, cập nhật hoặc đề nghị giải thích việc sử dụng thông tin cá nhân qua Zalo 0812352005. Một số dữ liệu cần được giữ lại để hoàn tất giao dịch, giải quyết tranh chấp hoặc đáp ứng yêu cầu pháp lý.']
     ]
   },
   {
@@ -43,7 +43,7 @@ const policySections = [
     items: [
       ['Quyền sở hữu nội dung', 'Tên MOLY COURSE, giao diện, bài viết, tài liệu, video, hình ảnh và cấu trúc bài học thuộc về MOLY COURSE hoặc bên cấp quyền. Quyền truy cập khóa học không đồng nghĩa với việc chuyển quyền sở hữu cho học viên.'],
       ['Nội dung do học viên gửi', 'Khi gửi câu hỏi, bài tập, phản hồi hoặc nội dung trong lớp, bạn vẫn giữ quyền đối với phần nội dung của mình nhưng đồng ý cho MOLY COURSE sử dụng trong phạm vi cần thiết để giảng dạy, chấm bài, hỗ trợ và cải thiện dịch vụ.'],
-      ['Thông báo vi phạm', 'Nếu bạn cho rằng nội dung trên nền tảng vi phạm quyền của mình, hãy gửi mô tả nội dung, căn cứ quyền sở hữu và thông tin liên hệ qua Zalo 0815913408. MOLY COURSE sẽ tiếp nhận, xác minh và phản hồi trong phạm vi có thể.']
+      ['Thông báo vi phạm', 'Nếu bạn cho rằng nội dung trên nền tảng vi phạm quyền của mình, hãy gửi mô tả nội dung, căn cứ quyền sở hữu và thông tin liên hệ qua Zalo 0812352005. MOLY COURSE sẽ tiếp nhận, xác minh và phản hồi trong phạm vi có thể.']
     ]
   },
   {
@@ -61,7 +61,7 @@ const policySections = [
     title: 'Kênh liên hệ chính thức',
     intro: 'Để được tư vấn và xác minh thông tin, vui lòng dùng một trong các kênh chính thức dưới đây.',
     items: [
-      ['Zalo', '0815913408 — kênh tư vấn và tiếp nhận yêu cầu hỗ trợ học viên.'],
+      ['Zalo', '0812352005 — kênh tư vấn và tiếp nhận yêu cầu hỗ trợ học viên.'],
       ['TikTok', 'Theo dõi nội dung mới tại tài khoản @moly_studio01.'],
       ['Facebook', 'Cập nhật thông báo và hoạt động tại trang Facebook chính thức của MOLY COURSE.']
     ]
@@ -139,9 +139,9 @@ export default function PoliceAndLegal() {
         <div className="mt-8 flex flex-col gap-4 rounded-3xl bg-red-600 p-6 text-white shadow-xl shadow-red-600/20 sm:flex-row sm:items-center sm:justify-between sm:p-8">
           <div>
             <h2 className="text-xl font-black">Cần được giải đáp trước khi đăng ký?</h2>
-            <p className="mt-2 text-sm leading-6 text-red-100">Nhắn Zalo 0815913408 để được tư vấn theo mục tiêu học của bạn.</p>
+            <p className="mt-2 text-sm leading-6 text-red-100">Nhắn Zalo 0812352005 để được tư vấn theo mục tiêu học của bạn.</p>
           </div>
-          <a href="https://zalo.me/0815913408" target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-black text-red-700 transition hover:bg-red-50">Mở Zalo <ArrowUpRight className="h-4 w-4" /></a>
+          <a href="https://zalo.me/0812352005" target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-black text-red-700 transition hover:bg-red-50">Mở Zalo <ArrowUpRight className="h-4 w-4" /></a>
         </div>
 
         <p className="mt-8 text-center text-xs leading-6 text-slate-500 dark:text-slate-400">Nếu có mâu thuẫn giữa thông tin tổng quát trên trang này và điều kiện riêng của một chương trình, điều kiện được thông báo trực tiếp cho chương trình đó sẽ được dùng để đối chiếu.</p>

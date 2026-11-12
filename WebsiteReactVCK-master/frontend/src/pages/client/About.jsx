@@ -100,7 +100,7 @@ export default function About() {
         <section className="mt-8 flex flex-col gap-5 rounded-3xl bg-slate-950 p-6 text-white shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-10">
           <div>
             <h2 className="text-2xl font-black">Sẵn sàng chọn lộ trình của bạn?</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">Xem các chương trình học hoặc nhắn Zalo 0815913408 để được tư vấn.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-300">Xem các chương trình học hoặc nhắn Zalo 0812352005 để được tư vấn.</p>
           </div>
           <Link to="/courses" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-amber-200">Xem khóa học <ArrowRight className="h-4 w-4" /></Link>
         </section>

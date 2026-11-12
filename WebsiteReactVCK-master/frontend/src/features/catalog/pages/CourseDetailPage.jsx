@@ -287,7 +287,7 @@ export default function CourseDetailPage() {
               {enrolling ? "Đang Xử Lý..." : course.is_free || Number(course.price) === 0 ? "Đăng Ký Học Ngay (Miễn Phí)" : `Mua Khóa Học • ${Number(course.price).toLocaleString("vi-VN")} đ`}
             </button>
             <a
-              href="https://zalo.me/0987654321"
+              href="https://zalo.me/0812352005"
               target="_blank"
               rel="noreferrer"
               className="w-full border border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-semibold py-3 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm bg-slate-50 dark:bg-slate-950/40"

@@ -31,8 +31,8 @@ const resources = {
       "email": "Email",
       "copyright": `© ${new Date().getFullYear()} MOLY COURSE 2026. All rights reserved.`,
       "address_detail": "Official academy address will be updated soon",
-      "phone_number": "0815913408",
-      "email_address": "Zalo 0815913408",
+      "phone_number": "0812352005",
+      "email_address": "Zalo 0812352005",
 
       // Profile page translations (NEW - BỔ SUNG CHO PROFILE)
       "personal_info": "Personal Information",
@@ -154,8 +154,8 @@ const resources = {
       "email": "Email",
       "copyright": `© ${new Date().getFullYear()} MOLY COURSE 2026. Đã đăng ký bản quyền.`,
       "address_detail": "Địa chỉ chính thức của trung tâm sẽ được cập nhật sau",
-      "phone_number": "0815913408",
-      "email_address": "Zalo 0815913408",
+      "phone_number": "0812352005",
+      "email_address": "Zalo 0812352005",
 
       // Profile page translations (NEW - BỔ SUNG CHO PROFILE) - Bản dịch tiếng Việt
       "personal_info": "Thông tin cá nhân",

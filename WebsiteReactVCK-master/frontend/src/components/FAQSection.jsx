@@ -27,7 +27,7 @@ export const FAQ_DATA = [
   {
     id: 'how-to-enroll',
     question: 'Làm thế nào để đăng ký học và nhận tư vấn lộ trình cá nhân hóa?',
-    answer: 'Bạn có thể chọn khóa học trực tiếp tại mục Khóa Học trên thanh điều hướng hoặc liên hệ trực tiếp qua Zalo/Hotline 0815913408 để được kiểm tra trình độ đầu vào và tư vấn kế hoạch học tập hoàn toàn miễn phí.'
+    answer: 'Bạn có thể chọn khóa học trực tiếp tại mục Khóa Học trên thanh điều hướng hoặc liên hệ trực tiếp qua Zalo/Hotline 0812352005 để được kiểm tra trình độ đầu vào và tư vấn kế hoạch học tập hoàn toàn miễn phí.'
   }
 ];
 
@@ -129,7 +129,7 @@ export default function FAQSection() {
           </p>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
             <a
-              href="https://zalo.me/0815913408"
+              href="https://zalo.me/0812352005"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-red-600/20 transition hover:bg-red-700 active:scale-95"
@@ -137,10 +137,10 @@ export default function FAQSection() {
               Tư Vấn Zalo Miễn Phí
             </a>
             <a
-              href="tel:0815913408"
+              href="tel:0812352005"
               className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-bold text-gray-800 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
             >
-              Hotline: 0815 913 408
+              Hotline: 0812 352 005
             </a>
           </div>
         </div>
