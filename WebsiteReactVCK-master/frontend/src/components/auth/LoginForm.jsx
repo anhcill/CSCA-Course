@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { User, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
+import { User, Lock, Eye, EyeOff, Loader2, Laptop, Smartphone, ShieldAlert, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import useLogin from "../../hooks/useLogin";
 import { getLmsLandingPath } from "../../utils/lmsNavigation";
@@ -72,6 +72,7 @@ const LoginForm = ({ onSwitchMode, onClose, initialIdentifier = "" }) => {
   const [formData, setFormData] = useState({ email: initialIdentifier || "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [deviceLimitData, setDeviceLimitData] = useState(null);
 
   useEffect(() => {
     if (initialIdentifier) {
@@ -109,6 +110,16 @@ const LoginForm = ({ onSwitchMode, onClose, initialIdentifier = "" }) => {
         navigate(getLmsLandingPath(user));
       }
     } catch (error) {
+      if (error?.errorCode === "DEVICE_LIMIT_REACHED" || error?.errorCode === "ACCOUNT_LOCKED_DEVICE_LIMIT") {
+        setDeviceLimitData({
+          errorCode: error.errorCode,
+          message: error.message,
+          deviceLimit: error.details?.deviceLimit || 2,
+          attemptsRemaining: error.details?.attemptsRemaining,
+          devices: error.details?.devices || [],
+        });
+        return;
+      }
       // useLogin already throws; error toast shown by hook itself
       // only show here if hook didn't (safety net)
       if (error?.message && !error.alreadyToasted) {
@@ -126,6 +137,101 @@ const LoginForm = ({ onSwitchMode, onClose, initialIdentifier = "" }) => {
   const handleSwitchToRegister = () => onSwitchMode("register");
 
   // ── render ────────────────────────────────────────────────────────────────
+  if (deviceLimitData) {
+    return (
+      <div className="w-full max-w-sm mx-auto space-y-4 animate-in fade-in duration-200">
+        {/* Header alert icon + title */}
+        <div className="text-center space-y-2">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-500/30 shadow-md">
+            <ShieldAlert className="h-7 w-7" />
+          </div>
+          <h2 className="text-xl font-black text-slate-900 dark:text-white">
+            {deviceLimitData.errorCode === "ACCOUNT_LOCKED_DEVICE_LIMIT"
+              ? "Tài khoản bị khóa do vượt quá thiết bị"
+              : `Đã đạt giới hạn ${deviceLimitData.deviceLimit || 2} thiết bị`}
+          </h2>
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            {deviceLimitData.message}
+          </p>
+        </div>
+
+        {/* List of currently logged in devices */}
+        <div className="space-y-2 pt-1">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200 border-b border-slate-200/80 dark:border-slate-700 pb-1.5">
+            <span className="flex items-center gap-1.5">
+              <Laptop className="h-4 w-4 text-amber-500" />
+              Thiết bị đang đăng nhập ({deviceLimitData.devices?.length || 0}/{deviceLimitData.deviceLimit || 2}):
+            </span>
+          </div>
+
+          <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+            {deviceLimitData.devices && deviceLimitData.devices.length > 0 ? (
+              deviceLimitData.devices.map((dev, idx) => {
+                const isMobile = /iphone|ipad|android|mobile/i.test(`${dev.deviceName || ""} ${dev.userAgent || ""}`);
+                const DevIcon = isMobile ? Smartphone : Laptop;
+                return (
+                  <div
+                    key={dev.id || idx}
+                    className="flex items-start gap-3 p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/60 shadow-xs"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 font-bold">
+                      <DevIcon className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-0.5 text-left">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-xs font-extrabold text-slate-900 dark:text-white truncate">
+                          {dev.deviceName || "Thiết bị học"}
+                        </p>
+                        <span className="shrink-0 text-[10px] font-mono font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 px-1.5 py-0.2 rounded">
+                          Máy {idx + 1}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                        IP: {dev.lastIp || dev.firstIp || "127.0.0.1"}
+                      </p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                        Đăng nhập: {dev.lastLoginAt ? new Date(dev.lastLoginAt).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "Gần đây"}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-xs text-slate-400 text-center py-3">
+                Chưa có dữ liệu chi tiết thiết bị. Vui lòng liên hệ Admin.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Contact Admin Callout */}
+        <div className="rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+          <p className="text-[11px] leading-relaxed">
+            👉 Nếu bạn muốn đổi sang máy tính / điện thoại này, vui lòng liên hệ <strong>Quản trị viên (Admin)</strong> để xóa bớt 1 trong các thiết bị cũ ở trên nhé.
+          </p>
+          <a
+            href="https://zalo.me/0812352005"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-sm transition"
+          >
+            <span>Nhắn Zalo Admin hỗ trợ: 0812352005</span>
+          </a>
+        </div>
+
+        {/* Back button */}
+        <button
+          type="button"
+          onClick={() => setDeviceLimitData(null)}
+          className="w-full py-2 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition flex items-center justify-center gap-1.5"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          <span>Quay lại màn hình đăng nhập</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-sm mx-auto">
       {/* ── header ── */}

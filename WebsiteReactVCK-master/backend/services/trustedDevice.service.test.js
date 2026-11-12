@@ -129,22 +129,22 @@ test("does not apply the learner device limit to teachers or admins", async () =
   }
 });
 
-test("ordinary login allows extra browsers while Record access is limited to two devices", async () => {
+test("ordinary login is limited to two devices and returns existing devices on rejection", async () => {
   const { db, userId, login, authorize } = await setup();
   try {
     const first = await login("a".repeat(43));
     const second = await login("b".repeat(43));
-    const third = await login("c".repeat(43));
     await authorize(first);
     await authorize(second);
 
     await assert.rejects(
-      () => authorize(third),
+      () => login("c".repeat(43)),
       (error) => {
         assert.ok(error instanceof TrustedDeviceAuthError);
         assert.equal(error.errorCode, "DEVICE_LIMIT_REACHED");
         assert.equal(error.details.usedSlots, 2);
         assert.equal(error.details.deviceLimit, 2);
+        assert.equal(error.details.devices.length, 2);
         return true;
       },
     );
@@ -153,7 +153,7 @@ test("ordinary login allows extra browsers while Record access is limited to two
       "SELECT COUNT(*)::int AS count FROM trusted_login_devices WHERE user_id = $1 AND revoked_at IS NULL",
       [userId],
     );
-    assert.equal(count.rows[0].count, 3, "Preview-only browsers remain allowed to sign in");
+    assert.equal(count.rows[0].count, 2, "Third device is rejected from signing in");
     const recordCount = await db.query(
       `SELECT COUNT(*)::int AS count FROM trusted_login_devices
        WHERE user_id = $1 AND revoked_at IS NULL AND record_access_granted_at IS NOT NULL`,
@@ -182,24 +182,23 @@ test("recognizes the same trusted device after its previous JWT session expires"
   }
 });
 
-test("rejects subsequent third Record devices without blocking ordinary login or locking the account", async () => {
+test("rejects subsequent third devices on login and records attempts", async () => {
   const { db, userId, login, authorize } = await setup();
   try {
     const first = await login("a".repeat(43));
     const second = await login("b".repeat(43));
-    const third = await login("c".repeat(43));
     await authorize(first);
     await authorize(second);
-    await assert.rejects(() => authorize(third), { errorCode: "DEVICE_LIMIT_REACHED" });
-    await assert.rejects(() => authorize(third), { errorCode: "DEVICE_LIMIT_REACHED" });
-    await assert.rejects(() => authorize(third), { errorCode: "DEVICE_LIMIT_REACHED" });
+    await assert.rejects(() => login("c".repeat(43)), { errorCode: "DEVICE_LIMIT_REACHED" });
+    await assert.rejects(() => login("c".repeat(43)), { errorCode: "DEVICE_LIMIT_REACHED" });
+    await assert.rejects(() => login("c".repeat(43)), { errorCode: "DEVICE_LIMIT_REACHED" });
 
     const user = await db.query(
       "SELECT is_locked, locked_reason, device_limit_attempts FROM users WHERE id = $1",
       [userId],
     );
     assert.equal(user.rows[0].is_locked, false, "Account should not be locked automatically");
-    assert.equal(user.rows[0].device_limit_attempts, 0);
+    assert.equal(user.rows[0].device_limit_attempts, 3);
 
     const audits = await db.query(
       "SELECT action FROM audit_events WHERE actor_id = $1 ORDER BY id ASC",
@@ -208,7 +207,7 @@ test("rejects subsequent third Record devices without blocking ordinary login or
     const actions = audits.rows.map((r) => r.action);
     assert.ok(actions.includes("user.trusted_device.registered"));
     assert.ok(actions.includes("user.record_device.authorized"));
-    assert.ok(actions.includes("user.record_device.rejected"));
+    assert.ok(actions.includes("user.trusted_device.rejected"));
   } finally {
     await db.close();
   }

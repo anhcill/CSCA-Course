@@ -29,6 +29,7 @@ import {
   AlertTriangle,
   Loader2,
   Wifi,
+  RotateCcw,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
@@ -553,26 +554,136 @@ export default function StudentSettingsPage() {
                 </span>
               </div>
 
-              {/* Record playback slots are separate from ordinary account sign-in. */}
-              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:bg-slate-800/60">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
-                    <Laptop className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800 sm:text-sm dark:text-white">Thiết bị xem khóa Record</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Đã dùng {trustedDevices.used}/{trustedDevices.limit} slot Record
-                    </p>
-                  </div>
+            </div>
+          </div>
+
+          {/* CARD 2.5: THIẾT BỊ ĐĂNG NHẬP VÀO TÀI KHOẢN */}
+          <div className="rounded-3xl border border-white/80 bg-white/95 p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-950/60 dark:text-indigo-400">
+                  <Laptop className="h-5 w-5" />
                 </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-[#102f63] dark:text-white">Thiết bị đăng nhập</h2>
+                    <span className="rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2.5 py-0.5 text-[11px] font-black">
+                      {trustedDevices.devices?.length || 0}/{trustedDevices.limit || 2} máy
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Danh sách các thiết bị máy tính, điện thoại đang đăng nhập tài khoản này
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleOpenDevices}
-                  className="rounded-xl border border-blue-200 bg-blue-50/80 px-3.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 hover:text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-900/60"
+                  onClick={loadTrustedDevices}
+                  disabled={devicesLoading}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-xs hover:bg-slate-50 transition"
+                  title="Làm mới danh sách thiết bị"
                 >
-                  Xem chi tiết
+                  <RotateCcw className={`h-3.5 w-3.5 ${devicesLoading ? "animate-spin" : ""}`} />
+                  <span>{devicesLoading ? "Đang tải..." : "Làm mới"}</span>
                 </button>
+              </div>
+            </div>
+
+            {/* List of Devices directly on the page */}
+            <div className="space-y-3">
+              {devicesLoading ? (
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 py-8 text-xs font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Đang kiểm tra thiết bị...
+                </div>
+              ) : devicesError ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-center dark:border-rose-900/60 dark:bg-rose-950/40">
+                  <AlertTriangle className="mx-auto h-5 w-5 text-rose-500" />
+                  <p className="mt-2 text-xs font-semibold text-rose-700 dark:text-rose-400">{devicesError}</p>
+                  <button
+                    type="button"
+                    onClick={loadTrustedDevices}
+                    className="mt-3 rounded-xl bg-white px-3 py-1.5 text-xs font-bold text-rose-600 shadow-sm dark:bg-slate-800 dark:text-rose-400"
+                  >
+                    Thử lại
+                  </button>
+                </div>
+              ) : trustedDevices.devices.length === 0 ? (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 py-8 text-center text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
+                  Chưa có thiết bị đăng nhập nào được ghi nhận.
+                </div>
+              ) : (
+                trustedDevices.devices.map((device, idx) => {
+                  const DeviceIcon = isMobileDevice(device) ? Smartphone : Laptop;
+                  return (
+                    <div
+                      key={device.id}
+                      className={`rounded-2xl border p-4 transition ${
+                        device.isCurrent
+                          ? "border-blue-300 bg-blue-50/70 shadow-xs dark:border-blue-900/60 dark:bg-blue-950/40"
+                          : "border-slate-200/80 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-950/60"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3.5">
+                        <div
+                          className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-xs ${
+                            device.isCurrent
+                              ? "bg-blue-600 text-white"
+                              : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                          }`}
+                        >
+                          <DeviceIcon className="h-5 w-5" />
+                        </div>
+
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-extrabold text-slate-900 dark:text-white">
+                                {device.deviceName}
+                              </p>
+                              {device.isCurrent && (
+                                <span className="rounded-full bg-emerald-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-xs">
+                                  Máy hiện tại
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-200/70 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                              Máy {idx + 1}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                            <span className="flex items-center gap-1 font-mono">
+                              <Wifi className="h-3 w-3 text-slate-400" />
+                              IP gần nhất: {device.lastIp || "Không xác định"}
+                            </span>
+                            <span>Đăng nhập: {formatDeviceTime(device.lastLoginAt)}</span>
+                            <span>Ghi nhận lần đầu: {formatDeviceTime(device.firstSeenAt)}</span>
+                            <span>
+                              {device.activeSessions > 0
+                                ? `${device.activeSessions} phiên đang hoạt động`
+                                : "Phiên đã hết hạn"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Note & Admin Contact */}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 dark:border-amber-900/60 dark:bg-amber-950/40 text-[11px] text-amber-900 dark:text-amber-300 flex items-start gap-2.5">
+              <ShieldCheck className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold">Chính sách bảo mật giới hạn thiết bị:</p>
+                <p className="leading-relaxed">
+                  Tài khoản học viên được sử dụng tối đa <strong>{trustedDevices.limit || 2} thiết bị</strong> (máy tính hoặc điện thoại) để bảo mật tài khoản.
+                  Học viên không thể tự xóa thiết bị; khi bạn đổi máy mới, vui lòng nhắn <strong>Admin qua Zalo 0812352005</strong> để được hỗ trợ gỡ thiết bị cũ.
+                </p>
               </div>
             </div>
           </div>

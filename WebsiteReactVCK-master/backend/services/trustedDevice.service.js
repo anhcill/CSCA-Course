@@ -113,6 +113,8 @@ export const establishLoginSession = async ({
       );
     }
 
+    const deviceLimit = getTrustedDeviceLimitForRole(user.role);
+
     const suppliedToken = normalizeDeviceToken(deviceToken);
     const effectiveToken = suppliedToken || crypto.randomBytes(32).toString("base64url");
     const deviceTokenHash = hashOpaqueToken(effectiveToken);
@@ -129,6 +131,62 @@ export const establishLoginSession = async ({
 
     let trustedDeviceId = knownDeviceResult.rows[0]?.id || null;
     if (!trustedDeviceId) {
+      const countResult = await client.query(
+        `SELECT COUNT(*)::int AS count
+         FROM trusted_login_devices
+         WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId],
+      );
+      const usedSlots = Number(countResult.rows[0]?.count || 0);
+
+      if (deviceLimit !== null && usedSlots >= deviceLimit) {
+        const attemptCount = Math.min(
+          DEVICE_LIMIT_LOCK_THRESHOLD,
+          Number(user.device_limit_attempts || 0) + 1,
+        );
+
+        await client.query(
+          `UPDATE users
+           SET device_limit_attempts = $1,
+               device_limit_last_attempt_at = NOW(),
+               updated_at = NOW()
+           WHERE id = $2`,
+          [attemptCount, userId],
+        );
+
+        const existingDevices = await listTrustedDevicesForUser(userId, null, client);
+
+        await recordAuditEvent({
+          db: client,
+          actorId: userId,
+          action: "user.trusted_device.rejected",
+          entityType: "trusted_login_device",
+          metadata: {
+            ip: normalizedIp,
+            userAgent: normalizedUserAgent,
+            usedSlots,
+            deviceLimit,
+            attemptCount,
+          },
+        });
+
+        await client.query("COMMIT");
+        committed = true;
+
+        throw new TrustedDeviceAuthError(
+          "DEVICE_LIMIT_REACHED",
+          `Tài khoản đã đạt giới hạn tối đa ${deviceLimit} thiết bị đăng nhập. Vui lòng liên hệ quản trị viên để gỡ bớt thiết bị cũ.`,
+          {
+            details: {
+              attempts: attemptCount,
+              usedSlots,
+              deviceLimit,
+              devices: existingDevices,
+            },
+          },
+        );
+      }
+
       const insertedDevice = await client.query(
         `INSERT INTO trusted_login_devices
            (user_id, device_token_hash, device_name, user_agent, first_ip, last_ip)
@@ -279,6 +337,7 @@ export const authorizeRecordDevice = async ({
     );
     const usedSlots = Number(usedRes.rows[0]?.count || 0);
     if (usedSlots >= effectiveLimit) {
+      const existingDevices = await listTrustedDevicesForUser(userId, null, client);
       await recordAuditEvent({
         db: client,
         actorId: userId,
@@ -292,7 +351,7 @@ export const authorizeRecordDevice = async ({
       throw new TrustedDeviceAuthError(
         "DEVICE_LIMIT_REACHED",
         `Bạn đã sử dụng đủ ${effectiveLimit} thiết bị cho khóa Record. Nhắn admin để được hỗ trợ đổi thiết bị nhé.`,
-        { details: { usedSlots, deviceLimit: effectiveLimit } },
+        { details: { usedSlots, deviceLimit: effectiveLimit, devices: existingDevices } },
       );
     }
 

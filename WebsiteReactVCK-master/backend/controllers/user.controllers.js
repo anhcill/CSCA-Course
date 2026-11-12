@@ -409,11 +409,12 @@ export const login = async (req, res) => {
 
     if (user.is_locked) {
       if (user.locked_reason === "DEVICE_LIMIT_ABUSE") {
+        const devices = await listTrustedDevicesForUser(user.id);
         return res.status(423).json({
           success: false,
           message: `Tài khoản đã bị khóa vì đăng nhập vượt quá giới hạn ${TRUSTED_DEVICE_LIMIT} thiết bị nhiều lần. Vui lòng liên hệ quản trị viên để xóa thiết bị cũ và mở khóa tài khoản.`,
           errorCode: "ACCOUNT_LOCKED_DEVICE_LIMIT",
-          details: { deviceLimit: TRUSTED_DEVICE_LIMIT, attemptsRemaining: 0 },
+          details: { deviceLimit: TRUSTED_DEVICE_LIMIT, attemptsRemaining: 0, devices },
         });
       }
       return res.status(403).json({ success: false, message: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.", errorCode: "ACCOUNT_LOCKED" });
