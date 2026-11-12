@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
+  AlertTriangle,
   BarChart3,
   BookOpen,
   CalendarDays,
@@ -35,12 +36,21 @@ import { fetchMyLmsPermissions } from '../../features/api/lmsClient';
 const TEACHER_NAV = [
   { label: 'Tổng quan', path: '/lms/teach', icon: Presentation, end: true, permission: 'lms.student.view' },
   { label: 'Lịch dạy', path: '/lms/teach/calendar', icon: CalendarDays, permission: 'lms.schedule.manage' },
-  { label: 'Điểm danh', path: '/lms/teach/attendance', icon: Users, permission: 'lms.attendance.manage' },
-  { label: 'Điểm & chuyên cần', path: '/lms/teach/student-progress', icon: BarChart3, permission: 'lms.student.view' },
+  { label: 'Đăng đề & Quiz', path: '/lms/teacher/quizzes', icon: FileQuestion, end: true, permission: 'lms.quiz.manage' },
+  {
+    label: 'Điểm & chuyên cần',
+    path: '/lms/teach/student-progress',
+    icon: BarChart3,
+    permission: 'lms.student.view',
+    children: [
+      { label: 'Điểm danh', path: '/lms/teach/student-progress?tab=attendance', icon: Users },
+      { label: 'Điểm & chuyên cần', path: '/lms/teach/student-progress?tab=overview', icon: BarChart3 },
+      { label: 'Cảnh báo chuyên cần', path: '/lms/teach/student-progress?tab=alerts', icon: AlertTriangle },
+    ],
+  },
   { label: 'Giáo trình lớp', path: '/lms/teach/classes', icon: BookOpen, permission: 'lms.student.view' },
   { label: 'Bảng lương', path: '/lms/teach/salary', icon: Wallet },
   { label: 'Tài liệu học tập', path: '/lms/teach/files', icon: FolderOpen, permission: 'lms.file.manage' },
-  { label: 'Đăng đề & Quiz', path: '/lms/teacher/quizzes', icon: FileQuestion, end: true, permission: 'lms.quiz.manage' },
   { label: 'Ngân hàng câu hỏi', path: '/lms/teach/question-bank', icon: Library, permission: 'lms.quiz.manage' },
   { label: 'Hỗ trợ học viên', path: '/lms/teach/support', icon: MessageSquare, permission: 'lms.support.manage' },
 ];
@@ -94,35 +104,123 @@ function Brand({ collapsed = false }) {
 
 function TeacherNavItem({ item, onNavigate, collapsed = false }) {
   const Icon = item.icon;
+  const location = useLocation();
+  const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+
+  const isParentActive =
+    (item.end ? location.pathname === item.path : location.pathname.startsWith(item.path)) ||
+    (item.path === '/lms/teach/student-progress' && location.pathname.startsWith('/lms/teach/attendance'));
+
+  const [isOpen, setIsOpen] = useState(isParentActive);
+
+  useEffect(() => {
+    if (isParentActive) {
+      setIsOpen(true);
+    }
+  }, [isParentActive]);
+
+  if (!hasChildren) {
+    return (
+      <NavLink
+        to={item.path}
+        end={item.end}
+        onClick={onNavigate}
+        title={collapsed ? item.label : undefined}
+        className={({ isActive }) => `group relative flex items-center rounded-xl text-sm font-semibold transition ${
+          collapsed
+            ? 'justify-center px-0 py-2.5'
+            : 'gap-3 px-3 py-2.5'
+        } ${
+          isActive
+            ? 'bg-[#dff1ff] text-blue-700 dark:bg-sky-950/60 dark:text-sky-300 shadow-sm'
+            : 'text-[#17365f] dark:text-slate-300 hover:bg-blue-50/80 hover:text-blue-700 dark:hover:bg-slate-800/60'
+        }`}
+      >
+        {({ isActive }) => (
+          <>
+            <Icon className={`h-4.5 w-4.5 shrink-0 transition ${isActive ? 'text-blue-600 dark:text-sky-400' : 'text-[#17365f] dark:text-slate-400 group-hover:text-blue-600'}`} />
+            {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+          </>
+        )}
+      </NavLink>
+    );
+  }
 
   return (
-    <NavLink
-      to={item.path}
-      end={item.end}
-      onClick={onNavigate}
-      title={collapsed ? item.label : undefined}
-      className={({ isActive }) => `group relative flex items-center rounded-xl text-sm font-semibold transition ${
-        collapsed
-          ? 'justify-center px-0 py-2.5'
-          : 'gap-3 px-3 py-2.5'
-      } ${
-        isActive
-          ? 'bg-[#dff1ff] text-blue-700 dark:bg-sky-950/60 dark:text-sky-300 shadow-sm'
-          : 'text-[#17365f] dark:text-slate-300 hover:bg-blue-50/80 hover:text-blue-700 dark:hover:bg-slate-800/60'
-      }`}
-    >
-      {({ isActive }) => (
-        <>
-          <Icon className={`h-4.5 w-4.5 shrink-0 transition ${isActive ? 'text-blue-600 dark:text-sky-400' : 'text-[#17365f] dark:text-slate-400 group-hover:text-blue-600'}`} />
+    <div className="space-y-1">
+      <div className="relative flex items-center">
+        <NavLink
+          to={item.path}
+          end={item.end}
+          onClick={onNavigate}
+          title={collapsed ? item.label : undefined}
+          className={`group relative flex flex-1 items-center rounded-xl text-sm font-semibold transition ${
+            collapsed
+              ? 'justify-center px-0 py-2.5'
+              : 'gap-3 px-3 py-2.5 pr-8'
+          } ${
+            isParentActive
+              ? 'bg-[#dff1ff] text-blue-700 dark:bg-sky-950/60 dark:text-sky-300 shadow-sm'
+              : 'text-[#17365f] dark:text-slate-300 hover:bg-blue-50/80 hover:text-blue-700 dark:hover:bg-slate-800/60'
+          }`}
+        >
+          <Icon className={`h-4.5 w-4.5 shrink-0 transition ${isParentActive ? 'text-blue-600 dark:text-sky-400' : 'text-[#17365f] dark:text-slate-400 group-hover:text-blue-600'}`} />
           {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
-        </>
+        </NavLink>
+
+        {!collapsed && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsOpen((prev) => !prev);
+            }}
+            className="absolute right-1.5 p-1 text-[#17365f]/70 dark:text-slate-400 hover:text-blue-700 dark:hover:text-sky-300 rounded-lg hover:bg-blue-100/50 dark:hover:bg-slate-800 transition"
+            aria-label={isOpen ? 'Thu gọn mục con' : 'Mở rộng mục con'}
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+      </div>
+
+      {!collapsed && isOpen && (
+        <div className="ml-3 pl-3 border-l-2 border-sky-200/80 dark:border-slate-800 space-y-1 py-1">
+          {item.children.map((sub) => {
+            const [subPath, subQuery] = sub.path.split('?');
+            const currentTab = new URLSearchParams(location.search).get('tab');
+            const targetTab = subQuery ? new URLSearchParams(subQuery).get('tab') : null;
+            const isSubActive = location.pathname === subPath && (
+              targetTab ? currentTab === targetTab : (!currentTab || currentTab === 'overview')
+            );
+            const SubIcon = sub.icon;
+
+            return (
+              <Link
+                key={sub.path}
+                to={sub.path}
+                onClick={onNavigate}
+                className={`group flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition ${
+                  isSubActive
+                    ? 'bg-blue-100/90 text-blue-800 dark:bg-sky-950/80 dark:text-sky-200 font-bold shadow-2xs'
+                    : 'text-[#244866] dark:text-slate-400 hover:bg-blue-50/70 hover:text-blue-700 dark:hover:bg-slate-800/60 dark:hover:text-slate-200 font-medium'
+                }`}
+              >
+                {SubIcon && (
+                  <SubIcon className={`h-3.5 w-3.5 shrink-0 transition ${isSubActive ? 'text-blue-600 dark:text-sky-400' : 'text-slate-400 group-hover:text-blue-600'}`} />
+                )}
+                <span className="truncate">{sub.label}</span>
+              </Link>
+            );
+          })}
+        </div>
       )}
-    </NavLink>
+    </div>
   );
 }
 
 function TeacherSidebarContent({ onNavigate, isAdmin = false, permissions = new Set(), collapsed = false, onToggleCollapse }) {
-  const navigation = TEACHER_NAV.filter((item) => isAdmin || !item.permission || permissions.has(item.permission));
+  const navigation = TEACHER_NAV.filter((item) => isAdmin || !item.permission || permissions.has(item.permission) || (item.path === '/lms/teach/student-progress' && permissions.has('lms.attendance.manage')));
   return (
     <div className={`flex h-full min-h-0 flex-col overflow-hidden transition-[padding] duration-300 ${collapsed ? 'px-2 py-4' : 'px-4 py-5'}`}>
       {/* Brand Header */}
@@ -283,7 +381,9 @@ export default function TeacherLmsLayout({ children }) {
     .sort((left, right) => right.path.length - left.path.length)
     .find((item) => item.end ? location.pathname === item.path : location.pathname.startsWith(item.path));
   const currentAccessItem = getTeacherRouteAccess(location.pathname) || currentNavItem;
-  const deniedByMatrix = !isAdmin && permissionsReady && currentAccessItem?.permission && !permissions.has(currentAccessItem.permission);
+  const deniedByMatrix = !isAdmin && permissionsReady && currentAccessItem?.permission &&
+    !permissions.has(currentAccessItem.permission) &&
+    !(currentAccessItem.path === '/lms/teach/student-progress' && permissions.has('lms.attendance.manage'));
   useEffect(() => {
     let active = true;
     if (isAdmin) {

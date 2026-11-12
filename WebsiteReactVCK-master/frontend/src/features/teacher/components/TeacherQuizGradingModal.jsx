@@ -44,6 +44,7 @@ export default function TeacherQuizGradingModal({
   const [attemptDetail, setAttemptDetail] = useState(null);
   const [activeTab, setActiveTab] = useState("essay"); // "essay" | "mc"
   const [mcViewMode, setMcViewMode] = useState("omr"); // "omr" | "detailed"
+  const [questionLang, setQuestionLang] = useState("zh"); // "zh" (mặc định) | "vi" | "bilingual"
   const [essayScore, setEssayScore] = useState(0);
   const [essayFeedback, setEssayFeedback] = useState("");
   const [gradesByQuestion, setGradesByQuestion] = useState({});
@@ -97,14 +98,70 @@ export default function TeacherQuizGradingModal({
 
   // Filter essay questions
   const essayQuestions = useMemo(() => (attemptDetail?.computed?.review || [])
-    .map((item, index) => ({
-      id: item.questionId,
-      displayNumber: index + 1,
-      prompt: item.questionText || item.prompt || "",
-      points: Number(item.points) || 1,
-      questionType: item.questionType,
-    }))
+    .map((item, index) => {
+      const rawCn = (item.questionTextCn || "").trim();
+      const rawVi = (item.questionTextVi || item.questionText || "").trim();
+      const hasChinese = /[\u4e00-\u9fff]/.test(rawVi);
+      const promptCn = rawCn || (hasChinese ? rawVi : "");
+      const promptVi = (!hasChinese ? rawVi : "") || (rawVi !== promptCn ? rawVi : "");
+      return {
+        id: item.questionId,
+        displayNumber: index + 1,
+        prompt: item.questionText || item.prompt || "",
+        promptCn: promptCn || null,
+        promptVi: promptVi || null,
+        points: Number(item.points) || 1,
+        questionType: item.questionType,
+      };
+    })
     .filter((item) => item.questionType === "essay" || item.questionType === "translation"), [attemptDetail]);
+
+  const getLocalizedPrompt = (group) => {
+    const zh = group.promptCn || (group.prompt && /[\u4e00-\u9fff]/.test(group.prompt) ? group.prompt : "") || group.prompt;
+    const vi = group.promptVi || (!(/[\u4e00-\u9fff]/.test(group.prompt || "")) ? group.prompt : "") || group.prompt;
+    if (questionLang === "vi") return vi || zh;
+    if (questionLang === "bilingual") {
+      if (zh && vi && zh !== vi) return `${zh}\n\n*(${vi})*`;
+      return zh || vi;
+    }
+    return zh || vi;
+  };
+
+  const getLocalizedMcQuestion = (item) => {
+    const rawCn = (item.questionTextCn || "").trim();
+    const rawVi = (item.questionTextVi || item.questionText || "").trim();
+    const hasChinese = /[\u4e00-\u9fff]/.test(rawVi);
+    const zh = rawCn || (hasChinese ? rawVi : "") || item.questionText;
+    const vi = (!hasChinese ? rawVi : "") || (rawVi !== zh ? rawVi : "") || item.questionText;
+    if (questionLang === "vi") return vi || zh;
+    if (questionLang === "bilingual") {
+      if (zh && vi && zh !== vi) return `${zh}\n\n*(${vi})*`;
+      return zh || vi;
+    }
+    return zh || vi;
+  };
+
+  const getLocalizedOption = (opt) => {
+    const zh = opt?.textCn || opt?.text || opt?.key || "";
+    const vi = opt?.textVi || opt?.text || opt?.textCn || opt?.key || "";
+    if (questionLang === "vi") return vi || zh;
+    if (questionLang === "bilingual") {
+      if (zh && vi && zh !== vi) return `${zh} (${vi})`;
+      return zh || vi;
+    }
+    return zh || vi;
+  };
+
+  const getLocalizedExplanation = (item) => {
+    const zh = item.explanationCn || item.explanation || "";
+    const vi = item.explanation || item.explanationCn || "";
+    if (questionLang === "vi") return vi || zh;
+    if (questionLang === "bilingual") {
+      if (zh && vi && zh !== vi) return `${zh}\n\n*(${vi})*`;
+      return zh || vi;
+    }
+    return zh || vi;
+  };
 
   useEffect(() => {
     if (!loading && attemptDetail && essayQuestions.length === 0) setActiveTab("mc");
@@ -365,6 +422,45 @@ export default function TeacherQuizGradingModal({
               <button type="button" onClick={onPrevious} disabled={!onPrevious || saving} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-black text-slate-600 hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" title="Bài trước">←</button>
               <button type="button" onClick={onNext} disabled={!onNext || saving} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-black text-slate-600 hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" title="Bài tiếp theo">→</button>
             </div>
+            {/* Language switcher */}
+            <div className="hidden sm:flex rounded-2xl border border-slate-200/80 bg-slate-100/80 dark:bg-slate-800/80 p-1">
+              <button
+                type="button"
+                onClick={() => setQuestionLang("zh")}
+                className={`rounded-xl px-2.5 py-1 text-xs font-black transition ${
+                  questionLang === "zh"
+                    ? "bg-white text-violet-700 shadow-xs dark:bg-slate-900 dark:text-violet-300"
+                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                }`}
+                title="Tiếng Trung (mặc định - trùng ngôn ngữ học sinh làm bài)"
+              >
+                🇨🇳 Trung
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuestionLang("vi")}
+                className={`rounded-xl px-2.5 py-1 text-xs font-black transition ${
+                  questionLang === "vi"
+                    ? "bg-white text-violet-700 shadow-xs dark:bg-slate-900 dark:text-violet-300"
+                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                }`}
+                title="Tiếng Việt"
+              >
+                🇻🇳 Việt
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuestionLang("bilingual")}
+                className={`rounded-xl px-2.5 py-1 text-xs font-black transition ${
+                  questionLang === "bilingual"
+                    ? "bg-white text-violet-700 shadow-xs dark:bg-slate-900 dark:text-violet-300"
+                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                }`}
+                title="Song ngữ Trung - Việt"
+              >
+                🌐 Song ngữ
+              </button>
+            </div>
             {/* Tab switchers */}
             <div className="flex rounded-2xl border border-slate-200/80 bg-slate-100/80 dark:bg-slate-800/80 p-1">
               <button
@@ -469,7 +565,7 @@ export default function TeacherQuizGradingModal({
                               </div>
                               {group.prompt && (
                                 <div className="mt-2 text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
-                                  <RichMathText value={group.prompt} />
+                                  <RichMathText value={getLocalizedPrompt(group)} />
                                 </div>
                               )}
                             </div>
@@ -1160,7 +1256,7 @@ export default function TeacherQuizGradingModal({
                           {/* Question Text */}
                           {item.questionText && (
                             <div className="text-xs font-medium text-slate-800 dark:text-slate-200 leading-relaxed">
-                              <RichMathText value={item.questionText} />
+                              <RichMathText value={getLocalizedMcQuestion(item)} />
                             </div>
                           )}
 
@@ -1188,8 +1284,8 @@ export default function TeacherQuizGradingModal({
                                     <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-black ${
                                       isSelected
                                         ? isCorrectOpt
-                                          ? "bg-emerald-600 text-white"
-                                          : "bg-rose-600 text-white"
+                                            ? "bg-emerald-600 text-white"
+                                            : "bg-rose-600 text-white"
                                         : isCorrectOpt
                                         ? "border border-emerald-500 text-emerald-600 font-black"
                                         : "border border-slate-400 text-slate-500"
@@ -1197,7 +1293,7 @@ export default function TeacherQuizGradingModal({
                                       {opt.key}
                                     </span>
                                     <div className="flex-1 min-w-0">
-                                      <RichMathText value={opt.text || opt.key} />
+                                      <RichMathText value={getLocalizedOption(opt)} />
                                     </div>
                                   </div>
                                 );
@@ -1209,7 +1305,7 @@ export default function TeacherQuizGradingModal({
                           {item.explanation && (
                             <div className="mt-2 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/50 p-2.5 text-xs text-sky-800 dark:text-sky-300 leading-relaxed">
                               <b>💡 Hướng dẫn / Lời giải chi tiết:</b>
-                              <RichMathText value={item.explanation} className="mt-1" />
+                              <RichMathText value={getLocalizedExplanation(item)} className="mt-1" />
                             </div>
                           )}
                         </article>

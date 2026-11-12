@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
+import TeacherAttendancePage from "./TeacherAttendancePage";
 import {
   AlertTriangle,
   BarChart3,
@@ -451,7 +452,22 @@ export default function TeacherStudentProgressPage() {
   const [error, setError] = useState("");
   const [accommodationTarget, setAccommodationTarget] = useState(null);
   const [editingScoreTarget, setEditingScoreTarget] = useState(null);
-  const [activeView, setActiveView] = useState("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const activeView = (tabParam === "attendance" || tabParam === "alerts") ? tabParam : "overview";
+
+  const handleTabChange = (view) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (view === "overview") {
+        next.delete("tab");
+      } else {
+        next.set("tab", view);
+      }
+      return next;
+    });
+  };
+
   const [riskStudents, setRiskStudents] = useState([]);
   const [riskFilter, setRiskFilter] = useState("all");
   const [loadingRisk, setLoadingRisk] = useState(false);
@@ -655,7 +671,7 @@ export default function TeacherStudentProgressPage() {
               博 学 笃 志 · 切 问 近 思
             </div>
 
-            {activeView === "overview" && (
+            {(activeView === "overview" || activeView === "attendance") && (
               <div className="flex flex-wrap items-center gap-2">
                 {/* Course Filter Dropdown */}
                 <div className="flex items-center gap-1.5">
@@ -693,20 +709,22 @@ export default function TeacherStudentProgressPage() {
                 </div>
 
                 {/* Export Buttons */}
-                <div className="flex items-center gap-1.5 pl-1">
-                  <a
-                    href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "xlsx" })}
-                    className="inline-flex h-[34px] items-center gap-1.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-3 text-xs font-bold text-white shadow-sm hover:from-emerald-700 hover:to-teal-700 transition"
-                  >
-                    <FileSpreadsheet className="h-3.5 w-3.5" /> Xuất XLSX
-                  </a>
-                  <a
-                    href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "csv" })}
-                    className="inline-flex h-[34px] items-center gap-1 rounded-2xl border border-white/90 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-white dark:hover:bg-slate-800 transition"
-                  >
-                    <Download className="h-3.5 w-3.5 text-slate-500" /> CSV
-                  </a>
-                </div>
+                {activeView === "overview" && (
+                  <div className="flex items-center gap-1.5 pl-1">
+                    <a
+                      href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "xlsx" })}
+                      className="inline-flex h-[34px] items-center gap-1.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-3 text-xs font-bold text-white shadow-sm hover:from-emerald-700 hover:to-teal-700 transition"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" /> Xuất XLSX
+                    </a>
+                    <a
+                      href={gradebookExportUrl({ classId, courseId: gradebook.classInfo?.courseId || selectedClass?.courseId, sessionId: selectedSessionId, format: "csv" })}
+                      className="inline-flex h-[34px] items-center gap-1 rounded-2xl border border-white/90 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-white dark:hover:bg-slate-800 transition"
+                    >
+                      <Download className="h-3.5 w-3.5 text-slate-500" /> CSV
+                    </a>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -714,12 +732,27 @@ export default function TeacherStudentProgressPage() {
       </div>
 
       {/* ── View Tab Switcher ──────────────────────────────────── */}
-      <div className="flex items-center gap-2" role="tablist" aria-label="Mục điểm và chuyên cần">
+      <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Mục điểm và chuyên cần">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeView === "attendance"}
+          onClick={() => handleTabChange("attendance")}
+          className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition shadow-2xs ${
+            activeView === "attendance"
+              ? "bg-[#1a446c] text-white shadow-md shadow-[#1a446c]/20"
+              : "border border-white/80 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white backdrop-blur-md"
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          <span>Điểm danh</span>
+        </button>
+
         <button
           type="button"
           role="tab"
           aria-selected={activeView === "overview"}
-          onClick={() => setActiveView("overview")}
+          onClick={() => handleTabChange("overview")}
           className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition shadow-2xs ${
             activeView === "overview"
               ? "bg-[#1a446c] text-white shadow-md shadow-[#1a446c]/20"
@@ -734,7 +767,7 @@ export default function TeacherStudentProgressPage() {
           type="button"
           role="tab"
           aria-selected={activeView === "alerts"}
-          onClick={() => setActiveView("alerts")}
+          onClick={() => handleTabChange("alerts")}
           className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition shadow-2xs ${
             activeView === "alerts"
               ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
@@ -752,7 +785,11 @@ export default function TeacherStudentProgressPage() {
       </div>
 
       {/* ── Active Tab Content ─────────────────────────────────── */}
-      {activeView === "alerts" ? (
+      {activeView === "attendance" ? (
+        <div role="tabpanel" aria-label="Điểm danh buổi học">
+          <TeacherAttendancePage embedded={true} classId={classId} />
+        </div>
+      ) : activeView === "alerts" ? (
         <div role="tabpanel" aria-label="Cảnh báo chuyên cần">
           {riskError ? (
             <ErrorState title="Không thể tải cảnh báo" message={riskError} onRetry={loadRiskStudents} />

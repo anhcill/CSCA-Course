@@ -215,7 +215,7 @@ function AppRoutes({ pathname }) {
       <Route path="/lms/teach/classes/:classId/curriculum" element={<TeacherClassCurriculumPage />} />
       <Route path="/lms/teach/classes/:classId/sessions/:sessionId" element={<TeacherSessionWorkspacePage />} />
       <Route path="/lms/teach/classes/:classId/attendance" element={<TeacherAttendancePage />} />
-      <Route path="/lms/teach/attendance" element={<TeacherAttendancePage />} />
+      <Route path="/lms/teach/attendance" element={<Navigate to="/lms/teach/student-progress?tab=attendance" replace />} />
       <Route path="/lms/teach/student-progress" element={<TeacherStudentProgressPage />} />
       <Route path="/lms/teach/attendance-review" element={<AttendanceReviewPage />} />
       <Route path="/lms/teach/question-bank" element={<QuestionBankPage />} />
@@ -224,7 +224,7 @@ function AppRoutes({ pathname }) {
       <Route path="/lms/teacher-hub" element={<Navigate to="/lms/teach" replace />} />
       <Route path="/lms/teacher/schedule" element={<Navigate to="/lms/teach/calendar" replace />} />
       <Route path="/lms/teacher/classes" element={<Navigate to="/lms/teach/classes" replace />} />
-      <Route path="/lms/teacher/attendance" element={<TeacherAttendancePage />} />
+      <Route path="/lms/teacher/attendance" element={<Navigate to="/lms/teach/student-progress?tab=attendance" replace />} />
       <Route path="/lms/teacher/classes/:classId/attendance" element={<TeacherAttendancePage />} />
       <Route path="/lms/teacher/curriculum" element={<Navigate to="/lms/teach/classes" replace />} />
       <Route path="/lms/teach/files" element={<TeacherFilesPage />} />

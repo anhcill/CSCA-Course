@@ -261,6 +261,7 @@ function QuizStatsModal({ quiz, onClose }) {
   const [tabFilter, setTabFilter] = useState("all"); // "all" | "submitted" | "not_started"
   const [search, setSearch] = useState("");
   const [selectedAttemptForGrading, setSelectedAttemptForGrading] = useState(null);
+  const [questionLang, setQuestionLang] = useState("zh"); // "zh" (trùng ngôn ngữ làm quiz) | "vi" | "bilingual"
   const suggestedFilterAppliedRef = useRef(false);
 
   const essayConfig = useMemo(() => quiz?.essayConfig || parseQuizDescription(quiz?.description)?.essayConfig, [quiz]);
@@ -283,7 +284,7 @@ function QuizStatsModal({ quiz, onClose }) {
     } finally {
       setLoading(false);
     }
-  }, [quiz]);
+  }, [quiz?.id]);
 
   useEffect(() => {
     loadReport();
@@ -305,6 +306,32 @@ function QuizStatsModal({ quiz, onClose }) {
 
   const students = useMemo(() => data?.students || [], [data?.students]);
   const questionAnalytics = useMemo(() => data?.questions || [], [data?.questions]);
+  const sortedQuestionAnalytics = useMemo(() => {
+    return [...questionAnalytics].sort((a, b) => (a.correctRate ?? 101) - (b.correctRate ?? 101));
+  }, [questionAnalytics]);
+
+  const renderQuestionText = (question) => {
+    const zh = question.textCn || (question.text && /[\u4e00-\u9fff]/.test(question.text) ? question.text : "") || question.text || "Câu hỏi";
+    const vi = question.textVi || (!(/[\u4e00-\u9fff]/.test(question.text || "")) ? question.text : "") || question.text || "";
+
+    if (questionLang === "vi") {
+      return <span className="line-clamp-2">{vi || zh || "Câu hỏi"}</span>;
+    }
+    if (questionLang === "bilingual") {
+      return (
+        <div className="space-y-0.5">
+          <div className="line-clamp-2 font-bold text-slate-900 dark:text-white">{zh}</div>
+          {vi && vi !== zh && (
+            <div className="line-clamp-1 text-[11px] font-normal text-slate-500 dark:text-slate-400">
+              {vi}
+            </div>
+          )}
+        </div>
+      );
+    }
+    // "zh" - default (Tiếng Trung - trùng với ngôn ngữ học sinh làm bài)
+    return <span className="line-clamp-2 font-medium">{zh}</span>;
+  };
   const reportMeta = data?.report || {};
   const pendingEssayCount = useMemo(
     () => summary.pendingEssayCount ?? students.filter((student) => student.status === "submitted" && student.hasEssay && !student.essayGrade).length,
@@ -601,9 +628,50 @@ function QuizStatsModal({ quiz, onClose }) {
 
               {questionAnalytics.length > 0 && (
                 <section aria-labelledby="question-analysis-title" className="space-y-3 border-b border-slate-200 pb-6 dark:border-slate-800">
-                  <div>
-                    <h3 id="question-analysis-title" className="text-sm font-black text-slate-950 dark:text-white">Phân tích từng câu</h3>
-                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Câu có tỷ lệ đúng thấp được đưa lên đầu để giảng viên ôn lại sát hơn.</p>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 id="question-analysis-title" className="text-sm font-black text-slate-950 dark:text-white">Phân tích từng câu</h3>
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Câu có tỷ lệ đúng thấp được đưa lên đầu để giảng viên ôn lại sát hơn.</p>
+                    </div>
+                    {/* Chuyển đổi ngôn ngữ hiển thị câu hỏi */}
+                    <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setQuestionLang("zh")}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-black transition ${
+                          questionLang === "zh"
+                            ? "bg-white text-sky-700 shadow-xs dark:bg-slate-900 dark:text-sky-300"
+                            : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                        }`}
+                        title="Hiển thị tiếng Trung (trùng ngôn ngữ học sinh làm bài)"
+                      >
+                        🇨🇳 Tiếng Trung (Mặc định)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuestionLang("vi")}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-black transition ${
+                          questionLang === "vi"
+                            ? "bg-white text-sky-700 shadow-xs dark:bg-slate-900 dark:text-sky-300"
+                            : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                        }`}
+                        title="Hiển thị tiếng Việt"
+                      >
+                        🇻🇳 Tiếng Việt
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuestionLang("bilingual")}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-black transition ${
+                          questionLang === "bilingual"
+                            ? "bg-white text-sky-700 shadow-xs dark:bg-slate-900 dark:text-sky-300"
+                            : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                        }`}
+                        title="Hiển thị song ngữ Trung - Việt"
+                      >
+                        🌐 Song ngữ
+                      </button>
+                    </div>
                   </div>
                   <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
                     <table className="min-w-full divide-y divide-slate-200 text-xs dark:divide-slate-800">
@@ -618,18 +686,16 @@ function QuizStatsModal({ quiz, onClose }) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                        {[...questionAnalytics]
-                          .sort((a, b) => (a.correctRate ?? 101) - (b.correctRate ?? 101))
-                          .map((question) => (
-                            <tr key={question.questionId} className="bg-white dark:bg-slate-900">
-                              <td className="whitespace-nowrap px-3 py-3 font-black text-slate-900 dark:text-white">{question.position}</td>
-                              <td className="max-w-[360px] px-3 py-3 font-semibold text-slate-700 dark:text-slate-200"><span className="line-clamp-2">{question.text || "Câu hỏi"}</span></td>
-                              <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{question.answered || 0} / {question.blank || 0}</td>
-                              <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{question.type === "essay" || question.type === "translation" ? `${question.graded || 0} chấm · ${question.pending || 0} chờ` : `${question.correct || 0} / ${question.incorrect || 0}`}</td>
-                              <td className={`whitespace-nowrap px-3 py-3 text-right font-black tabular-nums ${question.correctRate !== null && question.correctRate < 50 ? "text-rose-600" : "text-emerald-600"}`}>{question.correctRate === null ? "—" : `${question.correctRate}%`}</td>
-                              <td className="min-w-[180px] px-3 py-3 text-[11px] text-slate-500 dark:text-slate-400">{Object.entries(question.optionCounts || {}).map(([key, count]) => `${key}: ${count}`).join(" · ") || "—"}</td>
-                            </tr>
-                          ))}
+                        {sortedQuestionAnalytics.map((question) => (
+                          <tr key={question.questionId} className="bg-white dark:bg-slate-900">
+                            <td className="whitespace-nowrap px-3 py-3 font-black text-slate-900 dark:text-white">{question.position}</td>
+                            <td className="max-w-[360px] px-3 py-3 text-slate-700 dark:text-slate-200">{renderQuestionText(question)}</td>
+                            <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{question.answered || 0} / {question.blank || 0}</td>
+                            <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{question.type === "essay" || question.type === "translation" ? `${question.graded || 0} chấm · ${question.pending || 0} chờ` : `${question.correct || 0} / ${question.incorrect || 0}`}</td>
+                            <td className={`whitespace-nowrap px-3 py-3 text-right font-black tabular-nums ${question.correctRate !== null && question.correctRate < 50 ? "text-rose-600" : "text-emerald-600"}`}>{question.correctRate === null ? "—" : `${question.correctRate}%`}</td>
+                            <td className="min-w-[180px] px-3 py-3 text-[11px] text-slate-500 dark:text-slate-400">{Object.entries(question.optionCounts || {}).map(([key, count]) => `${key}: ${count}`).join(" · ") || "—"}</td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>

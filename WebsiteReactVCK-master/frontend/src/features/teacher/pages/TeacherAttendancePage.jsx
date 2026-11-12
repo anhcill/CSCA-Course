@@ -42,8 +42,9 @@ const isAttendanceToday = (session) => (
   academyDateKey(session?.start_time) === academyDateKey(new Date())
 );
 
-export default function TeacherAttendancePage() {
-  const { classId } = useParams();
+export default function TeacherAttendancePage({ embedded = false, classId: propClassId }) {
+  const { classId: routeClassId } = useParams();
+  const classId = propClassId !== undefined ? propClassId : routeClassId;
   const location = useLocation();
   const isAdminView = location.pathname.startsWith("/admin/classes/");
   const [searchParams, setSearchParams] = useSearchParams();
@@ -80,15 +81,18 @@ export default function TeacherAttendancePage() {
     try {
       const res = await fetchMyLiveSchedule();
       const allSessions = res?.success && Array.isArray(res.data)
-        ? res.data.filter((session) => !classId || String(session.live_class_id) === String(classId))
+        ? res.data.filter((session) => !classId || classId === "all" || String(session.live_class_id) === String(classId))
         : [];
-      const todaySessions = allSessions.filter(isAttendanceToday);
-      setSessions(allSessions);
+      const availableSessions = (allSessions.length === 0 && Array.isArray(res?.data) && res.data.length > 0)
+        ? res.data
+        : allSessions;
+      const todaySessions = availableSessions.filter(isAttendanceToday);
+      setSessions(availableSessions);
       setSelectedSessionId((currentSessionId) => {
-        if (allSessions.some((session) => String(session.id) === String(currentSessionId))) {
+        if (availableSessions.some((session) => String(session.id) === String(currentSessionId))) {
           return currentSessionId;
         }
-        return todaySessions[0] ? String(todaySessions[0].id) : (allSessions[0] ? String(allSessions[0].id) : "");
+        return todaySessions[0] ? String(todaySessions[0].id) : (availableSessions[0] ? String(availableSessions[0].id) : "");
       });
     } catch (err) {
       console.error("Error loading sessions for attendance:", err);
@@ -189,7 +193,15 @@ export default function TeacherAttendancePage() {
   const handleSessionChange = (e) => {
     const newId = e.target.value;
     setSelectedSessionId(newId);
-    setSearchParams({ sessionId: newId });
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (newId) {
+        next.set("sessionId", newId);
+      } else {
+        next.delete("sessionId");
+      }
+      return next;
+    });
   };
 
   const handleStatusChange = (userId, newStatus) => {
@@ -321,51 +333,17 @@ export default function TeacherAttendancePage() {
     return sessions.find((s) => String(s.id) === String(selectedSessionId));
   }, [sessions, selectedSessionId]);
 
-  return (
-    <div className="min-h-full px-3 pb-12 pt-3 sm:px-5 lg:px-6 text-slate-900 dark:text-slate-100">
-      <div className="mx-auto max-w-6xl space-y-5">
-        {/* Navigation Back Link */}
-        <div className="flex items-center justify-between">
-          <Link
-            to={isAdminView ? `/admin/classes/${classId}` : "/lms/teach"}
-            className="inline-flex items-center gap-2 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] dark:text-slate-300 shadow-2xs backdrop-blur transition hover:bg-white hover:text-blue-700 dark:hover:bg-slate-800"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            {isAdminView ? "Quay lại quản lý lớp" : "Quay lại Bàn làm việc"}
-          </Link>
-
-          {currentSession && (
-            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-sky-200/80 bg-sky-50/80 dark:border-slate-700 dark:bg-slate-800/80 px-3 py-1 text-[11px] font-bold text-sky-800 dark:text-sky-300 shadow-2xs backdrop-blur">
-              <CalendarDays className="h-3 w-3 text-sky-600" />
-              {currentSession.title}
-            </span>
-          )}
-        </div>
-
-        {/* 1. Hero Title Banner (Matching Student LMS Calligraphy Style) */}
-        <section className="relative min-h-[140px] overflow-hidden px-2 py-4 sm:px-4">
-          <div className="relative z-10 max-w-2xl">
-            <h1 className="font-['Dancing_Script',cursive] text-[42px] font-bold leading-none text-[#102f63] dark:text-sky-200 sm:text-[48px]">
-              Sổ điểm danh giảng dạy
-            </h1>
-            <p className="mt-2.5 text-sm font-semibold italic text-[#244866] dark:text-slate-300">
-              “Kỷ luật là nền tảng của tự do, chuyên cần là chìa khóa của thành công.”
-            </p>
-            <p className="mt-1.5 font-['Ma_Shan_Zheng',cursive] text-xl text-[#17365f] dark:text-sky-300">
-              持之以恒 · 循序渐进
-            </p>
-          </div>
-        </section>
-
-        {/* 2. Top Control Bar & Stats */}
-        <AttendanceSessionHeader
-          sessions={sessions}
-          selectedSessionId={selectedSessionId}
-          onSessionChange={handleSessionChange}
-          stats={stats}
-          policy={attendancePolicy}
-          loading={loadingSessions}
-        />
+  const attendanceContent = (
+    <>
+      {/* 2. Top Control Bar & Stats */}
+      <AttendanceSessionHeader
+        sessions={sessions}
+        selectedSessionId={selectedSessionId}
+        onSessionChange={handleSessionChange}
+        stats={stats}
+        policy={attendancePolicy}
+        loading={loadingSessions}
+      />
 
         {sessions.length > 0 && !sessions.some(isAttendanceToday) && (
           <div className="flex items-center gap-2 rounded-2xl border border-amber-200/80 bg-amber-50/80 dark:border-amber-900/60 dark:bg-amber-950/30 px-4 py-2.5 text-xs font-semibold text-amber-800 dark:text-amber-200 shadow-2xs backdrop-blur">
@@ -641,6 +619,50 @@ export default function TeacherAttendancePage() {
             </div>
           </section>
         )}
+    </>
+  );
+
+  if (embedded) {
+    return <div className="space-y-5">{attendanceContent}</div>;
+  }
+
+  return (
+    <div className="min-h-full px-3 pb-12 pt-3 sm:px-5 lg:px-6 text-slate-900 dark:text-slate-100">
+      <div className="mx-auto max-w-6xl space-y-5">
+        {/* Navigation Back Link */}
+        <div className="flex items-center justify-between">
+          <Link
+            to={isAdminView ? `/admin/classes/${classId}` : "/lms/teach"}
+            className="inline-flex items-center gap-2 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 px-3.5 py-1.5 text-xs font-bold text-[#17365f] dark:text-slate-300 shadow-2xs backdrop-blur transition hover:bg-white hover:text-blue-700 dark:hover:bg-slate-800"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {isAdminView ? "Quay lại quản lý lớp" : "Quay lại Bàn làm việc"}
+          </Link>
+
+          {currentSession && (
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-sky-200/80 bg-sky-50/80 dark:border-slate-700 dark:bg-slate-800/80 px-3 py-1 text-[11px] font-bold text-sky-800 dark:text-sky-300 shadow-2xs backdrop-blur">
+              <CalendarDays className="h-3 w-3 text-sky-600" />
+              {currentSession.title}
+            </span>
+          )}
+        </div>
+
+        {/* 1. Hero Title Banner (Matching Student LMS Calligraphy Style) */}
+        <section className="relative min-h-[140px] overflow-hidden px-2 py-4 sm:px-4">
+          <div className="relative z-10 max-w-2xl">
+            <h1 className="font-['Dancing_Script',cursive] text-[42px] font-bold leading-none text-[#102f63] dark:text-sky-200 sm:text-[48px]">
+              Sổ điểm danh giảng dạy
+            </h1>
+            <p className="mt-2.5 text-sm font-semibold italic text-[#244866] dark:text-slate-300">
+              “Kỷ luật là nền tảng của tự do, chuyên cần là chìa khóa của thành công.”
+            </p>
+            <p className="mt-1.5 font-['Ma_Shan_Zheng',cursive] text-xl text-[#17365f] dark:text-sky-300">
+              持之以恒 · 循序渐进
+            </p>
+          </div>
+        </section>
+
+        {attendanceContent}
       </div>
     </div>
   );

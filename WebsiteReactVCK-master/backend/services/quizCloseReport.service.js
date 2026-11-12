@@ -222,10 +222,21 @@ const loadRecipients = async (db, quiz) => {
 const emptyQuestionMetric = (question, index) => {
   const options = toJsonArray(question.options_json);
   const optionCounts = Object.fromEntries(options.map((option) => [optionKey(option), 0]).filter(([key]) => key));
+  const rawCn = (question.question_text_cn || question.questionTextCn || "").trim();
+  const rawVi = (question.question_text || question.questionText || "").trim();
+  const rawEn = (question.question_text_en || question.questionTextEn || "").trim();
+  const hasChineseInVi = /[\u4e00-\u9fff]/.test(rawVi);
+  const textCn = rawCn || (hasChineseInVi ? rawVi : "");
+  const textVi = (!hasChineseInVi ? rawVi : "") || (rawVi !== textCn ? rawVi : "");
+
   return {
     questionId: question.id,
     position: index + 1,
-    text: question.question_text || question.questionText || "",
+    text: textCn || rawVi || rawCn || "",
+    textCn: textCn || null,
+    textVi: textVi || null,
+    textEn: rawEn || null,
+    options,
     type: lower(question.question_type || question.questionType || "single_choice"),
     points: numberOrZero(question.points),
     submitted: 0,
@@ -451,6 +462,8 @@ export const buildQuizReportSnapshot = async ({
         metric = emptyQuestionMetric({
           id: review.questionId,
           question_text: review.questionText,
+          question_text_cn: review.questionTextCn,
+          question_text_en: review.questionTextEn,
           question_type: review.questionType,
           points: review.points,
           options_json: review.options,
