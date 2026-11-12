@@ -235,24 +235,27 @@ const Courses = () => {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent"></div>
 
-          <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 z-10">
-            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-sm border ${
-              isCsca
-                ? 'bg-indigo-600/90 text-white border-indigo-400/40'
-                : 'bg-red-600/90 text-white border-red-400/40'
-            }`}>
-              {isCsca ? 'Mục CSCA' : 'Mục Tiếng Trung'}
-            </span>
-            {isVideoCourse && (
-              <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-900/80 text-amber-300 border border-amber-400/30 backdrop-blur-md flex items-center gap-1">
-                <Video className="w-2.5 h-2.5" /> Bài giảng Video
+          <div className="absolute top-3 inset-x-3 flex items-start justify-between gap-2 z-10 pointer-events-none">
+            <div className="flex flex-col items-start gap-1.5 min-w-0">
+              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-sm border ${
+                isCsca
+                  ? 'bg-indigo-600/90 text-white border-indigo-400/40'
+                  : 'bg-red-600/90 text-white border-red-400/40'
+              }`}>
+                {isCsca ? 'Mục CSCA' : 'Mục Tiếng Trung'}
               </span>
-            )}
-          </div>
+              {isVideoCourse && (
+                <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-900/85 text-amber-300 border border-amber-400/35 backdrop-blur-md flex items-center gap-1.5 shadow-sm">
+                  <Video className="w-3 h-3 text-amber-300 shrink-0" />
+                  <span>Bài giảng Video</span>
+                </span>
+              )}
+            </div>
 
-          <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide backdrop-blur-md shadow-lg border z-10 bg-slate-950/80 text-emerald-400 border-emerald-500/30">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Học trực tuyến</span>
+            <div className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide backdrop-blur-md shadow-lg border bg-slate-950/85 text-emerald-400 border-emerald-500/35 shrink-0">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Học trực tuyến</span>
+            </div>
           </div>
 
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
