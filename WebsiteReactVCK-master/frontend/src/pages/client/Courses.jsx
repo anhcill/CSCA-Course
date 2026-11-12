@@ -399,10 +399,16 @@ const Courses = () => {
       {loading || videoCatalogLoading ? (
         <Loading loading={true} text="Đang tải danh sách khóa học..." fullScreen={false} className="min-h-[60vh] py-16" />
       ) : (
-        <div className="container mx-auto px-4 pb-20 pt-24 max-w-7xl space-y-10">
+        <div className="container mx-auto max-w-7xl space-y-10 px-4 pb-20 pt-4">
           {/* Header Banner */}
-          <div className="overflow-hidden rounded-3xl bg-gradient-to-r from-red-700 via-red-600 to-amber-500 px-6 py-10 text-white shadow-xl sm:px-10 relative">
-            <div className="absolute right-0 top-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+          <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-r px-6 py-10 text-white shadow-xl sm:px-10 ${
+            isDarkMode
+              ? 'from-red-800 via-red-700 to-amber-700'
+              : 'from-red-600 via-red-500 to-amber-400'
+          }`}>
+            {isDarkMode && (
+              <div className="pointer-events-none absolute right-0 top-0 h-96 w-96 rounded-full bg-black/10 blur-3xl" />
+            )}
             <div className="relative z-10">
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-white/20 backdrop-blur-md">
