@@ -565,6 +565,13 @@ export default function VideoCourseWorkspacePage() {
     }
   };
 
+  // Keep hooks unconditional so loading-to-content renders preserve hook order.
+  const slideFiles = useMemo(() => {
+    return (workspaceData?.activeUnit?.files || []).filter((f) =>
+      /\.(pdf|ppt|pptx|doc|docx)$/i.test(f.fileName || ""),
+    );
+  }, [workspaceData?.activeUnit?.files]);
+
   if (loading && !workspaceData) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] p-6 dark:bg-slate-950">
@@ -622,11 +629,6 @@ export default function VideoCourseWorkspacePage() {
     },
   } = workspaceData;
   const isPublicPreviewAccess = Boolean(capabilities.isPublicPreviewAccess);
-  const slideFiles = useMemo(() => {
-    return (activeUnit?.files || []).filter((f) =>
-      /\.(pdf|ppt|pptx|doc|docx)$/i.test(f.fileName || ""),
-    );
-  }, [activeUnit?.files]);
   return (
     <div className={`min-h-screen ${isDarkMode ? "bg-slate-950 text-slate-100" : "bg-[#f8fafc] text-slate-900"} font-sans antialiased transition-colors duration-200`}>
       {isPublicPreviewAccess && (
