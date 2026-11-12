@@ -963,7 +963,7 @@ export default function VideoCourseWorkspacePage() {
               <>
             {/* 3. TABS BAR: THIẾT KẾ ĐẦY ĐỦ 7 TAB TIỆN ÍCH */}
             <div className="rounded-2xl bg-white/80 dark:bg-slate-900/80 p-2 sm:p-2.5 border border-slate-200/80 dark:border-slate-800 shadow-sm backdrop-blur-sm">
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 sm:gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
                 {[
                   {
                     id: "theory",
