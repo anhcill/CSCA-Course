@@ -206,7 +206,7 @@ export default function VideoCourseWorkspacePage() {
 
   const [workspaceData, setWorkspaceData] = useState(null);
   const [activeUnitId, setActiveUnitId] = useState(paramUnitId || null);
-  const [activeTab, setActiveTab] = useState("theory");
+  const [activeTab, setActiveTab] = useState("files");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [errorCode, setErrorCode] = useState("");
@@ -965,15 +965,6 @@ export default function VideoCourseWorkspacePage() {
             <div className="rounded-2xl bg-white/80 dark:bg-slate-900/80 p-2 sm:p-2.5 border border-slate-200/80 dark:border-slate-800 shadow-sm backdrop-blur-sm">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
                 {[
-                  {
-                    id: "theory",
-                    label: "Lý thuyết",
-                    fullLabel: "Lý thuyết & Slide",
-                    icon: BookOpen,
-                    badge: (activeUnit?.theory?.summary || activeUnit?.theory?.contentHtml || slideFiles.length > 0)
-                      ? (slideFiles.length > 0 ? "Slide" : "Lý thuyết")
-                      : null,
-                  },
                   { id: "files", label: "Tài liệu", fullLabel: "Tài liệu đính kèm", icon: FolderOpen, badge: (activeUnit?.files?.length || 0) || null },
                   { id: "exercises", label: "Bài tập", fullLabel: "Bài tập & Quiz", icon: FileCheck2, badge: (activeUnit?.quizzes?.length || 0) + (activeUnit?.assignments?.length || 0) || null },
                   { id: "vocabulary", label: "Từ vựng", fullLabel: "Từ vựng CSCA", icon: Languages, badge: (activeUnit?.vocabulary?.length || 0) || null },
