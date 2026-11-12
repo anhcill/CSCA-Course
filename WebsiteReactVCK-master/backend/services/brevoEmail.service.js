@@ -535,6 +535,7 @@ export const sendClassEnrollmentApprovedEmail = async ({
   const safeClassUrl = classUrl ? escapeEmailHtml(classUrl) : "";
   const isRecording = String(learningMode).toLowerCase() === "recording";
   const learningModeLabel = isRecording ? "Học qua bản ghi" : "Học trực tiếp";
+  const actionLabel = isRecording ? "Mở Khóa Học Record →" : "Mở Lớp Học →";
   const title = isTest ? "Email Kiểm Tra Xác Nhận Ghi Danh" : "Chúc Mừng Bạn Đã Được Thêm Vào Lớp!";
   const bodyContent = `
     ${isTest
@@ -555,7 +556,7 @@ export const sendClassEnrollmentApprovedEmail = async ({
 
     ${safeClassUrl
       ? `<div style="text-align: center; margin: 28px 0;">
-          <a href="${safeClassUrl}" class="btn">Mở Lớp Học →</a>
+          <a href="${safeClassUrl}" class="btn">${actionLabel}</a>
         </div>`
       : ""}
 
@@ -582,7 +583,7 @@ export const sendClassEnrollmentApprovedEmail = async ({
       `Chúc mừng bạn đã được thêm vào lớp ${className || "trên Moly Course"}.`,
       courseName ? `Khóa học: ${courseName}.` : null,
       instructorName ? `Giảng viên: ${instructorName}.` : null,
-      classUrl ? `Mở lớp học: ${classUrl}` : null,
+      classUrl ? `${isRecording ? "Mở khóa học Record" : "Mở lớp học"}: ${classUrl}` : null,
     ].filter(Boolean).join("\n"),
   });
 };

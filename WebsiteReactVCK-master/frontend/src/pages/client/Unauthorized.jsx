@@ -1,8 +1,11 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { LogIn, Home, ArrowLeft } from 'lucide-react';
 import Meta from '../../components/Meta';
 
 export default function Unauthorized() {
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}${location.hash}`;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
       <Meta
@@ -32,7 +35,7 @@ export default function Unauthorized() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
             to="/"
-            state={{ openAuthModal: 'login' }}
+            state={{ openAuthModal: 'login', returnTo }}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 px-6 py-3 text-sm font-black text-white shadow-lg shadow-rose-600/30 transition active:scale-[0.98]"
           >
             <LogIn className="h-4 w-4" /> Đăng Nhập Ngay

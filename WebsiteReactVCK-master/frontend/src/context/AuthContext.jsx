@@ -3,7 +3,10 @@ import axios from 'axios';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import toast from "react-hot-toast";
 import { useTranslation } from 'react-i18next';
-import { getLmsLandingPath } from '../utils/lmsNavigation';
+import {
+    AUTH_RETURN_TO_STORAGE_KEY,
+    getPostLoginPath,
+} from '../utils/lmsNavigation';
 
 export const normalizeUserDto = (user) => {
     if (!user) return null;
@@ -187,12 +190,16 @@ export const AuthContextProvider = ({ children }) => {
 
             if (authResult === 'google-success' && authenticatedUser) {
                 toast.success('Đăng nhập Google thành công!');
+                const returnTo = sessionStorage.getItem(AUTH_RETURN_TO_STORAGE_KEY);
+                sessionStorage.removeItem(AUTH_RETURN_TO_STORAGE_KEY);
                 if (window.location.pathname === '/' || window.location.pathname === '') {
-                    window.location.replace(getLmsLandingPath(authenticatedUser));
+                    window.location.replace(getPostLoginPath(authenticatedUser, returnTo));
                 }
             } else if (authResult === 'google-success') {
+                sessionStorage.removeItem(AUTH_RETURN_TO_STORAGE_KEY);
                 toast.error('Không thể xác nhận phiên đăng nhập Google. Vui lòng thử lại.');
             } else if (authResult === 'google-error') {
+                sessionStorage.removeItem(AUTH_RETURN_TO_STORAGE_KEY);
                 const messages = {
                     cancelled: 'Bạn đã hủy đăng nhập Google.',
                     state_invalid: 'Phiên đăng nhập Google không hợp lệ hoặc đã hết hạn.',

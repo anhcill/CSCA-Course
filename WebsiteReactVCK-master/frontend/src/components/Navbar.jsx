@@ -30,6 +30,7 @@ import SearchNavbar from './SearchNavbar';
 import { getAvatarUrl, handleAvatarError } from '../utils/avatar';
 import NotificationBell from '../features/notifications/components/NotificationBell';
 import { hasStudentLmsAccess } from '../utils/lmsAccess';
+import { getSafeAuthReturnPath } from '../utils/lmsNavigation';
 
 /* ══════════════════════════════════════════════════════════════
    ROLE-BASED NAVIGATION CONFIG
@@ -82,6 +83,7 @@ const Navbar = () => {
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login');
+  const [authReturnTo, setAuthReturnTo] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isNavbarVisible, setIsNavbarVisible] = useState(true);
   const lastScrollY = useRef(0);
@@ -115,6 +117,7 @@ const Navbar = () => {
     if (!requestedMode) return;
 
     setAuthMode(requestedMode);
+    setAuthReturnTo(getSafeAuthReturnPath(location.state?.returnTo));
     setIsAuthModalOpen(true);
     window.history.replaceState({}, '', `${location.pathname}${location.search}${location.hash}`);
   }, [location]);
@@ -128,7 +131,11 @@ const Navbar = () => {
     return () => mq.removeEventListener('change', h);
   }, []);
 
-  const openAuthModal = (mode) => { setAuthMode(mode); setIsAuthModalOpen(true); };
+  const openAuthModal = (mode) => {
+    setAuthMode(mode);
+    setAuthReturnTo(null);
+    setIsAuthModalOpen(true);
+  };
 
   /* ── Build nav links by role ────────────────────────────────── */
   const mainNavLinks = [
@@ -440,7 +447,12 @@ const Navbar = () => {
         </nav>
       </header>
 
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} initialMode={authMode} />
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => { setIsAuthModalOpen(false); setAuthReturnTo(null); }}
+        initialMode={authMode}
+        returnTo={authReturnTo}
+      />
     </>
   );
 };

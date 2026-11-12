@@ -12,11 +12,31 @@ const LEGACY_DESTINATIONS = Object.freeze({
 const STUDENT_DESTINATION = /^\/(?:lms\/(?:my-learning|dashboard|catalog|analytics|live-schedule|calendar|recordings|vocabulary|formulas|materials|assignments(?:\/[^/]+\/submit)?|assignment\/[^/]+\/submit|files|notifications|settings|quizzes(?:\/[^/]+)?|quiz\/[^/]+|courses\/[^/]+(?:\/classes(?:\/[^/]+(?:\/(?:learn|assignments(?:\/[^/]+\/submit)?|quizzes\/[^/]+|schedule|calendar|files|materials|results))?)?)?)|profile|rank)$/;
 const TEACHER_DESTINATION = /^\/lms\/(?:teacher-hub|teacher(?:\/|$)|admin\/(?:curriculum|grading)$)/;
 const ADMIN_DESTINATION = /^\/admin(?:\/|$)/;
+const AUTH_RETURN_BASE = "https://molycourse.local";
+
+export const AUTH_RETURN_TO_STORAGE_KEY = "moly-auth-return-to";
+
+export function getSafeAuthReturnPath(value) {
+  const rawValue = String(value || "").trim();
+  if (!rawValue.startsWith("/") || rawValue.startsWith("//")) return null;
+
+  try {
+    const parsed = new URL(rawValue, AUTH_RETURN_BASE);
+    if (parsed.origin !== AUTH_RETURN_BASE) return null;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
+}
 
 export function getLmsLandingPath(authUser) {
   if (authUser?.role === USER_ROLES.ADMIN) return "/admin";
   if (isTeacherRole(authUser?.role)) return "/lms/teach";
   return hasStudentLmsAccess(authUser) ? "/lms/my-learning" : "/";
+}
+
+export function getPostLoginPath(authUser, returnTo) {
+  return getSafeAuthReturnPath(returnTo) || getLmsLandingPath(authUser);
 }
 
 export function resolveLmsDestination(value, authUser) {

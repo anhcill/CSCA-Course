@@ -5,7 +5,11 @@ import { useTranslation } from "react-i18next";
 import { User, Lock, Eye, EyeOff, Loader2, Laptop, Smartphone, ShieldAlert, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import useLogin from "../../hooks/useLogin";
-import { getLmsLandingPath } from "../../utils/lmsNavigation";
+import {
+  AUTH_RETURN_TO_STORAGE_KEY,
+  getPostLoginPath,
+  getSafeAuthReturnPath,
+} from "../../utils/lmsNavigation";
 
 // ─── tiny reusable input wrapper ─────────────────────────────────────────────
 const InputField = ({
@@ -64,7 +68,7 @@ const InputField = ({
 );
 
 // ─── LoginForm ────────────────────────────────────────────────────────────────
-const LoginForm = ({ onSwitchMode, onClose, initialIdentifier = "" }) => {
+const LoginForm = ({ onSwitchMode, onClose, initialIdentifier = "", returnTo = null }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { loading, login } = useLogin();
@@ -107,7 +111,7 @@ const LoginForm = ({ onSwitchMode, onClose, initialIdentifier = "" }) => {
         setFormData({ email: "", password: "" });
         onClose(); // close modal
 
-        navigate(getLmsLandingPath(user));
+        navigate(getPostLoginPath(user, returnTo));
       }
     } catch (error) {
       if (error?.errorCode === "DEVICE_LIMIT_REACHED" || error?.errorCode === "ACCOUNT_LOCKED_DEVICE_LIMIT") {
@@ -130,6 +134,9 @@ const LoginForm = ({ onSwitchMode, onClose, initialIdentifier = "" }) => {
 
   const handleGoogleLogin = () => {
     setGoogleLoading(true);
+    const safeReturnTo = getSafeAuthReturnPath(returnTo);
+    if (safeReturnTo) sessionStorage.setItem(AUTH_RETURN_TO_STORAGE_KEY, safeReturnTo);
+    else sessionStorage.removeItem(AUTH_RETURN_TO_STORAGE_KEY);
     window.location.assign("/api/auth/google");
   };
 

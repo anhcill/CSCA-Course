@@ -163,7 +163,7 @@ const IllustrationPanel = ({ mode, registrationData, onDragEnd, dragX }) => {
 };
 
 // ─── main AuthModal ───────────────────────────────────────────────────────────
-const AuthModal = ({ isOpen, onClose, initialMode = "login" }) => {
+const AuthModal = ({ isOpen, onClose, initialMode = "login", returnTo = null }) => {
   const [mode, setMode] = useState(initialMode);
   const [registrationData, setRegistrationData] = useState(null);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState(null);
@@ -301,6 +301,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = "login" }) => {
                             onSwitchMode={handleSwitchMode}
                             onClose={onClose}
                             initialIdentifier={registrationData?.username || registrationData?.email || ""}
+                            returnTo={returnTo}
                           />
                         )}
                         {mode === "forgotPassword" && (
