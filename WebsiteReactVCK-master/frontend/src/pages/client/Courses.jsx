@@ -292,19 +292,19 @@ const Courses = () => {
             </p>
           )}
 
-          {(course.level || course.duration || course.lessonsCount || videoOffering?.totalLessons) && (
+          {(Boolean(course.level) || Boolean(course.duration) || Boolean(course.lessonsCount || videoOffering?.totalLessons)) && (
             <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold pt-1">
-              {course.level && (
+              {Boolean(course.level) && (
                 <span className="rounded-md bg-red-50 dark:bg-red-950/40 px-2.5 py-0.5 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/50">
                   {course.level}
                 </span>
               )}
-              {course.duration && (
+              {Boolean(course.duration) && (
                 <span className="rounded-md bg-amber-50 dark:bg-amber-950/40 px-2.5 py-0.5 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/50">
                   {course.duration}
                 </span>
               )}
-              {(course.lessonsCount || videoOffering?.totalLessons) && (
+              {Boolean(course.lessonsCount || videoOffering?.totalLessons) && (
                 <span className="rounded-md bg-blue-50 dark:bg-blue-950/40 px-2.5 py-0.5 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/50">
                   {course.lessonsCount || videoOffering.totalLessons} bài học
                 </span>
@@ -435,7 +435,7 @@ const Courses = () => {
           </div>
 
           {/* Category Filter Pills / Tabs */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 p-1.5 rounded-2xl bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/80 shadow-sm w-fit max-w-full">
+          <div className="flex items-center gap-2 sm:gap-3 p-1.5 rounded-2xl bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/80 shadow-sm w-full sm:w-fit overflow-x-auto no-scrollbar">
             {CATEGORIES.map((tab) => {
               const Icon = tab.icon;
               const active = selectedCategory === tab.id;
@@ -449,15 +449,15 @@ const Courses = () => {
                 <button
                   key={tab.id}
                   onClick={() => setSelectedCategory(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
                     active
                       ? 'bg-gradient-to-r from-red-600 to-amber-500 text-white shadow-md shadow-red-600/30'
                       : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="whitespace-nowrap">{tab.label}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] shrink-0 ${
                     active ? 'bg-white/25 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                   }`}>
                     {count}

@@ -28,6 +28,7 @@ import {
   ExternalLink,
   Copy,
   Lock,
+  X,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { useTheme } from "../../../context/ThemeContext";
@@ -177,6 +178,7 @@ export default function VideoCourseWorkspacePage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [errorCode, setErrorCode] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [mobileCurriculumOpen, setMobileCurriculumOpen] = useState(false);
 
   // Video Player & Watch Progress state
   const [isCompletedUnit, setIsCompletedUnit] = useState(false);
@@ -263,6 +265,7 @@ export default function VideoCourseWorkspacePage() {
   // Keep lessons sequential while giving learners a clear, friendly target.
   const handleSelectUnit = (unit) => {
     if (!unit) return;
+    setMobileCurriculumOpen(false);
     if (String(unit.id) === String(activeUnitId)) return;
 
     const isAdminOrTeacher = authUser?.role === "admin" || authUser?.role === "creator" || Boolean(workspaceData?.capabilities?.isAdminPreview);
@@ -624,7 +627,20 @@ export default function VideoCourseWorkspacePage() {
           </div>
 
           {/* Right: Security & Progress */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Mobile Curriculum Button */}
+            <button
+              type="button"
+              onClick={() => setMobileCurriculumOpen(true)}
+              className="lg:hidden inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-bold text-amber-700 dark:text-amber-300 transition hover:bg-amber-500/20 active:scale-95"
+              title="Mở lộ trình bài giảng"
+            >
+              <BookOpen className="h-3.5 w-3.5 text-amber-500" />
+              <span className="text-[11px] font-mono">
+                {progress.completedUnits || 0}/{units.length} bài
+              </span>
+            </button>
+
             {/* Trusted device safety pill */}
             <button
               type="button"
@@ -749,6 +765,33 @@ export default function VideoCourseWorkspacePage() {
               </div>
             )}
 
+            {/* Quick Access to Curriculum on Mobile */}
+            <div className="lg:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileCurriculumOpen(true)}
+                className="w-full flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 text-slate-900 dark:text-white shadow-sm hover:border-amber-400 transition active:scale-[0.99]"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500 text-slate-950 font-black shadow-sm shrink-0">
+                    <BookOpen className="h-4 w-4" />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                      Lộ trình bài giảng • Nhấn đổi bài
+                    </p>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                      {activeUnit?.sectionTitle || (activeUnit?.sessionNumber ? `Buổi ${activeUnit.sessionNumber}` : "Bài hiện tại")}: {activeUnit?.title}
+                    </p>
+                  </div>
+                </div>
+                <span className="shrink-0 flex items-center gap-1 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-xl">
+                  {currentIndex + 1}/{units.length} bài
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </span>
+              </button>
+            </div>
+
             {/* 2. ACTIVE UNIT TITLE & SEQUENTIAL UNLOCK CONDITIONS BAR (BELOW VIDEO) */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3.5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -775,9 +818,9 @@ export default function VideoCourseWorkspacePage() {
                 </div>
 
                 {/* Completion & Unit Switcher */}
-                <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto shrink-0 pt-1 sm:pt-0">
                   <span
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold border ${
                       isCompletedUnit
                         ? "bg-emerald-600 text-white border-emerald-600"
                         : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
@@ -877,59 +920,30 @@ export default function VideoCourseWorkspacePage() {
 
             {!activeUnit?.isLocked && (
               <>
-            {/* 3. TABS BAR: 2 DÃY GỌN GÀNG, KHÔNG CUỘN NGANG */}
-            <div className="space-y-2 rounded-2xl bg-white/80 dark:bg-slate-900/80 p-2.5 sm:p-3 border border-slate-200/80 dark:border-slate-800 shadow-sm backdrop-blur-sm">
-              {/* Dãy 1: Nội dung học tập chính */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
+            {/* 3. TABS BAR: GỌN GÀNG 3 CỘT TRÊN MOBILE, 6 CỘT TRÊN MÀN HÌNH LỚN */}
+            <div className="rounded-2xl bg-white/80 dark:bg-slate-900/80 p-2 sm:p-2.5 border border-slate-200/80 dark:border-slate-800 shadow-sm backdrop-blur-sm">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2">
                 {[
-                  { id: "files", label: "Tài liệu đính kèm", icon: FolderOpen, badge: (activeUnit?.files?.length || 0) || null },
-                  { id: "exercises", label: "Bài tập & Quiz", icon: FileCheck2, badge: (activeUnit?.quizzes?.length || 0) + (activeUnit?.assignments?.length || 0) || null },
-                  { id: "vocabulary", label: "Từ vựng CSCA", icon: Languages, badge: (activeUnit?.vocabulary?.length || 0) || null },
-                ].map(({ id, label, icon: Icon, badge }) => (
+                  { id: "files", label: "Tài liệu", fullLabel: "Tài liệu đính kèm", icon: FolderOpen, badge: (activeUnit?.files?.length || 0) || null },
+                  { id: "exercises", label: "Bài tập", fullLabel: "Bài tập & Quiz", icon: FileCheck2, badge: (activeUnit?.quizzes?.length || 0) + (activeUnit?.assignments?.length || 0) || null },
+                  { id: "vocabulary", label: "Từ vựng", fullLabel: "Từ vựng CSCA", icon: Languages, badge: (activeUnit?.vocabulary?.length || 0) || null },
+                  { id: "formulas", label: "Công thức", fullLabel: "Công thức trọng tâm", icon: Calculator, badge: (activeUnit?.formulas?.length || 0) || null },
+                  { id: "notes", label: "Ghi chú", fullLabel: "Ghi chú cá nhân", icon: StickyNote, badge: (notes?.length || 0) || null },
+                  { id: "results", label: "Kết quả", fullLabel: "Kết quả học tập", icon: BarChart3 },
+                ].map(({ id, label, fullLabel, icon: Icon, badge }) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => setActiveTab(id)}
-                    className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition duration-150 ${
+                    className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition duration-150 ${
                       activeTab === id
                         ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/15 ring-2 ring-indigo-500/20 dark:bg-indigo-400 dark:text-slate-950 dark:ring-indigo-300/20"
                         : "bg-slate-100/90 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800"
                     }`}
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{label}</span>
-                    {badge && (
-                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold shrink-0 ${
-                        activeTab === id
-                          ? "bg-white/20 text-white dark:bg-black/20 dark:text-slate-950"
-                          : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-                      }`}>
-                        {badge}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {/* Dãy 2: Tài nguyên bổ trợ & Đánh giá */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
-                {[
-                  { id: "formulas", label: "Công thức trọng tâm", icon: Calculator, badge: (activeUnit?.formulas?.length || 0) || null },
-                  { id: "notes", label: "Ghi chú cá nhân", icon: StickyNote, badge: (notes?.length || 0) || null },
-                  { id: "results", label: "Kết quả học tập", icon: BarChart3 },
-                ].map(({ id, label, icon: Icon, badge }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setActiveTab(id)}
-                    className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition duration-150 ${
-                      activeTab === id
-                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/15 ring-2 ring-indigo-500/20 dark:bg-indigo-400 dark:text-slate-950 dark:ring-indigo-300/20"
-                        : "bg-slate-100/90 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800"
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{label}</span>
+                    <span className="truncate sm:hidden">{label}</span>
+                    <span className="truncate hidden sm:inline">{fullLabel}</span>
                     {badge && (
                       <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold shrink-0 ${
                         activeTab === id
@@ -948,9 +962,9 @@ export default function VideoCourseWorkspacePage() {
             <div className="min-h-[380px]">
               {/* TAB 1: BÀI TẬP & QUIZ */}
               {activeTab === "exercises" && (
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                   {/* Quizzes Section */}
-                  <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
@@ -1037,7 +1051,7 @@ export default function VideoCourseWorkspacePage() {
 
                   {/* Assignments Section */}
                   {capabilities.canSubmitAssignments !== false && (
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
                           <FileText className="h-4 w-4 text-blue-500" />
@@ -1101,7 +1115,7 @@ export default function VideoCourseWorkspacePage() {
 
               {/* TAB 4: TỪ VỰNG */}
               {activeTab === "vocabulary" && (
-                <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-5">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4 sm:space-y-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1285,7 +1299,7 @@ export default function VideoCourseWorkspacePage() {
 
               {/* TAB 5: CÔNG THỨC & TRỌNG TÂM */}
               {activeTab === "formulas" && (
-                <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-5">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4 sm:space-y-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1297,7 +1311,7 @@ export default function VideoCourseWorkspacePage() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {[
                         { id: "ALL", label: "Tất cả" },
                         { id: "MATH", label: "Toán" },
@@ -1410,7 +1424,7 @@ export default function VideoCourseWorkspacePage() {
 
               {/* TAB 6: TÀI LIỆU (WITH INTERACTIVE PREVIEW MODAL) */}
               {activeTab === "files" && (
-                <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1500,7 +1514,7 @@ export default function VideoCourseWorkspacePage() {
 
               {/* TAB 7: GHI CHÚ CÁ NHÂN (CONNECTED TO TIMESTAMP SEEK & API) */}
               {activeTab === "notes" && (
-                <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-6">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-5 sm:space-y-6">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1580,7 +1594,7 @@ export default function VideoCourseWorkspacePage() {
 
               {/* TAB 8: KẾT QUẢ */}
               {activeTab === "results" && (
-                <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-6">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-5 sm:space-y-6">
                   <div>
                     <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                       <BarChart3 className="h-5 w-5 text-indigo-500" />
@@ -1635,7 +1649,7 @@ export default function VideoCourseWorkspacePage() {
           </main>
 
           {/* RIGHT 4/12: Curriculum & Lessons Sidebar */}
-          <aside className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+          <aside className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
@@ -1960,6 +1974,143 @@ export default function VideoCourseWorkspacePage() {
               >
                 Đã hiểu
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. MOBILE CURRICULUM DRAWER / MODAL */}
+      {mobileCurriculumOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end lg:hidden bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className="fixed inset-0"
+            onClick={() => setMobileCurriculumOpen(false)}
+          />
+          <div className="relative z-10 max-h-[85vh] flex flex-col rounded-t-3xl bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-2xl p-4 sm:p-5 space-y-3.5">
+            {/* Drawer Handle */}
+            <div className="mx-auto h-1 w-12 rounded-full bg-slate-300 dark:bg-slate-700" />
+
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5 text-amber-500" />
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Lộ trình bài giảng
+                </h3>
+                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400">
+                  {progress.completedUnits || 0}/{units.length} hoàn thành
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileCurriculumOpen(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Sequential Unlock Info */}
+            <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2">
+              <ShieldCheck className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="leading-snug">
+                Học theo thứ tự: Xem khoảng <strong>{REQUIRED_WATCH_PERCENT}% video</strong> và <strong>hoàn thành Quiz</strong> để tiếp tục bài kế tiếp nhé.
+              </p>
+            </div>
+
+            {/* Search input in drawer */}
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Tìm kiếm bài giảng..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-8 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-amber-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              />
+            </div>
+
+            {/* Drawer Units List */}
+            <div className="space-y-2 overflow-y-auto max-h-[50vh] pr-1 pb-4">
+              {filteredUnits.map((unit, index) => {
+                const isCurrent = String(unit.id) === String(activeUnitId);
+                const isDone = Boolean(unit.isCompleted);
+                const isLocked = Boolean(unit.isLocked);
+                const pct = Math.min(100, Math.max(0, Math.round(unit.progressPercent || 0)));
+                const durationLabel = formatVideoDurationLabel(unit);
+
+                return (
+                  <button
+                    key={unit.id}
+                    type="button"
+                    onClick={() => {
+                      handleSelectUnit(unit);
+                      setMobileCurriculumOpen(false);
+                    }}
+                    className={`group w-full text-left p-3 rounded-2xl transition-all duration-200 flex items-start gap-3 border ${
+                      isCurrent
+                        ? "bg-indigo-50 text-indigo-950 shadow-sm border-indigo-200 dark:bg-indigo-950/35 dark:text-indigo-100 dark:border-indigo-800/70"
+                        : isDone
+                          ? "bg-emerald-50/60 text-slate-800 border-emerald-200/80 dark:bg-emerald-950/20 dark:text-slate-100 dark:border-emerald-800/50"
+                          : isLocked
+                            ? "bg-slate-100/70 text-slate-400 border-slate-200/60 dark:bg-slate-900/60 dark:text-slate-500 dark:border-slate-800/80 opacity-80"
+                            : "bg-slate-50/90 text-slate-800 border-slate-200/80 dark:bg-slate-800/60 dark:text-slate-200 dark:border-slate-800"
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border text-xs font-black transition ${
+                        isCurrent
+                          ? "border-indigo-600/30 bg-indigo-600 text-white dark:border-indigo-400/30 dark:bg-indigo-400 dark:text-slate-950"
+                          : isDone
+                            ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                            : isLocked
+                              ? "border-slate-300 bg-slate-200/70 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
+                              : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
+                      {isLocked ? (
+                        <Lock className="h-3.5 w-3.5" />
+                      ) : isDone ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : isCurrent ? (
+                        <Play className="h-3.5 w-3.5 fill-current" />
+                      ) : (
+                        <span>{unit.sessionNumber || index + 1}</span>
+                      )}
+                    </span>
+
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`text-[10px] font-black uppercase tracking-wider truncate ${
+                            isCurrent
+                              ? "text-indigo-700 dark:text-indigo-300"
+                              : isLocked
+                                ? "text-slate-400 dark:text-slate-500"
+                                : "text-amber-600 dark:text-amber-400"
+                          }`}
+                        >
+                          {unit.sectionTitle || `Buổi ${unit.sessionNumber || index + 1}`}
+                        </span>
+                        {durationLabel && (
+                          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 shrink-0">
+                            {durationLabel}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white line-clamp-1">
+                        {unit.title}
+                      </p>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                        <span>Video: {pct}%</span>
+                        {Number(unit.quizCount || 0) > 0 && (
+                          <span>• Quiz: {unit.completedQuizCount || 0}/{unit.quizCount}</span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

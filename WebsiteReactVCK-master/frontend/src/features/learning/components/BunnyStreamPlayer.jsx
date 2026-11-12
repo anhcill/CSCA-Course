@@ -671,8 +671,8 @@ export default function BunnyStreamPlayer({
           </div>
           <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 dark:text-slate-500">
             <span>0%</span>
-            <span className="text-amber-600 dark:text-amber-400">
-              Tiến độ được ghi nhận tự động để bạn tiếp tục bài học thuận tiện hơn
+            <span className="text-amber-600 dark:text-amber-400 text-center line-clamp-1 sm:line-clamp-none mx-2 truncate sm:overflow-visible">
+              Tiến độ tự động lưu để bạn học thuận tiện
             </span>
             <span>100%</span>
           </div>
