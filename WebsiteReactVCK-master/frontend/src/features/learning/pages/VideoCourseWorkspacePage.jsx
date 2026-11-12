@@ -29,6 +29,8 @@ import {
   Copy,
   Lock,
   X,
+  Info,
+  Layers,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { useTheme } from "../../../context/ThemeContext";
@@ -62,6 +64,37 @@ const renderKaTeX = (latex, displayMode = true) => {
       .replace(/\\[a-zA-Z]+/g, " ")
       .trim();
   }
+};
+
+const sanitizeTheoryHtml = (html) => {
+  if (!html || typeof html !== "string") return "";
+  if (typeof DOMParser === "undefined") return "";
+
+  const documentNode = new DOMParser().parseFromString(html, "text/html");
+  const allowedTags = new Set([
+    "a", "b", "blockquote", "br", "code", "div", "em", "h1", "h2", "h3", "h4", "h5", "h6",
+    "hr", "i", "li", "ol", "p", "pre", "span", "strong", "sub", "sup", "table", "tbody", "td",
+    "th", "thead", "tr", "u", "ul",
+  ]);
+  const allowedAttributes = new Set(["colspan", "href", "rel", "rowspan", "target", "title", "class"]);
+  documentNode.body.querySelectorAll("*").forEach((node) => {
+    if (!allowedTags.has(node.tagName.toLowerCase())) {
+      node.replaceWith(...node.childNodes);
+      return;
+    }
+    [...node.attributes].forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim().toLowerCase();
+      if (!allowedAttributes.has(name) || (name === "href" && !value.startsWith("https://") && !value.startsWith("http://") && !value.startsWith("/api/"))) {
+        node.removeAttribute(attribute.name);
+      }
+    });
+    if (node.tagName.toLowerCase() === "a") {
+      node.setAttribute("target", "_blank");
+      node.setAttribute("rel", "noopener noreferrer");
+    }
+  });
+  return documentNode.body.innerHTML;
 };
 
 const REQUIRED_WATCH_PERCENT = 60;
@@ -173,7 +206,7 @@ export default function VideoCourseWorkspacePage() {
 
   const [workspaceData, setWorkspaceData] = useState(null);
   const [activeUnitId, setActiveUnitId] = useState(paramUnitId || null);
-  const [activeTab, setActiveTab] = useState("files");
+  const [activeTab, setActiveTab] = useState("theory");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [errorCode, setErrorCode] = useState("");
@@ -188,6 +221,7 @@ export default function VideoCourseWorkspacePage() {
 
   // Document preview modal state
   const [previewFile, setPreviewFile] = useState(null);
+  const [showInlineSlidePreview, setShowInlineSlidePreview] = useState(true);
 
   // Vocabulary & Formula interactive filters
   const [vocabSearch, setVocabSearch] = useState("");
@@ -588,6 +622,11 @@ export default function VideoCourseWorkspacePage() {
     },
   } = workspaceData;
   const isPublicPreviewAccess = Boolean(capabilities.isPublicPreviewAccess);
+  const slideFiles = useMemo(() => {
+    return (activeUnit?.files || []).filter((f) =>
+      /\.(pdf|ppt|pptx|doc|docx)$/i.test(f.fileName || ""),
+    );
+  }, [activeUnit?.files]);
   return (
     <div className={`min-h-screen ${isDarkMode ? "bg-slate-950 text-slate-100" : "bg-[#f8fafc] text-slate-900"} font-sans antialiased transition-colors duration-200`}>
       {isPublicPreviewAccess && (
@@ -920,10 +959,19 @@ export default function VideoCourseWorkspacePage() {
 
             {!activeUnit?.isLocked && (
               <>
-            {/* 3. TABS BAR: GỌN GÀNG 3 CỘT TRÊN MOBILE, 6 CỘT TRÊN MÀN HÌNH LỚN */}
+            {/* 3. TABS BAR: THIẾT KẾ ĐẦY ĐỦ 7 TAB TIỆN ÍCH */}
             <div className="rounded-2xl bg-white/80 dark:bg-slate-900/80 p-2 sm:p-2.5 border border-slate-200/80 dark:border-slate-800 shadow-sm backdrop-blur-sm">
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 sm:gap-2">
                 {[
+                  {
+                    id: "theory",
+                    label: "Lý thuyết",
+                    fullLabel: "Lý thuyết & Slide",
+                    icon: BookOpen,
+                    badge: (activeUnit?.theory?.summary || activeUnit?.theory?.contentHtml || slideFiles.length > 0)
+                      ? (slideFiles.length > 0 ? "Slide" : "Lý thuyết")
+                      : null,
+                  },
                   { id: "files", label: "Tài liệu", fullLabel: "Tài liệu đính kèm", icon: FolderOpen, badge: (activeUnit?.files?.length || 0) || null },
                   { id: "exercises", label: "Bài tập", fullLabel: "Bài tập & Quiz", icon: FileCheck2, badge: (activeUnit?.quizzes?.length || 0) + (activeUnit?.assignments?.length || 0) || null },
                   { id: "vocabulary", label: "Từ vựng", fullLabel: "Từ vựng CSCA", icon: Languages, badge: (activeUnit?.vocabulary?.length || 0) || null },
@@ -960,6 +1008,115 @@ export default function VideoCourseWorkspacePage() {
 
             {/* 4. TAB CONTENTS */}
             <div className="min-h-[380px]">
+              {/* TAB 0: LÝ THUYẾT & SLIDE */}
+              {activeTab === "theory" && (
+                <div className="space-y-5">
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-5 sm:p-7 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-5">
+                    {/* Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+                      <div>
+                        <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                          <BookOpen className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                          <span>Lý thuyết bài giảng & Slide trình chiếu</span>
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {activeUnit?.theory?.title || activeUnit?.title}
+                        </p>
+                      </div>
+                      {slideFiles.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowInlineSlidePreview((s) => !s)}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/40 dark:bg-indigo-950/40 dark:text-indigo-300"
+                        >
+                          <Layers className="h-4 w-4" />
+                          <span>{showInlineSlidePreview ? "Thu gọn Slide" : `Mở Slide (${slideFiles.length})`}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Summary Box */}
+                    {activeUnit?.theory?.summary && (
+                      <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900/60 dark:bg-blue-950/30">
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-sky-300 mb-1">
+                          <Info className="h-4 w-4" /> Tóm tắt cốt lõi
+                        </div>
+                        <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                          {activeUnit.theory.summary}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Key Takeaways */}
+                    {activeUnit?.theory?.keyTakeaways && activeUnit.theory.keyTakeaways.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Kiến thức trọng tâm</h4>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {activeUnit.theory.keyTakeaways.map((takeaway, idx) => (
+                            <div key={idx} className="flex items-start gap-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 border border-slate-100 dark:border-slate-800">
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold">✓</span>
+                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{takeaway}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Theory HTML Content */}
+                    <div className="prose prose-sm dark:prose-invert max-w-none pt-2">
+                      {activeUnit?.theory?.contentHtml ? (
+                        <div
+                          dangerouslySetInnerHTML={{
+                            __html: sanitizeTheoryHtml(activeUnit.theory.contentHtml),
+                          }}
+                        />
+                      ) : !activeUnit?.theory?.summary && !activeUnit?.theory?.keyTakeaways?.length && slideFiles.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
+                          <BookOpen className="mx-auto h-8 w-8 text-slate-400 mb-2" />
+                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                            Chưa có bài soạn lý thuyết văn bản cho bài học này.
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Học viên hãy theo dõi video bài giảng và các tài liệu đính kèm ở tab Tài liệu.
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {/* Transcript / Subtitles if present */}
+                    {activeUnit?.theory?.transcript && (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
+                          <FileText className="h-4 w-4 text-purple-500" />
+                          <span>Transcript bài giảng</span>
+                        </div>
+                        <div className="max-h-60 overflow-y-auto whitespace-pre-line text-xs leading-relaxed text-slate-600 dark:text-slate-300 font-sans">
+                          {activeUnit.theory.transcript}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Embedded Slide / Document Preview */}
+                  {slideFiles.length > 0 && showInlineSlidePreview && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between px-1">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                          <Layers className="h-4 w-4 text-amber-500" />
+                          <span>Slide & Giáo trình trình chiếu trực tiếp: {slideFiles[0].fileName}</span>
+                        </h4>
+                      </div>
+                      <DocumentPreviewModal
+                        file={slideFiles[0]}
+                        courseTitle={course?.title}
+                        unitTitle={activeUnit?.title}
+                        onDownload={slideFiles[0].downloadUrl ? () => openFileUrl(slideFiles[0].downloadUrl, slideFiles[0].fileName) : undefined}
+                        inline
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               {/* TAB 1: BÀI TẬP & QUIZ */}
               {activeTab === "exercises" && (
                 <div className="space-y-4 sm:space-y-6">

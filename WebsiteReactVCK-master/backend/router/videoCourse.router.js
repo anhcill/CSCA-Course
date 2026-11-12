@@ -1705,6 +1705,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
                 (SELECT COUNT(*)::int FROM lms_learning_file_placements lfp WHERE lfp.class_session_id = cs.id) AS files_count,
                 (SELECT COUNT(*)::int FROM session_vocabularies sv WHERE sv.session_id = cs.id) AS vocab_count,
                 (SELECT COUNT(*)::int FROM session_formulas sf WHERE sf.session_id = cs.id) AS formula_count,
+                (SELECT COUNT(*)::int FROM assignments a WHERE a.class_session_id = cs.id) AS assign_count,
                 (SELECT COUNT(*)::int FROM quizzes q WHERE q.class_session_id = cs.id) AS quiz_count
          FROM class_sessions cs
          WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
@@ -1768,6 +1769,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
             files: Number(s.files_count || 0),
             vocabulary: Number(s.vocab_count || 0),
             formulas: Number(s.formula_count || 0),
+            assignments: Number(s.assign_count || 0),
             quizzes: Number(s.quiz_count || 0),
           },
         };
@@ -1794,7 +1796,8 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
                 (SELECT COUNT(*)::int FROM lesson_learning_file_placements llfp WHERE llfp.lesson_id = l.id) AS files_count,
                 (SELECT COUNT(*)::int FROM session_vocabularies sv WHERE sv.lesson_id = l.id) AS vocab_count,
                 (SELECT COUNT(*)::int FROM session_formulas sf WHERE sf.lesson_id = l.id) AS formula_count,
-                (SELECT COUNT(*)::int FROM assignments a WHERE a.lesson_id = l.id) AS assign_count
+                (SELECT COUNT(*)::int FROM assignments a WHERE a.lesson_id = l.id) AS assign_count,
+                (SELECT COUNT(*)::int FROM quizzes q WHERE q.lesson_id = l.id) AS quiz_count
          FROM lessons l
          LEFT JOIN learning_unit_theory lut ON lut.lesson_id = l.id
          WHERE l.course_id = $1
@@ -1868,6 +1871,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
           vocabulary: Number(l.vocab_count || 0),
           formulas: Number(l.formula_count || 0),
           assignments: Number(l.assign_count || 0),
+          quizzes: Number(l.quiz_count || 0),
         },
       };
     });

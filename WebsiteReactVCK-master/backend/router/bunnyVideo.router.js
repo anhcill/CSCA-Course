@@ -17,6 +17,7 @@ import {
   recordVideoWatchProgress,
   deleteBunnyVideo,
 } from "../services/bunnyStream.service.js";
+import { generateLearningFileUploadPresignedUrl } from "../services/video.service.js";
 
 const router = express.Router();
 
@@ -41,7 +42,9 @@ const parsePositiveId = (value) => {
 };
 
 const sendError = (res, status, message, errorCode, details = undefined) => {
-  res.setHeader("Cache-Control", "private, no-store");
+  if (typeof res.setHeader === "function") {
+    res.setHeader("Cache-Control", "private, no-store");
+  }
   return res.status(status).json({
     success: false,
     message,
@@ -1068,6 +1071,155 @@ const resolveUnitTypeAndIds = async (unitIdParam, explicitType = null) => {
   return null;
 };
 
+// GET /api/admin/learning-units/:unitId/content - Full content bundle for admin editor
+router.get("/admin/learning-units/:unitId/content", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const target = await resolveUnitTypeAndIds(req.params.unitId, req.query?.unitType);
+    if (!target) return sendError(res, 404, "Không tìm thấy bài học hoặc buổi học", "NOT_FOUND");
+
+    const [theoryRes, vocabRes, formulaRes, filesRes, assignRes, quizRes] = await Promise.all([
+      target.unitType === "lesson"
+        ? query("SELECT * FROM learning_unit_theory WHERE lesson_id = $1", [target.lessonId])
+        : query("SELECT * FROM learning_unit_theory WHERE class_session_id = $1", [target.classSessionId]),
+      target.unitType === "lesson"
+        ? query("SELECT * FROM session_vocabularies WHERE lesson_id = $1 ORDER BY order_index ASC, id ASC", [target.lessonId])
+        : query("SELECT * FROM session_vocabularies WHERE session_id = $1 ORDER BY order_index ASC, id ASC", [target.classSessionId]),
+      target.unitType === "lesson"
+        ? query("SELECT * FROM session_formulas WHERE lesson_id = $1 ORDER BY order_index ASC, id ASC", [target.lessonId])
+        : query("SELECT * FROM session_formulas WHERE session_id = $1 ORDER BY order_index ASC, id ASC", [target.classSessionId]),
+      target.unitType === "lesson"
+        ? query(
+            `SELECT lf.id, lf.original_name AS file_name, lf.size_bytes AS file_size_bytes,
+                    lf.mime_type, lf.storage_key, lf.created_at,
+                    llfp.id AS placement_id, llfp.sort_order
+             FROM lesson_learning_file_placements llfp
+             JOIN lms_learning_files lf ON lf.id = llfp.file_id
+             WHERE llfp.lesson_id = $1 AND lf.status = 'ready'
+             ORDER BY llfp.sort_order ASC, llfp.id ASC`,
+            [target.lessonId],
+          )
+        : query(
+            `SELECT lf.id, lf.original_name AS file_name, lf.size_bytes AS file_size_bytes,
+                    lf.mime_type, lf.storage_key, lf.created_at,
+                    lfp.id AS placement_id
+             FROM lms_learning_file_placements lfp
+             JOIN lms_learning_files lf ON lf.id = lfp.file_id
+             WHERE lfp.class_session_id = $1 AND lf.status = 'ready'
+             ORDER BY lfp.id ASC`,
+            [target.classSessionId],
+          ),
+      target.unitType === "lesson"
+        ? query(
+            `SELECT id, title, assignment_type, description, max_score, due_date, attachment_url, created_at
+             FROM assignments
+             WHERE lesson_id = $1
+             ORDER BY id ASC`,
+            [target.lessonId],
+          )
+        : query(
+            `SELECT id, title, assignment_type, description, max_score, due_date, attachment_url, created_at
+             FROM assignments
+             WHERE class_session_id = $1
+             ORDER BY id ASC`,
+            [target.classSessionId],
+          ),
+      target.unitType === "lesson"
+        ? query(
+            `SELECT q.id, q.title, q.description, q.duration_minutes, q.passing_score, q.status, q.created_at,
+                    (SELECT COUNT(*)::int FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS questions_count
+             FROM quizzes q
+             WHERE q.lesson_id = $1
+             ORDER BY q.id ASC`,
+            [target.lessonId],
+          )
+        : query(
+            `SELECT q.id, q.title, q.description, q.duration_minutes, q.passing_score, q.status, q.created_at,
+                    (SELECT COUNT(*)::int FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS questions_count
+             FROM quizzes q
+             WHERE q.class_session_id = $1
+             ORDER BY q.id ASC`,
+            [target.classSessionId],
+          ),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        unit: target,
+        theory: theoryRes.rows[0] ? {
+          id: theoryRes.rows[0].id,
+          title: theoryRes.rows[0].title,
+          contentHtml: theoryRes.rows[0].content_html,
+          summary: theoryRes.rows[0].summary,
+          keyTakeaways: theoryRes.rows[0].key_takeaways || [],
+          transcript: theoryRes.rows[0].transcript,
+          timestampsJson: theoryRes.rows[0].timestamps_json || [],
+        } : null,
+        vocabulary: vocabRes.rows.map((row) => ({
+          id: String(row.id),
+          topic: row.topic,
+          term: row.term,
+          pinyin: row.pinyin,
+          sinoVietnamese: row.sino_vietnamese,
+          meaning: row.meaning,
+          partOfSpeech: row.part_of_speech,
+          exampleSentence: row.example_sentence,
+          exampleMeaning: row.example_meaning,
+          audioUrl: row.audio_url,
+          orderIndex: row.order_index,
+        })),
+        formulas: formulaRes.rows.map((row) => ({
+          id: String(row.id),
+          subject: row.subject,
+          chapterName: row.chapter_name,
+          nameVi: row.name_vi,
+          nameZh: row.name_zh,
+          pinyin: row.pinyin,
+          latexExpression: row.latex_expression,
+          description: row.description,
+          variablesExplanation: row.variables_explanation || [],
+          orderIndex: row.order_index,
+        })),
+        files: filesRes.rows.map((row) => ({
+          id: String(row.id),
+          placementId: row.placement_id ? String(row.placement_id) : null,
+          fileName: row.file_name,
+          originalName: row.file_name,
+          fileSizeBytes: Number(row.file_size_bytes || 0),
+          mimeType: row.mime_type,
+          storageKey: row.storage_key,
+          sortOrder: Number(row.sort_order || 0),
+          createdAt: row.created_at,
+          downloadUrl: `/api/files/${row.id}/download`,
+        })),
+        assignments: assignRes.rows.map((row) => ({
+          id: String(row.id),
+          title: row.title,
+          assignmentType: row.assignment_type,
+          description: row.description,
+          maxScore: Number(row.max_score || 10),
+          dueDate: row.due_date,
+          attachmentUrl: row.attachment_url,
+          createdAt: row.created_at,
+        })),
+        quizzes: quizRes.rows.map((row) => ({
+          id: String(row.id),
+          title: row.title,
+          description: row.description,
+          durationMinutes: Number(row.duration_minutes || 30),
+          passingScore: Number(row.passing_score || 60),
+          status: row.status,
+          questionsCount: Number(row.questions_count || 0),
+          createdAt: row.created_at,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Get unit content error:", error);
+    return sendError(res, 500, "Lỗi khi tải nội dung bài học", "INTERNAL_ERROR");
+  }
+});
+
 // PUT /api/admin/learning-units/:unitId/theory
 router.put("/admin/learning-units/:unitId/theory", protectRoute, requireAdmin, async (req, res) => {
   try {
@@ -1219,12 +1371,14 @@ router.post("/admin/learning-units/:unitId/formulas", protectRoute, requireAdmin
       nameZh = null,
       pinyin = null,
       latexExpression,
+      latex,
       description = null,
       variablesExplanation = [],
       orderIndex = 0,
     } = req.body || {};
 
-    if (!nameVi || !latexExpression) {
+    const resolvedLatex = latexExpression || latex;
+    if (!nameVi || !resolvedLatex) {
       return sendError(res, 422, "Tên công thức và biểu thức LaTeX là bắt buộc", "VALIDATION_ERROR");
     }
 
@@ -1250,7 +1404,7 @@ router.post("/admin/learning-units/:unitId/formulas", protectRoute, requireAdmin
         String(nameVi).trim(),
         nameZh,
         pinyin,
-        String(latexExpression).trim(),
+        String(resolvedLatex).trim(),
         description,
         JSON.stringify(Array.isArray(variablesExplanation) ? variablesExplanation : []),
         Number(orderIndex || 0),
@@ -1308,6 +1462,616 @@ router.post("/admin/learning-units/:unitId/files", protectRoute, requireAdmin, a
   } catch (error) {
     console.error("Attach unit file error:", error);
     return sendError(res, 500, "Lỗi khi đính kèm tài liệu", "INTERNAL_ERROR");
+  }
+});
+
+// POST /api/admin/learning-units/:unitId/vocabulary/batch
+router.post("/admin/learning-units/:unitId/vocabulary/batch", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const target = await resolveUnitTypeAndIds(req.params.unitId, req.body?.unitType);
+    if (!target) return sendError(res, 404, "Không tìm thấy bài học hoặc buổi học", "NOT_FOUND");
+
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (items.length === 0) return sendError(res, 422, "Danh sách từ vựng không được để trống", "VALIDATION_ERROR");
+
+    const insertedList = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.term || !item.meaning) continue;
+      const resInsert = await query(
+        `INSERT INTO session_vocabularies
+           (session_id, class_id, lesson_id, topic, term, pinyin, sino_vietnamese, meaning,
+            part_of_speech, example_sentence, example_meaning, audio_url, order_index, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         RETURNING *`,
+        [
+          target.classSessionId,
+          target.classId,
+          target.lessonId,
+          item.topic || "Nội dung chung",
+          String(item.term).trim(),
+          item.pinyin || null,
+          item.sinoVietnamese || null,
+          String(item.meaning).trim(),
+          item.partOfSpeech || "Danh từ",
+          item.exampleSentence || null,
+          item.exampleMeaning || null,
+          item.audioUrl || null,
+          Number(item.orderIndex ?? i),
+          req.user.id,
+        ],
+      );
+      insertedList.push(resInsert.rows[0]);
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: insertedList,
+      message: `Đã nhập thành công ${insertedList.length} từ vựng`,
+    });
+  } catch (error) {
+    console.error("Batch insert vocabulary error:", error);
+    return sendError(res, 500, "Lỗi khi nhập danh sách từ vựng", "INTERNAL_ERROR");
+  }
+});
+
+// PUT /api/admin/learning-units/:unitId/vocabulary/:vocabId
+router.put("/admin/learning-units/:unitId/vocabulary/:vocabId", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const vocabId = parsePositiveId(req.params.vocabId);
+    if (!vocabId) return sendError(res, 422, "vocabId không hợp lệ", "VALIDATION_ERROR");
+
+    const {
+      topic,
+      term,
+      pinyin,
+      sinoVietnamese,
+      meaning,
+      partOfSpeech,
+      exampleSentence,
+      exampleMeaning,
+      audioUrl,
+      orderIndex,
+    } = req.body || {};
+
+    const updated = await query(
+      `UPDATE session_vocabularies
+       SET topic = COALESCE($1, topic),
+           term = COALESCE($2, term),
+           pinyin = COALESCE($3, pinyin),
+           sino_vietnamese = COALESCE($4, sino_vietnamese),
+           meaning = COALESCE($5, meaning),
+           part_of_speech = COALESCE($6, part_of_speech),
+           example_sentence = COALESCE($7, example_sentence),
+           example_meaning = COALESCE($8, example_meaning),
+           audio_url = COALESCE($9, audio_url),
+           order_index = COALESCE($10, order_index),
+           updated_by = $11,
+           updated_at = NOW()
+       WHERE id = $12
+       RETURNING *`,
+      [topic, term, pinyin, sinoVietnamese, meaning, partOfSpeech, exampleSentence, exampleMeaning, audioUrl, orderIndex, req.user.id, vocabId]
+    );
+
+    if (updated.rows.length === 0) return sendError(res, 404, "Không tìm thấy từ vựng", "NOT_FOUND");
+    return res.json({ success: true, data: updated.rows[0], message: "Cập nhật từ vựng thành công" });
+  } catch (error) {
+    console.error("Update vocabulary error:", error);
+    return sendError(res, 500, "Lỗi khi cập nhật từ vựng", "INTERNAL_ERROR");
+  }
+});
+
+// DELETE /api/admin/learning-units/:unitId/vocabulary/:vocabId
+router.delete("/admin/learning-units/:unitId/vocabulary/:vocabId", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const vocabId = parsePositiveId(req.params.vocabId);
+    if (!vocabId) return sendError(res, 422, "vocabId không hợp lệ", "VALIDATION_ERROR");
+
+    const deleted = await query("DELETE FROM session_vocabularies WHERE id = $1 RETURNING id", [vocabId]);
+    if (deleted.rows.length === 0) return sendError(res, 404, "Không tìm thấy từ vựng", "NOT_FOUND");
+    return res.json({ success: true, message: "Đã xóa từ vựng" });
+  } catch (error) {
+    console.error("Delete vocabulary error:", error);
+    return sendError(res, 500, "Lỗi khi xóa từ vựng", "INTERNAL_ERROR");
+  }
+});
+
+// PUT /api/admin/learning-units/:unitId/formulas/:formulaId
+router.put("/admin/learning-units/:unitId/formulas/:formulaId", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const formulaId = parsePositiveId(req.params.formulaId);
+    if (!formulaId) return sendError(res, 422, "formulaId không hợp lệ", "VALIDATION_ERROR");
+
+    const {
+      subject,
+      chapterName,
+      nameVi,
+      nameZh,
+      pinyin,
+      latexExpression,
+      latex,
+      description,
+      variablesExplanation,
+      orderIndex,
+    } = req.body || {};
+
+    const resolvedLatex = latexExpression !== undefined ? latexExpression : latex;
+
+    const rawSubject = subject ? String(subject).trim().toUpperCase() : null;
+    const normalizedSubject = rawSubject
+      ? (["PHYSICS", "VẬT LÝ", "VAT LY"].includes(rawSubject)
+          ? "PHYSICS"
+          : ["CHEMISTRY", "HÓA HỌC", "HOA HOC"].includes(rawSubject)
+            ? "CHEMISTRY"
+            : "MATH")
+      : null;
+
+    const updated = await query(
+      `UPDATE session_formulas
+       SET subject = COALESCE($1, subject),
+           chapter_name = COALESCE($2, chapter_name),
+           name_vi = COALESCE($3, name_vi),
+           name_zh = COALESCE($4, name_zh),
+           pinyin = COALESCE($5, pinyin),
+           latex_expression = COALESCE($6, latex_expression),
+           description = COALESCE($7, description),
+           variables_explanation = CASE WHEN $8::jsonb IS NOT NULL THEN $8::jsonb ELSE variables_explanation END,
+           order_index = COALESCE($9, order_index),
+           updated_at = NOW()
+       WHERE id = $10
+       RETURNING *`,
+      [
+        normalizedSubject,
+        chapterName,
+        nameVi ? String(nameVi).trim() : null,
+        nameZh,
+        pinyin,
+        resolvedLatex !== undefined && resolvedLatex !== null ? String(resolvedLatex).trim() : null,
+        description,
+        variablesExplanation ? JSON.stringify(variablesExplanation) : null,
+        orderIndex,
+        formulaId,
+      ]
+    );
+
+    if (updated.rows.length === 0) return sendError(res, 404, "Không tìm thấy công thức", "NOT_FOUND");
+    return res.json({ success: true, data: updated.rows[0], message: "Cập nhật công thức thành công" });
+  } catch (error) {
+    console.error("Update formula error:", error);
+    return sendError(res, 500, "Lỗi khi cập nhật công thức", "INTERNAL_ERROR");
+  }
+});
+
+// DELETE /api/admin/learning-units/:unitId/formulas/:formulaId
+router.delete("/admin/learning-units/:unitId/formulas/:formulaId", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const formulaId = parsePositiveId(req.params.formulaId);
+    if (!formulaId) return sendError(res, 422, "formulaId không hợp lệ", "VALIDATION_ERROR");
+
+    const deleted = await query("DELETE FROM session_formulas WHERE id = $1 RETURNING id", [formulaId]);
+    if (deleted.rows.length === 0) return sendError(res, 404, "Không tìm thấy công thức", "NOT_FOUND");
+    return res.json({ success: true, message: "Đã xóa công thức" });
+  } catch (error) {
+    console.error("Delete formula error:", error);
+    return sendError(res, 500, "Lỗi khi xóa công thức", "INTERNAL_ERROR");
+  }
+});
+
+// POST /api/admin/learning-units/:unitId/files/upload-url
+router.post("/admin/learning-units/:unitId/files/upload-url", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const target = await resolveUnitTypeAndIds(req.params.unitId, req.body?.unitType);
+    if (!target) return sendError(res, 404, "Không tìm thấy bài học hoặc buổi học", "NOT_FOUND");
+
+    const { filename, mimeType, sizeBytes, visibility = "COURSE" } = req.body || {};
+    if (!filename || !mimeType || !sizeBytes) {
+      return sendError(res, 422, "Thông tin tệp không hợp lệ", "VALIDATION_ERROR");
+    }
+
+    let upload;
+    try {
+      upload = await generateLearningFileUploadPresignedUrl({
+        userId: req.user.id,
+        filename,
+        mimeType,
+        sizeBytes: Number(sizeBytes),
+      });
+    } catch (err) {
+      if (err.code === "R2_NOT_CONFIGURED") {
+        return sendError(res, 503, "Kho R2 chưa được cấu hình", err.code);
+      }
+      throw err;
+    }
+
+    const fileInsert = await query(
+      `INSERT INTO lms_learning_files
+         (course_id, live_class_id, class_session_id, uploaded_by, original_name, storage_key, mime_type, size_bytes, visibility, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
+       RETURNING id, original_name, storage_key, mime_type, size_bytes, visibility, status`,
+      [
+        target.courseId,
+        target.classId,
+        target.classSessionId,
+        req.user.id,
+        String(filename).trim(),
+        upload.fileKey,
+        mimeType,
+        Number(sizeBytes),
+        visibility,
+      ],
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        fileId: String(fileInsert.rows[0].id),
+        ...upload,
+      },
+    });
+  } catch (error) {
+    console.error("Admin file upload-url error:", error);
+    return sendError(res, 500, error.message || "Lỗi tạo upload URL tài liệu", "INTERNAL_ERROR");
+  }
+});
+
+// POST /api/admin/learning-units/:unitId/files/confirm
+router.post("/admin/learning-units/:unitId/files/confirm", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const target = await resolveUnitTypeAndIds(req.params.unitId, req.body?.unitType);
+    if (!target) return sendError(res, 404, "Không tìm thấy bài học hoặc buổi học", "NOT_FOUND");
+
+    const fileId = parsePositiveId(req.body?.fileId);
+    if (!fileId) return sendError(res, 422, "fileId không hợp lệ", "VALIDATION_ERROR");
+
+    const fileRes = await query(
+      `UPDATE lms_learning_files SET status = 'ready', updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [fileId],
+    );
+    if (fileRes.rows.length === 0) return sendError(res, 404, "Không tìm thấy file", "NOT_FOUND");
+
+    // Automatically attach placement
+    if (target.unitType === "lesson") {
+      await query(
+        `INSERT INTO lesson_learning_file_placements (file_id, lesson_id, attached_by, sort_order)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (file_id, lesson_id) DO NOTHING`,
+        [fileId, target.lessonId, req.user.id, Number(req.body?.sortOrder || 0)],
+      );
+    } else {
+      await query(
+        `INSERT INTO lms_learning_file_placements (file_id, live_class_id, class_session_id, attached_by)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (file_id, class_session_id) WHERE class_session_id IS NOT NULL DO NOTHING`,
+        [fileId, target.classId, target.classSessionId, req.user.id],
+      );
+    }
+
+    return res.json({
+      success: true,
+      data: fileRes.rows[0],
+      message: "Tải lên và đính kèm tài liệu thành công",
+    });
+  } catch (error) {
+    console.error("Confirm file upload error:", error);
+    return sendError(res, 500, "Lỗi khi xác nhận tải lên tài liệu", "INTERNAL_ERROR");
+  }
+});
+
+// DELETE /api/admin/learning-units/:unitId/files/:fileId
+router.delete("/admin/learning-units/:unitId/files/:fileId", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const target = await resolveUnitTypeAndIds(req.params.unitId, req.query?.unitType);
+    if (!target) return sendError(res, 404, "Không tìm thấy bài học hoặc buổi học", "NOT_FOUND");
+
+    const fileId = parsePositiveId(req.params.fileId);
+    if (!fileId) return sendError(res, 422, "fileId không hợp lệ", "VALIDATION_ERROR");
+
+    if (target.unitType === "lesson") {
+      await query(
+        `DELETE FROM lesson_learning_file_placements WHERE file_id = $1 AND lesson_id = $2`,
+        [fileId, target.lessonId],
+      );
+    } else {
+      await query(
+        `DELETE FROM lms_learning_file_placements WHERE file_id = $1 AND class_session_id = $2`,
+        [fileId, target.classSessionId],
+      );
+    }
+
+    return res.json({ success: true, message: "Đã gỡ tài liệu khỏi bài học" });
+  } catch (error) {
+    console.error("Detach file error:", error);
+    return sendError(res, 500, "Lỗi khi gỡ tài liệu", "INTERNAL_ERROR");
+  }
+});
+
+// GET /api/admin/learning-units/:unitId/files/reusable
+router.get("/admin/learning-units/:unitId/files/reusable", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const target = await resolveUnitTypeAndIds(req.params.unitId, req.query?.unitType);
+    if (!target) return sendError(res, 404, "Không tìm thấy bài học hoặc buổi học", "NOT_FOUND");
+
+    const queryRes = target.unitType === "lesson"
+      ? await query(
+          `SELECT lf.id, lf.original_name AS file_name, lf.size_bytes AS file_size_bytes,
+                  lf.mime_type, lf.created_at
+           FROM lms_learning_files lf
+           WHERE (lf.course_id = $1 OR lf.course_id IS NULL)
+             AND lf.status = 'ready'
+             AND lf.id NOT IN (
+               SELECT file_id FROM lesson_learning_file_placements WHERE lesson_id = $2
+             )
+           ORDER BY lf.id DESC
+           LIMIT 50`,
+          [target.courseId, target.lessonId],
+        )
+      : await query(
+          `SELECT lf.id, lf.original_name AS file_name, lf.size_bytes AS file_size_bytes,
+                  lf.mime_type, lf.created_at
+           FROM lms_learning_files lf
+           WHERE (lf.course_id = $1 OR lf.course_id IS NULL)
+             AND lf.status = 'ready'
+             AND lf.id NOT IN (
+               SELECT file_id FROM lms_learning_file_placements WHERE class_session_id = $2
+             )
+           ORDER BY lf.id DESC
+           LIMIT 50`,
+          [target.courseId, target.classSessionId],
+        );
+
+    return res.json({
+      success: true,
+      data: queryRes.rows.map((r) => ({
+        id: String(r.id),
+        fileName: r.file_name,
+        fileSizeBytes: Number(r.file_size_bytes || 0),
+        mimeType: r.mime_type,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (error) {
+    console.error("Fetch reusable files error:", error);
+    return sendError(res, 500, "Lỗi khi tải kho tài liệu", "INTERNAL_ERROR");
+  }
+});
+
+// POST /api/admin/learning-units/:unitId/assignments
+router.post("/admin/learning-units/:unitId/assignments", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const target = await resolveUnitTypeAndIds(req.params.unitId, req.body?.unitType);
+    if (!target) return sendError(res, 404, "Không tìm thấy bài học hoặc buổi học", "NOT_FOUND");
+
+    const {
+      title,
+      description = "",
+      assignmentType = "homework",
+      maxScore = 10,
+      dueDate = null,
+      attachmentUrl = null,
+    } = req.body || {};
+
+    if (!title || !String(title).trim()) {
+      return sendError(res, 422, "Tiêu đề bài tập không được để trống", "VALIDATION_ERROR");
+    }
+
+    const insertRes = await query(
+      `INSERT INTO assignments
+         (title, description, assignment_type, max_score, due_date, attachment_url,
+          course_id, live_class_id, class_session_id, lesson_id, instructor_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING *`,
+      [
+        String(title).trim(),
+        String(description || "").trim(),
+        ["homework", "essay"].includes(assignmentType) ? assignmentType : "homework",
+        Number(maxScore || 10),
+        dueDate ? new Date(dueDate) : null,
+        attachmentUrl || null,
+        target.courseId,
+        target.classId,
+        target.classSessionId,
+        target.lessonId,
+        req.user.id,
+      ],
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: insertRes.rows[0],
+      message: "Tạo bài tập thành công",
+    });
+  } catch (error) {
+    console.error("Create unit assignment error:", error);
+    return sendError(res, 500, "Lỗi khi tạo bài tập", "INTERNAL_ERROR");
+  }
+});
+
+// DELETE /api/admin/learning-units/:unitId/assignments/:assignmentId
+router.delete("/admin/learning-units/:unitId/assignments/:assignmentId", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const assignmentId = parsePositiveId(req.params.assignmentId);
+    if (!assignmentId) return sendError(res, 422, "assignmentId không hợp lệ", "VALIDATION_ERROR");
+
+    const deleted = await query("DELETE FROM assignments WHERE id = $1 RETURNING id", [assignmentId]);
+    if (deleted.rows.length === 0) return sendError(res, 404, "Không tìm thấy bài tập", "NOT_FOUND");
+
+    return res.json({ success: true, message: "Đã xóa bài tập" });
+  } catch (error) {
+    console.error("Delete assignment error:", error);
+    return sendError(res, 500, "Lỗi khi xóa bài tập", "INTERNAL_ERROR");
+  }
+});
+
+// POST /api/admin/learning-units/:unitId/quizzes
+router.post("/admin/learning-units/:unitId/quizzes", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const target = await resolveUnitTypeAndIds(req.params.unitId, req.body?.unitType);
+    if (!target) return sendError(res, 404, "Không tìm thấy bài học hoặc buổi học", "NOT_FOUND");
+
+    const {
+      title,
+      description = "",
+      durationMinutes = 30,
+      passingScore = 60,
+      status = "PUBLISHED",
+      questions = [],
+    } = req.body || {};
+
+    if (!title || !String(title).trim()) {
+      return sendError(res, 422, "Tiêu đề đề trắc nghiệm không được để trống", "VALIDATION_ERROR");
+    }
+
+    const quizRes = await query(
+      `INSERT INTO quizzes
+         (title, description, duration_minutes, passing_score, status,
+          course_id, live_class_id, class_session_id, lesson_id, instructor_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *`,
+      [
+        String(title).trim(),
+        String(description || "").trim(),
+        Number(durationMinutes || 30),
+        Number(passingScore || 60),
+        ["DRAFT", "PUBLISHED"].includes(status) ? status : "PUBLISHED",
+        target.courseId,
+        target.classId,
+        target.classSessionId,
+        target.lessonId,
+        req.user.id,
+      ],
+    );
+
+    const quiz = quizRes.rows[0];
+
+    // Insert questions if provided
+    if (Array.isArray(questions) && questions.length > 0) {
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        if (!q.questionText) continue;
+        const rawQType = String(q.questionType || "single_choice").trim().toLowerCase();
+        const normalizedQType = ["single_choice", "multiple_choice", "true_false", "reading_item", "fill_blank_item", "essay", "translation"].includes(rawQType)
+          ? rawQType
+          : "single_choice";
+        await query(
+          `INSERT INTO quiz_questions
+             (quiz_id, question_text, question_type, options_json, correct_answer, explanation, points, sort_order)
+           VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)`,
+          [
+            quiz.id,
+            String(q.questionText).trim(),
+            normalizedQType,
+            JSON.stringify(Array.isArray(q.options) ? q.options.map((opt, idx) => ({
+              key: ["A", "B", "C", "D", "E"][idx] || String(idx + 1),
+              text: typeof opt === "string" ? opt : (opt?.text || ""),
+            })) : (q.optionsJson || [])),
+            String(q.correctAnswer ?? "A"),
+            q.explanation ? String(q.explanation).trim() : null,
+            Number(q.points || 1),
+            Number(q.sortOrder ?? i + 1),
+          ],
+        );
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: quiz,
+      message: "Tạo bài trắc nghiệm thành công",
+    });
+  } catch (error) {
+    console.error("Create unit quiz error:", error);
+    return sendError(res, 500, "Lỗi khi tạo bài trắc nghiệm", "INTERNAL_ERROR");
+  }
+});
+
+// DELETE /api/admin/learning-units/:unitId/quizzes/:quizId
+router.delete("/admin/learning-units/:unitId/quizzes/:quizId", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const quizId = parsePositiveId(req.params.quizId);
+    if (!quizId) return sendError(res, 422, "quizId không hợp lệ", "VALIDATION_ERROR");
+
+    const deleted = await query("DELETE FROM quizzes WHERE id = $1 RETURNING id", [quizId]);
+    if (deleted.rows.length === 0) return sendError(res, 404, "Không tìm thấy bài trắc nghiệm", "NOT_FOUND");
+
+    return res.json({ success: true, message: "Đã xóa bài trắc nghiệm" });
+  } catch (error) {
+    console.error("Delete quiz error:", error);
+    return sendError(res, 500, "Lỗi khi xóa bài trắc nghiệm", "INTERNAL_ERROR");
+  }
+});
+
+// POST /api/admin/learning-units/:unitId/quizzes/sample-bank
+router.post("/admin/learning-units/:unitId/quizzes/sample-bank", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const target = await resolveUnitTypeAndIds(req.params.unitId, req.body?.unitType);
+    if (!target) return sendError(res, 404, "Không tìm thấy bài học hoặc buổi học", "NOT_FOUND");
+
+    const count = Math.min(50, Math.max(1, Number(req.body?.count || 10)));
+    const title = req.body?.title || `Quiz luyện tập nhanh (${count} câu)`;
+    const durationMinutes = Number(req.body?.durationMinutes || 20);
+    const passingScore = Number(req.body?.passingScore || 60);
+
+    // Fetch random questions from question_bank_items
+    const bankRes = await query(
+      `SELECT * FROM question_bank_items
+       WHERE (course_id = $1 OR course_id IS NULL)
+       ORDER BY RANDOM()
+       LIMIT $2`,
+      [target.courseId, count],
+    );
+
+    if (bankRes.rows.length === 0) {
+      return sendError(res, 422, "Ngân hàng câu hỏi chưa có câu hỏi nào cho môn học này", "NO_QUESTIONS");
+    }
+
+    const quizRes = await query(
+      `INSERT INTO quizzes
+         (title, description, duration_minutes, passing_score, status,
+          course_id, live_class_id, class_session_id, lesson_id, instructor_id)
+       VALUES ($1, $2, $3, $4, 'PUBLISHED', $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        title,
+        `Tự động khởi tạo từ Ngân hàng câu hỏi (${bankRes.rows.length} câu)`,
+        durationMinutes,
+        passingScore,
+        target.courseId,
+        target.classId,
+        target.classSessionId,
+        target.lessonId,
+        req.user.id,
+      ],
+    );
+
+    const quiz = quizRes.rows[0];
+
+    for (let i = 0; i < bankRes.rows.length; i++) {
+      const q = bankRes.rows[i];
+      await query(
+        `INSERT INTO quiz_questions
+           (quiz_id, question_text, question_type, options_json, correct_answer, explanation, points, sort_order)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)`,
+        [
+          quiz.id,
+          q.question_text,
+          q.question_type || "single_choice",
+          JSON.stringify(q.options_json || []),
+          q.correct_answer,
+          q.explanation,
+          Number(q.default_points || 1),
+          i + 1,
+        ],
+      );
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: quiz,
+      message: `Đã tạo đề trắc nghiệm thành công với ${bankRes.rows.length} câu hỏi`,
+    });
+  } catch (error) {
+    console.error("Sample quiz from bank error:", error);
+    return sendError(res, 500, "Lỗi khi tạo quiz từ ngân hàng câu hỏi", "INTERNAL_ERROR");
   }
 });
 

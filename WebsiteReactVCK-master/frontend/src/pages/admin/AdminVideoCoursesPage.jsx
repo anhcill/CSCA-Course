@@ -50,6 +50,7 @@ import {
   unpublishAdminVideo,
   updateAdminVideoCourseUnitPreview,
 } from "../../features/api/lmsClient";
+import UnitContentEditorModal from "../../features/admin/components/UnitContentEditorModal";
 
 const TUS_VERSION = "1.0.0";
 const TUS_CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
@@ -211,29 +212,8 @@ const AdminVideoCoursesPage = () => {
   const [uploadStatusMessage, setUploadStatusMessage] = useState("");
   const [uploadAutoPublish, setUploadAutoPublish] = useState(true);
 
-  // Content Editor Modal (Theory, Vocabulary, Formulas) for Independent / Mirror unit
-  const [editorUnit, setEditorUnit] = useState(null); // { id, title, unitType, theory }
-  const [editorTab, setEditorTab] = useState("theory"); // theory | vocabulary | formulas
-  const [theoryTitle, setTheoryTitle] = useState("");
-  const [theorySummary, setTheorySummary] = useState("");
-  const [theoryHtml, setTheoryHtml] = useState("");
-  const [theoryTakeaways, setTheoryTakeaways] = useState("");
-  const [theoryTranscript, setTheoryTranscript] = useState("");
-  const [savingContent, setSavingContent] = useState(false);
-
-  // Quick vocabulary form
-  const [vocabTerm, setVocabTerm] = useState("");
-  const [vocabPinyin, setVocabPinyin] = useState("");
-  const [vocabSino, setVocabSino] = useState("");
-  const [vocabMeaning, setVocabMeaning] = useState("");
-  const [vocabExample, setVocabExample] = useState("");
-
-  // Quick formula form
-  const [formulaSubject, setFormulaSubject] = useState("MATH");
-  const [formulaNameVi, setFormulaNameVi] = useState("");
-  const [formulaNameZh, setFormulaNameZh] = useState("");
-  const [formulaLatex, setFormulaLatex] = useState("");
-  const [formulaDesc, setFormulaDesc] = useState("");
+  // Content Editor Modal (Theory, Files/Slides, Exercises/Quizzes, Vocabulary, Formulas)
+  const [editorUnit, setEditorUnit] = useState(null); // { id, title, unitType, courseId }
 
   const loadOverview = useCallback(async (keepCourseId = null) => {
     try {
@@ -578,103 +558,14 @@ const AdminVideoCoursesPage = () => {
     }
   };
 
-  // Unit Content Authoring Modal (Theory, Vocab, Formulas)
+  // Unit Content Authoring Modal (Theory, Files/Slides, Exercises/Quizzes, Vocab, Formulas)
   const openContentEditor = (unit, unitType) => {
     setEditorUnit({
       id: unit.id,
       title: unit.title,
       unitType,
+      courseId: selectedCourseId,
     });
-    setEditorTab("theory");
-    setTheoryTitle(unit.theory?.title || unit.title || "");
-    setTheorySummary(unit.theory?.summary || "");
-    setTheoryHtml(unit.theory?.contentHtml || "");
-    setTheoryTakeaways(Array.isArray(unit.theory?.keyTakeaways) ? unit.theory.keyTakeaways.join("\n") : "");
-    setTheoryTranscript(unit.theory?.transcript || "");
-  };
-
-  const handleSaveTheory = async (e) => {
-    e.preventDefault();
-    if (!editorUnit) return;
-    try {
-      setSavingContent(true);
-      await saveAdminLearningUnitTheory(editorUnit.id, {
-        unitType: editorUnit.unitType,
-        title: theoryTitle.trim() || editorUnit.title,
-        summary: theorySummary.trim(),
-        contentHtml: theoryHtml,
-        keyTakeaways: theoryTakeaways
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean),
-        transcript: theoryTranscript.trim(),
-      });
-      toast.success("Đã lưu nội dung Lý thuyết & Tóm tắt bài học!");
-      await loadCourseDetail(selectedCourseId);
-    } catch (error) {
-      toast.error(error?.message || "Lỗi khi lưu lý thuyết bài học");
-    } finally {
-      setSavingContent(false);
-    }
-  };
-
-  const handleAddVocabulary = async (e) => {
-    e.preventDefault();
-    if (!editorUnit || !vocabTerm.trim() || !vocabMeaning.trim()) {
-      toast.error("Vui lòng nhập từ vựng và nghĩa tiếng Việt");
-      return;
-    }
-    try {
-      setSavingContent(true);
-      await createAdminLearningUnitVocabulary(editorUnit.id, {
-        unitType: editorUnit.unitType,
-        term: vocabTerm.trim(),
-        pinyin: vocabPinyin.trim(),
-        sinoVietnamese: vocabSino.trim(),
-        meaning: vocabMeaning.trim(),
-        exampleSentence: vocabExample.trim(),
-      });
-      setVocabTerm("");
-      setVocabPinyin("");
-      setVocabSino("");
-      setVocabMeaning("");
-      setVocabExample("");
-      toast.success("Đã thêm từ vựng vào bài học!");
-      await loadCourseDetail(selectedCourseId);
-    } catch (error) {
-      toast.error(error?.message || "Không thể thêm từ vựng");
-    } finally {
-      setSavingContent(false);
-    }
-  };
-
-  const handleAddFormula = async (e) => {
-    e.preventDefault();
-    if (!editorUnit || !formulaNameVi.trim() || !formulaLatex.trim()) {
-      toast.error("Vui lòng nhập tên công thức và biểu thức LaTeX");
-      return;
-    }
-    try {
-      setSavingContent(true);
-      await createAdminLearningUnitFormula(editorUnit.id, {
-        unitType: editorUnit.unitType,
-        subject: formulaSubject,
-        nameVi: formulaNameVi.trim(),
-        nameZh: formulaNameZh.trim(),
-        latexExpression: formulaLatex.trim(),
-        description: formulaDesc.trim(),
-      });
-      setFormulaNameVi("");
-      setFormulaNameZh("");
-      setFormulaLatex("");
-      setFormulaDesc("");
-      toast.success("Đã thêm công thức vào bài học!");
-      await loadCourseDetail(selectedCourseId);
-    } catch (error) {
-      toast.error(error?.message || "Không thể thêm công thức");
-    } finally {
-      setSavingContent(false);
-    }
   };
 
   const checklistEntries = useMemo(() => {
@@ -1188,11 +1079,12 @@ const AdminVideoCoursesPage = () => {
                               </div>
 
                               <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                                <span>Lý thuyết: {sess.counts?.theory || 0}</span>
-                                <span>• Tài liệu: {sess.counts?.files || 0}</span>
+                                <span>Lý thuyết: {sess.counts?.theory ? "Đã có" : "Chưa có"}</span>
+                                <span>• Tài liệu & Slide: {sess.counts?.files || 0}</span>
+                                <span>• Bài tập: {sess.counts?.assignments || 0}</span>
+                                <span>• Quiz: {sess.counts?.quizzes || 0}</span>
                                 <span>• Từ vựng: {sess.counts?.vocabulary || 0}</span>
                                 <span>• Công thức: {sess.counts?.formulas || 0}</span>
-                                <span>• Quiz: {sess.counts?.quizzes || 0}</span>
                                 {primaryVideo && (
                                   <span className="font-mono text-[11px] text-blue-600 dark:text-blue-400">
                                     • Bunny ID: {primaryVideo.videoId || primaryVideo.assetId} ({formatDuration(primaryVideo.durationSeconds)})
@@ -1218,10 +1110,11 @@ const AdminVideoCoursesPage = () => {
                               <button
                                 type="button"
                                 onClick={() => openContentEditor(sess, "class_session")}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 border border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-800 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 transition hover:bg-indigo-100"
+                                title="Biên soạn đầy đủ tài liệu, slide, bài tập, quiz, từ vựng và lý thuyết"
                               >
-                                <FiBookOpen className="h-3.5 w-3.5 text-blue-600" />
-                                <span>Lý thuyết / Từ vựng / Công thức</span>
+                                <FiBookOpen className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                <span>Quản lý học liệu & bài tập</span>
                               </button>
 
                               {!primaryVideo ? (
@@ -1382,12 +1275,65 @@ const AdminVideoCoursesPage = () => {
                                         </span>
                                       </div>
 
-                                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                                        <span>Thời lượng: {Math.round((lesson.durationSeconds || 600) / 60)} phút</span>
-                                        <span>• Lý thuyết: {lesson.counts?.theory ? "Đã có" : "Chưa có"}</span>
-                                        <span>• Từ vựng: {lesson.counts?.vocabulary || 0}</span>
-                                        <span>• Công thức: {lesson.counts?.formulas || 0}</span>
-                                        <span>• Tài liệu: {lesson.counts?.files || 0}</span>
+                                      <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs text-slate-500">
+                                        <span className="font-medium text-slate-600 dark:text-slate-400">
+                                          {Math.round((lesson.durationSeconds || 600) / 60)} phút
+                                        </span>
+                                        <span className="text-slate-300 dark:text-slate-600">•</span>
+                                        <span
+                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                            lesson.counts?.theory
+                                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                          }`}
+                                        >
+                                          Lý thuyết: {lesson.counts?.theory ? "Đã có" : "0"}
+                                        </span>
+                                        <span
+                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                            (lesson.counts?.files || 0) > 0
+                                              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                                              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                          }`}
+                                        >
+                                          Tài liệu & Slide: {lesson.counts?.files || 0}
+                                        </span>
+                                        <span
+                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                            (lesson.counts?.assignments || 0) > 0
+                                              ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                                              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                          }`}
+                                        >
+                                          Bài tập: {lesson.counts?.assignments || 0}
+                                        </span>
+                                        <span
+                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                            (lesson.counts?.quizzes || 0) > 0
+                                              ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300"
+                                              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                          }`}
+                                        >
+                                          Quiz: {lesson.counts?.quizzes || 0}
+                                        </span>
+                                        <span
+                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                            (lesson.counts?.vocabulary || 0) > 0
+                                              ? "bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300"
+                                              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                          }`}
+                                        >
+                                          Từ vựng: {lesson.counts?.vocabulary || 0}
+                                        </span>
+                                        <span
+                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                            (lesson.counts?.formulas || 0) > 0
+                                              ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300"
+                                              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                          }`}
+                                        >
+                                          Công thức: {lesson.counts?.formulas || 0}
+                                        </span>
                                       </div>
                                     </div>
 
@@ -1425,10 +1371,11 @@ const AdminVideoCoursesPage = () => {
                                       <button
                                         type="button"
                                         onClick={() => openContentEditor(lesson, "lesson")}
-                                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-bold text-purple-700 shadow-2xs hover:bg-purple-100 dark:border-purple-900/40 dark:bg-purple-950/40 dark:text-purple-300"
+                                        title="Biên soạn lý thuyết, slide, tài liệu, bài tập, quiz, từ vựng và công thức"
                                       >
-                                        <FiEdit3 className="h-3.5 w-3.5 text-purple-600" />
-                                        <span>Biên soạn nội dung</span>
+                                        <FiEdit3 className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                                        <span>Học liệu & Bài tập</span>
                                       </button>
 
                                       {!primaryVideo ? (
@@ -1680,256 +1627,16 @@ const AdminVideoCoursesPage = () => {
         </div>
       )}
 
-      {/* Modal 2: Unit Content Editor (Theory, Vocabulary, Formulas) */}
-      {editorUnit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Biên soạn Học liệu Bài học: {editorUnit.title}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Cập nhật Lý thuyết tóm tắt, Từ vựng trọng tâm và Công thức toán/lý/hóa cho bài học.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditorUnit(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-              >
-                <FiX className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Tabs */}
-            <div className="mt-4 flex gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
-              {[
-                { id: "theory", label: "Lý thuyết & Transcript" },
-                { id: "vocabulary", label: "Thêm Từ vựng" },
-                { id: "formulas", label: "Thêm Công thức" },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setEditorTab(t.id)}
-                  className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
-                    editorTab === t.id
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-
-            {editorTab === "theory" && (
-              <form onSubmit={handleSaveTheory} className="mt-4 space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Tiêu đề Lý thuyết
-                  </label>
-                  <input
-                    type="text"
-                    value={theoryTitle}
-                    onChange={(e) => setTheoryTitle(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Tóm tắt trọng tâm (Summary)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={theorySummary}
-                    onChange={(e) => setTheorySummary(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Nội dung chi tiết (HTML / Rich Text)
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={theoryHtml}
-                    onChange={(e) => setTheoryHtml(e.target.value)}
-                    placeholder="<p>Nội dung lý thuyết chi tiết...</p>"
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Key Takeaways (Mỗi dòng 1 ý chính)
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={theoryTakeaways}
-                    onChange={(e) => setTheoryTakeaways(e.target.value)}
-                    placeholder="Nắm vững cấu trúc ngữ pháp&#10;Phân biệt bổ ngữ kết quả"
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Transcript phụ đề bài giảng
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={theoryTranscript}
-                    onChange={(e) => setTheoryTranscript(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="submit"
-                    disabled={savingContent}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-500 disabled:opacity-50"
-                  >
-                    <FiSave className="h-4 w-4" />
-                    <span>{savingContent ? "Đang lưu..." : "Lưu Lý thuyết"}</span>
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {editorTab === "vocabulary" && (
-              <form onSubmit={handleAddVocabulary} className="mt-4 space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Từ vựng (Chữ Hán)</label>
-                    <input
-                      type="text"
-                      required
-                      value={vocabTerm}
-                      onChange={(e) => setVocabTerm(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Pinyin</label>
-                    <input
-                      type="text"
-                      value={vocabPinyin}
-                      onChange={(e) => setVocabPinyin(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Âm Hán Việt</label>
-                    <input
-                      type="text"
-                      value={vocabSino}
-                      onChange={(e) => setVocabSino(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Nghĩa tiếng Việt</label>
-                  <input
-                    type="text"
-                    required
-                    value={vocabMeaning}
-                    onChange={(e) => setVocabMeaning(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Câu ví dụ</label>
-                  <input
-                    type="text"
-                    value={vocabExample}
-                    onChange={(e) => setVocabExample(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="submit"
-                    disabled={savingContent}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-500"
-                  >
-                    <FiPlus className="h-4 w-4" />
-                    <span>Thêm Từ vựng vào Bài học</span>
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {editorTab === "formulas" && (
-              <form onSubmit={handleAddFormula} className="mt-4 space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Phân môn</label>
-                    <select
-                      value={formulaSubject}
-                      onChange={(e) => setFormulaSubject(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    >
-                      <option value="MATH">Toán học (MATH)</option>
-                      <option value="PHYSICS">Vật lý (PHYSICS)</option>
-                      <option value="CHEMISTRY">Hóa học (CHEMISTRY)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Tên công thức (Tiếng Việt)</label>
-                    <input
-                      type="text"
-                      required
-                      value={formulaNameVi}
-                      onChange={(e) => setFormulaNameVi(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Tên tiếng Trung</label>
-                    <input
-                      type="text"
-                      value={formulaNameZh}
-                      onChange={(e) => setFormulaNameZh(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Biểu thức LaTeX</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="F = m \cdot a"
-                    value={formulaLatex}
-                    onChange={(e) => setFormulaLatex(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Giải thích đại lượng</label>
-                  <input
-                    type="text"
-                    value={formulaDesc}
-                    onChange={(e) => setFormulaDesc(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="submit"
-                    disabled={savingContent}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-500"
-                  >
-                    <FiPlus className="h-4 w-4" />
-                    <span>Thêm Công thức vào Bài học</span>
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Modal 2: Unit Content Editor (Theory, Files/Slides, Exercises/Quizzes, Vocabulary, Formulas) */}
+      <UnitContentEditorModal
+        isOpen={Boolean(editorUnit)}
+        unit={editorUnit}
+        onClose={() => setEditorUnit(null)}
+        onContentUpdated={() => {
+          loadOverview(selectedCourseId);
+          if (selectedCourseId) loadCourseDetail(selectedCourseId);
+        }}
+      />
     </div>
   );
 };

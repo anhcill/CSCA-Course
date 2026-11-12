@@ -1907,6 +1907,189 @@ export const attachAdminLearningUnitFile = async (unitId, payload) => (
   })
 );
 
+export const fetchAdminLearningUnitContent = async (unitId, unitType = null) => {
+  const query = unitType ? `?unitType=${encodeURIComponent(unitType)}` : "";
+  return request(`/admin/learning-units/${encodeURIComponent(unitId)}/content${query}`);
+};
+
+export const batchCreateAdminLearningUnitVocabulary = async (unitId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/vocabulary/batch`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const updateAdminLearningUnitVocabulary = async (unitId, vocabId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/vocabulary/${encodeURIComponent(vocabId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const deleteAdminLearningUnitVocabulary = async (unitId, vocabId) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/vocabulary/${encodeURIComponent(vocabId)}`, {
+    method: "DELETE",
+  })
+);
+
+export const updateAdminLearningUnitFormula = async (unitId, formulaId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/formulas/${encodeURIComponent(formulaId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const deleteAdminLearningUnitFormula = async (unitId, formulaId) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/formulas/${encodeURIComponent(formulaId)}`, {
+    method: "DELETE",
+  })
+);
+
+export const uploadAdminLearningUnitFile = async (unitId, file, { unitType, onProgress } = {}) => {
+  onProgress?.({
+    stage: "init",
+    percent: 5,
+    message: "Khởi tạo và xin cấp quyền tải lên...",
+    loaded: 0,
+    total: file.size,
+  });
+
+  const uploadResponse = await request(`/admin/learning-units/${encodeURIComponent(unitId)}/files/upload-url`, {
+    method: "POST",
+    body: JSON.stringify({
+      filename: file.name,
+      mimeType: file.type || "application/octet-stream",
+      sizeBytes: file.size,
+      unitType,
+    }),
+  });
+  const upload = uploadResponse?.data;
+  if (!upload?.uploadUrl || !upload?.fileId) throw new LmsApiError("Máy chủ không trả về upload target");
+
+  onProgress?.({
+    stage: "uploading",
+    percent: 10,
+    message: "Đang tải tệp lên kho lưu trữ...",
+    loaded: 0,
+    total: file.size,
+  });
+
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", upload.uploadUrl, true);
+    if (upload.headers && typeof upload.headers === "object") {
+      Object.entries(upload.headers).forEach(([k, v]) => {
+        try { xhr.setRequestHeader(k, v); } catch { /* ignore header error */ }
+      });
+    } else {
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        const rawPercent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        const mappedPercent = Math.min(90, Math.round(10 + (event.loaded / event.total) * 80));
+        onProgress?.({
+          stage: "uploading",
+          percent: mappedPercent,
+          rawPercent,
+          loaded: event.loaded,
+          total: event.total,
+          message: `Đang tải tệp lên (${rawPercent}%)...`,
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new LmsApiError(`Tải tệp lên thất bại (Mã phản hồi: ${xhr.status})`, { status: xhr.status }));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new LmsApiError("Lỗi kết nối mạng khi tải lên tài liệu"));
+    };
+
+    xhr.ontimeout = () => {
+      reject(new LmsApiError("Hết thời gian chờ phản hồi khi tải lên"));
+    };
+
+    xhr.send(file);
+  });
+
+  onProgress?.({
+    stage: "confirming",
+    percent: 92,
+    message: "Đang lưu và đính kèm tài liệu vào bài học...",
+    loaded: file.size,
+    total: file.size,
+  });
+
+  const confirmRes = await request(`/admin/learning-units/${encodeURIComponent(unitId)}/files/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ fileId: upload.fileId, unitType }),
+  });
+
+  onProgress?.({
+    stage: "done",
+    percent: 100,
+    message: "Tải lên và đính kèm tài liệu thành công!",
+    loaded: file.size,
+    total: file.size,
+  });
+
+  return confirmRes;
+};
+
+export const detachAdminLearningUnitFile = async (unitId, fileId, unitType = null) => {
+  const query = unitType ? `?unitType=${encodeURIComponent(unitType)}` : "";
+  return request(`/admin/learning-units/${encodeURIComponent(unitId)}/files/${encodeURIComponent(fileId)}${query}`, {
+    method: "DELETE",
+  });
+};
+
+export const fetchAdminLearningUnitReusableFiles = async (unitId, unitType = null) => {
+  const query = unitType ? `?unitType=${encodeURIComponent(unitType)}` : "";
+  return request(`/admin/learning-units/${encodeURIComponent(unitId)}/files/reusable${query}`);
+};
+
+export const createAdminLearningUnitAssignment = async (unitId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/assignments`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const deleteAdminLearningUnitAssignment = async (unitId, assignmentId, unitType = null) => {
+  const query = unitType ? `?unitType=${encodeURIComponent(unitType)}` : "";
+  return request(`/admin/learning-units/${encodeURIComponent(unitId)}/assignments/${encodeURIComponent(assignmentId)}${query}`, {
+    method: "DELETE",
+  });
+};
+
+export const createAdminLearningUnitQuiz = async (unitId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/quizzes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
+export const deleteAdminLearningUnitQuiz = async (unitId, quizId, unitType = null) => {
+  const query = unitType ? `?unitType=${encodeURIComponent(unitType)}` : "";
+  return request(`/admin/learning-units/${encodeURIComponent(unitId)}/quizzes/${encodeURIComponent(quizId)}${query}`, {
+    method: "DELETE",
+  });
+};
+
+export const sampleAdminLearningUnitQuiz = async (unitId, payload) => (
+  request(`/admin/learning-units/${encodeURIComponent(unitId)}/quizzes/sample-bank`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+);
+
 export const revokeAdminUserTrustedDevice = async (userId, deviceId) => (
   request(`/video-courses/admin/users/${encodeURIComponent(userId)}/trusted-devices/${encodeURIComponent(deviceId)}`, {
     method: "DELETE",
