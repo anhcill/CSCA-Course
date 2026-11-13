@@ -15,6 +15,24 @@ const IconUpload = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
   </svg>
 );
+
+const IconExpand = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+    <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+    <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+  </svg>
+);
+
+const IconCollapse = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+    <path d="M16 3v3a2 2 0 0 0 2 2h3" />
+    <path d="M8 21v-3a2 2 0 0 0-2-2H3" />
+    <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+  </svg>
+);
 const IconMic = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
@@ -128,6 +146,7 @@ export default function AssignmentSubmitPage() {
   // Submission result & view mode
   const [isAlreadySubmitted, setIsAlreadySubmitted] = useState(false);
   const [isGraded, setIsGraded] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
 
   const loadAssignment = useCallback(async () => {
     setLoading(true);
@@ -197,6 +216,24 @@ export default function AssignmentSubmitPage() {
   useEffect(() => {
     loadAssignment();
   }, [loadAssignment]);
+
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen?.();
+      } else {
+        await document.documentElement.requestFullscreen?.();
+      }
+    } catch {
+      // The viewport shell still provides a fullscreen assessment experience.
+    }
+  };
 
   // Audio recording timer simulation
   useEffect(() => {
@@ -470,7 +507,7 @@ export default function AssignmentSubmitPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[60vh] text-slate-900 flex items-center justify-center p-6">
+      <div className="fixed inset-0 z-[1000] flex h-dvh items-center justify-center overflow-y-auto bg-gradient-to-br from-white via-slate-50 to-sky-50 p-6 text-slate-900 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
         <div className="max-w-md w-full">
           <LoadingState message="Đang nạp dữ liệu bài tập và hồ sơ nộp bài..." count={3} />
         </div>
@@ -480,7 +517,7 @@ export default function AssignmentSubmitPage() {
 
   if (errorMessage || !assignment) {
     return (
-      <div className="min-h-[60vh] text-slate-900 flex items-center justify-center p-6">
+      <div className="fixed inset-0 z-[1000] flex h-dvh items-center justify-center overflow-y-auto bg-gradient-to-br from-white via-slate-50 to-sky-50 p-6 text-slate-900 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
         <div className="max-w-md w-full">
           <ErrorState
             title="Không Tìm Thấy Bài Tập"
@@ -501,23 +538,34 @@ export default function AssignmentSubmitPage() {
   }
 
   return (
-    <div className="min-h-full pb-16 font-sans text-slate-900">
+    <div className="fixed inset-0 z-[1000] flex h-dvh flex-col overflow-hidden bg-gradient-to-br from-white via-slate-50 to-sky-50 font-sans text-slate-900 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
       {/* Breadcrumb Navigation */}
-      <div className="border-b border-white/80 bg-white/80 backdrop-blur-md">
-        <div className="container mx-auto max-w-4xl px-4 py-3">
-          <nav className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <Link to={assignmentListPath} className="hover:text-slate-900 dark:hover:text-white transition">
+      <div className="shrink-0 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95">
+        <div className="container mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3">
+          <nav className="flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <Link to={assignmentListPath} className="shrink-0 transition hover:text-slate-900 dark:hover:text-white">
               Danh Sách Bài Tập
             </Link>
             <span>/</span>
-            <span className="text-slate-900 dark:text-slate-200 font-medium truncate max-w-[240px]">
+            <span className="truncate font-medium text-slate-900 dark:text-slate-200">
               {assignment.title}
             </span>
           </nav>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
+            title={isFullscreen ? "Thoát toàn màn hình" : "Mở toàn màn hình"}
+            aria-label={isFullscreen ? "Thoát toàn màn hình" : "Mở toàn màn hình"}
+          >
+            {isFullscreen ? <IconCollapse /> : <IconExpand />}
+            <span className="hidden sm:inline">{isFullscreen ? "Thu nhỏ" : "Toàn màn hình"}</span>
+          </button>
         </div>
       </div>
 
-      <div className="container mx-auto max-w-4xl px-4 py-8 space-y-8">
+      <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className="container mx-auto max-w-4xl space-y-8 px-4 py-8 pb-16">
         {/* Assignment Header Card */}
         <div className="space-y-4 rounded-3xl border border-white/85 bg-white/90 p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md md:p-8">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
@@ -1102,6 +1150,7 @@ export default function AssignmentSubmitPage() {
           </div>
         )}
       </div>
+      </main>
 
       {/* Submit Confirmation Modal */}
       {showConfirm && (

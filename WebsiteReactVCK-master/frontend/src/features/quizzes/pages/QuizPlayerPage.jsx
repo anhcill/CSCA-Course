@@ -420,6 +420,12 @@ export default function QuizPlayerPage() {
     }
   };
 
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState);
+  }, []);
+
   // Autosave answer change
   const triggerAutosave = useCallback(
     (questionId, value) => {
