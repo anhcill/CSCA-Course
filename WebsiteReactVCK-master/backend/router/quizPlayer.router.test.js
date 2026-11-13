@@ -95,13 +95,17 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
   const learner = (await db.query(
     "INSERT INTO users(username,email,role) VALUES ('locked-quiz-learner','locked-quiz-learner@example.test','user') RETURNING id,role",
   )).rows[0];
-  const course = (await db.query(
+  const sourceCourse = (await db.query(
+    "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Locked Live Source','locked-live-source',$1,TRUE) RETURNING id",
+    [teacher.id],
+  )).rows[0];
+  const recordCourse = (await db.query(
     "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Locked Record','locked-record',$1,TRUE) RETURNING id",
     [teacher.id],
   )).rows[0];
   const liveClass = (await db.query(
     "INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('Locked Record Source',$1,$2,'active') RETURNING id",
-    [course.id, teacher.id],
+    [sourceCourse.id, teacher.id],
   )).rows[0];
   const firstSession = (await db.query(
     "INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status) VALUES ($1,'Buổi 1',NOW(),NOW() + interval '1 hour','ended') RETURNING id",
@@ -120,8 +124,9 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
     [firstSession.id, firstVideo.id],
   );
   const videoProfile = (await db.query(
-    "INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,status) VALUES ($1,'MIRROR',$2,'active') RETURNING id",
-    [course.id, liveClass.id],
+    `INSERT INTO video_course_profiles(course_id,management_class_id,mode,source_live_class_id,status)
+     VALUES ($1,'cross-course-record-offering','MIRROR',$2,'active') RETURNING id`,
+    [recordCourse.id, liveClass.id],
   )).rows[0];
   await db.query(
     "INSERT INTO class_enrollments(user_id,live_class_id,status,learning_mode) VALUES ($1,$2,'active','recording')",
@@ -130,12 +135,12 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
   await db.query(
     `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
      VALUES ($1,$2,'active',NOW() - interval '1 day',NOW())`,
-    [learner.id, course.id],
+    [learner.id, recordCourse.id],
   );
   const quiz = (await db.query(
     `INSERT INTO quizzes(title,course_id,live_class_id,class_session_id,instructor_id,status,duration_minutes,passing_score,available_until,review_policy)
      VALUES ('Quiz Buổi 2',$1,$2,$3,$4,'PUBLISHED',15,60,NOW() - interval '1 day','after_close') RETURNING id`,
-    [course.id, liveClass.id, secondSession.id, teacher.id],
+    [sourceCourse.id, liveClass.id, secondSession.id, teacher.id],
   )).rows[0];
   await db.query(
     `INSERT INTO quiz_questions(quiz_id,question_text,question_type,options_json,correct_answer,points,sort_order)
@@ -157,10 +162,18 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
   });
   assert.equal(adminWithStaleOffering.statusCode, 200, JSON.stringify(adminWithStaleOffering.body));
 
+  const learnerWithUnrelatedOffering = await invoke("get", "/quizzes/:quizId/start", {
+    user: learner,
+    params: { quizId: quiz.id },
+    query: { videoCourseProfileId: "offering-khong-con-ton-tai" },
+  });
+  assert.equal(learnerWithUnrelatedOffering.statusCode, 400, JSON.stringify(learnerWithUnrelatedOffering.body));
+  assert.equal(learnerWithUnrelatedOffering.body.message, "videoCourseProfileId không hợp lệ");
+
   const locked = await invoke("get", "/quizzes/:quizId/start", {
     user: learner,
     params: { quizId: quiz.id },
-    query: { videoCourseProfileId: videoProfile.id },
+    query: { videoCourseProfileId: "cross-course-record-offering" },
   });
   assert.equal(locked.statusCode, 403, JSON.stringify(locked.body));
   assert.match(locked.body.message, /hoàn thành buổi học trước/);
@@ -169,12 +182,12 @@ test("Record quiz follows the same sequential unit lock as video and learning ma
     `INSERT INTO video_watch_progress
        (user_id,video_asset_id,course_id,live_class_id,class_session_id,last_position_seconds,watched_seconds,completion_percent,is_completed)
      VALUES ($1,$2,$3,$4,$5,60,60,60,TRUE)`,
-    [learner.id, firstVideo.id, course.id, liveClass.id, firstSession.id],
+    [learner.id, firstVideo.id, recordCourse.id, liveClass.id, firstSession.id],
   );
   const unlocked = await invoke("get", "/quizzes/:quizId/start", {
     user: learner,
     params: { quizId: quiz.id },
-    query: { videoCourseProfileId: videoProfile.id },
+    query: { videoCourseProfileId: "cross-course-record-offering" },
   });
   assert.equal(unlocked.statusCode, 200, JSON.stringify(unlocked.body));
   assert.equal(unlocked.body.data.quiz.availableUntil, null);

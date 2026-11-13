@@ -32,7 +32,12 @@ const parsePositiveId = (value) => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const resolveVideoCourseProfile = async (db, rawInput, backUrl = null, expectedCourseId = null) => {
+const resolveVideoCourseProfile = async (
+  db,
+  rawInput,
+  backUrl = null,
+  { expectedCourseId = null, expectedLiveClassId = null } = {},
+) => {
   let profileIdentifier = rawInput;
   if (!profileIdentifier && backUrl && typeof backUrl === "string") {
     const match = backUrl.match(/\/video-courses\/([^/?#]+)/);
@@ -49,11 +54,15 @@ const resolveVideoCourseProfile = async (db, rawInput, backUrl = null, expectedC
   const rows = (await db.query(
     `SELECT * FROM video_course_profiles
      WHERE status = 'active'
-       AND ($3::bigint IS NULL OR course_id = $3)
+       AND (
+         ($3::bigint IS NULL AND $4::bigint IS NULL)
+         OR course_id = $3
+         OR (mode = 'MIRROR' AND $4::bigint IS NOT NULL AND source_live_class_id = $4)
+       )
        AND (
          ($1::bigint IS NOT NULL AND id = $1)
          OR LOWER(management_class_id) = LOWER($2)
-         OR ($4::bigint IS NOT NULL AND course_id = $4)
+         OR ($5::bigint IS NOT NULL AND course_id = $5)
        )
      ORDER BY CASE
        WHEN $1::bigint IS NOT NULL AND id = $1 THEN 0
@@ -61,7 +70,7 @@ const resolveVideoCourseProfile = async (db, rawInput, backUrl = null, expectedC
        ELSE 2
      END, id
      LIMIT 1`,
-    [profileId, normalizedIdentifier, expectedCourseId, courseIdentifier],
+    [profileId, normalizedIdentifier, expectedCourseId, expectedLiveClassId, courseIdentifier],
   )).rows;
   return rows[0] || null;
 };
@@ -126,7 +135,8 @@ const parseJsonArray = (value) => {
 const getQuiz = async (db, quizId, { lock = false } = {}) => (await db.query(
   `SELECT q.id, q.title, q.description, q.status AS quiz_status, q.activity_scope, q.due_date,
           q.duration_minutes, q.passing_score, q.instructor_id, q.paper_file_id, q.solution_file_id,
-          q.live_class_id, q.class_session_id, q.course_id AS quiz_course_id, q.lesson_id,
+          COALESCE(q.live_class_id, cs.live_class_id) AS live_class_id,
+          q.class_session_id, q.course_id AS quiz_course_id, q.lesson_id,
           q.attempt_limit, q.available_from, q.available_until, q.review_policy, q.shuffle_questions,
           COALESCE(q.course_id, l.course_id, lc.course_id, class_course.id) AS resolved_course_id,
           COALESCE(c.is_published, class_course.is_published, FALSE) AS course_is_published,
@@ -619,7 +629,10 @@ router.get("/quizzes/:quizId/start", protectRoute, requireQuizPlayerAccess, asyn
       client,
       rawProfileParam,
       backUrl,
-      quiz.resolved_course_id,
+      {
+        expectedCourseId: quiz.resolved_course_id,
+        expectedLiveClassId: quiz.live_class_id,
+      },
     );
     const requestedVideoCourseProfileId = resolvedProfile ? Number(resolvedProfile.id) : null;
     if (rawProfileParam && !resolvedProfile && !isPrivileged) {
