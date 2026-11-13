@@ -414,15 +414,6 @@ export default function VideoCourseWorkspacePage() {
           requiredPrevUnitId: activeMeta?.requiredPrevUnitId || null,
           requiredPrevUnitTitle: activeMeta?.requiredPrevUnitTitle || null,
           requiredPrevUnitNumber: activeMeta?.requiredPrevUnitNumber || null,
-          watchProgress: String(prev.activeUnit.id) === String(targetId) ? {
-            ...prev.activeUnit.watchProgress,
-            lastPositionSeconds: currentTimeSeconds,
-            watchedSeconds: Number(watchedSeconds || 0),
-            durationSeconds: Number(durationSeconds || 0),
-            completionPercent: Number(completionPercent || 0),
-            isVideoCompleted: Boolean(videoReachedTarget),
-            isCompleted: Boolean(activeMeta?.isCompleted),
-          } : prev.activeUnit.watchProgress,
         } : prev.activeUnit,
         progress: {
           completedUnits: completedCount,
@@ -787,6 +778,7 @@ export default function VideoCourseWorkspacePage() {
             ) : capabilities.canPlayVideo !== false && (
               <div className="rounded-3xl overflow-hidden shadow-2xl border border-slate-200/80 dark:border-slate-800 bg-black">
                 <BunnyStreamPlayer
+                  key={activeUnit?.id}
                   video={activeUnit?.video}
                   videos={activeUnit?.videos || []}
                   unitId={activeUnit?.id}

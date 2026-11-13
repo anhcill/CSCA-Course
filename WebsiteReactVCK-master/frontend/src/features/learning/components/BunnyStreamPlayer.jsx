@@ -42,11 +42,15 @@ export default function BunnyStreamPlayer({
   const lastPlaybackTimeRef = useRef(Number(initialProgress?.lastPositionSeconds || 0));
   const lastWallTimeRef = useRef(0);
   const isSeekingRef = useRef(false);
+  const isPlayingRef = useRef(false);
   const heartbeatBusyRef = useRef(false);
+  const detectedDurationRef = useRef(0);
+  const initialProgressRef = useRef(initialProgress || {});
 
   const partList = useMemo(() => (videos.length > 0 ? videos : video ? [video] : []), [video, videos]);
   const [selectedPartIndex, setSelectedPartIndex] = useState(0);
   const activeVideo = partList[selectedPartIndex] || null;
+  const activeVideoProgressRef = useRef(activeVideo?.watchProgress || {});
   const assetId = activeVideo?.assetId || activeVideo?.id || null;
   const rawStatus = activeVideo?.playbackStatus || "none";
   const isPublished = activeVideo?.isPublished !== false;
@@ -66,6 +70,10 @@ export default function BunnyStreamPlayer({
   );
   const [saveStatus, setSaveStatus] = useState("saved");
 
+  // Parent progress updates must not recreate the current playback session.
+  initialProgressRef.current = initialProgress || {};
+  activeVideoProgressRef.current = activeVideo?.watchProgress || {};
+
   const durationSeconds = useMemo(() => (
     Math.max(
       0,
@@ -75,10 +83,10 @@ export default function BunnyStreamPlayer({
 
   const reportDurationIfValid = useCallback((rawDuration) => {
     const clean = Math.round(Number(rawDuration || 0));
-    if (clean > 0 && Number.isFinite(clean)) {
-      setDetectedDuration((prev) => (prev !== clean ? clean : prev));
-      onDurationDetected?.(unitId, clean);
-    }
+    if (clean <= 0 || !Number.isFinite(clean) || detectedDurationRef.current === clean) return;
+    detectedDurationRef.current = clean;
+    setDetectedDuration(clean);
+    onDurationDetected?.(unitId, clean);
   }, [onDurationDetected, unitId]);
 
   const fetchSignedToken = useCallback(async () => {
@@ -99,8 +107,8 @@ export default function BunnyStreamPlayer({
       if (Number(response.data?.durationSeconds || 0) > 0) {
         reportDurationIfValid(response.data.durationSeconds);
       }
-      const partProgress = response.data.watchProgress || activeVideo?.watchProgress || {};
-      const unitProgress = response.data.unitProgress || initialProgress;
+      const partProgress = response.data.watchProgress || activeVideoProgressRef.current || {};
+      const unitProgress = response.data.unitProgress || initialProgressRef.current || {};
       const initPos = Number(partProgress?.lastPositionSeconds || 0);
       const initPartWatched = Number(partProgress?.watchedSeconds || 0);
       const initPartPercent = Number(partProgress?.completionPercent || 0);
@@ -111,7 +119,7 @@ export default function BunnyStreamPlayer({
       setCurrentTime(initPos);
       setWatchedSeconds(initUnitWatched);
       setCompletionPercent(initUnitPercent);
-      setUnitDurationSeconds(Number(unitProgress?.durationSeconds || initialProgress?.durationSeconds || 0));
+      setUnitDurationSeconds(Number(unitProgress?.durationSeconds || initialProgressRef.current?.durationSeconds || 0));
       setPartCompletionPercent(initPartPercent);
       setIsCompleted(initDone);
       baseWatchedSecondsRef.current = initPartWatched;
@@ -127,28 +135,33 @@ export default function BunnyStreamPlayer({
     } finally {
       setTokenLoading(false);
     }
-  }, [activeVideo?.watchProgress, assetId, courseId, initialProgress, isPublished, liveClassId, rawStatus, reportDurationIfValid, unitId]);
+  }, [assetId, courseId, isPublished, liveClassId, rawStatus, reportDurationIfValid, unitId]);
 
   useEffect(() => {
     setSelectedPartIndex(0);
+    const unitProgress = initialProgressRef.current || {};
+    setWatchedSeconds(Number(unitProgress.watchedSeconds || 0));
+    setCompletionPercent(Number(unitProgress.completionPercent || 0));
+    setUnitDurationSeconds(Number(unitProgress.durationSeconds || 0));
+    setIsCompleted(Boolean(unitProgress.isVideoCompleted ?? unitProgress.isCompleted));
+    setSaveStatus("saved");
+  }, [unitId]);
+
+  useEffect(() => {
+    const partProgress = activeVideoProgressRef.current || {};
+    const unitProgress = initialProgressRef.current || {};
+    const initPartWatched = Number(partProgress.watchedSeconds || 0);
+    const initPos = Number(partProgress.lastPositionSeconds || unitProgress.lastPositionSeconds || 0);
+
     setDetectedDuration(0);
+    detectedDurationRef.current = 0;
     watchedDeltaRef.current = 0;
-    const firstPartProgress = partList[0]?.watchProgress || {};
-    const initWatched = Number(initialProgress?.watchedSeconds || 0);
-    const initPartWatched = Number(firstPartProgress?.watchedSeconds || 0);
-    const initPos = Number(firstPartProgress?.lastPositionSeconds || initialProgress?.lastPositionSeconds || 0);
-    const initPercent = Number(initialProgress?.completionPercent || 0);
     baseWatchedSecondsRef.current = initPartWatched;
     lastPlaybackTimeRef.current = initPos;
     lastWallTimeRef.current = performance.now();
     setCurrentTime(initPos);
-    setWatchedSeconds(initWatched);
-    setCompletionPercent(initPercent);
-    setUnitDurationSeconds(Number(initialProgress?.durationSeconds || 0));
-    setPartCompletionPercent(Number(partList[0]?.watchProgress?.completionPercent || 0));
-    setIsCompleted(Boolean(initialProgress?.isVideoCompleted ?? initialProgress?.isCompleted));
-    setSaveStatus("saved");
-  }, [unitId, partList, initialProgress?.watchedSeconds, initialProgress?.lastPositionSeconds, initialProgress?.completionPercent, initialProgress?.durationSeconds, initialProgress?.isCompleted, initialProgress?.isVideoCompleted]);
+    setPartCompletionPercent(Number(partProgress.completionPercent || 0));
+  }, [assetId]);
 
   useEffect(() => {
     fetchSignedToken();
@@ -178,7 +191,10 @@ export default function BunnyStreamPlayer({
       setNativePlayback(false);
     };
 
-    const startAt = Number(signedData.watchProgress?.lastPositionSeconds || initialProgress?.lastPositionSeconds || 0);
+    const startAt = Math.max(
+      Number(signedData.watchProgress?.lastPositionSeconds || 0),
+      Number(lastPlaybackTimeRef.current || initialProgressRef.current?.lastPositionSeconds || 0),
+    );
     const applyStart = () => {
       if (Number.isFinite(player.duration) && player.duration > 0) {
         reportDurationIfValid(player.duration);
@@ -186,6 +202,7 @@ export default function BunnyStreamPlayer({
           player.currentTime = Math.min(startAt, Math.max(0, player.duration - 1));
           lastPlaybackTimeRef.current = player.currentTime;
         }
+        if (isPlayingRef.current) player.play().catch(() => {});
       }
     };
 
@@ -205,7 +222,15 @@ export default function BunnyStreamPlayer({
 
     import("hls.js").then(({ default: Hls }) => {
       if (cancelled || !Hls.isSupported()) return;
-      const instance = new Hls({ enableWorker: true, lowLatencyMode: false });
+      const instance = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        capLevelToPlayerSize: true,
+        backBufferLength: 60,
+        maxBufferLength: 45,
+      });
+      let networkRecoveryAttempts = 0;
+      let mediaRecoveryAttempts = 0;
       hlsRef.current = instance;
       instance.loadSource(signedData.hlsUrl);
       instance.attachMedia(player);
@@ -214,7 +239,18 @@ export default function BunnyStreamPlayer({
         setNativePlayback(true);
       });
       instance.on(Hls.Events.ERROR, (_event, data) => {
-        if (data?.fatal) fallbackToEmbed();
+        if (!data?.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveryAttempts < 2) {
+          networkRecoveryAttempts += 1;
+          instance.startLoad();
+          return;
+        }
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveryAttempts < 2) {
+          mediaRecoveryAttempts += 1;
+          instance.recoverMediaError();
+          return;
+        }
+        fallbackToEmbed();
       });
     }).catch(() => setNativePlayback(false));
 
@@ -223,7 +259,7 @@ export default function BunnyStreamPlayer({
       hlsRef.current?.destroy?.();
       hlsRef.current = null;
     };
-  }, [initialProgress?.lastPositionSeconds, reportDurationIfValid, signedData?.hlsUrl, signedData?.watchProgress?.lastPositionSeconds]);
+  }, [reportDurationIfValid, signedData?.hlsUrl, signedData?.watchProgress?.lastPositionSeconds]);
 
   const flushProgress = useCallback(async ({ keepalive = false } = {}) => {
     if (!assetId || heartbeatBusyRef.current) return;
@@ -349,17 +385,19 @@ export default function BunnyStreamPlayer({
 
       const optimisticPartPercent = effectiveDuration > 0
         ? Math.min(100, Number(((optimisticWatched / effectiveDuration) * 100).toFixed(2)))
-        : partCompletionPercent;
+        : null;
 
       // Unit/course progress is server-authoritative, especially for multi-part lessons.
-      setPartCompletionPercent((prev) => Math.max(prev, optimisticPartPercent));
+      if (optimisticPartPercent !== null) {
+        setPartCompletionPercent((prev) => Math.max(prev, optimisticPartPercent));
+      }
       setSaveStatus("pending");
     }
 
     lastPlaybackTimeRef.current = next;
     lastWallTimeRef.current = now;
     setCurrentTime(next);
-  }, [durationSeconds, partCompletionPercent, reportDurationIfValid]);
+  }, [durationSeconds, reportDurationIfValid]);
 
   const handleTimeUpdate = () => {
     const player = videoRef.current;
@@ -433,6 +471,19 @@ export default function BunnyStreamPlayer({
 
       if (evtName === "ready") {
         subscribeIframeEvents();
+        const resumeAt = Number(lastPlaybackTimeRef.current || 0);
+        if (resumeAt > 0) {
+          iframeRef.current?.contentWindow?.postMessage(
+            JSON.stringify({ context: "player.js", method: "setCurrentTime", value: resumeAt }),
+            iframeOrigin,
+          );
+        }
+        if (isPlayingRef.current) {
+          iframeRef.current?.contentWindow?.postMessage(
+            JSON.stringify({ context: "player.js", method: "play" }),
+            iframeOrigin,
+          );
+        }
         if (val && typeof val === "object" && Number(val.duration) > 0) {
           reportDurationIfValid(val.duration);
         }
@@ -458,7 +509,10 @@ export default function BunnyStreamPlayer({
         const sec = Number(val.seconds ?? val.currentTime ?? 0);
         const dur = Number(val.duration ?? durationSeconds ?? 0);
         recordContinuousPlayback(sec, dur, 1);
+      } else if (evtName === "play") {
+        isPlayingRef.current = true;
       } else if (evtName === "pause" || evtName === "ended") {
+        isPlayingRef.current = false;
         flushProgress();
       }
     };
@@ -523,10 +577,17 @@ export default function BunnyStreamPlayer({
           onSeeking={handleSeeking}
           onSeeked={handleSeeked}
           onPlay={() => {
+            isPlayingRef.current = true;
             lastWallTimeRef.current = performance.now();
           }}
-          onPause={() => flushProgress()}
-          onEnded={() => flushProgress()}
+          onPause={() => {
+            isPlayingRef.current = false;
+            flushProgress();
+          }}
+          onEnded={() => {
+            isPlayingRef.current = false;
+            flushProgress();
+          }}
         />
         {!nativePlayback && (
           <iframe
