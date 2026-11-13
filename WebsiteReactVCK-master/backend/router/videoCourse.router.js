@@ -9,6 +9,8 @@ import {
   TrustedDeviceAuthError,
 } from "../services/trustedDevice.service.js";
 import { getUnitVideoProgressAggregate } from "../services/bunnyStream.service.js";
+import { recordAuditEvent } from "../services/audit.service.js";
+import { isVideoCourseProfileAccessRevoked } from "../services/videoCourseAccessRevocation.service.js";
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
@@ -358,6 +360,15 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
       });
       hasFullLearnerAccess = Boolean(memberAlias);
       if (!hasFullLearnerAccess) learnerAccessErrorCode = "RECORD_MEMBERSHIP_REQUIRED";
+    }
+
+    if (isLearner && hasFullLearnerAccess && await isVideoCourseProfileAccessRevoked({
+      db: { query },
+      userId: req.user.id,
+      profileId: profile.id,
+    })) {
+      hasFullLearnerAccess = false;
+      learnerAccessErrorCode = "VIDEO_COURSE_ACCESS_REVOKED";
     }
 
     if (isLearner && hasFullLearnerAccess) {
@@ -1950,6 +1961,200 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
   } catch (error) {
     console.error("Admin get video course detail error:", error);
     return res.status(500).json({ success: false, message: "Lỗi máy chủ", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+const resolveAdminCourseProfile = async (courseId, requestedProfileId = null) => {
+  const profileId = requestedProfileId === null || requestedProfileId === undefined || requestedProfileId === ""
+    ? null
+    : parsePositiveId(requestedProfileId);
+  if (requestedProfileId && !profileId) return null;
+  const result = await query(
+    `SELECT id, course_id, management_class_id, mode, source_live_class_id, status
+     FROM video_course_profiles
+     WHERE course_id = $1
+       AND status <> 'archived'
+       AND ($2::bigint IS NULL OR id = $2)
+     ORDER BY (status = 'active') DESC, id ASC
+     LIMIT 1`,
+    [courseId, profileId],
+  );
+  return result.rows[0] || null;
+};
+
+// Admin: list learners whose current entitlement and membership grant access
+// to this Record offering. A profile-specific revocation never mutates Live LMS.
+router.get("/admin/courses/:courseId/students", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.params.courseId);
+    if (!courseId) return validationError(res, "courseId không hợp lệ");
+    const profile = await resolveAdminCourseProfile(courseId, req.query?.profileId);
+    if (!profile) return notFound(res, "Không tìm thấy cấu hình khóa video");
+
+    const studentsRes = await query(
+      `WITH eligible AS (
+         SELECT DISTINCT ON (u.id)
+                u.id AS user_id, u.username, u.email, u.avatar_url,
+                sp.full_name, ce.id AS membership_id, ce.learning_mode,
+                ce.enrolled_at,
+                CASE
+                  WHEN ce.learning_mode = 'recording' THEN 'RECORD_MEMBERSHIP'
+                  ELSE 'LIVE_MIRROR'
+                END AS access_source
+         FROM users u
+         JOIN class_enrollments ce ON ce.user_id = u.id AND ce.status = 'active'
+         LEFT JOIN live_classes lc ON lc.id = ce.live_class_id
+         LEFT JOIN management_class_learning_aliases alias
+           ON alias.id = ce.management_class_alias_id AND alias.status = 'active'
+         LEFT JOIN student_profiles sp ON sp.user_id = u.id
+         JOIN lms_access_grants grant_access
+           ON grant_access.user_id = u.id
+          AND grant_access.course_id = $1
+          AND grant_access.access_status = 'active'
+          AND grant_access.valid_from <= NOW()
+          AND (grant_access.valid_until IS NULL OR grant_access.valid_until > NOW())
+         WHERE u.role = 'user'
+           AND (u.is_internal_test_account = TRUE OR (
+             u.is_management_managed = TRUE AND u.lms_account_status = 'active'
+           ))
+           AND (
+             ($3::text = 'MIRROR' AND ce.live_class_id = $4)
+             OR
+             ($3::text = 'INDEPENDENT' AND ce.learning_mode = 'recording' AND (
+               ($5::text IS NOT NULL AND LOWER(alias.alias_class_source_id) = LOWER($5))
+               OR
+               ($5::text IS NULL AND (ce.course_id = $1 OR lc.course_id = $1))
+             ))
+           )
+         ORDER BY u.id, (ce.learning_mode = 'recording') DESC, ce.enrolled_at DESC, ce.id DESC
+       )
+       SELECT eligible.*,
+              revoked.revoked_at, revoked.reason AS revoke_reason,
+              progress.last_access_at, progress.progress_percent,
+              online.active_sessions, online.last_online_at
+       FROM eligible
+       LEFT JOIN video_course_access_revocations revoked
+         ON revoked.video_course_profile_id = $2
+        AND revoked.user_id = eligible.user_id
+       LEFT JOIN LATERAL (
+         SELECT MAX(vwp.updated_at) AS last_access_at,
+                ROUND(AVG(vwp.completion_percent)::numeric, 2) AS progress_percent
+         FROM video_watch_progress vwp
+         WHERE vwp.user_id = eligible.user_id AND vwp.course_id = $1
+       ) progress ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) FILTER (
+                  WHERE s.revoked_at IS NULL
+                    AND s.expires_at > NOW()
+                    AND s.last_seen_at >= NOW() - INTERVAL '10 minutes'
+                )::int AS active_sessions,
+                MAX(s.last_seen_at) AS last_online_at
+         FROM user_sessions s
+         WHERE s.user_id = eligible.user_id
+       ) online ON TRUE
+       ORDER BY (revoked.revoked_at IS NOT NULL), eligible.full_name NULLS LAST, eligible.username`,
+      [courseId, profile.id, profile.mode, profile.source_live_class_id, profile.management_class_id],
+    );
+
+    const students = studentsRes.rows.map((row) => ({
+      userId: String(row.user_id),
+      username: row.username,
+      email: row.email,
+      fullName: row.full_name || row.username,
+      avatarUrl: row.avatar_url || null,
+      membershipId: String(row.membership_id),
+      learningMode: row.learning_mode,
+      accessSource: row.access_source,
+      accessStatus: row.revoked_at ? "revoked" : "active",
+      enrolledAt: row.enrolled_at || null,
+      revokedAt: row.revoked_at || null,
+      revokeReason: row.revoke_reason || null,
+      lastAccessAt: row.last_access_at || null,
+      progressPercent: Number(row.progress_percent || 0),
+      activeSessions: Number(row.active_sessions || 0),
+      lastOnlineAt: row.last_online_at || null,
+      isOnline: Number(row.active_sessions || 0) > 0,
+      canRevoke: !row.revoked_at,
+    }));
+
+    return res.json({
+      success: true,
+      data: {
+        courseId: String(courseId),
+        profileId: String(profile.id),
+        total: students.length,
+        activeCount: students.filter((student) => student.accessStatus === "active").length,
+        revokedCount: students.filter((student) => student.accessStatus === "revoked").length,
+        onlineCount: students.filter((student) => student.isOnline).length,
+        students,
+      },
+    });
+  } catch (error) {
+    console.error("Admin list video course students error:", error);
+    return res.status(500).json({ success: false, message: "Không thể tải danh sách học viên", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+// Admin: revoke only this video-course profile. Live class membership and the
+// shared LMS entitlement intentionally remain active.
+router.delete("/admin/courses/:courseId/students/:userId/access", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.params.courseId);
+    const userId = parsePositiveId(req.params.userId);
+    if (!courseId || !userId) return validationError(res, "courseId hoặc userId không hợp lệ");
+    const profile = await resolveAdminCourseProfile(courseId, req.body?.profileId || req.query?.profileId);
+    if (!profile) return notFound(res, "Không tìm thấy cấu hình khóa video");
+
+    const learnerRes = await query(
+      `SELECT id, username, email FROM users WHERE id = $1 AND role = 'user'`,
+      [userId],
+    );
+    if (!learnerRes.rows[0]) return notFound(res, "Không tìm thấy học viên");
+
+    const reason = typeof req.body?.reason === "string"
+      ? req.body.reason.trim().slice(0, 500) || null
+      : null;
+    const revokedRes = await query(
+      `INSERT INTO video_course_access_revocations
+         (video_course_profile_id, user_id, reason, revoked_by, revoked_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (video_course_profile_id, user_id) DO UPDATE
+       SET reason = EXCLUDED.reason,
+           revoked_by = EXCLUDED.revoked_by,
+           revoked_at = NOW(),
+           updated_at = NOW()
+       RETURNING revoked_at`,
+      [profile.id, userId, reason, req.user.id],
+    );
+
+    await recordAuditEvent({
+      actorId: req.user.id,
+      action: "video_course.access_revoked",
+      entityType: "video_course_profile",
+      entityId: profile.id,
+      metadata: {
+        courseId,
+        profileId: profile.id,
+        targetUserId: userId,
+        reason,
+        liveMembershipPreserved: true,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: "Đã thu hồi quyền vào khóa video; quyền lớp Live vẫn được giữ nguyên",
+      data: {
+        courseId: String(courseId),
+        profileId: String(profile.id),
+        userId: String(userId),
+        accessStatus: "revoked",
+        revokedAt: revokedRes.rows[0].revoked_at,
+      },
+    });
+  } catch (error) {
+    console.error("Admin revoke video course student access error:", error);
+    return res.status(500).json({ success: false, message: "Không thể thu hồi quyền học viên", errorCode: "INTERNAL_ERROR" });
   }
 });
 

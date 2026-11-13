@@ -1,4 +1,5 @@
 import { getUnitVideoProgressAggregate } from "./bunnyStream.service.js";
+import { isVideoCourseProfileAccessRevoked } from "./videoCourseAccessRevocation.service.js";
 
 const REQUIRED_WATCH_PERCENT = 60;
 
@@ -152,7 +153,12 @@ export const getVideoCourseUnitAccessContext = async ({ db, userId, unitType, un
   }
   let profile = null;
   for (const candidate of profiles) {
-    if (await hasRecordingMembership(db, candidate, userId)) {
+    const revoked = await isVideoCourseProfileAccessRevoked({
+      db,
+      userId,
+      profileId: candidate.id,
+    });
+    if (!revoked && await hasRecordingMembership(db, candidate, userId)) {
       profile = candidate;
       break;
     }

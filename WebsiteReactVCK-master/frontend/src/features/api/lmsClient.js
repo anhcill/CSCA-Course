@@ -1811,6 +1811,24 @@ export const fetchAdminVideoCourseDetail = async (courseId) => (
   request(`/video-courses/admin/courses/${encodeURIComponent(courseId)}`)
 );
 
+export const fetchAdminVideoCourseStudents = async (courseId, profileId = null) => {
+  const params = new URLSearchParams();
+  if (profileId) params.set("profileId", String(profileId));
+  return request(
+    `/video-courses/admin/courses/${encodeURIComponent(courseId)}/students${params.size ? `?${params.toString()}` : ""}`,
+  );
+};
+
+export const revokeAdminVideoCourseStudentAccess = async (courseId, userId, payload = {}) => (
+  request(
+    `/video-courses/admin/courses/${encodeURIComponent(courseId)}/students/${encodeURIComponent(userId)}/access`,
+    {
+      method: "DELETE",
+      body: JSON.stringify(payload),
+    },
+  )
+);
+
 export const updateAdminVideoCourseUnitPreview = async (unitType, unitId, isPublicPreview) => (
   request(`/video-courses/admin/units/${encodeURIComponent(unitType)}/${encodeURIComponent(unitId)}/public-preview`, {
     method: "PUT",

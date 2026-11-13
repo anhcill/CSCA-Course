@@ -19,10 +19,13 @@ import {
   FiPlus,
   FiRefreshCw,
   FiSave,
+  FiSearch,
   FiShield,
   FiSliders,
   FiTrash2,
   FiUploadCloud,
+  FiUsers,
+  FiUserX,
   FiVideo,
   FiX,
   FiXCircle,
@@ -30,8 +33,6 @@ import {
 import toast from "react-hot-toast";
 import {
   attachVideoToLearningUnit,
-  createAdminLearningUnitFormula,
-  createAdminLearningUnitVocabulary,
   createAdminVideoCourseLesson,
   createAdminVideoCourseSection,
   createBunnyVideoUploadIntent,
@@ -39,13 +40,14 @@ import {
   deleteAdminVideoCourseLesson,
   deleteAdminVideoCourseSection,
   fetchAdminVideoCourseDetail,
+  fetchAdminVideoCourseStudents,
   fetchAdminVideoCoursesOverview,
   publishAdminVideo,
   publishAdminVideoCourse,
   reorderAdminVideoCourseCurriculum,
   replaceAdminVideo,
   revokeAdminUserTrustedDevice,
-  saveAdminLearningUnitTheory,
+  revokeAdminVideoCourseStudentAccess,
   saveAdminVideoCourseProfile,
   unpublishAdminVideo,
   updateAdminVideoCourseUnitPreview,
@@ -178,6 +180,16 @@ const formatDuration = (seconds) => {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 };
 
+const formatStudentDate = (value) => {
+  if (!value) return "Chưa có dữ liệu";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Chưa có dữ liệu";
+  return new Intl.DateTimeFormat("vi-VN", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+};
+
 const AdminVideoCoursesPage = () => {
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [courses, setCourses] = useState([]);
@@ -186,6 +198,15 @@ const AdminVideoCoursesPage = () => {
 
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [courseDetail, setCourseDetail] = useState(null);
+
+  // Learner access is scoped to the selected video-course profile/offering.
+  const [courseStudents, setCourseStudents] = useState([]);
+  const [studentStats, setStudentStats] = useState({ total: 0, activeCount: 0, revokedCount: 0, onlineCount: 0 });
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [studentsError, setStudentsError] = useState("");
+  const [studentQuery, setStudentQuery] = useState("");
+  const [studentFilter, setStudentFilter] = useState("all");
+  const [revokingStudentId, setRevokingStudentId] = useState(null);
 
   // Profile configuration form state
   const [modeInput, setModeInput] = useState("MIRROR");
@@ -255,6 +276,30 @@ const AdminVideoCoursesPage = () => {
     }
   }, []);
 
+  const loadCourseStudents = useCallback(async (courseId, profileId = null) => {
+    if (!courseId) return;
+    try {
+      setLoadingStudents(true);
+      setStudentsError("");
+      const res = await fetchAdminVideoCourseStudents(courseId, profileId);
+      const data = res?.data || {};
+      const students = Array.isArray(data.students) ? data.students : [];
+      setCourseStudents(students);
+      setStudentStats({
+        total: Number(data.total ?? students.length),
+        activeCount: Number(data.activeCount ?? students.filter((student) => student.accessStatus === "active").length),
+        revokedCount: Number(data.revokedCount ?? students.filter((student) => student.accessStatus === "revoked").length),
+        onlineCount: Number(data.onlineCount ?? students.filter((student) => student.isOnline).length),
+      });
+    } catch (error) {
+      setCourseStudents([]);
+      setStudentStats({ total: 0, activeCount: 0, revokedCount: 0, onlineCount: 0 });
+      setStudentsError(error?.message || "Không thể tải danh sách học viên");
+    } finally {
+      setLoadingStudents(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadOverview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -265,6 +310,13 @@ const AdminVideoCoursesPage = () => {
       loadCourseDetail(selectedCourseId);
     }
   }, [selectedCourseId, loadCourseDetail]);
+
+  useEffect(() => {
+    const detailCourseId = courseDetail?.course?.id;
+    if (selectedCourseId && String(detailCourseId) === String(selectedCourseId)) {
+      loadCourseStudents(selectedCourseId, courseDetail?.profile?.id);
+    }
+  }, [courseDetail?.course?.id, courseDetail?.profile?.id, loadCourseStudents, selectedCourseId]);
 
   const handleSaveProfile = async (e) => {
     e?.preventDefault();
@@ -324,6 +376,29 @@ const AdminVideoCoursesPage = () => {
       await loadOverview(selectedCourseId);
     } catch (error) {
       toast.error(error?.message || "Không thể gỡ thiết bị");
+    }
+  };
+
+  const handleRevokeStudentAccess = async (student) => {
+    if (!selectedCourseId || !student?.userId || student.accessStatus === "revoked") return;
+    const learnerName = student.fullName || student.username || student.email || `#${student.userId}`;
+    const confirmed = window.confirm(
+      `Thu hồi quyền xem khóa Video/Record của “${learnerName}”?\n\nHọc viên vẫn được giữ trong lớp Live và LMS; thao tác này chỉ chặn quyền truy cập khóa Video/Record đang chọn.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      setRevokingStudentId(String(student.userId));
+      const res = await revokeAdminVideoCourseStudentAccess(selectedCourseId, student.userId, {
+        profileId: courseDetail?.profile?.id || null,
+        reason: "Thu hồi thủ công từ trang quản trị khóa Video/Record",
+      });
+      toast.success(res?.message || "Đã thu hồi quyền xem khóa Video/Record");
+      await loadCourseStudents(selectedCourseId, courseDetail?.profile?.id);
+    } catch (error) {
+      toast.error(error?.message || "Không thể thu hồi quyền học viên");
+    } finally {
+      setRevokingStudentId(null);
     }
   };
 
@@ -584,6 +659,18 @@ const AdminVideoCoursesPage = () => {
     () => checklistEntries.filter((c) => c.passed).length,
     [checklistEntries],
   );
+  const filteredCourseStudents = useMemo(() => {
+    const normalizedQuery = studentQuery.trim().toLocaleLowerCase("vi");
+    return courseStudents.filter((student) => {
+      if (studentFilter === "online" && !student.isOnline) return false;
+      if (studentFilter === "active" && student.accessStatus !== "active") return false;
+      if (studentFilter === "revoked" && student.accessStatus !== "revoked") return false;
+      if (!normalizedQuery) return true;
+      return [student.fullName, student.username, student.email]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase("vi").includes(normalizedQuery));
+    });
+  }, [courseStudents, studentFilter, studentQuery]);
   const uploadBusy = ["intent", "tus", "attaching"].includes(uploadStage);
 
   return (
@@ -619,11 +706,14 @@ const AdminVideoCoursesPage = () => {
               type="button"
               onClick={() => {
                 loadOverview(selectedCourseId);
-                if (selectedCourseId) loadCourseDetail(selectedCourseId);
+                if (selectedCourseId) {
+                  loadCourseDetail(selectedCourseId);
+                  loadCourseStudents(selectedCourseId, courseDetail?.profile?.id);
+                }
               }}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-500"
             >
-              <FiRefreshCw className={`h-4 w-4 ${loadingOverview || loadingDetail ? "animate-spin" : ""}`} />
+              <FiRefreshCw className={`h-4 w-4 ${loadingOverview || loadingDetail || loadingStudents ? "animate-spin" : ""}`} />
               <span>Làm mới dữ liệu</span>
             </button>
           </div>
@@ -960,7 +1050,196 @@ const AdminVideoCoursesPage = () => {
                 </div>
               </form>
 
-              {/* 2. 5-Point Publish Checklist Gate (Section 9.2) */}
+              {/* 2. Learner access control for the selected Video/Record offering */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <FiUsers className="h-4 w-4 text-cyan-600" />
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        Danh sách học viên khóa Video/Record
+                      </h3>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Thu hồi tại đây chỉ chặn quyền xem khóa Video/Record này, không xóa học viên khỏi lớp Live hoặc LMS.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => loadCourseStudents(selectedCourseId, courseDetail?.profile?.id)}
+                    disabled={loadingStudents}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    <FiRefreshCw className={`h-3.5 w-3.5 ${loadingStudents ? "animate-spin" : ""}`} />
+                    <span>Làm mới học viên</span>
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/70">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Tổng cộng</p>
+                    <p className="mt-0.5 text-lg font-black text-slate-900 dark:text-white">{studentStats.total}</p>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50 px-3 py-2.5 dark:bg-emerald-950/30">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Đang có quyền</p>
+                    <p className="mt-0.5 text-lg font-black text-emerald-700 dark:text-emerald-300">{studentStats.activeCount}</p>
+                  </div>
+                  <div className="rounded-xl bg-rose-50 px-3 py-2.5 dark:bg-rose-950/30">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-rose-600 dark:text-rose-400">Đã thu hồi</p>
+                    <p className="mt-0.5 text-lg font-black text-rose-700 dark:text-rose-300">{studentStats.revokedCount}</p>
+                  </div>
+                  <div className="rounded-xl bg-cyan-50 px-3 py-2.5 dark:bg-cyan-950/30">
+                    <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                      Đang online
+                    </p>
+                    <p className="mt-0.5 text-lg font-black text-cyan-700 dark:text-cyan-300">{studentStats.onlineCount}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative flex-1">
+                    <FiSearch className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="search"
+                      value={studentQuery}
+                      onChange={(event) => setStudentQuery(event.target.value)}
+                      placeholder="Tìm theo họ tên, tài khoản hoặc email..."
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs text-slate-900 outline-none transition focus:border-cyan-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                    {[
+                      ["all", "Tất cả"],
+                      ["online", `Online (${studentStats.onlineCount})`],
+                      ["active", "Có quyền"],
+                      ["revoked", "Đã thu hồi"],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setStudentFilter(value)}
+                        className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition ${
+                          studentFilter === value
+                            ? "bg-white text-cyan-700 shadow-sm dark:bg-slate-700 dark:text-cyan-300"
+                            : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="mt-1.5 text-[10px] text-slate-400">Online nghĩa là tài khoản có hoạt động trong 10 phút gần nhất.</p>
+
+                <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                  {loadingStudents ? (
+                    <div className="space-y-2 p-3">
+                      {[1, 2, 3].map((item) => (
+                        <div key={item} className="h-16 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+                      ))}
+                    </div>
+                  ) : studentsError ? (
+                    <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                      <FiAlertTriangle className="h-6 w-6 text-amber-500" />
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{studentsError}</p>
+                      <button
+                        type="button"
+                        onClick={() => loadCourseStudents(selectedCourseId, courseDetail?.profile?.id)}
+                        className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white dark:bg-blue-600"
+                      >
+                        Thử lại
+                      </button>
+                    </div>
+                  ) : filteredCourseStudents.length === 0 ? (
+                    <div className="px-4 py-9 text-center">
+                      <FiUsers className="mx-auto h-7 w-7 text-slate-300 dark:text-slate-600" />
+                      <p className="mt-2 text-xs font-semibold text-slate-500">
+                        {studentQuery.trim() ? "Không tìm thấy học viên phù hợp." : "Khóa Video/Record này chưa có học viên."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-h-[430px] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+                      {filteredCourseStudents.map((student) => {
+                        const isRevoked = student.accessStatus === "revoked";
+                        const isRevoking = String(revokingStudentId) === String(student.userId);
+                        const displayName = student.fullName || student.username || student.email || `Học viên #${student.userId}`;
+                        const sourceLabel = student.accessSource === "LIVE_MIRROR"
+                          ? "Kế thừa lớp Live"
+                          : "Quyền Record độc lập";
+                        const initials = displayName.trim().slice(0, 1).toUpperCase();
+                        const isOnline = Boolean(student.isOnline);
+
+                        return (
+                          <div
+                            key={student.userId}
+                            className={`flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between ${
+                              isRevoked ? "bg-slate-50/80 opacity-75 dark:bg-slate-800/30" : "bg-white dark:bg-slate-900"
+                            }`}
+                          >
+                            <div className="flex min-w-0 items-start gap-3">
+                              {student.avatarUrl ? (
+                                <img
+                                  src={student.avatarUrl}
+                                  alt=""
+                                  className="h-10 w-10 shrink-0 rounded-full border border-slate-200 object-cover dark:border-slate-700"
+                                />
+                              ) : (
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-100 text-sm font-black text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300">
+                                  {initials}
+                                </div>
+                              )}
+
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <p className="truncate text-xs font-bold text-slate-900 dark:text-white">{displayName}</p>
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                    isRevoked
+                                      ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                                      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                  }`}>
+                                    {isRevoked ? "Đã thu hồi" : "Đang có quyền"}
+                                  </span>
+                                  {isOnline && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-bold text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300">
+                                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                                      Đang online
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="mt-0.5 truncate text-[11px] text-slate-500">{student.email || `@${student.username}`}</p>
+                                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
+                                  <span>{sourceLabel}</span>
+                                  <span>
+                                    {isOnline
+                                      ? `${Number(student.activeSessions || 1)} phiên đang hoạt động`
+                                      : `Online gần nhất: ${formatStudentDate(student.lastOnlineAt)}`}
+                                  </span>
+                                  <span>{isRevoked ? `Thu hồi: ${formatStudentDate(student.revokedAt)}` : `Cấp quyền: ${formatStudentDate(student.enrolledAt)}`}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRevokeStudentAccess(student)}
+                              disabled={isRevoked || student.canRevoke === false || isRevoking}
+                              title={student.canRevoke === false && !isRevoked ? "Quyền này không thể thu hồi thủ công" : undefined}
+                              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300 dark:disabled:border-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                            >
+                              <FiUserX className="h-3.5 w-3.5" />
+                              <span>{isRevoking ? "Đang thu hồi..." : isRevoked ? "Đã thu hồi" : "Thu hồi quyền"}</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. 5-Point Publish Checklist Gate (Section 9.2) */}
               <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>

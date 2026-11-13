@@ -18,6 +18,7 @@ import {
   deleteBunnyVideo,
 } from "../services/bunnyStream.service.js";
 import { generateLearningFileUploadPresignedUrl } from "../services/video.service.js";
+import { hasUnrevokedVideoCourseAccess } from "../services/videoCourseAccessRevocation.service.js";
 
 const router = express.Router();
 
@@ -172,6 +173,21 @@ export const verifyLearnerVideoAccess = async ({
   }
 
   if (requireRecordingMode) {
+    const hasCourseAccess = await hasUnrevokedVideoCourseAccess({
+      db,
+      userId: user.id,
+      courseId,
+      liveClassId,
+    });
+    if (!hasCourseAccess) {
+      return {
+        allowed: false,
+        status: 403,
+        errorCode: "VIDEO_COURSE_ACCESS_REVOKED",
+        reason: "Quyền truy cập khóa video này đã bị thu hồi",
+      };
+    }
+
     const profileRes = await db.query(
       `SELECT COALESCE(BOOL_OR(enforce_trusted_devices), TRUE) AS enforce_trusted_devices,
               COALESCE(MIN(device_limit) FILTER (WHERE enforce_trusted_devices = TRUE), $2)::int AS device_limit

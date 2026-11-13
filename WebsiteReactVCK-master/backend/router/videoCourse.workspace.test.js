@@ -636,3 +636,152 @@ test("video course workspace: multipart units require every video part >=60% plu
   assert.equal(adminWs.activeUnit.isLocked, false);
   assert.notEqual(adminWs.activeUnit.video, null, "Admin must have full active unit payload");
 });
+
+test("admin revokes only one Record profile while preserving Live/LMS and online status", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^"]+\.sql"/g)]
+    .map((match) => JSON.parse(match[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
+  const { pool } = await import("../db/connect.js");
+  bindPoolToDb(pool, db);
+  const videoCourseRouter = (await import("./videoCourse.router.js")).default;
+  const { verifyLearnerVideoAccess } = await import("./bunnyVideo.router.js");
+  const { getVideoCourseUnitAccessContext } = await import("../services/videoCourseUnitAccess.service.js");
+
+  const admin = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('access-admin','access-admin@example.test','admin') RETURNING id,role",
+  )).rows[0];
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('access-teacher','access-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const learner = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('access-learner','access-learner@example.test','user',TRUE,'active')
+     RETURNING id,username,email,role,is_management_managed,lms_account_status`,
+  )).rows[0];
+  const course = (await db.query(
+    `INSERT INTO courses(name,slug,author_id,is_published,is_management_managed)
+     VALUES ('Access revoke course','access-revoke-course',$1,TRUE,TRUE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await db.query(
+    `INSERT INTO live_classes(title,course_id,instructor_id,status)
+     VALUES ('Preserved Live class',$1,$2,'active') RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+  const session = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status)
+     VALUES ($1,'Record lesson',NOW(),NOW() + INTERVAL '1 hour','scheduled') RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+  const profile = (await db.query(
+    `INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,status)
+     VALUES ($1,'MIRROR',$2,'active') RETURNING id`,
+    [course.id, liveClass.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO class_enrollments(user_id,live_class_id,status,learning_mode)
+     VALUES ($1,$2,'active','live')`,
+    [learner.id, liveClass.id],
+  );
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - INTERVAL '1 day',NOW())`,
+    [learner.id, course.id],
+  );
+  const trustedDeviceId = await addTrustedDevice(db, learner.id, "access-revoke");
+  await db.query(
+    `INSERT INTO user_sessions
+       (user_id,token_hash,device_info,expires_at,trusted_device_id,last_seen_at)
+     VALUES ($1,$2,'Windows · Chrome',NOW() + INTERVAL '1 day',$3,NOW() - INTERVAL '2 minutes')`,
+    [learner.id, "access-session-token-hash", trustedDeviceId],
+  );
+
+  const response = () => ({
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  });
+  const route = (method, path) => videoCourseRouter.stack.find((layer) => (
+    layer.route?.path === path && layer.route.methods[method]
+  )).route.stack.at(-1).handle;
+
+  const listBefore = response();
+  await route("get", "/admin/courses/:courseId/students")({
+    user: admin,
+    params: { courseId: String(course.id) },
+    query: { profileId: String(profile.id) },
+  }, listBefore);
+  assert.equal(listBefore.statusCode, 200, JSON.stringify(listBefore.body));
+  assert.equal(listBefore.body.data.total, 1);
+  assert.equal(listBefore.body.data.onlineCount, 1);
+  assert.equal(listBefore.body.data.students[0].isOnline, true);
+  assert.equal(listBefore.body.data.students[0].activeSessions, 1);
+  assert.equal(listBefore.body.data.students[0].accessSource, "LIVE_MIRROR");
+
+  const revoked = response();
+  await route("delete", "/admin/courses/:courseId/students/:userId/access")({
+    user: admin,
+    params: { courseId: String(course.id), userId: String(learner.id) },
+    query: {},
+    body: { profileId: String(profile.id), reason: "Admin test revoke" },
+  }, revoked);
+  assert.equal(revoked.statusCode, 200, JSON.stringify(revoked.body));
+  assert.equal(revoked.body.data.accessStatus, "revoked");
+
+  const liveMembership = (await db.query(
+    "SELECT status,learning_mode FROM class_enrollments WHERE user_id=$1 AND live_class_id=$2",
+    [learner.id, liveClass.id],
+  )).rows[0];
+  assert.deepEqual(liveMembership, { status: "active", learning_mode: "live" });
+  assert.equal((await db.query(
+    "SELECT access_status FROM lms_access_grants WHERE user_id=$1 AND course_id=$2",
+    [learner.id, course.id],
+  )).rows[0].access_status, "active");
+
+  const workspace = response();
+  await route("get", "/:offeringId/workspace")({
+    user: learner,
+    authSession: { trustedDeviceId },
+    params: { offeringId: `profile-${profile.id}` },
+    query: {},
+  }, workspace);
+  assert.equal(workspace.statusCode, 403, JSON.stringify(workspace.body));
+  assert.equal(workspace.body.errorCode, "VIDEO_COURSE_ACCESS_REVOKED");
+
+  const playbackAccess = await verifyLearnerVideoAccess({
+    user: learner,
+    courseId: course.id,
+    liveClassId: liveClass.id,
+    req: { authSession: { trustedDeviceId } },
+    db,
+  });
+  assert.equal(playbackAccess.allowed, false);
+  assert.equal(playbackAccess.errorCode, "VIDEO_COURSE_ACCESS_REVOKED");
+
+  const unitAccess = await getVideoCourseUnitAccessContext({
+    db,
+    userId: learner.id,
+    unitType: "class_session",
+    unitId: session.id,
+    videoCourseProfileId: profile.id,
+  });
+  assert.equal(unitAccess.isVideoCourseUnit, true);
+  assert.equal(unitAccess.isRecordMember, false);
+
+  const listAfter = response();
+  await route("get", "/admin/courses/:courseId/students")({
+    user: admin,
+    params: { courseId: String(course.id) },
+    query: { profileId: String(profile.id) },
+  }, listAfter);
+  assert.equal(listAfter.body.data.activeCount, 0);
+  assert.equal(listAfter.body.data.revokedCount, 1);
+  assert.equal(listAfter.body.data.students[0].accessStatus, "revoked");
+});
