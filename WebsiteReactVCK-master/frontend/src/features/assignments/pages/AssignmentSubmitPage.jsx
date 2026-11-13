@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
+import { getFullscreenElement, toggleAssessmentFullscreen } from "../../../utils/assessmentDisplay.js";
 import toast from "react-hot-toast";
 import {
   confirmSubmissionAsset,
@@ -146,7 +147,7 @@ export default function AssignmentSubmitPage() {
   // Submission result & view mode
   const [isAlreadySubmitted, setIsAlreadySubmitted] = useState(false);
   const [isGraded, setIsGraded] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
+  const [isFullscreen, setIsFullscreen] = useState(() => Boolean(getFullscreenElement()));
 
   const loadAssignment = useCallback(async () => {
     setLoading(true);
@@ -218,22 +219,17 @@ export default function AssignmentSubmitPage() {
   }, [loadAssignment]);
 
   useEffect(() => {
-    const syncFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    const syncFullscreenState = () => setIsFullscreen(Boolean(getFullscreenElement()));
+    syncFullscreenState();
     document.addEventListener("fullscreenchange", syncFullscreenState);
-    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+    document.addEventListener("webkitfullscreenchange", syncFullscreenState);
+    return () => {
+      document.removeEventListener("fullscreenchange", syncFullscreenState);
+      document.removeEventListener("webkitfullscreenchange", syncFullscreenState);
+    };
   }, []);
 
-  const toggleFullscreen = async () => {
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen?.();
-      } else {
-        await document.documentElement.requestFullscreen?.();
-      }
-    } catch {
-      // The viewport shell still provides a fullscreen assessment experience.
-    }
-  };
+  const toggleFullscreen = toggleAssessmentFullscreen;
 
   // Audio recording timer simulation
   useEffect(() => {

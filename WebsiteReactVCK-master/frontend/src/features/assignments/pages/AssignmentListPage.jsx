@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { enterAssessmentFullscreen } from "../../../utils/assessmentDisplay.js";
 import { Calendar, FileText } from "lucide-react";
 import { fetchAssignments, fetchMyLiveSchedule } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
@@ -336,6 +337,7 @@ export default function AssignmentListPage() {
   const handleAction = (item) => {
     const raw = item?.raw || item;
     if (raw) {
+      enterAssessmentFullscreen();
       const isQuiz = itemType(raw) === "quiz" || item.isQuiz;
       if (courseId && classId) {
         navigate(

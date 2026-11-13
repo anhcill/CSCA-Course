@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { enterAssessmentFullscreen, getFullscreenElement, toggleAssessmentFullscreen } from '../../../utils/assessmentDisplay.js';
 import {
   FiClock,
   FiCheckCircle,
@@ -120,7 +121,7 @@ export default function QuizPlayerPage() {
   const [timeLeft, setTimeLeft] = useState(3600);
   const [autosaveStatus, setAutosaveStatus] = useState('saved'); // 'saved' | 'saving' | 'local' | 'error'
   const [lastSavedTime, setLastSavedTime] = useState(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(() => Boolean(getFullscreenElement()));
   const [tabViolations, setTabViolations] = useState(0);
   const [showViolationBanner, setShowViolationBanner] = useState(false);
   const [showChinese, setShowChinese] = useState(true);
@@ -410,20 +411,17 @@ export default function QuizPlayerPage() {
   }, [isSubmitted]);
 
   // Fullscreen toggle helper
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
-      }
-    }
-  };
+  const toggleFullscreen = toggleAssessmentFullscreen;
 
   useEffect(() => {
-    const syncFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    const syncFullscreenState = () => setIsFullscreen(Boolean(getFullscreenElement()));
+    syncFullscreenState();
     document.addEventListener('fullscreenchange', syncFullscreenState);
-    return () => document.removeEventListener('fullscreenchange', syncFullscreenState);
+    document.addEventListener('webkitfullscreenchange', syncFullscreenState);
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState);
+      document.removeEventListener('webkitfullscreenchange', syncFullscreenState);
+    };
   }, []);
 
   // Autosave answer change
@@ -821,7 +819,10 @@ export default function QuizPlayerPage() {
             {(!isOverdue || Boolean(videoCourseProfileId)) && canStartNewAttempt && (
               <button
                 type="button"
-                onClick={() => loadQuiz({ newAttempt: true })}
+                onClick={() => {
+                  enterAssessmentFullscreen();
+                  loadQuiz({ newAttempt: true });
+                }}
                 className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
               >
                 Làm lại lượt thi
@@ -1329,8 +1330,9 @@ export default function QuizPlayerPage() {
             <button
               type="button"
               onClick={toggleFullscreen}
-              className="hidden sm:block p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
-              title="Toàn màn hình"
+              className="shrink-0 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
+              title={isFullscreen ? 'Thoát toàn màn hình' : 'Mở toàn màn hình'}
+              aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Mở toàn màn hình'}
             >
               {isFullscreen ? <FiMinimize size={14} /> : <FiMaximize size={14} />}
             </button>

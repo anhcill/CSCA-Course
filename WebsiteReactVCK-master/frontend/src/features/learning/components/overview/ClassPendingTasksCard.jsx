@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { enterAssessmentFullscreen } from "../../../../utils/assessmentDisplay.js";
 import { ArrowRight, BookOpen, CheckCircle2, FileQuestion } from "lucide-react";
 
 const formatDateTime = (value) => {
@@ -60,6 +61,7 @@ export default function ClassPendingTasksCard({ pendingTasks = [], basePath }) {
                 <Link
                   key={`${item.type}-${item.id}`}
                   to={targetUrl}
+                  onClick={sessionId ? undefined : enterAssessmentFullscreen}
                   className="group flex items-center justify-between gap-3 rounded-2xl border border-white/90 bg-white/70 p-3.5 shadow-2xs backdrop-blur-sm transition hover:border-sky-300 hover:bg-sky-50/60 dark:border-slate-800 dark:bg-slate-900/80 dark:hover:border-sky-500/50 dark:hover:bg-slate-800/60"
                 >
                   <div className="flex min-w-0 items-start gap-3">

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { enterAssessmentFullscreen } from "../../../utils/assessmentDisplay.js";
 import toast from "react-hot-toast";
 import {
   Play,
@@ -1175,6 +1176,7 @@ export default function VideoCourseWorkspacePage() {
                                 if (profileId) {
                                   params.set("videoCourseProfileId", profileId);
                                 }
+                                enterAssessmentFullscreen();
                                 navigate(`/quizzes/${quiz.id}?${params.toString()}`);
                               }}
                               className={`px-4 py-2 rounded-xl font-bold text-xs transition shadow-sm self-start sm:self-auto shrink-0 ${
@@ -1240,6 +1242,7 @@ export default function VideoCourseWorkspacePage() {
                                   if (profileId) {
                                     params.set("videoCourseProfileId", profileId);
                                   }
+                                  enterAssessmentFullscreen();
                                   navigate(`/assignments/${assignment.id}/submit?${params.toString()}`);
                                 }}
                                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-sm self-start sm:self-auto shrink-0"

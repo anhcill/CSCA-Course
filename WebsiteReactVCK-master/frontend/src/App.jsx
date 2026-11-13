@@ -1,4 +1,5 @@
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef } from "react";
+import { isAssessmentPath, exitAssessmentFullscreen } from "./utils/assessmentDisplay.js";
 import { isSwUpdatePending, lazyWithRetry as lazy } from "./utils/chunkRecovery.js";
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
@@ -308,6 +309,13 @@ function AppContent() {
   const isVideoCoursePage = pathname.startsWith("/video-courses/");
   const isLmsPage = pathname === "/lms" || pathname.startsWith("/lms/");
   const isTeacherPage = isTeacherLmsPath(pathname) || isSharedTeacherPath(pathname, authUser);
+  const isAssessmentPage = isAssessmentPath(pathname);
+
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle("assessment-mode", isAssessmentPage);
+    if (!isAssessmentPage) void exitAssessmentFullscreen();
+    return () => document.documentElement.classList.remove("assessment-mode");
+  }, [isAssessmentPage]);
 
   const isEligibleForWelcome = Boolean(
     authUser && (authUser.role === USER_ROLES.TEACHER || authUser.role === USER_ROLES.STUDENT)
@@ -338,6 +346,33 @@ function AppContent() {
             navigate("/", { replace: true, state: { openAuthModal: "login" } });
           }}
         />
+      </div>
+    );
+  }
+
+  if (isAssessmentPage) {
+    if (isLmsPage && isTeacherRole(authUser?.role)) {
+      return <Navigate to="/lms/teach" replace />;
+    }
+    const assessmentContent = <AppRoutes pathname={pathname} />;
+    return (
+      <div className="assessment-shell">
+        <Toaster position="top-center" reverseOrder={false} />
+        {isLmsPage ? (
+          <LmsRouteGuard allowedRoles={[USER_ROLES.STUDENT]}>
+            {assessmentContent}
+          </LmsRouteGuard>
+        ) : assessmentContent}
+        <div className="relative z-[1100]">
+          <SessionExpiredModal
+            isOpen={sessionExpired}
+            onClose={dismissSessionExpired}
+            onLoginAgain={() => {
+              dismissSessionExpired();
+              navigate("/", { replace: true, state: { openAuthModal: "login" } });
+            }}
+          />
+        </div>
       </div>
     );
   }

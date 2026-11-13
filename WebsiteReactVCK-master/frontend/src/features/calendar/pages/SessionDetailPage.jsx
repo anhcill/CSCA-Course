@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import { enterAssessmentFullscreen } from "../../../utils/assessmentDisplay.js";
 import {
   ArrowLeft, Bell, Binary, CalendarDays, CheckCircle2, ClipboardList, Clock,
   Download, Eye, FileSpreadsheet, FileText, Files, FolderOpen, Languages, Lock, Play, Trophy, Users, Video, Search,
@@ -557,6 +558,7 @@ function StudentOverviewTab({
                     <Link
                       key={`${task.type}-${task.id}`}
                       to={taskHref(basePath, task)}
+                      onClick={enterAssessmentFullscreen}
                       className="flex flex-col justify-between gap-3 rounded-2xl border border-sky-100/70 bg-white/70 p-4 transition-all hover:border-sky-300 hover:bg-white hover:shadow-md sm:flex-row sm:items-center"
                     >
                       <div className="min-w-0">
@@ -698,6 +700,7 @@ function SessionTaskList({ tasks, basePath }) {
           <Link
             key={`${task.type}-${task.id}`}
             to={taskHref(basePath, task)}
+            onClick={enterAssessmentFullscreen}
             className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition hover:shadow-lg hover:border-sky-300"
           >
             <div>
@@ -940,6 +943,7 @@ function SessionResults({ tasks, basePath }) {
         <Link
           key={`${task.type}-${task.id}`}
           to={taskHref(basePath, task)}
+          onClick={enterAssessmentFullscreen}
           className="flex items-center justify-between rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition hover:shadow-lg"
         >
           <div>

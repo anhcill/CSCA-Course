@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { enterAssessmentFullscreen } from "../../../utils/assessmentDisplay.js";
 import {
   AlertCircle,
   Award,
@@ -535,6 +536,7 @@ export default function AssignmentSubmissionsModal({
                   type="button"
                   onClick={() => {
                     onClose();
+                    enterAssessmentFullscreen();
                     navigate(isQuiz ? `/lms/quizzes/${event.id}` : `/lms/assignment/${event.id}/submit`);
                   }}
                   className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"

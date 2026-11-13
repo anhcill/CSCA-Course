@@ -100,6 +100,10 @@ export default function CourseWorkspaceLayout() {
     (location.pathname.includes(`${basePath}/assignments/`) && location.pathname.includes("/submit"));
   const isFocusedView = isSessionWorkspace || isSubmittingOrQuiz;
 
+  if (isSubmittingOrQuiz) {
+    return <Outlet context={{ ...workspace, learningCapabilities }} />;
+  }
+
   const classDisplayName = formatClassTitle(selectedClass.title);
 
   if (!learningCapabilities.showCalendar && (
