@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { getClient, query } from "../db/connect.js";
+import { recordAuditEvent } from "./audit.service.js";
 
 export const ALLOWED_SOURCE_SYSTEMS = new Set(["moly", "csca-course", "internal-management"]);
 export const COURSE_MAPPING_STATUSES = new Set(["active", "inactive", "archived"]);
@@ -21,7 +22,7 @@ export class ExternalIntegrationError extends Error {
 
 const defaultDb = { query, getClient };
 
-const runWithTransaction = async (db, work) => {
+export const runWithTransaction = async (db, work) => {
   if (typeof db.transaction === "function") {
     return db.transaction(work);
   }
@@ -69,7 +70,7 @@ export const normalizeExternalId = (value, fieldName, maxLength = 128) => {
   return trimmed;
 };
 
-const normalizeOptionalText = (value, maxLength, fieldName) => {
+export const normalizeOptionalText = (value, maxLength, fieldName) => {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string") {
     throw new ExternalIntegrationError(422, "VALIDATION_ERROR", `${fieldName} must be a string.`);
@@ -90,7 +91,7 @@ export const parsePositiveBigIntId = (value, fieldName = "id") => {
   return parsed;
 };
 
-const normalizeTimestamp = (value, fieldName) => {
+export const normalizeTimestamp = (value, fieldName) => {
   const date = value instanceof Date ? value : new Date(value);
   if (value === undefined || value === null || Number.isNaN(date.getTime())) {
     throw new ExternalIntegrationError(422, "VALIDATION_ERROR", `${fieldName} must be a valid ISO timestamp.`);
@@ -98,18 +99,29 @@ const normalizeTimestamp = (value, fieldName) => {
   return date;
 };
 
-const normalizeNullableTimestamp = (value, fieldName) => {
+export const normalizeNullableTimestamp = (value, fieldName) => {
   if (value === undefined || value === null || value === "") return null;
   return normalizeTimestamp(value, fieldName);
 };
 
-const normalizeJsonObject = (value, fieldName) => {
+export const normalizeJsonObject = (value, fieldName) => {
   if (value === undefined || value === null) return {};
   if (typeof value !== "object" || Array.isArray(value)) {
     throw new ExternalIntegrationError(422, "VALIDATION_ERROR", `${fieldName} must be a JSON object.`);
   }
   return value;
 };
+
+const canonicalJsonValue = (value) => {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalJsonValue(value[key])]));
+  }
+  return value;
+};
+
+export const canonicalHashPayload = (payload) =>
+  crypto.createHash("sha256").update(JSON.stringify(canonicalJsonValue(payload))).digest("hex");
 
 const formatMappingRow = (row) => {
   if (!row) return null;
@@ -141,7 +153,11 @@ const formatMappingRow = (row) => {
 /**
  * Creates or updates an explicit manual course mapping. Never matches courses by title or slug.
  */
-export const upsertManualCourseMapping = async (db = defaultDb, input = {}) => {
+export const upsertManualCourseMapping = async (
+  db = defaultDb,
+  input = {},
+  { recordAudit = recordAuditEvent, auditMetadata = {} } = {},
+) => {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "Expected a mapping payload object.");
   }
@@ -242,6 +258,16 @@ export const upsertManualCourseMapping = async (db = defaultDb, input = {}) => {
       }
     }
 
+    const beforeRes = await tx.query(
+      `SELECT m.*, COALESCE(c.title, c.name) AS local_course_title, c.slug AS local_course_slug
+       FROM external_course_mappings m
+       JOIN courses c ON c.id = m.local_course_id
+       WHERE m.source_system = $1 AND m.external_course_id = $2
+       FOR UPDATE OF m`,
+      [sourceSystem, externalCourseId],
+    );
+    const beforeState = beforeRes.rows[0] ? formatMappingRow(beforeRes.rows[0]) : null;
+
     const upsertRes = await tx.query(
       `INSERT INTO external_course_mappings (
          source_system, external_course_id, external_course_code, external_course_title,
@@ -284,11 +310,27 @@ export const upsertManualCourseMapping = async (db = defaultDb, input = {}) => {
     if (!saved) {
       throw new ExternalIntegrationError(409, "STALE_EVENT", "A newer manual mapping already exists.");
     }
-    return formatMappingRow({
+    const formatted = formatMappingRow({
       ...saved,
       local_course_title: localCourse.title,
       local_course_slug: localCourse.slug,
     });
+    await recordAudit({
+      db: tx,
+      actorId,
+      action: "integration.course_mapping_upserted",
+      entityType: "external_course_mapping",
+      entityId: formatted.id,
+      beforeState,
+      afterState: formatted,
+      metadata: {
+        ...auditMetadata,
+        sourceSystem: formatted.sourceSystem,
+        externalCourseId: formatted.externalCourseId,
+        localCourseId: formatted.localCourseId,
+      },
+    });
+    return formatted;
   });
 };
 
@@ -399,7 +441,11 @@ export const listCourseMappings = async (db = defaultDb, filters = {}) => {
   return result.rows.map(formatMappingRow);
 };
 
-export const updateCourseMappingStatus = async (db = defaultDb, { id, status, notes, actorId } = {}) => {
+export const updateCourseMappingStatus = async (
+  db = defaultDb,
+  { id, status, notes, actorId } = {},
+  { recordAudit = recordAuditEvent, auditMetadata = {} } = {},
+) => {
   const mappingId = parsePositiveBigIntId(id, "id");
   const normalizedStatus = typeof status === "string" ? status.trim().toLowerCase() : "";
   if (!COURSE_MAPPING_STATUSES.has(normalizedStatus)) {
@@ -408,20 +454,50 @@ export const updateCourseMappingStatus = async (db = defaultDb, { id, status, no
   const normalizedNotes = normalizeOptionalText(notes, 2000, "notes");
   const parsedActorId = actorId == null ? null : parsePositiveBigIntId(actorId, "actorId");
 
-  const result = await db.query(
-    `UPDATE external_course_mappings
-     SET status = $1,
-         notes = COALESCE($2, notes),
-         updated_by = $3,
-         source_updated_at = GREATEST(source_updated_at, NOW())
-     WHERE id = $4
-     RETURNING *`,
-    [normalizedStatus, normalizedNotes, parsedActorId, mappingId],
-  );
-  if (!result.rows[0]) {
-    throw new ExternalIntegrationError(404, "NOT_FOUND", `Course mapping ${mappingId} not found.`);
-  }
-  return formatMappingRow(result.rows[0]);
+  return runWithTransaction(db, async (tx) => {
+    const existingRes = await tx.query(
+      `SELECT m.*, COALESCE(c.title, c.name) AS local_course_title, c.slug AS local_course_slug
+       FROM external_course_mappings m
+       LEFT JOIN courses c ON c.id = m.local_course_id
+       WHERE m.id = $1
+       FOR UPDATE OF m`,
+      [mappingId],
+    );
+    if (!existingRes.rows[0]) {
+      throw new ExternalIntegrationError(404, "NOT_FOUND", `Course mapping ${mappingId} not found.`);
+    }
+    const beforeState = formatMappingRow(existingRes.rows[0]);
+
+    const result = await tx.query(
+      `UPDATE external_course_mappings
+       SET status = $1,
+           notes = COALESCE($2, notes),
+           updated_by = $3,
+           source_updated_at = GREATEST(source_updated_at, NOW())
+       WHERE id = $4
+       RETURNING *`,
+      [normalizedStatus, normalizedNotes, parsedActorId, mappingId],
+    );
+    const updated = formatMappingRow({
+      ...result.rows[0],
+      local_course_title: existingRes.rows[0].local_course_title,
+      local_course_slug: existingRes.rows[0].local_course_slug,
+    });
+    await recordAudit({
+      db: tx,
+      actorId: parsedActorId,
+      action: "integration.course_mapping_status_updated",
+      entityType: "external_course_mapping",
+      entityId: updated.id,
+      beforeState,
+      afterState: updated,
+      metadata: {
+        ...auditMetadata,
+        status: updated.status,
+      },
+    });
+    return updated;
+  });
 };
 
 /**
@@ -459,16 +535,7 @@ export const ingestEntitlementWithFreshnessGuard = async (db = defaultDb, input 
       revokedAt: revokedAt ? revokedAt.toISOString() : null,
       revokeReason, sourceUpdatedAt: sourceUpdatedAt.toISOString(), metadata,
     };
-    // JSON object key order must not turn a semantically identical retry into a conflict.
-    const canonicalJson = (value) => {
-      if (Array.isArray(value)) return value.map(canonicalJson);
-      if (value && typeof value === "object") {
-        return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalJson(value[key])]));
-      }
-      return value;
-    };
-    const payloadHash = crypto.createHash("sha256")
-      .update(JSON.stringify(canonicalJson(payload))).digest("hex");
+    const payloadHash = canonicalHashPayload(payload);
 
     return runWithTransaction.bind(null, db)(async (tx) => {
       const inserted = await tx.query(

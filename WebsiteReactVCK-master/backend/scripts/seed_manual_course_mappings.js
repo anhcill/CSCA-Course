@@ -7,13 +7,16 @@ import { upsertManualCourseMapping } from "../services/externalCourseMapping.ser
  * Explicitly applies operator-verified manual course mappings from a JSON array file.
  * Never infers mappings by course title or slug.
  */
-export const applyManualMappingsFromList = async (db, entries = []) => {
+export const applyManualMappingsFromList = async (db, entries = [], auditOptions = {}) => {
   if (!Array.isArray(entries)) {
     throw new Error("Mapping file must contain a JSON array of manual mapping definitions.");
   }
   const results = [];
   for (const entry of entries) {
-    results.push(await upsertManualCourseMapping(db, entry));
+    results.push(await upsertManualCourseMapping(db, entry, {
+      auditMetadata: { via: "cli_seed" },
+      ...auditOptions,
+    }));
   }
   return results;
 };

@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import path from "path";
 import { pool } from "./db/connect.js";
 import { processAvailableManagementSyncJobs } from "./services/managementSync.service.js";
+import { processAvailableMolyInboxJobs } from "./services/molyIntegration.service.js";
 import { processAvailableManagementAttendanceDeliveries } from "./services/managementAttendanceDelivery.service.js";
 import { processAvailableManagementCalendarDeliveries } from "./services/managementCalendarDelivery.service.js";
 import { processAssignmentDeadlineReminders } from "./services/assignmentDeadlineNotification.service.js";
@@ -46,11 +47,12 @@ const main = async () => {
       if (shouldProcessDeadlines) nextDeadlineReminderAt = Date.now() + deadlineReminderPollMs;
       const shouldProcessQuizCloseReports = quizCloseReportEmailEnabled && Date.now() >= nextQuizCloseReportAt;
       if (shouldProcessQuizCloseReports) nextQuizCloseReportAt = Date.now() + quizCloseReportPollMs;
-      const [incomingResults, attendanceResults, calendarResults, announcementResults] = await Promise.all([
+      const [incomingResults, attendanceResults, calendarResults, announcementResults, molyInboxResults] = await Promise.all([
         processAvailableManagementSyncJobs({ workerId, limit: batchSize }),
         processAvailableManagementAttendanceDeliveries({ workerId, limit: batchSize }),
         processAvailableManagementCalendarDeliveries({ workerId, limit: batchSize }),
         processScheduledClassAnnouncements({ limit: batchSize }),
+        processAvailableMolyInboxJobs({ workerId, limit: batchSize }),
       ]);
       const deadlineResult = shouldProcessDeadlines ? await processAssignmentDeadlineReminders() : null;
       const expiredQuizAttemptResult = await processExpiredQuizAttempts({ limit: Math.max(100, batchSize * 10) });
@@ -59,6 +61,7 @@ const main = async () => {
         : null;
       const results = [
         ...incomingResults,
+        ...molyInboxResults.map((entry) => ({ status: `moly_${entry.status}` })),
         ...attendanceResults,
         ...calendarResults,
         ...announcementResults.filter((result) => result.delivered).map(() => ({ status: "announcements", count: 1 })),

@@ -10,6 +10,11 @@ import {
   updateCourseMappingStatus,
   upsertManualCourseMapping,
 } from "../services/externalCourseMapping.service.js";
+import {
+  linkExternalIdentityManually,
+  listIntegrationConflicts,
+  resolveIntegrationConflict,
+} from "../services/molyIntegration.service.js";
 
 const sendError = (res, error) => {
   if (error instanceof ExternalIntegrationError) {
@@ -77,24 +82,20 @@ export const createExternalCourseMappingRouter = ({
 
   router.post("/course-mappings", ...guard, async (req, res) => {
     try {
-      const mapping = await upsertManualCourseMapping(db, {
-        ...req.body,
-        actorId: req.user?.id ?? null,
-      });
-      await recordAudit({
+      const mapping = await upsertManualCourseMapping(
         db,
-        actorId: req.user?.id ?? null,
-        action: "integration.course_mapping_upserted",
-        entityType: "external_course_mapping",
-        entityId: mapping.id,
-        afterState: mapping,
-        metadata: {
-          ip: req.ip || null,
-          sourceSystem: mapping.sourceSystem,
-          externalCourseId: mapping.externalCourseId,
-          localCourseId: mapping.localCourseId,
+        {
+          ...req.body,
+          actorId: req.user?.id ?? null,
         },
-      });
+        {
+          recordAudit,
+          auditMetadata: {
+            ip: req.ip || null,
+            via: "admin_api",
+          },
+        },
+      );
       return res.status(201).json({
         success: true,
         data: mapping,
@@ -107,25 +108,76 @@ export const createExternalCourseMappingRouter = ({
 
   router.patch("/course-mappings/:id/status", ...guard, async (req, res) => {
     try {
-      const updated = await updateCourseMappingStatus(db, {
-        id: req.params.id,
-        status: req.body?.status,
-        notes: req.body?.notes,
-        actorId: req.user?.id ?? null,
-      });
-      await recordAudit({
+      const updated = await updateCourseMappingStatus(
         db,
-        actorId: req.user?.id ?? null,
-        action: "integration.course_mapping_status_updated",
-        entityType: "external_course_mapping",
-        entityId: updated.id,
-        afterState: updated,
-        metadata: {
-          ip: req.ip || null,
-          status: updated.status,
+        {
+          id: req.params.id,
+          status: req.body?.status,
+          notes: req.body?.notes,
+          actorId: req.user?.id ?? null,
         },
-      });
+        {
+          recordAudit,
+          auditMetadata: {
+            ip: req.ip || null,
+            via: "admin_api",
+          },
+        },
+      );
       return res.json({ success: true, data: updated });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  router.get("/conflicts", ...guard, async (req, res) => {
+    try {
+      const items = await listIntegrationConflicts(db, {
+        sourceSystem: req.query.sourceSystem,
+        status: req.query.status,
+        limit: req.query.limit,
+      });
+      return res.json({ success: true, data: items });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  router.post("/conflicts/:id/resolve", ...guard, async (req, res) => {
+    try {
+      const result = await resolveIntegrationConflict(
+        db,
+        {
+          conflictId: req.params.id,
+          action: req.body?.action,
+          targetUserId: req.body?.targetUserId,
+          resolutionNote: req.body?.resolutionNote,
+          replayInbox: req.body?.replayInbox !== false,
+          actorId: req.user?.id ?? null,
+        },
+        { recordAudit },
+      );
+      return res.json({ success: true, data: result });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  router.post("/identities/link", ...guard, async (req, res) => {
+    try {
+      const result = await linkExternalIdentityManually(
+        db,
+        {
+          sourceSystem: req.body?.sourceSystem || "moly",
+          externalUserId: req.body?.externalUserId,
+          targetUserId: req.body?.targetUserId,
+          status: req.body?.status || "active",
+          sourceUpdatedAt: req.body?.sourceUpdatedAt || new Date(),
+          actorId: req.user?.id ?? null,
+        },
+        { recordAudit },
+      );
+      return res.status(200).json({ success: true, data: result });
     } catch (error) {
       return sendError(res, error);
     }
