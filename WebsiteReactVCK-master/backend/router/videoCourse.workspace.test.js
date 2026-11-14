@@ -610,18 +610,18 @@ test("video course workspace: multipart units require every video part >=60% plu
   assert.equal(ws.units[0].isQuizCompleted, false);
   assert.equal(ws.units[1].isLocked, true, "Session 2 must remain locked until Quiz 1 is completed");
 
-  // Step 4: Learner submits Quiz 1 -> Session 1 is fully completed and Session 2 unlocks!
+  // Step 4: Legacy attempts without a Record profile still unlock the matching course.
   await db.query(
-    `INSERT INTO quiz_attempts(quiz_id,user_id,video_course_profile_id,score,max_score,status,submitted_at)
-     VALUES ($1,$2,$3,9,10,'submitted',NOW())`,
-    [quiz1.id, student.id, videoProfile.id],
+    `INSERT INTO quiz_attempts(quiz_id,user_id,score,max_score,status,submitted_at)
+     VALUES ($1,$2,9,10,'submitted',NOW())`,
+    [quiz1.id, student.id],
   );
 
   ws = await fetchWorkspace();
   assert.equal(ws.units[0].isVideoCompleted, true);
   assert.equal(ws.units[0].isQuizCompleted, true);
   assert.equal(ws.units[0].isCompleted, true);
-  assert.equal(ws.units[1].isLocked, false, "Session 2 must unlock after >=60% watch time AND quiz completion");
+  assert.equal(ws.units[1].isLocked, false, "Session 2 must accept legacy unscoped quiz completion");
 
   // Step 5: Admin access -> All units are unlocked regardless of watch time or quizzes
   const adminWs = await fetchWorkspace(session2.id, {

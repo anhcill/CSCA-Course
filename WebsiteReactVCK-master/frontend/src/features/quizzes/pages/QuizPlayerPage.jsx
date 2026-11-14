@@ -952,10 +952,19 @@ export default function QuizPlayerPage() {
               )}
               <button
                 type="button"
-                onClick={() => (backUrl ? navigate(backUrl) : courseId && classId ? navigate(`/lms/courses/${courseId}/classes/${classId}/assignments`) : navigate('/lms/assignments'))}
+                onClick={() => (backUrl
+                  ? navigate(backUrl, {
+                      state: {
+                        assessmentCompleted: true,
+                        completedQuizId: String(quizId),
+                      },
+                    })
+                  : courseId && classId
+                    ? navigate(`/lms/courses/${courseId}/classes/${classId}/assignments`)
+                    : navigate('/lms/assignments'))}
                 className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors shadow-sm"
               >
-                {backUrl ? 'Quay lại bài giảng video' : 'Quay lại danh sách bài tập'}
+                {backUrl ? 'Tiếp tục khóa học' : 'Quay lại danh sách bài tập'}
               </button>
             </div>
           </div>

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import { enterAssessmentFullscreen } from "../../../utils/assessmentDisplay.js";
 import toast from "react-hot-toast";
 import {
@@ -201,7 +201,9 @@ const recomputeSequentialLocks = (rawUnits = [], previewOnly = false, isAdminOrT
 
 export default function VideoCourseWorkspacePage() {
   const { offeringId, unitId: paramUnitId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
+  const handledAssessmentCompletionRef = useRef(false);
   const { authUser } = useAuthContext();
   const { isDarkMode } = useTheme();
 
@@ -454,6 +456,25 @@ export default function VideoCourseWorkspacePage() {
   const nextUnit = currentIndex >= 0 && currentIndex < (workspaceData?.units?.length || 0) - 1
     ? workspaceData?.units[currentIndex + 1]
     : null;
+
+  useEffect(() => {
+    if (!location.state?.assessmentCompleted || handledAssessmentCompletionRef.current || loading || !workspaceData) return;
+
+    handledAssessmentCompletionRef.current = true;
+    if (activeUnitMeta?.isCompleted && nextUnit && !nextUnit.isLocked) {
+      toast.success("Đã hoàn thành bài học. Đang mở bài tiếp theo...");
+      navigate(`/video-courses/${offeringId}/units/${nextUnit.id}`, {
+        replace: true,
+        state: null,
+      });
+      return;
+    }
+
+    navigate(`${location.pathname}${location.search}`, {
+      replace: true,
+      state: null,
+    });
+  }, [activeUnitMeta?.isCompleted, loading, location.pathname, location.search, location.state, navigate, nextUnit, offeringId, workspaceData]);
 
   // Filter units by search
   const filteredUnits = useMemo(() => {
