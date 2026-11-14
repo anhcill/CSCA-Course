@@ -382,3 +382,26 @@ Emitted / stored in `integration_conflicts` whenever linking cannot be performed
   }
 }
 ```
+
+
+---
+
+## Day 2 Implementation Notes (CSCA-Course)
+
+- **Additive migration**: `database/migrations/080_moly_external_access_bridge.sql` adds `local_video_course_profile_id` / `local_live_class_id` scoping to `external_entitlements` and isolated partial unique indexes + `external_entitlement_id` / `enrollment_source` / `video_course_profile_id` columns on `class_enrollments`.
+- **Signed webhook & read routes** (`/api/integrations/v1` via `backend/router/molyIntegration.router.js`):
+  - `POST /api/integrations/v1/users/provision`
+  - `POST /api/integrations/v1/entitlements/grant`
+  - `POST /api/integrations/v1/entitlements/revoke`
+  - `POST /api/integrations/v1/ownership/query`
+  - `POST /api/integrations/v1/moly/events/status` (signed read helper to inspect `integration_inbox` delivery state by `event_id` or `idempotency_key`)
+- **Admin conflict & identity mapping endpoints** (`/api/admin/integrations` via `backend/router/externalCourseMapping.router.js`):
+  - `GET /api/admin/integrations/conflicts`
+  - `POST /api/admin/integrations/conflicts/:conflictId/resolve`
+  - `POST /api/admin/integrations/identities/link`
+- **Background worker**: `backend/worker.js` polls `processAvailableMolyInboxJobs()` on the worker interval with `FOR UPDATE SKIP LOCKED`, lease recovery, exponential backoff retry, `dead_letter` transition, and `integration_conflicts` quarantine.
+- **Environment variables (names only)**:
+  - `MOLY_INTEGRATION_SERVICE_TOKEN`
+  - `MOLY_INTEGRATION_KEY`
+  - `MOLY_INTEGRATION_HMAC_SECRET`
+  - `MOLY_INTEGRATION_MAX_AGE_SECONDS` (default `300`)
