@@ -21,6 +21,7 @@ import teacherRouter from "./router/teacher.router.js";
 import adminRouter from "./router/admin.router.js";
 import managementIntegrationRouter from "./router/managementIntegration.router.js";
 import platformAdminRouter from "./router/platformAdmin.router.js";
+import externalCourseMappingRouter from "./router/externalCourseMapping.router.js";
 import orchestrationRouter from "./router/orchestration.router.js";
 import fileRouter from "./router/file.router.js";
 import adminCalendarRouter from "./router/adminCalendar.router.js";
@@ -110,6 +111,7 @@ app.use(cookieParser());
 app.use("/api/health", healthRouter);
 
 app.use("/api/integrations/v1", managementIntegrationRouter);
+app.use("/api/v1/admin/integrations", externalCourseMappingRouter);
 app.use("/api/v1/admin", platformAdminRouter);
 app.use("/api/v1/application-orchestration", orchestrationRouter);
 app.use("/api/auth", userRouter);
