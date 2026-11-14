@@ -112,4 +112,3 @@ Moly implementation remains at Day 1; Day 2 implementation is in Course.
 
 Only Codex review fixes/tests/docs are committed. Existing unrelated frontend edits
 and untracked Moly planning/report files are preserved. Commits remain local.
-

@@ -388,6 +388,10 @@ Emitted / stored in `integration_conflicts` whenever linking cannot be performed
 
 ## Day 2 Implementation Notes (CSCA-Course)
 
+- Ownership is effective access, not a purchase-eligibility flag. For profile mappings,
+  `owned` also requires an active profile, matching Record membership and no admin
+  profile revocation. A blocked learner can have `owned=false` with a retained active
+  grant; do not charge again solely because `owned` is false.
 - **Additive migration**: `database/migrations/080_moly_external_access_bridge.sql` adds `local_video_course_profile_id` / `local_live_class_id` scoping to `external_entitlements` and isolated partial unique indexes + `external_entitlement_id` / `enrollment_source` / `video_course_profile_id` columns on `class_enrollments`.
 - **Signed webhook & read routes** (`/api/integrations/v1` via `backend/router/molyIntegration.router.js`):
   - `POST /api/integrations/v1/users/provision`
