@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Users,
   ShieldCheck,
+  ExternalLink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
@@ -31,6 +32,7 @@ import { getAvatarUrl, handleAvatarError } from '../utils/avatar';
 import NotificationBell from '../features/notifications/components/NotificationBell';
 import { hasStudentLmsAccess } from '../utils/lmsAccess';
 import { getSafeAuthReturnPath } from '../utils/lmsNavigation';
+import { launchMolySso } from '../features/api/ssoClient';
 
 /* ══════════════════════════════════════════════════════════════
    ROLE-BASED NAVIGATION CONFIG
@@ -86,6 +88,25 @@ const Navbar = () => {
   const [authReturnTo, setAuthReturnTo] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isNavbarVisible, setIsNavbarVisible] = useState(true);
+  const [launchingMoly, setLaunchingMoly] = useState(false);
+
+  const handleOpenMolyStudio = async () => {
+    if (launchingMoly) return;
+    setLaunchingMoly(true);
+    try {
+      const result = await launchMolySso({ targetPath: '/khoa-hoc' });
+      const parsed = new URL(result?.launchUrl || '');
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        window.location.assign(parsed.toString());
+        return;
+      }
+      toast.error('Liên kết mở Moly Studio không hợp lệ.');
+    } catch (err) {
+      toast.error(err?.message || 'Không thể kết nối tới Moly Studio.');
+    } finally {
+      setLaunchingMoly(false);
+    }
+  };
   const lastScrollY = useRef(0);
 
   // Auto-hide on scroll
@@ -256,6 +277,16 @@ const Navbar = () => {
                             <GraduationCap className="h-3.5 w-3.5" /> Vào LMS học viên
                           </Link>
                         )}
+                        {authUser && !isTeacher(authUser) && !isAdmin(authUser) && (
+                          <button
+                            type="button"
+                            disabled={launchingMoly}
+                            onClick={handleOpenMolyStudio}
+                            className="flex w-full items-center gap-2 rounded-xl px-4 py-2.5 text-left text-xs font-bold text-sky-700 hover:bg-sky-50 disabled:opacity-60 dark:text-sky-300 dark:hover:bg-white/10"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" /> {launchingMoly ? 'Đang chuyển sang Moly...' : 'Mở Moly Studio'}
+                          </button>
+                        )}
 
                         {/* Teacher links - chi creator va admin */}
                         {isTeacher(authUser) && (
@@ -390,6 +421,17 @@ const Navbar = () => {
                       <span aria-hidden="true">→</span>
                     </Link>
                   </>
+                )}
+                {authUser && !isTeacher(authUser) && !isAdmin(authUser) && (
+                  <button
+                    type="button"
+                    disabled={launchingMoly}
+                    onClick={handleOpenMolyStudio}
+                    className="mt-1 flex w-full items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm font-bold text-sky-800 transition hover:bg-sky-100 disabled:opacity-60 dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-200"
+                  >
+                    <span className="flex items-center gap-3"><ExternalLink className="h-4 w-4" /> {launchingMoly ? 'Đang chuyển sang Moly...' : 'Mở Moly Studio'}</span>
+                    <span aria-hidden="true">→</span>
+                  </button>
                 )}
 
                 {/* Teacher links - chi teacher/admin */}

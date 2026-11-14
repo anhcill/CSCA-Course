@@ -1,4 +1,5 @@
 import { query } from "../db/connect.js";
+import { EXTERNAL_LMS_ACCESS_EXISTS_SQL } from "../services/externalEntitlementAccess.service.js";
 
 const STUDENT_PROFILE_FIELDS = [
   "fullName",
@@ -59,6 +60,7 @@ export const toUserDto = (row, extras = {}) => {
     isLocked: Boolean(row.is_locked),
     isManagementManaged: Boolean(row.is_management_managed),
     lmsAccountStatus: row.lms_account_status ?? "unmanaged",
+    hasExternalLmsAccess: Boolean(row.has_external_lms_access),
     isInternalTestAccount: Boolean(row.is_internal_test_account),
     welcomeSeenAt: row.welcome_seen_at ?? null,
     hasSeenWelcome: Boolean(row.welcome_seen_at),
@@ -84,6 +86,7 @@ export const getUserDtoById = async (userId, db = { query }) => {
             u.welcome_seen_at,
             u.is_vip, u.vip_expires_at, u.email_verified, u.is_locked, u.oauth_provider,
             u.is_management_managed, u.lms_account_status, u.is_internal_test_account,
+            (${EXTERNAL_LMS_ACCESS_EXISTS_SQL("u.id")}) AS has_external_lms_access,
             u.password_hash, u.created_at, u.updated_at,
             u.management_display_name,
             u.external_student_id,

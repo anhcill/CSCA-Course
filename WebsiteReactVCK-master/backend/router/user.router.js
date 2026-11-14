@@ -23,6 +23,7 @@ import {
 import protectRoute from "../middleware/protectRoute.js";
 import requireAdmin from "../middleware/requireAdmin.js";
 import { createRateLimiter } from "../middleware/security.js";
+import ssoRouter from "./sso.router.js";
 
 const router = express.Router();
 export const accountRouter = express.Router();
@@ -60,6 +61,7 @@ router.post("/welcome-seen", protectRoute, markWelcomeSeen);
 router.post("/me/welcome-seen", protectRoute, markWelcomeSeen);
 router.patch("/me/welcome-seen", protectRoute, markWelcomeSeen);
 router.get("/welcome-settings", getWelcomeScreenSettings);
+router.use("/sso", ssoRouter);
 
 // Admin routes
 router.get("/", protectRoute, requireAdmin, getAllUsers);

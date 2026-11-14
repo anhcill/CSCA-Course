@@ -80,6 +80,11 @@ validateEnvironment();
 app.disable("x-powered-by");
 app.set("trust proxy", process.env.TRUST_PROXY === "true");
 app.use(securityHeaders);
+app.use("/sso/callback", (_req, res, next) => {
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store, private");
+  next();
+});
 
 // Keep the root domain on the same canonical host as the sitemap and page metadata.
 app.use((req, res, next) => {
@@ -181,7 +186,12 @@ if (process.env.NODE_ENV === "production") {
   app.get("*", (req, res) => {
     const renderedHtml = renderHtmlWithSeo(indexPath, req.originalUrl || req.url);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
+    if (req.path === "/sso/callback") {
+      res.setHeader("Referrer-Policy", "no-referrer");
+      res.setHeader("Cache-Control", "no-store, private");
+    } else {
+      res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
+    }
     res.send(renderedHtml);
   });
 }

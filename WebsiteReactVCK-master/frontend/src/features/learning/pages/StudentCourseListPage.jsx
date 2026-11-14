@@ -5,6 +5,7 @@ import {
   BookOpen,
   CheckCircle2,
   Compass,
+  ExternalLink,
   GraduationCap,
   RefreshCw,
   Search,
@@ -14,7 +15,9 @@ import {
 } from "lucide-react";
 import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
+import { useAuthContext } from "../../../context/AuthContext";
 import { fetchMyEnrolledCourses } from "../../api/lmsClient";
+import { launchMolySso } from "../../api/ssoClient";
 import { getClassCoverImage } from "../../../utils/classWallpapers";
 import { isRecordingMode } from "../utils/learningMode.js";
 
@@ -51,11 +54,31 @@ const matchesSearch = (course, keyword) => {
 
 export default function StudentCourseListPage() {
   const location = useLocation();
+  const { authUser } = useAuthContext();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [launchingMoly, setLaunchingMoly] = useState(false);
+
+  const handleOpenMolyStudio = async () => {
+    if (launchingMoly) return;
+    setLaunchingMoly(true);
+    try {
+      const result = await launchMolySso({ targetPath: "/khoa-hoc" });
+      const parsed = new URL(result?.launchUrl || "");
+      if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+        window.location.assign(parsed.toString());
+        return;
+      }
+      setError("Liên kết mở Moly Studio không hợp lệ.");
+    } catch (err) {
+      setError(err?.message || "Không thể kết nối tới Moly Studio.");
+    } finally {
+      setLaunchingMoly(false);
+    }
+  };
 
   const loadCourses = useCallback(async () => {
     setLoading(true);
@@ -108,10 +131,23 @@ export default function StudentCourseListPage() {
     <div className="min-h-full px-3 pb-12 pt-3 sm:px-5 lg:px-6">
       <div className="mx-auto max-w-[1480px]">
         <section className="relative min-h-[178px] overflow-hidden px-3 py-5 sm:px-5">
-          <div className="relative z-10 max-w-xl">
-            <p className="font-['Dancing_Script',cursive] text-[44px] font-bold leading-none text-[#102f63] sm:text-[52px] dark:text-sky-200">Khóa học</p>
-            <p className="mt-3 text-sm font-semibold italic text-[#244866] dark:text-slate-300">“Học không chỉ để biết, mà để trưởng thành.”</p>
-            <p className="mt-2 font-['Ma_Shan_Zheng',cursive] text-xl text-[#17365f] dark:text-sky-400">学而不止 · 行而致远</p>
+          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="max-w-xl">
+              <p className="font-['Dancing_Script',cursive] text-[44px] font-bold leading-none text-[#102f63] sm:text-[52px] dark:text-sky-200">Khóa học</p>
+              <p className="mt-3 text-sm font-semibold italic text-[#244866] dark:text-slate-300">“Học không chỉ để biết, mà để trưởng thành.”</p>
+              <p className="mt-2 font-['Ma_Shan_Zheng',cursive] text-xl text-[#17365f] dark:text-sky-400">学而不止 · 行而致远</p>
+            </div>
+            {(!authUser?.role || authUser.role === "user") && (
+              <button
+                type="button"
+                onClick={handleOpenMolyStudio}
+                disabled={launchingMoly}
+                className="inline-flex w-fit items-center gap-2 rounded-xl border border-sky-200 bg-white/90 px-4 py-2.5 text-xs font-black text-sky-800 shadow-sm transition hover:bg-sky-50 disabled:opacity-60 dark:border-sky-800/60 dark:bg-slate-900/90 dark:text-sky-200 dark:hover:bg-slate-800"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                {launchingMoly ? "Đang chuyển sang Moly Studio..." : "Mở Moly Studio"}
+              </button>
+            )}
           </div>
         </section>
 

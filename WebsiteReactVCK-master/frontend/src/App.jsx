@@ -19,6 +19,7 @@ const Schedule = lazy(() => import("./pages/client/Schedule.jsx"));
 const SelectCourse = lazy(() => import("./pages/client/SelectCourse.jsx"));
 const SelectLevel = lazy(() => import("./pages/client/SelectLevel.jsx"));
 const PoliceAndLegal = lazy(() => import("./pages/client/PoliceAndLegal.jsx"));
+const SsoCallbackPage = lazy(() => import("./features/auth/pages/SsoCallbackPage.jsx"));
 
 // Admin pages
 
@@ -146,6 +147,7 @@ function AppRoutes({ pathname }) {
       <Route path="/post" element={<Post />} />
       <Route path="/about" element={<About />} />
       <Route path="/policy-and-legal" element={<PoliceAndLegal />} />
+      <Route path="/sso/callback" element={<SsoCallbackPage />} />
       <Route path="/post/:id" element={<PostDetail />} />
       <Route path="/detail-course/:id" element={<ProtectedRoute><DetailCourse /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />

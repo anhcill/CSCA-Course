@@ -594,24 +594,49 @@ export default function VideoCourseWorkspacePage() {
   }
 
   if (errorMessage && !workspaceData) {
-    const isAccessError = [
+    const isRevokedError = errorCode === "VIDEO_COURSE_ACCESS_REVOKED";
+    const isDeviceLimitError = [
+      "DEVICE_LIMIT_REACHED",
+      "ACCOUNT_LOCKED_DEVICE_LIMIT",
+    ].includes(errorCode);
+    const isAccessError = isRevokedError || [
       "VIDEO_COURSE_ACCESS_REQUIRED",
       "LMS_ACCESS_INACTIVE",
       "ENTITLEMENT_INACTIVE",
       "RECORD_MEMBERSHIP_REQUIRED",
     ].includes(errorCode);
+    const title = isRevokedError
+      ? "Quyền học khóa học đã bị thu hồi"
+      : isDeviceLimitError
+        ? "Vượt giới hạn thiết bị tin cậy"
+        : isAccessError
+          ? "Bạn chưa được cấp quyền học khóa này"
+          : "Không thể mở không gian học video";
+    const message = isRevokedError
+      ? "Quyền truy cập khóa học video này đã bị thu hồi hoặc hoàn tiền. Nếu bạn cần kiểm tra lại giao dịch, hãy liên hệ Moly Studio hoặc Zalo hỗ trợ."
+      : isDeviceLimitError
+        ? errorMessage
+        : isAccessError
+          ? "Khóa học này chưa được mở cho tài khoản của bạn. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙"
+          : errorMessage;
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] p-6 dark:bg-slate-950">
         <div className="w-full max-w-3xl">
           <ErrorState
-            title={isAccessError ? "Bạn chưa được cấp quyền học khóa này" : "Không thể mở không gian học video"}
-            message={isAccessError
-              ? "Khóa học này chưa được mở cho tài khoản của bạn. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙"
-              : errorMessage}
-            onRetry={isAccessError ? undefined : () => loadWorkspace(activeUnitId)}
+            title={title}
+            message={message}
+            onRetry={isAccessError || isDeviceLimitError ? undefined : () => loadWorkspace(activeUnitId)}
           />
-          {isAccessError && (
-            <div className="mt-4 flex justify-center">
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            {isDeviceLimitError && (
+              <Link
+                to="/profile"
+                className="inline-flex items-center rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-amber-600/20 transition hover:bg-amber-500"
+              >
+                Kiểm tra thiết bị &amp; Hồ sơ
+              </Link>
+            )}
+            {(isAccessError || isDeviceLimitError) && (
               <a
                 href="https://zalo.me/0812352005"
                 target="_blank"
@@ -620,8 +645,16 @@ export default function VideoCourseWorkspacePage() {
               >
                 Liên hệ Zalo 0812352005
               </a>
-            </div>
-          )}
+            )}
+            {(isAccessError || isDeviceLimitError) && (
+              <Link
+                to="/lms/dashboard"
+                className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                Về LMS học viên
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     );

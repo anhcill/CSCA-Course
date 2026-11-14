@@ -13,6 +13,7 @@ import {
   parseRevokeWirePayload,
   queryCourseOwnershipForMoly,
 } from "../services/molyIntegration.service.js";
+import { createMolySsoService } from "../services/molySso.service.js";
 
 const sendError = (res, error, correlationId = null) => {
   if (error instanceof ExternalIntegrationError) {
@@ -42,6 +43,7 @@ export const createMolyIntegrationRouter = ({
   db = { query, getClient },
   verifyMutation = requireMolyIntegration,
   verifyRead = requireMolyReadIntegration,
+  ssoService = createMolySsoService({ db }),
 } = {}) => {
   const router = express.Router();
 
@@ -106,6 +108,64 @@ export const createMolyIntegrationRouter = ({
         data: rows,
       });
     } catch (error) {
+      return sendError(res, error, correlationId);
+    }
+  });
+
+  router.post("/sso/exchange", verifyRead, async (req, res) => {
+    const correlationId = req.molyIntegration?.correlationId || req.headers["x-correlation-id"] || null;
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    try {
+      const data = await ssoService.exchangeCourseSsoCode({
+        code: typeof req.body?.code === "string" ? req.body.code.trim() : "",
+        nonce: typeof req.body?.nonce === "string" ? req.body.nonce.trim() : "",
+        consumerSystem: typeof req.body?.consumer_system === "string" ? req.body.consumer_system.trim() : "moly",
+        consumeIp: typeof req.body?.consume_ip === "string" ? req.body.consume_ip.trim() : null,
+        correlationId,
+      });
+      return res.status(200).json({
+        success: true,
+        correlation_id: data.correlation_id || correlationId,
+        data,
+      });
+    } catch (error) {
+      if (error?.status) {
+        return res.status(error.status).json({
+          success: false,
+          errorCode: error.code || error.errorCode || "SSO_EXCHANGE_FAILED",
+          message: error.message,
+          correlation_id: correlationId,
+        });
+      }
+      return sendError(res, error, correlationId);
+    }
+  });
+
+  router.post("/sso/bind-identity", verifyRead, async (req, res) => {
+    const correlationId = req.molyIntegration?.correlationId || req.headers["x-correlation-id"] || null;
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const data = await ssoService.bindPeerIdentityFromMoly({
+        externalUserId: req.body?.external_user_id,
+        targetUserId: req.body?.target_user_id,
+        email: req.body?.email ?? null,
+        correlationId,
+      });
+      return res.status(200).json({
+        success: true,
+        correlation_id: correlationId,
+        data,
+      });
+    } catch (error) {
+      if (error?.status) {
+        return res.status(error.status).json({
+          success: false,
+          errorCode: error.code || error.errorCode || "SSO_BIND_FAILED",
+          message: error.message,
+          correlation_id: correlationId,
+        });
+      }
       return sendError(res, error, correlationId);
     }
   });
