@@ -13,7 +13,7 @@ export const isVideoCourseProfileAccessRevoked = async ({ db, userId, profileId 
 // Bunny playback requests carry course/unit context rather than the admin
 // offering id. Access remains valid when the learner has any matching,
 // unrevoked Record profile for that unit.
-export const hasUnrevokedVideoCourseAccess = async ({ db, userId, courseId, liveClassId = null }) => {
+export const hasUnrevokedVideoCourseAccess = async ({ db, userId, courseId, liveClassId = null, profileId = null }) => {
   if (!userId || !courseId) return false;
   const result = await db.query(
     `SELECT 1
@@ -21,6 +21,7 @@ export const hasUnrevokedVideoCourseAccess = async ({ db, userId, courseId, live
      WHERE vcp.course_id = $2
        AND vcp.status = 'active'
        AND ($3::bigint IS NULL OR vcp.source_live_class_id = $3)
+       AND ($4::bigint IS NULL OR vcp.id = $4)
        AND NOT EXISTS (
          SELECT 1
          FROM video_course_access_revocations revoked
@@ -35,20 +36,21 @@ export const hasUnrevokedVideoCourseAccess = async ({ db, userId, courseId, live
            ON alias.id = ce.management_class_alias_id AND alias.status = 'active'
          WHERE ce.user_id = $1
            AND ce.status = 'active'
+           AND (ce.video_course_profile_id IS NULL OR ce.video_course_profile_id = vcp.id)
            AND (
-             (vcp.mode = 'MIRROR' AND ce.live_class_id = vcp.source_live_class_id)
+             (vcp.mode = 'MIRROR' AND (ce.live_class_id = vcp.source_live_class_id OR ce.video_course_profile_id = vcp.id))
              OR
              (vcp.mode = 'INDEPENDENT' AND ce.learning_mode = 'recording' AND (
-               (vcp.management_class_id IS NOT NULL
+               ce.video_course_profile_id = vcp.id
+               OR (ce.video_course_profile_id IS NULL AND vcp.management_class_id IS NOT NULL
                  AND LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id))
-               OR
-               (vcp.management_class_id IS NULL
+               OR (ce.video_course_profile_id IS NULL AND vcp.management_class_id IS NULL
                  AND (ce.course_id = vcp.course_id OR lc.course_id = vcp.course_id))
              ))
            )
        )
      LIMIT 1`,
-    [userId, courseId, liveClassId],
+    [userId, courseId, liveClassId, profileId],
   );
   return Boolean(result.rows[0]);
 };

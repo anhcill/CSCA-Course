@@ -2,6 +2,10 @@ import express from "express";
 import { getClient, query, pool } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
+import {
+  hasEffectiveCourseEntitlement,
+  resolveEffectiveStudentLmsAccess,
+} from "../services/externalEntitlementAccess.service.js";
 import { awardXp, XP_VALUES } from "../services/gamification.service.js";
 
 const router = express.Router();
@@ -37,15 +41,14 @@ const ensureLessonAccess = async (lessonId, courseId, user) => {
   if (user.role === "creator" && String(lesson.author_id) !== String(user.id)) return { status: 403 };
 
   if (user.role === "user") {
-    if (!hasActiveStudentLmsAccess(user)) return { status: 403, reason: "LMS_ACCESS_NOT_GRANTED" };
+    if (!(await resolveEffectiveStudentLmsAccess({ user, db: { query } }))) return { status: 403, reason: "LMS_ACCESS_NOT_GRANTED" };
     if (!lesson.is_published || !lesson.course_is_published) return { status: 404 };
-    const enrollmentResult = await query(
-      `SELECT 1 FROM lms_access_grants
-       WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
-         AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())`,
-      [user.id, courseId],
-    );
-    if (enrollmentResult.rows.length === 0) return { status: 403 };
+    const hasGrant = await hasEffectiveCourseEntitlement({
+      db: { query },
+      userId: user.id,
+      courseId,
+    });
+    if (!hasGrant) return { status: 403 };
   }
 
   return { status: 200 };
@@ -63,16 +66,15 @@ router.get("/course/:courseId", protectRoute, async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy khóa học", errorCode: "NOT_FOUND" });
     }
     if (req.user.role === "user") {
-      if (!hasActiveStudentLmsAccess(req.user)) {
+      if (!(await resolveEffectiveStudentLmsAccess({ user: req.user, db: { query } }))) {
         return res.status(403).json({ success: false, message: "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực", errorCode: "LMS_ACCESS_NOT_GRANTED" });
       }
-      const enrollmentResult = await query(
-        `SELECT 1 FROM lms_access_grants
-         WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
-           AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())`,
-        [userId, courseId],
-      );
-      if (enrollmentResult.rows.length === 0) {
+      const hasGrant = await hasEffectiveCourseEntitlement({
+        db: { query },
+        userId,
+        courseId,
+      });
+      if (!hasGrant) {
         return res.status(403).json({ success: false, message: "Bạn chưa đăng ký khóa học này", errorCode: "FORBIDDEN" });
       }
     }
@@ -259,7 +261,7 @@ router.delete("/notes/:noteId", protectRoute, async (req, res) => {
     const userId = req.user.id;
     const { noteId } = req.params;
 
-    if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
+    if (req.user.role === "user" && !(await resolveEffectiveStudentLmsAccess({ user: req.user, db: { query } }))) {
       return res.status(403).json({ success: false, message: "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực", errorCode: "LMS_ACCESS_NOT_GRANTED" });
     }
 

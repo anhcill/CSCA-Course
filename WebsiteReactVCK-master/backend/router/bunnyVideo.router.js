@@ -19,6 +19,10 @@ import {
 } from "../services/bunnyStream.service.js";
 import { generateLearningFileUploadPresignedUrl } from "../services/video.service.js";
 import { hasUnrevokedVideoCourseAccess } from "../services/videoCourseAccessRevocation.service.js";
+import {
+  hasEffectiveCourseEntitlement,
+  resolveEffectiveStudentLmsAccess,
+} from "../services/externalEntitlementAccess.service.js";
 
 const router = express.Router();
 
@@ -70,7 +74,7 @@ export const verifyLearnerVideoAccess = async ({
     return { allowed: true };
   }
 
-  if (!hasActiveStudentLmsAccess(user)) {
+  if (!(await resolveEffectiveStudentLmsAccess({ user, db }))) {
     return {
       allowed: false,
       status: 403,
@@ -80,27 +84,13 @@ export const verifyLearnerVideoAccess = async ({
   }
 
   if (courseId) {
-    const grantRes = await db.query(
-      `SELECT 1 FROM lms_access_grants g
-       WHERE g.user_id = $1
-         AND (
-           g.course_id = $2
-           OR ($3::bigint IS NOT NULL AND EXISTS (
-             SELECT 1
-             FROM live_classes lc
-             JOIN class_enrollments ce ON ce.live_class_id = lc.id
-             WHERE lc.id = $3
-               AND lc.course_id = g.course_id
-               AND ce.user_id = $1
-               AND ce.status = 'active'
-           ))
-         )
-         AND g.access_status = 'active'
-         AND g.valid_from <= NOW()
-         AND (g.valid_until IS NULL OR g.valid_until > NOW())`,
-      [user.id, courseId, liveClassId],
-    );
-    if (grantRes.rows.length === 0) {
+    const hasGrant = await hasEffectiveCourseEntitlement({
+      db,
+      userId: user.id,
+      courseId,
+      liveClassId,
+    });
+    if (!hasGrant) {
       return {
         allowed: false,
         status: 403,
@@ -112,10 +102,22 @@ export const verifyLearnerVideoAccess = async ({
 
   if (liveClassId) {
     const enrollRes = await db.query(
-      `SELECT id, status, learning_mode, management_class_alias_id
-       FROM class_enrollments
-       WHERE user_id = $1 AND live_class_id = $2 AND status = 'active'`,
-      [user.id, liveClassId],
+      `SELECT ce.id, ce.status, ce.learning_mode, ce.management_class_alias_id, ce.video_course_profile_id
+       FROM class_enrollments ce
+       LEFT JOIN video_course_profiles vcp ON vcp.id = ce.video_course_profile_id
+       WHERE ce.user_id = $1
+         AND ce.status = 'active'
+         AND (
+           ce.live_class_id = $2
+           OR (
+             ce.video_course_profile_id IS NOT NULL
+             AND ce.learning_mode = 'recording'
+             AND vcp.status = 'active'
+             AND vcp.source_live_class_id = $2
+             AND ($3::bigint IS NULL OR vcp.course_id = $3)
+           )
+         )`,
+      [user.id, liveClassId, courseId],
     );
     const enrollment = enrollRes.rows[0];
     if (!enrollment) {
@@ -150,14 +152,20 @@ export const verifyLearnerVideoAccess = async ({
       `SELECT ce.learning_mode
        FROM class_enrollments ce
        LEFT JOIN live_classes lc ON lc.id = ce.live_class_id
+       LEFT JOIN video_course_profiles vcp_ce ON vcp_ce.id = ce.video_course_profile_id
        WHERE ce.user_id = $1 AND ce.status = 'active'
          AND (
-           lc.course_id = $2
-           OR ce.course_id = $2
-           OR EXISTS (
-             SELECT 1 FROM video_course_profiles vcp
-             WHERE vcp.course_id = $2 AND vcp.status = 'active'
-               AND (vcp.source_live_class_id = ce.live_class_id OR vcp.course_id = ce.course_id)
+           (ce.video_course_profile_id IS NOT NULL AND vcp_ce.course_id = $2 AND vcp_ce.status = 'active')
+           OR (
+             ce.video_course_profile_id IS NULL AND (
+               lc.course_id = $2
+               OR ce.course_id = $2
+               OR EXISTS (
+                 SELECT 1 FROM video_course_profiles vcp
+                 WHERE vcp.course_id = $2 AND vcp.status = 'active'
+                   AND (vcp.source_live_class_id = ce.live_class_id OR vcp.course_id = ce.course_id)
+               )
+             )
            )
          )`,
       [user.id, courseId],

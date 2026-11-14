@@ -4,6 +4,7 @@ import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
+import { EFFECTIVE_COURSE_GRANT_EXISTS_SQL } from "../services/externalEntitlementAccess.service.js";
 import { query } from "../db/connect.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import {
@@ -464,11 +465,7 @@ const classAccess = async (classId, user) => {
     `SELECT 1
      FROM class_enrollments ce
      WHERE ce.live_class_id = $1 AND ce.user_id = $2 AND ce.status = 'active'
-       AND EXISTS (
-         SELECT 1 FROM lms_access_grants g
-         WHERE g.course_id = $3 AND g.user_id = $2 AND g.access_status = 'active'
-           AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-       )`,
+       AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "$3")}`,
     [classId, user.id, liveClass.course_id],
   );
   return access.rows.length ? { liveClass, canManage: false } : { error: "forbidden" };
@@ -552,9 +549,8 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
   if (user.role !== "user") return { error: "forbidden" };
   if (file.visibility === "PRIVATE") return { error: "forbidden" };
   const access = await query(
-    `SELECT 1 FROM lms_access_grants g
-     WHERE g.course_id = $3 AND g.user_id = $2 AND g.access_status = 'active'
-       AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
+    `SELECT 1
+     WHERE ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "$3")}
        AND ($4 = 'COURSE' OR ($4 = 'CLASS_ONLY' AND $1::bigint IS NOT NULL
          AND EXISTS (SELECT 1 FROM live_classes lc
                      JOIN class_enrollments ce ON ce.live_class_id = lc.id
@@ -822,11 +818,7 @@ router.get("/student/classes-lookup", protectRoute, async (req, res) => {
            LEFT JOIN courses c ON c.id = lc.course_id
            WHERE lc.status = 'active'
              AND ce.user_id = $1 AND ce.status = 'active'
-             AND EXISTS (
-               SELECT 1 FROM lms_access_grants g
-               WHERE g.user_id = $1 AND g.course_id = lc.course_id AND g.access_status = 'active'
-                 AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-             )
+             AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$1", "lc.course_id")}
            ORDER BY lc.created_at DESC`,
           [req.user.id],
         );
@@ -1230,11 +1222,7 @@ router.get("/student/files", protectRoute, async (req, res) => {
          WHERE lc.id = $1 AND lc.status = 'active'
            AND ce.user_id = $2 AND ce.status = 'active'
            AND ($3::bigint IS NULL OR lc.course_id = $3)
-           AND EXISTS (
-             SELECT 1 FROM lms_access_grants g
-             WHERE g.user_id = $2 AND g.course_id = lc.course_id AND g.access_status = 'active'
-               AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-           )`,
+           AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "lc.course_id")}`,
         [classId, req.user.id, courseId],
       );
       if (req.user.role !== "admin" && classAccessResult.rows.length === 0) {
@@ -1307,12 +1295,10 @@ router.get("/student/files", protectRoute, async (req, res) => {
          AND (
            $7::boolean = TRUE
            OR (
-             EXISTS (
-               SELECT 1 FROM lms_access_grants g
-               WHERE g.course_id = CASE WHEN fi.effective_live_class_id IS NOT NULL THEN lc.course_id ELSE fi.course_id END
-                 AND g.user_id = $1 AND g.access_status = 'active'
-                 AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-             )
+             ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL(
+               "$1",
+               "CASE WHEN fi.effective_live_class_id IS NOT NULL THEN lc.course_id ELSE fi.course_id END",
+             )}
              AND (fi.effective_visibility = 'COURSE' OR (fi.effective_visibility = 'CLASS_ONLY'
                AND fi.effective_live_class_id IS NOT NULL AND lc.status = 'active'
                AND EXISTS (SELECT 1 FROM class_enrollments ce

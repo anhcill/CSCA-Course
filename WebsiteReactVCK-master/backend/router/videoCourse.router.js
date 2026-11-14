@@ -11,6 +11,12 @@ import {
 import { getUnitVideoProgressAggregate } from "../services/bunnyStream.service.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import { isVideoCourseProfileAccessRevoked } from "../services/videoCourseAccessRevocation.service.js";
+import {
+  EXTERNAL_LMS_ACCESS_EXISTS_SQL,
+  EFFECTIVE_COURSE_GRANT_EXISTS_SQL,
+  hasEffectiveCourseEntitlement,
+  resolveEffectiveStudentLmsAccess,
+} from "../services/externalEntitlementAccess.service.js";
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
@@ -40,34 +46,28 @@ const parsePositiveId = (value) => {
 };
 
 // Check if user has active LMS access grant for course
-const checkCourseEntitlement = async (courseId, userId, { sourceLiveClassId = null } = {}) => {
-  const result = await query(
-    `SELECT 1 FROM lms_access_grants g
-     WHERE g.user_id = $1
-       AND (
-         g.course_id = $2
-         OR ($3::bigint IS NOT NULL AND EXISTS (
-           SELECT 1
-           FROM live_classes lc
-           JOIN class_enrollments ce ON ce.live_class_id = lc.id
-           WHERE lc.id = $3
-             AND lc.course_id = g.course_id
-             AND ce.user_id = $1
-             AND ce.status = 'active'
-         ))
-       )
-       AND g.access_status = 'active'
-       AND g.valid_from <= NOW()
-       AND (g.valid_until IS NULL OR g.valid_until > NOW())`,
-    [userId, courseId, sourceLiveClassId],
-  );
-  return result.rows.length > 0;
-};
+const checkCourseEntitlement = async (courseId, userId, { sourceLiveClassId = null, profileId = null } = {}) => (
+  hasEffectiveCourseEntitlement({
+    db: { query },
+    userId,
+    courseId,
+    liveClassId: sourceLiveClassId,
+    profileId,
+  })
+);
 
 // Check if learner is enrolled in recording class or alias, or enrolled in the source live class that this video course mirrors
-const checkRecordMembership = async ({ userId, liveClassId = null, courseId, managementClassId = null, mode }) => {
+const checkRecordMembership = async ({
+  userId,
+  liveClassId = null,
+  courseId,
+  managementClassId = null,
+  mode,
+  profileId = null,
+}) => {
   const result = await query(
     `SELECT ce.id, ce.learning_mode, ce.management_class_alias_id,
+            ce.video_course_profile_id,
             mcla.title AS alias_title, mcla.alias_class_source_id
      FROM class_enrollments ce
      LEFT JOIN management_class_learning_aliases mcla ON mcla.id = ce.management_class_alias_id
@@ -75,29 +75,39 @@ const checkRecordMembership = async ({ userId, liveClassId = null, courseId, man
      WHERE ce.user_id = $1
        AND ce.status = 'active'
        AND (
-         -- Standard record enrollment
          (
-           ce.learning_mode = 'recording'
-           AND (lc.course_id = $2 OR ce.course_id = $2)
-           AND ($3::text IS NULL OR LOWER(mcla.alias_class_source_id) = LOWER($3))
-           AND ($4::bigint IS NULL OR ce.live_class_id = $4)
+           ce.video_course_profile_id IS NOT NULL
+           AND $6::bigint IS NOT NULL
+           AND ce.video_course_profile_id = $6
+         )
+         OR (
+           ce.video_course_profile_id IS NULL
            AND (
-             $5::text <> 'INDEPENDENT'
-             OR mcla.recording_content_mode = 'INDEPENDENT'
-             OR ($3::text IS NULL AND ce.live_class_id IS NULL)
+             -- Standard record enrollment
+             (
+               ce.learning_mode = 'recording'
+               AND (lc.course_id = $2 OR ce.course_id = $2)
+               AND ($3::text IS NULL OR LOWER(mcla.alias_class_source_id) = LOWER($3))
+               AND ($4::bigint IS NULL OR ce.live_class_id = $4)
+               AND (
+                 $5::text <> 'INDEPENDENT'
+                 OR mcla.recording_content_mode = 'INDEPENDENT'
+                 OR ($3::text IS NULL AND ce.live_class_id IS NULL)
+               )
+             )
+             OR
+             -- Live class student whose class is mirrored by this record course
+             (
+               $5::text = 'MIRROR'
+               AND $4::bigint IS NOT NULL
+               AND ce.live_class_id = $4
+             )
            )
          )
-         OR
-         -- Live class student whose class is mirrored by this record course
-         (
-           $5::text = 'MIRROR'
-           AND $4::bigint IS NOT NULL
-           AND ce.live_class_id = $4
-         )
        )
-     ORDER BY (ce.learning_mode = 'recording') DESC, ce.id ASC
+     ORDER BY (ce.video_course_profile_id IS NOT NULL) DESC, (ce.learning_mode = 'recording') DESC, ce.id ASC
      LIMIT 1`,
-    [userId, courseId, managementClassId, liveClassId, mode],
+    [userId, courseId, managementClassId, liveClassId, mode, profileId],
   );
   return result.rows[0] || null;
 };
@@ -293,18 +303,21 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
          FROM video_course_profiles vcp
          LEFT JOIN management_class_learning_aliases alias
            ON LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id)
+         LEFT JOIN class_enrollments ce_profile
+           ON ce_profile.video_course_profile_id = vcp.id AND ce_profile.user_id = $2 AND ce_profile.status = 'active'
          LEFT JOIN class_enrollments ce
            ON ce.management_class_alias_id = alias.id AND ce.user_id = $2 AND ce.status = 'active' AND ce.learning_mode = 'recording'
          LEFT JOIN class_enrollments ce_live
            ON ce_live.live_class_id = vcp.source_live_class_id AND ce_live.user_id = $2 AND ce_live.status = 'active'
          WHERE vcp.course_id = $1 AND vcp.status = 'active'
-           AND (ce.id IS NOT NULL OR (vcp.mode = 'MIRROR' AND ce_live.id IS NOT NULL))
-         ORDER BY (ce.id IS NOT NULL) DESC, vcp.id ASC LIMIT 1`,
+           AND (ce_profile.id IS NOT NULL OR ce.id IS NOT NULL OR (vcp.mode = 'MIRROR' AND ce_live.id IS NOT NULL))
+         ORDER BY (ce_profile.id IS NOT NULL) DESC, (ce.id IS NOT NULL) DESC, vcp.id ASC LIMIT 1`,
         [courseId, req.user.id],
       );
       profile = membershipProfile.rows[0] || profile;
     }
     if (!profile) return notFound(res, "Khóa học này chưa được cấu hình khóa video");
+    const activeProfileId = Number(profile.profile_id || profile.id);
 
     // Determine mode
     let mode = profile ? profile.mode : "MIRROR";
@@ -333,9 +346,12 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
     let isPublicPreviewAccess = false;
     let learnerAccessErrorCode = "VIDEO_COURSE_ACCESS_REQUIRED";
     if (isLearner) {
-      const hasActiveLmsAccount = hasActiveStudentLmsAccess(req.user);
+      const hasActiveLmsAccount = await resolveEffectiveStudentLmsAccess({ user: req.user, db: { query } });
       const hasEntitlement = hasActiveLmsAccount
-        && await checkCourseEntitlement(courseId, req.user.id, { sourceLiveClassId });
+        && await checkCourseEntitlement(courseId, req.user.id, {
+          sourceLiveClassId,
+          profileId: activeProfileId,
+        });
       hasFullLearnerAccess = hasActiveLmsAccount && hasEntitlement;
       learnerAccessErrorCode = !hasActiveLmsAccount
         ? "LMS_ACCESS_INACTIVE"
@@ -348,6 +364,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         courseId,
         managementClassId: profile.management_class_id || null,
         mode,
+        profileId: activeProfileId,
       });
       hasFullLearnerAccess = Boolean(memberAlias);
       if (!hasFullLearnerAccess) learnerAccessErrorCode = "RECORD_MEMBERSHIP_REQUIRED";
@@ -357,6 +374,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         courseId,
         managementClassId: profile.management_class_id || null,
         mode,
+        profileId: activeProfileId,
       });
       hasFullLearnerAccess = Boolean(memberAlias);
       if (!hasFullLearnerAccess) learnerAccessErrorCode = "RECORD_MEMBERSHIP_REQUIRED";
@@ -365,7 +383,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
     if (isLearner && hasFullLearnerAccess && await isVideoCourseProfileAccessRevoked({
       db: { query },
       userId: req.user.id,
-      profileId: profile.id,
+      profileId: activeProfileId,
     })) {
       hasFullLearnerAccess = false;
       learnerAccessErrorCode = "VIDEO_COURSE_ACCESS_REVOKED";
@@ -2007,24 +2025,26 @@ router.get("/admin/courses/:courseId/students", protectRoute, requireAdmin, asyn
          LEFT JOIN management_class_learning_aliases alias
            ON alias.id = ce.management_class_alias_id AND alias.status = 'active'
          LEFT JOIN student_profiles sp ON sp.user_id = u.id
-         JOIN lms_access_grants grant_access
-           ON grant_access.user_id = u.id
-          AND grant_access.course_id = $1
-          AND grant_access.access_status = 'active'
-          AND grant_access.valid_from <= NOW()
-          AND (grant_access.valid_until IS NULL OR grant_access.valid_until > NOW())
          WHERE u.role = 'user'
-           AND (u.is_internal_test_account = TRUE OR (
-             u.is_management_managed = TRUE AND u.lms_account_status = 'active'
-           ))
            AND (
-             ($3::text = 'MIRROR' AND ce.live_class_id = $4)
-             OR
-             ($3::text = 'INDEPENDENT' AND ce.learning_mode = 'recording' AND (
-               ($5::text IS NOT NULL AND LOWER(alias.alias_class_source_id) = LOWER($5))
-               OR
-               ($5::text IS NULL AND (ce.course_id = $1 OR lc.course_id = $1))
-             ))
+             u.is_internal_test_account = TRUE
+             OR (u.is_management_managed = TRUE AND u.lms_account_status = 'active')
+             OR ${EXTERNAL_LMS_ACCESS_EXISTS_SQL("u.id")}
+           )
+           AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("u.id", "$1")}
+           AND (
+             (ce.video_course_profile_id IS NOT NULL AND ce.video_course_profile_id = $2)
+             OR (
+               ce.video_course_profile_id IS NULL AND (
+                 ($3::text = 'MIRROR' AND ce.live_class_id = $4)
+                 OR
+                 ($3::text = 'INDEPENDENT' AND ce.learning_mode = 'recording' AND (
+                   ($5::text IS NOT NULL AND LOWER(alias.alias_class_source_id) = LOWER($5))
+                   OR
+                   ($5::text IS NULL AND (ce.course_id = $1 OR lc.course_id = $1))
+                 ))
+               )
+             )
            )
          ORDER BY u.id, (ce.learning_mode = 'recording') DESC, ce.enrolled_at DESC, ce.id DESC
        )

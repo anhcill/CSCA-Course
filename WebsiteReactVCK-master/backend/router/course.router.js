@@ -4,6 +4,7 @@ import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requireRole from "../middleware/requireRole.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
+import { EFFECTIVE_COURSE_GRANT_EXISTS_SQL, hasEffectiveCourseEntitlement, resolveEffectiveStudentLmsAccess } from "../services/externalEntitlementAccess.service.js";
 import { getMeetingProvider } from "../services/liveClass.service.js";
 
 const router = express.Router();
@@ -83,14 +84,7 @@ const checkCourseOwner = async (courseId, user) => {
 };
 
 const checkEnrollment = async (courseId, userId) => {
-  const result = await query(
-    `SELECT 1 FROM lms_access_grants g
-     WHERE g.user_id = $1 AND g.course_id = $2
-       AND g.access_status = 'active' AND g.valid_from <= NOW()
-       AND (g.valid_until IS NULL OR g.valid_until > NOW())`,
-      [userId, courseId],
-  );
-  return result.rows.length > 0;
+  return hasEffectiveCourseEntitlement({ db: { query }, userId, courseId });
 };
 
 const checkLiveClassEnrollment = async (courseId, userId) => {
@@ -107,9 +101,9 @@ const checkLiveClassEnrollment = async (courseId, userId) => {
   return result.rows.length > 0;
 };
 
-const requireManagedLearnerAccess = (res, user) => {
-  if (user.role !== "user" || hasActiveStudentLmsAccess(user)) return true;
-  forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
+const requireManagedLearnerAccess = async (res, user) => {
+  if (user.role !== "user" || (await resolveEffectiveStudentLmsAccess({ user, db: { query } }))) return true;
+  forbidden(res, "Quyền học LMS chưa được Management/Moly cấp hoặc đã hết hiệu lực");
   return false;
 };
 
@@ -258,7 +252,7 @@ router.get("/lessons/:lessonId/comments", protectRoute, async (req, res) => {
     if (lessonRes.rows.length === 0) return notFound(res, "Không tìm thấy bài học");
     const lesson = lessonRes.rows[0];
     if (req.user.role === "user") {
-      if (!requireManagedLearnerAccess(res, req.user)) return;
+      if (!(await requireManagedLearnerAccess(res, req.user))) return;
       if (!lesson.is_published || !lesson.course_is_published) return notFound(res, "Không tìm thấy bài học");
       if (!(await checkEnrollment(lesson.course_id, req.user.id))) {
         return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
@@ -347,7 +341,7 @@ router.post("/lessons/:lessonId/comments", protectRoute, async (req, res) => {
       return notFound(res, "Không tìm thấy bài học");
     }
 
-    if (!requireManagedLearnerAccess(res, req.user)) return;
+    if (!(await requireManagedLearnerAccess(res, req.user))) return;
     if (req.user.role === "user" && !(await checkEnrollment(courseId, userId))) {
       return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
     }
@@ -527,7 +521,7 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
         [req.user.id, selectedClassId, courseId],
       )).rows.length > 0
       : false;
-    if (isLearner && !requireManagedLearnerAccess(res, req.user)) return;
+    if (isLearner && !(await requireManagedLearnerAccess(res, req.user))) return;
     if (isLearner && (
       !(await checkEnrollment(courseId, req.user.id))
       || !(await checkLiveClassEnrollment(courseId, req.user.id))
@@ -654,12 +648,10 @@ router.get("/:courseId/workspace", protectRoute, async (req, res) => {
     let fileVisibility = "TRUE";
     if (isLearner) {
       fileParams.push(req.user.id);
-      fileVisibility = `fi.effective_visibility IN ('CLASS_ONLY', 'COURSE') AND EXISTS (
-        SELECT 1 FROM lms_access_grants g
-        WHERE g.user_id = $2 AND g.course_id = COALESCE(fi.course_id, lc.course_id)
-          AND g.access_status = 'active' AND g.valid_from <= NOW()
-          AND (g.valid_until IS NULL OR g.valid_until > NOW())
-      ) AND (fi.effective_visibility = 'COURSE' OR (fi.effective_visibility = 'CLASS_ONLY'
+      fileVisibility = `fi.effective_visibility IN ('CLASS_ONLY', 'COURSE') AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL(
+        "$2",
+        "COALESCE(fi.course_id, lc.course_id)",
+      )} AND (fi.effective_visibility = 'COURSE' OR (fi.effective_visibility = 'CLASS_ONLY'
         AND fi.effective_live_class_id IS NOT NULL AND EXISTS (
           SELECT 1 FROM class_enrollments ce
           WHERE ce.live_class_id = fi.effective_live_class_id AND ce.user_id = $2 AND ce.status = 'active'
@@ -945,7 +937,7 @@ router.get("/:slug/classroom", protectRoute, async (req, res) => {
     const course = courseRes.rows[0];
     let isEnrolled = false;
     if (req.user.role === "user") {
-      if (!requireManagedLearnerAccess(res, req.user)) return;
+      if (!(await requireManagedLearnerAccess(res, req.user))) return;
       isEnrolled = await checkEnrollment(course.id, req.user.id);
       if (!isEnrolled && !course.is_published) return notFound(res, "Không tìm thấy khóa học");
       if (!isEnrolled) return forbidden(res, "Bạn chưa được cấp quyền học khóa này");

@@ -4,6 +4,7 @@ import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
+import { hasEffectiveCourseEntitlement, resolveEffectiveStudentLmsAccess } from "../services/externalEntitlementAccess.service.js";
 import {
   ALLOWED_VIDEO_MIME_TYPES,
   MAX_VIDEO_SIZE_BYTES,
@@ -149,16 +150,12 @@ router.get("/playback-url", protectRoute, async (req, res) => {
     const asset = assetResult.rows[0];
     if (req.user.role === "user") {
       if (!asset.course_is_published) return notFound(res, "Không tìm thấy video bài học");
-      if (!hasActiveStudentLmsAccess(req.user)) {
-        return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
+      if (!(await resolveEffectiveStudentLmsAccess({ user: req.user, db: { query } }))) {
+        return forbidden(res, "Quyền học LMS chưa được Management/Moly cấp hoặc đã hết hiệu lực");
       }
-      const enrollmentResult = await query(
-        `SELECT 1 FROM lms_access_grants
-         WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
-           AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())`,
-        [req.user.id, asset.course_id],
-      );
-      if (enrollmentResult.rows.length === 0) return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
+      if (!(await hasEffectiveCourseEntitlement({ db: { query }, userId: req.user.id, courseId: asset.course_id }))) {
+        return forbidden(res, "Bạn chưa được cấp quyền học khóa này");
+      }
     } else if (req.user.role === "creator" && String(asset.author_id) !== String(req.user.id)) {
       return forbidden(res, "Bạn không có quyền xem video của khóa học này");
     }

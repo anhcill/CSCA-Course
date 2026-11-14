@@ -3,6 +3,7 @@ import { query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireRole from "../middleware/requireRole.js";
 import requireActiveStudentLmsAccess from "../middleware/requireActiveStudentLmsAccess.js";
+import { EFFECTIVE_COURSE_GRANT_EXISTS_SQL } from "../services/externalEntitlementAccess.service.js";
 import { sendCourseEnrollmentEmail } from "../services/brevoEmail.service.js";
 import { getDeterministicClassCover } from "../utils/classWallpapers.js";
 
@@ -34,11 +35,7 @@ router.get("/check/:courseId", protectRoute, async (req, res) => {
            FROM courses c
            WHERE c.id = $2
              AND (
-               EXISTS (
-                 SELECT 1 FROM lms_access_grants g
-                 WHERE g.user_id = $1 AND g.course_id = c.id AND g.access_status = 'active'
-                   AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-               )
+               ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$1", "c.id")}
                OR (
                  COALESCE(c.is_management_managed, FALSE) = FALSE
                  AND (
@@ -53,11 +50,7 @@ router.get("/check/:courseId", protectRoute, async (req, res) => {
                )
              )
          ) AS is_enrolled,
-         EXISTS (
-           SELECT 1 FROM lms_access_grants g
-           WHERE g.user_id = $1 AND g.course_id = $2 AND g.access_status = 'active'
-             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-         ) AS has_lms_access`,
+         ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$1", "$2")} AS has_lms_access`,
       [userId, courseId],
     );
     const isEnrolled = Boolean(result.rows[0]?.is_enrolled);
@@ -137,9 +130,17 @@ router.get("/my", protectRoute, requireRole("user"), requireActiveStudentLmsAcce
     const result = await query(
       `WITH accessible_courses AS (
          SELECT course_id, MIN(valid_from) AS access_granted_at
-         FROM lms_access_grants
+         FROM (
+           SELECT course_id, valid_from
+           FROM lms_access_grants
          WHERE user_id = $1 AND access_status = 'active'
-           AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
+             AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
+           UNION ALL
+           SELECT local_course_id AS course_id, valid_from
+           FROM external_entitlements
+           WHERE user_id = $1 AND local_course_id IS NOT NULL AND status = 'active'
+             AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())
+         ) combined_grants
          GROUP BY course_id
        )
        SELECT c.id AS enrollment_id, ac.access_granted_at AS enrolled_at, c.*

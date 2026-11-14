@@ -17,6 +17,7 @@ import {
   publicQuizItems,
 } from "../services/quizAttempt.service.js";
 import { getVideoCourseUnitAccessContext } from "../services/videoCourseUnitAccess.service.js";
+import { resolveEffectiveStudentLmsAccess } from "../services/externalEntitlementAccess.service.js";
 
 const router = express.Router();
 
@@ -104,8 +105,8 @@ const requireQuizPlayerAccess = async (req, res, next) => {
     });
   }
   if (req.user.role === "admin" || req.user.role === "creator") return next();
-  if (hasActiveStudentLmsAccess(req.user)) return next();
   try {
+    if (await resolveEffectiveStudentLmsAccess({ user: req.user, db: { query } })) return next();
     const quizId = req.params.quizId
       ? parsePositiveId(req.params.quizId)
       : (await query(
@@ -204,7 +205,22 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
        )
        AND g.access_status = 'active'
        AND g.valid_from <= NOW()
-       AND (g.valid_until IS NULL OR g.valid_until > NOW())`,
+       AND (g.valid_until IS NULL OR g.valid_until > NOW())
+     UNION ALL
+     SELECT 1 FROM external_entitlements ee
+     JOIN external_identities ei ON ei.id = ee.external_identity_id
+     WHERE ee.user_id = $1
+       AND ei.status = 'active'
+       AND ee.status = 'active'
+       AND ee.valid_from <= NOW()
+       AND (ee.valid_until IS NULL OR ee.valid_until > NOW())
+       AND (
+         ee.local_course_id = $2
+         OR ($3::bigint IS NOT NULL AND ee.local_live_class_id = $3)
+         OR ($4::bigint IS NOT NULL AND ee.local_course_id = $4)
+       )
+       AND ($5::bigint IS NULL OR ee.local_video_course_profile_id IS NULL OR ee.local_video_course_profile_id = $5)
+     LIMIT 1`,
     [user.id, quiz.resolved_course_id, quiz.live_class_id, recordProfile?.course_id || null, recordProfile?.id || null],
   );
   if (!access.rows[0]) return false;
@@ -238,8 +254,10 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
            LEFT JOIN management_class_learning_aliases alias
              ON LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id)
            WHERE vcp.id = $4 AND vcp.status = 'active'
+             AND (ce.video_course_profile_id IS NULL OR ce.video_course_profile_id = vcp.id)
              AND (
-               (ce.learning_mode = 'recording' AND (
+               ce.video_course_profile_id = vcp.id
+               OR (ce.learning_mode = 'recording' AND (
                  ce.management_class_alias_id = alias.id
                  OR ce.live_class_id = vcp.source_live_class_id
                  OR ce.course_id = vcp.course_id

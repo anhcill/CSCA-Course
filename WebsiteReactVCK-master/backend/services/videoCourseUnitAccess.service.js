@@ -9,9 +9,11 @@ const hasRecordingMembership = async (db, profile, userId) => Boolean((await db.
    LEFT JOIN management_class_learning_aliases alias
      ON alias.id = ce.management_class_alias_id AND alias.status = 'active'
    WHERE ce.user_id = $1 AND ce.status = 'active'
+     AND (ce.video_course_profile_id IS NULL OR ce.video_course_profile_id = $6)
      AND (
        (ce.learning_mode = 'recording' AND (
-         ($5::text IS NOT NULL
+         ce.video_course_profile_id = $6
+         OR ($5::text IS NOT NULL
            AND LOWER(alias.alias_class_source_id) = LOWER($5)
            AND ($2::text <> 'MIRROR' OR ce.live_class_id = $3))
          OR ($5::text IS NULL AND $2::text = 'MIRROR' AND ce.live_class_id = $3)
@@ -22,7 +24,7 @@ const hasRecordingMembership = async (db, profile, userId) => Boolean((await db.
        ($2::text = 'MIRROR' AND $3::bigint IS NOT NULL AND ce.live_class_id = $3)
      )
    LIMIT 1`,
-  [userId, profile.mode, profile.source_live_class_id, profile.course_id, profile.management_class_id],
+  [userId, profile.mode, profile.source_live_class_id, profile.course_id, profile.management_class_id, profile.id],
 )).rows[0]);
 
 const loadMirrorUnits = async (db, profile, userId) => {

@@ -2,6 +2,7 @@ import crypto from "crypto";
 import net from "node:net";
 import { getClient, query } from "../db/connect.js";
 import { recordAuditEvent } from "./audit.service.js";
+import { hasActiveExternalLmsAccess } from "./externalEntitlementAccess.service.js";
 
 export const TRUSTED_DEVICE_COOKIE = "csca_trusted_device";
 export const TRUSTED_DEVICE_LIMIT = 2;
@@ -463,8 +464,23 @@ export const resolveAuthenticatedSession = async ({
   );
 
   const { session_id: authenticatedSessionId, trusted_device_id: trustedDeviceId, ...user } = row;
+  let hasExternalLmsAccess = false;
+  if (
+    user.role === "user"
+    && !user.is_internal_test_account
+    && !(user.is_management_managed && user.lms_account_status === "active")
+  ) {
+    try {
+      hasExternalLmsAccess = await hasActiveExternalLmsAccess(user.id, db);
+    } catch (error) {
+      if (error?.code !== "42P01") throw error;
+    }
+  }
   return {
-    user,
+    user: {
+      ...user,
+      has_external_lms_access: hasExternalLmsAccess,
+    },
     authSession: { id: authenticatedSessionId, trustedDeviceId },
   };
 };

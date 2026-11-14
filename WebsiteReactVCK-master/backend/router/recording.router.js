@@ -2,6 +2,7 @@ import express from "express";
 import protectRoute from "../middleware/protectRoute.js";
 import requireAdmin from "../middleware/requireAdmin.js";
 import requireActiveStudentLmsAccess, { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
+import { EFFECTIVE_COURSE_GRANT_EXISTS_SQL, resolveEffectiveStudentLmsAccess } from "../services/externalEntitlementAccess.service.js";
 import { query } from "../db/connect.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import { normalizeGoogleDriveUrl } from "../utils/recordingUrl.js";
@@ -138,11 +139,7 @@ router.get("/mine", protectRoute, requireActiveStudentLmsAccess, async (req, res
            ON record_alias.id = ce.management_class_alias_id
          WHERE (lc.status = 'active' OR (lc.status = 'completed' AND ce.learning_mode = 'recording'))
            AND ($2::bigint IS NULL OR lc.id = $2)
-           AND EXISTS (
-             SELECT 1 FROM lms_access_grants g
-             WHERE g.user_id = $1 AND g.course_id = lc.course_id AND g.access_status = 'active'
-               AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-           )
+           AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$1", "lc.course_id")}
            AND (rf.is_published = TRUE OR EXISTS (
              SELECT 1 FROM class_recordings visible_recording
              WHERE visible_recording.live_class_id = lc.id
@@ -169,11 +166,7 @@ router.get("/mine", protectRoute, requireActiveStudentLmsAccess, async (req, res
        WHERE r.is_published = TRUE AND (r.drive_url IS NOT NULL OR rf.is_published = TRUE)
           AND (lc.status = 'active' OR (lc.status = 'completed' AND ce.learning_mode = 'recording'))
          AND ($2::bigint IS NULL OR lc.id = $2)
-         AND EXISTS (
-           SELECT 1 FROM lms_access_grants g
-           WHERE g.user_id = $1 AND g.course_id = lc.course_id AND g.access_status = 'active'
-             AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-         )
+         AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$1", "lc.course_id")}
        ORDER BY lc.title, COALESCE(r.recorded_at, cs.start_time, r.created_at) DESC, r.id DESC`,
       [req.user.id, classId],
       ),
@@ -194,7 +187,7 @@ router.get("/mine", protectRoute, requireActiveStudentLmsAccess, async (req, res
 router.get("/classes/:classId/open-folder", protectRoute, async (req, res) => {
   const classId = parseId(req.params.classId);
   if (!classId) return errorResponse(res, 422, "classId không hợp lệ", "VALIDATION_ERROR");
-  if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
+  if (req.user.role === "user" && !(await resolveEffectiveStudentLmsAccess({ user: req.user, db: { query } }))) {
     return errorResponse(res, 403, "Quyền học LMS chưa được cấp hoặc đã hết hiệu lực", "LMS_ACCESS_NOT_GRANTED");
   }
   try {
@@ -203,11 +196,7 @@ router.get("/classes/:classId/open-folder", protectRoute, async (req, res) => {
               EXISTS (
                 SELECT 1 FROM class_enrollments ce
                 WHERE ce.live_class_id = lc.id AND ce.user_id = $2 AND ce.status = 'active'
-                  AND EXISTS (
-                    SELECT 1 FROM lms_access_grants g
-                    WHERE g.user_id = $2 AND g.course_id = lc.course_id AND g.access_status = 'active'
-                      AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-                  )
+                  AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "lc.course_id")}
               ) AS is_student
        FROM class_recording_folders rf
        JOIN live_classes lc ON lc.id = rf.live_class_id
@@ -232,7 +221,7 @@ router.get("/classes/:classId/open-folder", protectRoute, async (req, res) => {
 router.get("/:id/open", protectRoute, async (req, res) => {
   const recordingId = parseId(req.params.id);
   if (!recordingId) return errorResponse(res, 422, "recordingId không hợp lệ", "VALIDATION_ERROR");
-  if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
+  if (req.user.role === "user" && !(await resolveEffectiveStudentLmsAccess({ user: req.user, db: { query } }))) {
     return errorResponse(res, 403, "Quyền học LMS chưa được cấp hoặc đã hết hiệu lực", "LMS_ACCESS_NOT_GRANTED");
   }
   try {
@@ -243,11 +232,7 @@ router.get("/:id/open", protectRoute, async (req, res) => {
               EXISTS (
                 SELECT 1 FROM class_enrollments ce
                 WHERE ce.live_class_id = lc.id AND ce.user_id = $2 AND ce.status = 'active'
-                  AND EXISTS (
-                    SELECT 1 FROM lms_access_grants g
-                    WHERE g.user_id = $2 AND g.course_id = lc.course_id AND g.access_status = 'active'
-                      AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
-                  )
+                  AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "lc.course_id")}
               ) AS is_student
        FROM class_recordings r
        JOIN live_classes lc ON lc.id = r.live_class_id
