@@ -275,6 +275,8 @@ test("stale events carrying older source_updated_at are marked stale in inbox an
     localCourseId: course.id,
   });
 
+  await db.query(`INSERT INTO external_identities(source_system,external_user_id,user_id,source_updated_at)
+    VALUES ('moly','moly:541',$1,'2026-11-14T08:00:00Z')`, [student.id]);
   // Newer event arrives first (revoked at 12:00Z).
   const newerRes = await ingestEntitlementWithFreshnessGuard(db, {
     sourceSystem: "moly",
@@ -464,4 +466,66 @@ test("manual course mapping forbids title/slug auto-mapping, returns COURSE_MAPP
   );
   assert.equal(missingRes.status, 422);
   assert.equal((await missingRes.json()).errorCode, "COURSE_MAPPING_MISSING");
+});
+
+test("Codex regression: replay, immutable grants, identity binding and revoke after mapping disabled", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await loadFullCourseSchema(db);
+  const sourceSystem = "moly";
+  const service = { upsertManualCourseMapping: (x) => upsertManualCourseMapping(db,x), updateCourseMappingStatus: (x) => updateCourseMappingStatus(db,x), ingestEntitlementWithFreshnessGuard: (x) => ingestEntitlementWithFreshnessGuard(db,x) };
+  const u1 = (await db.query("INSERT INTO users(username,email) VALUES ('review1','review1@test.local') RETURNING id")).rows[0];
+  const u2 = (await db.query("INSERT INTO users(username,email) VALUES ('review2','review2@test.local') RETURNING id")).rows[0];
+  const course = (await db.query("INSERT INTO courses(name,title,slug,author_id) VALUES ('Review','Review','review',$1) RETURNING id", [u1.id])).rows[0];
+  const map = await service.upsertManualCourseMapping({
+    sourceSystem, externalCourseId: "offering-review", localCourseId: course.id,
+  });
+  await db.query(`INSERT INTO external_identities(source_system,external_user_id,user_id,source_updated_at)
+    VALUES ($1,'review-user',$2,'2026-11-14T08:00:00Z')`, [sourceSystem,u1.id]);
+  const base = {
+    sourceSystem, eventId: "review-event", idempotencyKey: "review-idem",
+    externalGrantId: "review-grant", externalUserId: "review-user",
+    externalCourseId: "offering-review", userId: u1.id, status: "active",
+    validFrom: "2026-11-14T08:00:00Z", sourceUpdatedAt: "2026-11-14T10:00:00Z",
+    metadata: { a: 1, b: 2 },
+  };
+  const ingest = service.ingestEntitlementWithFreshnessGuard;
+  const applied = await ingest(base);
+  assert.equal(applied.outcome, "applied");
+  assert.ok(applied.entitlement.external_identity_id);
+  assert.equal((await ingest({...base,metadata:{b:2,a:1}})).outcome, "duplicate");
+  assert.equal((await ingest({...base,idempotencyKey:"second-key"})).outcome, "duplicate");
+  await assert.rejects(() => ingest({...base,userId:u2.id}), e=>e.code==="IDEMPOTENCY_KEY_CONFLICT");
+  await assert.rejects(() => ingest({...base,revokeReason:"different"}), e=>e.code==="IDEMPOTENCY_KEY_CONFLICT");
+  await assert.rejects(() => ingest({...base,eventId:"reassign",idempotencyKey:"reassign",
+    userId:u2.id,sourceUpdatedAt:"2026-11-14T11:00:00Z"}), e=>e.code==="ENTITLEMENT_CONFLICT");
+  await assert.rejects(() => ingest({...base,eventId:"no-identity",idempotencyKey:"no-identity",
+    externalGrantId:"new-grant",externalUserId:"unlinked"}), e=>e.code==="UNRESOLVED_IDENTITY");
+  await service.updateCourseMappingStatus({id:map.id,status:"inactive"});
+  assert.equal((await ingest(base)).outcome,"duplicate");
+  const revoked = await ingest({...base,eventId:"revoke",idempotencyKey:"revoke",status:"revoked",
+    sourceUpdatedAt:"2026-11-14T12:00:00Z",revokeReason:"refund"});
+  assert.equal(revoked.entitlement.status,"revoked");
+  const sameTime = await ingest({...base,eventId:"equal-time",idempotencyKey:"equal-time",
+    sourceUpdatedAt:"2026-11-14T12:00:00Z"});
+  assert.equal(sameTime.outcome,"stale");
+  assert.equal(sameTime.entitlement.status,"revoked");
+  const rows = (await db.query("SELECT * FROM external_entitlements")).rows;
+  assert.equal(rows.length,1);
+  assert.equal(Number(rows[0].user_id),Number(u1.id));
+  assert.equal(rows[0].status,"revoked");
+  const inbox = (await db.query("SELECT * FROM integration_inbox WHERE status='processing'")).rows;
+  assert.equal(inbox.length,0);
+
+  await assert.rejects(() => db.query(
+    "UPDATE external_entitlements SET status='active',revoked_at=NULL WHERE id=$1",
+    [rows[0].id]), /STALE_SOURCE_UPDATED_AT/);
+  await assert.rejects(() => db.query(
+    "UPDATE external_entitlements SET user_id=$1,source_updated_at='2026-11-15T00:00:00Z' WHERE id=$2",
+    [u2.id,rows[0].id]), /ENTITLEMENT_CONFLICT/);
+  await assert.rejects(() => service.upsertManualCourseMapping({
+    sourceSystem, externalCourseId:"offering-review",localCourseId:course.id,
+    status:"active",sourceUpdatedAt:"2020-01-01T00:00:00Z",
+  }), e=>e.code==="STALE_EVENT");
+  assert.equal((await db.query("SELECT status FROM external_course_mappings WHERE id=$1",[map.id])).rows[0].status,"inactive");
 });

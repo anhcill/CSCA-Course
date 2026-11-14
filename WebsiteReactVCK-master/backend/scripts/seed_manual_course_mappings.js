@@ -19,9 +19,6 @@ export const applyManualMappingsFromList = async (db, entries = []) => {
 };
 
 const runCli = async () => {
-  const dotenv = (await import("dotenv")).default;
-  dotenv.config({ path: "./backend/.env" });
-  const { getClient, query } = await import("../db/connect.js");
   const fileIndex = process.argv.indexOf("--file");
   const filePath = fileIndex >= 0 ? process.argv[fileIndex + 1] : "";
   if (!filePath) {
@@ -30,8 +27,19 @@ const runCli = async () => {
   const resolved = path.resolve(process.cwd(), filePath);
   const raw = fs.readFileSync(resolved, "utf8");
   const parsed = JSON.parse(raw);
-  const saved = await applyManualMappingsFromList({ query, getClient }, parsed);
-  console.log(JSON.stringify({ applied: saved.length, mappings: saved }, null, 2));
+  const targetUrl = process.env.COURSE_INTEGRATION_DATABASE_URL;
+  if (!targetUrl) throw new Error("Set COURSE_INTEGRATION_DATABASE_URL to the intended database.");
+  const { default: pg } = await import("pg");
+  const pool = new pg.Pool({ connectionString: targetUrl, connectionTimeoutMillis: 10000 });
+  try {
+    const saved = await applyManualMappingsFromList({
+      query: (text, values) => pool.query(text, values),
+      getClient: () => pool.connect(),
+    }, parsed);
+    console.log(JSON.stringify({ applied: saved.length, mappings: saved }, null, 2));
+  } finally {
+    await pool.end();
+  }
 };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

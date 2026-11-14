@@ -322,6 +322,40 @@ CREATE INDEX IF NOT EXISTS idx_integration_conflicts_correlation
   ON integration_conflicts (correlation_id)
   WHERE correlation_id IS NOT NULL;
 
+-- A grant's subject and destination are immutable, including for direct SQL writers.
+CREATE OR REPLACE FUNCTION guard_external_entitlement_binding()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF ROW(NEW.source_system, NEW.external_grant_id, NEW.external_user_id,
+         NEW.external_course_id, NEW.user_id, NEW.local_course_id)
+     IS DISTINCT FROM
+     ROW(OLD.source_system, OLD.external_grant_id, OLD.external_user_id,
+         OLD.external_course_id, OLD.user_id, OLD.local_course_id) THEN
+    RAISE EXCEPTION 'ENTITLEMENT_CONFLICT: grant subject and destination are immutable'
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF NEW.source_updated_at = OLD.source_updated_at AND
+     ROW(NEW.status, NEW.valid_from, NEW.valid_until, NEW.revoked_at, NEW.revoke_reason)
+     IS DISTINCT FROM
+     ROW(OLD.status, OLD.valid_from, OLD.valid_until, OLD.revoked_at, OLD.revoke_reason) THEN
+    RAISE EXCEPTION 'STALE_SOURCE_UPDATED_AT: changing rights requires a strictly newer timestamp'
+      USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_external_entitlements_binding ON external_entitlements;
+CREATE TRIGGER trg_external_entitlements_binding
+  BEFORE UPDATE ON external_entitlements
+  FOR EACH ROW EXECUTE FUNCTION guard_external_entitlement_binding();
+
+-- Recover leases left in processing after a worker exits.
+CREATE INDEX IF NOT EXISTS idx_integration_inbox_expired_lease
+  ON integration_inbox (locked_until, id) WHERE status = 'processing';
+CREATE INDEX IF NOT EXISTS idx_integration_outbox_expired_lease
+  ON integration_outbox (locked_until, id) WHERE status = 'processing';
+
 DROP TRIGGER IF EXISTS trg_integration_conflicts_updated_at ON integration_conflicts;
 CREATE TRIGGER trg_integration_conflicts_updated_at
   BEFORE UPDATE ON integration_conflicts

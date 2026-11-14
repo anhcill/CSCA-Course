@@ -112,6 +112,27 @@ Used when Moly provisions or links a learner identity on CSCA-Course (or vice ve
 }
 ```
 
+## Codex Day 1 Review Addendum
+
+The following rules supersede ambiguous examples above:
+
+- Grant IDs permanently identify one external user and offering. A grant cannot be moved to another local user or course, including after an administrator changes a catalog mapping.
+- The ingestion helper accepts camelCase internal arguments. HTTP handlers must explicitly translate the snake_case wire contract and derive local user IDs from verified external identities, never trust a caller-supplied local ID.
+- Both event ID and idempotency key deduplicate ingestion. Conflicting payloads return 409. A retry is recognized before current catalog availability is checked.
+- Reinstatement requires a strictly newer source timestamp. A distinct event at an equal timestamp is recorded as stale; it cannot reopen a revoked grant. Sources must issue strictly increasing timestamps per grant.
+- Provision/link identity before calling the entitlement helper. New active grants require an active external identity with the same local user. Email-only matching is not sufficient proof of account ownership.
+- Existing grants can be revoked, suspended or expired using their stored destination after a course mapping is disabled. Active renewal still requires a valid matching course mapping.
+- Lifecycle events passed to the helper are complete snapshots, including valid_from and valid_until. The revoke HTTP handler must load missing validity fields from the existing grant or require the complete snapshot. A revoke arriving before its grant must retain a tombstone; never silently discard it.
+- The Day 1 helper records and applies one event atomically. It is NOT the durable asynchronous HTTP receiver. Day 2 must persist ingress before processing and retain failures/conflicts for retry and operator review.
+- Workers must recover expired processing leases; indexes for that recovery are included.
+- Both manual mapping CLI scripts require COURSE_INTEGRATION_DATABASE_URL explicitly and close their own database pool.
+- Updating external entitlements must not overwrite the single Management-owned lms_access_grants row for the same user/course. Day 2 must resolve effective access from independent grant sources and preserve a valid alternative grant when one source is revoked.
+- Mirroring an inherited grant must not create a new authoritative grant or cause an event echo loop. Preserve origin identity; only the original authority changes the grant lifecycle.
+- SSO authentication and course ownership are separate decisions. A successful login does not itself grant course, VIP, staff or admin access.
+- The SSO design in this MVP opens the learning workspace on CSCA-Course. Rendering inherited lessons directly inside Moly remains a separate content/API implementation.
+- Real production course pairs are not verified. Existing Moly courses were drafts/demos in the initial audit; do not seed them as equivalents merely because both databases have two courses.
+- Production deployment is not part of this review. Validate migrations and concurrent delivery on an isolated PostgreSQL staging instance before rollout.
+
 #### Response (`200 OK` / `202 Accepted`)
 
 ```json

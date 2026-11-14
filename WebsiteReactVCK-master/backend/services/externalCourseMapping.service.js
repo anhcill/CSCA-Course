@@ -39,7 +39,7 @@ const runWithTransaction = async (db, work) => {
       client.release();
     }
   }
-  return work(db);
+  throw new ExternalIntegrationError(500, "TRANSACTION_REQUIRED", "Database adapter must support transactions.");
 };
 
 export const normalizeSourceSystem = (value) => {
@@ -257,10 +257,11 @@ export const upsertManualCourseMapping = async (db = defaultDb, input = {}) => {
          local_live_class_id = EXCLUDED.local_live_class_id,
          status = EXCLUDED.status,
          mapping_source = EXCLUDED.mapping_source,
-         source_updated_at = GREATEST(external_course_mappings.source_updated_at, EXCLUDED.source_updated_at),
+         source_updated_at = EXCLUDED.source_updated_at,
          notes = COALESCE(EXCLUDED.notes, external_course_mappings.notes),
          updated_by = EXCLUDED.updated_by,
          metadata = external_course_mappings.metadata || EXCLUDED.metadata
+       WHERE external_course_mappings.source_updated_at <= EXCLUDED.source_updated_at
        RETURNING *`,
       [
         sourceSystem,
@@ -280,6 +281,9 @@ export const upsertManualCourseMapping = async (db = defaultDb, input = {}) => {
     );
 
     const saved = upsertRes.rows[0];
+    if (!saved) {
+      throw new ExternalIntegrationError(409, "STALE_EVENT", "A newer manual mapping already exists.");
+    }
     return formatMappingRow({
       ...saved,
       local_course_title: localCourse.title,
@@ -408,7 +412,8 @@ export const updateCourseMappingStatus = async (db = defaultDb, { id, status, no
     `UPDATE external_course_mappings
      SET status = $1,
          notes = COALESCE($2, notes),
-         updated_by = $3
+         updated_by = $3,
+         source_updated_at = GREATEST(source_updated_at, NOW())
      WHERE id = $4
      RETURNING *`,
     [normalizedStatus, normalizedNotes, parsedActorId, mappingId],
@@ -424,169 +429,140 @@ export const updateCourseMappingStatus = async (db = defaultDb, { id, status, no
  * monotonically by source_updated_at. Older source_updated_at events are marked stale.
  */
 export const ingestEntitlementWithFreshnessGuard = async (db = defaultDb, input = {}) => {
-  const sourceSystem = normalizeSourceSystem(input.sourceSystem);
-  const eventId = normalizeExternalId(input.eventId, "eventId");
-  const idempotencyKey = normalizeExternalId(input.idempotencyKey, "idempotencyKey", 180);
-  const correlationId = normalizeOptionalText(input.correlationId, 128, "correlationId");
-  const externalGrantId = normalizeExternalId(input.externalGrantId, "externalGrantId");
-  const externalUserId = normalizeExternalId(input.externalUserId, "externalUserId");
-  const externalCourseId = normalizeExternalId(input.externalCourseId, "externalCourseId");
-  const userId = parsePositiveBigIntId(input.userId, "userId");
-  const status = typeof input.status === "string" ? input.status.trim().toLowerCase() : "";
-  if (!EXTERNAL_ENTITLEMENT_STATUSES.has(status)) {
-    throw new ExternalIntegrationError(
-      422,
-      "INVALID_ENTITLEMENT_STATUS",
-      "status must be active, revoked, expired, or suspended.",
-    );
-  }
-  const validFrom = normalizeTimestamp(input.validFrom, "validFrom");
-  const validUntil = normalizeNullableTimestamp(input.validUntil, "validUntil");
-  const sourceUpdatedAt = normalizeTimestamp(input.sourceUpdatedAt, "sourceUpdatedAt");
-  const revokedAt = status === "revoked"
-    ? normalizeTimestamp(input.revokedAt || sourceUpdatedAt, "revokedAt")
-    : normalizeNullableTimestamp(input.revokedAt, "revokedAt");
-  const revokeReason = normalizeOptionalText(input.revokeReason, 500, "revokeReason");
-  const metadata = normalizeJsonObject(input.metadata, "metadata");
-
-  const payload = {
-    sourceSystem,
-    externalGrantId,
-    externalUserId,
-    externalCourseId,
-    status,
-    validFrom: validFrom.toISOString(),
-    validUntil: validUntil ? validUntil.toISOString() : null,
-    revokedAt: revokedAt ? revokedAt.toISOString() : null,
-    sourceUpdatedAt: sourceUpdatedAt.toISOString(),
-    metadata,
-  };
-  const payloadHash = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
-
-  return runWithTransaction(db, async (tx) => {
-    const mapping = await resolveExternalCourseMapping(tx, {
-      sourceSystem,
-      externalCourseId,
-      requireActive: true,
-    });
-
-    const inboxInsert = await tx.query(
-      `INSERT INTO integration_inbox (
-         source_system, event_id, idempotency_key, correlation_id, event_type,
-         payload_hash, payload, source_updated_at, status
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, 'processing')
-       ON CONFLICT (source_system, idempotency_key) DO NOTHING
-       RETURNING *`,
-      [
-        sourceSystem,
-        eventId,
-        idempotencyKey,
-        correlationId,
-        status === "revoked" ? "entitlement.revoked" : "entitlement.changed",
-        payloadHash,
-        JSON.stringify(payload),
-        sourceUpdatedAt.toISOString(),
-      ],
-    );
-
-    if (!inboxInsert.rows[0]) {
-      const existingInbox = (await tx.query(
-        "SELECT * FROM integration_inbox WHERE source_system = $1 AND idempotency_key = $2",
-        [sourceSystem, idempotencyKey],
-      )).rows[0];
-      if (existingInbox.payload_hash !== payloadHash) {
-        throw new ExternalIntegrationError(
-          409,
-          "IDEMPOTENCY_KEY_CONFLICT",
-          "Idempotency key already used with a different payload.",
-        );
+    const sourceSystem = normalizeSourceSystem(input.sourceSystem);
+    const eventId = normalizeExternalId(input.eventId, "eventId");
+    const idempotencyKey = normalizeExternalId(input.idempotencyKey, "idempotencyKey", 180);
+    const correlationId = normalizeOptionalText(input.correlationId, 128, "correlationId");
+    const externalGrantId = normalizeExternalId(input.externalGrantId, "externalGrantId");
+    const externalUserId = normalizeExternalId(input.externalUserId, "externalUserId");
+    const externalCourseId = normalizeExternalId(input.externalCourseId, "externalCourseId");
+    const userId = parsePositiveBigIntId(input.userId, "userId");
+    const status = typeof input.status === "string" ? input.status.trim().toLowerCase() : "";
+    if (!EXTERNAL_ENTITLEMENT_STATUSES.has(status)) {
+      throw new ExternalIntegrationError(422, "INVALID_ENTITLEMENT_STATUS", "Invalid entitlement status.");
+    }
+    const validFrom = normalizeTimestamp(input.validFrom, "validFrom");
+    const validUntil = normalizeNullableTimestamp(input.validUntil, "validUntil");
+    if (validUntil && validUntil <= validFrom) {
+      throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "validUntil must be later than validFrom.");
+    }
+    const sourceUpdatedAt = normalizeTimestamp(input.sourceUpdatedAt, "sourceUpdatedAt");
+    const revokedAt = status === "revoked"
+      ? normalizeTimestamp(input.revokedAt || sourceUpdatedAt, "revokedAt")
+      : null;
+    const revokeReason = normalizeOptionalText(input.revokeReason, 500, "revokeReason");
+    const metadata = normalizeJsonObject(input.metadata, "metadata");
+    const payload = {
+      sourceSystem, externalGrantId, externalUserId, externalCourseId, userId,
+      status, validFrom: validFrom.toISOString(),
+      validUntil: validUntil ? validUntil.toISOString() : null,
+      revokedAt: revokedAt ? revokedAt.toISOString() : null,
+      revokeReason, sourceUpdatedAt: sourceUpdatedAt.toISOString(), metadata,
+    };
+    // JSON object key order must not turn a semantically identical retry into a conflict.
+    const canonicalJson = (value) => {
+      if (Array.isArray(value)) return value.map(canonicalJson);
+      if (value && typeof value === "object") {
+        return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalJson(value[key])]));
       }
-      return { outcome: "duplicate", inbox: existingInbox, entitlement: null };
-    }
+      return value;
+    };
+    const payloadHash = crypto.createHash("sha256")
+      .update(JSON.stringify(canonicalJson(payload))).digest("hex");
 
-    const inboxRow = inboxInsert.rows[0];
-    const currentRes = await tx.query(
-      `SELECT * FROM external_entitlements
-       WHERE source_system = $1 AND external_grant_id = $2
-       FOR UPDATE`,
-      [sourceSystem, externalGrantId],
-    );
-    const current = currentRes.rows[0] || null;
+    return runWithTransaction.bind(null, db)(async (tx) => {
+      const inserted = await tx.query(
+        `INSERT INTO integration_inbox
+          (source_system,event_id,idempotency_key,correlation_id,event_type,payload_hash,payload,source_updated_at,status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,'processing')
+         ON CONFLICT DO NOTHING RETURNING *`,
+        [sourceSystem,eventId,idempotencyKey,correlationId,
+          status === "revoked" ? "entitlement.revoked" : "entitlement.changed",
+          payloadHash,JSON.stringify(payload),sourceUpdatedAt.toISOString()],
+      );
+      if (!inserted.rows[0]) {
+        const existing = (await tx.query(
+          `SELECT * FROM integration_inbox WHERE source_system=$1
+           AND (event_id=$2 OR idempotency_key=$3) ORDER BY id`,
+          [sourceSystem,eventId,idempotencyKey],
+        )).rows;
+        if (existing.length !== 1 || existing[0].payload_hash !== payloadHash) {
+          throw new ExternalIntegrationError(409, "IDEMPOTENCY_KEY_CONFLICT", "Event ID or idempotency key is already bound to another payload.");
+        }
+        return { outcome: "duplicate", inbox: existing[0], entitlement: null };
+      }
+      const inbox = inserted.rows[0];
+      // Serialize even the first insert: FOR UPDATE alone cannot lock a missing grant.
+      await tx.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))",
+        [sourceSystem,externalGrantId]);
+      const current = (await tx.query(
+        "SELECT * FROM external_entitlements WHERE source_system=$1 AND external_grant_id=$2 FOR UPDATE",
+        [sourceSystem,externalGrantId],
+      )).rows[0] || null;
+      if (current && (current.external_user_id !== externalUserId ||
+          current.external_course_id !== externalCourseId || Number(current.user_id) !== userId)) {
+        throw new ExternalIntegrationError(409, "ENTITLEMENT_CONFLICT", "A grant cannot be reassigned to another user or offering.");
+      }
+      if (current && new Date(current.source_updated_at).getTime() >= sourceUpdatedAt.getTime()) {
+        const stale = (await tx.query(
+          `UPDATE integration_inbox SET status='stale',processed_at=NOW(),
+            last_error_code='STALE_EVENT',last_error_message='A strictly newer source_updated_at is required.'
+           WHERE id=$1 RETURNING *`, [inbox.id],
+        )).rows[0];
+        return { outcome: "stale", inbox: stale, entitlement: current };
+      }
 
-    if (current && new Date(current.source_updated_at).getTime() > sourceUpdatedAt.getTime()) {
-      const staleInbox = (await tx.query(
-        `UPDATE integration_inbox
-         SET status = 'stale',
-             processed_at = NOW(),
-             last_error_code = 'STALE_EVENT',
-             last_error_message = $2
-         WHERE id = $1
-         RETURNING *`,
-        [
-          inboxRow.id,
-          `Incoming source_updated_at (${sourceUpdatedAt.toISOString()}) is older than stored (${new Date(current.source_updated_at).toISOString()}).`,
-        ],
+      const identity = (await tx.query(
+        `SELECT * FROM external_identities WHERE source_system=$1 AND external_user_id=$2 FOR SHARE`,
+        [sourceSystem,externalUserId],
       )).rows[0];
-      return { outcome: "stale", inbox: staleInbox, entitlement: current };
-    }
+      if (!identity || Number(identity.user_id) !== userId ||
+          (status === "active" && identity.status !== "active")) {
+        throw new ExternalIntegrationError(409, "UNRESOLVED_IDENTITY", "A verified identity mapping is required for this user.");
+      }
 
-    const upserted = (await tx.query(
-      `INSERT INTO external_entitlements (
-         source_system, external_grant_id, external_user_id, external_course_id,
-         user_id, local_course_id, course_mapping_id,
-         status, valid_from, valid_until, revoked_at, revoke_reason,
-         source_updated_at, last_event_id, correlation_id, metadata
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)
-       ON CONFLICT (source_system, external_grant_id) DO UPDATE SET
-         external_user_id = EXCLUDED.external_user_id,
-         external_course_id = EXCLUDED.external_course_id,
-         user_id = EXCLUDED.user_id,
-         local_course_id = EXCLUDED.local_course_id,
-         course_mapping_id = EXCLUDED.course_mapping_id,
-         status = EXCLUDED.status,
-         valid_from = EXCLUDED.valid_from,
-         valid_until = EXCLUDED.valid_until,
-         revoked_at = CASE WHEN EXCLUDED.status = 'revoked' THEN EXCLUDED.revoked_at ELSE NULL END,
-         revoke_reason = CASE WHEN EXCLUDED.status = 'revoked' THEN EXCLUDED.revoke_reason ELSE NULL END,
-         source_updated_at = EXCLUDED.source_updated_at,
-         last_event_id = EXCLUDED.last_event_id,
-         correlation_id = EXCLUDED.correlation_id,
-         metadata = external_entitlements.metadata || EXCLUDED.metadata
-       WHERE external_entitlements.source_updated_at <= EXCLUDED.source_updated_at
-       RETURNING *`,
-      [
-        sourceSystem,
-        externalGrantId,
-        externalUserId,
-        externalCourseId,
-        userId,
-        mapping.localCourseId,
-        mapping.id,
-        status,
-        validFrom.toISOString(),
-        validUntil ? validUntil.toISOString() : null,
-        revokedAt ? revokedAt.toISOString() : null,
-        revokeReason,
-        sourceUpdatedAt.toISOString(),
-        eventId,
-        correlationId,
-        JSON.stringify(metadata),
-      ],
-    )).rows[0];
-
-    const processedInbox = (await tx.query(
-      `UPDATE integration_inbox
-       SET status = 'processed',
-           processed_at = NOW(),
-           last_error_code = NULL,
-           last_error_message = NULL
-       WHERE id = $1
-       RETURNING *`,
-      [inboxRow.id],
-    )).rows[0];
-
-    return { outcome: "applied", inbox: processedInbox, entitlement: upserted };
-  });
+      // Revocation uses the grant's saved destination even after a catalog mapping is disabled or changed.
+      let mappingId = current?.course_mapping_id;
+      let localCourseId = current?.local_course_id;
+      if (!current || status === "active") {
+        const mapping = (await tx.query(
+          `SELECT * FROM external_course_mappings WHERE source_system=$1 AND external_course_id=$2
+           AND status='active' FOR SHARE`, [sourceSystem,externalCourseId],
+        )).rows[0];
+        if (!mapping) {
+          throw new ExternalIntegrationError(422, "COURSE_MAPPING_MISSING", "No active manual course mapping exists for this offering.");
+        }
+        if (current && Number(current.local_course_id) !== Number(mapping.local_course_id)) {
+          throw new ExternalIntegrationError(409, "ENTITLEMENT_CONFLICT", "The mapping destination changed; this grant requires manual review.");
+        }
+        mappingId = mapping.id;
+        localCourseId = mapping.local_course_id;
+      }
+      const entitlement = (await tx.query(
+        `INSERT INTO external_entitlements
+          (source_system,external_grant_id,external_user_id,external_course_id,user_id,local_course_id,
+           course_mapping_id,external_identity_id,status,valid_from,valid_until,revoked_at,revoke_reason,
+           source_updated_at,last_event_id,correlation_id,metadata)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb)
+         ON CONFLICT (source_system,external_grant_id) DO UPDATE SET
+           status=EXCLUDED.status,valid_from=EXCLUDED.valid_from,valid_until=EXCLUDED.valid_until,
+           revoked_at=EXCLUDED.revoked_at,revoke_reason=EXCLUDED.revoke_reason,
+           external_identity_id=EXCLUDED.external_identity_id,
+           source_updated_at=EXCLUDED.source_updated_at,last_event_id=EXCLUDED.last_event_id,
+           correlation_id=EXCLUDED.correlation_id,metadata=external_entitlements.metadata || EXCLUDED.metadata
+         WHERE external_entitlements.source_updated_at < EXCLUDED.source_updated_at RETURNING *`,
+        [sourceSystem,externalGrantId,externalUserId,externalCourseId,userId,localCourseId,
+          mappingId,identity.id,status,validFrom.toISOString(),validUntil?.toISOString() || null,
+          revokedAt?.toISOString() || null,status === "revoked" ? revokeReason : null,
+          sourceUpdatedAt.toISOString(),eventId,correlationId,JSON.stringify(metadata)],
+      )).rows[0];
+      if (!entitlement) {
+        throw new ExternalIntegrationError(409, "ENTITLEMENT_CONFLICT", "Concurrent entitlement update; retry with the same event.");
+      }
+      const processed = (await tx.query(
+        "UPDATE integration_inbox SET status='processed',processed_at=NOW() WHERE id=$1 RETURNING *",
+        [inbox.id],
+      )).rows[0];
+      return { outcome: "applied", inbox: processed, entitlement };
+    });
 };
