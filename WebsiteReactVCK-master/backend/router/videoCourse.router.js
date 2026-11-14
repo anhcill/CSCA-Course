@@ -536,7 +536,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
-                        AND qa.video_course_profile_id = $4
+                        AND (qa.video_course_profile_id = $4 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     )
                 ) AS completed_quiz_count
@@ -890,7 +890,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                       FROM quiz_attempts qa
                       WHERE qa.quiz_id = q.id
                         AND qa.user_id = $2
-                        AND qa.video_course_profile_id = $4
+                        AND (qa.video_course_profile_id = $4 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     )
                 ) AS completed_quiz_count
