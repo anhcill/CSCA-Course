@@ -5,13 +5,14 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 import { PGlite } from "@electric-sql/pglite";
-import { computeMolySignature } from "../middleware/requireMolyIntegration.js";
+import { computeMolySignature, createRequireMolyIntegration } from "../middleware/requireMolyIntegration.js";
 import requireActiveStudentLmsAccess, {
   hasActiveStudentLmsAccess,
 } from "../middleware/requireActiveStudentLmsAccess.js";
 import {
   resolveEffectiveStudentLmsAccess,
   hasEffectiveCourseEntitlement,
+  hasActiveExternalLmsAccess,
 } from "./externalEntitlementAccess.service.js";
 import {
   upsertManualCourseMapping,
@@ -28,6 +29,8 @@ import {
   processAvailableMolyInboxJobs,
   processNextMolyInboxJob,
   resolveIntegrationConflict,
+  parseProvisionWirePayload,
+  queryCourseOwnershipForMoly,
 } from "./molyIntegration.service.js";
 import { createMolyIntegrationRouter } from "../router/molyIntegration.router.js";
 import { createExternalCourseMappingRouter } from "../router/externalCourseMapping.router.js";
@@ -265,6 +268,8 @@ test("HTTP webhook security: rejects invalid auth/key/timestamp/signature and pe
   assert.equal(ok.status, 202, JSON.stringify(ok.body));
   assert.equal(ok.body.queued, true);
   assert.equal(ok.body.duplicate, undefined);
+  const snapshot = (await db.query("SELECT headers_snapshot FROM integration_inbox")).rows[0].headers_snapshot;
+  assert.deepEqual(Object.keys(snapshot).sort(), ["correlation_id", "event_timestamp", "idempotency_key"]);
 
   // Duplicate retry with same Idempotency-Key & payload -> 200 duplicate without inserting extra inbox row
   const replay = await postMolySigned(baseUrl, "/users/provision", validPayload);
@@ -386,6 +391,29 @@ test("provisioning isolation & conflict quarantine: safe new user, email collisi
     "SELECT status, email_snapshot FROM external_identities WHERE external_user_id = 'moly:usr:fresh_100'",
   )).rows[0];
   assert.equal(afterStaleId.status, "active");
+
+  for (const [suffix, status, timestamp, expected] of [
+    ["suspend", "suspended", "2026-11-14T10:01:00.000Z", "processed"],
+    ["equal-reactivate", "active", "2026-11-14T10:01:00.000Z", "stale"],
+    ["new-reactivate", "active", "2026-11-14T10:02:00.000Z", "processed"],
+  ]) {
+    await postMolySigned(baseUrl, "/users/provision", {
+      event_id: `moly:evt:${suffix}`, idempotency_key: `idem-${suffix}`,
+      correlation_id: "identity-ordering", source_system: "moly",
+      external_user_id: "moly:usr:fresh_100", account_status: status,
+      source_updated_at: timestamp,
+    });
+    assert.equal((await processNextMolyInboxJob({ db })).status, expected);
+    assert.equal((await db.query(
+      "SELECT status FROM external_identities WHERE external_user_id = 'moly:usr:fresh_100'",
+    )).rows[0].status, expected === "stale" ? "suspended" : status);
+    if (suffix === "suspend") {
+      await assert.rejects(() => linkExternalIdentityManually(db, {
+        externalUserId: "moly:usr:fresh_100", targetUserId: provisionedRow.id,
+        status: "active", sourceUpdatedAt: timestamp,
+      }), (error) => error.errorCode === "STALE_EVENT");
+    }
+  }
 
   // 2) Student email collision must NOT auto-link -> quarantine in integration_conflicts + dead_letter
   await postMolySigned(baseUrl, "/users/provision", {
@@ -877,6 +905,20 @@ test("offering/profile isolation, InternalManagement coexistence, HTTP workspace
   assert.equal(itemsBefore.find((i) => i.external_course_id === "moly:crs:iso_offer_a").owned, true);
   assert.equal(itemsBefore.find((i) => i.external_course_id === "moly:crs:iso_offer_b").owned, false);
 
+  await db.query(
+    "INSERT INTO video_course_access_revocations (video_course_profile_id, user_id) VALUES ($1, $2)",
+    [profileA.id, pureIdentity.user_id],
+  );
+  const adminBlockedOwnership = await queryCourseOwnershipForMoly(db, {
+    correlation_id: "admin-blocked", subject: { external_user_id: "moly:usr:iso_pure" },
+    external_course_ids: ["moly:crs:iso_offer_a"],
+  });
+  assert.equal(adminBlockedOwnership.data.items[0].owned, false);
+  await db.query(
+    "DELETE FROM video_course_access_revocations WHERE video_course_profile_id = $1 AND user_id = $2",
+    [profileA.id, pureIdentity.user_id],
+  );
+
   // Revoke Moly grant -> immediately blocks workspace A and flips ownership to false
   await postMolySigned(baseUrl, "/entitlements/revoke", {
     event_id: "moly:evt:iso_rev_a",
@@ -1000,4 +1042,152 @@ test("offering/profile isolation, InternalManagement coexistence, HTTP workspace
     () => {},
   );
   assert.equal(deniedStatus, 403);
+});
+
+test("Codex: scheduled grants retain membership and revocation preserves the surviving grant reference", async (t) => {
+  const { db, baseUrl } = await setupMolyTestEnv(t);
+  const admin = (await db.query(
+    "INSERT INTO users (username, email, role) VALUES ('scheduled-admin', 'scheduled@test.local', 'admin') RETURNING id",
+  )).rows[0];
+  const { course, profileA } = await seedCourseWithIndependentProfiles(db, admin.id, "scheduled-course");
+  await upsertManualCourseMapping(db, {
+    sourceSystem: "moly", externalCourseId: "moly:scheduled-offer",
+    localCourseId: course.id, localVideoCourseProfileId: profileA.id,
+  });
+  const common = { correlation_id: "scheduled", source_system: "moly", external_user_id: "moly:scheduled-user" };
+  await postMolySigned(baseUrl, "/users/provision", {
+    ...common, event_id: "moly:scheduled-user", idempotency_key: "scheduled-user",
+    source_updated_at: "2026-11-14T10:00:00Z",
+  });
+  await processNextMolyInboxJob({ db });
+  const grant = {
+    ...common, external_course_id: "moly:scheduled-offer", external_grant_id: "moly:scheduled-grant",
+    event_id: "moly:scheduled-grant", idempotency_key: "scheduled-grant",
+    valid_from: "2099-01-01T00:00:00Z", source_updated_at: "2026-11-14T10:01:00Z",
+  };
+  await postMolySigned(baseUrl, "/entitlements/grant", grant);
+  assert.equal((await processNextMolyInboxJob({ db })).status, "processed");
+  const saved = (await db.query("SELECT * FROM external_entitlements WHERE external_grant_id = $1", [grant.external_grant_id])).rows[0];
+  assert.equal((await db.query("SELECT status FROM class_enrollments WHERE user_id = $1", [saved.user_id])).rows[0].status, "active");
+  const cookie = await createAuthCookieHeader(saved.user_id);
+  const workspace = () => fetch(`${baseUrl}/api/video-courses/profile-${profileA.id}/workspace`, { headers: { Cookie: cookie } });
+  assert.equal((await workspace()).status, 403);
+  // Move only the validity boundary to simulate arrival of the start date.
+  await db.query(
+    "UPDATE external_entitlements SET valid_from = '2020-01-01', source_updated_at = source_updated_at + INTERVAL '1 second' WHERE id = $1",
+    [saved.id],
+  );
+  assert.equal((await workspace()).status, 200);
+  await postMolySigned(baseUrl, "/entitlements/grant", {
+    ...grant, event_id: "moly:second-grant", idempotency_key: "second-grant",
+    external_grant_id: "moly:second-grant", valid_from: "2020-01-01T00:00:00Z",
+    source_updated_at: "2026-11-14T10:02:00Z",
+  });
+  await processNextMolyInboxJob({ db });
+  await postMolySigned(baseUrl, "/entitlements/revoke", {
+    ...common, external_course_id: grant.external_course_id, external_grant_id: "moly:second-grant",
+    event_id: "moly:second-revoke", idempotency_key: "second-revoke", source_updated_at: "2026-11-14T10:03:00Z",
+  });
+  await processNextMolyInboxJob({ db });
+  const membership = (await db.query("SELECT * FROM class_enrollments WHERE user_id = $1", [saved.user_id])).rows[0];
+  assert.equal(Number(membership.external_entitlement_id), Number(saved.id));
+  assert.equal(membership.status, "active");
+  assert.equal((await workspace()).status, 200);
+});
+
+test("Codex: raw-body verification fails closed", () => {
+  const timestamp = new Date().toISOString();
+  const body = { event_id: "moly:raw-body" };
+  const headers = {
+    authorization: `Bearer ${TEST_MOLY_CFG.serviceToken}`,
+    "x-integration-key": TEST_MOLY_CFG.integrationKey,
+    "x-correlation-id": "raw-body",
+    "idempotency-key": "raw-body",
+    "x-event-timestamp": timestamp,
+    "x-signature": computeMolySignature({ timestamp, rawBody: JSON.stringify(body), secret: TEST_MOLY_CFG.hmacSecret }),
+  };
+  let response;
+  createRequireMolyIntegration({ configOverrides: TEST_MOLY_CFG })(
+    { body, headers },
+    { status: (status) => ({ json: (result) => { response = { status, ...result }; } }) },
+    () => assert.fail("Must not authenticate a reconstructed JSON body"),
+  );
+  assert.equal(response.errorCode, "RAW_BODY_REQUIRED");
+});
+
+test("Codex: reclaimed leases fence stale handlers and failure writes", async (t) => {
+  const { db } = await setupMolyTestEnv(t);
+  for (const failureRace of [false, true]) {
+    const envelope = parseProvisionWirePayload({
+      event_id: `moly:fence:${failureRace}`, idempotency_key: `fence-${failureRace}`,
+      correlation_id: "fence", source_system: "moly", external_user_id: "moly:fenced-user",
+      source_updated_at: "2026-11-14T10:00:00Z",
+    });
+    const queued = await enqueueMolyIntegrationEvent(db, envelope);
+    let transactions = 0;
+    let calls = 0;
+    const adapter = {
+      transaction: async (work) => {
+        transactions += 1;
+        if (transactions === (failureRace ? 3 : 2)) {
+          await db.query(
+            "UPDATE integration_inbox SET locked_by = 'replacement', attempt_count = attempt_count + 1 WHERE id = $1",
+            [queued.inbox.id],
+          );
+        }
+        return db.transaction(work);
+      },
+    };
+    const outcome = await processNextMolyInboxJob({
+      db: adapter,
+      handlers: { applyUserProvision: async () => {
+        calls += 1;
+        throw new Error("Old worker failed");
+      } },
+    });
+    assert.equal(outcome.status, "lease_lost");
+    assert.equal(calls, failureRace ? 1 : 0);
+    const saved = (await db.query("SELECT * FROM integration_inbox WHERE id = $1", [queued.inbox.id])).rows[0];
+    assert.equal(saved.status, "processing");
+    assert.equal(saved.locked_by, "replacement");
+    assert.equal(saved.last_error_code, null);
+  }
+});
+
+test("Codex: revoked identity cannot borrow a replacement identity's active status", async (t) => {
+  const { db, baseUrl } = await setupMolyTestEnv(t);
+  const admin = (await db.query(
+    "INSERT INTO users (username, email, role) VALUES ('identity-admin', 'identity-admin@test.local', 'admin') RETURNING id",
+  )).rows[0];
+  const { course, profileA } = await seedCourseWithIndependentProfiles(db, admin.id, "identity-binding");
+  await upsertManualCourseMapping(db, {
+    sourceSystem: "moly", externalCourseId: "moly:binding-offer",
+    localCourseId: course.id, localVideoCourseProfileId: profileA.id,
+  });
+  await postMolySigned(baseUrl, "/users/provision", {
+    event_id: "moly:binding-provision", idempotency_key: "binding-provision", correlation_id: "binding",
+    source_system: "moly", external_user_id: "moly:old-identity", source_updated_at: "2026-11-14T10:00:00Z",
+  });
+  await processNextMolyInboxJob({ db });
+  await postMolySigned(baseUrl, "/entitlements/grant", {
+    event_id: "moly:binding-grant", idempotency_key: "binding-grant", correlation_id: "binding",
+    source_system: "moly", external_user_id: "moly:old-identity", external_course_id: "moly:binding-offer",
+    external_grant_id: "moly:binding-grant", valid_from: "2020-01-01T00:00:00Z",
+    source_updated_at: "2026-11-14T10:01:00Z",
+  });
+  assert.equal((await processNextMolyInboxJob({ db })).status, "processed");
+  const identity = (await db.query("SELECT * FROM external_identities WHERE external_user_id = 'moly:old-identity'")).rows[0];
+  await db.query("UPDATE external_identities SET status = 'revoked' WHERE id = $1", [identity.id]);
+  await linkExternalIdentityManually(db, {
+    externalUserId: "moly:new-identity", targetUserId: identity.user_id,
+  });
+  assert.equal(await hasActiveExternalLmsAccess(identity.user_id, db), false);
+  const ownership = await queryCourseOwnershipForMoly(db, {
+    correlation_id: "binding", subject: { external_user_id: "moly:new-identity" },
+    external_course_ids: ["moly:binding-offer"],
+  });
+  assert.equal(ownership.data.items[0].owned, false);
+  // Legacy rows without an identity FK must still match the exact external ID.
+  await db.query("UPDATE external_entitlements SET external_identity_id = NULL");
+  assert.equal(await hasEffectiveCourseEntitlement({ db, userId: identity.user_id, courseId: course.id }), false);
 });

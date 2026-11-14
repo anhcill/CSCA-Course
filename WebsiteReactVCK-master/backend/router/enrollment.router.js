@@ -146,6 +146,7 @@ router.get("/my", protectRoute, requireRole("user"), requireActiveStudentLmsAcce
        SELECT c.id AS enrollment_id, ac.access_granted_at AS enrolled_at, c.*
        FROM accessible_courses ac
        JOIN courses c ON c.id = ac.course_id
+       WHERE ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$1", "c.id")}
        ORDER BY ac.access_granted_at DESC`,
       [userId],
     );

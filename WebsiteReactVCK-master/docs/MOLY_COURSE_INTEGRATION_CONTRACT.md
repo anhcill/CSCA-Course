@@ -395,10 +395,10 @@ Emitted / stored in `integration_conflicts` whenever linking cannot be performed
   - `POST /api/integrations/v1/entitlements/revoke`
   - `POST /api/integrations/v1/ownership/query`
   - `POST /api/integrations/v1/moly/events/status` (signed read helper to inspect `integration_inbox` delivery state by `event_id` or `idempotency_key`)
-- **Admin conflict & identity mapping endpoints** (`/api/admin/integrations` via `backend/router/externalCourseMapping.router.js`):
-  - `GET /api/admin/integrations/conflicts`
-  - `POST /api/admin/integrations/conflicts/:conflictId/resolve`
-  - `POST /api/admin/integrations/identities/link`
+- **Admin conflict & identity mapping endpoints** (`/api/v1/admin/integrations` via `backend/router/externalCourseMapping.router.js`):
+  - `GET /api/v1/admin/integrations/conflicts`
+  - `POST /api/v1/admin/integrations/conflicts/:conflictId/resolve`
+  - `POST /api/v1/admin/integrations/identities/link`
 - **Background worker**: `backend/worker.js` polls `processAvailableMolyInboxJobs()` on the worker interval with `FOR UPDATE SKIP LOCKED`, lease recovery, exponential backoff retry, `dead_letter` transition, and `integration_conflicts` quarantine.
 - **Environment variables (names only)**:
   - `MOLY_INTEGRATION_SERVICE_TOKEN`

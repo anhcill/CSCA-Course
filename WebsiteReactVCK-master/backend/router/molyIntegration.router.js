@@ -55,7 +55,6 @@ export const createMolyIntegrationRouter = ({
           correlationId: headerMeta.correlationId || parsed.correlationId,
           eventTimestamp: headerMeta.eventTimestamp || null,
           idempotencyKey: headerMeta.idempotencyKey || parsed.idempotencyKey,
-          integrationKey: headerMeta.integrationKey || null,
         },
       });
       return res.status(enqueued.httpStatus).json(enqueued.body);

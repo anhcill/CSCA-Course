@@ -12,6 +12,8 @@ export const EXTERNAL_LMS_ACCESS_EXISTS_SQL = (userIdExpr = "u.id") => `
     JOIN external_entitlements ee_lms
       ON ee_lms.user_id = ei_lms.user_id
      AND ee_lms.source_system = ei_lms.source_system
+     AND ee_lms.external_user_id = ei_lms.external_user_id
+     AND (ee_lms.external_identity_id IS NULL OR ee_lms.external_identity_id = ei_lms.id)
     WHERE ei_lms.user_id = ${userIdExpr}
       AND ei_lms.status = 'active'
       AND ee_lms.status = 'active'
@@ -52,6 +54,7 @@ export const EFFECTIVE_COURSE_GRANT_EXISTS_SQL = (userIdExpr = "$1", courseIdExp
             ee_eff.external_identity_id IS NULL
             AND ei_eff.user_id = ee_eff.user_id
             AND ei_eff.source_system = ee_eff.source_system
+            AND ei_eff.external_user_id = ee_eff.external_user_id
           )
         )
       WHERE ee_eff.user_id = ${userIdExpr}
@@ -141,6 +144,7 @@ export const hasEffectiveCourseEntitlement = async ({
              ee.external_identity_id IS NULL
              AND ei.user_id = ee.user_id
              AND ei.source_system = ee.source_system
+             AND ei.external_user_id = ee.external_user_id
            )
          )
        WHERE ee.user_id = $1

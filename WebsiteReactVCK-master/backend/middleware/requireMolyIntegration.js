@@ -106,9 +106,12 @@ export const createRequireMolyIntegration = ({
     return deny(res, 401, "INVALID_SIGNATURE", "X-Signature must be formatted as sha256=<64-hex>.", correlationId);
   }
 
+  if (!Buffer.isBuffer(req.rawBody)) {
+    return deny(res, 400, "RAW_BODY_REQUIRED", "Raw JSON request body is required for signature verification.", correlationId);
+  }
   const expectedSignature = computeMolySignature({
     timestamp: timestampHeader,
-    rawBody: req.rawBody !== undefined ? req.rawBody : JSON.stringify(req.body ?? {}),
+    rawBody: req.rawBody,
     secret: cfg.hmacSecret,
   });
 
@@ -122,7 +125,6 @@ export const createRequireMolyIntegration = ({
     idempotencyKey,
     eventTimestamp: new Date(timestampMs).toISOString(),
     rawTimestamp: timestampHeader,
-    integrationKey: integrationKeyHeader,
   };
   return next();
 };

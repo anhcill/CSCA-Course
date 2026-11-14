@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { getClient, query } from "../db/connect.js";
 import { recordAuditEvent } from "./audit.service.js";
 import { createManagedUsername } from "../utils/usernameGenerator.js";
+import { hasUnrevokedVideoCourseAccess } from "./videoCourseAccessRevocation.service.js";
 import {
   EXTERNAL_ENTITLEMENT_STATUSES,
   ExternalIntegrationError,
@@ -331,7 +332,6 @@ export const enqueueMolyIntegrationEvent = async (
     correlation_id: headersSnapshot.correlationId || parsedEnvelope.correlationId,
     event_timestamp: headersSnapshot.eventTimestamp || null,
     idempotency_key: headersSnapshot.idempotencyKey || parsedEnvelope.idempotencyKey,
-    integration_key: headersSnapshot.integrationKey || null,
   };
 
   return runWithTransaction(db, async (tx) => {
@@ -505,7 +505,8 @@ export const applyMolyUserProvisionTx = async (
     }
 
     const storedTs = new Date(existingIdentity.source_updated_at);
-    if (sourceUpdatedAt < storedTs) {
+    if (sourceUpdatedAt < storedTs
+      || (sourceUpdatedAt.getTime() === storedTs.getTime() && accountStatus !== existingIdentity.status)) {
       await recordAudit({
         db: tx,
         actorId: null,
@@ -525,7 +526,7 @@ export const applyMolyUserProvisionTx = async (
       return {
         outcome: "stale",
         errorCode: "STALE_EVENT",
-        errorMessage: "Incoming identity event has an older source_updated_at.",
+        errorMessage: "A strictly newer source_updated_at is required to change identity status.",
         responseStatus: 200,
         data: {
           event_id: eventId,
@@ -826,6 +827,8 @@ const syncCourseEnrollmentProjectionTx = async (
   // 2. Scoped Record membership row (`class_enrollments`), strictly isolated by
   // `enrollment_source` and `video_course_profile_id` so Management rows are untouched
   // and mapping 1 profile never unlocks sibling profiles on the same course.
+  // Keep scheduled grants projected too; request-time entitlement checks enforce
+  // valid_from, so access starts on time without needing another webhook.
   const activeExternalScopeRes = await tx.query(
     `SELECT ee.id
      FROM external_entitlements ee
@@ -839,7 +842,6 @@ const syncCourseEnrollmentProjectionTx = async (
        )
        AND ei.status = 'active'
        AND ee.status = 'active'
-       AND ee.valid_from <= NOW()
        AND (ee.valid_until IS NULL OR ee.valid_until > NOW())
      ORDER BY ee.source_updated_at DESC, ee.id DESC
      LIMIT 1`,
@@ -863,7 +865,7 @@ const syncCourseEnrollmentProjectionTx = async (
            learning_mode = 'recording',
            ended_at = NULL,
            external_entitlement_id = EXCLUDED.external_entitlement_id`,
-        [userId, localCourseId, localVideoCourseProfileId, entitlementId, sourceSystem],
+        [userId, localCourseId, localVideoCourseProfileId, activeScopeEntitlement.id, sourceSystem],
       );
     } else {
       await tx.query(
@@ -882,7 +884,7 @@ const syncCourseEnrollmentProjectionTx = async (
            learning_mode = 'recording',
            ended_at = NULL,
            external_entitlement_id = EXCLUDED.external_entitlement_id`,
-        [userId, localCourseId, entitlementId, sourceSystem],
+        [userId, localCourseId, activeScopeEntitlement.id, sourceSystem],
       );
     }
   } else {
@@ -1339,6 +1341,14 @@ const persistConflictAndFailure = async (
   const ctx = (error instanceof MolyIntegrationError ? error.conflictContext : null) || {};
 
   return runWithTransaction(db, async (tx) => {
+    // A reclaimed lease must fence off the previous worker's failure callback.
+    const lease = await tx.query(
+      `SELECT id FROM integration_inbox
+       WHERE id = $1 AND status = 'processing' AND locked_by = $2 AND attempt_count = $3
+       FOR UPDATE`,
+      [job.id, job.locked_by, job.attempt_count],
+    );
+    if (!lease.rows[0]) return { status: "lease_lost" };
     let conflictId = null;
     if (terminal && conflictType && CONFLICT_TYPES_REQUIRING_QUARANTINE.has(conflictType)) {
       const conflictRes = await tx.query(
@@ -1481,6 +1491,15 @@ export const processNextMolyInboxJob = async ({
 
   try {
     const outcome = await runWithTransaction(db, async (tx) => {
+      // Hold this row through business writes and completion; SKIP LOCKED cannot
+      // reclaim an in-flight transaction, even when its wall-clock lease expires.
+      const lease = await tx.query(
+        `SELECT id FROM integration_inbox
+         WHERE id = $1 AND status = 'processing' AND locked_by = $2 AND attempt_count = $3
+         FOR UPDATE`,
+        [claimed.id, claimed.locked_by, claimed.attempt_count],
+      );
+      if (!lease.rows[0]) return { status: "lease_lost" };
       const envelope = rebuildEnvelopeFromInboxRow(claimed);
       let result;
       if (envelope.eventType === "user.provisioned") {
@@ -1604,11 +1623,14 @@ export const queryCourseOwnershipForMoly = async (db = defaultDb, rawBody, heade
   let mgmtGrants = [];
   if (identity) {
     extGrants = (await db.query(
-      `SELECT id, source_system, external_grant_id, local_course_id, local_video_course_profile_id,
-              status, valid_from, valid_until, source_updated_at
-       FROM external_entitlements
-       WHERE user_id = $1
-       ORDER BY (status = 'active') DESC, source_updated_at DESC, id DESC`,
+      `SELECT ee.id, ee.source_system, ee.external_grant_id, ee.local_course_id, ee.local_video_course_profile_id,
+              ee.status, ee.valid_from, ee.valid_until, ee.source_updated_at
+       FROM external_entitlements ee
+       JOIN external_identities ei ON ei.user_id = ee.user_id
+         AND ei.source_system = ee.source_system AND ei.external_user_id = ee.external_user_id
+         AND (ee.external_identity_id IS NULL OR ee.external_identity_id = ei.id)
+       WHERE ee.user_id = $1 AND ei.status = 'active'
+       ORDER BY (ee.status = 'active') DESC, ee.source_updated_at DESC, ee.id DESC`,
       [identity.user_id],
     )).rows;
 
@@ -1631,7 +1653,7 @@ export const queryCourseOwnershipForMoly = async (db = defaultDb, rawBody, heade
     && (!row.valid_until || new Date(row.valid_until).getTime() > nowMs)
   );
 
-  const items = orderedCourseIds.map((extCourseId) => {
+  const items = await Promise.all(orderedCourseIds.map(async (extCourseId) => {
     const map = mappingByExtId.get(extCourseId) || null;
     if (!map || !identity || identity.status !== "active") {
       return {
@@ -1670,17 +1692,23 @@ export const queryCourseOwnershipForMoly = async (db = defaultDb, rawBody, heade
       };
     }
 
+    const profileAccessible = !bestActive || map.local_video_course_profile_id == null
+      ? true
+      : await hasUnrevokedVideoCourseAccess({
+        db, userId: identity.user_id, courseId: map.local_course_id,
+        profileId: map.local_video_course_profile_id,
+      });
     return {
       external_course_id: extCourseId,
       local_course_id: Number(map.local_course_id),
       external_grant_id: fallbackLatest.external_grant_id || `internal-management:grant:${fallbackLatest.id}`,
-      owned: Boolean(bestActive),
+      owned: Boolean(bestActive) && profileAccessible,
       status: fallbackLatest.status,
       valid_from: new Date(fallbackLatest.valid_from).toISOString(),
       valid_until: fallbackLatest.valid_until ? new Date(fallbackLatest.valid_until).toISOString() : null,
       source_updated_at: new Date(fallbackLatest.source_updated_at).toISOString(),
     };
-  });
+  }));
 
   return {
     success: true,
@@ -1782,6 +1810,14 @@ const linkExternalIdentityTx = async (
         409,
         "IDENTITY_ALREADY_LINKED",
         `External identity ${normalizedExtUserId} is already bound to local user ${existing.user_id}.`,
+      );
+    }
+    if (existing && status !== existing.status
+      && parsedTimestamp.getTime() <= new Date(existing.source_updated_at).getTime()) {
+      throw new ExternalIntegrationError(
+        409,
+        "STALE_EVENT",
+        "A strictly newer source_updated_at is required to change identity status.",
       );
     }
 

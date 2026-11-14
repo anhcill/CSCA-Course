@@ -338,6 +338,12 @@ test("file visibility and video upload intent enforce teacher and learner scope"
   assert.equal(afterDetach.statusCode, 200, JSON.stringify(afterDetach.body));
   assert.equal(afterDetach.body.data.length, 0);
   assert.equal((await db.query("SELECT status FROM lms_learning_files WHERE id=$1", [classOnly.id])).rows[0].status, "ready");
+  // The earlier Record-only checks changed this membership. Restore Live mode
+  // before testing the Live workspace's file visibility policy.
+  await db.query(
+    "UPDATE class_enrollments SET learning_mode='live' WHERE user_id=$1 AND live_class_id=$2",
+    [learnerA.id, classA.id],
+  );
   const workspace = await invoke(courseRouter, "get", "/:courseId/workspace", {
     user: { ...learnerA, is_management_managed: true, lms_account_status: "active" },
     params: { courseId: course.id }, query: { classId: classA.id },
