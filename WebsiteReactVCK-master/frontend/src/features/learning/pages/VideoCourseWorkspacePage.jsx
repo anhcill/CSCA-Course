@@ -118,8 +118,8 @@ const formatVideoDurationLabel = (unit) => {
   return unit?.hasVideo ? "Video HD" : "Chưa có video";
 };
 
-const recomputeSequentialLocks = (rawUnits = [], previewOnly = false, isAdminOrTeacher = false) => {
-  if (isAdminOrTeacher) {
+const recomputeSequentialLocks = (rawUnits = [], previewOnly = false, canSkipSequentialLocks = false) => {
+  if (canSkipSequentialLocks) {
     return rawUnits.map((unit) => ({
       ...unit,
       isLocked: false,
@@ -252,8 +252,8 @@ export default function VideoCourseWorkspacePage() {
       const res = await fetchVideoCourseWorkspace(offeringId, { unitId: unitTarget });
       if (res?.success && res.data) {
         const previewOnly = Boolean(res.data.capabilities?.isPublicPreviewAccess);
-        const isAdminOrTeacher = authUser?.role === "admin" || authUser?.role === "creator" || Boolean(res.data.capabilities?.isAdminPreview);
-        const normalizedUnits = recomputeSequentialLocks(res.data.units || [], previewOnly, isAdminOrTeacher);
+        const canSkipSequentialLocks = authUser?.role === "admin" || authUser?.role === "creator" || Boolean(res.data.capabilities?.isAdminPreview) || Boolean(res.data.capabilities?.canReviewFreely);
+        const normalizedUnits = recomputeSequentialLocks(res.data.units || [], previewOnly, canSkipSequentialLocks);
         const au = res.data.activeUnit;
         const activeMeta = au ? normalizedUnits.find((u) => String(u.id) === String(au.id)) : null;
 
@@ -305,8 +305,8 @@ export default function VideoCourseWorkspacePage() {
     setMobileCurriculumOpen(false);
     if (String(unit.id) === String(activeUnitId)) return;
 
-    const isAdminOrTeacher = authUser?.role === "admin" || authUser?.role === "creator" || Boolean(workspaceData?.capabilities?.isAdminPreview);
-    if (!isAdminOrTeacher && unit.isLocked) {
+    const canSkipSequentialLocks = authUser?.role === "admin" || authUser?.role === "creator" || Boolean(workspaceData?.capabilities?.isAdminPreview);
+    if (!canSkipSequentialLocks && unit.isLocked) {
       toast.error(
         unit.lockReason
         || `Bạn xem thêm đến ${REQUIRED_WATCH_PERCENT}% video và hoàn thành bài trắc nghiệm của buổi trước để tiếp tục nhé.`,
@@ -355,7 +355,7 @@ export default function VideoCourseWorkspacePage() {
         units: recomputeSequentialLocks(
           nextUnits,
           Boolean(prev.capabilities?.isPublicPreviewAccess),
-          authUser?.role === "admin" || authUser?.role === "creator" || Boolean(prev.capabilities?.isAdminPreview),
+          authUser?.role === "admin" || authUser?.role === "creator" || Boolean(prev.capabilities?.isAdminPreview) || Boolean(prev.capabilities?.canReviewFreely),
         ),
       };
     });
@@ -402,7 +402,7 @@ export default function VideoCourseWorkspacePage() {
       const updatedUnits = recomputeSequentialLocks(
         rawUpdated,
         Boolean(prev.capabilities?.isPublicPreviewAccess),
-        authUser?.role === "admin" || authUser?.role === "creator" || Boolean(prev.capabilities?.isAdminPreview),
+        authUser?.role === "admin" || authUser?.role === "creator" || Boolean(prev.capabilities?.isAdminPreview) || Boolean(prev.capabilities?.canReviewFreely),
       );
       const completedCount = updatedUnits.filter((u) => u.isCompleted).length;
       const activeMeta = updatedUnits.find((u) => String(u.id) === String(activeUnitId));
@@ -1831,7 +1831,7 @@ export default function VideoCourseWorkspacePage() {
               <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2">
                 <ShieldCheck className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                 <p className="leading-snug">
-                  Học theo thứ tự: Xem khoảng <strong>{REQUIRED_WATCH_PERCENT}% video</strong> và <strong>hoàn thành Quiz</strong> để tiếp tục bài kế tiếp nhé.
+                  {workspaceData?.capabilities?.canReviewFreely ? <>Bạn là học viên lớp Live, có thể chọn bất kỳ bài nào để xem lại.</> : <>Học theo thứ tự: Xem khoảng <strong>{REQUIRED_WATCH_PERCENT}% video</strong> và <strong>hoàn thành Quiz</strong> để tiếp tục bài kế tiếp nhé.</>}
                 </p>
               </div>
             </div>
@@ -2180,7 +2180,7 @@ export default function VideoCourseWorkspacePage() {
             <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2">
               <ShieldCheck className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
               <p className="leading-snug">
-                Học theo thứ tự: Xem khoảng <strong>{REQUIRED_WATCH_PERCENT}% video</strong> và <strong>hoàn thành Quiz</strong> để tiếp tục bài kế tiếp nhé.
+                {workspaceData?.capabilities?.canReviewFreely ? <>Bạn là học viên lớp Live, có thể chọn bất kỳ bài nào để xem lại.</> : <>Học theo thứ tự: Xem khoảng <strong>{REQUIRED_WATCH_PERCENT}% video</strong> và <strong>hoàn thành Quiz</strong> để tiếp tục bài kế tiếp nhé.</>}
               </p>
             </div>
 

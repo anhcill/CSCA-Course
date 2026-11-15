@@ -207,6 +207,28 @@ test("video course workspace: Live learner inherits only the matching MIRROR Rec
   assert.equal(inherited.body.data.mode, "RECORD_MIRROR");
   assert.equal(inherited.body.data.activeUnit.id, String(session.id));
   assert.equal(inherited.body.data.capabilities.canJoinLive, false);
+  assert.equal(inherited.body.data.capabilities.canReviewFreely, true);
+
+  const laterSession = (await db.query(
+    "INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status) VALUES ($1,'Review later lesson',NOW() + INTERVAL '1 day',NOW() + INTERVAL '1 day 1 hour','ended') RETURNING id",
+    [liveClass.id],
+  )).rows[0];
+  const { isVideoCourseUnitUnlocked, hasLiveReviewMembership } = await import("../services/videoCourseUnitAccess.service.js");
+  const unitOptions = { db, userId: learner.id, unitType: "class_session", unitId: laterSession.id, videoCourseProfileId: profile.id };
+  const liveReview = await invoke(learner, learnerDeviceId);
+  assert.equal(liveReview.body.data.units.find(u => u.id === String(laterSession.id)).isLocked, false);
+  assert.equal(await isVideoCourseUnitUnlocked(unitOptions), true);
+  assert.equal(await hasLiveReviewMembership(db, { id: profile.id, mode: "INDEPENDENT", source_live_class_id: liveClass.id }, learner.id), false);
+  assert.equal(await hasLiveReviewMembership(db, { id: profile.id, mode: "MIRROR", source_live_class_id: 999999 }, learner.id), false);
+
+  // The same source class in recording mode must still finish previous units.
+  await db.query("UPDATE class_enrollments SET learning_mode = 'recording' WHERE user_id = $1", [learner.id]);
+  const recordReview = await invoke(learner, learnerDeviceId);
+  assert.equal(recordReview.body.data.capabilities.canReviewFreely, false);
+  assert.equal(recordReview.body.data.units.find(u => u.id === String(laterSession.id)).isLocked, true);
+  assert.equal(await isVideoCourseUnitUnlocked(unitOptions), false);
+  await db.query("UPDATE class_enrollments SET learning_mode = 'live', status = 'revoked' WHERE user_id = $1", [learner.id]);
+  assert.equal(await hasLiveReviewMembership(db, { id: profile.id, mode: "MIRROR", source_live_class_id: liveClass.id }, learner.id), false);
 
   const wrongGrant = await invoke(wrongGrantLearner, wrongDeviceId);
   assert.equal(wrongGrant.statusCode, 403, JSON.stringify(wrongGrant.body));
