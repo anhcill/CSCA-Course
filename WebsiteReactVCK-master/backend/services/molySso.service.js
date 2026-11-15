@@ -3,15 +3,24 @@ import crypto from "crypto";
 import { getClient, query as defaultQuery } from "../db/connect.js";
 import { createCourseToMolyClient } from "./courseToMolyClient.js";
 import {
+  DEFAULT_BROWSER_TX_TTL_SECONDS,
   DEFAULT_SSO_TTL_SECONDS,
   SsoPolicyError,
+  buildSsoAuthorizeUrl,
   buildSsoCallbackUrl,
+  buildSsoStartUrl,
+  computePkceChallengeS256,
   constantTimeEqual,
   generateOpaqueSsoCode,
+  generatePkceVerifier,
   generateSsoNonce,
   hashSsoToken,
+  readSsoCookie,
   resolveSsoTtlSeconds,
+  validatePkceChallenge,
+  validateSsoStateParam,
   validateSsoTargetPath,
+  verifyPkceVerifierS256,
 } from "./ssoPathPolicy.service.js";
 import { establishLoginSession } from "./trustedDevice.service.js";
 import { hasUnrevokedVideoCourseAccess } from "./videoCourseAccessRevocation.service.js";
@@ -21,6 +30,8 @@ import {
 } from "./externalEntitlementAccess.service.js";
 
 const LINK_TOKEN_TTL_SECONDS = 600;
+const CSCA_SSO_TX_COOKIE = "csca_sso_tx";
+const CSCA_SSO_LINK_COOKIE = "csca_sso_link";
 const PRIVILEGED_ROLES = new Set(["admin", "creator", "teacher", "super_admin", "staff"]);
 const isPrivilegedAccount = (user) => PRIVILEGED_ROLES.has(user?.role)
   || user?.management_staff_source_id != null;
@@ -201,28 +212,17 @@ export function createMolySsoService({
     });
   }
 
-  async function issueCourseSsoCode({
+  async function assertCourseLaunchEligible({
     userId,
     targetSystem = "moly",
     targetPath = "/khoa-hoc",
     scopeType = "account",
     scopedLocalCourseId = null,
-    scopedExternalCourseId = null,
-    correlationId = null,
-    webBaseUrl = null,
   }) {
     if (targetSystem !== "moly") {
       throw new SsoPolicyError(400, "INVALID_SSO_TARGET_SYSTEM", "Course can only launch SSO toward Moly Studio.");
     }
-    const safeTargetPath = validateSsoTargetPath(targetPath, { targetSystem: "moly" });
-    const ttlSeconds = resolveSsoTtlSeconds(env.MOLY_SSO_TTL_SECONDS, DEFAULT_SSO_TTL_SECONDS);
-    const issuedAt = now();
-    const expiresAt = new Date(issuedAt.getTime() + ttlSeconds * 1000);
-    const code = generateOpaqueSsoCode();
-    const state = generateSsoNonce();
-    const codeHash = hashSsoToken(code);
-    const corr = correlationId || crypto.randomUUID();
-
+    const safeTargetPath = validateSsoTargetPath(targetPath || "/khoa-hoc", { targetSystem: "moly" });
     const user = (await runner.query(
       `SELECT id, username, email, role, is_locked, management_staff_source_id
        FROM users
@@ -239,25 +239,104 @@ export function createMolySsoService({
     if (isPrivilegedAccount(user)) {
       throw new SsoPolicyError(403, "PRIVILEGED_ROLE_COLLISION", "Privileged accounts cannot launch cross-system SSO.");
     }
+    if (scopeType === "course" && scopedLocalCourseId) {
+      const access = await hasEffectiveCourseEntitlement({
+        db: runner,
+        userId: user.id,
+        courseId: Number(scopedLocalCourseId),
+      });
+      if (!access) {
+        throw new SsoPolicyError(403, "SSO_ENTITLEMENT_REVOKED", "Course access is not active for this account.");
+      }
+    }
+    return { user, safeTargetPath };
+  }
+
+  async function checkMolyLaunchIntent({
+    userId,
+    targetSystem = "moly",
+    targetPath = "/khoa-hoc",
+    scopeType = "account",
+    scopedLocalCourseId = null,
+    scopedExternalCourseId = null,
+    correlationId = null,
+    webBaseUrl = null,
+  }) {
+    const { safeTargetPath } = await assertCourseLaunchEligible({
+      userId,
+      targetSystem,
+      targetPath,
+      scopeType,
+      scopedLocalCourseId,
+    });
+    const corr = correlationId || crypto.randomUUID();
+    const targetWebBase = webBaseUrl || molyClient.getConfig().webBaseUrl || env.MOLY_WEB_BASE_URL || "";
+    const destinationStartUrl = targetWebBase
+      ? buildSsoStartUrl({
+          webBaseUrl: targetWebBase,
+          targetPath: safeTargetPath,
+          courseId: scopedLocalCourseId,
+          offeringId: scopedExternalCourseId,
+        })
+      : null;
+
+    return {
+      targetSystem: "moly",
+      targetPath: safeTargetPath,
+      destinationStartUrl,
+      correlationId: corr,
+    };
+  }
+
+  async function authorizeMolySsoRequest({
+    userId,
+    state,
+    codeChallenge,
+    codeChallengeMethod = "S256",
+    targetSystem = "moly",
+    targetPath = "/khoa-hoc",
+    scopeType = "account",
+    scopedLocalCourseId = null,
+    scopedExternalCourseId = null,
+    correlationId = null,
+    webBaseUrl = null,
+  }) {
+    const validatedState = validateSsoStateParam(state);
+    const validatedChallenge = validatePkceChallenge(codeChallenge, codeChallengeMethod);
+    const { user, safeTargetPath } = await assertCourseLaunchEligible({
+      userId,
+      targetSystem,
+      targetPath,
+      scopeType,
+      scopedLocalCourseId,
+    });
+
+    const ttlSeconds = resolveSsoTtlSeconds(env.MOLY_SSO_TTL_SECONDS, DEFAULT_SSO_TTL_SECONDS);
+    const issuedAt = now();
+    const expiresAt = new Date(issuedAt.getTime() + ttlSeconds * 1000);
+    const code = generateOpaqueSsoCode();
+    const codeHash = hashSsoToken(code);
+    const corr = correlationId || crypto.randomUUID();
 
     await runner.query(
       `INSERT INTO integration_sso_codes (
          code_hash, source_system, source_user_id, local_user_id,
-         target_system, target_path, nonce, scope_type,
-         scoped_local_course_id, scoped_external_course_id, correlation_id,
-         expires_at
+         target_system, target_path, nonce, pkce_challenge, pkce_method,
+         scope_type, scoped_local_course_id, scoped_external_course_id,
+         correlation_id, expires_at
        ) VALUES (
          $1, 'csca-course', $2, $3,
-         'moly', $4, $5, $6,
+         'moly', $4, $5, $6, 'S256',
          $7, $8, $9,
-         $10
+         $10, $11
        )`,
       [
         codeHash,
         String(user.id),
         user.id,
         safeTargetPath,
-        state,
+        validatedState,
+        validatedChallenge,
         scopeType === "course" ? "course" : "account",
         scopedLocalCourseId,
         scopedExternalCourseId,
@@ -267,25 +346,44 @@ export function createMolySsoService({
     );
 
     const targetWebBase = webBaseUrl || molyClient.getConfig().webBaseUrl || env.MOLY_WEB_BASE_URL || "";
-    const launchUrl = targetWebBase
-      ? buildSsoCallbackUrl({ webBaseUrl: targetWebBase, code, state })
+    const callbackUrl = targetWebBase
+      ? buildSsoCallbackUrl({ webBaseUrl: targetWebBase, code, state: validatedState })
       : null;
 
     return {
       code,
-      state,
+      state: validatedState,
       targetSystem: "moly",
       targetPath: safeTargetPath,
       expiresAt: expiresAt.toISOString(),
       expiresInSeconds: ttlSeconds,
       correlationId: corr,
-      launchUrl,
+      redirectUrl: callbackUrl,
+      launchUrl: callbackUrl,
     };
   }
 
-  async function exchangeCourseSsoCode({ code, nonce, consumerSystem = "moly", consumeIp = null, correlationId = null }) {
+  async function issueCourseSsoCode() {
+    throw new SsoPolicyError(
+      400,
+      "SSO_PKCE_REQUIRED",
+      "Legacy non-PKCE SSO launch is disabled. Use destination-initiated PKCE browser transaction flow.",
+    );
+  }
+
+  async function exchangeCourseSsoCode({
+    code,
+    nonce,
+    codeVerifier = null,
+    consumerSystem = "moly",
+    consumeIp = null,
+    correlationId = null,
+  }) {
     if (!code || !nonce) {
       throw new SsoPolicyError(400, "SSO_INVALID_REQUEST", "SSO code and nonce are required.");
+    }
+    if (!codeVerifier) {
+      throw new SsoPolicyError(401, "SSO_PKCE_VERIFIER_REQUIRED", "PKCE code_verifier is required.");
     }
     if (consumerSystem !== "moly") {
       throw new SsoPolicyError(403, "SSO_CONSUMER_MISMATCH", "Consumer system mismatch.");
@@ -318,6 +416,12 @@ export function createMolySsoService({
       }
       if (!constantTimeEqual(ssoRow.nonce, nonce)) {
         throw new SsoPolicyError(401, "SSO_STATE_MISMATCH", "SSO state/nonce verification failed.");
+      }
+      if (!ssoRow.pkce_challenge || String(ssoRow.pkce_method || "").toUpperCase() !== "S256") {
+        throw new SsoPolicyError(400, "SSO_PKCE_REQUIRED", "Legacy non-PKCE SSO codes cannot be exchanged.");
+      }
+      if (!verifyPkceVerifierS256(codeVerifier, ssoRow.pkce_challenge)) {
+        throw new SsoPolicyError(403, "SSO_PKCE_MISMATCH", "PKCE code_verifier verification failed.");
       }
 
       const user = (await client.query(
@@ -488,6 +592,8 @@ export function createMolySsoService({
         // Existing unlinked learner collision -> ALWAYS stop and require Safe Linking verification!
         const linkToken = generateOpaqueSsoCode(32);
         const linkTokenHash = hashSsoToken(linkToken);
+        const linkBrowserTxToken = generateOpaqueSsoCode(32);
+        const linkBrowserTxHash = hashSsoToken(linkBrowserTxToken);
         const expiresAt = new Date(current.getTime() + LINK_TOKEN_TTL_SECONDS * 1000);
 
         await recordConflict(client, {
@@ -501,14 +607,15 @@ export function createMolySsoService({
 
         await client.query(
           `INSERT INTO integration_sso_link_requests (
-             link_token_hash, source_system, external_user_id, candidate_user_id,
+             link_token_hash, browser_tx_hash, source_system, external_user_id, candidate_user_id,
              email, source_role, target_path, sso_nonce, correlation_id, expires_at, metadata
            ) VALUES (
-             $1, 'moly', $2, $3,
-             $4, $5, $6, $7, $8, $9, $10::jsonb
+             $1, $2, 'moly', $3, $4,
+             $5, $6, $7, $8, $9, $10, $11::jsonb
            )`,
           [
             linkTokenHash,
+            linkBrowserTxHash,
             namespacedExtUserId,
             candidate.id,
             email,
@@ -527,6 +634,7 @@ export function createMolySsoService({
         return {
           outcome: "LINK_REQUIRED",
           linkToken,
+          linkBrowserTxToken,
           email,
           targetPath,
           hasPassword: Boolean(candidate.password_hash),
@@ -597,9 +705,69 @@ export function createMolySsoService({
     return validateSsoTargetPath(exchanged.target_path, { targetSystem: "csca-course" });
   }
 
+  async function startIncomingMolySsoTransaction({
+    targetPath = null,
+    courseId = null,
+    offeringId = null,
+    correlationId = null,
+    webBaseUrl = null,
+  } = {}) {
+    const fallbackPath = offeringId
+      ? `/video-courses/${encodeURIComponent(String(offeringId)).replace(/%3A/gi, ":")}`
+      : "/courses";
+    const safeTargetPath = validateSsoTargetPath(targetPath || fallbackPath, { targetSystem: "csca-course" });
+    const browserTxToken = generateOpaqueSsoCode(32);
+    const txTokenHash = hashSsoToken(browserTxToken);
+    const state = generateSsoNonce();
+    const codeVerifier = generatePkceVerifier();
+    const codeChallenge = computePkceChallengeS256(codeVerifier);
+    const ttlSeconds = resolveSsoTtlSeconds(env.SSO_BROWSER_TX_TTL_SECONDS, DEFAULT_BROWSER_TX_TTL_SECONDS);
+    const issuedAt = now();
+    const expiresAt = new Date(issuedAt.getTime() + ttlSeconds * 1000);
+    const corr = correlationId || crypto.randomUUID();
+
+    await runner.query(
+      `INSERT INTO integration_sso_browser_txs (
+         tx_token_hash, direction, purpose, state,
+         code_verifier, code_challenge, code_challenge_method, target_path, correlation_id, expires_at
+       ) VALUES (
+         $1, 'moly_to_csca_course', 'sso_login', $2,
+         $3, $4, 'S256', $5, $6, $7
+       )`,
+      [txTokenHash, state, codeVerifier, codeChallenge, safeTargetPath, corr, expiresAt.toISOString()],
+    );
+
+    const sourceWebBase = webBaseUrl || molyClient.getConfig().webBaseUrl || env.MOLY_WEB_BASE_URL || "";
+    const authorizeUrl = sourceWebBase
+      ? buildSsoAuthorizeUrl({
+          webBaseUrl: sourceWebBase,
+          targetSystem: "csca-course",
+          state,
+          codeChallenge,
+          codeChallengeMethod: "S256",
+          targetPath: safeTargetPath,
+          courseId,
+          offeringId,
+        })
+      : null;
+
+    return {
+      cookieName: CSCA_SSO_TX_COOKIE,
+      browserTxToken,
+      ttlSeconds,
+      state,
+      targetPath: safeTargetPath,
+      authorizeUrl,
+      expiresAt: expiresAt.toISOString(),
+      correlationId: corr,
+    };
+  }
+
   async function consumeMolySso({
     code,
     state,
+    req = null,
+    browserTxToken = null,
     deviceToken,
     ipAddress,
     userAgent,
@@ -608,10 +776,61 @@ export function createMolySsoService({
     if (!code || !state) {
       throw new SsoPolicyError(400, "SSO_INVALID_REQUEST", "SSO code and state are required.");
     }
+    const rawTxToken = browserTxToken || readSsoCookie(req, CSCA_SSO_TX_COOKIE);
+    if (!rawTxToken) {
+      throw new SsoPolicyError(
+        403,
+        "SSO_BROWSER_BINDING_REQUIRED",
+        "SSO login must finish in the browser session that initiated it.",
+      );
+    }
+
     const corr = correlationId || crypto.randomUUID();
+    const current = now();
+    const txHash = hashSsoToken(rawTxToken);
+
+    const boundTx = await withTransaction(runner, async (client) => {
+      const txRow = (await client.query(
+        `SELECT *
+         FROM integration_sso_browser_txs
+         WHERE tx_token_hash = $1
+         FOR UPDATE`,
+        [txHash],
+      )).rows[0];
+
+      if (!txRow || txRow.direction !== "moly_to_csca_course" || txRow.purpose !== "sso_login") {
+        throw new SsoPolicyError(403, "SSO_BROWSER_BINDING_INVALID", "Invalid SSO browser transaction cookie.");
+      }
+      if (txRow.revoked_at) {
+        throw new SsoPolicyError(403, "SSO_BROWSER_TX_REVOKED", "SSO browser transaction was revoked.");
+      }
+      if (txRow.consumed_at) {
+        throw new SsoPolicyError(409, "SSO_BROWSER_TX_ALREADY_USED", "SSO browser transaction was already consumed.");
+      }
+      if (new Date(txRow.expires_at).getTime() <= current.getTime()) {
+        throw new SsoPolicyError(401, "SSO_BROWSER_TX_EXPIRED", "SSO browser transaction has expired. Please try again.");
+      }
+      if (!constantTimeEqual(txRow.state, state)) {
+        throw new SsoPolicyError(403, "SSO_BROWSER_STATE_MISMATCH", "SSO state does not match this browser transaction.");
+      }
+
+      await client.query(
+        `UPDATE integration_sso_browser_txs
+         SET consumed_at = $2
+         WHERE id = $1 AND consumed_at IS NULL`,
+        [txRow.id, current.toISOString()],
+      );
+
+      return {
+        codeVerifier: txRow.code_verifier,
+        targetPath: txRow.target_path,
+      };
+    });
+
     const exchanged = await molyClient.exchangeSsoCode({
       code,
       nonce: state,
+      codeVerifier: boundTx.codeVerifier,
       consumeIp: ipAddress,
       correlationId: corr,
     });
@@ -620,7 +839,6 @@ export function createMolySsoService({
       throw new SsoPolicyError(502, "SSO_INVALID_RESPONSE", "SSO issuer or nonce does not match this exchange.");
     }
 
-    const current = now();
     const resolved = await withTransaction(runner, (client) =>
       resolveConsumeOutcome(client, exchanged, { current, corr }),
     );
@@ -629,6 +847,9 @@ export function createMolySsoService({
       return {
         status: "LINK_REQUIRED",
         linkToken: resolved.linkToken,
+        linkBrowserTxToken: resolved.linkBrowserTxToken,
+        linkCookieName: CSCA_SSO_LINK_COOKIE,
+        linkCookieTtlSeconds: LINK_TOKEN_TTL_SECONDS,
         email: resolved.email,
         hasPassword: resolved.hasPassword,
         targetPath: resolved.targetPath,
@@ -660,36 +881,97 @@ export function createMolySsoService({
     };
   }
 
+  async function getCourseSafeLinkStatus({ req = null, linkBrowserTxToken = null } = {}) {
+    const rawLinkCookie = linkBrowserTxToken || readSsoCookie(req, CSCA_SSO_LINK_COOKIE);
+    if (!rawLinkCookie) {
+      throw new SsoPolicyError(404, "SSO_LINK_SESSION_NOT_FOUND", "No pending link verification in this browser.");
+    }
+    const cookieHash = hashSsoToken(rawLinkCookie);
+    const current = now();
+    const row = (await runner.query(
+      `SELECT l.id, l.email, l.target_path, l.expires_at, l.completed_at, (u.password_hash IS NOT NULL) AS has_password
+       FROM integration_sso_link_requests l
+       JOIN users u ON u.id = l.candidate_user_id
+       WHERE l.browser_tx_hash = $1
+         AND l.source_system = 'moly'
+       ORDER BY l.id DESC
+       LIMIT 1`,
+      [cookieHash],
+    )).rows[0];
+
+    if (!row || row.completed_at) {
+      throw new SsoPolicyError(404, "SSO_LINK_SESSION_NOT_FOUND", "Link verification session has already completed or is invalid.");
+    }
+    if (new Date(row.expires_at).getTime() <= current.getTime()) {
+      throw new SsoPolicyError(401, "SSO_LINK_TOKEN_EXPIRED", "Verification challenge has expired.");
+    }
+
+    return {
+      status: "LINK_REQUIRED",
+      email: row.email,
+      hasPassword: Boolean(row.has_password),
+      targetPath: row.target_path,
+      expiresAt: new Date(row.expires_at).toISOString(),
+    };
+  }
+
   async function confirmCourseSafeLink({
-    linkToken,
+    linkToken = "",
     password = null,
     authenticatedUser = null,
+    req = null,
+    linkBrowserTxToken = null,
     deviceToken,
     ipAddress,
     userAgent,
     correlationId = null,
   }) {
-    if (!linkToken) {
-      throw new SsoPolicyError(400, "SSO_LINK_TOKEN_REQUIRED", "Verification link token is required.");
+    const rawLinkCookie = linkBrowserTxToken || readSsoCookie(req, CSCA_SSO_LINK_COOKIE);
+    if (!rawLinkCookie) {
+      throw new SsoPolicyError(
+        403,
+        "SSO_BROWSER_BINDING_REQUIRED",
+        "Account link verification must be completed in the same browser session.",
+      );
     }
-    const tokenHash = hashSsoToken(linkToken);
+    const trimmedLinkToken = typeof linkToken === "string" ? linkToken.trim() : "";
+    const tokenHash = trimmedLinkToken ? hashSsoToken(trimmedLinkToken) : null;
+    const browserTxHash = hashSsoToken(rawLinkCookie);
     const current = now();
     const corr = correlationId || crypto.randomUUID();
 
     const verifiedUser = await withTransaction(runner, async (client) => {
-      const linkRow = (await client.query(
-        `SELECT *
-         FROM integration_sso_link_requests
-         WHERE link_token_hash = $1
-         FOR UPDATE`,
-        [tokenHash],
-      )).rows[0];
+      const linkRow = tokenHash
+        ? (await client.query(
+            `SELECT *
+             FROM integration_sso_link_requests
+             WHERE link_token_hash = $1
+             FOR UPDATE`,
+            [tokenHash],
+          )).rows[0]
+        : (await client.query(
+            `SELECT *
+             FROM integration_sso_link_requests
+             WHERE browser_tx_hash = $1
+               AND source_system = 'moly'
+             ORDER BY id DESC
+             LIMIT 1
+             FOR UPDATE`,
+            [browserTxHash],
+          )).rows[0];
 
       if (!linkRow || linkRow.completed_at) {
         throw new SsoPolicyError(400, "SSO_LINK_TOKEN_INVALID", "Verification challenge is invalid or already used.");
       }
       if (new Date(linkRow.expires_at).getTime() <= current.getTime()) {
         throw new SsoPolicyError(401, "SSO_LINK_TOKEN_EXPIRED", "Verification challenge has expired.");
+      }
+      if (!linkRow.browser_tx_hash || !constantTimeEqual(linkRow.browser_tx_hash, browserTxHash)) {
+        throw new SsoPolicyError(
+          403,
+          "SSO_BROWSER_BINDING_MISMATCH",
+          "Verification challenge belongs to a different browser session.",
+        );
       }
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
         "moly:identity", linkRow.external_user_id,
@@ -887,9 +1169,15 @@ export function createMolySsoService({
   }
 
   return {
+    CSCA_SSO_TX_COOKIE,
+    CSCA_SSO_LINK_COOKIE,
+    checkMolyLaunchIntent,
+    authorizeMolySsoRequest,
     issueCourseSsoCode,
     exchangeCourseSsoCode,
+    startIncomingMolySsoTransaction,
     consumeMolySso,
+    getCourseSafeLinkStatus,
     confirmCourseSafeLink,
     bindPeerIdentityFromMoly,
   };

@@ -113,10 +113,11 @@ export function createCourseToMolyClient({ config = {}, env = process.env, fetch
   return {
     getConfig,
     isConfigured,
-    exchangeSsoCode({ code, nonce, consumeIp = null, correlationId = null }) {
+    exchangeSsoCode({ code, nonce, codeVerifier = null, consumeIp = null, correlationId = null }) {
       return postSigned("/sso/exchange", {
         code,
         nonce,
+        code_verifier: codeVerifier,
         consumer_system: "csca-course",
         consume_ip: consumeIp,
         correlation_id: correlationId,

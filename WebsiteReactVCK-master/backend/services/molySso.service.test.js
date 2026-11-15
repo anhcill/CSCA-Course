@@ -13,7 +13,13 @@ import { createSsoRouter } from "../router/sso.router.js";
 import { computeMolySignature } from "../middleware/requireMolyIntegration.js";
 import { buildCourseOutboundSignature, createCourseToMolyClient } from "./courseToMolyClient.js";
 import { createMolySsoService } from "./molySso.service.js";
-import { buildSsoCallbackUrl, resolveSsoTtlSeconds, validateSsoTargetPath } from "./ssoPathPolicy.service.js";
+import {
+  buildSsoCallbackUrl,
+  computePkceChallengeS256,
+  generatePkceVerifier,
+  resolveSsoTtlSeconds,
+  validateSsoTargetPath,
+} from "./ssoPathPolicy.service.js";
 import { establishLoginSession } from "./trustedDevice.service.js";
 
 const TEST_CFG = {
@@ -279,12 +285,71 @@ test("SSO path policy enforces strict 60..120s TTL, fragment delivery (#code), a
   assert.equal(frag.get("state"), "st_999");
 });
 
+function createCourseFetchAgent(baseUrl) {
+  const jar = new Map();
+  const updateJar = (res) => {
+    const rawCookies = typeof res.headers.getSetCookie === "function"
+      ? res.headers.getSetCookie()
+      : (res.headers.get("set-cookie") ? [res.headers.get("set-cookie")] : []);
+    for (const entry of rawCookies) {
+      const [pair] = entry.split(";");
+      const idx = pair.indexOf("=");
+      if (idx <= 0) continue;
+      const name = pair.slice(0, idx).trim();
+      const val = pair.slice(idx + 1).trim();
+      if (!val || val === '""' || /max-age=0|expires=thu,\s*01\s+jan\s+1970/i.test(entry)) {
+        jar.delete(name);
+      } else {
+        jar.set(name, val);
+      }
+    }
+  };
+  const request = async (path, { method = "GET", headers = {}, body } = {}) => {
+    const cookieStr = Array.from(jar.entries()).map(([k, v]) => `${k}=${v}`).join("; ");
+    const mergedHeaders = { ...headers };
+    if (cookieStr) {
+      mergedHeaders.Cookie = mergedHeaders.Cookie ? `${mergedHeaders.Cookie}; ${cookieStr}` : cookieStr;
+    }
+    const res = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers: mergedHeaders,
+      body: body === undefined ? undefined : (typeof body === "string" ? body : JSON.stringify(body)),
+      redirect: "manual",
+    });
+    updateJar(res);
+    return res;
+  };
+  const startSso = async ({ targetPath = "/courses" } = {}) => {
+    const res = await request("/api/auth/sso/moly/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: { targetPath },
+    });
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    const authUrl = new URL(json.data.authorizeUrl);
+    return {
+      state: authUrl.searchParams.get("state"),
+      codeChallenge: authUrl.searchParams.get("code_challenge"),
+      codeChallengeMethod: authUrl.searchParams.get("code_challenge_method"),
+      targetPath: json.data.targetPath,
+      authorizeUrl: json.data.authorizeUrl,
+    };
+  };
+  return { jar, request, startSso };
+}
+
 test("Happy path: Moly -> Course SSO JIT creates passwordless learner, binds peer identity, and issues native HttpOnly cookies", async (t) => {
   const ctx = await setupDay4CourseEnv(t);
+  const agentA = createCourseFetchAgent(ctx.courseBaseUrl);
 
   const usedCodes = new Set();
-  ctx.setExchangeHandler(async ({ code, nonce }) => {
-    assert.equal(nonce, "state-happy-1");
+  const seenExchange = [];
+  let expectedState = null;
+  ctx.setExchangeHandler(async ({ code, nonce, code_verifier }) => {
+    seenExchange.push({ code, nonce, code_verifier });
+    assert.equal(nonce, expectedState);
+    assert.ok(code_verifier && code_verifier.length >= 43);
     if (usedCodes.has(code)) {
       return { status: 409, body: { success: false, errorCode: "SSO_CODE_ALREADY_USED", message: "Replayed" } };
     }
@@ -316,11 +381,16 @@ test("Happy path: Moly -> Course SSO JIT creates passwordless learner, binds pee
   assert.equal(cbRes.headers.get("referrer-policy"), "no-referrer");
   assert.match(cbRes.headers.get("cache-control") || "", /no-store/);
 
-  // 2) POST /api/auth/sso/consume
-  const res = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/consume`, {
+  // 2) Destination-initiated browser PKCE transaction + POST /api/auth/sso/consume
+  const tx1 = await agentA.startSso({ targetPath: "/courses" });
+  expectedState = tx1.state;
+  assert.equal(tx1.codeChallengeMethod, "S256");
+  assert.ok(tx1.codeChallenge && tx1.state);
+
+  const res = await agentA.request("/api/auth/sso/consume", {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": "TestBrowser/1.0 DeviceA" },
-    body: JSON.stringify({ code: "raw-moly-code-701", state: "state-happy-1" }),
+    body: { code: "raw-moly-code-701", state: tx1.state },
   });
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("referrer-policy"), "no-referrer");
@@ -355,11 +425,21 @@ test("Happy path: Moly -> Course SSO JIT creates passwordless learner, binds pee
   assert.equal(ctx.boundIdentities[0].external_user_id, String(userRow.id));
   assert.equal(ctx.boundIdentities[0].target_user_id, "701");
 
-  // 5) Sequential replay blocked with 409 SSO_CODE_ALREADY_USED
-  const replayRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/consume`, {
+  // 5) Same-tx replay blocked (tx cookie cleared/single-use) AND fresh tx still hits 409 SSO_CODE_ALREADY_USED
+  const sameTxReplay = await agentA.request("/api/auth/sso/consume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: "raw-moly-code-701", state: "state-happy-1" }),
+    body: { code: "raw-moly-code-701", state: tx1.state },
+  });
+  assert.equal(sameTxReplay.status, 403);
+  assert.equal((await sameTxReplay.json()).errorCode, "SSO_BROWSER_BINDING_REQUIRED");
+
+  const txReplay = await agentA.startSso({ targetPath: "/courses" });
+  expectedState = txReplay.state;
+  const replayRes = await agentA.request("/api/auth/sso/consume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: { code: "raw-moly-code-701", state: txReplay.state },
   });
   assert.equal(replayRes.status, 409);
   const replayJson = await replayRes.json();
@@ -369,7 +449,7 @@ test("Happy path: Moly -> Course SSO JIT creates passwordless learner, binds pee
 test("Course -> Moly outbound SSO: stores code_hash only, blocks concurrent replay, expired codes, bad HMAC, and privileged roles", async (t) => {
   const ctx = await setupDay4CourseEnv(t);
 
-  // Seed active student, admin, and locked student
+  // Seed active student and admin/creator
   const student = (await ctx.db.query(
     `INSERT INTO users (username, email, password_hash, role, email_verified, is_locked)
      VALUES ('csca_learner', 'csca.learner@example.com', 'hash', 'user', true, false) RETURNING *`,
@@ -383,17 +463,35 @@ test("Course -> Moly outbound SSO: stores code_hash only, blocks concurrent repl
      VALUES ('csca_teacher', 'csca.teacher@example.com', 'hash', 'creator', true, false) RETURNING *`,
   )).rows[0];
 
-  // Privileged users cannot launch outbound SSO
+  // Legacy non-PKCE helper rejects fail-closed
   await assert.rejects(
-    () => ctx.ssoService.issueCourseSsoCode({ userId: admin.id, targetPath: "/khoa-hoc" }),
+    () => ctx.ssoService.issueCourseSsoCode({ userId: student.id, targetPath: "/khoa-hoc" }),
+    (err) => err.code === "SSO_PKCE_REQUIRED" && err.status === 400,
+  );
+
+  // Privileged users cannot authorize outbound PKCE SSO
+  await assert.rejects(
+    () => ctx.ssoService.authorizeMolySsoRequest({
+      userId: admin.id,
+      state: "admin-pkce-state",
+      codeChallenge: computePkceChallengeS256(generatePkceVerifier()),
+      codeChallengeMethod: "S256",
+      targetPath: "/khoa-hoc",
+    }),
     (err) => err.code === "PRIVILEGED_ROLE_COLLISION" && err.status === 403,
   );
   await assert.rejects(
-    () => ctx.ssoService.issueCourseSsoCode({ userId: teacher.id, targetPath: "/khoa-hoc" }),
+    () => ctx.ssoService.authorizeMolySsoRequest({
+      userId: teacher.id,
+      state: "teacher-pkce-state",
+      codeChallenge: computePkceChallengeS256(generatePkceVerifier()),
+      codeChallengeMethod: "S256",
+      targetPath: "/khoa-hoc",
+    }),
     (err) => err.code === "PRIVILEGED_ROLE_COLLISION" && err.status === 403,
   );
 
-  // Create valid session cookies for student so HTTP /api/auth/sso/moly/launch can run end-to-end
+  // Create valid session cookies for student so HTTP /api/auth/sso/moly/intent & /authorize can run end-to-end
   const session = await establishLoginSession({
     userId: student.id,
     deviceToken: null,
@@ -408,34 +506,64 @@ test("Course -> Moly outbound SSO: stores code_hash only, blocks concurrent repl
     TEST_CFG.jwtSecret,
     { expiresIn: "1d" },
   );
+  const studentCookie = cookieHeaderFrom({ jwt: studentJwt, csca_trusted_device: session.deviceToken });
 
-  // Reject open redirect via HTTP /api/auth/sso/moly/launch
-  const badLaunchRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/moly/launch`, {
+  // Disabled legacy POST /api/auth/sso/moly/launch returns 400 SSO_PKCE_REQUIRED
+  const legacyRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/moly/launch`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: cookieHeaderFrom({ jwt: studentJwt, csca_trusted_device: session.deviceToken }),
-    },
-    body: JSON.stringify({ targetPath: "https://evil.example.com" }),
+    headers: { "Content-Type": "application/json", Cookie: studentCookie },
+    body: JSON.stringify({ targetPath: "/khoa-hoc/toan-csca" }),
+  });
+  assert.equal(legacyRes.status, 400);
+  assert.equal((await legacyRes.json()).errorCode, "SSO_PKCE_REQUIRED");
+
+  // Reject open redirect via HTTP /api/auth/sso/moly/authorize
+  const badLaunchRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/moly/authorize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: studentCookie },
+    body: JSON.stringify({
+      state: "bad-redir-state-001",
+      codeChallenge: computePkceChallengeS256(generatePkceVerifier()),
+      codeChallengeMethod: "S256",
+      targetPath: "https://evil.example.com",
+    }),
   });
   assert.equal(badLaunchRes.status, 400);
+  assert.equal((await badLaunchRes.json()).errorCode, "INVALID_SSO_TARGET_PATH");
 
-  // Valid launch via HTTP /api/auth/sso/moly/launch
-  const okLaunchRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/moly/launch`, {
+  // Intent + Authorize via HTTP /api/auth/sso/moly/intent & /authorize
+  const intentRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/moly/intent`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: cookieHeaderFrom({ jwt: studentJwt, csca_trusted_device: session.deviceToken }),
-    },
+    headers: { "Content-Type": "application/json", Cookie: studentCookie },
     body: JSON.stringify({ targetPath: "/khoa-hoc/toan-csca" }),
+  });
+  assert.equal(intentRes.status, 200);
+  assert.match((await intentRes.json()).data.destinationStartUrl, /\/sso\/start/);
+
+  const verifier1 = generatePkceVerifier();
+  const challenge1 = computePkceChallengeS256(verifier1);
+  const okLaunchRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/moly/authorize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: studentCookie },
+    body: JSON.stringify({
+      state: "http-auth-state-1",
+      codeChallenge: challenge1,
+      codeChallengeMethod: "S256",
+      targetPath: "/khoa-hoc/toan-csca",
+    }),
   });
   assert.equal(okLaunchRes.status, 200);
   const okLaunchJson = await okLaunchRes.json();
   assert.ok(okLaunchJson.data.launchUrl.startsWith("https://moly.example.test/sso/callback#"));
 
   // Mint via service so we have the raw code for S2S /sso/exchange verification
-  const issued = await ctx.ssoService.issueCourseSsoCode({
+  const verifier2 = generatePkceVerifier();
+  const challenge2 = computePkceChallengeS256(verifier2);
+  const issued = await ctx.ssoService.authorizeMolySsoRequest({
     userId: student.id,
+    state: "svc-auth-state-2",
+    codeChallenge: challenge2,
+    codeChallengeMethod: "S256",
     targetSystem: "moly",
     targetPath: "/khoa-hoc/toan-csca",
   });
@@ -443,14 +571,19 @@ test("Course -> Moly outbound SSO: stores code_hash only, blocks concurrent repl
   assert.ok(!issued.launchUrl.includes("?code="), "must never leak code in query params");
   assert.equal(issued.expiresInSeconds, 90);
 
-  // Verify raw code is NEVER stored in DB
-  const rows = (await ctx.db.query("SELECT code_hash, nonce FROM integration_sso_codes ORDER BY id DESC")).rows;
+  // Verify raw code is NEVER stored in DB and PKCE S256 challenge IS persisted
+  const rows = (await ctx.db.query("SELECT code_hash, nonce, pkce_challenge, pkce_method FROM integration_sso_codes ORDER BY id DESC")).rows;
   assert.equal(rows.length, 2);
   assert.notEqual(rows[0].code_hash, issued.code);
   assert.equal(rows[0].code_hash, crypto.createHash("sha256").update(issued.code).digest("hex"));
+  assert.equal(rows[0].pkce_challenge, challenge2);
+  assert.equal(rows[0].pkce_method, "S256");
 
   // Tampered HMAC signature on S2S /sso/exchange rejected
-  const tamperedSigned = signInboundMolyRequest({ code: issued.code, nonce: issued.state, consumer_system: "moly" }, { secret: "wrong-secret" });
+  const tamperedSigned = signInboundMolyRequest(
+    { code: issued.code, nonce: issued.state, code_verifier: verifier2, consumer_system: "moly" },
+    { secret: "wrong-secret" },
+  );
   const badSigRes = await fetch(`${ctx.courseBaseUrl}/api/integrations/v1/sso/exchange`, {
     method: "POST",
     headers: tamperedSigned.headers,
@@ -459,7 +592,12 @@ test("Course -> Moly outbound SSO: stores code_hash only, blocks concurrent repl
   assert.equal(badSigRes.status, 401);
 
   // Concurrent 5x replay against S2S /sso/exchange: strictly 1 succeeds, 4 get 409 SSO_CODE_ALREADY_USED
-  const validReq = signInboundMolyRequest({ code: issued.code, nonce: issued.state, consumer_system: "moly" });
+  const validReq = signInboundMolyRequest({
+    code: issued.code,
+    nonce: issued.state,
+    code_verifier: verifier2,
+    consumer_system: "moly",
+  });
   const results = await Promise.all(
     Array.from({ length: 5 }, () =>
       fetch(`${ctx.courseBaseUrl}/api/integrations/v1/sso/exchange`, {
@@ -477,13 +615,22 @@ test("Course -> Moly outbound SSO: stores code_hash only, blocks concurrent repl
   assert.equal(succeeded[0].body.data.role, "student");
 
   // Expired code (> 90s TTL) fails with 401 SSO_CODE_EXPIRED
-  const issued2 = await ctx.ssoService.issueCourseSsoCode({
+  const verifier3 = generatePkceVerifier();
+  const issued2 = await ctx.ssoService.authorizeMolySsoRequest({
     userId: student.id,
+    state: "svc-exp-state-003",
+    codeChallenge: computePkceChallengeS256(verifier3),
+    codeChallengeMethod: "S256",
     targetSystem: "moly",
     targetPath: "/khoa-hoc",
   });
   ctx.setNow(new Date("2026-11-15T10:02:00.000Z")); // +120s > 90s
-  const expReq = signInboundMolyRequest({ code: issued2.code, nonce: issued2.state, consumer_system: "moly" });
+  const expReq = signInboundMolyRequest({
+    code: issued2.code,
+    nonce: issued2.state,
+    code_verifier: verifier3,
+    consumer_system: "moly",
+  });
   const expRes = await fetch(`${ctx.courseBaseUrl}/api/integrations/v1/sso/exchange`, {
     method: "POST",
     headers: expReq.headers,
@@ -527,16 +674,18 @@ test("Safe Linking vs auto-merge prohibition + wrong/right password + active ses
       },
     },
   }));
-  const privRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/consume`, {
+  const privAgent = createCourseFetchAgent(ctx.courseBaseUrl);
+  const privTx = await privAgent.startSso({ targetPath: "/courses" });
+  const privRes = await privAgent.request("/api/auth/sso/consume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: "code-priv", state: "state-priv" }),
+    body: { code: "code-priv", state: privTx.state },
   });
   assert.equal(privRes.status, 403);
   assert.equal((await privRes.json()).errorCode, "PRIVILEGED_ROLE_COLLISION");
-  assert.equal(parseSetCookies(privRes).raw.length, 0);
+  assert.ok(!parseSetCookies(privRes).map.jwt, "must not issue session jwt cookie on rejected login");
 
-  // Unlinked learner collision -> NEVER auto-merges; returns LINK_REQUIRED without cookies
+  // Unlinked learner collision -> NEVER auto-merges; returns LINK_REQUIRED without jwt cookies (only HttpOnly link binding cookie)
   ctx.setExchangeHandler(async ({ nonce }) => ({
     status: 200,
     body: {
@@ -552,17 +701,28 @@ test("Safe Linking vs auto-merge prohibition + wrong/right password + active ses
       },
     },
   }));
-  const linkReqRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/consume`, {
+  const agentA = createCourseFetchAgent(ctx.courseBaseUrl);
+  const colTx = await agentA.startSso({ targetPath: "/courses" });
+  const linkReqRes = await agentA.request("/api/auth/sso/consume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: "code-col-1", state: "state-col-1" }),
+    body: { code: "code-col-1", state: colTx.state },
   });
   assert.equal(linkReqRes.status, 200);
   const linkReqJson = await linkReqRes.json();
   assert.equal(linkReqJson.data.status, "LINK_REQUIRED");
   assert.ok(linkReqJson.data.linkToken);
   assert.equal(linkReqJson.data.hasPassword, true);
-  assert.equal(parseSetCookies(linkReqRes).raw.length, 0, "must NEVER issue session cookies before verification");
+  assert.ok(!parseSetCookies(linkReqRes).map.jwt, "must NEVER issue session jwt before verification");
+  assert.ok(parseSetCookies(linkReqRes).map.csca_sso_link, "must bind link challenge to initiating browser");
+
+  // Refresh status endpoint on initiating browser
+  const linkStatusRes = await agentA.request("/api/auth/sso/link/status");
+  assert.equal(linkStatusRes.status, 200);
+  const linkStatusJson = await linkStatusRes.json();
+  assert.equal(linkStatusJson.data.status, "LINK_REQUIRED");
+  assert.equal(linkStatusJson.data.email, "collision@example.com");
+  assert.equal(linkStatusJson.data.hasPassword, true);
 
   const openConflict = (await ctx.db.query(
     "SELECT * FROM integration_conflicts WHERE external_user_id = 'moly:777' AND conflict_type = 'IDENTITY_EMAIL_COLLISION'",
@@ -570,19 +730,19 @@ test("Safe Linking vs auto-merge prohibition + wrong/right password + active ses
   assert.equal(openConflict.status, "open");
 
   // Wrong password -> 401 INVALID_CREDENTIALS
-  const wrongPassRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/link/confirm`, {
+  const wrongPassRes = await agentA.request("/api/auth/sso/link/confirm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ linkToken: linkReqJson.data.linkToken, password: "WrongPassword!" }),
+    body: { linkToken: linkReqJson.data.linkToken, password: "WrongPassword!" },
   });
   assert.equal(wrongPassRes.status, 401);
-  assert.equal(parseSetCookies(wrongPassRes).raw.length, 0);
+  assert.ok(!parseSetCookies(wrongPassRes).map.jwt);
 
   // Right password -> binds identity, resolves conflict, sets HttpOnly cookies, notifies peer
-  const rightPassRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/link/confirm`, {
+  const rightPassRes = await agentA.request("/api/auth/sso/link/confirm", {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": "SafeLinkUA/1.0" },
-    body: JSON.stringify({ linkToken: linkReqJson.data.linkToken, password: "CorrectPass99!" }),
+    body: { linkToken: linkReqJson.data.linkToken, password: "CorrectPass99!" },
   });
   assert.equal(rightPassRes.status, 200);
   const rightPassJson = await rightPassRes.json();
@@ -597,13 +757,14 @@ test("Safe Linking vs auto-merge prohibition + wrong/right password + active ses
   )).rows[0];
   assert.equal(resolvedConflict.status, "resolved");
 
-  // Reusing consumed linkToken fails
-  const reuseRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/link/confirm`, {
+  // Reusing consumed linkToken fails after cookie clear + completion
+  const reuseRes = await agentA.request("/api/auth/sso/link/confirm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ linkToken: linkReqJson.data.linkToken, password: "CorrectPass99!" }),
+    body: { linkToken: linkReqJson.data.linkToken, password: "CorrectPass99!" },
   });
-  assert.equal(reuseRes.status, 400);
+  assert.equal(reuseRes.status, 403);
+  assert.equal((await reuseRes.json()).errorCode, "SSO_BROWSER_BINDING_REQUIRED");
 
   // Active-session safe linking (when user already holds valid jwt + trusted device cookies)
   const noPassLearner = (await ctx.db.query(
@@ -643,22 +804,24 @@ test("Safe Linking vs auto-merge prohibition + wrong/right password + active ses
       },
     },
   }));
-  const col2Res = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/consume`, {
+  const agentSess = createCourseFetchAgent(ctx.courseBaseUrl);
+  const col2Tx = await agentSess.startSso({ targetPath: "/courses" });
+  const col2Res = await agentSess.request("/api/auth/sso/consume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: "code-col-2", state: "state-col-2" }),
+    body: { code: "code-col-2", state: col2Tx.state },
   });
   const col2Json = await col2Res.json();
   assert.equal(col2Json.data.status, "LINK_REQUIRED");
 
-  const confirmWithSession = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/link/confirm`, {
+  const confirmWithSession = await agentSess.request("/api/auth/sso/link/confirm", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Cookie: cookieHeaderFrom({ jwt: activeJwt, csca_trusted_device: activeSession.deviceToken }),
       "User-Agent": "ExistingDevice",
     },
-    body: JSON.stringify({ linkToken: col2Json.data.linkToken }),
+    body: { linkToken: col2Json.data.linkToken },
   });
   assert.equal(confirmWithSession.status, 200);
   const sessJson = await confirmWithSession.json();
@@ -693,10 +856,12 @@ test("Revoked user/identity/entitlement are blocked and Course 2-device limit + 
       },
     },
   }));
-  const revRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/consume`, {
+  const revAgent = createCourseFetchAgent(ctx.courseBaseUrl);
+  const revTx = await revAgent.startSso({ targetPath: "/courses" });
+  const revRes = await revAgent.request("/api/auth/sso/consume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: "code-rev-1", state: "state-rev-1" }),
+    body: { code: "code-rev-1", state: revTx.state },
   });
   assert.equal(revRes.status, 403);
   assert.equal((await revRes.json()).errorCode, "SSO_IDENTITY_REVOKED");
@@ -731,10 +896,12 @@ test("Revoked user/identity/entitlement are blocked and Course 2-device limit + 
   // Device 1 & Device 2 succeed
   for (const ua of ["Device-Alpha", "Device-Beta"]) {
     seq += 1;
-    const okRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/consume`, {
+    const devAgent = createCourseFetchAgent(ctx.courseBaseUrl);
+    const devTx = await devAgent.startSso({ targetPath: "/courses" });
+    const okRes = await devAgent.request("/api/auth/sso/consume", {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": ua },
-      body: JSON.stringify({ code: `code-dev-${seq}`, state: `state-dev-${seq}` }),
+      body: { code: `code-dev-${seq}`, state: devTx.state },
     });
     assert.equal(okRes.status, 200);
   }
@@ -742,10 +909,12 @@ test("Revoked user/identity/entitlement are blocked and Course 2-device limit + 
   // Device 3 rejected with 403 DEVICE_LIMIT_REACHED and details.devices listed; attempts incremented to 3 without auto-lock
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     seq += 1;
-    const blockedRes = await fetch(`${ctx.courseBaseUrl}/api/auth/sso/consume`, {
+    const rogueAgent = createCourseFetchAgent(ctx.courseBaseUrl);
+    const rogueTx = await rogueAgent.startSso({ targetPath: "/courses" });
+    const blockedRes = await rogueAgent.request("/api/auth/sso/consume", {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": `Device-Rogue-${attempt}` },
-      body: JSON.stringify({ code: `code-dev-${seq}`, state: `state-dev-${seq}` }),
+      body: { code: `code-dev-${seq}`, state: rogueTx.state },
     });
     assert.equal(blockedRes.status, 403);
     const blockedJson = await blockedRes.json();
@@ -763,6 +932,7 @@ test("Revoked user/identity/entitlement are blocked and Course 2-device limit + 
 
 test("Codex: identity state, response binding, verification flags and durable conflict rejection", async (t) => {
   const ctx = await setupDay4CourseEnv(t);
+  const agent = createCourseFetchAgent(ctx.courseBaseUrl);
   const assertion = {
     source_system: "moly", source_user_id: "9501", email: "codex-unverified@test.local",
     email_verified: false, role: "student", target_path: "/courses",
@@ -770,24 +940,42 @@ test("Codex: identity state, response binding, verification flags and durable co
   ctx.setExchangeHandler(async ({ nonce }) => ({
     status: 200, body: { success: true, data: { ...assertion, nonce } },
   }));
-  const consume = () => ctx.ssoService.consumeMolySso({ code: "codex-code", state: "codex-state", userAgent: "Codex" });
-  const login = await consume();
-  const userId = login.user.id;
+  const consumeWithTx = async (code) => {
+    const tx = await agent.startSso({ targetPath: "/courses" });
+    return agent.request("/api/auth/sso/consume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "Codex" },
+      body: { code, state: tx.state },
+    });
+  };
+  const loginRes = await consumeWithTx("codex-code-1");
+  assert.equal(loginRes.status, 200);
+  const userId = (await loginRes.json()).data.user.id;
   assert.equal((await ctx.db.query("SELECT email_verified FROM users WHERE id=$1", [userId])).rows[0].email_verified, false);
   await ctx.db.query("UPDATE external_identities SET status='expired' WHERE user_id=$1", [userId]);
-  await assert.rejects(consume, (e) => e.code === "SSO_IDENTITY_REVOKED");
+  const expiredRes = await consumeWithTx("codex-code-2");
+  assert.equal(expiredRes.status, 403);
+  assert.equal((await expiredRes.json()).errorCode, "SSO_IDENTITY_REVOKED");
   ctx.setExchangeHandler(async () => ({
     status: 200, body: { success: true, data: { ...assertion, nonce: "other-browser-state" } },
   }));
-  await assert.rejects(consume, (e) => e.code === "SSO_INVALID_RESPONSE");
+  const mismatchRes = await consumeWithTx("codex-code-3");
+  assert.equal((await mismatchRes.json()).errorCode, "SSO_INVALID_RESPONSE");
 
   await ctx.db.query("UPDATE users SET management_staff_source_id='staff-codex' WHERE id=$1", [userId]);
-  await assert.rejects(() => ctx.ssoService.issueCourseSsoCode({ userId }), (e) => e.code === "PRIVILEGED_ROLE_COLLISION");
+  await assert.rejects(() => ctx.ssoService.authorizeMolySsoRequest({
+    userId,
+    state: "codex-priv-state-001",
+    codeChallenge: computePkceChallengeS256(generatePkceVerifier()),
+    codeChallengeMethod: "S256",
+  }), (e) => e.code === "PRIVILEGED_ROLE_COLLISION");
   assertion.source_user_id = "9502";
   ctx.setExchangeHandler(async ({ nonce }) => ({
     status: 200, body: { success: true, data: { ...assertion, nonce } },
   }));
-  await assert.rejects(consume, (e) => e.code === "PRIVILEGED_ROLE_COLLISION");
+  const privColRes = await consumeWithTx("codex-code-4");
+  assert.equal(privColRes.status, 403);
+  assert.equal((await privColRes.json()).errorCode, "PRIVILEGED_ROLE_COLLISION");
   const conflicts = (await ctx.db.query(
     "SELECT * FROM integration_conflicts WHERE external_user_id='moly:9502'",
   )).rows;
@@ -795,7 +983,9 @@ test("Codex: identity state, response binding, verification flags and durable co
 
   await ctx.db.query("UPDATE users SET management_staff_source_id=NULL WHERE id=$1", [userId]);
   assertion.source_user_id = "9503";
-  const challenge = await consume();
+  const challengeRes = await consumeWithTx("codex-code-5");
+  assert.equal(challengeRes.status, 200);
+  const challenge = (await challengeRes.json()).data;
   assert.equal(challenge.status, "LINK_REQUIRED");
   // Another actor binds this external ID after the challenge was issued.
   const other = (await ctx.db.query(
@@ -805,14 +995,36 @@ test("Codex: identity state, response binding, verification flags and durable co
     "INSERT INTO external_identities(source_system,external_user_id,user_id,status,source_updated_at) VALUES ('moly','moly:9503',$1,'active',NOW())",
     [other.id],
   );
-  await assert.rejects(() => ctx.ssoService.confirmCourseSafeLink({
-    linkToken: challenge.linkToken, authenticatedUser: { id: userId, email: assertion.email },
-  }), (e) => e.code === "IDENTITY_ALREADY_LINKED");
+  const linkSess = await establishLoginSession({
+    userId,
+    deviceToken: null,
+    ipAddress: "127.0.0.1",
+    userAgent: "CodexLink",
+    expiresAt: new Date(Date.now() + 86400_000),
+  });
+  const jwtLib = await import("jsonwebtoken");
+  const linkJwt = jwtLib.default.sign(
+    { userId, role: "user", sessionId: linkSess.sessionId, sessionToken: linkSess.sessionToken },
+    TEST_CFG.jwtSecret,
+    { expiresIn: "1d" },
+  );
+  const driftRes = await agent.request("/api/auth/sso/link/confirm", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": "CodexLink",
+      Cookie: cookieHeaderFrom({ jwt: linkJwt, csca_trusted_device: linkSess.deviceToken }),
+    },
+    body: { linkToken: challenge.linkToken },
+  });
+  assert.equal(driftRes.status, 409);
+  assert.equal((await driftRes.json()).errorCode, "IDENTITY_ALREADY_LINKED");
   assert.equal((await ctx.db.query("SELECT completed_at FROM integration_sso_link_requests")).rows[0].completed_at, null);
 });
 
 test("Codex: scoped SSO resolves real profile, preserves other grants and respects admin blocks", async (t) => {
   const ctx = await setupDay4CourseEnv(t);
+  const agent = createCourseFetchAgent(ctx.courseBaseUrl);
   const assertion = {
     source_system: "moly", source_user_id: "9601", email: "codex-scope@test.local",
     role: "student", target_path: "/courses",
@@ -820,13 +1032,22 @@ test("Codex: scoped SSO resolves real profile, preserves other grants and respec
   ctx.setExchangeHandler(async ({ nonce }) => ({
     status: 200, body: { success: true, data: { ...assertion, nonce } },
   }));
-  const consume = () => ctx.ssoService.consumeMolySso({ code: "scoped-code", state: "scoped-state", userAgent: "Codex" });
-  const first = await consume();
-  const userId = first.user.id;
+  const consumeWithTx = async (code) => {
+    const tx = await agent.startSso({ targetPath: "/courses" });
+    return agent.request("/api/auth/sso/consume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "Codex" },
+      body: { code, state: tx.state },
+    });
+  };
+  const firstRes = await consumeWithTx("scoped-code-1");
+  assert.equal(firstRes.status, 200);
+  const userId = (await firstRes.json()).data.user.id;
   assertion.scope_type = "course";
   assertion.scoped_external_course_id = "moly:codex-offer";
   assertion.target_path = "/video-courses/moly:codex-offer";
-  await assert.rejects(consume, (e) => e.code === "COURSE_MAPPING_MISSING");
+  const missingMapRes = await consumeWithTx("scoped-code-2");
+  assert.equal((await missingMapRes.json()).errorCode, "COURSE_MAPPING_MISSING");
 
   const course = (await ctx.db.query(
     "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Scoped','codex-scoped',$1,TRUE) RETURNING id",
@@ -852,8 +1073,173 @@ test("Codex: scoped SSO resolves real profile, preserves other grants and respec
     assert.equal((await processNextMolyInboxJob({ db: ctx.db })).status, "processed");
   }
   await ctx.db.query("UPDATE external_entitlements SET status='revoked', revoked_at=NOW(), source_updated_at=source_updated_at+INTERVAL '1 second' WHERE external_grant_id='moly:scope-a'");
-  const active = await consume();
-  assert.equal(active.redirectPath, `/video-courses/profile-${profile.id}`);
+  const activeRes = await consumeWithTx("scoped-code-3");
+  assert.equal(activeRes.status, 200);
+  assert.equal((await activeRes.json()).data.redirectPath, `/video-courses/profile-${profile.id}`);
   await ctx.db.query("INSERT INTO video_course_access_revocations(video_course_profile_id,user_id) VALUES ($1,$2)", [profile.id, userId]);
-  await assert.rejects(consume, (e) => e.code === "VIDEO_COURSE_ACCESS_REVOKED");
+  const blockedRes = await consumeWithTx("scoped-code-4");
+  assert.equal(blockedRes.status, 403);
+  assert.equal((await blockedRes.json()).errorCode, "VIDEO_COURSE_ACCESS_REVOKED");
+});
+
+test("P1 Security (Course): 2-browser-context Login-CSRF & Safe-Link cookie isolation, passwordless candidate refresh, wrong PKCE verifier, tx expiry", async (t) => {
+  const ctx = await setupDay4CourseEnv(t);
+  const jwtLib = await import("jsonwebtoken");
+
+  const victimB = (await ctx.db.query(
+    `INSERT INTO users (username, email, password_hash, role, email_verified, is_locked)
+     VALUES ('victim_b', 'victim.b@example.com', NULL, 'user', true, false) RETURNING *`,
+  )).rows[0];
+  const pwlessLocal = (await ctx.db.query(
+    `INSERT INTO users (username, email, password_hash, role, email_verified, is_locked)
+     VALUES ('pwless_csca', 'pwless.csca@example.com', NULL, 'user', true, false) RETURNING *`,
+  )).rows[0];
+
+  const exchangeCalls = [];
+  ctx.setExchangeHandler(async ({ code, nonce, code_verifier }) => {
+    exchangeCalls.push({ code, nonce, code_verifier });
+    return {
+      status: 200,
+      body: {
+        success: true,
+        data: {
+          source_system: "moly",
+          source_user_id: code === "code-pwless-csca" ? "8802" : "8801",
+          email: code === "code-pwless-csca" ? "pwless.csca@example.com" : "attacker.csca@example.com",
+          email_verified: true,
+          role: "student",
+          target_path: "/courses",
+          nonce,
+        },
+      },
+    };
+  });
+
+  // Context A starts incoming Moly -> Course SSO
+  const contextA = createCourseFetchAgent(ctx.courseBaseUrl);
+  const startA = await contextA.startSso({ targetPath: "/courses" });
+
+  // Context B (separate cookie jar, logged in as Victim B) tries consuming leaked { code, startA.state }
+  const victimSess = await establishLoginSession({
+    userId: victimB.id,
+    deviceToken: null,
+    ipAddress: "127.0.0.1",
+    userAgent: "VictimB",
+    expiresAt: new Date(Date.now() + 86400_000),
+  });
+  const victimJwt = jwtLib.default.sign(
+    { userId: victimB.id, role: "user", sessionId: victimSess.sessionId, sessionToken: victimSess.sessionToken },
+    TEST_CFG.jwtSecret,
+    { expiresIn: "1d" },
+  );
+  const victimCookie = cookieHeaderFrom({ jwt: victimJwt, csca_trusted_device: victimSess.deviceToken });
+
+  const contextB = createCourseFetchAgent(ctx.courseBaseUrl);
+  const csrfNoCookie = await contextB.request("/api/auth/sso/consume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: victimCookie, "User-Agent": "VictimB" },
+    body: { code: "code-attacker-csca", state: startA.state },
+  });
+  assert.equal(csrfNoCookie.status, 403);
+  assert.equal((await csrfNoCookie.json()).errorCode, "SSO_BROWSER_BINDING_REQUIRED");
+  assert.equal(exchangeCalls.length, 0);
+
+  // Even after Context B starts its own txB, passing startA.state fails with 403 SSO_BROWSER_STATE_MISMATCH
+  const startB = await contextB.startSso({ targetPath: "/courses" });
+  assert.notEqual(startB.state, startA.state);
+  const csrfWrongState = await contextB.request("/api/auth/sso/consume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: victimCookie, "User-Agent": "VictimB" },
+    body: { code: "code-attacker-csca", state: startA.state },
+  });
+  assert.equal(csrfWrongState.status, 403);
+  assert.equal((await csrfWrongState.json()).errorCode, "SSO_BROWSER_STATE_MISMATCH");
+  assert.equal(exchangeCalls.length, 0);
+
+  // Expired tx fails closed before calling Moly
+  const contextExp = createCourseFetchAgent(ctx.courseBaseUrl);
+  const startExp = await contextExp.startSso({ targetPath: "/courses" });
+  ctx.setNow(new Date("2026-11-15T10:04:00.000Z"));
+  const expTxRes = await contextExp.request("/api/auth/sso/consume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: { code: "code-exp", state: startExp.state },
+  });
+  assert.equal(expTxRes.status, 401);
+  assert.equal((await expTxRes.json()).errorCode, "SSO_BROWSER_TX_EXPIRED");
+  assert.equal(exchangeCalls.length, 0);
+  ctx.setNow(new Date("2026-11-15T10:00:00.000Z"));
+
+  // Safe-Linking bound to initiating browser + passwordless candidate + refresh recovery
+  const txLink = await contextA.startSso({ targetPath: "/courses" });
+  const colRes = await contextA.request("/api/auth/sso/consume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: { code: "code-pwless-csca", state: txLink.state },
+  });
+  assert.equal(colRes.status, 200);
+  const colJson = await colRes.json();
+  assert.equal(colJson.data.status, "LINK_REQUIRED");
+  assert.equal(colJson.data.hasPassword, false);
+
+  const statusRefresh = await contextA.request("/api/auth/sso/link/status");
+  assert.equal(statusRefresh.status, 200);
+  assert.equal((await statusRefresh.json()).data.email, "pwless.csca@example.com");
+
+  const stealAttempt = await contextB.request("/api/auth/sso/link/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: { linkToken: colJson.data.linkToken },
+  });
+  assert.equal(stealAttempt.status, 403);
+  assert.equal((await stealAttempt.json()).errorCode, "SSO_BROWSER_BINDING_REQUIRED");
+
+  const pwlessSess = await establishLoginSession({
+    userId: pwlessLocal.id,
+    deviceToken: null,
+    ipAddress: "127.0.0.1",
+    userAgent: "PwlessBrowser",
+    expiresAt: new Date(Date.now() + 86400_000),
+  });
+  const pwlessJwt = jwtLib.default.sign(
+    { userId: pwlessLocal.id, role: "user", sessionId: pwlessSess.sessionId, sessionToken: pwlessSess.sessionToken },
+    TEST_CFG.jwtSecret,
+    { expiresIn: "1d" },
+  );
+  const pwlessConfirm = await contextA.request("/api/auth/sso/link/confirm", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": "PwlessBrowser",
+      Cookie: cookieHeaderFrom({ jwt: pwlessJwt, csca_trusted_device: pwlessSess.deviceToken }),
+    },
+    body: {}, // omitted linkToken after page refresh relies strictly on HttpOnly csca_sso_link cookie
+  });
+  assert.equal(pwlessConfirm.status, 200);
+  assert.equal(Number((await pwlessConfirm.json()).data.user.id), Number(pwlessLocal.id));
+
+  // Wrong code_verifier on outbound PKCE exchange fails closed with 403 SSO_PKCE_MISMATCH
+  const goodVerifier = generatePkceVerifier();
+  const badVerifier = generatePkceVerifier();
+  const outbound = await ctx.ssoService.authorizeMolySsoRequest({
+    userId: pwlessLocal.id,
+    state: "csca-pkce-verify-state-01",
+    codeChallenge: computePkceChallengeS256(goodVerifier),
+    codeChallengeMethod: "S256",
+    targetSystem: "moly",
+    targetPath: "/khoa-hoc",
+  });
+  const wrongPkceReq = signInboundMolyRequest({
+    code: outbound.code,
+    nonce: outbound.state,
+    code_verifier: badVerifier,
+    consumer_system: "moly",
+  });
+  const badPkceRes = await fetch(`${ctx.courseBaseUrl}/api/integrations/v1/sso/exchange`, {
+    method: "POST",
+    headers: wrongPkceReq.headers,
+    body: wrongPkceReq.rawBody,
+  });
+  assert.equal(badPkceRes.status, 403);
+  assert.equal((await badPkceRes.json()).errorCode, "SSO_PKCE_MISMATCH");
 });

@@ -57,14 +57,50 @@ export function extractAndStripSsoParams() {
   return null;
 }
 
-async function ssoPost(path, payload) {
+const CSCA_PENDING_LINK_STORAGE_KEY = "csca_sso_pending_link";
+
+export function savePendingSafeLink(state) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(CSCA_PENDING_LINK_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function loadPendingSafeLink() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(CSCA_PENDING_LINK_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.linkToken !== "string" || !parsed.linkToken.trim()) return null;
+    return {
+      linkToken: parsed.linkToken.trim(),
+      email: typeof parsed.email === "string" ? parsed.email : "",
+      hasPassword: Boolean(parsed.hasPassword),
+      targetPath: isSafeRelativeRedirectPath(parsed.targetPath) ? parsed.targetPath : "/lms/dashboard",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingSafeLink() {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(CSCA_PENDING_LINK_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+async function ssoRequest(path, { method = "POST", payload = undefined } = {}) {
   const response = await fetch(path, {
-    method: "POST",
+    method,
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload || {}),
+    headers: payload !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: payload !== undefined ? JSON.stringify(payload) : undefined,
   });
   const body = await response.json().catch(() => null);
   if (!response.ok || body?.success === false) {
@@ -80,17 +116,57 @@ async function ssoPost(path, payload) {
   return body?.data ?? body;
 }
 
-export function consumeSsoCode({ code, state }) {
-  return ssoPost("/api/auth/sso/consume", { code, state });
-}
-
-export function confirmSsoSafeLink({ linkToken, password = null }) {
-  return ssoPost("/api/auth/sso/link/confirm", {
-    linkToken,
-    ...(password ? { password } : {}),
+export function startIncomingMolySso({ targetPath = null, courseId = null, offeringId = null } = {}) {
+  return ssoRequest("/api/auth/sso/moly/start", {
+    method: "POST",
+    payload: { targetPath, courseId, offeringId },
   });
 }
 
-export function launchMolySso({ targetPath = "/khoa-hoc" } = {}) {
-  return ssoPost("/api/auth/sso/moly/launch", { targetPath });
+export function intentMolySso({ targetPath = "/khoa-hoc", scopeType = "account", scopedLocalCourseId = null, scopedExternalCourseId = null } = {}) {
+  return ssoRequest("/api/auth/sso/moly/intent", {
+    method: "POST",
+    payload: { targetPath, scopeType, scopedLocalCourseId, scopedExternalCourseId },
+  });
+}
+
+export function authorizeMolySso({
+  state,
+  codeChallenge,
+  codeChallengeMethod = "S256",
+  targetPath = "/khoa-hoc",
+  scopeType = "account",
+  scopedLocalCourseId = null,
+  scopedExternalCourseId = null,
+}) {
+  return ssoRequest("/api/auth/sso/moly/authorize", {
+    method: "POST",
+    payload: {
+      state,
+      codeChallenge,
+      codeChallengeMethod,
+      targetPath,
+      scopeType,
+      scopedLocalCourseId,
+      scopedExternalCourseId,
+    },
+  });
+}
+
+export function consumeSsoCode({ code, state }) {
+  return ssoRequest("/api/auth/sso/consume", { method: "POST", payload: { code, state } });
+}
+
+export function getSsoSafeLinkStatus() {
+  return ssoRequest("/api/auth/sso/link/status", { method: "GET" });
+}
+
+export function confirmSsoSafeLink({ linkToken, password = null }) {
+  return ssoRequest("/api/auth/sso/link/confirm", {
+    method: "POST",
+    payload: {
+      linkToken,
+      ...(password ? { password } : {}),
+    },
+  });
 }

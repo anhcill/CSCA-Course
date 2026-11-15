@@ -17,7 +17,7 @@ import { ErrorState } from "../../../components/common/StateView";
 import Loading from "../../../components/Loading.jsx";
 import { useAuthContext } from "../../../context/AuthContext";
 import { fetchMyEnrolledCourses } from "../../api/lmsClient";
-import { launchMolySso } from "../../api/ssoClient";
+import { intentMolySso } from "../../api/ssoClient";
 import { getClassCoverImage } from "../../../utils/classWallpapers";
 import { isRecordingMode } from "../utils/learningMode.js";
 
@@ -66,8 +66,8 @@ export default function StudentCourseListPage() {
     if (launchingMoly) return;
     setLaunchingMoly(true);
     try {
-      const result = await launchMolySso({ targetPath: "/khoa-hoc" });
-      const parsed = new URL(result?.launchUrl || "");
+      const result = await intentMolySso({ targetPath: "/khoa-hoc" });
+      const parsed = new URL(result?.destinationStartUrl || "");
       if (parsed.protocol === "https:" || parsed.protocol === "http:") {
         window.location.assign(parsed.toString());
         return;

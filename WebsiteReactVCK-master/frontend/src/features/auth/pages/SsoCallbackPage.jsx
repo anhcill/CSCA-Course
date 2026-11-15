@@ -3,10 +3,14 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, Shield } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import {
+  clearPendingSafeLink,
   confirmSsoSafeLink,
   consumeSsoCode,
   extractAndStripSsoParams,
+  getSsoSafeLinkStatus,
   isSafeRelativeRedirectPath,
+  loadPendingSafeLink,
+  savePendingSafeLink,
   SsoApiError,
 } from "../../api/ssoClient";
 
@@ -17,17 +21,31 @@ function mapSsoError(error) {
   const rawMessage = error instanceof Error ? error.message : "";
   const devices = error instanceof SsoApiError ? error.devices : [];
 
-  if (code === "SSO_CODE_EXPIRED") {
+  if (code === "SSO_CODE_EXPIRED" || code === "SSO_BROWSER_TX_EXPIRED") {
     return {
       code,
-      message: "Mã đăng nhập SSO đã hết hạn (60-120 giây). Vui lòng quay lại Moly Studio và bấm \"Vào học\" lại.",
+      message: "Phiên đăng nhập SSO đã hết hạn. Vui lòng quay lại Moly Studio và bấm \"Vào học\" lại.",
       devices,
     };
   }
-  if (code === "SSO_CODE_ALREADY_USED") {
+  if (code === "SSO_CODE_ALREADY_USED" || code === "SSO_BROWSER_TX_ALREADY_USED") {
     return {
       code,
-      message: "Mã đăng nhập SSO này đã được sử dụng. Vui lòng tạo phiên đăng nhập mới từ Moly Studio.",
+      message: "Phiên đăng nhập SSO này đã được sử dụng. Vui lòng tạo phiên đăng nhập mới từ Moly Studio.",
+      devices,
+    };
+  }
+  if (
+    code === "SSO_BROWSER_BINDING_REQUIRED"
+    || code === "SSO_BROWSER_BINDING_INVALID"
+    || code === "SSO_BROWSER_BINDING_MISMATCH"
+    || code === "SSO_BROWSER_STATE_MISMATCH"
+    || code === "SSO_PKCE_MISMATCH"
+    || code === "SSO_PKCE_REQUIRED"
+  ) {
+    return {
+      code,
+      message: "Phiên đăng nhập phải được hoàn tất trên chính trình duyệt đã bắt đầu SSO. Vui lòng thử lại từ đầu.",
       devices,
     };
   }
@@ -72,13 +90,47 @@ export default function SsoCallbackPage() {
   useEffect(() => {
     const params = extractAndStripSsoParams();
     if (!params) {
-      setErrorInfo({
-        code: "SSO_PARAMS_MISSING",
-        message: "Thiếu mã đăng nhập SSO hợp lệ. Vui lòng mở lại từ Moly Studio.",
-        devices: [],
-      });
-      setPhase("error");
-      return;
+      const pending = loadPendingSafeLink();
+      if (!pending) {
+        setErrorInfo({
+          code: "SSO_PARAMS_MISSING",
+          message: "Thiếu mã đăng nhập SSO hợp lệ. Vui lòng mở lại từ Moly Studio.",
+          devices: [],
+        });
+        setPhase("error");
+        return;
+      }
+
+      let cancelled = false;
+      getSsoSafeLinkStatus()
+        .then((statusData) => {
+          if (cancelled) return;
+          const restored = {
+            linkToken: pending.linkToken,
+            email: statusData?.email || pending.email,
+            hasPassword: Boolean(statusData?.hasPassword),
+            targetPath: isSafeRelativeRedirectPath(statusData?.targetPath)
+              ? statusData.targetPath
+              : pending.targetPath,
+          };
+          savePendingSafeLink(restored);
+          setLinkState(restored);
+          setPhase("link_required");
+        })
+        .catch(() => {
+          if (cancelled) return;
+          clearPendingSafeLink();
+          setErrorInfo({
+            code: "SSO_PARAMS_MISSING",
+            message: "Phiên xác minh liên kết không còn hiệu lực trên trình duyệt này. Vui lòng mở lại từ Moly Studio.",
+            devices: [],
+          });
+          setPhase("error");
+        });
+
+      return () => {
+        cancelled = true;
+      };
     }
 
     const dedupeKey = `${params.code}:${params.state}`;
@@ -93,16 +145,19 @@ export default function SsoCallbackPage() {
       .then(async (result) => {
         if (cancelled) return;
         if (result?.status === "LINK_REQUIRED" && result.linkToken) {
-          setLinkState({
+          const nextLinkState = {
             linkToken: result.linkToken,
             email: result.email || "",
             hasPassword: Boolean(result.hasPassword),
             targetPath: isSafeRelativeRedirectPath(result.targetPath) ? result.targetPath : "/lms/dashboard",
-          });
+          };
+          savePendingSafeLink(nextLinkState);
+          setLinkState(nextLinkState);
           setPhase("link_required");
           return;
         }
         if (result?.status === "AUTHENTICATED") {
+          clearPendingSafeLink();
           if (result.user) {
             setAuthUser(result.user);
             setIsAuthenticated(true);
@@ -143,6 +198,7 @@ export default function SsoCallbackPage() {
         linkToken: linkState.linkToken,
         password: password || null,
       });
+      clearPendingSafeLink();
       if (result?.user) {
         setAuthUser(result.user);
         setIsAuthenticated(true);
@@ -153,7 +209,11 @@ export default function SsoCallbackPage() {
         : linkState.targetPath;
       navigate(nextPath, { replace: true });
     } catch (err) {
-      setErrorInfo(mapSsoError(err));
+      const mapped = mapSsoError(err);
+      if (["SSO_LINK_TOKEN_INVALID", "SSO_LINK_TOKEN_EXPIRED", "SSO_BROWSER_BINDING_REQUIRED", "SSO_BROWSER_BINDING_MISMATCH"].includes(mapped.code)) {
+        clearPendingSafeLink();
+      }
+      setErrorInfo(mapped);
     } finally {
       setSubmitting(false);
     }

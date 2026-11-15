@@ -120,6 +120,7 @@ export const createMolyIntegrationRouter = ({
       const data = await ssoService.exchangeCourseSsoCode({
         code: typeof req.body?.code === "string" ? req.body.code.trim() : "",
         nonce: typeof req.body?.nonce === "string" ? req.body.nonce.trim() : "",
+        codeVerifier: typeof req.body?.code_verifier === "string" ? req.body.code_verifier.trim() : "",
         consumerSystem: typeof req.body?.consumer_system === "string" ? req.body.consumer_system.trim() : "moly",
         consumeIp: typeof req.body?.consume_ip === "string" ? req.body.consume_ip.trim() : null,
         correlationId,

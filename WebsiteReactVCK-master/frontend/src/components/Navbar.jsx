@@ -32,7 +32,7 @@ import { getAvatarUrl, handleAvatarError } from '../utils/avatar';
 import NotificationBell from '../features/notifications/components/NotificationBell';
 import { hasStudentLmsAccess } from '../utils/lmsAccess';
 import { getSafeAuthReturnPath } from '../utils/lmsNavigation';
-import { launchMolySso } from '../features/api/ssoClient';
+import { intentMolySso } from '../features/api/ssoClient';
 
 /* ══════════════════════════════════════════════════════════════
    ROLE-BASED NAVIGATION CONFIG
@@ -94,8 +94,8 @@ const Navbar = () => {
     if (launchingMoly) return;
     setLaunchingMoly(true);
     try {
-      const result = await launchMolySso({ targetPath: '/khoa-hoc' });
-      const parsed = new URL(result?.launchUrl || '');
+      const result = await intentMolySso({ targetPath: '/khoa-hoc' });
+      const parsed = new URL(result?.destinationStartUrl || '');
       if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
         window.location.assign(parsed.toString());
         return;
