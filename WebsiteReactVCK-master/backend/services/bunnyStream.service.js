@@ -5,7 +5,7 @@ import { recordAuditEvent } from "./audit.service.js";
 export const BUNNY_TUS_ENDPOINT = "https://video.bunnycdn.com/tusupload";
 export const MAX_BUNNY_VIDEO_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 export const PLAYBACK_TOKEN_TTL_SECONDS = 600; // 10 minutes
-export const COMPLETION_THRESHOLD_PERCENT = 60;
+export const COMPLETION_THRESHOLD_PERCENT = 50;
 export const MAX_SINGLE_HEARTBEAT_SECONDS = 90;
 const FIRST_HEARTBEAT_ALLOWANCE_SECONDS = 12;
 const HEARTBEAT_CLOCK_SKEW_SECONDS = 0.5;

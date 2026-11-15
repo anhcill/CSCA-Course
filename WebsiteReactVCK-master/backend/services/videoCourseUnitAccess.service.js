@@ -1,7 +1,7 @@
 import { getUnitVideoProgressAggregate } from "./bunnyStream.service.js";
 import { isVideoCourseProfileAccessRevoked } from "./videoCourseAccessRevocation.service.js";
 
-const REQUIRED_WATCH_PERCENT = 60;
+const REQUIRED_WATCH_PERCENT = 50;
 
 // Only membership in this profile's source Live class waives sequential review.
 export const hasLiveReviewMembership = async (db, profile, userId) => {

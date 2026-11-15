@@ -98,7 +98,7 @@ const sanitizeTheoryHtml = (html) => {
   return documentNode.body.innerHTML;
 };
 
-const REQUIRED_WATCH_PERCENT = 60;
+const REQUIRED_WATCH_PERCENT = 50;
 
 const isVideoRequirementCompleted = (unit) => {
   if (typeof unit?.isVideoCompleted === "boolean") return unit.isVideoCompleted;

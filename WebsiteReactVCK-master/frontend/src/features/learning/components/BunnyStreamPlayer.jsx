@@ -15,7 +15,7 @@ import {
 import { requestVideoPlaybackToken, updateVideoWatchProgress } from "../../api/lmsClient";
 import { formatTimeMMSS } from "../utils/videoTime";
 
-const REQUIRED_WATCH_PERCENT = 60;
+const REQUIRED_WATCH_PERCENT = 50;
 
 export default function BunnyStreamPlayer({
   video,

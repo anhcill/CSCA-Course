@@ -15,7 +15,7 @@ import { hasLiveReviewMembership } from "../services/videoCourseUnitAccess.servi
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
-const VIDEO_COMPLETION_PERCENT = 60;
+const VIDEO_COMPLETION_PERCENT = 50;
 
 const validationError = (res, message) => res.status(422).json({
   success: false,
