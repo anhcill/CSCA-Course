@@ -27,6 +27,7 @@ import {
   resetUserWelcomeSeen,
 } from "../services/welcomeScreen.service.js";
 import { getTrustedDeviceLimitForRole, listTrustedDevicesForUser } from "../services/trustedDevice.service.js";
+import { recordCourseCatalogMutation } from "../services/courseCatalogSync.service.js";
 
 const router = express.Router();
 const adminOnly = [protectRoute, requireAdmin];
@@ -1686,6 +1687,11 @@ router.post("/courses", ...adminOnly, async (req, res) => {
       [input.title, input.slug, input.description, req.user.id, input.category, input.level, input.price, input.is_free, input.thumbnail_url, input.is_published ?? false],
     );
     await recordAuditEvent({ actorId: req.user.id, action: "course.created", entityType: "course", entityId: result.rows[0].id, afterState: auditCourseState(result.rows[0]), metadata: { ip: req.ip } });
+    await recordCourseCatalogMutation({
+      courseId: result.rows[0].id,
+      eventType: (input.is_published ?? false) ? "course.published" : "course.upserted",
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
     return res.status(201).json({ success: true, data: result.rows[0], message: "Tạo khóa học thành công" });
   } catch (error) {
     if (["REQUIRED", "INVALID_TEXT", "INVALID_SLUG", "INVALID_ENUM", "INVALID_PRICE", "INVALID_BOOLEAN"].includes(error.message)) return sendError(res, 422, "Thông tin khóa học không hợp lệ", "VALIDATION_ERROR");
@@ -1710,7 +1716,15 @@ router.patch("/courses/:id", ...adminOnly, async (req, res) => {
     const result = await query(`UPDATE courses SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`, values);
     const after = result.rows[0];
     const action = before.is_published !== after.is_published ? "course.published_status_changed" : "course.updated";
+    const catalogEventType = before.is_published !== after.is_published
+      ? (after.is_published ? "course.published" : "course.unpublished")
+      : "course.upserted";
     await recordAuditEvent({ actorId: req.user.id, action, entityType: "course", entityId: courseId, beforeState: auditCourseState(before), afterState: auditCourseState(after), metadata: { ip: req.ip } });
+    await recordCourseCatalogMutation({
+      courseId,
+      eventType: catalogEventType,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
     return res.json({ success: true, data: after, message: "Cập nhật khóa học thành công" });
   } catch (error) {
     if (["REQUIRED", "INVALID_TEXT", "INVALID_SLUG", "INVALID_ENUM", "INVALID_PRICE", "INVALID_BOOLEAN"].includes(error.message)) return sendError(res, 422, "Thông tin khóa học không hợp lệ", "VALIDATION_ERROR");
@@ -1737,6 +1751,15 @@ router.delete("/courses/:id", ...adminOnly, async (req, res) => {
       return sendError(res, 409, "Không thể xóa khóa học đã có dữ liệu học tập; hãy chuyển về bản nháp", "COURSE_HAS_LEARNING_DATA", details);
     }
     await recordAuditEvent({ db: client, actorId: req.user.id, action: "course.deleted", entityType: "course", entityId: courseId, beforeState: auditCourseState(course), metadata: { ...details, ip: req.ip } });
+    await recordCourseCatalogMutation({
+      db: client,
+      courseId,
+      eventType: "course.tombstoned",
+      deleted: true,
+      deletedAt: new Date().toISOString(),
+      correlationId: req.get?.("X-Correlation-ID") || null,
+      beforeDeleteSnapshot: course,
+    });
     await client.query("DELETE FROM courses WHERE id = $1", [courseId]);
     await client.query("COMMIT");
     return res.json({ success: true, data: { id: courseId }, message: "Đã xóa khóa học" });

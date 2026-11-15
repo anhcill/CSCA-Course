@@ -17,6 +17,10 @@ import {
   hasEffectiveCourseEntitlement,
   resolveEffectiveStudentLmsAccess,
 } from "../services/externalEntitlementAccess.service.js";
+import {
+  recordCourseCatalogMutation,
+  recordProfileCatalogMutation,
+} from "../services/courseCatalogSync.service.js";
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
@@ -2295,12 +2299,29 @@ router.post("/admin/profiles", protectRoute, requireAdmin, async (req, res) => {
       ],
     );
 
+    const profile = upsertRes.rows[0];
+    await recordProfileCatalogMutation({
+      profileId: profile.id,
+      courseId: parsedCourseId,
+      eventType: profile.status === "archived" ? "profile.tombstoned" : "profile.upserted",
+      deleted: profile.status === "archived",
+      correlationId: req.get?.("X-Correlation-ID") || null,
+      bumpParentCourse: thumbnailUrl === undefined,
+    });
+    if (thumbnailUrl !== undefined) {
+      await recordCourseCatalogMutation({
+        courseId: parsedCourseId,
+        eventType: "course.upserted",
+        correlationId: req.get?.("X-Correlation-ID") || null,
+      });
+    }
+
     const publishChecklist = await computeCoursePublishChecklist(parsedCourseId);
 
     return res.json({
       success: true,
       data: {
-        profile: upsertRes.rows[0],
+        profile,
         publishChecklist,
       },
       message: "Cập nhật cấu hình khóa học video thành công",
@@ -2604,7 +2625,26 @@ router.post("/admin/courses/:courseId/publish", protectRoute, requireAdmin, asyn
 
     if (!isPublished) {
       await query(`UPDATE courses SET is_published = FALSE, updated_at = NOW() WHERE id = $1`, [courseId]);
-      await query(`UPDATE video_course_profiles SET status = 'draft', updated_at = NOW() WHERE course_id = $1`, [courseId]);
+      const profRes = await query(
+        `UPDATE video_course_profiles SET status = 'draft', updated_at = NOW() WHERE course_id = $1 RETURNING id`,
+        [courseId],
+      );
+      const corr = req.get?.("X-Correlation-ID") || null;
+      for (const prof of profRes.rows) {
+        await recordProfileCatalogMutation({
+          profileId: prof.id,
+          courseId,
+          eventType: "profile.upserted",
+          deleted: false,
+          correlationId: corr,
+          bumpParentCourse: false,
+        });
+      }
+      await recordCourseCatalogMutation({
+        courseId,
+        eventType: "course.unpublished",
+        correlationId: corr,
+      });
       const checklist = await computeCoursePublishChecklist(courseId);
       return res.json({
         success: true,
@@ -2651,10 +2691,26 @@ router.post("/admin/courses/:courseId/publish", protectRoute, requireAdmin, asyn
     }
 
     await query(`UPDATE courses SET is_published = TRUE, updated_at = NOW() WHERE id = $1`, [courseId]);
-    await query(
-      `UPDATE video_course_profiles SET status = 'active', updated_at = NOW() WHERE course_id = $1`,
+    const profRes = await query(
+      `UPDATE video_course_profiles SET status = 'active', updated_at = NOW() WHERE course_id = $1 RETURNING id`,
       [courseId],
     );
+    const corr = req.get?.("X-Correlation-ID") || null;
+    for (const prof of profRes.rows) {
+      await recordProfileCatalogMutation({
+        profileId: prof.id,
+        courseId,
+        eventType: "profile.upserted",
+        deleted: false,
+        correlationId: corr,
+        bumpParentCourse: false,
+      });
+    }
+    await recordCourseCatalogMutation({
+      courseId,
+      eventType: "course.published",
+      correlationId: corr,
+    });
 
     return res.json({
       success: true,

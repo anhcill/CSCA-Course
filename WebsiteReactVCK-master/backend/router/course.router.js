@@ -6,6 +6,7 @@ import requireRole from "../middleware/requireRole.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
 import { EFFECTIVE_COURSE_GRANT_EXISTS_SQL, hasEffectiveCourseEntitlement, resolveEffectiveStudentLmsAccess } from "../services/externalEntitlementAccess.service.js";
 import { getMeetingProvider } from "../services/liveClass.service.js";
+import { recordCourseCatalogMutation } from "../services/courseCatalogSync.service.js";
 
 const router = express.Router();
 
@@ -1046,6 +1047,11 @@ router.patch("/admin/:courseId/status", protectRoute, requireRole("admin"), asyn
       "UPDATE courses SET is_published = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
       [nextStatus, courseId],
     );
+    await recordCourseCatalogMutation({
+      courseId,
+      eventType: nextStatus ? "course.published" : "course.unpublished",
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
     return res.json({
       success: true,
       data: result.rows[0],
@@ -1079,6 +1085,11 @@ router.post("/admin", protectRoute, requireRole("admin"), async (req, res) => {
        RETURNING *`,
       [title.trim(), normalizedSlug, description || "", req.user.id, category || "HSK", level || "beginner", price || 0, isFree ?? true, thumbnailUrl || "", isPublished],
     );
+    await recordCourseCatalogMutation({
+      courseId: result.rows[0].id,
+      eventType: isPublished ? "course.published" : "course.upserted",
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
 
     return res.status(201).json({
       success: true,

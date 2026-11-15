@@ -57,6 +57,13 @@ export const isMolyIntegrationKillSwitchActive = (env = process.env) => {
   return disabledFlag === "true" || killFlag === "true";
 };
 
+export const isCatalogSyncKillSwitchActive = (env = process.env) => {
+  if (isMolyIntegrationKillSwitchActive(env)) return true;
+  const catalogDisabled = String(env?.COURSE_CATALOG_SYNC_DISABLED || "").trim().toLowerCase();
+  const molyCatalogDisabled = String(env?.MOLY_CATALOG_SYNC_DISABLED || "").trim().toLowerCase();
+  return catalogDisabled === "true" || molyCatalogDisabled === "true";
+};
+
 const metricsCounters = new Map();
 const latencyStats = new Map();
 
@@ -91,6 +98,7 @@ export const getIntegrationMetricsSnapshot = () => {
   }
   return {
     killSwitchActive: isMolyIntegrationKillSwitchActive(),
+    catalogSyncKillSwitchActive: isCatalogSyncKillSwitchActive(),
     counters,
     latencies,
   };

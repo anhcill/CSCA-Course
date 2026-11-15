@@ -5,6 +5,8 @@ import path from "path";
 import { pool } from "./db/connect.js";
 import { processAvailableManagementSyncJobs } from "./services/managementSync.service.js";
 import { processAvailableMolyInboxJobs } from "./services/molyIntegration.service.js";
+import { processAvailableCourseCatalogOutbox } from "./services/courseCatalogSync.service.js";
+import { createCourseToMolyClient } from "./services/courseToMolyClient.js";
 import { processAvailableManagementAttendanceDeliveries } from "./services/managementAttendanceDelivery.service.js";
 import { processAvailableManagementCalendarDeliveries } from "./services/managementCalendarDelivery.service.js";
 import { processAssignmentDeadlineReminders } from "./services/assignmentDeadlineNotification.service.js";
@@ -24,6 +26,8 @@ const batchSize = parseBoundedInt(process.env.LMS_SYNC_WORKER_BATCH_SIZE, 10, 1,
 const deadlineReminderPollMs = parseBoundedInt(process.env.LMS_ASSIGNMENT_REMINDER_POLL_MS, 300000, 60000, 3600000);
 const quizCloseReportPollMs = parseBoundedInt(process.env.QUIZ_CLOSE_REPORT_POLL_MS, 60000, 10000, 3600000);
 const quizCloseReportEmailEnabled = process.env.QUIZ_CLOSE_REPORT_EMAIL_ENABLED !== "false";
+const catalogSyncWorkerEnabled = process.env.COURSE_CATALOG_SYNC_WORKER_ENABLED === "true";
+const courseToMolyClient = createCourseToMolyClient();
 const runOnce = process.env.LMS_SYNC_WORKER_ONCE === "true";
 let stopping = false;
 let nextDeadlineReminderAt = 0;
@@ -47,12 +51,15 @@ const main = async () => {
       if (shouldProcessDeadlines) nextDeadlineReminderAt = Date.now() + deadlineReminderPollMs;
       const shouldProcessQuizCloseReports = quizCloseReportEmailEnabled && Date.now() >= nextQuizCloseReportAt;
       if (shouldProcessQuizCloseReports) nextQuizCloseReportAt = Date.now() + quizCloseReportPollMs;
-      const [incomingResults, attendanceResults, calendarResults, announcementResults, molyInboxResults] = await Promise.all([
+      const [incomingResults, attendanceResults, calendarResults, announcementResults, molyInboxResults, catalogOutboxResult] = await Promise.all([
         processAvailableManagementSyncJobs({ workerId, limit: batchSize }),
         processAvailableManagementAttendanceDeliveries({ workerId, limit: batchSize }),
         processAvailableManagementCalendarDeliveries({ workerId, limit: batchSize }),
         processScheduledClassAnnouncements({ limit: batchSize }),
         processAvailableMolyInboxJobs({ workerId, limit: batchSize }),
+        catalogSyncWorkerEnabled
+          ? processAvailableCourseCatalogOutbox({ workerId, molyClient: courseToMolyClient, limit: batchSize })
+          : Promise.resolve({ skipped: true, claimed: 0, results: [] }),
       ]);
       const deadlineResult = shouldProcessDeadlines ? await processAssignmentDeadlineReminders() : null;
       const expiredQuizAttemptResult = await processExpiredQuizAttempts({ limit: Math.max(100, batchSize * 10) });
@@ -62,6 +69,7 @@ const main = async () => {
       const results = [
         ...incomingResults,
         ...molyInboxResults.map((entry) => ({ status: `moly_${entry.status}` })),
+        ...(catalogOutboxResult?.results || []).map((entry) => ({ status: `catalog_outbox_${entry.status}` })),
         ...attendanceResults,
         ...calendarResults,
         ...announcementResults.filter((result) => result.delivered).map(() => ({ status: "announcements", count: 1 })),

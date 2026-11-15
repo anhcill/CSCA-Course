@@ -27,6 +27,15 @@ export const computeMolySignature = ({ timestamp, rawBody, secret }) => {
   return `sha256=${digest}`;
 };
 
+export const computeMolyGetSignature = ({ timestamp, method = "GET", originalUrl = "/", secret }) => {
+  const canonicalInput = `${String(method || "GET").toUpperCase()}\n${String(originalUrl || "/")}`;
+  const digest = crypto
+    .createHmac("sha256", String(secret || ""))
+    .update(Buffer.from(`${timestamp}.${canonicalInput}`, "utf8"))
+    .digest("hex");
+  return `sha256=${digest}`;
+};
+
 const getMolyIntegrationConfig = (overrides = {}) => {
   const maxAgeRaw = overrides.maxAgeSeconds ?? process.env.MOLY_INTEGRATION_MAX_AGE_SECONDS ?? "300";
   const parsedMaxAge = Number.parseInt(String(maxAgeRaw), 10);
@@ -53,6 +62,7 @@ const deny = (res, status, errorCode, message, correlationId = null) => res.stat
  */
 export const createRequireMolyIntegration = ({
   requireIdempotencyKey = true,
+  allowBodylessGet = false,
   configOverrides = {},
 } = {}) => (req, res, next) => {
   const correlationRaw = HEADER_VALUE(req, "X-Correlation-ID");
@@ -106,14 +116,28 @@ export const createRequireMolyIntegration = ({
     return deny(res, 401, "INVALID_SIGNATURE", "X-Signature must be formatted as sha256=<64-hex>.", correlationId);
   }
 
-  if (!Buffer.isBuffer(req.rawBody)) {
-    return deny(res, 400, "RAW_BODY_REQUIRED", "Raw JSON request body is required for signature verification.", correlationId);
+  const httpMethod = String(req.method || "POST").toUpperCase();
+  const isBodylessRead = allowBodylessGet && (httpMethod === "GET" || httpMethod === "HEAD")
+    && (!Buffer.isBuffer(req.rawBody) || req.rawBody.length === 0);
+
+  let expectedSignature;
+  if (isBodylessRead) {
+    expectedSignature = computeMolyGetSignature({
+      timestamp: timestampHeader,
+      method: httpMethod,
+      originalUrl: req.originalUrl || req.url || "/",
+      secret: cfg.hmacSecret,
+    });
+  } else {
+    if (!Buffer.isBuffer(req.rawBody)) {
+      return deny(res, 400, "RAW_BODY_REQUIRED", "Raw JSON request body is required for signature verification.", correlationId);
+    }
+    expectedSignature = computeMolySignature({
+      timestamp: timestampHeader,
+      rawBody: req.rawBody,
+      secret: cfg.hmacSecret,
+    });
   }
-  const expectedSignature = computeMolySignature({
-    timestamp: timestampHeader,
-    rawBody: req.rawBody,
-    secret: cfg.hmacSecret,
-  });
 
   if (!constantTimeEquals(signatureHeader, expectedSignature)) {
     return deny(res, 401, "INVALID_SIGNATURE", "Webhook HMAC signature verification failed.", correlationId);
@@ -131,4 +155,8 @@ export const createRequireMolyIntegration = ({
 
 export const requireMolyIntegration = createRequireMolyIntegration({ requireIdempotencyKey: true });
 export const requireMolyReadIntegration = createRequireMolyIntegration({ requireIdempotencyKey: false });
+export const requireMolyCatalogRead = createRequireMolyIntegration({
+  requireIdempotencyKey: false,
+  allowBodylessGet: true,
+});
 export default requireMolyIntegration;
