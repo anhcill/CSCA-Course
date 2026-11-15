@@ -129,10 +129,10 @@ export const verifyLearnerVideoAccess = async ({
     if (requireRecordingMode && enrollment.learning_mode !== "recording") {
       const mirrorRes = await db.query(
         `SELECT 1 FROM video_course_profiles
-         WHERE source_live_class_id = $1 AND course_id = $2
+         WHERE source_live_class_id = $1
            AND status = 'active' AND mode = 'MIRROR'
          LIMIT 1`,
-        [liveClassId, courseId],
+        [liveClassId],
       );
       if (mirrorRes.rows.length === 0) {
         return {
@@ -192,8 +192,12 @@ export const verifyLearnerVideoAccess = async ({
       `SELECT COALESCE(BOOL_OR(enforce_trusted_devices), TRUE) AS enforce_trusted_devices,
               COALESCE(MIN(device_limit) FILTER (WHERE enforce_trusted_devices = TRUE), $2)::int AS device_limit
        FROM video_course_profiles
-       WHERE course_id = $1 AND status = 'active'`,
-      [courseId, 2],
+        WHERE status = 'active'
+          AND (
+            ($3::bigint IS NOT NULL AND mode = 'MIRROR' AND source_live_class_id = $3)
+            OR ($3::bigint IS NULL AND course_id = $1)
+          )`,
+      [courseId, 2, liveClassId],
     );
     const profile = profileRes.rows[0] || {};
     try {
