@@ -302,10 +302,8 @@ test("Happy path: Moly -> Course SSO JIT creates passwordless learner, binds pee
           display_name: "JIT Student",
           role: "student",
           linked_target_user_id: null,
-          target_path: "/video-courses/off_101",
-          scope_type: "course",
-          scoped_local_course_id: 101,
-          scoped_external_course_id: "off_101",
+          target_path: "/courses",
+          scope_type: "account",
           nonce,
         },
       },
@@ -331,7 +329,7 @@ test("Happy path: Moly -> Course SSO JIT creates passwordless learner, binds pee
   const json = await res.json();
   assert.equal(json.success, true);
   assert.equal(json.data.status, "AUTHENTICATED");
-  assert.equal(json.data.redirectPath, "/video-courses/off_101");
+  assert.equal(json.data.redirectPath, "/courses");
   assert.equal(json.data.user.email, "jit.student@example.com");
 
   const { map: cookies } = parseSetCookies(res);
@@ -761,4 +759,101 @@ test("Revoked user/identity/entitlement are blocked and Course 2-device limit + 
   )).rows[0];
   assert.equal(devStateRow.is_locked, false);
   assert.equal(Number(devStateRow.device_limit_attempts), 3);
+});
+
+test("Codex: identity state, response binding, verification flags and durable conflict rejection", async (t) => {
+  const ctx = await setupDay4CourseEnv(t);
+  const assertion = {
+    source_system: "moly", source_user_id: "9501", email: "codex-unverified@test.local",
+    email_verified: false, role: "student", target_path: "/courses",
+  };
+  ctx.setExchangeHandler(async ({ nonce }) => ({
+    status: 200, body: { success: true, data: { ...assertion, nonce } },
+  }));
+  const consume = () => ctx.ssoService.consumeMolySso({ code: "codex-code", state: "codex-state", userAgent: "Codex" });
+  const login = await consume();
+  const userId = login.user.id;
+  assert.equal((await ctx.db.query("SELECT email_verified FROM users WHERE id=$1", [userId])).rows[0].email_verified, false);
+  await ctx.db.query("UPDATE external_identities SET status='expired' WHERE user_id=$1", [userId]);
+  await assert.rejects(consume, (e) => e.code === "SSO_IDENTITY_REVOKED");
+  ctx.setExchangeHandler(async () => ({
+    status: 200, body: { success: true, data: { ...assertion, nonce: "other-browser-state" } },
+  }));
+  await assert.rejects(consume, (e) => e.code === "SSO_INVALID_RESPONSE");
+
+  await ctx.db.query("UPDATE users SET management_staff_source_id='staff-codex' WHERE id=$1", [userId]);
+  await assert.rejects(() => ctx.ssoService.issueCourseSsoCode({ userId }), (e) => e.code === "PRIVILEGED_ROLE_COLLISION");
+  assertion.source_user_id = "9502";
+  ctx.setExchangeHandler(async ({ nonce }) => ({
+    status: 200, body: { success: true, data: { ...assertion, nonce } },
+  }));
+  await assert.rejects(consume, (e) => e.code === "PRIVILEGED_ROLE_COLLISION");
+  const conflicts = (await ctx.db.query(
+    "SELECT * FROM integration_conflicts WHERE external_user_id='moly:9502'",
+  )).rows;
+  assert.equal(conflicts.length, 1, "security conflict survives rejected provisioning transaction");
+
+  await ctx.db.query("UPDATE users SET management_staff_source_id=NULL WHERE id=$1", [userId]);
+  assertion.source_user_id = "9503";
+  const challenge = await consume();
+  assert.equal(challenge.status, "LINK_REQUIRED");
+  // Another actor binds this external ID after the challenge was issued.
+  const other = (await ctx.db.query(
+    "INSERT INTO users(username,email,role) VALUES ('codex-other','codex-other@test.local','user') RETURNING id",
+  )).rows[0];
+  await ctx.db.query(
+    "INSERT INTO external_identities(source_system,external_user_id,user_id,status,source_updated_at) VALUES ('moly','moly:9503',$1,'active',NOW())",
+    [other.id],
+  );
+  await assert.rejects(() => ctx.ssoService.confirmCourseSafeLink({
+    linkToken: challenge.linkToken, authenticatedUser: { id: userId, email: assertion.email },
+  }), (e) => e.code === "IDENTITY_ALREADY_LINKED");
+  assert.equal((await ctx.db.query("SELECT completed_at FROM integration_sso_link_requests")).rows[0].completed_at, null);
+});
+
+test("Codex: scoped SSO resolves real profile, preserves other grants and respects admin blocks", async (t) => {
+  const ctx = await setupDay4CourseEnv(t);
+  const assertion = {
+    source_system: "moly", source_user_id: "9601", email: "codex-scope@test.local",
+    role: "student", target_path: "/courses",
+  };
+  ctx.setExchangeHandler(async ({ nonce }) => ({
+    status: 200, body: { success: true, data: { ...assertion, nonce } },
+  }));
+  const consume = () => ctx.ssoService.consumeMolySso({ code: "scoped-code", state: "scoped-state", userAgent: "Codex" });
+  const first = await consume();
+  const userId = first.user.id;
+  assertion.scope_type = "course";
+  assertion.scoped_external_course_id = "moly:codex-offer";
+  assertion.target_path = "/video-courses/moly:codex-offer";
+  await assert.rejects(consume, (e) => e.code === "COURSE_MAPPING_MISSING");
+
+  const course = (await ctx.db.query(
+    "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Scoped','codex-scoped',$1,TRUE) RETURNING id",
+    [userId],
+  )).rows[0];
+  const profile = (await ctx.db.query(
+    "INSERT INTO video_course_profiles(course_id,mode,status) VALUES ($1,'INDEPENDENT','active') RETURNING id",
+    [course.id],
+  )).rows[0];
+  const { upsertManualCourseMapping } = await import("./externalCourseMapping.service.js");
+  await upsertManualCourseMapping(ctx.db, {
+    sourceSystem: "moly", externalCourseId: assertion.scoped_external_course_id,
+    localCourseId: course.id, localVideoCourseProfileId: profile.id,
+  });
+  const { enqueueMolyIntegrationEvent, parseGrantWirePayload, processNextMolyInboxJob } = await import("./molyIntegration.service.js");
+  for (const id of ["a", "b"]) {
+    await enqueueMolyIntegrationEvent(ctx.db, parseGrantWirePayload({
+      event_id: `moly:scope-${id}`, idempotency_key: `scope-${id}`, correlation_id: "scope",
+      source_system: "moly", external_user_id: "moly:9601", external_course_id: assertion.scoped_external_course_id,
+      external_grant_id: `moly:scope-${id}`, valid_from: "2020-01-01T00:00:00Z",
+      source_updated_at: "2026-11-15T10:00:00Z",
+    }));
+    assert.equal((await processNextMolyInboxJob({ db: ctx.db })).status, "processed");
+  }
+  await ctx.db.query("UPDATE external_entitlements SET status='revoked', revoked_at=NOW(), source_updated_at=source_updated_at+INTERVAL '1 second' WHERE external_grant_id='moly:scope-a'");
+  const active = await consume();
+  assert.equal(active.redirectPath, `/video-courses/profile-${profile.id}`);
+  await ctx.db.query("INSERT INTO video_course_access_revocations(video_course_profile_id,user_id) VALUES ($1,$2)", [profile.id, userId]);
+  await assert.rejects(consume, (e) => e.code === "VIDEO_COURSE_ACCESS_REVOKED");
 });
