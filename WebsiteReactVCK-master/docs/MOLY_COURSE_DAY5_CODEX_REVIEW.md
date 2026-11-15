@@ -1,5 +1,10 @@
 # Codex review - Day 4 follow-up and Day 5
 
+Follow-up: Codex has implemented fixes for both remaining findings below.
+See [Day 5 blocker fixes](MOLY_COURSE_DAY5_CODEX_FIXES.md) for current code status,
+regression evidence and outstanding production acceptance gates.
+The remainder of this document preserves the original review findings.
+
 Date: 2026-11-15
 Decision: DAY 5 NOT ACCEPTED; production rollout remains blocked.
 This report supersedes the open Day 4 code findings only to the extent described below.
