@@ -13,6 +13,8 @@ import {
   setTrustedDeviceCookie,
 } from "../services/trustedDevice.service.js";
 import { createMolySsoService } from "../services/molySso.service.js";
+import { createIntegrationLogger } from "../services/integrationLogger.service.js";
+const ssoLog = createIntegrationLogger({ component: "csca-course-sso-route" });
 import {
   SsoPolicyError,
   clearSsoBrowserCookie,
@@ -44,7 +46,7 @@ function sendSsoError(res, error) {
       ...(error.details ? { details: error.details } : {}),
     });
   }
-  console.error("[csca-course-sso] Unexpected error:", error?.message || error);
+  ssoLog.error("sso_unexpected_error", { message: error?.message || "Unexpected error", code: error?.code });
   return res.status(500).json({
     success: false,
     errorCode: "INTERNAL_ERROR",

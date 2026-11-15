@@ -14,7 +14,15 @@ import {
   FiChevronRight,
   FiZap,
 } from "react-icons/fi";
-import { fetchAdminSyncOverview, fetchAdminDeliveryQueue, retryDeliveryQueueItem } from "../../features/api/lmsClient";
+import {
+  fetchAdminSyncOverview,
+  fetchAdminDeliveryQueue,
+  retryDeliveryQueueItem,
+  fetchMolyInboxOps,
+  retryMolyInboxJob,
+  fetchMolyConflicts,
+  resolveMolyConflict,
+} from "../../features/api/lmsClient";
 import Loading from "../../components/Loading.jsx";
 
 const EVENT_STAGES = {
@@ -77,6 +85,10 @@ export default function AdminSyncPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, limit: 20 });
+  const [molyOps, setMolyOps] = useState(null);
+  const [molyConflicts, setMolyConflicts] = useState([]);
+  const [molyRetryingId, setMolyRetryingId] = useState(null);
+  const [conflictUserInputs, setConflictUserInputs] = useState({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -91,6 +103,17 @@ export default function AdminSyncPage() {
       setOverview(ovRes.data || null);
       setQueue(Array.isArray(qRes.data?.items) ? qRes.data.items : []);
       setPagination({ total: Number(qRes.data?.total || 0), limit: Number(qRes.data?.limit || 20) });
+
+      const [opsSettled, conflictSettled] = await Promise.allSettled([
+        fetchMolyInboxOps({ limit: 30 }),
+        fetchMolyConflicts({ sourceSystem: "moly" }),
+      ]);
+      if (opsSettled.status === "fulfilled" && opsSettled.value?.success) {
+        setMolyOps(opsSettled.value.data || null);
+      }
+      if (conflictSettled.status === "fulfilled" && conflictSettled.value?.success) {
+        setMolyConflicts(Array.isArray(conflictSettled.value.data) ? conflictSettled.value.data : []);
+      }
     } catch (err) {
       console.error("Error loading sync data:", err);
       setOverview(null);
@@ -125,6 +148,38 @@ export default function AdminSyncPage() {
       toast.error(error.message || `Thử lại job #${item.id} thất bại!`);
     } finally {
       setRetryingId(null);
+    }
+  };
+
+  const handleRetryMolyInbox = async (row) => {
+    setMolyRetryingId(row.id);
+    try {
+      const res = await retryMolyInboxJob(row.id);
+      if (!res?.success) throw new Error(res?.message || "Không thể thử lại Moly inbox.");
+      toast.success(`Đã đưa sự kiện Moly Inbox #${row.id} về hàng đợi chờ xử lý.`);
+      await loadData();
+    } catch (error) {
+      toast.error(error.message || `Thử lại Moly Inbox #${row.id} thất bại.`);
+    } finally {
+      setMolyRetryingId(null);
+    }
+  };
+
+  const handleResolveMolyConflict = async (conflict, action) => {
+    try {
+      const targetUserId = action === "link_existing"
+        ? Number(conflictUserInputs[conflict.id] || conflict.candidate_user_id)
+        : undefined;
+      const res = await resolveMolyConflict(conflict.id, {
+        action,
+        ...(targetUserId ? { targetUserId } : {}),
+        resolutionNote: "Resolved from AdminSyncPage",
+      });
+      if (!res?.success) throw new Error(res?.message || "Không thể xử lý xung đột.");
+      toast.success(`Đã cập nhật conflict #${conflict.id}.`);
+      await loadData();
+    } catch (error) {
+      toast.error(error.message || `Xử lý conflict #${conflict.id} thất bại.`);
     }
   };
 
@@ -408,6 +463,114 @@ export default function AdminSyncPage() {
           </div>
         </div>
       )}
+
+      {/* Moly Studio Inbox & Identity Conflicts (Day 5 Ops) */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 space-y-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black text-gray-900 dark:text-white">
+              Moly Studio Integration Inbox & Conflicts
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Pending: {molyOps?.inboxCounts?.pending ?? 0} · Failed: {molyOps?.inboxCounts?.failed ?? 0} · Dead-Letter: {molyOps?.inboxCounts?.dead_letter ?? 0} · Processed: {molyOps?.inboxCounts?.processed ?? 0}
+            </p>
+          </div>
+          {molyOps?.killSwitchActive && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-500 border border-rose-500/30">
+              <FiAlertTriangle className="w-3.5 h-3.5" />
+              MOLY KILL SWITCH ĐANG BẬT
+            </span>
+          )}
+        </div>
+
+        {(molyConflicts || []).filter((c) => c.status === "open").length > 0 && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
+            <div className="text-xs font-bold uppercase text-amber-600 dark:text-amber-400">
+              Xung đột danh tính đang mở ({molyConflicts.filter((c) => c.status === "open").length})
+            </div>
+            {molyConflicts.filter((c) => c.status === "open").map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-xs bg-white dark:bg-gray-950/60 p-2.5 rounded-lg border border-amber-500/20">
+                <div>
+                  <span className="font-bold">#{c.id} {c.conflict_type}</span> · extUser: <span className="font-mono">{c.external_user_id || "-"}</span> · {c.reason}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    placeholder="User ID"
+                    value={conflictUserInputs[c.id] ?? (c.candidate_user_id ? String(c.candidate_user_id) : "")}
+                    onChange={(e) => setConflictUserInputs((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                    className="w-20 rounded border border-gray-300 dark:border-gray-700 bg-transparent px-2 py-1 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleResolveMolyConflict(c, "link_existing")}
+                    className="px-2.5 py-1 rounded bg-indigo-600 text-white font-bold"
+                  >
+                    Link User
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleResolveMolyConflict(c, "dismiss")}
+                    className="px-2.5 py-1 rounded border border-gray-300 dark:border-gray-700 font-bold"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="border-b border-gray-200 dark:border-gray-800 text-gray-500 uppercase">
+              <tr>
+                <th className="py-2 pr-3">Inbox #</th>
+                <th className="py-2 px-3">Trạng thái / Thử</th>
+                <th className="py-2 px-3">Correlation ID</th>
+                <th className="py-2 px-3">Lỗi cuối</th>
+                <th className="py-2 pl-3 text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+              {(molyOps?.items || []).map((row) => (
+                <tr key={row.id}>
+                  <td className="py-2.5 pr-3">
+                    <div className="font-bold">#{row.id} · {row.event_type}</div>
+                    <div className="font-mono text-[11px] text-gray-400">{row.aggregate_id}</div>
+                  </td>
+                  <td className="py-2.5 px-3 font-mono">
+                    {row.status} ({row.attempt_count}/{row.max_attempts})
+                  </td>
+                  <td className="py-2.5 px-3 font-mono text-[11px]">{row.correlation_id || "-"}</td>
+                  <td className="py-2.5 px-3 text-rose-500 font-mono">
+                    {row.last_error_code ? `${row.last_error_code}: ${row.last_error_message || ""}` : "—"}
+                  </td>
+                  <td className="py-2.5 pl-3 text-right">
+                    {["failed", "dead_letter"].includes(row.status) && (
+                      <button
+                        type="button"
+                        onClick={() => handleRetryMolyInbox(row)}
+                        disabled={molyRetryingId === row.id || Boolean(molyOps?.killSwitchActive)}
+                        className="px-2.5 py-1 rounded-lg bg-purple-600 text-white font-bold disabled:opacity-50"
+                      >
+                        Thử lại
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {(!molyOps?.items || molyOps.items.length === 0) && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center text-gray-400">
+                    Chưa có sự kiện Moly integration inbox nào.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Payload Drawer / Modal */}
       {selectedItem && (

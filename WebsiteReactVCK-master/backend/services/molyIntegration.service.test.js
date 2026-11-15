@@ -1191,3 +1191,149 @@ test("Codex: revoked identity cannot borrow a replacement identity's active stat
   await db.query("UPDATE external_entitlements SET external_identity_id = NULL");
   assert.equal(await hasEffectiveCourseEntitlement({ db, userId: identity.user_id, courseId: course.id }), false);
 });
+
+test("Day 5: reconciliation snapshot, manual inbox retry, kill switch, and redacted logging", async (t) => {
+  const { db, baseUrl } = await setupMolyTestEnv(t);
+  const {
+    REDACTED,
+    redactSensitiveData,
+    createIntegrationLogger,
+    resetIntegrationMetrics,
+    getIntegrationMetricsSnapshot,
+  } = await import("./integrationLogger.service.js");
+  resetIntegrationMetrics();
+
+  const {
+    buildReconciliationSnapshotForMoly,
+    retryMolyInboxJob,
+  } = await import("./molyIntegration.service.js");
+
+  const admin = (await db.query(
+    "INSERT INTO users (username, email, role) VALUES ('day5-admin', 'day5-admin@test.local', 'admin') RETURNING id",
+  )).rows[0];
+  const { course, profileA } = await seedCourseWithIndependentProfiles(db, admin.id, "day5-recon");
+  await upsertManualCourseMapping(db, {
+    sourceSystem: "moly",
+    externalCourseId: "moly:day5-offer",
+    localCourseId: course.id,
+    localVideoCourseProfileId: profileA.id,
+  });
+
+  await postMolySigned(baseUrl, "/users/provision", {
+    event_id: "moly:d5-prov",
+    idempotency_key: "d5-prov",
+    correlation_id: "corr-d5-1",
+    source_system: "moly",
+    external_user_id: "moly:d5-user",
+    source_updated_at: "2026-11-15T10:00:00Z",
+  });
+  await processNextMolyInboxJob({ db });
+
+  await postMolySigned(baseUrl, "/entitlements/grant", {
+    event_id: "moly:d5-grant",
+    idempotency_key: "d5-grant",
+    correlation_id: "corr-d5-2",
+    source_system: "moly",
+    external_user_id: "moly:d5-user",
+    external_course_id: "moly:day5-offer",
+    external_grant_id: "moly:grant:d5-1",
+    valid_from: "2020-01-01T00:00:00Z",
+    source_updated_at: "2026-11-15T10:01:00Z",
+  });
+  assert.equal((await processNextMolyInboxJob({ db })).status, "processed");
+
+  // 1) Reconciliation snapshot includes active grant + mapped course
+  const snapRes = await postMolySigned(baseUrl, "/moly/reconciliation/snapshot", {
+    correlation_id: "corr-d5-snap",
+  });
+  assert.equal(snapRes.status, 200);
+  const foundGrant = snapRes.body.data.entitlements.find((e) => e.external_grant_id === "moly:grant:d5-1");
+  assert.equal(foundGrant?.effective_active, true);
+  assert.equal(foundGrant?.external_course_id, "moly:day5-offer");
+
+  // 2) Manual retry of a dead_letter inbox event resets & processes cleanly
+  const dlqInsert = (await db.query(
+    `INSERT INTO integration_inbox (
+       source_system, event_id, idempotency_key, correlation_id, event_type,
+       payload_hash, payload, source_updated_at, status, attempt_count, max_attempts,
+       last_error_code, last_error_message
+     ) VALUES (
+       'moly', 'moly:d5-dlq-prov', 'd5-dlq-prov', 'corr-d5-dlq', 'user.provisioned',
+       $1, $2::jsonb, '2026-11-15T10:02:00Z', 'dead_letter', 5, 5, 'TRANSIENT', 'Downstream failed'
+     ) RETURNING id`,
+    [
+      "a".repeat(64),
+      JSON.stringify({
+        event_id: "moly:d5-dlq-prov",
+        idempotency_key: "d5-dlq-prov",
+        correlation_id: "corr-d5-dlq",
+        source_system: "moly",
+        external_user_id: "moly:d5-dlq-user",
+        source_updated_at: "2026-11-15T10:02:00Z",
+      }),
+    ],
+  )).rows[0];
+
+  const retried = await retryMolyInboxJob(db, {
+    inboxId: dlqInsert.id,
+    actorId: admin.id,
+    correlationId: "corr-d5-dlq",
+  });
+  assert.equal(retried.retried, true);
+  assert.equal(retried.inbox.status, "pending");
+  assert.equal(retried.inbox.max_attempts > 5, true);
+  const processedAfterRetry = await processNextMolyInboxJob({ db });
+  assert.equal(processedAfterRetry.status, "processed");
+
+  // 3) Kill switch immediately stops inbox worker, manual retry, snapshot & signed endpoints
+  const prevKill = process.env.MOLY_INTEGRATION_SYNC_DISABLED;
+  process.env.MOLY_INTEGRATION_SYNC_DISABLED = "true";
+  try {
+    assert.equal(await processNextMolyInboxJob({ db }), null);
+    assert.deepEqual(await processAvailableMolyInboxJobs({ db }), []);
+    await assert.rejects(
+      () => retryMolyInboxJob(db, { inboxId: dlqInsert.id }),
+      (err) => err.statusCode === 503 && err.errorCode === "INTEGRATION_KILL_SWITCH_ACTIVE",
+    );
+    await assert.rejects(
+      () => buildReconciliationSnapshotForMoly(db, { correlation_id: "corr-kill" }),
+      (err) => err.statusCode === 503 && err.errorCode === "INTEGRATION_KILL_SWITCH_ACTIVE",
+    );
+    const blockedProvision = await postMolySigned(baseUrl, "/users/provision", {
+      event_id: "moly:d5-blocked",
+      idempotency_key: "d5-blocked",
+      correlation_id: "corr-d5-kill",
+      source_system: "moly",
+      external_user_id: "moly:blocked",
+      source_updated_at: "2026-11-15T10:03:00Z",
+    });
+    assert.equal(blockedProvision.status, 503);
+    assert.equal(blockedProvision.body.errorCode, "INTEGRATION_KILL_SWITCH_ACTIVE");
+  } finally {
+    if (prevKill === undefined) delete process.env.MOLY_INTEGRATION_SYNC_DISABLED;
+    else process.env.MOLY_INTEGRATION_SYNC_DISABLED = prevKill;
+  }
+
+  // 4) Structured logging & redaction checks
+  const captured = [];
+  const log = createIntegrationLogger({ component: "d5-course-test", sink: (e) => captured.push(e) });
+  log.info("sso_exchange_debug", {
+    serviceToken: "secret-srv-token",
+    hmacSecret: "secret-hmac",
+    codeVerifier: "pkce-secret-verifier",
+    linkToken: "link-secret-tok",
+    authorization: "Bearer jwt-999",
+    url: "https://course.test/sso/cb?code=secretCode&token=secretTok&ok=1",
+  }, "corr-log-d5");
+  const serialized = JSON.stringify(captured[0]);
+  assert.equal(captured[0].correlation_id, "corr-log-d5");
+  assert.ok(serialized.includes(REDACTED));
+  assert.ok(!serialized.includes("secret-srv-token"));
+  assert.ok(!serialized.includes("secret-hmac"));
+  assert.ok(!serialized.includes("pkce-secret-verifier"));
+  assert.ok(!serialized.includes("link-secret-tok"));
+  assert.ok(!serialized.includes("secretCode"));
+  assert.ok(!serialized.includes("secretTok"));
+  assert.equal(redactSensitiveData({ payment_payload: { x: 1 } }).payment_payload, REDACTED);
+  assert.ok(typeof getIntegrationMetricsSnapshot().counters === "object");
+});

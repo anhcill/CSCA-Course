@@ -13,7 +13,9 @@ import {
 import {
   linkExternalIdentityManually,
   listIntegrationConflicts,
+  listMolyInboxOps,
   resolveIntegrationConflict,
+  retryMolyInboxJob,
 } from "../services/molyIntegration.service.js";
 
 const sendError = (res, error) => {
@@ -178,6 +180,35 @@ export const createExternalCourseMappingRouter = ({
         { recordAudit },
       );
       return res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  router.get("/inbox-ops", ...guard, async (req, res) => {
+    try {
+      const overview = await listMolyInboxOps(db, {
+        status: req.query.status,
+        limit: req.query.limit,
+      });
+      return res.json({ success: true, data: overview });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  router.post("/inbox-ops/:id/retry", ...guard, async (req, res) => {
+    try {
+      const result = await retryMolyInboxJob(
+        db,
+        {
+          inboxId: req.params.id,
+          actorId: req.user?.id ?? null,
+          correlationId: req.headers["x-correlation-id"] || req.body?.correlationId || null,
+        },
+        { recordAudit },
+      );
+      return res.json({ success: true, data: result });
     } catch (error) {
       return sendError(res, error);
     }

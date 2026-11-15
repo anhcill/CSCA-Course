@@ -4,6 +4,14 @@ import { recordAuditEvent } from "./audit.service.js";
 import { createManagedUsername } from "../utils/usernameGenerator.js";
 import { hasUnrevokedVideoCourseAccess } from "./videoCourseAccessRevocation.service.js";
 import {
+  createIntegrationLogger,
+  getIntegrationMetricsSnapshot,
+  isMolyIntegrationKillSwitchActive,
+  observeIntegrationLatency,
+  recordIntegrationMetric,
+  resolveCorrelationId,
+} from "./integrationLogger.service.js";
+import {
   EXTERNAL_ENTITLEMENT_STATUSES,
   ExternalIntegrationError,
   canonicalHashPayload,
@@ -18,6 +26,7 @@ import {
 } from "./externalCourseMapping.service.js";
 
 const defaultDb = { query, getClient };
+const integrationLog = createIntegrationLogger({ component: "moly-integration" });
 
 export const MOLY_SOURCE_SYSTEM = "moly";
 export const MOLY_IDENTITY_STATUSES = new Set(["active", "revoked", "expired", "suspended"]);
@@ -1460,6 +1469,12 @@ export const processNextMolyInboxJob = async ({
   recordAudit = recordAuditEvent,
   handlers = {},
 } = {}) => {
+  if (isMolyIntegrationKillSwitchActive()) {
+    recordIntegrationMetric("moly.inbox.halted_kill_switch");
+    integrationLog.warn("inbox_halted_kill_switch", { workerId });
+    return null;
+  }
+  const jobStartMs = Date.now();
   const claimed = await runWithTransaction(db, async (tx) => {
     const claimRes = await tx.query(
       `WITH next_job AS (
@@ -1545,8 +1560,37 @@ export const processNextMolyInboxJob = async ({
       };
     });
 
+    const durationMs = Date.now() - jobStartMs;
+    observeIntegrationLatency("moly.inbox.job_ms", durationMs);
+    recordIntegrationMetric(`moly.inbox.${outcome?.status || "unknown"}`);
+    integrationLog.info(
+      "inbox_job_completed",
+      {
+        inboxId: claimed.id,
+        eventId: claimed.event_id,
+        eventType: claimed.event_type,
+        status: outcome?.status || "unknown",
+        durationMs,
+      },
+      claimed.correlation_id,
+    );
     return outcome;
   } catch (error) {
+    const durationMs = Date.now() - jobStartMs;
+    observeIntegrationLatency("moly.inbox.job_ms", durationMs);
+    recordIntegrationMetric("moly.inbox.error");
+    integrationLog.warn(
+      "inbox_job_failed",
+      {
+        inboxId: claimed.id,
+        eventId: claimed.event_id,
+        eventType: claimed.event_type,
+        errorCode: error?.errorCode || error?.code || "INBOX_ERROR",
+        message: error?.message || "Inbox job failed.",
+        durationMs,
+      },
+      claimed.correlation_id,
+    );
     return persistConflictAndFailure(db, claimed, error, { retryBaseSeconds, recordAudit });
   }
 };
@@ -1563,6 +1607,11 @@ export const processAvailableMolyInboxJobs = async ({
   recordAudit = recordAuditEvent,
   handlers = {},
 } = {}) => {
+  if (isMolyIntegrationKillSwitchActive()) {
+    recordIntegrationMetric("moly.inbox.batch_halted_kill_switch");
+    integrationLog.warn("inbox_batch_halted_kill_switch", { workerId, limit });
+    return [];
+  }
   const results = [];
   const cap = Math.min(Math.max(Number(limit) || 20, 1), 200);
   for (let idx = 0; idx < cap; idx += 1) {
@@ -1987,4 +2036,366 @@ export const resolveIntegrationConflict = async (
 
     return { conflict: updatedConflict, identity: linkedIdentity };
   });
+};
+
+export const retryMolyInboxJob = async (
+  db = defaultDb,
+  { inboxId, actorId = null, correlationId = null } = {},
+  { recordAudit = recordAuditEvent } = {},
+) => {
+  if (isMolyIntegrationKillSwitchActive()) {
+    recordIntegrationMetric("moly.inbox.retry_blocked_kill_switch");
+    throw new MolyIntegrationError(
+      503,
+      "INTEGRATION_KILL_SWITCH_ACTIVE",
+      "Moly integration sync is disabled by emergency kill switch.",
+    );
+  }
+  const id = parsePositiveBigIntId(inboxId, "inboxId");
+  const parsedActorId = actorId == null ? null : parsePositiveBigIntId(actorId, "actorId");
+  const corr = resolveCorrelationId(correlationId);
+
+  return runWithTransaction(db, async (tx) => {
+    const existingRes = await tx.query(
+      "SELECT * FROM integration_inbox WHERE id = $1 FOR UPDATE",
+      [id],
+    );
+    const existing = existingRes.rows[0];
+    if (!existing) {
+      throw new ExternalIntegrationError(404, "NOT_FOUND", `Integration inbox item ${id} not found.`);
+    }
+    if (existing.status === "processed") {
+      return { retried: false, alreadyProcessed: true, inbox: existing };
+    }
+    if (!["failed", "dead_letter", "pending"].includes(existing.status)) {
+      throw new ExternalIntegrationError(
+        409,
+        "INBOX_RETRY_NOT_ALLOWED",
+        `Cannot retry inbox item while status is '${existing.status}'.`,
+      );
+    }
+
+    const updatedRes = await tx.query(
+      `UPDATE integration_inbox
+       SET status = 'pending',
+           max_attempts = GREATEST(max_attempts, attempt_count + 3),
+           next_retry_at = NOW(),
+           locked_until = NULL,
+           locked_by = NULL,
+           last_error_code = NULL,
+           last_error_message = NULL,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, source_system, event_id, idempotency_key, correlation_id, event_type,
+                 COALESCE(payload->>'external_grant_id', payload->>'external_user_id') AS aggregate_id,
+                 status, attempt_count, max_attempts, next_retry_at,
+                 processed_at, created_at, updated_at`,
+      [id],
+    );
+    const updated = updatedRes.rows[0];
+
+    await recordAudit({
+      db: tx,
+      actorId: parsedActorId,
+      action: "integration.inbox_manual_retry",
+      entityType: "integration_inbox",
+      entityId: Number(id),
+      beforeState: {
+        status: existing.status,
+        attempt_count: existing.attempt_count,
+        last_error_code: existing.last_error_code,
+      },
+      afterState: {
+        status: updated.status,
+        attempt_count: updated.attempt_count,
+        max_attempts: updated.max_attempts,
+      },
+      metadata: {
+        correlation_id: corr,
+        event_id: existing.event_id,
+      },
+    });
+
+    recordIntegrationMetric("moly.inbox.manual_retry");
+    integrationLog.info(
+      "inbox_manual_retry",
+      {
+        inboxId: Number(id),
+        eventId: existing.event_id,
+        previousStatus: existing.status,
+        actorId: parsedActorId,
+      },
+      corr,
+    );
+
+    return { retried: true, inbox: updated };
+  });
+};
+
+export const listMolyInboxOps = async (db = defaultDb, filters = {}) => {
+  const status = typeof filters.status === "string" ? filters.status.trim().toLowerCase() : null;
+  const limit = Math.min(Math.max(Number(filters.limit) || 50, 1), 200);
+  const params = [];
+  const conditions = ["source_system = 'moly'"];
+  if (status === "attention") {
+    conditions.push("status IN ('pending', 'processing', 'failed', 'dead_letter')");
+  } else if (status) {
+    params.push(status);
+    conditions.push(`status = $${params.length}`);
+  }
+  const where = `WHERE ${conditions.join(" AND ")}`;
+  const [rowsRes, countsRes, conflictCountsRes] = await Promise.all([
+    db.query(
+      `SELECT id, source_system, event_id, idempotency_key, correlation_id, event_type,
+              COALESCE(payload->>'external_grant_id', payload->>'external_user_id') AS aggregate_id,
+              status, attempt_count, max_attempts, next_retry_at,
+              locked_until, last_error_code, last_error_message, processed_at,
+              created_at, updated_at
+       FROM integration_inbox
+       ${where}
+       ORDER BY id DESC
+       LIMIT $${params.length + 1}`,
+      [...params, limit],
+    ),
+    db.query(
+      `SELECT status, COUNT(*)::int AS count
+       FROM integration_inbox
+       WHERE source_system = 'moly'
+       GROUP BY status`,
+    ),
+    db.query(
+      `SELECT status, COUNT(*)::int AS count
+       FROM integration_conflicts
+       WHERE source_system = 'moly'
+       GROUP BY status`,
+    ),
+  ]);
+
+  return {
+    killSwitchActive: isMolyIntegrationKillSwitchActive(),
+    metrics: getIntegrationMetricsSnapshot(),
+    inboxCounts: Object.fromEntries(countsRes.rows.map((r) => [r.status, r.count])),
+    conflictCounts: Object.fromEntries(conflictCountsRes.rows.map((r) => [r.status, r.count])),
+    items: rowsRes.rows,
+  };
+};
+
+export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody = {}) => {
+  if (isMolyIntegrationKillSwitchActive()) {
+    recordIntegrationMetric("moly.reconciliation.blocked_kill_switch");
+    throw new MolyIntegrationError(
+      503,
+      "INTEGRATION_KILL_SWITCH_ACTIVE",
+      "Moly integration sync is disabled by emergency kill switch.",
+    );
+  }
+  const startMs = Date.now();
+  const body = normalizeJsonObject(rawBody, "body");
+  const corr = resolveCorrelationId(body.correlation_id);
+  const limit = Math.min(Math.max(Number(body.limit) || 500, 1), 2000);
+  const filterExternalUserId = body.external_user_id
+    ? requireMolyNamespacedId(body.external_user_id, "external_user_id")
+    : null;
+  const filterExternalCourseId = body.external_course_id
+    ? normalizeExternalId(body.external_course_id, 191, "external_course_id")
+    : null;
+
+  const mappingsRes = await db.query(
+    `SELECT id, source_system, external_course_id, local_course_id, local_video_course_profile_id,
+            status, metadata, updated_at
+     FROM external_course_mappings
+     WHERE source_system IN ('moly', 'csca-course')
+     ORDER BY id ASC`,
+  );
+
+  const identitiesRes = await db.query(
+    `SELECT id, source_system, external_user_id, user_id, status, source_updated_at
+     FROM external_identities
+     WHERE source_system = 'moly'
+       AND ($1::text IS NULL OR external_user_id = $1)
+     ORDER BY id ASC
+     LIMIT $2`,
+    [filterExternalUserId, limit],
+  );
+
+  const conflictsRes = await db.query(
+    `SELECT id, source_system, conflict_type, status, external_user_id, external_course_id,
+            external_grant_id, candidate_user_id, existing_user_id, local_course_id,
+            correlation_id, reason, created_at
+     FROM integration_conflicts
+     WHERE source_system = 'moly'
+       AND status = 'open'
+       AND ($1::text IS NULL OR external_user_id = $1)
+     ORDER BY id DESC
+     LIMIT $2`,
+    [filterExternalUserId, limit],
+  );
+
+  const extEntRes = await db.query(
+    `SELECT ee.id, ee.source_system, ee.external_user_id, ee.user_id AS local_user_id,
+            ee.local_course_id, ee.local_video_course_profile_id, ee.external_grant_id,
+            ee.status, ee.valid_from, ee.valid_until, ee.revoked_at, ee.source_updated_at,
+            ei.status AS identity_status
+     FROM external_entitlements ee
+     LEFT JOIN external_identities ei
+       ON ei.id = ee.external_identity_id
+       OR (ei.source_system = ee.source_system AND ei.external_user_id = ee.external_user_id)
+     WHERE ee.source_system = 'moly'
+       AND ($1::text IS NULL OR ee.external_user_id = $1)
+     ORDER BY ee.id DESC
+     LIMIT $2`,
+    [filterExternalUserId, limit],
+  );
+
+  const mgmtRes = await db.query(
+    `SELECT ei.external_user_id, ei.status AS identity_status,
+            g.id AS grant_id, g.user_id AS local_user_id, g.course_id AS local_course_id,
+            g.access_status AS status, g.valid_from, g.valid_until, g.source_updated_at
+     FROM external_identities ei
+     JOIN lms_access_grants g ON g.user_id = ei.user_id
+     WHERE ei.source_system = 'moly'
+       AND ei.status = 'active'
+       AND ($1::text IS NULL OR ei.external_user_id = $1)
+     ORDER BY g.id DESC
+     LIMIT $2`,
+    [filterExternalUserId, limit],
+  );
+
+  const inboxSummaryRes = await db.query(
+    `SELECT status,
+            COUNT(*)::int AS count,
+            COUNT(*) FILTER (
+              WHERE status IN ('pending', 'processing')
+                AND created_at <= NOW() - INTERVAL '10 minutes'
+            )::int AS stale_count
+     FROM integration_inbox
+     WHERE source_system = 'moly'
+     GROUP BY status`,
+  );
+
+  const nowMs = Date.now();
+  const isEntActiveNow = (row) => (
+    row.status === "active"
+    && row.identity_status !== "revoked"
+    && (!row.valid_from || new Date(row.valid_from).getTime() <= nowMs)
+    && (!row.valid_until || new Date(row.valid_until).getTime() > nowMs)
+  );
+
+  const entitlements = [];
+  for (const row of extEntRes.rows) {
+    let profileRevoked = false;
+    if (isEntActiveNow(row) && row.local_video_course_profile_id != null && row.local_user_id != null) {
+      const unrevoked = await hasUnrevokedVideoCourseAccess({
+        db,
+        userId: row.local_user_id,
+        courseId: row.local_course_id,
+        profileId: row.local_video_course_profile_id,
+      });
+      profileRevoked = !unrevoked;
+    }
+    const effectiveActive = isEntActiveNow(row) && !profileRevoked;
+    const mapping = mappingsRes.rows.find((m) =>
+      Number(m.local_course_id) === Number(row.local_course_id)
+      && m.status === "active"
+      && (m.local_video_course_profile_id == null
+        || row.local_video_course_profile_id == null
+        || Number(m.local_video_course_profile_id) === Number(row.local_video_course_profile_id)),
+    ) || null;
+    const resolvedExtCourseId = mapping
+      ? (mapping.source_system === "moly"
+        ? mapping.external_course_id
+        : mapping.metadata?.moly_external_course_id || mapping.external_course_id)
+      : null;
+
+    if (filterExternalCourseId && resolvedExtCourseId !== filterExternalCourseId) {
+      continue;
+    }
+
+    entitlements.push({
+      source: "external_entitlements",
+      id: Number(row.id),
+      external_user_id: row.external_user_id,
+      local_user_id: row.local_user_id == null ? null : Number(row.local_user_id),
+      local_course_id: Number(row.local_course_id),
+      local_video_course_profile_id: row.local_video_course_profile_id == null
+        ? null
+        : Number(row.local_video_course_profile_id),
+      external_course_id: resolvedExtCourseId,
+      external_grant_id: row.external_grant_id,
+      status: profileRevoked ? "revoked" : row.status,
+      effective_active: effectiveActive,
+      identity_status: row.identity_status || "unknown",
+      valid_from: row.valid_from ? new Date(row.valid_from).toISOString() : null,
+      valid_until: row.valid_until ? new Date(row.valid_until).toISOString() : null,
+      revoked_at: row.revoked_at ? new Date(row.revoked_at).toISOString() : null,
+      source_updated_at: row.source_updated_at ? new Date(row.source_updated_at).toISOString() : null,
+    });
+  }
+
+  for (const row of mgmtRes.rows) {
+    const active = row.status === "active"
+      && (!row.valid_from || new Date(row.valid_from).getTime() <= nowMs)
+      && (!row.valid_until || new Date(row.valid_until).getTime() > nowMs);
+    const mapping = mappingsRes.rows.find(
+      (m) => Number(m.local_course_id) === Number(row.local_course_id) && m.status === "active",
+    ) || null;
+    const resolvedExtCourseId = mapping
+      ? (mapping.source_system === "moly"
+        ? mapping.external_course_id
+        : mapping.metadata?.moly_external_course_id || mapping.external_course_id)
+      : null;
+
+    if (filterExternalCourseId && resolvedExtCourseId !== filterExternalCourseId) {
+      continue;
+    }
+
+    entitlements.push({
+      source: "lms_access_grants",
+      id: Number(row.grant_id),
+      external_user_id: row.external_user_id,
+      local_user_id: Number(row.local_user_id),
+      local_course_id: Number(row.local_course_id),
+      local_video_course_profile_id: null,
+      external_course_id: resolvedExtCourseId,
+      external_grant_id: `internal-management:grant:${row.grant_id}`,
+      status: row.status,
+      effective_active: active,
+      identity_status: row.identity_status || "active",
+      valid_from: row.valid_from ? new Date(row.valid_from).toISOString() : null,
+      valid_until: row.valid_until ? new Date(row.valid_until).toISOString() : null,
+      revoked_at: null,
+      source_updated_at: row.source_updated_at ? new Date(row.source_updated_at).toISOString() : null,
+    });
+  }
+
+  const inboxSummary = {};
+  for (const row of inboxSummaryRes.rows) {
+    inboxSummary[row.status] = { count: row.count, stale_count: row.stale_count };
+  }
+
+  observeIntegrationLatency("moly.reconciliation.snapshot_ms", Date.now() - startMs);
+  recordIntegrationMetric("moly.reconciliation.snapshot_calls");
+  integrationLog.info(
+    "reconciliation_snapshot_generated",
+    {
+      identities: identitiesRes.rows.length,
+      entitlements: entitlements.length,
+      openConflicts: conflictsRes.rows.length,
+      durationMs: Date.now() - startMs,
+    },
+    corr,
+  );
+
+  return {
+    success: true,
+    correlation_id: corr,
+    data: {
+      checked_at: new Date(nowMs).toISOString(),
+      course_mappings: mappingsRes.rows,
+      identities: identitiesRes.rows,
+      open_conflicts: conflictsRes.rows,
+      entitlements,
+      inbox_summary: inboxSummary,
+    },
+  };
 };

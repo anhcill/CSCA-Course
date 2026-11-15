@@ -2114,3 +2114,33 @@ export const revokeAdminUserTrustedDevice = async (userId, deviceId) => (
   })
 );
 
+export const fetchMolyInboxOps = async (params = {}) => {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.limit) qs.set("limit", String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/v1/admin/integrations/inbox-ops${suffix}`);
+};
+
+export const retryMolyInboxJob = async (inboxId) => (
+  request(`/v1/admin/integrations/inbox-ops/${encodeURIComponent(inboxId)}/retry`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+);
+
+export const fetchMolyConflicts = async (params = {}) => {
+  const qs = new URLSearchParams();
+  qs.set("sourceSystem", params.sourceSystem || "moly");
+  if (params.status) qs.set("status", params.status);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/v1/admin/integrations/conflicts${suffix}`);
+};
+
+export const resolveMolyConflict = async (conflictId, payload) => (
+  request(`/v1/admin/integrations/conflicts/${encodeURIComponent(conflictId)}/resolve`, {
+    method: "POST",
+    body: JSON.stringify(payload || {}),
+  })
+);
+

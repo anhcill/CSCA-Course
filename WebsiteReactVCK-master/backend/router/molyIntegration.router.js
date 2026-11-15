@@ -7,12 +7,18 @@ import {
 import { ExternalIntegrationError } from "../services/externalCourseMapping.service.js";
 import {
   MOLY_SOURCE_SYSTEM,
+  buildReconciliationSnapshotForMoly,
   enqueueMolyIntegrationEvent,
   parseGrantWirePayload,
   parseProvisionWirePayload,
   parseRevokeWirePayload,
   queryCourseOwnershipForMoly,
 } from "../services/molyIntegration.service.js";
+import {
+  createIntegrationLogger,
+  isMolyIntegrationKillSwitchActive,
+  recordIntegrationMetric,
+} from "../services/integrationLogger.service.js";
 import { createMolySsoService } from "../services/molySso.service.js";
 
 const sendError = (res, error, correlationId = null) => {
@@ -46,11 +52,21 @@ export const createMolyIntegrationRouter = ({
   ssoService = createMolySsoService({ db }),
 } = {}) => {
   const router = express.Router();
+  const integrationLog = createIntegrationLogger({ component: "moly-router" });
 
   const handleInboxMutation = (parseFn) => async (req, res) => {
     const headerMeta = req.molyIntegration || {};
     const correlationId = headerMeta.correlationId || req.body?.correlation_id || null;
     try {
+      if (isMolyIntegrationKillSwitchActive()) {
+        recordIntegrationMetric("moly.router.mutation_blocked_kill_switch");
+        integrationLog.warn("s2s_mutation_blocked_kill_switch", { path: req.path }, correlationId);
+        throw new ExternalIntegrationError(
+          503,
+          "INTEGRATION_KILL_SWITCH_ACTIVE",
+          "Moly integration sync is disabled by emergency kill switch.",
+        );
+      }
       const parsed = parseFn(req.body, headerMeta);
       const enqueued = await enqueueMolyIntegrationEvent(db, parsed, {
         headersSnapshot: {
@@ -73,7 +89,30 @@ export const createMolyIntegrationRouter = ({
     const headerMeta = req.molyIntegration || {};
     const correlationId = headerMeta.correlationId || req.body?.correlation_id || null;
     try {
+      if (isMolyIntegrationKillSwitchActive()) {
+        recordIntegrationMetric("moly.router.ownership_blocked_kill_switch");
+        integrationLog.warn("s2s_ownership_blocked_kill_switch", {}, correlationId);
+        throw new ExternalIntegrationError(
+          503,
+          "INTEGRATION_KILL_SWITCH_ACTIVE",
+          "Moly integration sync is disabled by emergency kill switch.",
+        );
+      }
       const result = await queryCourseOwnershipForMoly(db, req.body, headerMeta);
+      return res.status(200).json(result);
+    } catch (error) {
+      return sendError(res, error, correlationId);
+    }
+  });
+
+  router.post("/moly/reconciliation/snapshot", verifyRead, async (req, res) => {
+    const headerMeta = req.molyIntegration || {};
+    const correlationId = headerMeta.correlationId || req.body?.correlation_id || null;
+    try {
+      const result = await buildReconciliationSnapshotForMoly(db, {
+        ...(req.body || {}),
+        correlation_id: correlationId,
+      });
       return res.status(200).json(result);
     } catch (error) {
       return sendError(res, error, correlationId);
