@@ -2391,6 +2391,9 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
     correlation_id: corr,
     data: {
       checked_at: new Date(nowMs).toISOString(),
+      // Conservatively require a narrower scope when any independent query hits its cap.
+      complete: [identitiesRes, conflictsRes, extEntRes, mgmtRes]
+        .every((result) => result.rows.length < limit),
       course_mappings: mappingsRes.rows,
       identities: identitiesRes.rows,
       open_conflicts: conflictsRes.rows,

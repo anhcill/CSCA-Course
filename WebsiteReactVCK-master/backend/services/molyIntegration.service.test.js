@@ -1247,6 +1247,9 @@ test("Day 5: reconciliation snapshot, manual inbox retry, kill switch, and redac
     correlation_id: "corr-d5-snap",
   });
   assert.equal(snapRes.status, 200);
+  assert.equal(snapRes.body.data.complete, true);
+  const cappedSnapshot = await buildReconciliationSnapshotForMoly(db, { limit: 1 });
+  assert.equal(cappedSnapshot.data.complete, false);
   const foundGrant = snapRes.body.data.entitlements.find((e) => e.external_grant_id === "moly:grant:d5-1");
   assert.equal(foundGrant?.effective_active, true);
   assert.equal(foundGrant?.external_course_id, "moly:day5-offer");
