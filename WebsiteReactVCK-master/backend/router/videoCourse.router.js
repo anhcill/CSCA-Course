@@ -11,6 +11,7 @@ import {
 import { getUnitVideoProgressAggregate } from "../services/bunnyStream.service.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import { isVideoCourseProfileAccessRevoked } from "../services/videoCourseAccessRevocation.service.js";
+import { hasLiveReviewMembership } from "../services/videoCourseUnitAccess.service.js";
 import {
   EXTERNAL_LMS_ACCESS_EXISTS_SQL,
   EFFECTIVE_COURSE_GRANT_EXISTS_SQL,
@@ -435,6 +436,11 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
       isPublicPreviewAccess = true;
     }
 
+    const canReviewFreely = isLearner && hasFullLearnerAccess && !isPublicPreviewAccess
+      && await hasLiveReviewMembership({ query }, {
+        ...profile, id: activeProfileId, mode, source_live_class_id: sourceLiveClassId,
+      }, req.user.id);
+
     let units = [];
     let activeUnitData = null;
 
@@ -471,7 +477,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           requiredPrevUnitNumber: null,
         }));
       }
-      if (!isLearner) {
+      if (!isLearner || canReviewFreely) {
         return rawUnits.map((current) => ({
           ...current,
           isLocked: false,
@@ -1278,6 +1284,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           allowFileDownload: !isPublicPreviewAccess && profile.allow_file_download === true,
           isPublicPreviewAccess,
           isAdminPreview: !isLearner,
+          canReviewFreely,
         },
       },
     });

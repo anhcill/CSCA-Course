@@ -3,6 +3,19 @@ import { isVideoCourseProfileAccessRevoked } from "./videoCourseAccessRevocation
 
 const REQUIRED_WATCH_PERCENT = 60;
 
+// Only membership in this profile's source Live class waives sequential review.
+export const hasLiveReviewMembership = async (db, profile, userId) => {
+  if (profile?.mode !== "MIRROR" || !profile.source_live_class_id || !userId) return false;
+  return Boolean((await db.query(
+    `SELECT 1 FROM class_enrollments
+     WHERE user_id = $1 AND live_class_id = $2 AND status = 'active'
+       AND learning_mode = 'live'
+       AND (video_course_profile_id IS NULL OR video_course_profile_id = $3)
+     LIMIT 1`,
+    [userId, profile.source_live_class_id, profile.id],
+  )).rows[0]);
+};
+
 const hasRecordingMembership = async (db, profile, userId) => Boolean((await db.query(
   `SELECT 1
    FROM class_enrollments ce
@@ -172,6 +185,10 @@ export const getVideoCourseUnitAccessContext = async ({ db, userId, unitType, un
       return { isVideoCourseUnit: true, isPublicPreview: true, isRecordMember: false, isUnlocked: true, profile: profiles[0] };
     }
     return { isVideoCourseUnit: true, isPublicPreview: false, isRecordMember: false, isUnlocked: true, profile: null };
+  }
+
+  if (await hasLiveReviewMembership(db, profile, userId)) {
+    return { isVideoCourseUnit: true, isPublicPreview, isRecordMember: true, isUnlocked: true, profile };
   }
 
   const units = profile.mode === "MIRROR"
