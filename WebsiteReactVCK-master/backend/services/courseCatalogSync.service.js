@@ -300,7 +300,7 @@ async function fetchFormattedCoursesByIds(runner, courseIds = []) {
   ));
 }
 
-async function insertOutboxEnvelope(runner, envelope) {
+export async function insertOutboxEnvelope(runner, envelope) {
   await runner.query(
     `INSERT INTO course_integration_outbox (
        source_system, target_system, schema_version, event_id, idempotency_key,
@@ -331,6 +331,8 @@ async function insertOutboxEnvelope(runner, envelope) {
   );
   return envelope;
 }
+
+export { insertOutboxEnvelope as insertOutboxEnvelopeIfReady };
 
 /**
  * Exports Course catalog entries + 1:N video_course_profiles ordered strictly

@@ -28,6 +28,10 @@ import {
 } from "../services/welcomeScreen.service.js";
 import { getTrustedDeviceLimitForRole, listTrustedDevicesForUser } from "../services/trustedDevice.service.js";
 import { recordCourseCatalogMutation } from "../services/courseCatalogSync.service.js";
+import {
+  resolveBeforeDeleteUnitSnapshot,
+  safeRecordCurriculumMutation,
+} from "../services/courseCurriculumSync.service.js";
 
 const router = express.Router();
 const adminOnly = [protectRoute, requireAdmin];
@@ -1784,6 +1788,7 @@ router.post("/courses/:id/sections", ...adminOnly, async (req, res) => {
     if (!Number.isInteger(sortOrder) || sortOrder < 0) return sendError(res, 422, "sortOrder không hợp lệ", "VALIDATION_ERROR");
     const result = await query("INSERT INTO sections (course_id, title, sort_order) VALUES ($1, $2, $3) RETURNING *", [courseId, title, sortOrder]);
     await recordAuditEvent({ actorId: req.user.id, action: "section.created", entityType: "section", entityId: result.rows[0].id, afterState: result.rows[0], metadata: { courseId, ip: req.ip } });
+    await safeRecordCurriculumMutation({ courseId, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.status(201).json({ success: true, data: result.rows[0], message: "Tạo chương học thành công" });
   } catch (error) {
     if (["REQUIRED", "INVALID_TEXT"].includes(error.message)) return sendError(res, 422, "Tiêu đề chương không hợp lệ", "VALIDATION_ERROR");
@@ -1805,6 +1810,7 @@ router.patch("/sections/:id", ...adminOnly, async (req, res) => {
     values.push(sectionId);
     const result = await query(`UPDATE sections SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`, values);
     await recordAuditEvent({ actorId: req.user.id, action: "section.updated", entityType: "section", entityId: sectionId, beforeState: before, afterState: result.rows[0], metadata: { courseId: before.course_id, ip: req.ip } });
+    await safeRecordCurriculumMutation({ courseId: before.course_id, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.json({ success: true, data: result.rows[0], message: "Cập nhật chương học thành công" });
   } catch (error) {
     if (["REQUIRED", "INVALID_TEXT"].includes(error.message)) return sendError(res, 422, "Thông tin chương học không hợp lệ", "VALIDATION_ERROR");
@@ -1825,6 +1831,7 @@ router.delete("/sections/:id", ...adminOnly, async (req, res) => {
     await recordAuditEvent({ db: client, actorId: req.user.id, action: "section.deleted", entityType: "section", entityId: sectionId, beforeState: section, metadata: { courseId: section.course_id, ip: req.ip } });
     await client.query("DELETE FROM sections WHERE id = $1", [sectionId]);
     await client.query("COMMIT");
+    await safeRecordCurriculumMutation({ courseId: section.course_id, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.json({ success: true, data: { id: sectionId }, message: "Đã xóa chương học" });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
@@ -1876,6 +1883,7 @@ router.post("/sections/:id/lessons", ...adminOnly, async (req, res) => {
       [sectionId, section.course_id, input.title, input.description, input.video_asset_id ?? null, input.duration_seconds, input.is_preview, input.sort_order, input.learning_url, input.is_published ?? false],
     );
     await recordAuditEvent({ actorId: req.user.id, action: "lesson.created", entityType: "lesson", entityId: result.rows[0].id, afterState: result.rows[0], metadata: { courseId: section.course_id, sectionId, ip: req.ip } });
+    await safeRecordCurriculumMutation({ courseId: section.course_id, unitType: "lesson", unitId: result.rows[0].id, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.status(201).json({ success: true, data: result.rows[0], message: "Tạo bài học thành công" });
   } catch (error) {
     if (["REQUIRED", "REQUIRED_LEARNING_URL", "INVALID_TEXT", "INVALID_DURATION", "INVALID_SORT", "INVALID_BOOLEAN", "INVALID_VIDEO", "INVALID_LEARNING_URL"].includes(error.message)) return sendError(res, 422, "Thông tin bài học không hợp lệ", "VALIDATION_ERROR");
@@ -1903,6 +1911,7 @@ router.patch("/lessons/:id", ...adminOnly, async (req, res) => {
     values.push(lessonId);
     const result = await query(`UPDATE lessons SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`, values);
     await recordAuditEvent({ actorId: req.user.id, action: "lesson.updated", entityType: "lesson", entityId: lessonId, beforeState: before, afterState: result.rows[0], metadata: { courseId: before.course_id, ip: req.ip } });
+    await safeRecordCurriculumMutation({ courseId: before.course_id, unitType: "lesson", unitId: lessonId, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.json({ success: true, data: result.rows[0], message: "Cập nhật bài học thành công" });
   } catch (error) {
     if (["REQUIRED", "INVALID_TEXT", "INVALID_DURATION", "INVALID_SORT", "INVALID_BOOLEAN", "INVALID_VIDEO", "INVALID_LEARNING_URL"].includes(error.message)) return sendError(res, 422, "Thông tin bài học không hợp lệ", "VALIDATION_ERROR");
@@ -1920,9 +1929,21 @@ router.delete("/lessons/:id", ...adminOnly, async (req, res) => {
     if (!lesson) { await client.query("ROLLBACK"); return sendError(res, 404, "Không tìm thấy bài học", "NOT_FOUND"); }
     const progress = await client.query("SELECT COUNT(*)::int AS count FROM lesson_progress WHERE lesson_id = $1", [lessonId]);
     if (Number(progress.rows[0].count) > 0) { await client.query("ROLLBACK"); return sendError(res, 409, "Không thể xóa bài học đã có tiến độ học", "LESSON_HAS_PROGRESS", { progressCount: Number(progress.rows[0].count) }); }
+    const deleteSnapshot = await resolveBeforeDeleteUnitSnapshot(client, { unitType: "lesson", unitId: lessonId, courseId: lesson.course_id });
     await recordAuditEvent({ db: client, actorId: req.user.id, action: "lesson.deleted", entityType: "lesson", entityId: lessonId, beforeState: lesson, metadata: { courseId: lesson.course_id, ip: req.ip } });
     await client.query("DELETE FROM lessons WHERE id = $1", [lessonId]);
     await client.query("COMMIT");
+    if (deleteSnapshot) {
+      await safeRecordCurriculumMutation({
+        courseId: lesson.course_id,
+        unitType: "lesson",
+        unitId: lessonId,
+        eventType: "curriculum.tombstoned",
+        deleted: true,
+        beforeDeleteSnapshot: deleteSnapshot,
+        correlationId: req.get?.("X-Correlation-ID") || null,
+      });
+    }
     return res.json({ success: true, data: { id: lessonId }, message: "Đã xóa bài học" });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
@@ -1951,6 +1972,7 @@ router.patch("/courses/:id/reorder", ...adminOnly, async (req, res) => {
     }
     await recordAuditEvent({ db: client, actorId: req.user.id, action: "curriculum.reordered", entityType: "course", entityId: courseId, afterState: { sections: req.body.sections, lessons: req.body.lessons }, metadata: { ip: req.ip } });
     await client.query("COMMIT");
+    await safeRecordCurriculumMutation({ courseId, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.json({ success: true, data: { courseId }, message: "Đã cập nhật thứ tự giáo trình" });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});

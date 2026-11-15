@@ -23,8 +23,24 @@ import {
   hasEffectiveCourseEntitlement,
   resolveEffectiveStudentLmsAccess,
 } from "../services/externalEntitlementAccess.service.js";
+import {
+  safeRecordUnitContentMutation,
+  safeRecordVideoAssetContentMutation,
+} from "../services/courseCurriculumSync.service.js";
 
 const router = express.Router();
+
+const emitUnitContentChanged = async (req, target) => {
+  if (!target) return;
+  const resolvedUnitId = target.unitType === "lesson" ? target.lessonId : target.classSessionId;
+  if (!resolvedUnitId) return;
+  await safeRecordUnitContentMutation({
+    unitType: target.unitType,
+    unitId: resolvedUnitId,
+    courseId: target.courseId || null,
+    correlationId: req?.get?.("X-Correlation-ID") || null,
+  });
+};
 
 // Simple in-memory sliding window rate limiter for upload, playback & progress endpoints
 const rateLimitBuckets = new Map();
@@ -289,6 +305,12 @@ router.post("/webhooks/bunny-stream", async (req, res) => {
       rawBody: req.rawBody,
       signatureHeader,
     });
+    if (result?.assetId || result?.videoAssetId) {
+      await safeRecordVideoAssetContentMutation({
+        videoAssetId: result.assetId || result.videoAssetId,
+        correlationId: req.get?.("X-Correlation-ID") || null,
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -446,6 +468,12 @@ router.post("/admin/learning-units/:unitId/videos", protectRoute, requireAdmin, 
       },
     });
 
+    await safeRecordUnitContentMutation({
+      unitType: resolvedType,
+      unitId,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
+
     return res.status(201).json({
       success: true,
       data: {
@@ -559,6 +587,11 @@ router.post("/admin/videos/:videoId/publish", protectRoute, requireAdmin, async 
       },
     });
 
+    await safeRecordVideoAssetContentMutation({
+      videoAssetId: target.assetId,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
+
     return res.json({
       success: true,
       data: {
@@ -608,6 +641,11 @@ router.post("/admin/videos/:videoId/unpublish", protectRoute, requireAdmin, asyn
         assetId: target.assetId,
         isPublished: false,
       },
+    });
+
+    await safeRecordVideoAssetContentMutation({
+      videoAssetId: target.assetId,
+      correlationId: req.get?.("X-Correlation-ID") || null,
     });
 
     return res.json({
@@ -672,6 +710,11 @@ router.post("/admin/videos/:videoId/replace", protectRoute, requireAdmin, async 
       afterState: { newVideoAssetId: newAssetId, playbackStatus: newAsset.playback_status },
     });
 
+    await safeRecordVideoAssetContentMutation({
+      videoAssetId: newAssetId,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
+
     return res.json({
       success: true,
       data: {
@@ -696,6 +739,11 @@ router.delete("/admin/videos/:videoId", protectRoute, requireAdmin, async (req, 
     const target = await resolveAdminVideoTarget(req.params.videoId);
     if (!target) return sendError(res, 404, "Không tìm thấy video", "NOT_FOUND");
 
+    const placementsBeforeDelete = await query(
+      `SELECT class_session_id, lesson_id FROM class_session_videos WHERE video_asset_id = $1`,
+      [target.assetId],
+    );
+
     await deleteBunnyVideo({ videoAsset: target.asset });
 
     await query(
@@ -712,6 +760,26 @@ router.delete("/admin/videos/:videoId", protectRoute, requireAdmin, async (req, 
        WHERE id = $1`,
       [target.assetId],
     );
+
+    const deletedUnitKeys = new Set();
+    for (const pRow of placementsBeforeDelete.rows) {
+      if (pRow.class_session_id && !deletedUnitKeys.has(`class_session:${pRow.class_session_id}`)) {
+        deletedUnitKeys.add(`class_session:${pRow.class_session_id}`);
+        await safeRecordUnitContentMutation({
+          unitType: "class_session",
+          unitId: pRow.class_session_id,
+          correlationId: req.get?.("X-Correlation-ID") || null,
+        });
+      }
+      if (pRow.lesson_id && !deletedUnitKeys.has(`lesson:${pRow.lesson_id}`)) {
+        deletedUnitKeys.add(`lesson:${pRow.lesson_id}`);
+        await safeRecordUnitContentMutation({
+          unitType: "lesson",
+          unitId: pRow.lesson_id,
+          correlationId: req.get?.("X-Correlation-ID") || null,
+        });
+      }
+    }
 
     await recordAuditEvent({
       actorId: req.user.id,
@@ -1315,6 +1383,8 @@ router.put("/admin/learning-units/:unitId/theory", protectRoute, requireAdmin, a
       );
     }
 
+    await emitUnitContentChanged(req, target);
+
     return res.json({
       success: true,
       data: result.rows[0],
@@ -1370,6 +1440,8 @@ router.post("/admin/learning-units/:unitId/vocabulary", protectRoute, requireAdm
         req.user.id,
       ],
     );
+
+    await emitUnitContentChanged(req, target);
 
     return res.status(201).json({
       success: true,
@@ -1436,6 +1508,8 @@ router.post("/admin/learning-units/:unitId/formulas", protectRoute, requireAdmin
       ],
     );
 
+    await emitUnitContentChanged(req, target);
+
     return res.status(201).json({
       success: true,
       data: insertRes.rows[0],
@@ -1464,6 +1538,7 @@ router.post("/admin/learning-units/:unitId/files", protectRoute, requireAdmin, a
          RETURNING *`,
         [fileId, target.lessonId, req.user.id, Number(req.body?.sortOrder || 0)],
       );
+      await emitUnitContentChanged(req, target);
       return res.status(201).json({
         success: true,
         data: placeRes.rows[0],
@@ -1478,6 +1553,7 @@ router.post("/admin/learning-units/:unitId/files", protectRoute, requireAdmin, a
        RETURNING *`,
       [fileId, target.classId, target.classSessionId, req.user.id],
     );
+    await emitUnitContentChanged(req, target);
     return res.status(201).json({
       success: true,
       data: placeRes.rows[0] || { file_id: fileId, class_session_id: target.classSessionId },
@@ -1527,6 +1603,8 @@ router.post("/admin/learning-units/:unitId/vocabulary/batch", protectRoute, requ
       );
       insertedList.push(resInsert.rows[0]);
     }
+
+    await emitUnitContentChanged(req, target);
 
     return res.status(201).json({
       success: true,
@@ -1578,6 +1656,8 @@ router.put("/admin/learning-units/:unitId/vocabulary/:vocabId", protectRoute, re
     );
 
     if (updated.rows.length === 0) return sendError(res, 404, "Không tìm thấy từ vựng", "NOT_FOUND");
+    const unitTarget = await resolveUnitTypeAndIds(req.params.unitId, req.body?.unitType || req.query?.unitType);
+    await emitUnitContentChanged(req, unitTarget);
     return res.json({ success: true, data: updated.rows[0], message: "Cập nhật từ vựng thành công" });
   } catch (error) {
     console.error("Update vocabulary error:", error);
@@ -1593,6 +1673,8 @@ router.delete("/admin/learning-units/:unitId/vocabulary/:vocabId", protectRoute,
 
     const deleted = await query("DELETE FROM session_vocabularies WHERE id = $1 RETURNING id", [vocabId]);
     if (deleted.rows.length === 0) return sendError(res, 404, "Không tìm thấy từ vựng", "NOT_FOUND");
+    const unitTarget = await resolveUnitTypeAndIds(req.params.unitId, req.query?.unitType || req.body?.unitType);
+    await emitUnitContentChanged(req, unitTarget);
     return res.json({ success: true, message: "Đã xóa từ vựng" });
   } catch (error) {
     console.error("Delete vocabulary error:", error);
@@ -1659,6 +1741,8 @@ router.put("/admin/learning-units/:unitId/formulas/:formulaId", protectRoute, re
     );
 
     if (updated.rows.length === 0) return sendError(res, 404, "Không tìm thấy công thức", "NOT_FOUND");
+    const unitTarget = await resolveUnitTypeAndIds(req.params.unitId, req.body?.unitType || req.query?.unitType);
+    await emitUnitContentChanged(req, unitTarget);
     return res.json({ success: true, data: updated.rows[0], message: "Cập nhật công thức thành công" });
   } catch (error) {
     console.error("Update formula error:", error);
@@ -1674,6 +1758,8 @@ router.delete("/admin/learning-units/:unitId/formulas/:formulaId", protectRoute,
 
     const deleted = await query("DELETE FROM session_formulas WHERE id = $1 RETURNING id", [formulaId]);
     if (deleted.rows.length === 0) return sendError(res, 404, "Không tìm thấy công thức", "NOT_FOUND");
+    const unitTarget = await resolveUnitTypeAndIds(req.params.unitId, req.query?.unitType || req.body?.unitType);
+    await emitUnitContentChanged(req, unitTarget);
     return res.json({ success: true, message: "Đã xóa công thức" });
   } catch (error) {
     console.error("Delete formula error:", error);
@@ -1770,6 +1856,8 @@ router.post("/admin/learning-units/:unitId/files/confirm", protectRoute, require
       );
     }
 
+    await emitUnitContentChanged(req, target);
+
     return res.json({
       success: true,
       data: fileRes.rows[0],
@@ -1801,6 +1889,8 @@ router.delete("/admin/learning-units/:unitId/files/:fileId", protectRoute, requi
         [fileId, target.classSessionId],
       );
     }
+
+    await emitUnitContentChanged(req, target);
 
     return res.json({ success: true, message: "Đã gỡ tài liệu khỏi bài học" });
   } catch (error) {
@@ -1899,6 +1989,8 @@ router.post("/admin/learning-units/:unitId/assignments", protectRoute, requireAd
       ],
     );
 
+    await emitUnitContentChanged(req, target);
+
     return res.status(201).json({
       success: true,
       data: insertRes.rows[0],
@@ -1918,6 +2010,8 @@ router.delete("/admin/learning-units/:unitId/assignments/:assignmentId", protect
 
     const deleted = await query("DELETE FROM assignments WHERE id = $1 RETURNING id", [assignmentId]);
     if (deleted.rows.length === 0) return sendError(res, 404, "Không tìm thấy bài tập", "NOT_FOUND");
+    const unitTarget = await resolveUnitTypeAndIds(req.params.unitId, req.query?.unitType || req.body?.unitType);
+    await emitUnitContentChanged(req, unitTarget);
 
     return res.json({ success: true, message: "Đã xóa bài tập" });
   } catch (error) {
@@ -1997,6 +2091,8 @@ router.post("/admin/learning-units/:unitId/quizzes", protectRoute, requireAdmin,
       }
     }
 
+    await emitUnitContentChanged(req, target);
+
     return res.status(201).json({
       success: true,
       data: quiz,
@@ -2016,6 +2112,8 @@ router.delete("/admin/learning-units/:unitId/quizzes/:quizId", protectRoute, req
 
     const deleted = await query("DELETE FROM quizzes WHERE id = $1 RETURNING id", [quizId]);
     if (deleted.rows.length === 0) return sendError(res, 404, "Không tìm thấy bài trắc nghiệm", "NOT_FOUND");
+    const unitTarget = await resolveUnitTypeAndIds(req.params.unitId, req.query?.unitType || req.body?.unitType);
+    await emitUnitContentChanged(req, unitTarget);
 
     return res.json({ success: true, message: "Đã xóa bài trắc nghiệm" });
   } catch (error) {
@@ -2087,6 +2185,8 @@ router.post("/admin/learning-units/:unitId/quizzes/sample-bank", protectRoute, r
         ],
       );
     }
+
+    await emitUnitContentChanged(req, target);
 
     return res.status(201).json({
       success: true,

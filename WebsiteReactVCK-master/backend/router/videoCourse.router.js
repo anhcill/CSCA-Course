@@ -21,6 +21,11 @@ import {
   recordCourseCatalogMutation,
   recordProfileCatalogMutation,
 } from "../services/courseCatalogSync.service.js";
+import {
+  resolveBeforeDeleteUnitSnapshot,
+  safeRecordCurriculumMutation,
+  safeRecordUnitContentMutation,
+} from "../services/courseCurriculumSync.service.js";
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
@@ -2202,6 +2207,12 @@ router.put("/admin/units/:unitType/:unitId/public-preview", protectRoute, requir
     );
     if (!updateRes.rows[0]) return notFound(res, "Không tìm thấy buổi học hoặc bài học");
 
+    await safeRecordUnitContentMutation({
+      unitType,
+      unitId,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
+
     return res.json({
       success: true,
       data: {
@@ -2356,6 +2367,10 @@ router.post("/admin/courses/:courseId/sections", protectRoute, requireAdmin, asy
     );
 
     const row = insertRes.rows[0];
+    await safeRecordCurriculumMutation({
+      courseId,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
     return res.status(201).json({
       success: true,
       data: {
@@ -2394,6 +2409,11 @@ router.put("/admin/sections/:sectionId", protectRoute, requireAdmin, async (req,
     );
     if (!updateRes.rows[0]) return notFound(res, "Không tìm thấy chương học");
 
+    await safeRecordCurriculumMutation({
+      courseId: updateRes.rows[0].course_id,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
+
     return res.json({
       success: true,
       data: updateRes.rows[0],
@@ -2411,7 +2431,14 @@ router.delete("/admin/sections/:sectionId", protectRoute, requireAdmin, async (r
     const sectionId = parsePositiveId(req.params.sectionId);
     if (!sectionId) return validationError(res, "sectionId không hợp lệ");
 
+    const secRes = await query(`SELECT course_id FROM sections WHERE id = $1 LIMIT 1`, [sectionId]);
     await query(`DELETE FROM sections WHERE id = $1`, [sectionId]);
+    if (secRes.rows[0]?.course_id) {
+      await safeRecordCurriculumMutation({
+        courseId: secRes.rows[0].course_id,
+        correlationId: req.get?.("X-Correlation-ID") || null,
+      });
+    }
     return res.json({
       success: true,
       data: { id: String(sectionId), deleted: true },
@@ -2469,6 +2496,12 @@ router.post("/admin/courses/:courseId/lessons", protectRoute, requireAdmin, asyn
     );
 
     const row = insertRes.rows[0];
+    await safeRecordCurriculumMutation({
+      courseId,
+      unitType: "lesson",
+      unitId: row.id,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
     return res.status(201).json({
       success: true,
       data: {
@@ -2534,6 +2567,13 @@ router.put("/admin/lessons/:lessonId", protectRoute, requireAdmin, async (req, r
       [nextTitle, nextDesc, nextSectionId, nextDuration, nextOrder, nextPublished, lessonId],
     );
 
+    await safeRecordCurriculumMutation({
+      courseId: updateRes.rows[0].course_id,
+      unitType: "lesson",
+      unitId: lessonId,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
+
     return res.json({
       success: true,
       data: updateRes.rows[0],
@@ -2551,7 +2591,19 @@ router.delete("/admin/lessons/:lessonId", protectRoute, requireAdmin, async (req
     const lessonId = parsePositiveId(req.params.lessonId);
     if (!lessonId) return validationError(res, "lessonId không hợp lệ");
 
+    const deleteSnapshot = await resolveBeforeDeleteUnitSnapshot({ query }, { unitType: "lesson", unitId: lessonId });
     await query(`DELETE FROM lessons WHERE id = $1`, [lessonId]);
+    if (deleteSnapshot) {
+      await safeRecordCurriculumMutation({
+        courseId: deleteSnapshot.courseId,
+        unitType: "lesson",
+        unitId: lessonId,
+        eventType: "curriculum.tombstoned",
+        deleted: true,
+        beforeDeleteSnapshot: deleteSnapshot,
+        correlationId: req.get?.("X-Correlation-ID") || null,
+      });
+    }
     return res.json({
       success: true,
       data: { id: String(lessonId), deleted: true },
@@ -2605,6 +2657,11 @@ router.put("/admin/courses/:courseId/reorder", protectRoute, requireAdmin, async
       }
     }
 
+    await safeRecordCurriculumMutation({
+      courseId,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
+
     return res.json({
       success: true,
       message: "Đã cập nhật thứ tự chương và bài học",
@@ -2643,6 +2700,12 @@ router.post("/admin/courses/:courseId/publish", protectRoute, requireAdmin, asyn
       await recordCourseCatalogMutation({
         courseId,
         eventType: "course.unpublished",
+        correlationId: corr,
+      });
+      await safeRecordCurriculumMutation({
+        courseId,
+        eventType: "curriculum.tombstoned",
+        deleted: true,
         correlationId: corr,
       });
       const checklist = await computeCoursePublishChecklist(courseId);
@@ -2709,6 +2772,10 @@ router.post("/admin/courses/:courseId/publish", protectRoute, requireAdmin, asyn
     await recordCourseCatalogMutation({
       courseId,
       eventType: "course.published",
+      correlationId: corr,
+    });
+    await safeRecordCurriculumMutation({
+      courseId,
       correlationId: corr,
     });
 

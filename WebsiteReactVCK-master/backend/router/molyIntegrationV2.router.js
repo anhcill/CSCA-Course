@@ -1,7 +1,17 @@
 import express from "express";
 import { getClient, query } from "../db/connect.js";
-import { requireMolyCatalogRead } from "../middleware/requireMolyIntegration.js";
+import {
+  requireMolyCatalogRead,
+  requireMolyIntegration,
+} from "../middleware/requireMolyIntegration.js";
 import { exportCatalogCourses } from "../services/courseCatalogSync.service.js";
+import { exportCourseCurriculum } from "../services/courseCurriculumSync.service.js";
+import {
+  getDelegatedUnitDetail,
+  getDelegatedWorkspace,
+  getPublicPreviewUnit,
+  mintDelegatedLearningSession,
+} from "../services/delegatedLearning.service.js";
 import { ExternalIntegrationError } from "../services/externalCourseMapping.service.js";
 import { isCatalogSyncKillSwitchActive } from "../services/integrationLogger.service.js";
 
@@ -30,6 +40,7 @@ const sendV2Error = (res, error, correlationId = null) => {
 export const createMolyIntegrationV2Router = ({
   db = { query, getClient },
   verifyRead = requireMolyCatalogRead,
+  verifyWrite = requireMolyIntegration,
   env = process.env,
 } = {}) => {
   const router = express.Router();
@@ -67,6 +78,103 @@ export const createMolyIntegrationV2Router = ({
       });
     } catch (error) {
       return sendV2Error(res, error, corr);
+    }
+  });
+
+  router.get("/catalog/courses/:courseId/curriculum", verifyRead, async (req, res) => {
+    const correlationId = req.get?.("X-Correlation-ID") || null;
+    try {
+      if (isCatalogSyncKillSwitchActive(env)) {
+        return res.status(503).json({
+          success: false,
+          errorCode: "SYNC_KILL_SWITCH_ACTIVE",
+          message: "Catalog integration sync is temporarily paused by kill switch.",
+          ...(correlationId ? { correlation_id: correlationId } : {}),
+        });
+      }
+      const data = await exportCourseCurriculum({
+        db,
+        courseId: req.params.courseId,
+        profileId: req.query?.profileId ?? req.query?.profile_id ?? null,
+        afterRevision: req.query?.after_revision ?? req.query?.afterRevision ?? "0",
+        afterId: req.query?.after_id ?? req.query?.afterId ?? "0",
+        cursor: req.query?.cursor || null,
+        limit: req.query?.limit ?? 200,
+        includeTombstoned: req.query?.include_tombstoned ?? req.query?.includeTombstoned ?? true,
+        correlationId,
+      });
+      return res.json({ success: true, data });
+    } catch (error) {
+      return sendV2Error(res, error, correlationId);
+    }
+  });
+
+  router.post("/learning/sessions", verifyWrite, async (req, res) => {
+    const correlationId = req.get?.("X-Correlation-ID") || null;
+    try {
+      const data = await mintDelegatedLearningSession({
+        db,
+        externalUserId: req.body?.externalUserId ?? req.body?.userId,
+        courseId: req.body?.courseId ?? null,
+        profileId: req.body?.profileId,
+        scopes: req.body?.scopes,
+        ttlSeconds: req.body?.ttlSeconds,
+        correlationId,
+        metadata: req.body?.metadata || {},
+        env,
+      });
+      return res.status(201).json({ success: true, data });
+    } catch (error) {
+      return sendV2Error(res, error, correlationId);
+    }
+  });
+
+  router.get("/learning/offerings/:profileId/workspace", verifyRead, async (req, res) => {
+    const correlationId = req.get?.("X-Correlation-ID") || null;
+    try {
+      const sessionToken = req.get?.("X-Delegated-Session") || req.headers?.["x-delegated-session"] || null;
+      const data = await getDelegatedWorkspace({
+        db,
+        sessionToken,
+        profileId: req.params.profileId,
+        unitId: req.query?.unitId ?? req.query?.unit_id ?? null,
+        env,
+      });
+      return res.json({ success: true, data });
+    } catch (error) {
+      return sendV2Error(res, error, correlationId);
+    }
+  });
+
+  router.get("/learning/offerings/:profileId/units/:unitId", verifyRead, async (req, res) => {
+    const correlationId = req.get?.("X-Correlation-ID") || null;
+    try {
+      const sessionToken = req.get?.("X-Delegated-Session") || req.headers?.["x-delegated-session"] || null;
+      const data = await getDelegatedUnitDetail({
+        db,
+        sessionToken,
+        profileId: req.params.profileId,
+        unitId: req.params.unitId,
+        env,
+      });
+      return res.json({ success: true, data });
+    } catch (error) {
+      return sendV2Error(res, error, correlationId);
+    }
+  });
+
+  router.get("/learning/preview/offerings/:profileId/units/:unitId", verifyRead, async (req, res) => {
+    const correlationId = req.get?.("X-Correlation-ID") || null;
+    try {
+      const data = await getPublicPreviewUnit({
+        db,
+        profileId: req.params.profileId,
+        unitId: req.params.unitId,
+        env,
+      });
+      return res.json({ success: true, data });
+    } catch (error) {
+      return sendV2Error(res, error, correlationId);
     }
   });
 

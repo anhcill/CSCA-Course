@@ -23,6 +23,10 @@ import {
   normalizeSessionKind,
   shiftCancelledSessionCurriculum,
 } from "../services/sessionCurriculumShift.service.js";
+import {
+  safeRecordCurriculumMutation,
+  safeRecordLiveClassCurriculumMutation,
+} from "../services/courseCurriculumSync.service.js";
 
 const router = express.Router();
 
@@ -1390,6 +1394,7 @@ router.delete("/:classId/schedules/:scheduleId", protectRoute, requireRole("admi
       cancelledSessions: cancelledResult.rows,
     });
     await client.query("COMMIT");
+    await safeRecordLiveClassCurriculumMutation({ liveClassId: classId, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.json({ success: true, data: { id: scheduleId, cancelledSessionCount: cancelledResult.rows.length } });
   } catch (error) {
     if (client) await client.query("ROLLBACK").catch(() => {});
@@ -1652,6 +1657,7 @@ router.patch("/:classId/chapters/:chapterId", protectRoute, requireTeacher, asyn
       }
     }
     await client.query("COMMIT");
+    await safeRecordLiveClassCurriculumMutation({ liveClassId: classId, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.json({ success: true, data: result.rows[0], renamedSessionCount: renamedSessions.length });
   } catch (error) {
     if (client) await client.query("ROLLBACK").catch(() => {});
@@ -1719,6 +1725,7 @@ router.patch("/sessions/:sessionId/chapter", protectRoute, requireTeacher, async
       });
     }
     await client.query("COMMIT");
+    await safeRecordCurriculumMutation({ unitType: "class_session", unitId: sessionId, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.json({
       success: true,
       data: safeSession({
@@ -1915,6 +1922,7 @@ router.post("/:classId/sessions", protectRoute, requireTeacher, requirePermissio
       correlationId: `session:${session.id}:v${session.version || 1}`,
     });
     await client.query("COMMIT");
+    await safeRecordCurriculumMutation({ unitType: "class_session", unitId: session.id, correlationId: req.get?.("X-Correlation-ID") || null });
     if (new Date(session.start_time).getTime() <= Date.now() + 24 * 60 * 60 * 1000) {
       await notifyClassStudents(session, "upcoming");
     }
@@ -2184,6 +2192,7 @@ router.post("/sessions/:sessionId/cancel", protectRoute, requireTeacher, require
       metadata: { reason, extensionSessionId: extension?.id || null },
     });
     await client.query("COMMIT");
+    await safeRecordLiveClassCurriculumMutation({ liveClassId: current.live_class_id, correlationId: req.get?.("X-Correlation-ID") || null });
     await notifyClassStudents(cancelled, "cancelled");
     return res.json({
       success: true,
@@ -2388,6 +2397,7 @@ router.patch("/sessions/:sessionId", protectRoute, requireTeacher, requirePermis
       correlationId: `session:${session.id}:v${session.version || 1}`,
     });
     await client.query("COMMIT");
+    await safeRecordCurriculumMutation({ unitType: "class_session", unitId: session.id, correlationId: req.get?.("X-Correlation-ID") || null });
     if (current.meet_url !== session.meet_url) await notifyClassStudents(session, "link-changed");
     if (scheduleChanged) await notifyClassStudents(session, "rescheduled");
     return res.json({ success: true, data: safeSession(session), message: "Cập nhật buổi học thành công" });
