@@ -3,26 +3,24 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   fetchCourseDetail,
-  checkEnrollmentStatus,
   fetchCoursesCatalog,
   fetchVideoCourseCatalog,
+  fetchVideoCourseOverview,
+  fetchVideoCourseAccess,
   fetchCourseRatings,
 } from "../../api/lmsClient";
 import { LoadingState, ErrorState } from "../../../components/common/StateView";
 import { getClassCoverImage } from "../../../utils/classWallpapers";
 import { useAuthContext } from "../../../context/AuthContext";
-import { hasStudentLmsAccess } from "../../../utils/lmsAccess";
 
 export default function CourseDetailPage() {
   const { id, slug } = useParams();
   const courseRef = id || slug;
   const navigate = useNavigate();
   const { authUser } = useAuthContext();
-  const canUseLms = hasStudentLmsAccess(authUser);
 
   const [courseData, setCourseData] = useState(null);
-  const [isEnrolled, setIsEnrolled] = useState(false);
-  const [hasCourseLmsAccess, setHasCourseLmsAccess] = useState(false);
+  const [learningAccess, setLearningAccess] = useState({ canLearn: false, accessType: null });
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [activeSection, setActiveSection] = useState(null);
@@ -33,15 +31,11 @@ export default function CourseDetailPage() {
   const loadCourseDetails = useCallback(async () => {
     setLoading(true);
     setErrorMessage("");
-    setIsEnrolled(false);
-    setHasCourseLmsAccess(false);
+    setLearningAccess({ canLearn: false, accessType: null });
     try {
       const res = await fetchCourseDetail(courseRef);
       if (res.success && res.data) {
-        setCourseData(res.data);
-        if (res.data.sections && res.data.sections.length > 0) {
-          setActiveSection(res.data.sections[0].id);
-        }
+        let resolvedCourseData = res.data;
 
         try {
           const offeringRes = await fetchVideoCourseCatalog();
@@ -49,22 +43,67 @@ export default function CourseDetailPage() {
             (item) => String(item.id) === String(res.data.course.id),
           );
           setVideoOffering(matchedOffering || null);
+          if (matchedOffering?.offeringId) {
+            const overviewRes = await fetchVideoCourseOverview(matchedOffering.offeringId);
+            if (overviewRes?.success && overviewRes.data) {
+              const overview = overviewRes.data;
+              const overviewSections = (overview.sections || []).map((section) => ({
+                id: section.id,
+                title: section.title,
+                description: section.description || "",
+              }));
+              const overviewLessons = (overview.sections || []).flatMap((section) =>
+                (section.lessons || []).map((lesson) => ({
+                  id: lesson.id,
+                  section_id: section.id,
+                  title: lesson.title,
+                  duration_seconds: Number(lesson.durationSeconds || 0),
+                  is_public_preview: Boolean(lesson.isPreview),
+                  is_preview: Boolean(lesson.isPreview),
+                  start_time: lesson.startTime || null,
+                  status: lesson.status,
+                })),
+              );
+              resolvedCourseData = {
+                ...res.data,
+                course: {
+                  ...res.data.course,
+                  price: overview.course.price,
+                  is_free: overview.course.isFree,
+                  thumbnail_url: overview.course.thumbnailUrl || res.data.course.thumbnail_url,
+                  instructor_name: overview.course.instructorName,
+                  instructor_avatar_url: overview.course.instructorAvatarUrl,
+                },
+                sections: overviewSections,
+                lessons: overviewLessons,
+              };
+              setVideoOffering((current) => ({
+                ...(current || matchedOffering),
+                previewUnitsCount: overview.previewUnitsCount,
+                totalLessons: overview.totalUnits,
+              }));
+            }
+            if (authUser) {
+              try {
+                const accessRes = await fetchVideoCourseAccess(matchedOffering.offeringId);
+                if (accessRes?.success && accessRes.data) setLearningAccess(accessRes.data);
+              } catch (accessErr) {
+                console.error("Error checking video course access:", accessErr);
+              }
+            }
+          }
         } catch (offeringErr) {
           console.error("Error loading video course offering:", offeringErr);
           setVideoOffering(null);
         }
 
-        // Check enrollment status if logged in
+        setCourseData(resolvedCourseData);
+        if (resolvedCourseData.sections?.length > 0) {
+          setActiveSection(resolvedCourseData.sections[0].id);
+        }
+
+        // Ratings are public; access is resolved by the profile-specific endpoint above.
         if (res.data.course?.id) {
-          try {
-            const enrollRes = await checkEnrollmentStatus(res.data.course.id);
-            if (enrollRes.success && enrollRes.data?.isEnrolled) {
-              setIsEnrolled(true);
-            }
-            setHasCourseLmsAccess(Boolean(enrollRes.data?.hasLmsAccess));
-          } catch {
-            // Guest or not enrolled
-          }
           try {
             const ratingsRes = await fetchCourseRatings(res.data.course.id);
             if (ratingsRes.success && ratingsRes.data) setRatingsData(ratingsRes.data);
@@ -99,7 +138,7 @@ export default function CourseDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [courseRef]);
+  }, [courseRef, authUser]);
 
   useEffect(() => {
     loadCourseDetails();
@@ -156,23 +195,17 @@ export default function CourseDetailPage() {
   const totalSeconds = lessons.reduce((acc, l) => acc + (l.duration_seconds || 0), 0);
   const totalHours = Math.floor(totalSeconds / 3600);
   const totalMins = Math.floor((totalSeconds % 3600) / 60);
-  const formattedDuration = totalHours > 0 ? `${totalHours} giờ ${totalMins} phút` : `${totalMins} phút`;
+  const formattedDuration = totalSeconds > 0
+    ? totalHours > 0 ? `${totalHours} giờ ${totalMins} phút` : `${totalMins} phút`
+    : "Cập nhật theo từng buổi";
 
   // Learning outcomes
-  const outcomes =
-    course.category === "CSCA"
-      ? [
-          "Nắm trọn vẹn toàn bộ thuật ngữ chuyên ngành Toán/Lý/Hóa bằng tiếng Trung",
-          "Thành thạo phương pháp làm bài trắc nghiệm và tự luận đạt điểm tối đa",
-          "Luyện tập chi tiết các đề thi CSCA thực tế qua các năm học gần đây",
-          "Cung cấp kỹ năng phỏng vấn học bổng trực tiếp với Ban tuyển sinh Trung Quốc",
-        ]
-      : [
-          `Làm chủ hoàn toàn các từ vựng cốt lõi theo tiêu chuẩn của bài thi ${course.category}`,
-          "Phát triển toàn diện 4 kỹ năng Nghe - Đọc - Viết và Phản xạ Nói tự nhiên",
-          "Nắm vững các bẫy ngữ pháp thường gặp và mẹo tối ưu điểm số khi thi thật",
-          "Sở hữu lộ trình luyện đề thi thử bài bản và sửa lỗi chi tiết cùng giảng viên",
-        ];
+  const outcomes = [
+    "Học theo đúng lộ trình chương và buổi đã được giảng viên xây dựng",
+    "Xem lại nội dung Record thuận tiện theo tiến độ cá nhân",
+    "Ôn tập có hệ thống với tài liệu, bài luyện và nội dung đi kèm từng buổi",
+    "Theo dõi đầy đủ tiến độ học tập ngay trong không gian khóa học",
+  ];
 
   const prerequisites =
     course.level === "beginner"
@@ -196,19 +229,26 @@ export default function CourseDetailPage() {
 
   // Category badge helper
   const categoryBadge = {
-    CSCA: "bg-rose-500/20 text-rose-400 border-rose-500/30",
+    CSCA: "bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30",
     HSK: "bg-sky-500/20 text-sky-400 border-sky-500/30",
     HSKK: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  }[course.category] || "bg-rose-500/20 text-rose-400 border-rose-500/30";
+  }[course.category] || "bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30";
   const previewUnitCount = Math.max(
     Number(videoOffering?.previewUnitsCount || 0),
     lessons.filter((lesson) => lesson.is_public_preview || lesson.is_preview).length,
   );
-  const canOpenFullCourse = isEnrolled && canUseLms && hasCourseLmsAccess;
+  const canOpenFullCourse = Boolean(learningAccess.canLearn);
+  const instructorName = course.instructor_name || "Đội ngũ Moly Course";
+  const instructorInitials = instructorName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(-2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "MC";
 
   // Reusable Sticky Enrollment Card
   const EnrollmentCard = () => (
-    <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xl dark:shadow-2xl space-y-6">
+    <div className="bg-white dark:bg-slate-900 border border-sky-100 dark:border-slate-700 rounded-3xl p-6 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.45)] space-y-6">
       {/* Thumbnail / Video Preview */}
       <div className="relative h-48 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-950 group border border-slate-200 dark:border-slate-800/80">
         <img
@@ -218,63 +258,60 @@ export default function CourseDetailPage() {
         />
         <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center">
           <button
-            onClick={() => handleOpenVideoCourse({ previewOnly: true })}
-            className="w-14 h-14 bg-rose-600 hover:bg-rose-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-rose-600/40 transform group-hover:scale-110 transition duration-300"
-            title="Mở bài học thử"
+            onClick={() => handleOpenVideoCourse({ previewOnly: !canOpenFullCourse })}
+            className="w-14 h-14 bg-sky-600 hover:bg-sky-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-sky-600/40 transform group-hover:scale-110 transition duration-300"
+            title={canOpenFullCourse ? "Vào học" : "Mở bài học thử"}
           >
             <span className="text-white text-xl pl-1">▶</span>
           </button>
         </div>
         <span className="absolute bottom-3 right-3 px-2.5 py-1 bg-slate-950/80 backdrop-blur rounded-lg text-xs font-semibold text-white border border-white/10">
-          {previewUnitCount > 0 ? `${previewUnitCount} bài học thử` : "Xem nội dung"}
+          {canOpenFullCourse ? "Vào học ngay" : previewUnitCount > 0 ? `${previewUnitCount} bài học thử` : "Xem nội dung"}
         </span>
       </div>
 
       {/* Pricing Section */}
-      <div className="space-y-1">
-        <span className="text-slate-500 dark:text-slate-400 text-xs font-medium block">Học phí từ Internal</span>
+      {!canOpenFullCourse && <div className="space-y-1 rounded-2xl bg-sky-50 px-4 py-3 dark:bg-slate-950/60">
+        <span className="text-slate-600 dark:text-slate-300 text-xs font-bold uppercase tracking-wide block">Học phí khóa Record</span>
         <div className="flex items-baseline gap-3">
-          <span className="text-3xl font-black text-rose-500">
+          <span className="text-3xl font-black text-sky-800 dark:text-sky-300">
             {course.is_free
               ? "Miễn Phí"
               : Number(course.price) > 0
                 ? `${Number(course.price).toLocaleString("vi-VN")} đ`
-                : "Liên hệ học phí"}
+                : "Đang cập nhật"}
           </span>
         </div>
-        <p className="pt-1 text-[11px] leading-5 text-slate-400">Website chưa thu tiền tự động. Admin sẽ xác nhận và cấp quyền sau khi bạn liên hệ.</p>
-      </div>
+        <p className="pt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">Giá được đồng bộ trực tiếp từ Internal. Website chưa thu tiền tự động; admin xác nhận thủ công sau khi bạn liên hệ.</p>
+      </div>}
 
       {/* Action Buttons */}
       <div className="space-y-3">
         {canOpenFullCourse ? (
           <button
             onClick={() => handleOpenVideoCourse()}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-2xl transition duration-200 shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 text-base"
+            className="w-full bg-sky-700 hover:bg-sky-600 text-white font-black py-3.5 rounded-2xl transition duration-200 shadow-lg shadow-sky-700/25 flex items-center justify-center gap-2 text-base"
           >
-            <span>Vào Học Ngay</span>
+            <span>Vào Học</span>
             <span>➔</span>
           </button>
         ) : (
           <button
             onClick={() => handleOpenVideoCourse({ previewOnly: true })}
             disabled={previewUnitCount === 0}
-            className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 rounded-2xl transition duration-200 shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 text-base disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none dark:disabled:bg-slate-700"
+            className="w-full bg-sky-700 hover:bg-sky-600 text-white font-black py-3.5 rounded-2xl transition duration-200 shadow-lg shadow-sky-700/25 flex items-center justify-center gap-2 text-base disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none dark:disabled:bg-slate-700"
           >
             {previewUnitCount > 0 ? "Học Thử Miễn Phí" : "Chưa Mở Bài Học Thử"}
           </button>
         )}
-        {isEnrolled && !canOpenFullCourse && (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs leading-5 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">Tài khoản đang chờ Internal cấp quyền học đầy đủ.</p>
-        )}
-        <a
+        {!canOpenFullCourse && <a
           href="https://zalo.me/0812352005"
           target="_blank"
           rel="noreferrer"
-          className="w-full border border-sky-200 dark:border-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/40 text-sky-700 dark:text-sky-300 font-bold py-3 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm bg-white dark:bg-slate-950/40"
+          className="w-full border border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-bold py-3 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm bg-white dark:bg-slate-950/40"
         >
           <span>💬 Liên Hệ Mua Qua Zalo</span>
-        </a>
+        </a>}
         {authUser && (
           <Link to="/lms/my-learning" className="flex w-full items-center justify-center text-xs font-bold text-slate-500 hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-300">Khóa học của tôi →</Link>
         )}
@@ -298,7 +335,7 @@ export default function CourseDetailPage() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-rose-500">🛡️</span>
-            <span>Truy cập trọn đời trên mọi thiết bị</span>
+            <span>Học thuận tiện trên máy tính và điện thoại</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-rose-500">🎓</span>
@@ -323,7 +360,7 @@ export default function CourseDetailPage() {
       </div>
 
       {/* Hero Banner Section */}
-      <div className="relative bg-gradient-to-b from-sky-50 via-slate-50 to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 border-b border-slate-200 dark:border-slate-800 py-12 md:py-16">
+      <div className="relative bg-gradient-to-br from-white via-sky-50 to-cyan-50/70 dark:from-slate-950 dark:via-slate-900 dark:to-sky-950/40 border-b border-sky-100 dark:border-slate-800 py-8 md:py-10">
         <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-3 gap-10 items-start">
           {/* Left Hero Details (Spans 2 columns on desktop) */}
           <div className="lg:col-span-2 space-y-6">
@@ -335,11 +372,11 @@ export default function CourseDetailPage() {
                 Trình độ: {levelBadge.text}
               </span>
               <span className="px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                Lộ Trình Du Học CSCA 2026
+                {videoOffering?.badgeLabel || "Khóa Record"}
               </span>
             </div>
 
-            <h1 className="text-3xl md:text-5xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
+            <h1 className="text-3xl md:text-4xl font-black tracking-tight text-slate-950 dark:text-white leading-tight">
               {course.title}
             </h1>
 
@@ -351,18 +388,18 @@ export default function CourseDetailPage() {
             <div className="flex flex-wrap items-center gap-6 text-sm text-slate-600 dark:text-slate-300 pt-4 border-t border-slate-200 dark:border-slate-800/80">
               {/* Teacher Info */}
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-rose-500 bg-slate-100 dark:bg-slate-800 flex-shrink-0">
-                  <img
-                    src={course.instructor_avatar_url || "/logo192.png"}
-                    alt={course.instructor_name || "Giảng viên MOLY COURSE 2026"}
+                <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-sky-500 bg-sky-700 text-white flex items-center justify-center font-black flex-shrink-0">
+                  {course.instructor_avatar_url ? <img
+                    src={course.instructor_avatar_url}
+                    alt={instructorName}
                     className="w-full h-full object-cover"
-                  />
+                  /> : <span>{instructorInitials}</span>}
                 </div>
                 <div>
                   <div className="text-xs text-slate-400 dark:text-slate-400">Giảng viên hướng dẫn</div>
                   <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <span>{course.instructor_name || "Đội ngũ MOLY COURSE 2026"}</span>
-                    <span className="text-rose-500 dark:text-rose-400 text-xs" title="Giảng viên đã xác minh">✓</span>
+                    <span>{instructorName}</span>
+                    <span className="text-sky-600 dark:text-sky-400 text-xs" title="Giảng viên đã xác minh">✓</span>
                   </div>
                 </div>
               </div>
@@ -370,16 +407,18 @@ export default function CourseDetailPage() {
               {/* Rating */}
               <div className="flex items-center gap-2 bg-white dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
                 <span className="text-amber-400">★</span>
-                <span className="text-slate-900 dark:text-white font-bold">{Number(ratingsData.summary.avgScore || course.ratings_avg || 0).toFixed(1)}</span>
-                <span className="text-slate-400 text-xs">({ratingsData.summary.count || course.ratings_count || 0} đánh giá)</span>
+                {(ratingsData.summary.count || course.ratings_count || 0) > 0 ? <>
+                  <span className="text-slate-900 dark:text-white font-bold">{Number(ratingsData.summary.avgScore || course.ratings_avg || 0).toFixed(1)}</span>
+                  <span className="text-slate-400 text-xs">({ratingsData.summary.count || course.ratings_count || 0} đánh giá)</span>
+                </> : <span className="text-slate-500 text-xs font-semibold">Chưa có đánh giá</span>}
               </div>
 
               {/* Student Enrolled Count */}
-              <div className="flex items-center gap-2 bg-white dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs shadow-2xs">
+              {Number(course.enrolled_count || 0) > 0 && <div className="flex items-center gap-2 bg-white dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs shadow-2xs">
                 <span>👥</span>
                 <span className="text-slate-900 dark:text-white font-bold">{Number(course.enrolled_count || 0).toLocaleString("vi-VN")}</span>
                 <span className="text-slate-400">học viên</span>
-              </div>
+              </div>}
             </div>
           </div>
 
@@ -393,16 +432,16 @@ export default function CourseDetailPage() {
       </div>
 
       {/* Main Content Layout */}
-      <div className="max-w-6xl mx-auto px-4 py-10 grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <div className="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-10">
         {/* Left Content Area (Spans 2 columns on desktop) */}
-        <div className="lg:col-span-2 space-y-12">
+        <div className="lg:col-span-2 flex flex-col gap-8">
           {/* Mobile Enrollment Card */}
-          <div className="block lg:hidden">
+          <div className="order-1 block lg:hidden">
             <EnrollmentCard />
           </div>
 
           {/* What you will learn Section */}
-          <section className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-sm">
+          <section className="order-3 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-sm">
             <div className="flex items-center gap-3">
               <span className="p-2 bg-rose-500/10 text-rose-500 dark:text-rose-400 rounded-xl text-lg">🎯</span>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">Bạn Sẽ Đạt Được Gì Sau Khóa Học?</h3>
@@ -418,7 +457,7 @@ export default function CourseDetailPage() {
           </section>
 
           {/* Prerequisites Section */}
-          <section className="bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-4 shadow-sm">
+          <section className="order-4 bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-4 shadow-sm">
             <div className="flex items-center gap-3">
               <span className="p-2 bg-amber-500/10 text-amber-500 dark:text-amber-400 rounded-xl text-lg">📋</span>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">Yêu Cầu Đầu Vào</h3>
@@ -431,10 +470,10 @@ export default function CourseDetailPage() {
           </section>
 
           {/* Curriculum Accordion Section */}
-          <section className="space-y-6">
+          <section className="order-2 space-y-6 rounded-3xl border border-sky-100 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/80 md:p-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center gap-3">
-                <span className="p-2 bg-rose-500/10 text-rose-500 dark:text-rose-400 rounded-xl text-lg">📚</span>
+                <span className="p-2 bg-sky-500/10 text-sky-700 dark:text-sky-300 rounded-xl text-lg">📚</span>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">Nội Dung Khóa Học</h3>
               </div>
               <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
@@ -464,13 +503,13 @@ export default function CourseDetailPage() {
                         className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-slate-50 dark:hover:bg-slate-800/30 transition"
                       >
                         <div className="flex items-center gap-3 pr-4">
-                          <span className="text-xs font-mono text-rose-500 dark:text-rose-400 font-bold">
+                          <span className="text-xs font-mono text-sky-700 dark:text-sky-300 font-bold">
                             Chương {idx + 1}
                           </span>
                           <span className="font-semibold text-slate-800 dark:text-slate-200">{section.title}</span>
                         </div>
                         <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">
-                          <span>{sectionLessons.length} bài ({sectionMins}p)</span>
+                          <span>{sectionLessons.length} bài{sectionMins > 0 ? ` (${sectionMins}p)` : ""}</span>
                           <span className="text-[10px] text-slate-400 dark:text-slate-500">{isOpen ? "▲" : "▼"}</span>
                         </div>
                       </button>
@@ -483,10 +522,10 @@ export default function CourseDetailPage() {
                             sectionLessons.map((lesson) => (
                               <div
                                 key={lesson.id}
-                                className="py-3 flex items-center justify-between text-sm transition hover:text-rose-600 dark:hover:text-white"
+                                className="py-3 flex items-center justify-between text-sm transition hover:text-sky-700 dark:hover:text-white"
                               >
                                 <div className="flex items-center gap-3 truncate">
-                                  <span className="text-rose-500 text-xs flex-shrink-0">▶</span>
+                                  <span className="text-sky-600 text-xs flex-shrink-0">▶</span>
                                   <span className="text-slate-700 dark:text-slate-300 font-medium truncate">{lesson.title}</span>
                                   {lesson.is_preview && (
                                     <button
@@ -498,7 +537,11 @@ export default function CourseDetailPage() {
                                   )}
                                 </div>
                                 <span className="text-slate-400 dark:text-slate-500 text-xs font-mono pl-4 flex-shrink-0">
-                                  {Math.floor(lesson.duration_seconds / 60)} phút
+                                  {lesson.duration_seconds > 0
+                                    ? `${Math.max(1, Math.floor(lesson.duration_seconds / 60))} phút`
+                                    : lesson.start_time
+                                      ? new Date(lesson.start_time).toLocaleDateString("vi-VN")
+                                      : ""}
                                 </span>
                               </div>
                             ))
@@ -513,21 +556,21 @@ export default function CourseDetailPage() {
           </section>
 
           {/* Instructor Bio Section */}
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-sm">
+          <section className="order-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-sm">
             <div className="flex items-center gap-3">
               <span className="p-2 bg-rose-500/10 text-rose-500 dark:text-rose-400 rounded-xl text-lg">👨‍🏫</span>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">Giảng Viên Hướng Dẫn</h3>
             </div>
             <div className="flex flex-col sm:flex-row gap-6 items-start">
-              <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-rose-500 flex-shrink-0 bg-slate-100 dark:bg-slate-800">
-                <img
-                  src={course.instructor_avatar_url || "/logo192.png"}
-                  alt={course.instructor_name || "Giảng viên MOLY COURSE 2026"}
+              <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-sky-500 flex-shrink-0 bg-sky-700 text-white flex items-center justify-center text-2xl font-black">
+                {course.instructor_avatar_url ? <img
+                  src={course.instructor_avatar_url}
+                  alt={instructorName}
                   className="w-full h-full object-cover"
-                />
+                /> : <span>{instructorInitials}</span>}
               </div>
               <div className="space-y-2.5">
-                <h4 className="text-lg font-bold text-slate-900 dark:text-white">{course.instructor_name || "Đội ngũ MOLY COURSE 2026"}</h4>
+                <h4 className="text-lg font-bold text-slate-900 dark:text-white">{instructorName}</h4>
                 <p className="text-xs text-rose-500 dark:text-rose-400 font-semibold uppercase tracking-wider">
                   Giảng viên phụ trách khóa học
                 </p>
@@ -539,7 +582,7 @@ export default function CourseDetailPage() {
           </section>
 
           {/* Reviews Section */}
-          <section className="space-y-6">
+          <section className="order-6 space-y-6">
             <div className="flex items-center gap-3">
               <span className="p-2 bg-amber-500/10 text-amber-500 dark:text-amber-400 rounded-xl text-lg">⭐</span>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">Đánh Giá Từ Học Viên</h3>
@@ -609,7 +652,7 @@ export default function CourseDetailPage() {
 
           {/* Related Courses Section */}
           {relatedCourses.length > 0 && (
-            <section className="space-y-6">
+            <section className="order-7 space-y-6">
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">Khóa Học Cùng Nhóm Đề Xuất</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {relatedCourses.map((relCourse) => (

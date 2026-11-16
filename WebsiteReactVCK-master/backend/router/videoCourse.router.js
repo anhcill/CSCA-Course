@@ -90,7 +90,7 @@ const checkRecordMembership = async ({
 }) => {
   const result = await query(
     `SELECT ce.id, ce.learning_mode, ce.management_class_alias_id,
-            ce.video_course_profile_id,
+            ce.video_course_profile_id, ce.live_class_id,
             mcla.title AS alias_title, mcla.alias_class_source_id
      FROM class_enrollments ce
      LEFT JOIN management_class_learning_aliases mcla ON mcla.id = ce.management_class_alias_id
@@ -149,7 +149,7 @@ const resolveProfileOffering = async (offeringParam) => {
             c.is_published, c.is_management_managed,
             COALESCE(c.thumbnail_url, c.image_url) AS thumbnail_url,
             c.total_lessons, c.author_id,
-            u.username AS instructor_name
+            COALESCE(NULLIF(u.management_display_name, ''), u.username, u.email) AS instructor_name
      FROM video_course_profiles vcp
      JOIN courses c ON c.id = vcp.course_id
      LEFT JOIN users u ON u.id = c.author_id
@@ -182,7 +182,7 @@ const resolveOffering = async (offeringParam) => {
               c.is_published, c.is_management_managed,
               COALESCE(c.thumbnail_url, c.image_url) AS thumbnail_url,
               c.total_lessons, c.author_id,
-              u.username AS instructor_name
+              COALESCE(NULLIF(u.management_display_name, ''), u.username, u.email) AS instructor_name
        FROM courses c
        LEFT JOIN users u ON u.id = c.author_id
        WHERE c.id = $1`,
@@ -230,7 +230,7 @@ const resolveOffering = async (offeringParam) => {
             c.is_published, c.is_management_managed,
             COALESCE(c.thumbnail_url, c.image_url) AS thumbnail_url,
             c.total_lessons, c.author_id,
-            u.username AS instructor_name
+            COALESCE(NULLIF(u.management_display_name, ''), u.username, u.email) AS instructor_name
      FROM courses c
      LEFT JOIN users u ON u.id = c.author_id
      WHERE c.slug = $1`,
@@ -251,7 +251,7 @@ router.get("/", async (req, res) => {
               c.description, c.category, c.level, c.price, c.is_free,
               c.is_published, COALESCE(c.thumbnail_url, c.image_url) AS thumbnail_url,
               c.total_lessons, c.ratings_avg, c.ratings_count,
-              u.username AS instructor_name,
+              COALESCE(NULLIF(lc.teacher_display_name, ''), NULLIF(u.management_display_name, ''), u.username, u.email) AS instructor_name,
               vcp.id AS profile_id, vcp.management_class_id,
               vcp.mode AS video_mode,
               vcp.source_live_class_id,
@@ -265,7 +265,8 @@ router.get("/", async (req, res) => {
                  AND cs.status <> 'cancelled' AND cs.is_public_preview = true) AS preview_sessions_count
        FROM video_course_profiles vcp
        JOIN courses c ON c.id = vcp.course_id
-       LEFT JOIN users u ON u.id = c.author_id
+       LEFT JOIN live_classes lc ON lc.id = vcp.source_live_class_id
+       LEFT JOIN users u ON u.id = COALESCE(lc.instructor_id, c.author_id)
        WHERE c.is_published = true AND vcp.status = 'active'
        ORDER BY c.id ASC, vcp.id ASC`,
     );
@@ -294,6 +295,252 @@ router.get("/", async (req, res) => {
     return res.json({ success: true, data: courses });
   } catch (error) {
     console.error("List video courses error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi máy chủ", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+const resolveVideoCourseContext = async (offeringId) => {
+  const directOffering = await resolveProfileOffering(offeringId);
+  const resolved = directOffering || await resolveOffering(offeringId);
+  if (!resolved?.course) return null;
+
+  const course = resolved.course;
+  const courseId = Number(course.id);
+  const profileResult = directOffering
+    ? { rows: [directOffering.profile] }
+    : await query(
+      `SELECT vcp.id, vcp.mode, vcp.source_live_class_id, vcp.management_class_id,
+              vcp.device_limit, vcp.enforce_trusted_devices, vcp.status
+       FROM video_course_profiles vcp
+       WHERE vcp.course_id = $1 AND vcp.status = 'active'
+       ORDER BY vcp.id ASC LIMIT 1`,
+      [courseId],
+    );
+  const profile = profileResult.rows[0] || null;
+  if (!profile) return { course, profile: null, mode: null, sourceLiveClassId: null };
+
+  let mode = profile.mode || "MIRROR";
+  let sourceLiveClassId = profile.source_live_class_id || resolved.liveClass?.id || null;
+  if (mode === "MIRROR" && !sourceLiveClassId) {
+    const liveResult = await query(
+      `SELECT id FROM live_classes
+       WHERE course_id = $1 AND status IN ('active', 'completed')
+       ORDER BY (status = 'active') DESC, id DESC LIMIT 1`,
+      [courseId],
+    );
+    sourceLiveClassId = liveResult.rows[0]?.id || null;
+    if (!sourceLiveClassId) mode = "INDEPENDENT";
+  }
+
+  return { course, profile, mode, sourceLiveClassId };
+};
+
+const resolveOverviewInstructor = async ({ course, sourceLiveClassId }) => {
+  const result = await query(
+    `SELECT COALESCE(
+              NULLIF(lc.teacher_display_name, ''),
+              NULLIF(class_teacher.management_display_name, ''),
+              class_teacher.username,
+              NULLIF(course_teacher.management_display_name, ''),
+              course_teacher.username,
+              'Đội ngũ Moly Course'
+            ) AS display_name,
+            COALESCE(class_teacher.avatar_url, course_teacher.avatar_url) AS avatar_url
+     FROM courses c
+     LEFT JOIN live_classes lc ON lc.id = $2
+     LEFT JOIN users class_teacher ON class_teacher.id = lc.instructor_id
+     LEFT JOIN users course_teacher ON course_teacher.id = c.author_id
+     WHERE c.id = $1`,
+    [course.id, sourceLiveClassId],
+  );
+  return result.rows[0] || { display_name: "Đội ngũ Moly Course", avatar_url: null };
+};
+
+// Public sales-page contract. It deliberately exposes only syllabus metadata,
+// never private workspace content, meeting links or playback credentials.
+router.get("/:offeringId/overview", async (req, res) => {
+  try {
+    const context = await resolveVideoCourseContext(req.params.offeringId);
+    if (!context?.course) return notFound(res, "Không tìm thấy khóa học");
+    if (!context.profile) return notFound(res, "Khóa học này chưa được cấu hình khóa video");
+
+    const { course, profile, mode, sourceLiveClassId } = context;
+    const instructor = await resolveOverviewInstructor({ course, sourceLiveClassId });
+    let sections = [];
+
+    if (mode === "MIRROR" && sourceLiveClassId) {
+      const result = await query(
+        `SELECT cc.id AS section_id, cc.title AS section_title,
+                cc.description AS section_description, cc.position AS section_position,
+                cs.id AS unit_id, cs.title AS unit_title, cs.start_time, cs.end_time,
+                cs.status AS unit_status, cs.is_public_preview,
+                COALESCE((
+                  SELECT SUM(COALESCE(va.duration_seconds, 0))
+                  FROM class_session_videos csv
+                  JOIN video_assets va ON va.id = csv.video_asset_id AND va.deleted_at IS NULL
+                  WHERE csv.class_session_id = cs.id AND csv.is_published = TRUE
+                ), 0)::int AS duration_seconds
+         FROM class_chapters cc
+         LEFT JOIN class_sessions cs
+           ON cs.chapter_id = cc.id AND cs.status <> 'cancelled'
+         WHERE cc.live_class_id = $1
+         ORDER BY cc.position ASC, cc.id ASC, cs.start_time ASC, cs.id ASC`,
+        [sourceLiveClassId],
+      );
+      const bySection = new Map();
+      for (const row of result.rows) {
+        const key = String(row.section_id);
+        if (!bySection.has(key)) {
+          bySection.set(key, {
+            id: key,
+            title: row.section_title || "Lộ trình buổi học",
+            description: row.section_description || "",
+            position: Number(row.section_position || 0),
+            lessons: [],
+          });
+        }
+        if (row.unit_id) {
+          bySection.get(key).lessons.push({
+            id: String(row.unit_id),
+            title: row.unit_title || "Buổi học",
+            durationSeconds: Number(row.duration_seconds || 0),
+            isPreview: Boolean(row.is_public_preview),
+            status: row.unit_status,
+            startTime: row.start_time,
+            endTime: row.end_time,
+          });
+        }
+      }
+      sections = Array.from(bySection.values());
+    } else {
+      const result = await query(
+        `SELECT s.id AS section_id, s.title AS section_title, s.sort_order AS section_position,
+                l.id AS unit_id, COALESCE(l.title, l.name) AS unit_title,
+                l.duration_seconds, l.is_public_preview
+         FROM sections s
+         LEFT JOIN lessons l ON l.section_id = s.id AND l.is_published = TRUE
+         WHERE s.course_id = $1
+         ORDER BY s.sort_order ASC, s.id ASC, l.sort_order ASC, l.id ASC`,
+        [course.id],
+      );
+      const bySection = new Map();
+      for (const row of result.rows) {
+        const key = String(row.section_id);
+        if (!bySection.has(key)) {
+          bySection.set(key, {
+            id: key,
+            title: row.section_title || "Nội dung khóa học",
+            description: "",
+            position: Number(row.section_position || 0),
+            lessons: [],
+          });
+        }
+        if (row.unit_id) {
+          bySection.get(key).lessons.push({
+            id: String(row.unit_id),
+            title: row.unit_title || "Bài học",
+            durationSeconds: Number(row.duration_seconds || 0),
+            isPreview: Boolean(row.is_public_preview),
+            status: "published",
+            startTime: null,
+            endTime: null,
+          });
+        }
+      }
+      sections = Array.from(bySection.values());
+    }
+
+    const lessons = sections.flatMap((section) => section.lessons);
+    return res.json({
+      success: true,
+      data: {
+        offeringId: profile.management_class_id || `profile-${profile.profile_id || profile.id}`,
+        profileId: String(profile.profile_id || profile.id),
+        mode,
+        course: {
+          id: String(course.id),
+          title: course.title,
+          slug: course.slug,
+          description: course.description || "",
+          category: course.category || "CSCA",
+          level: course.level || "beginner",
+          price: Number(course.price || 0),
+          isFree: Boolean(course.is_free),
+          thumbnailUrl: course.thumbnail_url || null,
+          instructorName: instructor.display_name,
+          instructorAvatarUrl: instructor.avatar_url || null,
+        },
+        sections,
+        totalUnits: lessons.length,
+        previewUnitsCount: lessons.filter((lesson) => lesson.isPreview).length,
+        totalDurationSeconds: lessons.reduce((sum, lesson) => sum + lesson.durationSeconds, 0),
+      },
+    });
+  } catch (error) {
+    console.error("Video course overview error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi máy chủ", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+// Exact CTA access check, sharing the same entitlement, Live/Record membership
+// and revocation rules as the workspace without consuming a trusted-device slot.
+router.get("/:offeringId/access", protectRoute, async (req, res) => {
+  try {
+    const context = await resolveVideoCourseContext(req.params.offeringId);
+    if (!context?.course) return notFound(res, "Không tìm thấy khóa học");
+    if (!context.profile) return notFound(res, "Khóa học này chưa được cấu hình khóa video");
+
+    const { course, profile, mode, sourceLiveClassId } = context;
+    const activeProfileId = Number(profile.profile_id || profile.id);
+    if (req.user.role !== "user") {
+      return res.json({ success: true, data: { canLearn: true, accessType: "STAFF", reasonCode: null } });
+    }
+
+    const hasActiveLmsAccount = await resolveEffectiveStudentLmsAccess({ user: req.user, db: { query } });
+    const hasEntitlement = hasActiveLmsAccount && await checkCourseEntitlement(course.id, req.user.id, {
+      sourceLiveClassId,
+      profileId: activeProfileId,
+    });
+    let member = null;
+    if (hasEntitlement) {
+      member = await checkRecordMembership({
+        userId: req.user.id,
+        liveClassId: mode === "MIRROR" ? sourceLiveClassId : null,
+        courseId: course.id,
+        managementClassId: profile.management_class_id || null,
+        mode,
+        profileId: activeProfileId,
+      });
+    }
+    const revoked = Boolean(member) && await isVideoCourseProfileAccessRevoked({
+      db: { query },
+      userId: req.user.id,
+      profileId: activeProfileId,
+    });
+    const canLearn = Boolean(hasActiveLmsAccount && hasEntitlement && member && !revoked);
+    const isLiveMembership = canLearn && mode === "MIRROR"
+      && String(member.live_class_id || "") === String(sourceLiveClassId || "")
+      && member.learning_mode !== "recording";
+    const reasonCode = canLearn
+      ? null
+      : !hasActiveLmsAccount
+        ? "LMS_ACCESS_INACTIVE"
+        : !hasEntitlement
+          ? "ENTITLEMENT_INACTIVE"
+          : revoked
+            ? "VIDEO_COURSE_ACCESS_REVOKED"
+            : "RECORD_MEMBERSHIP_REQUIRED";
+
+    return res.json({
+      success: true,
+      data: {
+        canLearn,
+        accessType: canLearn ? (isLiveMembership ? "LIVE" : "RECORD") : null,
+        reasonCode,
+      },
+    });
+  } catch (error) {
+    console.error("Video course access check error:", error);
     return res.status(500).json({ success: false, message: "Lỗi máy chủ", errorCode: "INTERNAL_ERROR" });
   }
 });

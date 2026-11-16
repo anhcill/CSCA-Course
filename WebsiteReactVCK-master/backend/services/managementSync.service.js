@@ -513,6 +513,7 @@ const parseClass = (payload, occurredAt) => {
     courseSourceId: sourceId(payload.courseSourceId, "courseSourceId"),
     title: text(payload.title, 255, "title"),
     description: learnerSafeDescription(payload.description),
+    price: optionalPrice(payload.priceVnd ?? payload.price, payload.priceVnd !== undefined ? "priceVnd" : "price"),
     maxStudents: payload.maxStudents === undefined ? 30 : Number(payload.maxStudents),
     status: enumValue(payload.status, CLASS_STATUSES, "active", "status"),
     leadTeacherSourceId: optionalText(payload.leadTeacherSourceId || payload.teacherSourceId, 128, "leadTeacherSourceId"),
@@ -582,6 +583,12 @@ const syncClass = async (client, event) => {
     throw new SyncValidationError("maxStudents phải từ 1 đến 1000");
   }
   if (input.learningMode === "recording") {
+    if (input.price !== null) {
+      await client.query(
+        "UPDATE courses SET price = $1, is_free = FALSE WHERE id = $2",
+        [input.price, course.id],
+      );
+    }
     const conflictingLiveClass = await client.query(
       "SELECT id FROM live_classes WHERE LOWER(management_class_source_id) = LOWER($1)",
       [input.classSourceId],

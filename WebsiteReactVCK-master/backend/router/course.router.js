@@ -75,7 +75,8 @@ const COURSE_FIELDS = `
   COALESCE(c.thumbnail_url, c.image_url) AS thumbnail_url,
   c.total_lessons, c.ratings_count, c.ratings_avg, c.enrolled_count,
   c.author_id, c.created_at, c.updated_at,
-  u.username AS instructor_name, u.avatar_url AS instructor_avatar_url`;
+  COALESCE(NULLIF(u.management_display_name, ''), u.username, u.email) AS instructor_name,
+  u.avatar_url AS instructor_avatar_url`;
 
 const checkCourseOwner = async (courseId, user) => {
   const result = await query("SELECT author_id FROM courses WHERE id = $1", [courseId]);

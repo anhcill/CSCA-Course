@@ -87,6 +87,43 @@ test("video course workspace: MIRROR mode returns sessions, theory and capabilit
     layer.route?.path === "/:offeringId/workspace" && layer.route.methods.get
   )).route;
 
+  const overviewRoute = videoCourseRouter.stack.find((layer) => (
+    layer.route?.path === "/:offeringId/overview" && layer.route.methods.get
+  )).route;
+  const overviewRes = {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+  await overviewRoute.stack.at(-1).handle({ params: { offeringId: String(course.id) } }, overviewRes);
+  assert.equal(overviewRes.statusCode, 200, JSON.stringify(overviewRes.body));
+  assert.equal(overviewRes.body.data.sections.length, 1);
+  assert.equal(overviewRes.body.data.sections[0].lessons.length, 1);
+  assert.equal(overviewRes.body.data.totalUnits, 1);
+
+  const accessRoute = videoCourseRouter.stack.find((layer) => (
+    layer.route?.path === "/:offeringId/access" && layer.route.methods.get
+  )).route;
+  const accessRes = {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+  await accessRoute.stack.at(-1).handle({
+    user: {
+      id: student.id,
+      role: "user",
+      is_management_managed: true,
+      lms_account_status: "active",
+    },
+    params: { offeringId: String(course.id) },
+  }, accessRes);
+  assert.equal(accessRes.statusCode, 200, JSON.stringify(accessRes.body));
+  assert.equal(accessRes.body.data.canLearn, true);
+  assert.equal(accessRes.body.data.accessType, "RECORD");
+
   const res = {
     statusCode: 200,
     body: null,

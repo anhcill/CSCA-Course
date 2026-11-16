@@ -88,6 +88,7 @@ test("recording class aliases enroll paid learners into the source LMS class", a
       courseSourceId: "record-course-source",
       title: "Main class - Record",
       classType: "RECORDING",
+      priceVnd: 888000,
       sourceClassSourceId: "main-class-source",
       status: "active",
       sourceUpdatedAt: "2026-11-09T05:00:00Z",
@@ -95,6 +96,7 @@ test("recording class aliases enroll paid learners into the source LMS class", a
   });
   assert.equal(aliasResult.action, "class.recording_alias.synced");
   assert.equal(Number(aliasResult.data.live_class_id), Number(sourceClass.id));
+  assert.equal(Number((await db.query("SELECT price FROM courses WHERE id=$1", [course.id])).rows[0].price), 888000);
 
   const membershipResult = await applyManagementEvent(db, {
     eventType: "class.membership.changed",

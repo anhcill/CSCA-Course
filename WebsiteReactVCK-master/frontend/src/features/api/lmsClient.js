@@ -177,6 +177,14 @@ export const fetchVideoCourseCatalog = async ({ signal } = {}) => {
   return request("/video-courses", { signal });
 };
 
+export const fetchVideoCourseOverview = async (offeringId, { signal } = {}) => (
+  request(`/video-courses/${encodeURIComponent(offeringId)}/overview`, { signal })
+);
+
+export const fetchVideoCourseAccess = async (offeringId, { signal } = {}) => (
+  request(`/video-courses/${encodeURIComponent(offeringId)}/access`, { signal })
+);
+
 export const fetchPublicCourseCatalog = async ({ signal } = {}) => {
   return request("/courses", { signal });
 };
