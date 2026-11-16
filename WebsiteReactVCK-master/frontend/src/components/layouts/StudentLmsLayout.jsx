@@ -33,7 +33,7 @@ import { normalizeLmsWallpaper } from "../../utils/classWallpapers";
 
 const STUDENT_NAV = [
   { label: "Tổng quan LMS", path: "/lms/dashboard", icon: Home, end: true },
-  { label: "Khóa học", path: "/lms/my-learning", icon: BookOpen, end: true },
+  { label: "Khóa học của tôi", path: "/lms/my-learning", icon: BookOpen, end: true },
   { label: "Lịch học", path: "/lms/calendar", icon: CalendarDays },
   { label: "Bài tập & Kiểm tra", path: "/lms/assignments", icon: FileCheck2 },
   { label: "Từ vựng", path: "/lms/vocabulary", icon: BookA },

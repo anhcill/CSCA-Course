@@ -220,7 +220,7 @@ const Courses = () => {
     const isCsca = (course.category || '').toUpperCase().includes('CSCA') || (name || '').toUpperCase().includes('CSCA');
     const videoOffering = videoOfferingByCourseId.get(String(courseId));
     const isVideoCourse = Boolean(videoOffering);
-    const targetUrl = `/video-courses/${videoOffering.offeringId}`;
+    const targetUrl = `/detail-course/${courseId}`;
     const userProgress = filterProgress?.find((item) => String(item.courseId) === String(courseId));
     const progressPercent = userProgress?.progressPercentage || 0;
     const isCompleted = progressPercent >= 100;
@@ -261,7 +261,7 @@ const Courses = () => {
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
             <span className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-black shadow-xl transform group-hover:scale-105 transition-transform bg-gradient-to-r from-red-600 to-amber-500 text-white shadow-red-950/50">
               <Play className="h-4 w-4 fill-white" />
-              {authUser && progressPercent > 0 ? 'Tiếp tục bài học' : 'Vào xem bài giảng'}
+              {authUser && progressPercent > 0 ? 'Xem tổng quan khóa học' : 'Xem giới thiệu khóa học'}
             </span>
           </div>
         </div>
@@ -371,12 +371,12 @@ const Courses = () => {
             {authUser && progressPercent > 0 ? (
               <>
                 <Play className="w-3.5 h-3.5 fill-white" />
-                <span>Tiếp tục học</span>
+                <span>Xem chi tiết</span>
               </>
             ) : (
               <>
                 <Video className="w-3.5 h-3.5" />
-                <span>Vào học ngay</span>
+                <span>Xem chi tiết</span>
                 <ArrowRight className="w-3 h-3" />
               </>
             )}

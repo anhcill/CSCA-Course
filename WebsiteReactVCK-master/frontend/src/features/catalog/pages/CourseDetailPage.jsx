@@ -4,9 +4,8 @@ import toast from "react-hot-toast";
 import {
   fetchCourseDetail,
   checkEnrollmentStatus,
-  enrollInCourse,
   fetchCoursesCatalog,
-  fetchVideoPlaybackUrl,
+  fetchVideoCourseCatalog,
   fetchCourseRatings,
 } from "../../api/lmsClient";
 import { LoadingState, ErrorState } from "../../../components/common/StateView";
@@ -15,7 +14,8 @@ import { useAuthContext } from "../../../context/AuthContext";
 import { hasStudentLmsAccess } from "../../../utils/lmsAccess";
 
 export default function CourseDetailPage() {
-  const { slug } = useParams();
+  const { id, slug } = useParams();
+  const courseRef = id || slug;
   const navigate = useNavigate();
   const { authUser } = useAuthContext();
   const canUseLms = hasStudentLmsAccess(authUser);
@@ -25,11 +25,9 @@ export default function CourseDetailPage() {
   const [hasCourseLmsAccess, setHasCourseLmsAccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [enrolling, setEnrolling] = useState(false);
   const [activeSection, setActiveSection] = useState(null);
   const [relatedCourses, setRelatedCourses] = useState([]);
-  const [previewVideoModal, setPreviewVideoModal] = useState(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [videoOffering, setVideoOffering] = useState(null);
   const [ratingsData, setRatingsData] = useState({ summary: { avgScore: 0, count: 0, distribution: {} }, ratings: [] });
 
   const loadCourseDetails = useCallback(async () => {
@@ -38,11 +36,22 @@ export default function CourseDetailPage() {
     setIsEnrolled(false);
     setHasCourseLmsAccess(false);
     try {
-      const res = await fetchCourseDetail(slug);
+      const res = await fetchCourseDetail(courseRef);
       if (res.success && res.data) {
         setCourseData(res.data);
         if (res.data.sections && res.data.sections.length > 0) {
           setActiveSection(res.data.sections[0].id);
+        }
+
+        try {
+          const offeringRes = await fetchVideoCourseCatalog();
+          const matchedOffering = (offeringRes?.data || []).find(
+            (item) => String(item.id) === String(res.data.course.id),
+          );
+          setVideoOffering(matchedOffering || null);
+        } catch (offeringErr) {
+          console.error("Error loading video course offering:", offeringErr);
+          setVideoOffering(null);
         }
 
         // Check enrollment status if logged in
@@ -90,48 +99,23 @@ export default function CourseDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [slug]);
+  }, [courseRef]);
 
   useEffect(() => {
     loadCourseDetails();
   }, [loadCourseDetails]);
 
-  const handleEnroll = async () => {
-    if (!courseData?.course?.id) return;
-    setEnrolling(true);
-    try {
-      const res = await enrollInCourse(courseData.course.id);
-      if (res.success) {
-        setIsEnrolled(true);
-        setHasCourseLmsAccess(false);
-        toast.success("Đã ghi nhận khóa học. LMS sẽ mở khi Management cấp quyền học.");
-      }
-    } catch (err) {
-      console.error("Error enrolling:", err);
-      toast.error(err.message || "Có lỗi xảy ra khi đăng ký khóa học!");
-    } finally {
-      setEnrolling(false);
-    }
-  };
-
-  const handlePreviewVideo = async (lesson) => {
-    if (!lesson) return;
-    if (!isEnrolled) {
-      toast("Bạn cần đăng ký khóa học trước khi xem video học thử.");
+  const handleOpenVideoCourse = ({ previewOnly = false } = {}) => {
+    if (!videoOffering?.offeringId) {
+      toast.error("Khóa học chưa có bài giảng video để mở.");
       return;
     }
-
-    setLoadingPreview(true);
-    try {
-      const res = await fetchVideoPlaybackUrl({ lessonId: lesson.id });
-      if (!res.success || !res.data?.playbackUrl) throw new Error("Video học thử chưa sẵn sàng");
-      setPreviewVideoModal({ ...lesson, playbackUrl: res.data.playbackUrl });
-    } catch (err) {
-      console.error("Error loading preview video:", err);
-      toast.error(err.message || "Không thể tải video học thử.");
-    } finally {
-      setLoadingPreview(false);
+    const previewCount = Number(videoOffering.previewUnitsCount || 0);
+    if (previewOnly && previewCount === 0) {
+      toast("Khóa học chưa mở bài học thử. Bạn có thể nhắn Zalo để được tư vấn.");
+      return;
     }
+    navigate(`/video-courses/${encodeURIComponent(videoOffering.offeringId)}`);
   };
 
   if (loading) {
@@ -216,6 +200,11 @@ export default function CourseDetailPage() {
     HSK: "bg-sky-500/20 text-sky-400 border-sky-500/30",
     HSKK: "bg-purple-500/20 text-purple-400 border-purple-500/30",
   }[course.category] || "bg-rose-500/20 text-rose-400 border-rose-500/30";
+  const previewUnitCount = Math.max(
+    Number(videoOffering?.previewUnitsCount || 0),
+    lessons.filter((lesson) => lesson.is_public_preview || lesson.is_preview).length,
+  );
+  const canOpenFullCourse = isEnrolled && canUseLms && hasCourseLmsAccess;
 
   // Reusable Sticky Enrollment Card
   const EnrollmentCard = () => (
@@ -229,72 +218,61 @@ export default function CourseDetailPage() {
         />
         <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center">
           <button
-            onClick={() => handlePreviewVideo(lessons.find((l) => l.is_preview))}
-            disabled={loadingPreview}
+            onClick={() => handleOpenVideoCourse({ previewOnly: true })}
             className="w-14 h-14 bg-rose-600 hover:bg-rose-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-rose-600/40 transform group-hover:scale-110 transition duration-300"
-            title="Xem video giới thiệu"
+            title="Mở bài học thử"
           >
-            <span className="text-white text-xl pl-1">{loadingPreview ? "…" : "▶"}</span>
+            <span className="text-white text-xl pl-1">▶</span>
           </button>
         </div>
         <span className="absolute bottom-3 right-3 px-2.5 py-1 bg-slate-950/80 backdrop-blur rounded-lg text-xs font-semibold text-white border border-white/10">
-          Xem giới thiệu
+          {previewUnitCount > 0 ? `${previewUnitCount} bài học thử` : "Xem nội dung"}
         </span>
       </div>
 
       {/* Pricing Section */}
       <div className="space-y-1">
-        <span className="text-slate-500 dark:text-slate-400 text-xs font-medium block">Học phí trọn khóa</span>
+        <span className="text-slate-500 dark:text-slate-400 text-xs font-medium block">Học phí từ Internal</span>
         <div className="flex items-baseline gap-3">
           <span className="text-3xl font-black text-rose-500">
             {course.is_free || Number(course.price) === 0 ? "Miễn Phí" : `${Number(course.price).toLocaleString("vi-VN")} đ`}
           </span>
-          {!course.is_free && Number(course.price) > 0 && (
-            <>
-              <span className="text-slate-400 dark:text-slate-500 text-sm line-through">
-                {(Number(course.price) * 1.5).toLocaleString("vi-VN")} đ
-              </span>
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
-                -33% Ưu đãi
-              </span>
-            </>
-          )}
         </div>
+        <p className="pt-1 text-[11px] leading-5 text-slate-400">Website chưa thu tiền tự động. Admin sẽ xác nhận và cấp quyền sau khi bạn liên hệ.</p>
       </div>
 
       {/* Action Buttons */}
       <div className="space-y-3">
-        {isEnrolled && canUseLms && hasCourseLmsAccess ? (
+        {canOpenFullCourse ? (
           <button
-            onClick={() => navigate(`/lms/courses/${course.id}/workspace`)}
+            onClick={() => handleOpenVideoCourse()}
             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-2xl transition duration-200 shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 text-base"
           >
             <span>Vào Học Ngay</span>
             <span>➔</span>
           </button>
-        ) : isEnrolled ? (
-          <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-center">
-            <p className="text-sm font-bold text-emerald-600 dark:text-emerald-300">Bạn đã có khóa ghi hình</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">LMS sẽ hiển thị khi Management cấp quyền học cho tài khoản của bạn.</p>
-          </div>
         ) : (
-          <>
-            <button
-              onClick={handleEnroll}
-              disabled={enrolling}
-              className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 rounded-2xl transition duration-200 shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 text-base disabled:opacity-50"
-            >
-              {enrolling ? "Đang Xử Lý..." : course.is_free || Number(course.price) === 0 ? "Đăng Ký Học Ngay (Miễn Phí)" : `Mua Khóa Học • ${Number(course.price).toLocaleString("vi-VN")} đ`}
-            </button>
-            <a
-              href="https://zalo.me/0812352005"
-              target="_blank"
-              rel="noreferrer"
-              className="w-full border border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-semibold py-3 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm bg-slate-50 dark:bg-slate-950/40"
-            >
-              <span>💬 Nhận Tư Vấn Lộ Trình CSCA</span>
-            </a>
-          </>
+          <button
+            onClick={() => handleOpenVideoCourse({ previewOnly: true })}
+            disabled={previewUnitCount === 0}
+            className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 rounded-2xl transition duration-200 shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 text-base disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none dark:disabled:bg-slate-700"
+          >
+            {previewUnitCount > 0 ? "Học Thử Miễn Phí" : "Chưa Mở Bài Học Thử"}
+          </button>
+        )}
+        {isEnrolled && !canOpenFullCourse && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs leading-5 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">Tài khoản đang chờ Internal cấp quyền học đầy đủ.</p>
+        )}
+        <a
+          href="https://zalo.me/0812352005"
+          target="_blank"
+          rel="noreferrer"
+          className="w-full border border-sky-200 dark:border-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/40 text-sky-700 dark:text-sky-300 font-bold py-3 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm bg-white dark:bg-slate-950/40"
+        >
+          <span>💬 Liên Hệ Mua Qua Zalo</span>
+        </a>
+        {authUser && (
+          <Link to="/lms/my-learning" className="flex w-full items-center justify-center text-xs font-bold text-slate-500 hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-300">Khóa học của tôi →</Link>
         )}
       </div>
 
@@ -508,7 +486,7 @@ export default function CourseDetailPage() {
                                   <span className="text-slate-700 dark:text-slate-300 font-medium truncate">{lesson.title}</span>
                                   {lesson.is_preview && (
                                     <button
-                                      onClick={() => handlePreviewVideo(lesson)}
+                                      onClick={() => handleOpenVideoCourse({ previewOnly: true })}
                                       className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition flex-shrink-0"
                                     >
                                       Học thử
@@ -633,7 +611,7 @@ export default function CourseDetailPage() {
                 {relatedCourses.map((relCourse) => (
                   <div
                     key={relCourse.id}
-                    onClick={() => navigate(`/lms/courses/${relCourse.slug || relCourse.id}`)}
+                    onClick={() => navigate(`/detail-course/${relCourse.id}`)}
                     className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 transition group flex flex-col h-full shadow-sm"
                   >
                     <div className="h-32 bg-slate-100 dark:bg-slate-950 overflow-hidden relative">
@@ -672,43 +650,6 @@ export default function CourseDetailPage() {
         <div className="hidden lg:block lg:col-span-1"></div>
       </div>
 
-      {/* Video Preview Modal */}
-      {previewVideoModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-2xl w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
-                  Học thử miễn phí
-                </span>
-                <h4 className="text-base font-bold text-slate-900 dark:text-white mt-1">{previewVideoModal.title}</h4>
-              </div>
-              <button
-                onClick={() => setPreviewVideoModal(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg p-1"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="aspect-video bg-black rounded-xl overflow-hidden flex items-center justify-center">
-              <video
-                src={previewVideoModal.playbackUrl}
-                controls
-                autoPlay
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setPreviewVideoModal(null)}
-                className="px-5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-white text-xs font-semibold"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

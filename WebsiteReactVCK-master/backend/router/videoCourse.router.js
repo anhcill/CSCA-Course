@@ -257,7 +257,12 @@ router.get("/", async (req, res) => {
               vcp.source_live_class_id,
               vcp.device_limit,
               (SELECT COUNT(*)::int FROM sections s WHERE s.course_id = c.id) AS sections_count,
-              (SELECT COUNT(*)::int FROM lessons l WHERE l.course_id = c.id AND l.is_published = true) AS published_lessons_count
+              (SELECT COUNT(*)::int FROM lessons l WHERE l.course_id = c.id AND l.is_published = true) AS published_lessons_count,
+              (SELECT COUNT(*)::int FROM lessons l
+               WHERE l.course_id = c.id AND l.is_published = true AND l.is_public_preview = true) AS preview_lessons_count,
+              (SELECT COUNT(*)::int FROM class_sessions cs
+               WHERE cs.live_class_id = vcp.source_live_class_id
+                 AND cs.status <> 'cancelled' AND cs.is_public_preview = true) AS preview_sessions_count
        FROM video_course_profiles vcp
        JOIN courses c ON c.id = vcp.course_id
        LEFT JOIN users u ON u.id = c.author_id
@@ -279,6 +284,7 @@ router.get("/", async (req, res) => {
       thumbnailUrl: row.thumbnail_url,
       totalLessons: row.published_lessons_count || row.total_lessons || 0,
       sectionsCount: row.sections_count || 0,
+      previewUnitsCount: Number(row.preview_lessons_count || 0) + Number(row.preview_sessions_count || 0),
       instructorName: row.instructor_name || "Moly Course",
       videoMode: row.video_mode || "MIRROR",
       badgeLabel: row.video_mode === "INDEPENDENT" ? "Video độc lập" : "Record kế thừa",

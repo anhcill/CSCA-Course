@@ -1002,7 +1002,8 @@ router.get("/:slug", async (req, res) => {
       query(
         `SELECT id, course_id, section_id, COALESCE(title, name) AS title, description,
                 COALESCE(duration_seconds, video_duration_seconds, 0) AS duration_seconds,
-                is_preview, sort_order
+                COALESCE(is_public_preview, is_preview, FALSE) AS is_preview,
+                COALESCE(is_public_preview, FALSE) AS is_public_preview, sort_order
          FROM lessons WHERE course_id = $1 AND is_published = true
          ORDER BY sort_order ASC, id ASC`,
         [course.id],

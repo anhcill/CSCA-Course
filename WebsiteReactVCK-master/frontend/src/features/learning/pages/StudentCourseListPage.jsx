@@ -133,7 +133,7 @@ export default function StudentCourseListPage() {
         <section className="relative min-h-[178px] overflow-hidden px-3 py-5 sm:px-5">
           <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="max-w-xl">
-              <p className="font-['Dancing_Script',cursive] text-[44px] font-bold leading-none text-[#102f63] sm:text-[52px] dark:text-sky-200">Khóa học</p>
+              <p className="font-['Dancing_Script',cursive] text-[44px] font-bold leading-none text-[#102f63] sm:text-[52px] dark:text-sky-200">Khóa học của tôi</p>
               <p className="mt-3 text-sm font-semibold italic text-[#244866] dark:text-slate-300">“Học không chỉ để biết, mà để trưởng thành.”</p>
               <p className="mt-2 font-['Ma_Shan_Zheng',cursive] text-xl text-[#17365f] dark:text-sky-400">学而不止 · 行而致远</p>
             </div>

@@ -10,7 +10,7 @@ import Forbidden from "./pages/client/Forbidden.jsx";
 const Home = lazy(() => import("./pages/client/Home.jsx"));
 const NotFound = lazy(() => import("./pages/client/NotFound.jsx"));
 const Courses = lazy(() => import("./pages/client/Courses.jsx"));
-const DetailCourse = lazy(() => import("./pages/client/DetailCourse.jsx"));
+const DetailCourse = lazy(() => import("./features/catalog/pages/CourseDetailPage.jsx"));
 const Profile = lazy(() => import("./pages/client/Profile.jsx"));
 const Post = lazy(() => import("./pages/client/Post.jsx"));
 const PostDetail = lazy(() => import("./pages/client/PostDetail.jsx"));
@@ -153,7 +153,7 @@ function AppRoutes({ pathname }) {
       <Route path="/sso/authorize" element={<ProtectedRoute><SsoAuthorizePage /></ProtectedRoute>} />
       <Route path="/sso/callback" element={<SsoCallbackPage />} />
       <Route path="/post/:id" element={<PostDetail />} />
-      <Route path="/detail-course/:id" element={<ProtectedRoute><DetailCourse /></ProtectedRoute>} />
+      <Route path="/detail-course/:id" element={<DetailCourse />} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/unauthorized" element={<Unauthorized />} />
       <Route path="/forbidden" element={<Forbidden />} />

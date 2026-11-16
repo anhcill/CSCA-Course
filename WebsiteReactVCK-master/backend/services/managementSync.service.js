@@ -60,6 +60,15 @@ const optionalText = (value, maxLength, field) => {
   return text(value, maxLength, field);
 };
 
+const optionalPrice = (value, field = "priceVnd") => {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 999_999_999_999) {
+    throw new SyncValidationError(`${field} không hợp lệ`);
+  }
+  return Math.round(parsed);
+};
+
 // Descriptions supplied by the management integration are shown to learners.
 // Strip operational/test labels instead of persisting them into learner-facing data.
 const learnerSafeDescription = (value) => {
@@ -415,6 +424,7 @@ const parseCourse = (payload, occurredAt) => ({
   description: learnerSafeDescription(payload.description),
   category: optionalText(payload.category, 50, "category") || "CSCA",
   level: enumValue(payload.level, COURSE_LEVELS, "beginner", "level"),
+  price: optionalPrice(payload.priceVnd ?? payload.price, payload.priceVnd !== undefined ? "priceVnd" : "price"),
   teacherSourceId: sourceId(payload.teacherSourceId || payload.ownerTeacherSourceId, "teacherSourceId"),
   isPublished: payload.isPublished !== undefined ? payload.isPublished === true : undefined,
   sourceUpdatedAt: sourceDate(payload, occurredAt),
@@ -438,10 +448,11 @@ const syncCourse = async (client, event) => {
       `UPDATE courses
        SET name = $1, title = $1, description = $2, category = $3, level = $4,
            author_id = $5, is_published = $6, is_free = FALSE,
-           is_management_managed = TRUE, management_source_updated_at = $7
-       WHERE id = $8
+           price = COALESCE($7, price),
+           is_management_managed = TRUE, management_source_updated_at = $8
+       WHERE id = $9
        RETURNING id, external_course_id, title, is_published`,
-      [input.title, input.description, input.category, input.level, teacher.id, input.isPublished, input.sourceUpdatedAt, course.id],
+      [input.title, input.description, input.category, input.level, teacher.id, input.isPublished, input.price, input.sourceUpdatedAt, course.id],
     );
     return { action: "course.synced", entityType: "course", entityId: Number(course.id), data: updated.rows[0] };
   }
@@ -449,11 +460,11 @@ const syncCourse = async (client, event) => {
   const created = await client.query(
     `INSERT INTO courses
      (name, title, slug, description, category, level, author_id, is_published,
-        is_free, external_course_id, is_management_managed, management_source_updated_at)
-     VALUES ($1, $1, $2, $3, $4, $5, $6, $7, FALSE, $8, TRUE, $9)
+        is_free, price, external_course_id, is_management_managed, management_source_updated_at)
+     VALUES ($1, $1, $2, $3, $4, $5, $6, $7, FALSE, $8, $9, TRUE, $10)
      RETURNING id, external_course_id, title, is_published`,
     [input.title, safeSlug("moly", input.courseSourceId), input.description, input.category,
-      input.level, teacher.id, input.isPublished, input.courseSourceId, input.sourceUpdatedAt],
+      input.level, teacher.id, input.isPublished, input.price ?? 0, input.courseSourceId, input.sourceUpdatedAt],
   );
   return { action: "course.synced", entityType: "course", entityId: Number(created.rows[0].id), data: created.rows[0] };
 };
