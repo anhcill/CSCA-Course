@@ -158,7 +158,7 @@ Gemini:
 - Delegated playback session tu Course, token ngan han, watermark/device control.
 - Ghi watch events co session/sequence/idempotency; Course tinh completion.
 - Resume va progress projection Moly, next-unit lock cung logic Course.
-- Ap dung nguong hien co (vi du 60% + quiz); khong viet mot logic mo khoa rieng.
+- Ap dung nguong hien co (50% + quiz); khong viet mot logic mo khoa rieng.
 - Pause/offline/retry/device conflict co thong bao va trang thai ro rang.
 
 Codex:

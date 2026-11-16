@@ -333,22 +333,69 @@ export const generateLearningFileUploadPresignedUrl = async ({ userId, filename,
   };
 };
 
+const encodeRfc5987Value = (value) => encodeURIComponent(value)
+  .replace(/['()*!]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+
+const toAsciiDispositionFallback = (value) => {
+  const ascii = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .replace(/[^\x20-\x7e]/g, "_")
+    .replace(/[;"\\]/g, "_")
+    .trim();
+  return ascii || "document";
+};
+
+/**
+ * Builds a Content-Disposition header value supporting RFC 5987 UTF-8 filenames
+ * alongside an ASCII fallback for Unicode or special characters.
+ */
+export const buildContentDispositionHeader = (disposition = "attachment", filename = "document") => {
+  const safeDisposition = disposition === "inline" ? "inline" : "attachment";
+  const cleaned = path.basename(String(filename || "document").trim() || "document")
+    .replace(/[\r\n\u0000-\u001f\u007f"]/g, "")
+    .trim() || "document";
+  const isPureSafeAscii = /^[\x20-\x7e]+$/.test(cleaned) && !/[;\\]/.test(cleaned);
+  if (isPureSafeAscii) {
+    return `${safeDisposition}; filename="${cleaned}"`;
+  }
+  const asciiFallback = toAsciiDispositionFallback(cleaned);
+  return `${safeDisposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodeRfc5987Value(cleaned)}`;
+};
+
 export const generateLearningFilePlaybackSignedUrl = async ({
   r2Key,
   filename,
   disposition = "attachment",
   mimeType,
+  ttlSeconds = null,
+  maxTtlSeconds = null,
 }) => {
   getR2Config();
   if (!validateLearningFileKey(r2Key)) throw new Error("storageKey tài liệu không hợp lệ");
   if (disposition !== "attachment" && disposition !== "inline") {
     throw new Error("Chế độ hiển thị tài liệu không hợp lệ");
   }
-  const expiresInSeconds = getTtl("R2_FILE_PLAYBACK_URL_TTL_SECONDS", 600, 900);
+  let expiresInSeconds = getTtl("R2_FILE_PLAYBACK_URL_TTL_SECONDS", 600, 900);
+  if (ttlSeconds !== undefined && ttlSeconds !== null) {
+    const parsedTtl = Number(ttlSeconds);
+    if (!Number.isFinite(parsedTtl) || parsedTtl <= 0) {
+      throw new Error("ttlSeconds không hợp lệ");
+    }
+    expiresInSeconds = Math.max(1, Math.min(expiresInSeconds, Math.floor(parsedTtl)));
+  }
+  if (maxTtlSeconds !== undefined && maxTtlSeconds !== null) {
+    const parsedMax = Number(maxTtlSeconds);
+    if (!Number.isFinite(parsedMax) || parsedMax <= 0) {
+      throw new Error("maxTtlSeconds không hợp lệ");
+    }
+    expiresInSeconds = Math.max(1, Math.min(expiresInSeconds, Math.floor(parsedMax)));
+  }
   const extraParams = {};
   if (typeof filename === "string" && filename.trim()) {
-    const cleanFilename = path.basename(filename.trim()).replace(/["\r\n]/g, "");
-    extraParams["response-content-disposition"] = `${disposition}; filename="${cleanFilename}"`;
+    extraParams["response-content-disposition"] = buildContentDispositionHeader(disposition, filename);
   }
   if (disposition === "inline" && typeof mimeType === "string" && mimeType.trim()) {
     extraParams["response-content-type"] = mimeType.trim();

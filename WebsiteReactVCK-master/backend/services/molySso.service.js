@@ -22,7 +22,8 @@ import {
   validateSsoTargetPath,
   verifyPkceVerifierS256,
 } from "./ssoPathPolicy.service.js";
-import { establishLoginSession } from "./trustedDevice.service.js";
+import { establishLoginSession, hashOpaqueToken } from "./trustedDevice.service.js";
+import { bindMolyDeviceToTrustedSlot, verifyDeviceSlotProof } from "./delegatedDeviceBinding.service.js";
 import { hasUnrevokedVideoCourseAccess } from "./videoCourseAccessRevocation.service.js";
 import {
   EXTERNAL_LMS_ACCESS_EXISTS_SQL,
@@ -298,6 +299,8 @@ export function createMolySsoService({
     scopeType = "account",
     scopedLocalCourseId = null,
     scopedExternalCourseId = null,
+    deviceToken = null,
+    trustedDeviceId = null,
     correlationId = null,
     webBaseUrl = null,
   }) {
@@ -317,18 +320,29 @@ export function createMolySsoService({
     const code = generateOpaqueSsoCode();
     const codeHash = hashSsoToken(code);
     const corr = correlationId || crypto.randomUUID();
+    let resolvedTrustedDeviceId = trustedDeviceId ? Number(trustedDeviceId) : null;
+    if (!resolvedTrustedDeviceId && deviceToken) {
+      const devRes = await runner.query(
+        `SELECT id FROM trusted_login_devices
+         WHERE user_id = $1 AND device_token_hash = $2 AND revoked_at IS NULL
+         LIMIT 1`,
+        [user.id, hashOpaqueToken(deviceToken)],
+      );
+      resolvedTrustedDeviceId = devRes.rows[0]?.id ? Number(devRes.rows[0].id) : null;
+    }
+    const codeMetadata = resolvedTrustedDeviceId ? { trustedDeviceId: resolvedTrustedDeviceId } : {};
 
     await runner.query(
       `INSERT INTO integration_sso_codes (
          code_hash, source_system, source_user_id, local_user_id,
          target_system, target_path, nonce, pkce_challenge, pkce_method,
          scope_type, scoped_local_course_id, scoped_external_course_id,
-         correlation_id, expires_at
+         correlation_id, metadata, expires_at
        ) VALUES (
          $1, 'csca-course', $2, $3,
          'moly', $4, $5, $6, 'S256',
          $7, $8, $9,
-         $10, $11
+         $10, $11::jsonb, $12
        )`,
       [
         codeHash,
@@ -341,6 +355,7 @@ export function createMolySsoService({
         scopedLocalCourseId,
         scopedExternalCourseId,
         corr,
+        JSON.stringify(codeMetadata),
         expiresAt.toISOString(),
       ],
     );
@@ -377,6 +392,7 @@ export function createMolySsoService({
     codeVerifier = null,
     consumerSystem = "moly",
     consumeIp = null,
+    deviceSlotProof = null,
     correlationId = null,
   }) {
     if (!code || !nonce) {
@@ -465,6 +481,37 @@ export function createMolySsoService({
       }
 
       const safeTargetPath = validateSsoTargetPath(ssoRow.target_path, { targetSystem: "moly" });
+      const activeMolyLink = identities.find((row) => row.status === "active");
+
+      let deviceBinding = null;
+      if (deviceSlotProof) {
+        const verifiedProof = verifyDeviceSlotProof(deviceSlotProof, {
+          now: () => current.getTime(),
+          env,
+        });
+        const regRes = await client.query(
+          `SELECT to_regclass('moly_device_bindings') IS NOT NULL AS has_bindings`,
+        );
+        if (regRes.rows[0]?.has_bindings) {
+          const boundTrustedDeviceId = ssoRow.metadata?.trustedDeviceId
+            ? Number(ssoRow.metadata.trustedDeviceId)
+            : null;
+          deviceBinding = await bindMolyDeviceToTrustedSlot({
+            tx: client,
+            userId: user.id,
+            externalUserId: verifiedProof.externalUserId,
+            molyDeviceTokenHash: verifiedProof.molyDeviceTokenHash,
+            courseTrustedDeviceId: boundTrustedDeviceId,
+            bindingSource: "sso_browser_tx",
+            deviceName: verifiedProof.deviceName,
+            userAgent: verifiedProof.userAgent,
+            ipAddress: verifiedProof.ipAddress || consumeIp,
+            correlationId: corr,
+            metadata: { flow: "course_to_moly_sso" },
+          });
+        }
+      }
+
       await client.query(
         `UPDATE integration_sso_codes
          SET used_at = $2, used_by_system = 'moly', consume_ip = $3
@@ -472,7 +519,6 @@ export function createMolySsoService({
         [ssoRow.id, current.toISOString(), consumeIp ? String(consumeIp).slice(0, 64) : null],
       );
 
-      const activeMolyLink = identities.find((row) => row.status === "active");
       return {
         source_system: "csca-course",
         source_user_id: String(user.id),
@@ -488,6 +534,7 @@ export function createMolySsoService({
         scoped_external_course_id: ssoRow.scoped_external_course_id ?? null,
         nonce: ssoRow.nonce,
         correlation_id: ssoRow.correlation_id || corr,
+        ...(deviceBinding ? { device_binding: deviceBinding } : {}),
       };
     });
   }
@@ -868,9 +915,53 @@ export function createMolySsoService({
         correlationId: corr,
       });
     }
+
+    let molyDeviceHashForBind = null;
+    if (exchanged.device_slot_proof) {
+      const verified = verifyDeviceSlotProof(exchanged.device_slot_proof, {
+        expectedExternalUserId: String(exchanged.source_user_id),
+        now: () => current.getTime(),
+        env,
+      });
+      molyDeviceHashForBind = verified.molyDeviceTokenHash;
+    } else if (typeof exchanged.moly_device_token_hash === "string" && /^[0-9a-f]{64}$/i.test(exchanged.moly_device_token_hash.trim())) {
+      molyDeviceHashForBind = exchanged.moly_device_token_hash.trim().toLowerCase();
+    }
+
+    let effectiveDeviceToken = deviceToken;
+    if (molyDeviceHashForBind) {
+      const { adoptMolySlotForCourseSso } = await import("./delegatedDeviceBinding.service.js");
+      effectiveDeviceToken = await adoptMolySlotForCourseSso({
+        db: runner,
+        userId: resolved.user.id,
+        molyDeviceTokenHash: molyDeviceHashForBind,
+        existingCourseDeviceToken: deviceToken,
+      });
+    }
+
     const session = await buildSession({
-      user: resolved.user, deviceToken, ipAddress, userAgent,
+      user: resolved.user, deviceToken: effectiveDeviceToken, ipAddress, userAgent,
     });
+
+    if (molyDeviceHashForBind && session?.trustedDeviceId) {
+      const regRes = await runner.query(
+        `SELECT to_regclass('moly_device_bindings') IS NOT NULL AS has_bindings`,
+      );
+      if (regRes.rows[0]?.has_bindings) {
+        await bindMolyDeviceToTrustedSlot({
+          db: runner,
+          userId: resolved.user.id,
+          externalUserId: String(exchanged.source_user_id),
+          molyDeviceTokenHash: molyDeviceHashForBind,
+          courseTrustedDeviceId: session.trustedDeviceId,
+          bindingSource: "sso_browser_tx",
+          userAgent,
+          ipAddress,
+          correlationId: corr,
+          metadata: { flow: "moly_to_course_sso" },
+        });
+      }
+    }
 
     return {
       status: "AUTHENTICATED",

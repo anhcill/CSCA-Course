@@ -43,6 +43,10 @@ import {
 } from "../services/quizAttempt.service.js";
 import { buildQuizReportSnapshot } from "../services/quizCloseReport.service.js";
 import { getVideoCourseUnitAccessContext } from "../services/videoCourseUnitAccess.service.js";
+import { EFFECTIVE_COURSE_GRANT_EXISTS_SQL, resolveEffectiveStudentLmsAccess } from "../services/externalEntitlementAccess.service.js";
+import { isVideoCourseProfileAccessRevoked } from "../services/videoCourseAccessRevocation.service.js";
+import { applySequentialLocks, loadProfileUnitsWithProgress } from "../services/delegatedLearning.service.js";
+import { emitAssessmentSubmissionGradedOutbox } from "../services/delegatedAssessments.service.js";
 
 const router = express.Router();
 const QUIZ_ATTEMPT_SCORE_POLICIES = new Set(["best", "latest", "first"]);
@@ -133,17 +137,92 @@ const getAssignment = async (assignmentId, db = { query }) => {
   return result.rows[0] || null;
 };
 
-const ensureAssignmentVisibleToStudent = async (assignment, userId, db = { query }) => {
+const findActiveExternalVideoCourseAssignmentProfile = async ({
+  assignment,
+  userId,
+  db = { query },
+  videoCourseProfileId = null,
+}) => {
+  if (!userId || !assignment) return null;
+  const resolvedCourseId = assignment.resolved_course_id || assignment.course_id || null;
+  const result = await db.query(
+    `SELECT vcp.*, vcp.id AS profile_id
+     FROM video_course_profiles vcp
+     JOIN external_entitlements ee
+       ON (
+         ee.local_video_course_profile_id = vcp.id
+         OR (ee.local_video_course_profile_id IS NULL AND ee.local_course_id = vcp.course_id)
+       )
+     JOIN external_identities ei
+       ON (
+         ei.id = ee.external_identity_id
+         OR (
+           ee.external_identity_id IS NULL
+           AND ei.user_id = ee.user_id
+           AND ei.source_system = ee.source_system
+           AND ei.external_user_id = ee.external_user_id
+         )
+       )
+     WHERE ee.user_id = $1
+       AND ei.status = 'active'
+       AND ee.status = 'active'
+       AND ee.valid_from <= NOW()
+       AND (ee.valid_until IS NULL OR ee.valid_until > NOW())
+       AND vcp.status = 'active'
+       AND ($2::bigint IS NULL OR vcp.id = $2)
+       AND NOT EXISTS (
+         SELECT 1 FROM video_course_access_revocations rev
+         WHERE rev.video_course_profile_id = vcp.id
+           AND rev.user_id = $1
+       )
+       AND (
+         ($3::bigint IS NOT NULL AND vcp.mode = 'MIRROR' AND vcp.source_live_class_id = $3 AND $4::text = 'active')
+         OR ($5::bigint IS NOT NULL AND vcp.course_id = $5 AND $6::boolean = TRUE)
+       )
+     ORDER BY (CASE WHEN ee.local_video_course_profile_id = vcp.id THEN 0 ELSE 1 END), vcp.id ASC
+     LIMIT 1`,
+    [
+      userId,
+      videoCourseProfileId,
+      assignment.live_class_id || null,
+      assignment.live_class_status || null,
+      resolvedCourseId,
+      Boolean(assignment.course_is_published),
+    ],
+  );
+  return result.rows[0] || null;
+};
+
+const ensureAssignmentVisibleToStudent = async (assignment, userId, db = { query }, videoCourseProfileId = null) => {
+  if (videoCourseProfileId) {
+    if (await isVideoCourseProfileAccessRevoked({ db, userId, profileId: videoCourseProfileId })) {
+      return false;
+    }
+    const externalProfile = await findActiveExternalVideoCourseAssignmentProfile({
+      assignment,
+      userId,
+      db,
+      videoCourseProfileId,
+    });
+    if (externalProfile) return true;
+  }
+
   const courseId = assignment.resolved_course_id || assignment.course_id;
   if (courseId !== null) {
     if (!assignment.course_is_published) return false;
     const result = await db.query(
-      `SELECT 1 FROM lms_access_grants
-       WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
-         AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())`,
+      `SELECT 1 WHERE ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$1", "$2")}`,
       [userId, courseId],
     );
-    if (result.rows.length === 0) return false;
+    if (result.rows.length === 0) {
+      const externalProfile = await findActiveExternalVideoCourseAssignmentProfile({
+        assignment,
+        userId,
+        db,
+        videoCourseProfileId,
+      });
+      if (!externalProfile) return false;
+    }
   }
   if (assignment.live_class_id !== null) {
     if (assignment.live_class_status !== "active") return false;
@@ -151,7 +230,15 @@ const ensureAssignmentVisibleToStudent = async (assignment, userId, db = { query
       `SELECT 1 FROM class_enrollments WHERE user_id = $1 AND live_class_id = $2 AND status = 'active'`,
       [userId, assignment.live_class_id],
     );
-    if (result.rows.length === 0) return false;
+    if (result.rows.length === 0) {
+      const externalProfile = await findActiveExternalVideoCourseAssignmentProfile({
+        assignment,
+        userId,
+        db,
+        videoCourseProfileId,
+      });
+      if (!externalProfile) return false;
+    }
   }
   return courseId !== null || assignment.live_class_id !== null;
 };
@@ -176,11 +263,30 @@ const studentCanAccessAssignment = async (assignment, user, db = { query }, vide
     });
     if (recordAccess.isPublicPreview) return recordAccess.isUnlocked;
   }
-  if (!hasActiveStudentLmsAccess(user) || !(await ensureAssignmentVisibleToStudent(assignment, user.id, db))) {
+  if (
+    !(await resolveEffectiveStudentLmsAccess({ user, db }))
+    || !(await ensureAssignmentVisibleToStudent(assignment, user.id, db, videoCourseProfileId))
+  ) {
     return false;
   }
   if (!videoCourseProfileId) return true;
-  return Boolean(recordAccess?.isVideoCourseUnit && recordAccess.isRecordMember && recordAccess.isUnlocked);
+  if (recordAccess?.isVideoCourseUnit && recordAccess.isRecordMember) {
+    return Boolean(recordAccess.isUnlocked);
+  }
+  const externalProfile = await findActiveExternalVideoCourseAssignmentProfile({
+    assignment,
+    userId: user.id,
+    db,
+    videoCourseProfileId,
+  });
+  if (!externalProfile) return false;
+  if (unitType && unitId) {
+    const rawUnits = await loadProfileUnitsWithProgress(db, { profileRow: externalProfile, userId: user.id });
+    const units = applySequentialLocks(rawUnits, { isPublicPreviewAccess: false });
+    const targetUnit = units.find((unit) => String(unit.id) === String(unitId));
+    return Boolean(targetUnit && !targetUnit.isLocked);
+  }
+  return true;
 };
 
 const isAssignedTeacher = async (classId, userId, db = { query }) => Boolean((await db.query(
@@ -1187,7 +1293,7 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
     }
     await assertGradebookOpen(client, quiz.live_class_id);
     const attemptRes = await client.query(
-      `SELECT qa.id, qa.quiz_id, qa.user_id, qa.answers_json, qa.score, qa.max_score, qa.status, qa.question_snapshot,
+      `SELECT qa.id, qa.quiz_id, qa.user_id, qa.video_course_profile_id, qa.answers_json, qa.score, qa.max_score, qa.status, qa.question_snapshot,
               u.email AS student_email, u.username AS student_username
        FROM quiz_attempts qa
        JOIN users u ON u.id = qa.user_id
@@ -1246,9 +1352,10 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
       `UPDATE quiz_attempts
        SET answers_json = $1::jsonb,
            score = $2,
+           sync_revision = COALESCE(sync_revision, 1) + 1,
            updated_at = NOW()
        WHERE id = $3
-       RETURNING id, score, max_score, answers_json, updated_at`,
+       RETURNING id, score, max_score, answers_json, updated_at, sync_revision`,
       [JSON.stringify(updatedAnswers), newTotalScore, attempt.id]
     );
 
@@ -1276,6 +1383,27 @@ router.post("/teacher/quizzes/:quizId/attempts/:attemptId/grade-essay", protectR
         req.user.id,
       ],
     );
+
+    await emitAssessmentSubmissionGradedOutbox({
+      db: client,
+      userId: attempt.user_id,
+      itemType: "quiz",
+      itemId: quizId,
+      attemptOrSubId: attempt.id,
+      videoCourseProfileId: attempt.video_course_profile_id || null,
+      courseId: quiz.resolved_course_id || quiz.quiz_course_id || null,
+      liveClassId: quiz.live_class_id || null,
+      classSessionId: quiz.class_session_id || null,
+      lessonId: quiz.lesson_id || null,
+      status: "graded",
+      score: Number(newTotalScore),
+      maxScore: Number(updateRes.rows[0].max_score || 0),
+      canViewSolution: reviewIsAvailable(quiz),
+      teacherFeedback: essayFeedback || "",
+      rubricScores: gradesByQuestion || {},
+      gradedAt,
+      correlationId: `course-quiz-essay-grade:${attempt.id}:${gradedAt}`,
+    });
 
     await client.query("COMMIT");
     if (attempt.student_email) {
@@ -1747,7 +1875,7 @@ router.post("/submission-assets/:assetId/confirm", protectRoute, requireSubmissi
 // GET /api/assignments/submission-assets/:assetId/access — owner, admin, or assigned teacher only.
 router.get("/submission-assets/:assetId/access", protectRoute, requireStudentOrAssignmentGrader, async (req, res) => {
   try {
-    if (req.user.role === "user" && !hasActiveStudentLmsAccess(req.user)) {
+    if (req.user.role === "user" && !(await resolveEffectiveStudentLmsAccess({ user: req.user }))) {
       return forbidden(res, "Quyền học LMS chưa được Management cấp hoặc đã hết hiệu lực");
     }
     const assetId = parsePositiveId(req.params.assetId);
@@ -2216,7 +2344,9 @@ router.get("/submissions/:submissionId/history", protectRoute, requireStudentOrA
     const assignment = await getAssignment(current.assignment_id);
     const isStudent = req.user.role === "user";
     const allowed = isStudent
-      ? hasActiveStudentLmsAccess(req.user) && String(current.user_id) === String(req.user.id) && await ensureAssignmentVisibleToStudent(assignment, req.user.id)
+      ? (await resolveEffectiveStudentLmsAccess({ user: req.user }))
+        && String(current.user_id) === String(req.user.id)
+        && await ensureAssignmentVisibleToStudent(assignment, req.user.id, { query }, current.video_course_profile_id)
       : await canGradeAssignment(assignment, req.user);
     if (!allowed) return forbidden(res, "Bạn không có quyền xem lịch sử bài nộp");
     const revisions = await query("SELECT revision, snapshot, archived_at FROM submission_revisions WHERE submission_id = $1 ORDER BY revision DESC", [submissionId]);
@@ -2245,11 +2375,39 @@ router.post("/submissions/:submissionId/return", protectRoute, requireTeacher, r
     const current = (await client.query("SELECT * FROM assignment_submissions WHERE id = $1 FOR UPDATE", [submissionId])).rows[0];
     if (Number(req.body.revision) !== current.revision) { await client.query("ROLLBACK"); return conflict(res, "Bài nộp đã thay đổi. Hãy tải lại."); }
     if (current.return_requested) { await client.query("ROLLBACK"); return conflict(res, "Bài đang chờ học viên nộp lại."); }
-    await client.query(`UPDATE assignment_submissions SET return_requested = TRUE, return_reason = $2, returned_by = $3,
-      returned_at = NOW(), resubmit_until = $4 WHERE id = $1`, [submissionId, reason, req.user.id, deadline.toISOString()]);
+    const returnUpdate = await client.query(
+      `UPDATE assignment_submissions
+       SET return_requested = TRUE, return_reason = $2, returned_by = $3,
+           returned_at = NOW(), resubmit_until = $4,
+           sync_revision = COALESCE(sync_revision, 1) + 1
+       WHERE id = $1
+       RETURNING sync_revision, returned_at`,
+      [submissionId, reason, req.user.id, deadline.toISOString()],
+    );
     await recordAuditEvent({ db: client, actorId: req.user.id, action: "submission.returned", entityType: "assignment_submission", entityId: submissionId, afterState: { reason, deadline, revision: current.revision } });
     await notifyWorkflow(client, { userId: current.user_id, title: "Giáo viên yêu cầu sửa và nộp lại bài", message: reason,
       link: `/lms/assignment/${assignment.id}/submit`, key: `submission-return:${submissionId}:${current.revision}`, actorId: req.user.id });
+    const returnedMeta = returnUpdate.rows[0] || {};
+    await emitAssessmentSubmissionGradedOutbox({
+      db: client,
+      userId: current.user_id,
+      itemType: "assignment",
+      itemId: assignment.id,
+      attemptOrSubId: submissionId,
+      videoCourseProfileId: current.video_course_profile_id || null,
+      courseId: assignment.resolved_course_id || assignment.course_id || null,
+      liveClassId: assignment.live_class_id || null,
+      classSessionId: assignment.class_session_id || null,
+      lessonId: assignment.lesson_id || null,
+      status: "returned",
+      score: null,
+      maxScore: Number(assignment.max_score || 10),
+      canViewSolution: true,
+      teacherFeedback: reason,
+      rubricScores: [],
+      gradedAt: returnedMeta.returned_at || new Date().toISOString(),
+      correlationId: `course-sub-return:${submissionId}:${Number(returnedMeta.sync_revision || current.revision || 1)}`,
+    });
     await client.query("COMMIT");
     res.json({ success: true });
   } catch (error) {
@@ -2302,11 +2460,14 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
     const scope = await client.query("SELECT a.live_class_id FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id WHERE s.id = $1", [submissionId]);
     await assertGradebookOpen(client, scope.rows[0]?.live_class_id);
     const submissionResult = await client.query(
-      `SELECT s.id, s.user_id, s.assignment_id, s.revision, s.return_requested, a.title AS assignment_title, a.instructor_id, a.live_class_id, a.max_score,
+      `SELECT s.id, s.user_id, s.assignment_id, s.video_course_profile_id, s.revision, s.return_requested,
+              a.title AS assignment_title, a.instructor_id, a.live_class_id, a.course_id, a.class_session_id, a.lesson_id,
+              COALESCE(a.course_id, lc.course_id) AS resolved_course_id, a.max_score,
               rubric.criteria_json AS rubric_criteria,
               u.email AS student_email, u.username AS student_username
        FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id
        JOIN users u ON u.id = s.user_id
+       LEFT JOIN live_classes lc ON lc.id = a.live_class_id
        LEFT JOIN assignment_rubrics rubric ON rubric.assignment_id = a.id
        WHERE s.id = $1 FOR UPDATE OF s`,
       [submissionId],
@@ -2340,7 +2501,10 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
       [submissionId, req.user.id, numericScore, req.body.feedbackText?.trim() || "", JSON.stringify(rubricScores), submission.revision, JSON.stringify(annotations), changeReason],
     );
     await client.query("DELETE FROM grading_drafts WHERE submission_id = $1 AND grader_id = $2", [submissionId, req.user.id]);
-    await client.query("UPDATE assignment_submissions SET status = 'graded' WHERE id = $1", [submissionId]);
+    await client.query(
+      "UPDATE assignment_submissions SET status = 'graded', sync_revision = COALESCE(sync_revision, 1) + 1 WHERE id = $1",
+      [submissionId],
+    );
     await recordAuditEvent({
       db: client,
       actorId: req.user.id,
@@ -2364,6 +2528,26 @@ router.post("/submissions/:submissionId/grade", protectRoute, requireTeacher, re
       eventType: "assignment_graded",
       xp: gradeRatio >= 0.5 ? XP_VALUES.assignmentGraded : XP_VALUES.assignmentReviewed,
       metadata: { assignmentId: submission.assignment_id, submissionId },
+    });
+    await emitAssessmentSubmissionGradedOutbox({
+      db: client,
+      userId: submission.user_id,
+      itemType: "assignment",
+      itemId: submission.assignment_id,
+      attemptOrSubId: submissionId,
+      videoCourseProfileId: submission.video_course_profile_id || null,
+      courseId: submission.resolved_course_id || submission.course_id || null,
+      liveClassId: submission.live_class_id || null,
+      classSessionId: submission.class_session_id || null,
+      lessonId: submission.lesson_id || null,
+      status: "graded",
+      score: Number(numericScore),
+      maxScore: Number(submission.max_score || 10),
+      canViewSolution: true,
+      teacherFeedback: req.body.feedbackText?.trim() || "",
+      rubricScores,
+      gradedAt: grade.rows[0]?.graded_at || new Date().toISOString(),
+      correlationId: `course-sub-grade:${submissionId}:${grade.rows[0]?.id || Date.now()}`,
     });
     await client.query("COMMIT");
 

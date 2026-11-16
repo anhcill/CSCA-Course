@@ -21,6 +21,7 @@
     "test:recordings": "node --test backend/utils/recordingUrl.test.js backend/router/recording.router.test.js",
     "test:lms-workflows": "node --test backend/services/lmsWorkflow.integration.test.js",
     "test:integration": "node --test backend/middleware/requireManagementIntegration.test.js backend/services/managementCalendarDelivery.service.test.js backend/services/managementSync.service.test.js",
+    "test:moly-full-sync": "node --test backend/services/courseFullSyncDay1.test.js backend/services/courseCatalogSyncDay2.test.js backend/services/courseCurriculumSyncDay3.test.js backend/services/courseVideoProgressDay4.test.js backend/services/courseSyncDay5To7.test.js backend/services/courseOpsDay8To10.test.js backend/services/molyIntegration.service.test.js backend/services/molySso.service.test.js backend/services/externalCourseMapping.service.test.js",
     "worker": "cross-env NODE_ENV=production node ./backend/worker.js",
     "start": "cross-env NODE_ENV=production node ./backend/server.js"
   },

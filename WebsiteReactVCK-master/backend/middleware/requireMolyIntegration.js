@@ -63,6 +63,7 @@ const deny = (res, status, errorCode, message, correlationId = null) => res.stat
 export const createRequireMolyIntegration = ({
   requireIdempotencyKey = true,
   allowBodylessGet = false,
+  allowBodylessDelete = true,
   configOverrides = {},
 } = {}) => (req, res, next) => {
   const correlationRaw = HEADER_VALUE(req, "X-Correlation-ID");
@@ -117,11 +118,14 @@ export const createRequireMolyIntegration = ({
   }
 
   const httpMethod = String(req.method || "POST").toUpperCase();
-  const isBodylessRead = allowBodylessGet && (httpMethod === "GET" || httpMethod === "HEAD")
-    && (!Buffer.isBuffer(req.rawBody) || req.rawBody.length === 0);
+  const hasRawBody = Buffer.isBuffer(req.rawBody) && req.rawBody.length > 0;
+  const isBodylessMethod = !hasRawBody && (
+    (allowBodylessGet && (httpMethod === "GET" || httpMethod === "HEAD"))
+    || (allowBodylessDelete && httpMethod === "DELETE")
+  );
 
   let expectedSignature;
-  if (isBodylessRead) {
+  if (isBodylessMethod) {
     expectedSignature = computeMolyGetSignature({
       timestamp: timestampHeader,
       method: httpMethod,

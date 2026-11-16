@@ -178,6 +178,7 @@ export const createSsoRouter = ({ ssoService = createMolySsoService(), loadUserD
   router.post("/moly/authorize", ssoRateLimiter, protectRoute, async (req, res) => {
     try {
       const targetPath = req.body?.targetPath ?? req.body?.target_path ?? "/khoa-hoc";
+      const loginCtx = getRequestLoginContext(req);
       const result = await ssoService.authorizeMolySsoRequest({
         userId: req.user.id,
         state: req.body?.state ?? "",
@@ -188,6 +189,8 @@ export const createSsoRouter = ({ ssoService = createMolySsoService(), loadUserD
         scopeType: req.body?.scopeType ?? req.body?.scope_type ?? "account",
         scopedLocalCourseId: req.body?.scopedLocalCourseId ?? req.body?.scoped_local_course_id ?? null,
         scopedExternalCourseId: req.body?.scopedExternalCourseId ?? req.body?.scoped_external_course_id ?? null,
+        deviceToken: loginCtx.deviceToken,
+        trustedDeviceId: req.auth?.trustedDeviceId ?? req.trustedDeviceId ?? null,
         correlationId: req.headers["x-correlation-id"] || undefined,
       });
       return res.status(200).json({

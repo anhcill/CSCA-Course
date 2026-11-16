@@ -334,7 +334,7 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   assert.ok(playbackRes.body.data.hlsUrl.includes("playlist.m3u8?token="));
   assert.equal(JSON.stringify(playbackRes.body).includes("super-secret-bunny-signing-key-never-leak"), false);
 
-  // 9. Progress heartbeat validation and completion at >= 60%
+  // 9. Progress heartbeat validation and completion at >= 50%
   // A first-heartbeat spoof is capped to a small startup allowance; client duration is ignored.
   const spoofProgressRes = await invokeRoute(bunnyVideoRouter, "put", "/videos/:videoId/progress", {
     user: recordStudent,

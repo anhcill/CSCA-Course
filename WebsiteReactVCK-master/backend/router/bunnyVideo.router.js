@@ -27,6 +27,7 @@ import {
   safeRecordUnitContentMutation,
   safeRecordVideoAssetContentMutation,
 } from "../services/courseCurriculumSync.service.js";
+import { safeRecordLearningFileUpsertedOutbox } from "../services/delegatedFiles.service.js";
 
 const router = express.Router();
 
@@ -147,10 +148,10 @@ export const verifyLearnerVideoAccess = async ({
     if (requireRecordingMode && enrollment.learning_mode !== "recording") {
       const mirrorRes = await db.query(
         `SELECT 1 FROM video_course_profiles
-         WHERE source_live_class_id = $1 AND course_id = $2
+         WHERE source_live_class_id = $1
            AND status = 'active' AND mode = 'MIRROR'
          LIMIT 1`,
-        [liveClassId, courseId],
+        [liveClassId],
       );
       if (mirrorRes.rows.length === 0) {
         return {
@@ -216,8 +217,12 @@ export const verifyLearnerVideoAccess = async ({
       `SELECT COALESCE(BOOL_OR(enforce_trusted_devices), TRUE) AS enforce_trusted_devices,
               COALESCE(MIN(device_limit) FILTER (WHERE enforce_trusted_devices = TRUE), $2)::int AS device_limit
        FROM video_course_profiles
-       WHERE course_id = $1 AND status = 'active'`,
-      [courseId, 2],
+       WHERE status = 'active'
+         AND (
+           ($3::bigint IS NOT NULL AND mode = 'MIRROR' AND source_live_class_id = $3)
+           OR ($3::bigint IS NULL AND course_id = $1)
+         )`,
+      [courseId, 2, liveClassId],
     );
     const profile = profileRes.rows[0] || {};
     try {
@@ -1085,6 +1090,13 @@ router.put("/videos/:videoId/progress", protectRoute, async (req, res) => {
       }
     }
 
+    const prevUnitProgress = await getUnitVideoProgressAggregate({
+      db: { query },
+      userId: req.user.id,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+    }).catch(() => null);
+
     const progress = await recordVideoWatchProgress({
       userId: req.user.id,
       videoAssetId: ctx.asset.id,
@@ -1095,6 +1107,22 @@ router.put("/videos/:videoId/progress", protectRoute, async (req, res) => {
       currentTimeSeconds,
       watchedDeltaSeconds,
       durationSeconds,
+    });
+
+    const { emitNativeProgressOutboxEvents } = await import("../services/delegatedLearning.service.js");
+    await emitNativeProgressOutboxEvents({
+      db: { query },
+      userId: req.user.id,
+      courseId: ctx.courseId,
+      liveClassId: ctx.liveClassId,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+      videoAssetId: ctx.asset.id,
+      videoProgress: progress,
+      wasCompletedBefore: Boolean(prevUnitProgress?.isCompleted),
+      correlationId: req.headers?.["x-correlation-id"] || undefined,
+    }).catch((err) => {
+      console.warn("[bunnyVideo] Failed to enqueue native progress outbox event:", err?.message || err);
     });
 
     return res.json({
@@ -1186,7 +1214,7 @@ router.get("/admin/learning-units/:unitId/content", protectRoute, requireAdmin, 
                     llfp.id AS placement_id, llfp.sort_order
              FROM lesson_learning_file_placements llfp
              JOIN lms_learning_files lf ON lf.id = llfp.file_id
-             WHERE llfp.lesson_id = $1 AND lf.status = 'ready'
+             WHERE llfp.lesson_id = $1 AND lf.status = 'ready' AND lf.deleted_at IS NULL
              ORDER BY llfp.sort_order ASC, llfp.id ASC`,
             [target.lessonId],
           )
@@ -1196,7 +1224,7 @@ router.get("/admin/learning-units/:unitId/content", protectRoute, requireAdmin, 
                     lfp.id AS placement_id
              FROM lms_learning_file_placements lfp
              JOIN lms_learning_files lf ON lf.id = lfp.file_id
-             WHERE lfp.class_session_id = $1 AND lf.status = 'ready'
+             WHERE lfp.class_session_id = $1 AND lfp.deleted_at IS NULL AND lf.status = 'ready' AND lf.deleted_at IS NULL
              ORDER BY lfp.id ASC`,
             [target.classSessionId],
           ),
@@ -1539,6 +1567,7 @@ router.post("/admin/learning-units/:unitId/files", protectRoute, requireAdmin, a
         [fileId, target.lessonId, req.user.id, Number(req.body?.sortOrder || 0)],
       );
       await emitUnitContentChanged(req, target);
+      await safeRecordLearningFileUpsertedOutbox({ fileId, correlationId: req.get?.("X-Correlation-ID") || null });
       return res.status(201).json({
         success: true,
         data: placeRes.rows[0],
@@ -1547,13 +1576,15 @@ router.post("/admin/learning-units/:unitId/files", protectRoute, requireAdmin, a
     }
 
     const placeRes = await query(
-      `INSERT INTO lms_learning_file_placements (file_id, live_class_id, class_session_id, attached_by)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (file_id, class_session_id) WHERE class_session_id IS NOT NULL DO NOTHING
+      `INSERT INTO lms_learning_file_placements (file_id, live_class_id, class_session_id, attached_by, deleted_at)
+       VALUES ($1, $2, $3, $4, NULL)
+       ON CONFLICT (file_id, live_class_id, class_session_id) WHERE class_session_id IS NOT NULL
+       DO UPDATE SET deleted_at = NULL, updated_at = NOW()
        RETURNING *`,
       [fileId, target.classId, target.classSessionId, req.user.id],
     );
     await emitUnitContentChanged(req, target);
+    await safeRecordLearningFileUpsertedOutbox({ fileId, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.status(201).json({
       success: true,
       data: placeRes.rows[0] || { file_id: fileId, class_session_id: target.classSessionId },
@@ -1851,12 +1882,13 @@ router.post("/admin/learning-units/:unitId/files/confirm", protectRoute, require
       await query(
         `INSERT INTO lms_learning_file_placements (file_id, live_class_id, class_session_id, attached_by)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT (file_id, class_session_id) WHERE class_session_id IS NOT NULL DO NOTHING`,
+         ON CONFLICT (file_id, live_class_id, class_session_id) WHERE class_session_id IS NOT NULL DO NOTHING`,
         [fileId, target.classId, target.classSessionId, req.user.id],
       );
     }
 
     await emitUnitContentChanged(req, target);
+    await safeRecordLearningFileUpsertedOutbox({ fileId, correlationId: req.get?.("X-Correlation-ID") || null });
 
     return res.json({
       success: true,
@@ -1891,6 +1923,7 @@ router.delete("/admin/learning-units/:unitId/files/:fileId", protectRoute, requi
     }
 
     await emitUnitContentChanged(req, target);
+    await safeRecordLearningFileUpsertedOutbox({ fileId, correlationId: req.get?.("X-Correlation-ID") || null });
 
     return res.json({ success: true, message: "Đã gỡ tài liệu khỏi bài học" });
   } catch (error) {
@@ -1911,7 +1944,7 @@ router.get("/admin/learning-units/:unitId/files/reusable", protectRoute, require
                   lf.mime_type, lf.created_at
            FROM lms_learning_files lf
            WHERE (lf.course_id = $1 OR lf.course_id IS NULL)
-             AND lf.status = 'ready'
+             AND lf.status = 'ready' AND lf.deleted_at IS NULL
              AND lf.id NOT IN (
                SELECT file_id FROM lesson_learning_file_placements WHERE lesson_id = $2
              )
@@ -1924,9 +1957,9 @@ router.get("/admin/learning-units/:unitId/files/reusable", protectRoute, require
                   lf.mime_type, lf.created_at
            FROM lms_learning_files lf
            WHERE (lf.course_id = $1 OR lf.course_id IS NULL)
-             AND lf.status = 'ready'
+             AND lf.status = 'ready' AND lf.deleted_at IS NULL
              AND lf.id NOT IN (
-               SELECT file_id FROM lms_learning_file_placements WHERE class_session_id = $2
+               SELECT file_id FROM lms_learning_file_placements WHERE class_session_id = $2 AND deleted_at IS NULL
              )
            ORDER BY lf.id DESC
            LIMIT 50`,

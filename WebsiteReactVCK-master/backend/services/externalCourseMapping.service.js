@@ -1,6 +1,10 @@
 import crypto from "crypto";
 import { getClient, query } from "../db/connect.js";
 import { recordAuditEvent } from "./audit.service.js";
+import {
+  isRepairMutationsKillSwitchActive,
+  recordIntegrationMetric,
+} from "./integrationLogger.service.js";
 
 export const ALLOWED_SOURCE_SYSTEMS = new Set(["moly", "csca-course", "internal-management"]);
 export const COURSE_MAPPING_STATUSES = new Set(["active", "inactive", "archived"]);
@@ -19,6 +23,20 @@ export class ExternalIntegrationError extends Error {
     this.details = details;
   }
 }
+
+export const assertRepairMutationsAllowed = (
+  env = process.env,
+  { metricName = "integration.repair_mutation_blocked_kill_switch" } = {},
+) => {
+  if (isRepairMutationsKillSwitchActive(env)) {
+    if (metricName) recordIntegrationMetric(metricName);
+    throw new ExternalIntegrationError(
+      503,
+      "SYNC_KILL_SWITCH_ACTIVE",
+      "Repair and write mutations are disabled by kill switch.",
+    );
+  }
+};
 
 const defaultDb = { query, getClient };
 
@@ -156,8 +174,9 @@ const formatMappingRow = (row) => {
 export const upsertManualCourseMapping = async (
   db = defaultDb,
   input = {},
-  { recordAudit = recordAuditEvent, auditMetadata = {} } = {},
+  { recordAudit = recordAuditEvent, auditMetadata = {}, env = process.env } = {},
 ) => {
+  assertRepairMutationsAllowed(env, { metricName: "moly.course_mapping.blocked_kill_switch" });
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "Expected a mapping payload object.");
   }
@@ -444,8 +463,9 @@ export const listCourseMappings = async (db = defaultDb, filters = {}) => {
 export const updateCourseMappingStatus = async (
   db = defaultDb,
   { id, status, notes, actorId } = {},
-  { recordAudit = recordAuditEvent, auditMetadata = {} } = {},
+  { recordAudit = recordAuditEvent, auditMetadata = {}, env = process.env } = {},
 ) => {
+  assertRepairMutationsAllowed(env, { metricName: "moly.course_mapping.blocked_kill_switch" });
   const mappingId = parsePositiveBigIntId(id, "id");
   const normalizedStatus = typeof status === "string" ? status.trim().toLowerCase() : "";
   if (!COURSE_MAPPING_STATUSES.has(normalizedStatus)) {

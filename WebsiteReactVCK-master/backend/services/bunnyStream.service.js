@@ -5,7 +5,7 @@ import { recordAuditEvent } from "./audit.service.js";
 export const BUNNY_TUS_ENDPOINT = "https://video.bunnycdn.com/tusupload";
 export const MAX_BUNNY_VIDEO_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 export const PLAYBACK_TOKEN_TTL_SECONDS = 600; // 10 minutes
-export const COMPLETION_THRESHOLD_PERCENT = 60;
+export const COMPLETION_THRESHOLD_PERCENT = 50;
 export const MAX_SINGLE_HEARTBEAT_SECONDS = 90;
 const FIRST_HEARTBEAT_ALLOWANCE_SECONDS = 12;
 const HEARTBEAT_CLOCK_SKEW_SECONDS = 0.5;
@@ -541,6 +541,8 @@ export const generateBunnySignedPlayback = ({
   userEmail = "",
   ipAddress = null,
   ttlSeconds = PLAYBACK_TOKEN_TTL_SECONDS,
+  minTtlSeconds = 60,
+  maxTtlSeconds = 900,
 }) => {
   const config = getBunnyConfig();
   requireBunnyConfig(config, ["libraryId", "tokenSecurityKey", "cdnHostname"]);
@@ -551,7 +553,10 @@ export const generateBunnySignedPlayback = ({
     throw new BunnyStreamError("VIDEO_NOT_READY", "Video chưa có định danh Bunny Stream", { status: 409 });
   }
 
-  const effectiveTtl = Math.min(Math.max(60, Number(ttlSeconds) || PLAYBACK_TOKEN_TTL_SECONDS), 900);
+  const effectiveTtl = Math.min(
+    Math.max(minTtlSeconds, Number(ttlSeconds) || PLAYBACK_TOKEN_TTL_SECONDS),
+    maxTtlSeconds,
+  );
   const expires = Math.floor(Date.now() / 1000) + effectiveTtl;
 
   // Bunny Embed View Token: SHA256_HEX(token_security_key + video_id + expires)
@@ -690,6 +695,7 @@ export const recordVideoWatchProgress = async ({
   currentTimeSeconds = 0,
   watchedDeltaSeconds = null,
   durationSeconds = null,
+  now = () => new Date(),
   db = { query },
 }) => {
   const assetRes = await db.query(
@@ -722,6 +728,10 @@ export const recordVideoWatchProgress = async ({
   const existing = existingRes.rows[0] || null;
   const prevWatched = Number(existing?.watched_seconds || 0);
 
+  const currentNow = now();
+  const currentMs = currentNow instanceof Date ? currentNow.getTime() : Number(currentNow);
+  const heartbeatIso = new Date(currentMs).toISOString();
+
   // Credit continuous playback time instead of changes to the playback position alone.
   // Only actual playback delta (watchedDeltaSeconds) is credited; scrubbing/seeking position changes alone add 0s.
   let validDelta = 0;
@@ -730,7 +740,7 @@ export const recordVideoWatchProgress = async ({
     if (Number.isFinite(rawDelta) && rawDelta > 0) {
       const lastHeartbeatAt = existing?.last_heartbeat_at ? new Date(existing.last_heartbeat_at).getTime() : null;
       const elapsedSeconds = lastHeartbeatAt && Number.isFinite(lastHeartbeatAt)
-        ? Math.max(0, (Date.now() - lastHeartbeatAt) / 1000)
+        ? Math.max(0, (currentMs - lastHeartbeatAt) / 1000)
         : FIRST_HEARTBEAT_ALLOWANCE_SECONDS;
       const elapsedCreditCap = Math.max(0, elapsedSeconds + HEARTBEAT_CLOCK_SKEW_SECONDS);
       validDelta = Math.min(rawDelta, MAX_SINGLE_HEARTBEAT_SECONDS, elapsedCreditCap);
@@ -757,7 +767,7 @@ export const recordVideoWatchProgress = async ({
        (user_id, video_asset_id, course_id, live_class_id, class_session_id, lesson_id,
         last_position_seconds, watched_seconds, completion_percent, is_completed,
         completed_at, last_heartbeat_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $10 THEN NOW() ELSE NULL END, NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $10 THEN $11::timestamptz ELSE NULL END, $11::timestamptz)
      ON CONFLICT (user_id, video_asset_id)
      DO UPDATE SET
        course_id = COALESCE(EXCLUDED.course_id, video_watch_progress.course_id),
@@ -768,8 +778,8 @@ export const recordVideoWatchProgress = async ({
        watched_seconds = EXCLUDED.watched_seconds,
        completion_percent = EXCLUDED.completion_percent,
        is_completed = EXCLUDED.is_completed,
-       completed_at = COALESCE(video_watch_progress.completed_at, CASE WHEN EXCLUDED.is_completed THEN NOW() ELSE NULL END),
-       last_heartbeat_at = NOW(),
+       completed_at = COALESCE(video_watch_progress.completed_at, CASE WHEN EXCLUDED.is_completed THEN $11::timestamptz ELSE NULL END),
+       last_heartbeat_at = $11::timestamptz,
        updated_at = NOW()
      RETURNING *`,
     [
@@ -783,6 +793,7 @@ export const recordVideoWatchProgress = async ({
       newWatchedSeconds,
       finalPercent,
       isCompleted,
+      heartbeatIso,
     ],
   );
 

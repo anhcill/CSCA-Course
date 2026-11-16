@@ -132,6 +132,7 @@ test("video course workspace: Live learner inherits only the matching MIRROR Rec
   const { pool } = await import("../db/connect.js");
   bindPoolToDb(pool, db);
   const videoCourseRouter = (await import("./videoCourse.router.js")).default;
+  const { verifyLearnerVideoAccess } = await import("./bunnyVideo.router.js");
 
   const teacher = (await db.query(
     "INSERT INTO users(username,email,role) VALUES ('inherit-teacher','inherit-teacher@example.test','creator') RETURNING id",
@@ -208,6 +209,25 @@ test("video course workspace: Live learner inherits only the matching MIRROR Rec
   assert.equal(inherited.body.data.activeUnit.id, String(session.id));
   assert.equal(inherited.body.data.capabilities.canJoinLive, false);
   assert.equal(inherited.body.data.capabilities.canReviewFreely, true);
+
+  const playbackAccess = await verifyLearnerVideoAccess({
+    user: { ...learner, role: "user", is_management_managed: true, lms_account_status: "active" },
+    courseId: liveCourse.id,
+    liveClassId: liveClass.id,
+    req: { authSession: { trustedDeviceId: learnerDeviceId } },
+    db,
+  });
+  assert.equal(playbackAccess.allowed, true, JSON.stringify(playbackAccess));
+
+  const wrongPlaybackAccess = await verifyLearnerVideoAccess({
+    user: { ...wrongGrantLearner, role: "user", is_management_managed: true, lms_account_status: "active" },
+    courseId: liveCourse.id,
+    liveClassId: liveClass.id,
+    req: { authSession: { trustedDeviceId: wrongDeviceId } },
+    db,
+  });
+  assert.equal(wrongPlaybackAccess.allowed, false);
+  assert.equal(wrongPlaybackAccess.errorCode, "ENTITLEMENT_INACTIVE");
 
   const laterSession = (await db.query(
     "INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status) VALUES ($1,'Review later lesson',NOW() + INTERVAL '1 day',NOW() + INTERVAL '1 day 1 hour','ended') RETURNING id",
@@ -403,7 +423,7 @@ test("video course workspace: INDEPENDENT mode returns lessons without live clas
   assert.equal(res.body.data.capabilities.canJoinLive, false);
 });
 
-test("video course workspace: multipart units require every video part >=60% plus quiz completion", async (t) => {
+test("video course workspace: multipart units require every video part >=50% plus quiz completion", async (t) => {
   const db = new PGlite();
   t.after(() => db.close());
   await db.exec(await fs.readFile("database/schema.sql", "utf8"));
@@ -610,7 +630,7 @@ test("video course workspace: multipart units require every video part >=60% plu
     watchedDeltaSeconds: 0,
   });
   await db.query(
-    `UPDATE video_watch_progress SET last_heartbeat_at = NOW() - INTERVAL '60 seconds'
+    `UPDATE video_watch_progress SET last_heartbeat_at = NOW() - INTERVAL '50 seconds'
      WHERE user_id = $1 AND video_asset_id = $2`,
     [student.id, asset1Part2.id],
   );
@@ -620,11 +640,11 @@ test("video course workspace: multipart units require every video part >=60% plu
     courseId: course.id,
     liveClassId: liveClass.id,
     classSessionId: session1.id,
-    currentTimeSeconds: 60,
-    watchedDeltaSeconds: 60,
+    currentTimeSeconds: 50,
+    watchedDeltaSeconds: 50,
   });
-  assert.equal(part2Target.completionPercent, 60);
-  assert.equal(part2Target.unitProgress.completionPercent, 61.33);
+  assert.equal(part2Target.completionPercent, 50);
+  assert.equal(part2Target.unitProgress.completionPercent, 58);
   assert.equal(part2Target.unitProgress.isCompleted, true);
 
   ws = await fetchWorkspace();

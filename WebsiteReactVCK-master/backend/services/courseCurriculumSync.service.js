@@ -196,17 +196,19 @@ export async function loadProfileCurriculumTree(
       ),
       runner.query(
         `SELECT lf.id AS file_id, lf.class_session_id AS unit_id, lf.original_name,
-                lf.mime_type, lf.size_bytes, lf.updated_at
+                lf.mime_type, lf.size_bytes, lf.sync_revision AS revision, lf.updated_at,
+                NULL::bigint AS placement_id, 0 AS sort_order
          FROM lms_learning_files lf
-         WHERE lf.class_session_id = ANY($1::bigint[]) AND lf.status = 'ready'`,
+         WHERE lf.class_session_id = ANY($1::bigint[]) AND lf.status = 'ready' AND lf.deleted_at IS NULL`,
         [sessionIds],
       ),
       runner.query(
         `SELECT lfp.class_session_id AS unit_id, lf.id AS file_id, lf.original_name,
-                lf.mime_type, lf.size_bytes, lf.updated_at
+                lf.mime_type, lf.size_bytes, lf.sync_revision AS revision, lf.updated_at,
+                lfp.id AS placement_id, COALESCE(lfp.sort_order, 0) AS sort_order
          FROM lms_learning_file_placements lfp
          JOIN lms_learning_files lf ON lf.id = lfp.file_id
-         WHERE lfp.class_session_id = ANY($1::bigint[]) AND lf.status = 'ready'`,
+         WHERE lfp.class_session_id = ANY($1::bigint[]) AND lfp.deleted_at IS NULL AND lf.status = 'ready' AND lf.deleted_at IS NULL`,
         [sessionIds],
       ),
       runner.query(
@@ -248,8 +250,23 @@ export async function loadProfileCurriculumTree(
     for (const row of [...directFilesRes.rows, ...placedFilesRes.rows]) {
       const k = String(row.unit_id);
       if (!filesByUnit.has(k)) filesByUnit.set(k, new Map());
-      if (!filesByUnit.get(k).has(String(row.file_id))) {
-        filesByUnit.get(k).set(String(row.file_id), row);
+      const fMap = filesByUnit.get(k);
+      const existing = fMap.get(String(row.file_id));
+      const placementEntry = row.placement_id
+        ? {
+          placementId: String(row.placement_id),
+          unitType: "class_session",
+          unitId: String(row.unit_id),
+          sortOrder: Number(row.sort_order || 0),
+        }
+        : null;
+      if (!existing) {
+        fMap.set(String(row.file_id), {
+          ...row,
+          placements: placementEntry ? [placementEntry] : [],
+        });
+      } else if (placementEntry) {
+        existing.placements.push(placementEntry);
       }
     }
 
@@ -295,19 +312,26 @@ export async function loadProfileCurriculumTree(
       const hasTheory = Boolean(
         th && (th.has_content_html || th.has_transcript || th.summary || th.takeaway_count > 0 || th.timestamp_count > 0),
       );
-      const unitFiles = Array.from((filesByUnit.get(uKey) || new Map()).values()).map((f, fIdx) => ({
-        fileId: String(f.file_id),
-        title: f.original_name || `Tài liệu ${fIdx + 1}`,
-        originalFilename: f.original_name || null,
-        mimeType: f.mime_type || null,
-        fileKind: inferFileKind(f.mime_type, f.original_name),
-        sizeBytes: f.size_bytes != null ? Number(f.size_bytes) : null,
-        isSlide: inferFileKind(f.mime_type, f.original_name) === "slides",
-        allowDownloadOverride: null,
-        sortOrder: fIdx,
-        isPublished: unitPublished,
-        updatedAt: toIso(f.updated_at),
-      }));
+      const unitFiles = Array.from((filesByUnit.get(uKey) || new Map()).values()).map((f, fIdx) => {
+        const fileKind = inferFileKind(f.mime_type, f.original_name);
+        return {
+          fileId: String(f.file_id),
+          title: f.original_name || `Tài liệu ${fIdx + 1}`,
+          originalFilename: f.original_name || null,
+          mimeType: f.mime_type || null,
+          fileKind,
+          sizeBytes: f.size_bytes != null ? Number(f.size_bytes) : null,
+          isSlide: fileKind === "slides",
+          allowView: true,
+          allowDownload: profile.allow_file_download === true,
+          allowDownloadOverride: null,
+          sortOrder: Number(f.sort_order ?? fIdx),
+          isPublished: unitPublished,
+          revision: Number(f.revision || 1),
+          updatedAt: toIso(f.updated_at),
+          placements: Array.isArray(f.placements) ? f.placements : [],
+        };
+      });
 
       const unitQuizzes = (quizByUnit.get(uKey) || []).map((q) => ({
         quizId: String(q.id),
@@ -462,11 +486,11 @@ export async function loadProfileCurriculumTree(
         [lessonIds],
       ),
       runner.query(
-        `SELECT llfp.lesson_id AS unit_id, llfp.sort_order, lf.id AS file_id,
-                lf.original_name, lf.mime_type, lf.size_bytes, lf.updated_at
+        `SELECT llfp.id AS placement_id, llfp.lesson_id AS unit_id, llfp.sort_order, lf.id AS file_id,
+                lf.original_name, lf.mime_type, lf.size_bytes, lf.sync_revision AS revision, lf.updated_at
          FROM lesson_learning_file_placements llfp
          JOIN lms_learning_files lf ON lf.id = llfp.file_id
-         WHERE llfp.lesson_id = ANY($1::bigint[]) AND lf.status = 'ready'
+         WHERE llfp.lesson_id = ANY($1::bigint[]) AND lf.status = 'ready' AND lf.deleted_at IS NULL
          ORDER BY llfp.lesson_id ASC, llfp.sort_order ASC, llfp.id ASC`,
         [lessonIds],
       ),
@@ -545,19 +569,33 @@ export async function loadProfileCurriculumTree(
     const hasTheory = Boolean(
       th && (th.has_content_html || th.has_transcript || th.summary || th.takeaway_count > 0 || th.timestamp_count > 0),
     );
-    const unitFiles = (filesByUnit.get(uKey) || []).map((f, fIdx) => ({
-      fileId: String(f.file_id),
-      title: f.original_name || `Tài liệu ${fIdx + 1}`,
-      originalFilename: f.original_name || null,
-      mimeType: f.mime_type || null,
-      fileKind: inferFileKind(f.mime_type, f.original_name),
-      sizeBytes: f.size_bytes != null ? Number(f.size_bytes) : null,
-      isSlide: inferFileKind(f.mime_type, f.original_name) === "slides",
-      allowDownloadOverride: null,
-      sortOrder: Number(f.sort_order ?? fIdx),
-      isPublished: unitPublished,
-      updatedAt: toIso(f.updated_at),
-    }));
+    const unitFiles = (filesByUnit.get(uKey) || []).map((f, fIdx) => {
+      const fileKind = inferFileKind(f.mime_type, f.original_name);
+      return {
+        fileId: String(f.file_id),
+        title: f.original_name || `Tài liệu ${fIdx + 1}`,
+        originalFilename: f.original_name || null,
+        mimeType: f.mime_type || null,
+        fileKind,
+        sizeBytes: f.size_bytes != null ? Number(f.size_bytes) : null,
+        isSlide: fileKind === "slides",
+        allowView: true,
+        allowDownload: profile.allow_file_download === true,
+        allowDownloadOverride: null,
+        sortOrder: Number(f.sort_order ?? fIdx),
+        isPublished: unitPublished,
+        revision: Number(f.revision || 1),
+        updatedAt: toIso(f.updated_at),
+        placements: f.placement_id
+          ? [{
+            placementId: String(f.placement_id),
+            unitType: "lesson",
+            unitId: String(f.unit_id),
+            sortOrder: Number(f.sort_order ?? fIdx),
+          }]
+          : [],
+      };
+    });
     const unitQuizzes = (quizByUnit.get(uKey) || []).map((q) => ({
       quizId: String(q.id),
       title: q.title,
@@ -871,6 +909,48 @@ async function resolveCourseAndProfilesForUnit(runner, { unitType, unitId, cours
   return { courseId: resolvedCourseId, profileIds: [...new Set(targetProfileIds)] };
 }
 
+async function exportAllCurriculumPages({
+  db,
+  courseId,
+  profileId = null,
+  includeTombstoned = true,
+  correlationId = null,
+} = {}) {
+  let cursor = null;
+  let firstPage = null;
+  const profilesById = new Map();
+
+  for (let page = 0; page < 100; page += 1) {
+    const chunk = await exportCourseCurriculum({
+      db,
+      courseId,
+      profileId,
+      includeTombstoned,
+      cursor,
+      limit: 500,
+      correlationId,
+    });
+    if (!firstPage) {
+      firstPage = { ...chunk, profiles: [] };
+    }
+    for (const prof of chunk.profiles || []) {
+      const key = String(prof.profileId);
+      if (!profilesById.has(key)) {
+        profilesById.set(key, { ...prof, units: [...(prof.units || [])] });
+      } else {
+        profilesById.get(key).units.push(...(prof.units || []));
+      }
+    }
+    if (!chunk.pagination?.hasMore || !chunk.pagination?.nextCursor) break;
+    cursor = chunk.pagination.nextCursor;
+  }
+
+  return {
+    ...(firstPage || { course: null }),
+    profiles: [...profilesById.values()],
+  };
+}
+
 /**
  * Enqueues a `curriculum.upserted` or `curriculum.tombstoned` v2 event after curriculum edits.
  */
@@ -950,12 +1030,11 @@ export async function recordCurriculumMutation({
       [rev, resolvedCourseId, scopedProfileId],
     );
 
-    const exported = await exportCourseCurriculum({
+    const exported = await exportAllCurriculumPages({
       db: tx,
       courseId: resolvedCourseId,
       profileId: scopedProfileId,
       includeTombstoned: true,
-      limit: 500,
       correlationId: corr,
     });
     if (!exported.profiles.length) return null;
@@ -1036,11 +1115,10 @@ export async function recordUnitContentMutation({
       [rev, resolved.courseId],
     );
 
-    const exported = await exportCourseCurriculum({
+    const exported = await exportAllCurriculumPages({
       db: tx,
       courseId: resolved.courseId,
       includeTombstoned: true,
-      limit: 500,
       correlationId: corr,
     });
 

@@ -51,25 +51,37 @@ export const resolveCorrelationId = (candidate) => {
   return crypto.randomUUID();
 };
 
-export const isMolyIntegrationKillSwitchActive = (env = process.env) => {
-  const disabledFlag = String(env?.MOLY_INTEGRATION_SYNC_DISABLED || "").trim().toLowerCase();
-  const killFlag = String(env?.MOLY_INTEGRATION_KILL_SWITCH || "").trim().toLowerCase();
-  return disabledFlag === "true" || killFlag === "true";
-};
+const isEnvFlagTrue = (env, keys = []) =>
+  keys.some((key) => String(env?.[key] || "").trim().toLowerCase() === "true");
 
-export const isCatalogSyncKillSwitchActive = (env = process.env) => {
-  if (isMolyIntegrationKillSwitchActive(env)) return true;
-  const catalogDisabled = String(env?.COURSE_CATALOG_SYNC_DISABLED || "").trim().toLowerCase();
-  const molyCatalogDisabled = String(env?.MOLY_CATALOG_SYNC_DISABLED || "").trim().toLowerCase();
-  return catalogDisabled === "true" || molyCatalogDisabled === "true";
-};
+export const isMolyIntegrationKillSwitchActive = (env = process.env) =>
+  isEnvFlagTrue(env, ["MOLY_INTEGRATION_SYNC_DISABLED", "MOLY_INTEGRATION_KILL_SWITCH"]);
 
-export const isDelegatedLearningKillSwitchActive = (env = process.env) => {
-  if (isMolyIntegrationKillSwitchActive(env)) return true;
-  const flagA = String(env?.DELEGATED_LEARNING_KILL_SWITCH || "").trim().toLowerCase();
-  const flagB = String(env?.MOLY_DELEGATED_LEARNING_DISABLED || "").trim().toLowerCase();
-  return flagA === "true" || flagB === "true";
-};
+export const isContentSyncKillSwitchActive = (env = process.env) =>
+  isMolyIntegrationKillSwitchActive(env) ||
+  isEnvFlagTrue(env, [
+    "COURSE_CONTENT_SYNC_DISABLED",
+    "COURSE_CATALOG_SYNC_DISABLED",
+    "MOLY_CATALOG_SYNC_DISABLED",
+  ]);
+
+export const isCatalogSyncKillSwitchActive = isContentSyncKillSwitchActive;
+
+export const isDelegatedLearningKillSwitchActive = (env = process.env) =>
+  isMolyIntegrationKillSwitchActive(env) ||
+  isEnvFlagTrue(env, [
+    "DELEGATED_LEARNING_KILL_SWITCH",
+    "MOLY_DELEGATED_LEARNING_DISABLED",
+    "MOLY_DELEGATED_LEARNING_KILL_SWITCH",
+  ]);
+
+export const isRepairMutationsKillSwitchActive = (env = process.env) =>
+  isMolyIntegrationKillSwitchActive(env) ||
+  isEnvFlagTrue(env, [
+    "COURSE_REPAIR_MUTATIONS_DISABLED",
+    "MOLY_REPAIR_MUTATIONS_DISABLED",
+    "REPAIR_MUTATIONS_KILL_SWITCH",
+  ]);
 
 const metricsCounters = new Map();
 const latencyStats = new Map();
@@ -91,7 +103,7 @@ export const observeIntegrationLatency = (name, durationMs) => {
   });
 };
 
-export const getIntegrationMetricsSnapshot = () => {
+export const getIntegrationMetricsSnapshot = (env = process.env) => {
   const counters = {};
   for (const [k, v] of metricsCounters.entries()) counters[k] = v;
   const latencies = {};
@@ -103,10 +115,13 @@ export const getIntegrationMetricsSnapshot = () => {
       lastMs: Math.round(stat.lastMs * 100) / 100,
     };
   }
+  const contentSyncKillSwitchActive = isContentSyncKillSwitchActive(env);
   return {
-    killSwitchActive: isMolyIntegrationKillSwitchActive(),
-    catalogSyncKillSwitchActive: isCatalogSyncKillSwitchActive(),
-    delegatedLearningKillSwitchActive: isDelegatedLearningKillSwitchActive(),
+    killSwitchActive: isMolyIntegrationKillSwitchActive(env),
+    contentSyncKillSwitchActive,
+    catalogSyncKillSwitchActive: contentSyncKillSwitchActive,
+    delegatedLearningKillSwitchActive: isDelegatedLearningKillSwitchActive(env),
+    repairMutationsKillSwitchActive: isRepairMutationsKillSwitchActive(env),
     counters,
     latencies,
   };

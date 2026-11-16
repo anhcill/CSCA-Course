@@ -1,5 +1,5 @@
 import express from "express";
-import { query } from "../db/connect.js";
+import { getClient, query } from "../db/connect.js";
 import protectRoute from "../middleware/protectRoute.js";
 import requireAdmin from "../middleware/requireAdmin.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
@@ -27,10 +27,23 @@ import {
   safeRecordCurriculumMutation,
   safeRecordUnitContentMutation,
 } from "../services/courseCurriculumSync.service.js";
+import {
+  createUnitBookmarkForAuthorizedUnit,
+  createUnitNoteForAuthorizedUnit,
+  createUnitQaThreadForAuthorizedUnit,
+  deleteUnitBookmarkForAuthorizedUnit,
+  deleteUnitNoteForAuthorizedUnit,
+  listUnitBookmarksForAuthorizedUnit,
+  listUnitQaThreadsForAuthorizedUnit,
+  replyUnitQaThreadForAuthorizedActor,
+  updateUnitNoteForAuthorizedUnit,
+  updateUnitQaThreadStatusForAuthorizedActor,
+} from "../services/delegatedNotesQa.service.js";
+import { ExternalIntegrationError } from "../services/externalCourseMapping.service.js";
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
-const VIDEO_COMPLETION_PERCENT = 60;
+const VIDEO_COMPLETION_PERCENT = 50;
 
 const validationError = (res, message) => res.status(422).json({
   success: false,
@@ -647,7 +660,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           });
         } else {
         // Fetch unit details: all videos, theory, files, assignments, quizzes, vocabulary, formulas, notes
-        const [videosRes, theoryRes, filesRes, assignRes, quizRes, vocabRes, formulaRes, notesRes] = await Promise.all([
+        const [videosRes, theoryRes, filesRes, assignRes, quizRes, vocabRes, formulaRes, notesRes, unitBookmarks, unitQaThreads] = await Promise.all([
           query(
             `SELECT csv.id AS placement_id, csv.title AS part_title, csv.video_type, csv.sort_order, csv.is_published,
                     va.id AS asset_id, va.title AS asset_title, va.provider, va.provider_library_id, va.provider_video_id,
@@ -679,7 +692,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                FROM lms_learning_files lf
                JOIN class_sessions cs ON cs.id = lf.class_session_id
                JOIN live_classes lc ON lc.id = cs.live_class_id
-               WHERE lf.class_session_id = $1 AND lf.status = 'ready'
+               WHERE lf.class_session_id = $1 AND lf.status = 'ready' AND lf.deleted_at IS NULL
 
                UNION ALL
 
@@ -691,7 +704,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                JOIN lms_learning_files lf ON lf.id = lfp.file_id
                JOIN class_sessions cs ON cs.id = lfp.class_session_id
                JOIN live_classes lc ON lc.id = cs.live_class_id
-               WHERE lfp.class_session_id = $1 AND lf.status = 'ready'
+               WHERE lfp.class_session_id = $1 AND lf.status = 'ready' AND lf.deleted_at IS NULL AND lfp.deleted_at IS NULL
              ) session_files
              ORDER BY session_files.id, session_files.source_priority DESC`,
             [sessId],
@@ -753,12 +766,18 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             [sessId],
           ),
           query(
-            `SELECT id, timestamp_seconds, content, created_at
+            `SELECT id, timestamp_seconds, content, revision, created_at, updated_at
              FROM video_course_unit_notes
-             WHERE user_id = $1 AND class_session_id = $2
+             WHERE user_id = $1 AND class_session_id = $2 AND deleted_at IS NULL
              ORDER BY timestamp_seconds ASC, id ASC`,
             [req.user.id, sessId],
           ),
+          isPublicPreviewAccess
+            ? Promise.resolve([])
+            : listUnitBookmarksForAuthorizedUnit({ db: { query }, userId: req.user.id, classSessionId: sessId }),
+          isPublicPreviewAccess
+            ? Promise.resolve([])
+            : listUnitQaThreadsForAuthorizedUnit({ db: { query }, viewerUserId: req.user.id, classSessionId: sessId }),
         ]);
 
         const unitVideos = videosRes.rows.map((v, idx) => ({
@@ -886,8 +905,12 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             id: String(n.id),
             timestampSeconds: Number(n.timestamp_seconds || 0),
             content: n.content,
+            revision: Number(n.revision || 1),
             createdAt: n.created_at,
+            updatedAt: n.updated_at || n.created_at,
           })),
+          bookmarks: unitBookmarks,
+          qaThreads: unitQaThreads,
         };
         }
       }
@@ -1002,7 +1025,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             meta: selectedUnitMeta,
           });
         } else {
-        const [videosRes, theoryRes, filesRes, assignRes, quizRes, vocabRes, formulaRes, notesRes] = await Promise.all([
+        const [videosRes, theoryRes, filesRes, assignRes, quizRes, vocabRes, formulaRes, notesRes, unitBookmarks, unitQaThreads] = await Promise.all([
           query(
             `SELECT csv.id AS placement_id, csv.title AS part_title, csv.video_type, csv.sort_order, csv.is_published,
                     va.id AS asset_id, va.title AS asset_title, va.provider, va.provider_library_id, va.provider_video_id,
@@ -1025,7 +1048,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             `SELECT lf.id, lf.original_name AS file_name, lf.size_bytes AS file_size_bytes, lf.mime_type, lf.storage_key
              FROM lesson_learning_file_placements llfp
              JOIN lms_learning_files lf ON lf.id = llfp.file_id
-             WHERE llfp.lesson_id = $1 AND lf.status = 'ready'`,
+             WHERE llfp.lesson_id = $1 AND lf.status = 'ready' AND lf.deleted_at IS NULL`,
             [lId],
           ),
           query(
@@ -1084,12 +1107,18 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             [lId],
           ),
           query(
-            `SELECT id, timestamp_seconds, content, created_at
+            `SELECT id, timestamp_seconds, content, revision, created_at, updated_at
              FROM video_course_unit_notes
-             WHERE user_id = $1 AND lesson_id = $2
+             WHERE user_id = $1 AND lesson_id = $2 AND deleted_at IS NULL
              ORDER BY timestamp_seconds ASC, id ASC`,
             [req.user.id, lId],
           ),
+          isPublicPreviewAccess
+            ? Promise.resolve([])
+            : listUnitBookmarksForAuthorizedUnit({ db: { query }, userId: req.user.id, lessonId: lId }),
+          isPublicPreviewAccess
+            ? Promise.resolve([])
+            : listUnitQaThreadsForAuthorizedUnit({ db: { query }, viewerUserId: req.user.id, lessonId: lId }),
         ]);
 
         const unitVideos = videosRes.rows.map((v, idx) => ({
@@ -1219,8 +1248,12 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             id: String(n.id),
             timestampSeconds: Number(n.timestamp_seconds || 0),
             content: n.content,
+            revision: Number(n.revision || 1),
             createdAt: n.created_at,
+            updatedAt: n.updated_at || n.created_at,
           })),
+          bookmarks: unitBookmarks,
+          qaThreads: unitQaThreads,
         };
         }
       }
@@ -1312,77 +1345,447 @@ router.get("/:offeringId/units/:unitId", protectRoute, async (req, res) => {
   return notFound(res, "Không tìm thấy nội dung bài học");
 });
 
+const sendNativeNotesQaError = (res, error, fallbackMessage) => {
+  if (error instanceof ExternalIntegrationError) {
+    return res.status(error.statusCode).json({
+      success: false,
+      message: error.message,
+      errorCode: error.errorCode,
+      ...(error.details !== undefined ? { details: error.details } : {}),
+    });
+  }
+  console.error(fallbackMessage, error);
+  return res.status(500).json({ success: false, message: fallbackMessage, errorCode: "INTERNAL_ERROR" });
+};
+
+const assertNativeActorCourseAccess = async ({
+  user,
+  courseId,
+  courseAuthorId = null,
+  profileId = null,
+  sourceLiveClassId = null,
+}) => {
+  if (user.role === "admin") return;
+  if (user.role === "creator") {
+    if (courseAuthorId && String(courseAuthorId) === String(user.id)) return;
+    if (sourceLiveClassId) {
+      const staffRes = await query(
+        `SELECT 1 FROM live_classes lc
+         LEFT JOIN live_class_teachers lct ON lct.live_class_id = lc.id AND lct.user_id = $2
+         WHERE lc.id = $1 AND (lc.instructor_id = $2 OR lct.user_id IS NOT NULL)
+         LIMIT 1`,
+        [sourceLiveClassId, user.id],
+      );
+      if (staffRes.rows[0]) return;
+    }
+    throw new ExternalIntegrationError(403, "FORBIDDEN", "Bạn không có quyền truy cập nội dung giảng dạy của khóa học này.");
+  }
+  if (user.role !== "user") {
+    throw new ExternalIntegrationError(403, "FORBIDDEN", "Bạn không có quyền truy cập khóa học này.");
+  }
+
+  const hasActiveLms = await resolveEffectiveStudentLmsAccess({ user, db: { query } });
+  const hasEntitlement = hasActiveLms
+    && await checkCourseEntitlement(courseId, user.id, {
+      sourceLiveClassId: sourceLiveClassId || null,
+      profileId: profileId || null,
+    });
+  if (!hasEntitlement) {
+    throw new ExternalIntegrationError(403, "VIDEO_COURSE_ACCESS_REQUIRED", ACCESS_HELP_MESSAGE);
+  }
+  if (profileId && await isVideoCourseProfileAccessRevoked({ db: { query }, userId: user.id, profileId })) {
+    throw new ExternalIntegrationError(403, "VIDEO_COURSE_ACCESS_REVOKED", "Quyền truy cập khóa học đã bị thu hồi.");
+  }
+};
+
+const resolveNativeAuthorizedUnit = async ({ req, offeringId, unitId, requestedUnitType = null }) => {
+  const directOffering = await resolveProfileOffering(offeringId);
+  const resolved = directOffering || await resolveOffering(offeringId);
+  const course = resolved?.course || null;
+  if (!course) {
+    throw new ExternalIntegrationError(404, "NOT_FOUND", "Không tìm thấy khóa học");
+  }
+
+  let profile = directOffering?.profile || null;
+  if (!profile) {
+    const profileRes = await query(
+      `SELECT vcp.id, vcp.mode, vcp.source_live_class_id
+       FROM video_course_profiles vcp
+       WHERE vcp.course_id = $1 AND vcp.status = 'active'
+       ORDER BY vcp.id ASC LIMIT 1`,
+      [course.id],
+    );
+    profile = profileRes.rows[0] || null;
+  }
+  const activeProfileId = profile ? Number(profile.profile_id || profile.id) : null;
+  const sourceLiveClassId = resolved?.liveClass?.id || profile?.source_live_class_id || null;
+
+  const parsedUnitId = parsePositiveId(unitId);
+  if (!parsedUnitId) {
+    throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "unitId không hợp lệ");
+  }
+
+  let resolvedType = requestedUnitType;
+  let resolvedLiveClassId = sourceLiveClassId;
+  if (!resolvedType || resolvedType === "lesson") {
+    const lRes = await query("SELECT id FROM lessons WHERE id = $1 AND course_id = $2 LIMIT 1", [parsedUnitId, course.id]);
+    if (lRes.rows[0]) {
+      resolvedType = "lesson";
+    } else if (requestedUnitType === "lesson") {
+      throw new ExternalIntegrationError(404, "UNIT_NOT_FOUND", "Không tìm thấy bài học trong khóa học này");
+    }
+  }
+  if (resolvedType !== "lesson") {
+    const csRes = await query(
+      `SELECT cs.id, cs.live_class_id
+       FROM class_sessions cs
+       JOIN live_classes lc ON lc.id = cs.live_class_id
+       WHERE cs.id = $1 AND (lc.course_id = $2 OR ($3::bigint IS NOT NULL AND lc.id = $3))
+       LIMIT 1`,
+      [parsedUnitId, course.id, sourceLiveClassId],
+    );
+    if (csRes.rows[0]) {
+      resolvedType = "class_session";
+      resolvedLiveClassId = resolvedLiveClassId || csRes.rows[0].live_class_id;
+    } else {
+      throw new ExternalIntegrationError(404, "UNIT_NOT_FOUND", "Không tìm thấy buổi học trong khóa học này");
+    }
+  }
+
+  await assertNativeActorCourseAccess({
+    user: req.user,
+    courseId: course.id,
+    courseAuthorId: course.author_id,
+    profileId: activeProfileId,
+    sourceLiveClassId: resolvedLiveClassId,
+  });
+
+  return {
+    course,
+    profileId: activeProfileId,
+    unitId: parsedUnitId,
+    unitType: resolvedType,
+    classSessionId: resolvedType === "class_session" ? parsedUnitId : null,
+    lessonId: resolvedType === "lesson" ? parsedUnitId : null,
+  };
+};
+
+const assertNativeThreadAccess = async ({ req, threadId }) => {
+  const parsedThreadId = parsePositiveId(threadId);
+  if (!parsedThreadId) {
+    throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "threadId không hợp lệ");
+  }
+  const res = await query(
+    `SELECT t.*, c.author_id AS course_author_id, cs.live_class_id
+     FROM learning_unit_qa_threads t
+     JOIN courses c ON c.id = t.course_id
+     LEFT JOIN class_sessions cs ON cs.id = t.class_session_id
+     WHERE t.id = $1 AND t.deleted_at IS NULL
+     LIMIT 1`,
+    [parsedThreadId],
+  );
+  const thread = res.rows[0];
+  if (!thread) {
+    throw new ExternalIntegrationError(404, "QA_THREAD_NOT_FOUND", "Không tìm thấy chủ đề Q&A");
+  }
+  let profileId = thread.video_course_profile_id ? Number(thread.video_course_profile_id) : null;
+  let sourceLiveClassId = thread.live_class_id ? Number(thread.live_class_id) : null;
+  if (!profileId) {
+    const pRes = await query(
+      `SELECT id, source_live_class_id FROM video_course_profiles WHERE course_id = $1 AND status = 'active' ORDER BY id ASC LIMIT 1`,
+      [thread.course_id],
+    );
+    if (pRes.rows[0]) {
+      profileId = Number(pRes.rows[0].id);
+      sourceLiveClassId = sourceLiveClassId || pRes.rows[0].source_live_class_id;
+    }
+  }
+  await assertNativeActorCourseAccess({
+    user: req.user,
+    courseId: thread.course_id,
+    courseAuthorId: thread.course_author_id,
+    profileId,
+    sourceLiveClassId,
+  });
+  return thread;
+};
+
 // POST /api/video-courses/:offeringId/units/:unitId/notes - Save learner timestamped note
 router.post("/:offeringId/units/:unitId/notes", protectRoute, async (req, res) => {
   try {
     const { offeringId, unitId } = req.params;
-    const { timestampSeconds = 0, content = "", unitType = null } = req.body || {};
-
-    const trimmed = typeof content === "string" ? content.trim() : "";
-    if (!trimmed || trimmed.length > 2000) {
-      return validationError(res, "Nội dung ghi chú không được để trống (tối đa 2000 ký tự)");
-    }
-
-    const { course } = await resolveOffering(offeringId);
-    if (!course) return notFound(res, "Không tìm thấy khóa học");
-
-    const parsedUnitId = parsePositiveId(unitId);
-    if (!parsedUnitId) return validationError(res, "unitId không hợp lệ");
-
-    let resolvedType = unitType;
-    if (!resolvedType) {
-      const lRes = await query("SELECT id FROM lessons WHERE id = $1 AND course_id = $2", [parsedUnitId, course.id]);
-      resolvedType = lRes.rows.length > 0 ? "lesson" : "class_session";
-    }
-
-    const classSessionId = resolvedType === "class_session" ? parsedUnitId : null;
-    const lessonId = resolvedType === "lesson" ? parsedUnitId : null;
-    const clampedSec = Math.max(0, Math.round(Number(timestampSeconds || 0)));
-
-    const insertRes = await query(
-      `INSERT INTO video_course_unit_notes
-         (user_id, course_id, class_session_id, lesson_id, timestamp_seconds, content)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, timestamp_seconds, content, created_at`,
-      [req.user.id, course.id, classSessionId, lessonId, clampedSec, trimmed],
-    );
-
-    const row = insertRes.rows[0];
+    const { timestampSeconds = 0, content = "", unitType = null, idempotencyKey = null } = req.body || {};
+    const ctx = await resolveNativeAuthorizedUnit({ req, offeringId, unitId, requestedUnitType: unitType });
+    const { note } = await createUnitNoteForAuthorizedUnit({
+      db: { query, getClient },
+      userId: req.user.id,
+      courseId: ctx.course.id,
+      profileId: ctx.profileId,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+      timestampSeconds,
+      content,
+      idempotencyKey: idempotencyKey || req.get("Idempotency-Key") || null,
+      correlationId: req.get("X-Correlation-ID") || null,
+    });
     return res.status(201).json({
       success: true,
-      data: {
-        id: String(row.id),
-        timestampSeconds: Number(row.timestamp_seconds),
-        content: row.content,
-        createdAt: row.created_at,
-      },
+      data: note,
       message: "Đã lưu ghi chú bài học",
     });
   } catch (error) {
-    console.error("Create unit note error:", error);
-    return res.status(500).json({ success: false, message: "Lỗi khi lưu ghi chú", errorCode: "INTERNAL_ERROR" });
+    return sendNativeNotesQaError(res, error, "Lỗi khi lưu ghi chú");
+  }
+});
+
+// PUT /api/video-courses/:offeringId/units/:unitId/notes/:noteId - Update learner timestamped note
+router.put("/:offeringId/units/:unitId/notes/:noteId", protectRoute, async (req, res) => {
+  try {
+    const { offeringId, unitId, noteId } = req.params;
+    const { timestampSeconds, content, expectedRevision, unitType = null } = req.body || {};
+    const ctx = await resolveNativeAuthorizedUnit({ req, offeringId, unitId, requestedUnitType: unitType });
+    const { note } = await updateUnitNoteForAuthorizedUnit({
+      db: { query, getClient },
+      userId: req.user.id,
+      noteId,
+      profileId: ctx.profileId,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+      timestampSeconds,
+      content,
+      expectedRevision,
+      correlationId: req.get("X-Correlation-ID") || null,
+    });
+    return res.json({
+      success: true,
+      data: note,
+      message: "Đã cập nhật ghi chú bài học",
+    });
+  } catch (error) {
+    return sendNativeNotesQaError(res, error, "Lỗi khi cập nhật ghi chú");
   }
 });
 
 // DELETE /api/video-courses/:offeringId/units/:unitId/notes/:noteId
 router.delete("/:offeringId/units/:unitId/notes/:noteId", protectRoute, async (req, res) => {
   try {
-    const noteId = parsePositiveId(req.params.noteId);
-    if (!noteId) return validationError(res, "noteId không hợp lệ");
-
-    await query(
-      `DELETE FROM video_course_unit_notes WHERE id = $1 AND user_id = $2`,
-      [noteId, req.user.id],
-    );
-
+    const { offeringId, unitId, noteId } = req.params;
+    const unitType = req.query?.unitType || req.body?.unitType || null;
+    const expectedRevision = req.query?.expectedRevision ?? req.body?.expectedRevision ?? null;
+    const ctx = await resolveNativeAuthorizedUnit({ req, offeringId, unitId, requestedUnitType: unitType });
+    const result = await deleteUnitNoteForAuthorizedUnit({
+      db: { query, getClient },
+      userId: req.user.id,
+      noteId,
+      profileId: ctx.profileId,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+      expectedRevision,
+      correlationId: req.get("X-Correlation-ID") || null,
+    });
     return res.json({
       success: true,
-      data: { id: String(noteId), deleted: true },
+      data: result,
       message: "Đã xóa ghi chú",
     });
   } catch (error) {
-    console.error("Delete unit note error:", error);
-    return res.status(500).json({ success: false, message: "Lỗi khi xóa ghi chú", errorCode: "INTERNAL_ERROR" });
+    return sendNativeNotesQaError(res, error, "Lỗi khi xóa ghi chú");
+  }
+});
+
+// GET /api/video-courses/:offeringId/units/:unitId/bookmarks
+router.get("/:offeringId/units/:unitId/bookmarks", protectRoute, async (req, res) => {
+  try {
+    const { offeringId, unitId } = req.params;
+    const ctx = await resolveNativeAuthorizedUnit({ req, offeringId, unitId, requestedUnitType: req.query?.unitType || null });
+    const bookmarks = await listUnitBookmarksForAuthorizedUnit({
+      db: { query },
+      userId: req.user.id,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+    });
+    return res.json({ success: true, data: bookmarks });
+  } catch (error) {
+    return sendNativeNotesQaError(res, error, "Lỗi khi tải bookmark");
+  }
+});
+
+// POST /api/video-courses/:offeringId/units/:unitId/bookmarks
+router.post("/:offeringId/units/:unitId/bookmarks", protectRoute, async (req, res) => {
+  try {
+    const { offeringId, unitId } = req.params;
+    const { timestampSeconds = 0, label = "", videoAssetId = null, unitType = null, idempotencyKey = null } = req.body || {};
+    const ctx = await resolveNativeAuthorizedUnit({ req, offeringId, unitId, requestedUnitType: unitType });
+    const { bookmark } = await createUnitBookmarkForAuthorizedUnit({
+      db: { query, getClient },
+      userId: req.user.id,
+      courseId: ctx.course.id,
+      profileId: ctx.profileId,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+      videoAssetId,
+      timestampSeconds,
+      label,
+      idempotencyKey: idempotencyKey || req.get("Idempotency-Key") || null,
+      correlationId: req.get("X-Correlation-ID") || null,
+    });
+    return res.status(201).json({ success: true, data: bookmark });
+  } catch (error) {
+    return sendNativeNotesQaError(res, error, "Lỗi khi lưu bookmark");
+  }
+});
+
+// DELETE /api/video-courses/:offeringId/units/:unitId/bookmarks/:bookmarkId
+router.delete("/:offeringId/units/:unitId/bookmarks/:bookmarkId", protectRoute, async (req, res) => {
+  try {
+    const { offeringId, unitId, bookmarkId } = req.params;
+    const unitType = req.query?.unitType || req.body?.unitType || null;
+    const expectedRevision = req.query?.expectedRevision ?? req.body?.expectedRevision ?? null;
+    const ctx = await resolveNativeAuthorizedUnit({ req, offeringId, unitId, requestedUnitType: unitType });
+    const result = await deleteUnitBookmarkForAuthorizedUnit({
+      db: { query, getClient },
+      userId: req.user.id,
+      bookmarkId,
+      profileId: ctx.profileId,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+      expectedRevision,
+      correlationId: req.get("X-Correlation-ID") || null,
+    });
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    return sendNativeNotesQaError(res, error, "Lỗi khi xóa bookmark");
+  }
+});
+
+// GET /api/video-courses/:offeringId/units/:unitId/qa
+router.get("/:offeringId/units/:unitId/qa", protectRoute, async (req, res) => {
+  try {
+    const { offeringId, unitId } = req.params;
+    const ctx = await resolveNativeAuthorizedUnit({ req, offeringId, unitId, requestedUnitType: req.query?.unitType || null });
+    const threads = await listUnitQaThreadsForAuthorizedUnit({
+      db: { query },
+      viewerUserId: req.user.id,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+    });
+    return res.json({ success: true, data: threads });
+  } catch (error) {
+    return sendNativeNotesQaError(res, error, "Lỗi khi tải thảo luận Q&A");
+  }
+});
+
+// POST /api/video-courses/:offeringId/units/:unitId/qa
+router.post("/:offeringId/units/:unitId/qa", protectRoute, async (req, res) => {
+  try {
+    const { offeringId, unitId } = req.params;
+    const { title, body, question, content, attachments = [], unitType = null, idempotencyKey = null } = req.body || {};
+    const ctx = await resolveNativeAuthorizedUnit({ req, offeringId, unitId, requestedUnitType: unitType });
+    const { thread } = await createUnitQaThreadForAuthorizedUnit({
+      db: { query, getClient },
+      authorId: req.user.id,
+      authorRole: req.user.role || "user",
+      courseId: ctx.course.id,
+      profileId: ctx.profileId,
+      classSessionId: ctx.classSessionId,
+      lessonId: ctx.lessonId,
+      title,
+      body: body ?? question ?? content,
+      attachments,
+      idempotencyKey: idempotencyKey || req.get("Idempotency-Key") || null,
+      correlationId: req.get("X-Correlation-ID") || null,
+    });
+    return res.status(201).json({ success: true, data: thread });
+  } catch (error) {
+    return sendNativeNotesQaError(res, error, "Lỗi khi tạo câu hỏi Q&A");
+  }
+});
+
+// POST /api/video-courses/:offeringId/units/:unitId/qa/:threadId/replies & /qa/threads/:threadId/replies
+router.post("/:offeringId/units/:unitId/qa/:threadId/replies", protectRoute, async (req, res) => {
+  try {
+    const { offeringId, unitId, threadId } = req.params;
+    await resolveNativeAuthorizedUnit({ req, offeringId, unitId, requestedUnitType: req.body?.unitType || null });
+    const { body, content, attachments = [], expectedRevision = null, idempotencyKey = null } = req.body || {};
+    const result = await replyUnitQaThreadForAuthorizedActor({
+      db: { query, getClient },
+      threadId,
+      actorUserId: req.user.id,
+      actorRole: req.user.role || "user",
+      body: body ?? content,
+      attachments,
+      expectedRevision,
+      idempotencyKey: idempotencyKey || req.get("Idempotency-Key") || null,
+      correlationId: req.get("X-Correlation-ID") || null,
+    });
+    return res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    return sendNativeNotesQaError(res, error, "Lỗi khi trả lời Q&A");
+  }
+});
+
+router.post("/qa/threads/:threadId/replies", protectRoute, async (req, res) => {
+  try {
+    await assertNativeThreadAccess({ req, threadId: req.params.threadId });
+    const { body, content, attachments = [], expectedRevision = null, idempotencyKey = null } = req.body || {};
+    const result = await replyUnitQaThreadForAuthorizedActor({
+      db: { query, getClient },
+      threadId: req.params.threadId,
+      actorUserId: req.user.id,
+      actorRole: req.user.role || "user",
+      body: body ?? content,
+      attachments,
+      expectedRevision,
+      idempotencyKey: idempotencyKey || req.get("Idempotency-Key") || null,
+      correlationId: req.get("X-Correlation-ID") || null,
+    });
+    return res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    return sendNativeNotesQaError(res, error, "Lỗi khi trả lời Q&A");
+  }
+});
+
+// PATCH /api/video-courses/:offeringId/units/:unitId/qa/:threadId/status & /qa/threads/:threadId/status
+router.patch("/:offeringId/units/:unitId/qa/:threadId/status", protectRoute, async (req, res) => {
+  try {
+    const { offeringId, unitId, threadId } = req.params;
+    await resolveNativeAuthorizedUnit({ req, offeringId, unitId, requestedUnitType: req.body?.unitType || null });
+    const { status, isPinned, markRead, expectedRevision = null } = req.body || {};
+    const result = await updateUnitQaThreadStatusForAuthorizedActor({
+      db: { query, getClient },
+      threadId,
+      actorUserId: req.user.id,
+      actorRole: req.user.role || "user",
+      status,
+      isPinned,
+      markRead,
+      expectedRevision,
+      correlationId: req.get("X-Correlation-ID") || null,
+    });
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    return sendNativeNotesQaError(res, error, "Lỗi khi cập nhật trạng thái Q&A");
+  }
+});
+
+router.patch("/qa/threads/:threadId/status", protectRoute, async (req, res) => {
+  try {
+    await assertNativeThreadAccess({ req, threadId: req.params.threadId });
+    const { status, isPinned, markRead, expectedRevision = null } = req.body || {};
+    const result = await updateUnitQaThreadStatusForAuthorizedActor({
+      db: { query, getClient },
+      threadId: req.params.threadId,
+      actorUserId: req.user.id,
+      actorRole: req.user.role || "user",
+      status,
+      isPinned,
+      markRead,
+      expectedRevision,
+      correlationId: req.get("X-Correlation-ID") || null,
+    });
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    return sendNativeNotesQaError(res, error, "Lỗi khi cập nhật trạng thái Q&A");
   }
 });
 
@@ -2711,8 +3114,6 @@ router.post("/admin/courses/:courseId/publish", protectRoute, requireAdmin, asyn
       });
       await safeRecordCurriculumMutation({
         courseId,
-        eventType: "curriculum.tombstoned",
-        deleted: true,
         correlationId: corr,
       });
       const checklist = await computeCoursePublishChecklist(courseId);

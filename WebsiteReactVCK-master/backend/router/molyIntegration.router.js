@@ -162,6 +162,11 @@ export const createMolyIntegrationRouter = ({
         codeVerifier: typeof req.body?.code_verifier === "string" ? req.body.code_verifier.trim() : "",
         consumerSystem: typeof req.body?.consumer_system === "string" ? req.body.consumer_system.trim() : "moly",
         consumeIp: typeof req.body?.consume_ip === "string" ? req.body.consume_ip.trim() : null,
+        deviceSlotProof:
+          (typeof req.get === "function" ? req.get("x-device-slot-proof") : req.headers?.["x-device-slot-proof"])
+          || req.body?.device_binding_proof
+          || req.body?.deviceBindingProof
+          || null,
         correlationId,
       });
       return res.status(200).json({

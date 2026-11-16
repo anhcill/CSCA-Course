@@ -25,6 +25,12 @@ import {
 } from "../services/video.service.js";
 import { createCloudinaryUploadSignature } from "../services/cloudinary.service.js";
 import { isVideoCourseUnitUnlocked } from "../services/videoCourseUnitAccess.service.js";
+import { isVideoCourseProfileAccessRevoked } from "../services/videoCourseAccessRevocation.service.js";
+import { reviewIsAvailable } from "../services/assessmentPolicy.service.js";
+import {
+  safeRecordLearningFileTombstonedOutbox,
+  safeRecordLearningFileUpsertedOutbox,
+} from "../services/delegatedFiles.service.js";
 
 const router = express.Router();
 
@@ -72,6 +78,7 @@ const FILE_INSTANCES_CTE = `
            f.created_at AS attached_at,
            f.*
     FROM lms_learning_files f
+    WHERE f.deleted_at IS NULL
     UNION ALL
     SELECT f.id AS file_id, p.id AS placement_id,
            p.live_class_id AS effective_live_class_id,
@@ -81,6 +88,7 @@ const FILE_INSTANCES_CTE = `
            f.*
     FROM lms_learning_file_placements p
     JOIN lms_learning_files f ON f.id = p.file_id
+    WHERE f.deleted_at IS NULL AND p.deleted_at IS NULL
   )`;
 const INLINE_VIEW_MIME_TYPES = new Set([
   "application/pdf",
@@ -508,7 +516,7 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
      FROM lms_learning_files f
      LEFT JOIN live_classes lc ON lc.id = f.live_class_id
      LEFT JOIN courses course_scope ON course_scope.id = COALESCE(f.course_id, lc.course_id)
-     WHERE f.id = $1 AND f.status = 'ready'`,
+     WHERE f.id = $1 AND f.status = 'ready' AND f.deleted_at IS NULL`,
     [fileId],
   );
   const sourceFile = result.rows[0];
@@ -519,7 +527,7 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
             COALESCE(lc.allow_file_download, TRUE) AS allow_file_download
      FROM lms_learning_file_placements p
      JOIN live_classes lc ON lc.id = p.live_class_id
-     WHERE p.file_id = $1 AND p.live_class_id = $2 AND lc.status = 'active'
+     WHERE p.file_id = $1 AND p.live_class_id = $2 AND p.deleted_at IS NULL AND lc.status = 'active'
      ORDER BY p.class_session_id NULLS FIRST, p.id
      LIMIT 1`,
     [fileId, requestedClassId],
@@ -552,10 +560,23 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
     `SELECT 1
      WHERE ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "$3")}
        AND ($4 = 'COURSE' OR ($4 = 'CLASS_ONLY' AND $1::bigint IS NOT NULL
-         AND EXISTS (SELECT 1 FROM live_classes lc
-                     JOIN class_enrollments ce ON ce.live_class_id = lc.id
-                     WHERE lc.id = $1 AND lc.status = 'active'
-                       AND ce.user_id = $2 AND ce.status = 'active')))
+         AND EXISTS (
+           SELECT 1 FROM live_classes lc
+           WHERE lc.id = $1 AND lc.status = 'active'
+             AND (
+               EXISTS (
+                 SELECT 1 FROM class_enrollments ce
+                 WHERE ce.live_class_id = lc.id AND ce.user_id = $2 AND ce.status = 'active'
+               )
+               OR EXISTS (
+                 SELECT 1 FROM external_entitlements ee
+                 LEFT JOIN video_course_profiles vcp ON vcp.id = ee.local_video_course_profile_id AND vcp.deleted_at IS NULL
+                 WHERE ee.user_id = $2 AND ee.status = 'active'
+                   AND ee.valid_from <= NOW() AND (ee.valid_until IS NULL OR ee.valid_until > NOW())
+                   AND (ee.local_live_class_id = lc.id OR vcp.source_live_class_id = lc.id)
+               )
+             )
+         )))
      LIMIT 1`,
     [file.live_class_id, user.id, file.live_class_id ? file.class_course_id : file.course_id, file.visibility],
   );
@@ -566,13 +587,13 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
          SELECT 1
          FROM lms_learning_files direct_file
          JOIN class_sessions cs ON cs.id = direct_file.class_session_id
-         WHERE direct_file.id = $1 AND cs.is_public_preview = TRUE
+         WHERE direct_file.id = $1 AND direct_file.deleted_at IS NULL AND cs.is_public_preview = TRUE
            AND ($2::bigint IS NULL OR cs.live_class_id = $2)
        ) OR EXISTS (
          SELECT 1
          FROM lms_learning_file_placements p
          JOIN class_sessions cs ON cs.id = p.class_session_id
-         WHERE p.file_id = $1 AND cs.is_public_preview = TRUE
+         WHERE p.file_id = $1 AND p.deleted_at IS NULL AND cs.is_public_preview = TRUE
            AND ($2::bigint IS NULL OR cs.live_class_id = $2)
        ) OR EXISTS (
          SELECT 1
@@ -1086,6 +1107,7 @@ router.post("/teacher/files/:fileId/placements", protectRoute, requireTeacher, r
       afterState: result.rows[0],
       metadata: { ip: req.ip, fileId, classId, sessionId },
     });
+    await safeRecordLearningFileUpsertedOutbox({ fileId, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.status(201).json({ success: true, data: { placementId: String(result.rows[0].id) }, message: "Đã dùng lại tài liệu" });
   } catch (error) {
     console.error("Error attaching reusable learning file:", error);
@@ -1113,6 +1135,7 @@ router.delete("/teacher/file-placements/:placementId", protectRoute, requireTeac
       beforeState: placement,
       metadata: { ip: req.ip },
     });
+    await safeRecordLearningFileUpsertedOutbox({ fileId: placement.file_id, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.json({ success: true, message: "Đã gỡ tài liệu khỏi lớp hoặc buổi học" });
   } catch (error) {
     console.error("Error detaching reusable learning file:", error);
@@ -1177,9 +1200,10 @@ router.post("/teacher/files/:fileId/confirm", protectRoute, requireTeacher, requ
       await query("UPDATE lms_learning_files SET status = 'failed' WHERE id = $1", [fileId]);
       return errorResponse(res, 422, "Không tìm thấy object tài liệu trên R2", "UPLOAD_NOT_FOUND");
     }
-    const result = await query("UPDATE lms_learning_files SET status = 'ready' WHERE id = $1 AND status = 'pending' RETURNING *", [fileId]);
+    const result = await query("UPDATE lms_learning_files SET status = 'ready', updated_at = NOW() WHERE id = $1 AND status = 'pending' RETURNING *", [fileId]);
     if (!result.rows.length) return errorResponse(res, 409, "Tài liệu đã được xác nhận", "INVALID_STATUS");
     await recordAuditEvent({ actorId: req.user.id, action: "learning_file.confirmed", entityType: "learning_file", entityId: fileId, afterState: result.rows[0], metadata: { ip: req.ip } });
+    await safeRecordLearningFileUpsertedOutbox({ fileId, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.json({ success: true, data: serializeFile(result.rows[0]) });
   } catch (error) {
     if (error.code === "R2_NOT_CONFIGURED") return errorResponse(res, 503, "Kho R2 chưa được cấu hình", error.code);
@@ -1345,7 +1369,7 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
     if (access.error) return errorResponse(res, 403, "Bạn không có quyền xóa tài liệu", "FORBIDDEN");
     const placements = await query(
-      "SELECT COUNT(*)::int AS count FROM lms_learning_file_placements WHERE file_id = $1",
+      "SELECT COUNT(*)::int AS count FROM lms_learning_file_placements WHERE file_id = $1 AND deleted_at IS NULL",
       [fileId],
     );
     if (Number(placements.rows[0]?.count || 0) > 0) {
@@ -1373,7 +1397,10 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
       }
     }
 
-    await query("UPDATE lms_learning_files SET status = 'deleted', updated_at = NOW() WHERE id = $1", [fileId]);
+    await query(
+      "UPDATE lms_learning_files SET status = 'deleted', deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW() WHERE id = $1",
+      [fileId],
+    );
     await query("UPDATE quizzes SET paper_file_id = NULL WHERE paper_file_id = $1", [fileId]).catch(() => {});
     await query("UPDATE quizzes SET solution_file_id = NULL WHERE solution_file_id = $1", [fileId]).catch(() => {});
     await query("UPDATE assignments SET attachment_url = NULL WHERE attachment_url LIKE $1", [`%/files/${fileId}/download%`]).catch(() => {});
@@ -1384,6 +1411,7 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
       entityId: fileId,
       metadata: { ip: req.ip, storageKey, r2Deleted },
     });
+    await safeRecordLearningFileTombstonedOutbox({ fileId, correlationId: req.get?.("X-Correlation-ID") || null });
     return res.json({ success: true, message: "Đã xóa tài liệu" });
   } catch (error) {
     console.error("Error deleting learning file:", error);
@@ -1489,6 +1517,43 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
     }
 
     if (req.user.role === "user" && selectedVideoProfile) {
+      const revokedProfile = await isVideoCourseProfileAccessRevoked({
+        db: { query },
+        userId: req.user.id,
+        profileId: selectedVideoProfile.id,
+      });
+      if (revokedProfile) {
+        return errorResponse(res, 403, "Quyền truy cập khóa học video này đã bị thu hồi", "VIDEO_COURSE_ACCESS_REVOKED");
+      }
+    }
+
+    if (req.user.role === "user") {
+      const solutionQuizzes = (await query(
+        `SELECT id, review_policy, available_until, due_date, activity_scope
+         FROM quizzes
+         WHERE solution_file_id = $1 AND status = 'PUBLISHED'`,
+        [fileId],
+      )).rows;
+      for (const sq of solutionQuizzes) {
+        if (!reviewIsAvailable(sq)) {
+          return errorResponse(res, 403, "Đáp án bài kiểm tra hiện chưa mở để xem", "SOLUTION_EMBARGOED");
+        }
+        if ((sq.review_policy || "after_submit") === "after_submit") {
+          const submittedRes = await query(
+            `SELECT 1 FROM quiz_attempts
+             WHERE quiz_id = $1 AND user_id = $2
+               AND (status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR submitted_at IS NOT NULL)
+             LIMIT 1`,
+            [sq.id, req.user.id],
+          );
+          if (submittedRes.rows.length === 0) {
+            return errorResponse(res, 403, "Cần nộp bài kiểm tra trước khi xem đáp án", "SOLUTION_EMBARGOED");
+          }
+        }
+      }
+    }
+
+    if (req.user.role === "user" && selectedVideoProfile) {
       let unit = null;
       if (selectedVideoProfile.mode === "MIRROR") {
         unit = (await query(
@@ -1497,7 +1562,7 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
            WHERE cs.live_class_id = $2
              AND (cs.id = $3 OR EXISTS (
                SELECT 1 FROM lms_learning_file_placements placement
-               WHERE placement.file_id = $1 AND placement.class_session_id = cs.id
+               WHERE placement.file_id = $1 AND placement.class_session_id = cs.id AND placement.deleted_at IS NULL
              ))
            ORDER BY cs.start_time, cs.id LIMIT 1`,
           [fileId, selectedVideoProfile.source_live_class_id, access.file.class_session_id],
@@ -1507,6 +1572,7 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
           userId: req.user.id,
           unitType: "class_session",
           unitId: unit.id,
+          videoCourseProfileId: selectedVideoProfile.id,
         }))) {
           return errorResponse(res, 403, "Tài liệu này sẽ mở sau khi bạn hoàn thành buổi học trước nhé.", "VIDEO_UNIT_LOCKED");
         }
@@ -1524,6 +1590,7 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
           userId: req.user.id,
           unitType: "lesson",
           unitId: unit.id,
+          videoCourseProfileId: selectedVideoProfile.id,
         }))) {
           return errorResponse(res, 403, "Tài liệu này sẽ mở sau khi bạn hoàn thành bài học trước nhé.", "VIDEO_UNIT_LOCKED");
         }
@@ -1564,7 +1631,7 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
       return res.status(200).send(protectedPdfViewerHtml({
         filename: access.file.original_name,
         signedUrl: downloadUrl,
-        fileSizeBytes: Number(access.file.file_size || access.file.file_size_bytes || 0),
+        fileSizeBytes: Number(access.file.size_bytes || access.file.file_size || access.file.file_size_bytes || 0),
       }));
     }
     return res.redirect(302, downloadUrl);

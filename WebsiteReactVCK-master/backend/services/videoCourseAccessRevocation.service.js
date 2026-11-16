@@ -18,9 +18,14 @@ export const hasUnrevokedVideoCourseAccess = async ({ db, userId, courseId, live
   const result = await db.query(
     `SELECT 1
      FROM video_course_profiles vcp
-     WHERE vcp.course_id = $2
-       AND vcp.status = 'active'
-       AND ($3::bigint IS NULL OR vcp.source_live_class_id = $3)
+     WHERE vcp.status = 'active'
+       AND (
+         ($3::bigint IS NOT NULL
+           AND vcp.mode = 'MIRROR'
+           AND vcp.source_live_class_id = $3)
+         OR
+         ($3::bigint IS NULL AND vcp.course_id = $2)
+       )
        AND ($4::bigint IS NULL OR vcp.id = $4)
        AND NOT EXISTS (
          SELECT 1

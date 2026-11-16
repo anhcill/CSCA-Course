@@ -4,16 +4,34 @@ import { recordAuditEvent } from "./audit.service.js";
 import { createManagedUsername } from "../utils/usernameGenerator.js";
 import { hasUnrevokedVideoCourseAccess } from "./videoCourseAccessRevocation.service.js";
 import {
+  CATALOG_SYNC_SCHEMA_VERSION,
+  recordCourseCatalogMutation,
+  recordProfileCatalogMutation,
+} from "./courseCatalogSync.service.js";
+import { safeRecordCurriculumMutation } from "./courseCurriculumSync.service.js";
+import {
+  ALLOWED_DELEGATED_SCOPES,
+  applySequentialLocks,
+  emitProgressOutboxEventsForProfile,
+  loadProfileUnitsWithProgress,
+} from "./delegatedLearning.service.js";
+import {
   createIntegrationLogger,
   getIntegrationMetricsSnapshot,
+  isCatalogSyncKillSwitchActive,
+  isContentSyncKillSwitchActive,
+  isDelegatedLearningKillSwitchActive,
   isMolyIntegrationKillSwitchActive,
+  isRepairMutationsKillSwitchActive,
   observeIntegrationLatency,
   recordIntegrationMetric,
   resolveCorrelationId,
+  sanitizeString,
 } from "./integrationLogger.service.js";
 import {
   EXTERNAL_ENTITLEMENT_STATUSES,
   ExternalIntegrationError,
+  assertRepairMutationsAllowed,
   canonicalHashPayload,
   normalizeExternalId,
   normalizeJsonObject,
@@ -787,6 +805,13 @@ const syncCourseEnrollmentProjectionTx = async (
     isRevokeTombstone = false,
   },
 ) => {
+  // Serialize concurrent grant/revoke/refund entitlement projections per (user, course)
+  // across sibling grants so active Management or sibling offering grants are never clobbered.
+  await tx.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
+    `moly:enroll:${userId}`,
+    String(localCourseId),
+  ]);
+
   // 1. Course-level `enrollments` status reflects combined active rights across
   // Management and all external systems so revoking one never strips another.
   const anyActiveCourseRes = await tx.query(
@@ -1925,8 +1950,11 @@ const linkExternalIdentityTx = async (
 export const linkExternalIdentityManually = async (
   db = defaultDb,
   params = {},
-  { recordAudit = recordAuditEvent } = {},
-) => runWithTransaction(db, (tx) => linkExternalIdentityTx(tx, params, { recordAudit }));
+  { recordAudit = recordAuditEvent, env = process.env } = {},
+) => {
+  assertRepairMutationsAllowed(env, { metricName: "moly.identity.link_blocked_kill_switch" });
+  return runWithTransaction(db, (tx) => linkExternalIdentityTx(tx, params, { recordAudit }));
+};
 
 export const listIntegrationConflicts = async (db = defaultDb, filters = {}) => {
   const conditions = [];
@@ -1951,8 +1979,9 @@ export const listIntegrationConflicts = async (db = defaultDb, filters = {}) => 
 export const resolveIntegrationConflict = async (
   db = defaultDb,
   { conflictId, action, targetUserId = null, resolutionNote = null, actorId = null, replayInbox = true } = {},
-  { recordAudit = recordAuditEvent } = {},
+  { recordAudit = recordAuditEvent, env = process.env } = {},
 ) => {
+  assertRepairMutationsAllowed(env, { metricName: "moly.conflict.resolve_blocked_kill_switch" });
   const id = parsePositiveBigIntId(conflictId, "conflictId");
   const normalizedAction = String(action || "").trim().toLowerCase();
   if (!["link_existing", "dismiss", "ignore", "resolved"].includes(normalizedAction)) {
@@ -2041,9 +2070,9 @@ export const resolveIntegrationConflict = async (
 export const retryMolyInboxJob = async (
   db = defaultDb,
   { inboxId, actorId = null, correlationId = null } = {},
-  { recordAudit = recordAuditEvent } = {},
+  { recordAudit = recordAuditEvent, env = process.env } = {},
 ) => {
-  if (isMolyIntegrationKillSwitchActive()) {
+  if (isMolyIntegrationKillSwitchActive(env)) {
     recordIntegrationMetric("moly.inbox.retry_blocked_kill_switch");
     throw new MolyIntegrationError(
       503,
@@ -2051,6 +2080,7 @@ export const retryMolyInboxJob = async (
       "Moly integration sync is disabled by emergency kill switch.",
     );
   }
+  assertRepairMutationsAllowed(env, { metricName: "moly.inbox.retry_blocked_kill_switch" });
   const id = parsePositiveBigIntId(inboxId, "inboxId");
   const parsedActorId = actorId == null ? null : parsePositiveBigIntId(actorId, "actorId");
   const corr = resolveCorrelationId(correlationId);
@@ -2197,15 +2227,36 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
     ? requireMolyNamespacedId(body.external_user_id, "external_user_id")
     : null;
   const filterExternalCourseId = body.external_course_id
-    ? normalizeExternalId(body.external_course_id, 191, "external_course_id")
+    ? normalizeExternalId(body.external_course_id, "external_course_id", 191)
     : null;
+  const rawCourseId = body.courseId ?? body.course_id;
+  const rawProfileId = body.profileId ?? body.profile_id;
+  const filterProfileId = rawProfileId != null && String(rawProfileId).trim() !== ""
+    ? parsePositiveBigIntId(rawProfileId, "profileId")
+    : null;
+  let filterCourseId = rawCourseId != null && String(rawCourseId).trim() !== ""
+    ? parsePositiveBigIntId(rawCourseId, "courseId")
+    : null;
+  if (!filterCourseId && filterProfileId) {
+    const profCourseRes = await db.query(
+      `SELECT course_id FROM video_course_profiles WHERE id = $1 LIMIT 1`,
+      [filterProfileId],
+    );
+    if (profCourseRes.rows[0]?.course_id) {
+      filterCourseId = Number(profCourseRes.rows[0].course_id);
+    }
+  }
+  const includeContent = Boolean(body.includeContent ?? body.include_content);
 
   const mappingsRes = await db.query(
     `SELECT id, source_system, external_course_id, local_course_id, local_video_course_profile_id,
             status, metadata, updated_at
      FROM external_course_mappings
      WHERE source_system IN ('moly', 'csca-course')
+       AND ($1::bigint IS NULL OR local_course_id = $1)
+       AND ($2::bigint IS NULL OR local_video_course_profile_id IS NULL OR local_video_course_profile_id = $2)
      ORDER BY id ASC`,
+    [filterCourseId, filterProfileId],
   );
 
   const identitiesRes = await db.query(
@@ -2226,9 +2277,10 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
      WHERE source_system = 'moly'
        AND status = 'open'
        AND ($1::text IS NULL OR external_user_id = $1)
+       AND ($2::bigint IS NULL OR local_course_id = $2)
      ORDER BY id DESC
-     LIMIT $2`,
-    [filterExternalUserId, limit],
+     LIMIT $3`,
+    [filterExternalUserId, filterCourseId, limit],
   );
 
   const extEntRes = await db.query(
@@ -2242,9 +2294,11 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
        OR (ei.source_system = ee.source_system AND ei.external_user_id = ee.external_user_id)
      WHERE ee.source_system = 'moly'
        AND ($1::text IS NULL OR ee.external_user_id = $1)
+       AND ($2::bigint IS NULL OR ee.local_course_id = $2)
+       AND ($3::bigint IS NULL OR ee.local_video_course_profile_id IS NULL OR ee.local_video_course_profile_id = $3)
      ORDER BY ee.id DESC
-     LIMIT $2`,
-    [filterExternalUserId, limit],
+     LIMIT $4`,
+    [filterExternalUserId, filterCourseId, filterProfileId, limit],
   );
 
   const mgmtRes = await db.query(
@@ -2256,9 +2310,10 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
      WHERE ei.source_system = 'moly'
        AND ei.status = 'active'
        AND ($1::text IS NULL OR ei.external_user_id = $1)
+       AND ($2::bigint IS NULL OR g.course_id = $2)
      ORDER BY g.id DESC
-     LIMIT $2`,
-    [filterExternalUserId, limit],
+     LIMIT $3`,
+    [filterExternalUserId, filterCourseId, limit],
   );
 
   const inboxSummaryRes = await db.query(
@@ -2373,6 +2428,15 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
     inboxSummary[row.status] = { count: row.count, stale_count: row.stale_count };
   }
 
+  let contentDriftSummary = undefined;
+  if (includeContent) {
+    contentDriftSummary = await exportContentStateForReconciliation(db, {
+      courseId: filterCourseId,
+      profileId: filterProfileId,
+      limit,
+    });
+  }
+
   observeIntegrationLatency("moly.reconciliation.snapshot_ms", Date.now() - startMs);
   recordIntegrationMetric("moly.reconciliation.snapshot_calls");
   integrationLog.info(
@@ -2381,6 +2445,7 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
       identities: identitiesRes.rows.length,
       entitlements: entitlements.length,
       openConflicts: conflictsRes.rows.length,
+      includeContent,
       durationMs: Date.now() - startMs,
     },
     corr,
@@ -2399,6 +2464,1464 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
       open_conflicts: conflictsRes.rows,
       entitlements,
       inbox_summary: inboxSummary,
+      ...(includeContent ? { content_drift_summary: contentDriftSummary } : {}),
+    },
+  };
+};
+
+// ============================================================================
+// Day 8-10: Content & Progress Reconciliation, Ops v2, Per-Subject Repair, Health
+// ============================================================================
+
+const toIsoOrNull = (val) => (val ? new Date(val).toISOString() : null);
+
+const hasTable = async (db, tableName) => {
+  try {
+    const res = await db.query(`SELECT to_regclass($1) IS NOT NULL AS exists`, [`public.${tableName}`]);
+    return Boolean(res.rows[0]?.exists);
+  } catch {
+    return false;
+  }
+};
+
+const hasColumn = async (db, tableName, columnName) => {
+  try {
+    const res = await db.query(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2
+       LIMIT 1`,
+      [tableName, columnName],
+    );
+    return res.rows.length > 0;
+  } catch {
+    return false;
+  }
+};
+
+const assertGlobalSyncEnabled = (env = process.env, metricName = "moly.reconciliation.blocked_kill_switch") => {
+  if (isMolyIntegrationKillSwitchActive(env)) {
+    recordIntegrationMetric(metricName);
+    throw new MolyIntegrationError(
+      503,
+      "INTEGRATION_KILL_SWITCH_ACTIVE",
+      "Moly integration sync is disabled by emergency kill switch.",
+    );
+  }
+};
+
+const parseOptionalPositiveId = (value, fieldName) => {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  return parsePositiveBigIntId(value, fieldName);
+};
+
+const parseOptionalPositiveIdList = (singularVal, pluralVal, fieldName) => {
+  const tokens = [];
+  for (const raw of [singularVal, pluralVal]) {
+    if (raw === undefined || raw === null) continue;
+    const parts = Array.isArray(raw) ? raw : String(raw).split(",");
+    for (const part of parts) {
+      const trimmed = String(part ?? "").trim();
+      if (trimmed) tokens.push(trimmed);
+    }
+  }
+  const unique = [];
+  const seen = new Set();
+  for (const token of tokens) {
+    const num = Number(parsePositiveBigIntId(token, fieldName));
+    if (!seen.has(num)) {
+      seen.add(num);
+      unique.push(num);
+    }
+  }
+  return unique;
+};
+
+const parseOptionalExternalIdList = (singularVal, pluralVal) => {
+  const out = [];
+  const seen = new Set();
+  for (const raw of [singularVal, pluralVal]) {
+    if (raw === undefined || raw === null) continue;
+    const parts = Array.isArray(raw) ? raw : String(raw).split(",");
+    for (const part of parts) {
+      const trimmed = String(part ?? "").trim();
+      if (!trimmed) continue;
+      const normalized = normalizeExternalId(trimmed, "externalUserId", 191);
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        out.push(normalized);
+      }
+    }
+  }
+  return out;
+};
+
+const clampLimit = (value, fallback = 500, max = 2000) =>
+  Math.min(Math.max(Number(value) || fallback, 1), max);
+
+const getSplitKillSwitchesState = (env = process.env) => {
+  const contentSync = isContentSyncKillSwitchActive(env);
+  return {
+    global: isMolyIntegrationKillSwitchActive(env),
+    contentSync,
+    catalogSync: contentSync,
+    delegatedLearning: isDelegatedLearningKillSwitchActive(env),
+    repairMutations: isRepairMutationsKillSwitchActive(env),
+  };
+};
+
+/**
+ * Exports canonical Course + Profile + Unit + File revision & tombstone counts
+ * for Day 8 `content_drift` reconciliation. Stays available unless the global kill switch is on.
+ */
+export const exportContentStateForReconciliation = async (
+  db = defaultDb,
+  { courseId = null, courseIds = null, profileId = null, profileIds = null, limit = 500, env = process.env } = {},
+) => {
+  assertGlobalSyncEnabled(env);
+  const startMs = Date.now();
+  const parsedCourseIds = parseOptionalPositiveIdList(courseId, courseIds, "courseId");
+  const parsedProfileIds = parseOptionalPositiveIdList(profileId, profileIds, "profileId");
+  const rowLimit = clampLimit(limit, 500, 2000);
+
+  let effectiveCourseIds = [...parsedCourseIds];
+  if (effectiveCourseIds.length === 0 && parsedProfileIds.length > 0) {
+    const profRes = await db.query(
+      `SELECT DISTINCT course_id FROM video_course_profiles WHERE id = ANY($1::bigint[])`,
+      [parsedProfileIds],
+    );
+    if (profRes.rows.length === 0) {
+      return {
+        checkedAt: new Date().toISOString(),
+        complete: true,
+        summary: {
+          courseCount: 0,
+          tombstonedCourseCount: 0,
+          profileCount: 0,
+          tombstonedProfileCount: 0,
+          maxCourseRevision: 0,
+          maxProfileRevision: 0,
+          activeFilesCount: 0,
+          tombstonedFilesCount: 0,
+          maxFileRevision: 0,
+        },
+        courses: [],
+        profiles: [],
+      };
+    }
+    effectiveCourseIds = profRes.rows.map((r) => Number(r.course_id));
+  }
+
+  const [hasCourseSyncRev, hasFileSyncRev, hasPlacementDeleted] = await Promise.all([
+    hasColumn(db, "courses", "sync_revision"),
+    hasColumn(db, "lms_learning_files", "sync_revision"),
+    hasColumn(db, "lms_learning_file_placements", "deleted_at"),
+  ]);
+
+  const courseSyncCol = hasCourseSyncRev ? "c.sync_revision" : "1::bigint";
+  const courseDelCol = hasCourseSyncRev ? "c.sync_deleted_at" : "NULL::timestamptz";
+  const fileActiveCond = hasFileSyncRev
+    ? "f.deleted_at IS NULL AND f.status = 'ready'"
+    : "f.status = 'ready'";
+  const fileTombCond = hasFileSyncRev
+    ? "(f.deleted_at IS NOT NULL OR f.status = 'deleted')"
+    : "f.status = 'deleted'";
+  const fileMaxRevExpr = hasFileSyncRev
+    ? "(SELECT COALESCE(MAX(f.sync_revision), 0)::bigint FROM lms_learning_files f WHERE f.course_id = c.id)"
+    : "0::bigint";
+  const mirrorPlacementActiveCond = hasPlacementDeleted ? "p.deleted_at IS NULL" : "TRUE";
+  const mirrorPlacementTombCond = hasPlacementDeleted ? "p.deleted_at IS NOT NULL" : "FALSE";
+  const profSyncCol = hasCourseSyncRev ? "vcp.sync_revision" : "1::bigint";
+
+  const [coursesRes, profilesRes] = await Promise.all([
+    db.query(
+      `SELECT c.id,
+              COALESCE(c.title, c.name) AS title,
+              c.slug,
+              c.is_published,
+              ${courseSyncCol} AS sync_revision,
+              ${courseDelCol} AS sync_deleted_at,
+              c.updated_at,
+              (SELECT COUNT(*)::int FROM lessons l WHERE l.course_id = c.id AND l.is_published = TRUE) AS active_lesson_count,
+              (SELECT COUNT(*)::int FROM lessons l WHERE l.course_id = c.id AND l.is_published = FALSE) AS tombstoned_lesson_count,
+              (SELECT COUNT(*)::int FROM lms_learning_files f WHERE f.course_id = c.id AND ${fileActiveCond}) AS active_files_count,
+              (SELECT COUNT(*)::int FROM lms_learning_files f WHERE f.course_id = c.id AND ${fileTombCond}) AS tombstoned_files_count,
+              ${fileMaxRevExpr} AS max_file_revision
+       FROM courses c
+       WHERE (cardinality($1::bigint[]) = 0 OR c.id = ANY($1::bigint[]))
+       ORDER BY c.id ASC
+       LIMIT $2`,
+      [effectiveCourseIds, rowLimit],
+    ),
+    db.query(
+      `SELECT vcp.id,
+              vcp.course_id,
+              vcp.mode,
+              vcp.source_live_class_id,
+              vcp.management_class_id,
+              vcp.status,
+              ${profSyncCol} AS sync_revision,
+              vcp.deleted_at,
+              vcp.updated_at,
+              CASE
+                WHEN UPPER(vcp.mode) = 'MIRROR' AND vcp.source_live_class_id IS NOT NULL
+                  THEN (SELECT COUNT(*)::int FROM class_sessions cs WHERE cs.live_class_id = vcp.source_live_class_id AND cs.status <> 'cancelled')
+                ELSE (SELECT COUNT(*)::int FROM lessons l WHERE l.course_id = vcp.course_id AND l.is_published = TRUE)
+              END AS active_unit_count,
+              CASE
+                WHEN UPPER(vcp.mode) = 'MIRROR' AND vcp.source_live_class_id IS NOT NULL
+                  THEN (SELECT COUNT(*)::int FROM class_sessions cs WHERE cs.live_class_id = vcp.source_live_class_id AND cs.status = 'cancelled')
+                ELSE (SELECT COUNT(*)::int FROM lessons l WHERE l.course_id = vcp.course_id AND l.is_published = FALSE)
+              END AS tombstoned_unit_count,
+              CASE
+                WHEN UPPER(vcp.mode) = 'MIRROR' AND vcp.source_live_class_id IS NOT NULL
+                  THEN (SELECT COUNT(*)::int FROM lms_learning_file_placements p WHERE p.live_class_id = vcp.source_live_class_id AND ${mirrorPlacementActiveCond})
+                ELSE (SELECT COUNT(*)::int FROM lesson_learning_file_placements lp JOIN lessons l ON l.id = lp.lesson_id WHERE l.course_id = vcp.course_id AND l.is_published = TRUE)
+              END AS active_file_placement_count,
+              CASE
+                WHEN UPPER(vcp.mode) = 'MIRROR' AND vcp.source_live_class_id IS NOT NULL
+                  THEN (SELECT COUNT(*)::int FROM lms_learning_file_placements p WHERE p.live_class_id = vcp.source_live_class_id AND ${mirrorPlacementTombCond})
+                ELSE 0
+              END AS tombstoned_file_placement_count
+       FROM video_course_profiles vcp
+       WHERE (cardinality($1::bigint[]) = 0 OR vcp.course_id = ANY($1::bigint[]))
+         AND (cardinality($2::bigint[]) = 0 OR vcp.id = ANY($2::bigint[]))
+       ORDER BY vcp.id ASC
+       LIMIT $3`,
+      [effectiveCourseIds, parsedProfileIds, rowLimit],
+    ),
+  ]);
+
+  const courses = coursesRes.rows.map((row) => ({
+    courseId: String(row.id),
+    title: row.title,
+    slug: row.slug || null,
+    isPublished: Boolean(row.is_published),
+    deleted: Boolean(row.sync_deleted_at),
+    deletedAt: toIsoOrNull(row.sync_deleted_at),
+    syncRevision: Number(row.sync_revision || 1),
+    activeLessonCount: Number(row.active_lesson_count || 0),
+    tombstonedLessonCount: Number(row.tombstoned_lesson_count || 0),
+    activeFilesCount: Number(row.active_files_count || 0),
+    tombstonedFilesCount: Number(row.tombstoned_files_count || 0),
+    maxFileRevision: Number(row.max_file_revision || 0),
+    updatedAt: toIsoOrNull(row.updated_at),
+  }));
+
+  const profiles = profilesRes.rows.map((row) => ({
+    profileId: String(row.id),
+    courseId: String(row.course_id),
+    mode: String(row.mode || "INDEPENDENT").toUpperCase(),
+    sourceLiveClassId: row.source_live_class_id ? String(row.source_live_class_id) : null,
+    managementClassId: row.management_class_id || null,
+    status: row.deleted_at ? "archived" : row.status,
+    deleted: Boolean(row.deleted_at),
+    deletedAt: toIsoOrNull(row.deleted_at),
+    syncRevision: Number(row.sync_revision || 1),
+    activeUnitCount: Number(row.active_unit_count || 0),
+    tombstonedUnitCount: Number(row.tombstoned_unit_count || 0),
+    activeFilePlacementCount: Number(row.active_file_placement_count || 0),
+    tombstonedFilePlacementCount: Number(row.tombstoned_file_placement_count || 0),
+    updatedAt: toIsoOrNull(row.updated_at),
+  }));
+
+  const summary = {
+    courseCount: courses.filter((c) => !c.deleted).length,
+    tombstonedCourseCount: courses.filter((c) => c.deleted).length,
+    profileCount: profiles.filter((p) => !p.deleted).length,
+    tombstonedProfileCount: profiles.filter((p) => p.deleted).length,
+    maxCourseRevision: courses.reduce((acc, c) => Math.max(acc, c.syncRevision), 0),
+    maxProfileRevision: profiles.reduce((acc, p) => Math.max(acc, p.syncRevision), 0),
+    activeFilesCount: courses.reduce((acc, c) => acc + c.activeFilesCount, 0),
+    tombstonedFilesCount: courses.reduce((acc, c) => acc + c.tombstonedFilesCount, 0),
+    maxFileRevision: courses.reduce((acc, c) => Math.max(acc, c.maxFileRevision), 0),
+  };
+
+  observeIntegrationLatency("moly.reconciliation.content_state_ms", Date.now() - startMs);
+  recordIntegrationMetric("moly.reconciliation.content_state_calls");
+
+  return {
+    checkedAt: new Date().toISOString(),
+    complete: coursesRes.rows.length < rowLimit && profilesRes.rows.length < rowLimit,
+    summary,
+    courses,
+    profiles,
+  };
+};
+
+const resolveReconciliationUsers = async (
+  db,
+  { externalUserId = null, externalUserIds = null, userId = null, userIds = null } = {},
+) => {
+  const parsedUserIds = parseOptionalPositiveIdList(userId, userIds, "userId");
+  const normalizedExtUserIds = parseOptionalExternalIdList(externalUserId, externalUserIds);
+
+  let targetUserIds = null;
+  if (normalizedExtUserIds.length > 0 || parsedUserIds.length > 0) {
+    const matchedIds = new Set();
+    if (normalizedExtUserIds.length > 0) {
+      const extRes = await db.query(
+        `SELECT user_id
+         FROM external_identities
+         WHERE source_system = 'moly' AND external_user_id = ANY($1::text[]) AND user_id IS NOT NULL`,
+        [normalizedExtUserIds],
+      );
+      for (const row of extRes.rows) matchedIds.add(Number(row.user_id));
+      if (parsedUserIds.length > 0) {
+        targetUserIds = parsedUserIds.filter((uid) => matchedIds.has(uid));
+      } else {
+        targetUserIds = [...matchedIds];
+      }
+    } else {
+      targetUserIds = [...parsedUserIds];
+    }
+  }
+
+  return {
+    parsedUserId: parsedUserIds[0] ?? null,
+    parsedUserIds,
+    normalizedExtUserId: normalizedExtUserIds[0] ?? null,
+    normalizedExtUserIds,
+    targetUserIds,
+    hasUserFilter: targetUserIds !== null,
+  };
+};
+
+const loadExternalUserIdMap = async (db, userIds) => {
+  const map = new Map();
+  if (!Array.isArray(userIds) || userIds.length === 0) return map;
+  const res = await db.query(
+    `SELECT user_id, external_user_id
+     FROM external_identities
+     WHERE source_system = 'moly' AND user_id = ANY($1::bigint[])
+     ORDER BY (status = 'active') DESC, id ASC`,
+    [userIds],
+  );
+  for (const row of res.rows) {
+    const key = String(row.user_id);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row.external_user_id);
+  }
+  return map;
+};
+
+/**
+ * Exports canonical per-learner progress, sequential completions, quizzes,
+ * assignments, notes, bookmarks, and unit Q&A snapshots for Day 8 `progress_drift` checks.
+ */
+export const exportLearningStateForReconciliation = async (
+  db = defaultDb,
+  {
+    externalUserId = null,
+    externalUserIds = null,
+    userId = null,
+    userIds = null,
+    courseId = null,
+    courseIds = null,
+    profileId = null,
+    profileIds = null,
+    limit = 500,
+    env = process.env,
+  } = {},
+) => {
+  assertGlobalSyncEnabled(env);
+  const startMs = Date.now();
+  const parsedCourseIds = parseOptionalPositiveIdList(courseId, courseIds, "courseId");
+  const parsedProfileIds = parseOptionalPositiveIdList(profileId, profileIds, "profileId");
+  const rowLimit = clampLimit(limit, 500, 2000);
+
+  const userScope = await resolveReconciliationUsers(db, {
+    externalUserId,
+    externalUserIds,
+    userId,
+    userIds,
+  });
+
+  let effectiveCourseIds = [...parsedCourseIds];
+  let profileConstraints = [];
+  if (parsedProfileIds.length > 0) {
+    const profRes = await db.query(
+      `SELECT id AS profile_id, course_id, mode, source_live_class_id, management_class_id, status, deleted_at
+       FROM video_course_profiles
+       WHERE id = ANY($1::bigint[])`,
+      [parsedProfileIds],
+    );
+    profileConstraints = profRes.rows || [];
+    if (profileConstraints.length === 0) {
+      return {
+        checkedAt: new Date().toISOString(),
+        complete: true,
+        videoWatchProgress: [],
+        sequentialUnitCompletions: [],
+        quizAttempts: [],
+        assignmentSubmissions: [],
+        notesSummary: { activeCount: 0, deletedCount: 0, maxRevision: 0 },
+        notes: [],
+        bookmarksSummary: { activeCount: 0, deletedCount: 0, maxRevision: 0 },
+        bookmarks: [],
+        qaThreadsSummary: { activeCount: 0, deletedCount: 0, maxRevision: 0 },
+        qaThreads: [],
+      };
+    }
+    if (effectiveCourseIds.length === 0) {
+      effectiveCourseIds = [...new Set(profileConstraints.map((p) => Number(p.course_id)))];
+    }
+  }
+
+  if (userScope.hasUserFilter && userScope.targetUserIds.length === 0) {
+    return {
+      checkedAt: new Date().toISOString(),
+      complete: true,
+      videoWatchProgress: [],
+      sequentialUnitCompletions: [],
+      quizAttempts: [],
+      assignmentSubmissions: [],
+      notesSummary: { activeCount: 0, deletedCount: 0, maxRevision: 0 },
+      notes: [],
+      bookmarksSummary: { activeCount: 0, deletedCount: 0, maxRevision: 0 },
+      bookmarks: [],
+      qaThreadsSummary: { activeCount: 0, deletedCount: 0, maxRevision: 0 },
+      qaThreads: [],
+    };
+  }
+
+  const filterUserParam = userScope.hasUserFilter ? userScope.targetUserIds : [0];
+  const [hasBookmarksTable, hasQaThreadsTable] = await Promise.all([
+    hasTable(db, "video_course_unit_bookmarks"),
+    hasTable(db, "learning_unit_qa_threads"),
+  ]);
+
+  let vwpProfileClause = "";
+  if (profileConstraints.length > 0) {
+    const mirrorLiveIds = profileConstraints
+      .filter((p) => String(p.mode || "").toUpperCase() === "MIRROR" && p.source_live_class_id)
+      .map((p) => Number(p.source_live_class_id));
+    const hasIndep = profileConstraints.some((p) => String(p.mode || "").toUpperCase() !== "MIRROR");
+    if (mirrorLiveIds.length > 0 && hasIndep) {
+      vwpProfileClause = ` AND (vwp.lesson_id IS NOT NULL OR vwp.live_class_id IN (${mirrorLiveIds.join(",")}))`;
+    } else if (mirrorLiveIds.length > 0) {
+      vwpProfileClause = ` AND vwp.live_class_id IN (${mirrorLiveIds.join(",")})`;
+    } else {
+      vwpProfileClause = ` AND vwp.lesson_id IS NOT NULL`;
+    }
+  }
+
+  const [vwpRes, quizRes, assignRes, notesAggRes, notesRowsRes, scopePairsRes] = await Promise.all([
+    db.query(
+      `SELECT vwp.id, vwp.user_id, vwp.video_asset_id, vwp.course_id, vwp.live_class_id,
+              vwp.class_session_id, vwp.lesson_id, vwp.last_position_seconds, vwp.watched_seconds,
+              vwp.completion_percent, vwp.is_completed, vwp.completed_at, vwp.last_heartbeat_seq,
+              vwp.sync_revision, vwp.updated_at
+       FROM video_watch_progress vwp
+       WHERE ($1::boolean = FALSE OR vwp.user_id = ANY($2::bigint[]))
+         AND (cardinality($3::bigint[]) = 0 OR vwp.course_id = ANY($3::bigint[]))
+         ${vwpProfileClause}
+       ORDER BY vwp.updated_at DESC, vwp.id DESC
+       LIMIT $4`,
+      [userScope.hasUserFilter, filterUserParam, effectiveCourseIds, rowLimit],
+    ),
+    db.query(
+      `SELECT qa.id, qa.quiz_id, q.course_id, q.class_session_id, q.lesson_id,
+              qa.user_id, qa.video_course_profile_id, qa.attempt_number, qa.status,
+              qa.score, qa.max_score, qa.started_at, qa.expires_at, qa.submitted_at,
+              qa.auto_submitted, qa.sync_revision, qa.updated_at
+       FROM quiz_attempts qa
+       JOIN quizzes q ON q.id = qa.quiz_id
+       WHERE ($1::boolean = FALSE OR qa.user_id = ANY($2::bigint[]))
+         AND (cardinality($3::bigint[]) = 0 OR q.course_id = ANY($3::bigint[]))
+         AND (cardinality($4::bigint[]) = 0 OR qa.video_course_profile_id = ANY($4::bigint[]) OR qa.video_course_profile_id IS NULL)
+       ORDER BY qa.updated_at DESC, qa.id DESC
+       LIMIT $5`,
+      [userScope.hasUserFilter, filterUserParam, effectiveCourseIds, parsedProfileIds, rowLimit],
+    ),
+    db.query(
+      `SELECT s.id, s.assignment_id, a.course_id, a.class_session_id, a.lesson_id,
+              s.user_id, s.video_course_profile_id, s.status, s.revision, s.sync_revision,
+              s.submitted_at, s.return_requested, s.returned_at,
+              g.score AS latest_score, g.graded_at
+       FROM assignment_submissions s
+       JOIN assignments a ON a.id = s.assignment_id
+       LEFT JOIN LATERAL (
+         SELECT score, graded_at
+         FROM submission_grades sg
+         WHERE sg.submission_id = s.id
+         ORDER BY sg.graded_at DESC, sg.id DESC
+         LIMIT 1
+       ) g ON TRUE
+       WHERE ($1::boolean = FALSE OR s.user_id = ANY($2::bigint[]))
+         AND (cardinality($3::bigint[]) = 0 OR a.course_id = ANY($3::bigint[]))
+         AND (cardinality($4::bigint[]) = 0 OR s.video_course_profile_id = ANY($4::bigint[]) OR s.video_course_profile_id IS NULL)
+       ORDER BY s.submitted_at DESC, s.id DESC
+       LIMIT $5`,
+      [userScope.hasUserFilter, filterUserParam, effectiveCourseIds, parsedProfileIds, rowLimit],
+    ),
+    db.query(
+      `SELECT COUNT(*) FILTER (WHERE deleted_at IS NULL)::int AS active_count,
+              COUNT(*) FILTER (WHERE deleted_at IS NOT NULL)::int AS deleted_count,
+              COALESCE(MAX(revision), 0)::bigint AS max_revision
+       FROM video_course_unit_notes
+       WHERE ($1::boolean = FALSE OR user_id = ANY($2::bigint[]))
+         AND (cardinality($3::bigint[]) = 0 OR course_id = ANY($3::bigint[]))`,
+      [userScope.hasUserFilter, filterUserParam, effectiveCourseIds],
+    ),
+    db.query(
+      `SELECT id, user_id, course_id, class_session_id, lesson_id, timestamp_seconds,
+              content, revision, deleted_at, updated_at
+       FROM video_course_unit_notes
+       WHERE deleted_at IS NULL
+         AND ($1::boolean = FALSE OR user_id = ANY($2::bigint[]))
+         AND (cardinality($3::bigint[]) = 0 OR course_id = ANY($3::bigint[]))
+       ORDER BY updated_at DESC, id DESC
+       LIMIT $4`,
+      [userScope.hasUserFilter, filterUserParam, effectiveCourseIds, rowLimit],
+    ),
+    db.query(
+      `SELECT DISTINCT pair.user_id, vcp.id AS profile_id, vcp.course_id, vcp.mode, vcp.source_live_class_id
+       FROM video_course_profiles vcp
+       JOIN (
+         SELECT ee.user_id, ee.local_course_id AS course_id, ee.local_video_course_profile_id AS profile_id
+         FROM external_entitlements ee
+         WHERE ee.user_id IS NOT NULL AND ee.status = 'active'
+         UNION
+         SELECT lag.user_id, lag.course_id, NULL::bigint AS profile_id
+         FROM lms_access_grants lag
+         WHERE lag.access_status = 'active'
+       ) pair
+         ON pair.course_id = vcp.course_id
+         AND (pair.profile_id IS NULL OR pair.profile_id = vcp.id)
+       WHERE vcp.deleted_at IS NULL
+         AND ($1::boolean = FALSE OR pair.user_id = ANY($2::bigint[]))
+         AND (cardinality($3::bigint[]) = 0 OR vcp.course_id = ANY($3::bigint[]))
+         AND (cardinality($4::bigint[]) = 0 OR vcp.id = ANY($4::bigint[]))
+       ORDER BY pair.user_id ASC, vcp.id ASC
+       LIMIT $5`,
+      [userScope.hasUserFilter, filterUserParam, effectiveCourseIds, parsedProfileIds, Math.min(rowLimit, 50)],
+    ),
+  ]);
+
+  let bookmarksSummary = { activeCount: 0, deletedCount: 0, maxRevision: 0 };
+  let bookmarksRows = [];
+  if (hasBookmarksTable) {
+    const [bmAgg, bmList] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*) FILTER (WHERE deleted_at IS NULL)::int AS active_count,
+                COUNT(*) FILTER (WHERE deleted_at IS NOT NULL)::int AS deleted_count,
+                COALESCE(MAX(revision), 0)::bigint AS max_revision
+         FROM video_course_unit_bookmarks
+         WHERE ($1::boolean = FALSE OR user_id = ANY($2::bigint[]))
+           AND (cardinality($3::bigint[]) = 0 OR course_id = ANY($3::bigint[]))
+           AND (cardinality($4::bigint[]) = 0 OR video_course_profile_id = ANY($4::bigint[]) OR video_course_profile_id IS NULL)`,
+        [userScope.hasUserFilter, filterUserParam, effectiveCourseIds, parsedProfileIds],
+      ),
+      db.query(
+        `SELECT id, user_id, course_id, video_course_profile_id, class_session_id, lesson_id,
+                video_asset_id, timestamp_seconds, label, revision, updated_at
+         FROM video_course_unit_bookmarks
+         WHERE deleted_at IS NULL
+           AND ($1::boolean = FALSE OR user_id = ANY($2::bigint[]))
+           AND (cardinality($3::bigint[]) = 0 OR course_id = ANY($3::bigint[]))
+           AND (cardinality($4::bigint[]) = 0 OR video_course_profile_id = ANY($4::bigint[]) OR video_course_profile_id IS NULL)
+         ORDER BY updated_at DESC, id DESC
+         LIMIT $5`,
+        [userScope.hasUserFilter, filterUserParam, effectiveCourseIds, parsedProfileIds, rowLimit],
+      ),
+    ]);
+    bookmarksSummary = {
+      activeCount: Number(bmAgg.rows[0]?.active_count || 0),
+      deletedCount: Number(bmAgg.rows[0]?.deleted_count || 0),
+      maxRevision: Number(bmAgg.rows[0]?.max_revision || 0),
+    };
+    bookmarksRows = bmList.rows;
+  }
+
+  let qaThreadsSummary = { activeCount: 0, deletedCount: 0, maxRevision: 0 };
+  let qaThreadsRows = [];
+  if (hasQaThreadsTable) {
+    const [qaAgg, qaList] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*) FILTER (WHERE deleted_at IS NULL)::int AS active_count,
+                COUNT(*) FILTER (WHERE deleted_at IS NOT NULL)::int AS deleted_count,
+                COALESCE(MAX(revision), 0)::bigint AS max_revision
+         FROM learning_unit_qa_threads
+         WHERE ($1::boolean = FALSE OR author_id = ANY($2::bigint[]))
+           AND (cardinality($3::bigint[]) = 0 OR course_id = ANY($3::bigint[]))
+           AND (cardinality($4::bigint[]) = 0 OR video_course_profile_id = ANY($4::bigint[]) OR video_course_profile_id IS NULL)`,
+        [userScope.hasUserFilter, filterUserParam, effectiveCourseIds, parsedProfileIds],
+      ),
+      db.query(
+        `SELECT id, course_id, video_course_profile_id, class_session_id, lesson_id,
+                author_id, author_role, title, status, is_pinned, revision, last_message_at, updated_at
+         FROM learning_unit_qa_threads
+         WHERE deleted_at IS NULL
+           AND ($1::boolean = FALSE OR author_id = ANY($2::bigint[]))
+           AND (cardinality($3::bigint[]) = 0 OR course_id = ANY($3::bigint[]))
+           AND (cardinality($4::bigint[]) = 0 OR video_course_profile_id = ANY($4::bigint[]) OR video_course_profile_id IS NULL)
+         ORDER BY last_message_at DESC, id DESC
+         LIMIT $5`,
+        [userScope.hasUserFilter, filterUserParam, effectiveCourseIds, parsedProfileIds, rowLimit],
+      ),
+    ]);
+    qaThreadsSummary = {
+      activeCount: Number(qaAgg.rows[0]?.active_count || 0),
+      deletedCount: Number(qaAgg.rows[0]?.deleted_count || 0),
+      maxRevision: Number(qaAgg.rows[0]?.max_revision || 0),
+    };
+    qaThreadsRows = qaList.rows;
+  }
+
+  const allUserIds = new Set();
+  for (const r of vwpRes.rows) allUserIds.add(Number(r.user_id));
+  for (const r of quizRes.rows) allUserIds.add(Number(r.user_id));
+  for (const r of assignRes.rows) allUserIds.add(Number(r.user_id));
+  for (const r of notesRowsRes.rows) allUserIds.add(Number(r.user_id));
+  for (const r of bookmarksRows) allUserIds.add(Number(r.user_id));
+  for (const r of qaThreadsRows) allUserIds.add(Number(r.author_id));
+  for (const r of scopePairsRes.rows) allUserIds.add(Number(r.user_id));
+
+  const extIdMap = await loadExternalUserIdMap(db, [...allUserIds]);
+  const extIdsFor = (uid) => extIdMap.get(String(uid)) || [];
+
+  const sequentialUnitCompletions = [];
+  for (const pair of scopePairsRes.rows) {
+    const rawUnits = await loadProfileUnitsWithProgress(db, {
+      profileRow: {
+        profile_id: pair.profile_id,
+        course_id: pair.course_id,
+        mode: pair.mode,
+        source_live_class_id: pair.source_live_class_id,
+      },
+      userId: pair.user_id,
+    });
+    const lockedUnits = applySequentialLocks(rawUnits, { isPublicPreviewAccess: false });
+    const completedCount = lockedUnits.filter((u) => u.isCompleted).length;
+    sequentialUnitCompletions.push({
+      userId: String(pair.user_id),
+      externalUserIds: extIdsFor(pair.user_id),
+      courseId: String(pair.course_id),
+      profileId: String(pair.profile_id),
+      totalUnitsCount: lockedUnits.length,
+      completedUnitsCount: completedCount,
+      courseCompletionPct: lockedUnits.length > 0 ? Math.round((completedCount / lockedUnits.length) * 100) : 0,
+      units: lockedUnits.map((u) => ({
+        unitId: String(u.id),
+        unitType: u.unitType,
+        isCompleted: Boolean(u.isCompleted),
+        isVideoCompleted: Boolean(u.isVideoCompleted),
+        isQuizCompleted: Boolean(u.isQuizCompleted),
+        isLocked: Boolean(u.isLocked),
+        progressPercent: Number(u.progressPercent || 0),
+      })),
+    });
+  }
+
+  observeIntegrationLatency("moly.reconciliation.learning_state_ms", Date.now() - startMs);
+  recordIntegrationMetric("moly.reconciliation.learning_state_calls");
+
+  return {
+    checkedAt: new Date().toISOString(),
+    complete: [vwpRes, quizRes, assignRes, notesRowsRes].every((r) => r.rows.length < rowLimit)
+      && bookmarksRows.length < rowLimit
+      && qaThreadsRows.length < rowLimit,
+    videoWatchProgress: vwpRes.rows.map((r) => ({
+      id: String(r.id),
+      userId: String(r.user_id),
+      externalUserIds: extIdsFor(r.user_id),
+      videoAssetId: String(r.video_asset_id),
+      courseId: r.course_id ? String(r.course_id) : null,
+      liveClassId: r.live_class_id ? String(r.live_class_id) : null,
+      classSessionId: r.class_session_id ? String(r.class_session_id) : null,
+      lessonId: r.lesson_id ? String(r.lesson_id) : null,
+      lastPositionSeconds: Number(r.last_position_seconds || 0),
+      watchedSeconds: Number(r.watched_seconds || 0),
+      completionPercent: Number(r.completion_percent || 0),
+      isCompleted: Boolean(r.is_completed),
+      completedAt: toIsoOrNull(r.completed_at),
+      lastHeartbeatSeq: Number(r.last_heartbeat_seq || 0),
+      syncRevision: Number(r.sync_revision || 1),
+      updatedAt: toIsoOrNull(r.updated_at),
+    })),
+    sequentialUnitCompletions,
+    quizAttempts: quizRes.rows.map((r) => ({
+      id: String(r.id),
+      quizId: String(r.quiz_id),
+      courseId: r.course_id ? String(r.course_id) : null,
+      classSessionId: r.class_session_id ? String(r.class_session_id) : null,
+      lessonId: r.lesson_id ? String(r.lesson_id) : null,
+      userId: String(r.user_id),
+      externalUserIds: extIdsFor(r.user_id),
+      profileId: r.video_course_profile_id ? String(r.video_course_profile_id) : null,
+      attemptNumber: Number(r.attempt_number || 1),
+      status: r.status,
+      score: r.score != null ? Number(r.score) : null,
+      maxScore: r.max_score != null ? Number(r.max_score) : null,
+      startedAt: toIsoOrNull(r.started_at),
+      expiresAt: toIsoOrNull(r.expires_at),
+      submittedAt: toIsoOrNull(r.submitted_at),
+      autoSubmitted: Boolean(r.auto_submitted),
+      syncRevision: Number(r.sync_revision || 1),
+      updatedAt: toIsoOrNull(r.updated_at),
+    })),
+    assignmentSubmissions: assignRes.rows.map((r) => ({
+      id: String(r.id),
+      assignmentId: String(r.assignment_id),
+      courseId: r.course_id ? String(r.course_id) : null,
+      classSessionId: r.class_session_id ? String(r.class_session_id) : null,
+      lessonId: r.lesson_id ? String(r.lesson_id) : null,
+      userId: String(r.user_id),
+      externalUserIds: extIdsFor(r.user_id),
+      profileId: r.video_course_profile_id ? String(r.video_course_profile_id) : null,
+      status: r.status,
+      revision: Number(r.revision || 1),
+      syncRevision: Number(r.sync_revision || 1),
+      submittedAt: toIsoOrNull(r.submitted_at),
+      returnRequested: Boolean(r.return_requested),
+      returnedAt: toIsoOrNull(r.returned_at),
+      latestScore: r.latest_score != null ? Number(r.latest_score) : null,
+      gradedAt: toIsoOrNull(r.graded_at),
+    })),
+    notesSummary: {
+      activeCount: Number(notesAggRes.rows[0]?.active_count || 0),
+      deletedCount: Number(notesAggRes.rows[0]?.deleted_count || 0),
+      maxRevision: Number(notesAggRes.rows[0]?.max_revision || 0),
+    },
+    notes: notesRowsRes.rows.map((r) => ({
+      id: String(r.id),
+      userId: String(r.user_id),
+      externalUserIds: extIdsFor(r.user_id),
+      courseId: String(r.course_id),
+      classSessionId: r.class_session_id ? String(r.class_session_id) : null,
+      lessonId: r.lesson_id ? String(r.lesson_id) : null,
+      timestampSeconds: Number(r.timestamp_seconds || 0),
+      content: r.content ?? "",
+      revision: Number(r.revision || 1),
+      updatedAt: toIsoOrNull(r.updated_at),
+    })),
+    bookmarksSummary,
+    bookmarks: bookmarksRows.map((r) => ({
+      id: String(r.id),
+      userId: String(r.user_id),
+      externalUserIds: extIdsFor(r.user_id),
+      courseId: String(r.course_id),
+      profileId: r.video_course_profile_id ? String(r.video_course_profile_id) : null,
+      classSessionId: r.class_session_id ? String(r.class_session_id) : null,
+      lessonId: r.lesson_id ? String(r.lesson_id) : null,
+      videoAssetId: r.video_asset_id ? String(r.video_asset_id) : null,
+      timestampSeconds: Number(r.timestamp_seconds || 0),
+      label: r.label || "",
+      revision: Number(r.revision || 1),
+      updatedAt: toIsoOrNull(r.updated_at),
+    })),
+    qaThreadsSummary,
+    qaThreads: qaThreadsRows.map((r) => ({
+      id: String(r.id),
+      courseId: String(r.course_id),
+      profileId: r.video_course_profile_id ? String(r.video_course_profile_id) : null,
+      classSessionId: r.class_session_id ? String(r.class_session_id) : null,
+      lessonId: r.lesson_id ? String(r.lesson_id) : null,
+      authorId: String(r.author_id),
+      authorRole: r.author_role || null,
+      externalUserIds: extIdsFor(r.author_id),
+      title: r.title || "",
+      status: r.status,
+      isPinned: Boolean(r.is_pinned),
+      revision: Number(r.revision || 1),
+      lastMessageAt: toIsoOrNull(r.last_message_at),
+      updatedAt: toIsoOrNull(r.updated_at),
+    })),
+  };
+};
+
+/**
+ * Returns consolidated Day 8-10 Admin Ops v2 observability across split kill switches,
+ * inbound inbox, outbound v2 outbox backlog/DLQ, sync checkpoints, and conflicts.
+ */
+export const getMolyOpsV2Overview = async (db = defaultDb, { limit = 50, env = process.env } = {}) => {
+  const rowLimit = clampLimit(limit, 50, 200);
+  const [hasOutboxTable, hasCheckpointTable] = await Promise.all([
+    hasTable(db, "course_integration_outbox"),
+    hasTable(db, "course_sync_checkpoints"),
+  ]);
+
+  const [inboxAggRes, inboxFailuresRes, inboxLastProcRes, conflictCountsRes] = await Promise.all([
+    db.query(
+      `SELECT status, COUNT(*)::int AS count
+       FROM integration_inbox
+       WHERE source_system = 'moly'
+       GROUP BY status`,
+    ),
+    db.query(
+      `SELECT id, event_id, event_type, correlation_id, status, attempt_count, max_attempts,
+              next_retry_at, last_error_code, last_error_message, created_at, updated_at
+       FROM integration_inbox
+       WHERE source_system = 'moly' AND status IN ('failed', 'dead_letter')
+       ORDER BY id DESC
+       LIMIT $1`,
+      [rowLimit],
+    ),
+    db.query(
+      `SELECT MAX(processed_at) AS last_processed_at,
+              EXTRACT(EPOCH FROM (NOW() - MIN(created_at) FILTER (WHERE status IN ('pending', 'processing', 'failed'))))::int AS oldest_pending_age_seconds
+       FROM integration_inbox
+       WHERE source_system = 'moly'`,
+    ),
+    db.query(
+      `SELECT status, conflict_type, COUNT(*)::int AS count
+       FROM integration_conflicts
+       WHERE source_system = 'moly'
+       GROUP BY status, conflict_type`,
+    ),
+  ]);
+
+  const inboxCounts = Object.fromEntries(inboxAggRes.rows.map((r) => [r.status, r.count]));
+  const conflictCounts = {};
+  const openConflictsByType = {};
+  for (const row of conflictCountsRes.rows) {
+    conflictCounts[row.status] = (conflictCounts[row.status] || 0) + Number(row.count || 0);
+    if (row.status === "open") {
+      openConflictsByType[row.conflict_type] = Number(row.count || 0);
+    }
+  }
+
+  let outboxCounts = {};
+  let outboxBacklogCount = 0;
+  let outboxDlqCount = 0;
+  let outboxOldestPendingAgeSeconds = null;
+  let lastOutboxSentAt = null;
+  let outboxFailedAndDlqItems = [];
+  if (hasOutboxTable) {
+    const [outboxAggRes, outboxLatencyRes, outboxFailRes] = await Promise.all([
+      db.query(
+        `SELECT status, COUNT(*)::int AS count
+         FROM course_integration_outbox
+         GROUP BY status`,
+      ),
+      db.query(
+        `SELECT MAX(sent_at) AS last_sent_at,
+                EXTRACT(EPOCH FROM (NOW() - MIN(created_at) FILTER (WHERE status IN ('pending', 'processing', 'failed'))))::int AS oldest_pending_age_seconds
+         FROM course_integration_outbox`,
+      ),
+      db.query(
+        `SELECT id, event_id, event_type, aggregate_type, aggregate_id, aggregate_revision,
+                correlation_id, status, attempt_count, max_attempts, next_retry_at,
+                last_error_code, last_error_message, created_at, updated_at
+         FROM course_integration_outbox
+         WHERE status IN ('failed', 'dead_letter')
+         ORDER BY id DESC
+         LIMIT $1`,
+        [rowLimit],
+      ),
+    ]);
+    outboxCounts = Object.fromEntries(outboxAggRes.rows.map((r) => [r.status, r.count]));
+    outboxBacklogCount =
+      Number(outboxCounts.pending || 0)
+      + Number(outboxCounts.processing || 0)
+      + Number(outboxCounts.failed || 0);
+    outboxDlqCount = Number(outboxCounts.dead_letter || 0);
+    lastOutboxSentAt = toIsoOrNull(outboxLatencyRes.rows[0]?.last_sent_at);
+    outboxOldestPendingAgeSeconds = outboxLatencyRes.rows[0]?.oldest_pending_age_seconds != null
+      ? Math.max(0, Number(outboxLatencyRes.rows[0].oldest_pending_age_seconds))
+      : null;
+    outboxFailedAndDlqItems = outboxFailRes.rows.map((r) => ({
+      ...r,
+      id: String(r.id),
+      aggregate_revision: Number(r.aggregate_revision || 0),
+      last_error_message: sanitizeString(r.last_error_message || ""),
+      created_at: toIsoOrNull(r.created_at),
+      updated_at: toIsoOrNull(r.updated_at),
+      next_retry_at: toIsoOrNull(r.next_retry_at),
+    }));
+  }
+
+  let checkpoints = [];
+  if (hasCheckpointTable) {
+    const cpRes = await db.query(
+      `SELECT stream_name, consumer_system, last_cursor, after_entity_id,
+              high_water_revision, snapshot_anchor_revision, high_water_updated_at, updated_at
+       FROM course_sync_checkpoints
+       ORDER BY stream_name ASC`,
+    );
+    checkpoints = cpRes.rows.map((r) => ({
+      streamName: r.stream_name,
+      consumerSystem: r.consumer_system,
+      lastCursor: r.last_cursor,
+      afterEntityId: r.after_entity_id != null ? String(r.after_entity_id) : null,
+      highWaterRevision: Number(r.high_water_revision || 0),
+      snapshotAnchorRevision: r.snapshot_anchor_revision != null ? Number(r.snapshot_anchor_revision) : null,
+      highWaterUpdatedAt: toIsoOrNull(r.high_water_updated_at),
+      updatedAt: toIsoOrNull(r.updated_at),
+    }));
+  }
+
+  const lastInboxProcessedAt = toIsoOrNull(inboxLastProcRes.rows[0]?.last_processed_at);
+  const inboxOldestPendingAgeSeconds = inboxLastProcRes.rows[0]?.oldest_pending_age_seconds != null
+    ? Math.max(0, Number(inboxLastProcRes.rows[0].oldest_pending_age_seconds))
+    : null;
+  const latestCheckpointUpdatedAt = checkpoints.reduce(
+    (latest, cp) => (!latest || (cp.updatedAt && cp.updatedAt > latest) ? cp.updatedAt : latest),
+    null,
+  );
+
+  return {
+    checkedAt: new Date().toISOString(),
+    killSwitches: getSplitKillSwitchesState(env),
+    metrics: getIntegrationMetricsSnapshot(env),
+    inbox: {
+      counts: inboxCounts,
+      backlogCount: Number(inboxCounts.pending || 0) + Number(inboxCounts.processing || 0) + Number(inboxCounts.failed || 0),
+      dlqCount: Number(inboxCounts.dead_letter || 0),
+      oldestPendingAgeSeconds: inboxOldestPendingAgeSeconds,
+      recentFailures: inboxFailuresRes.rows.map((r) => ({
+        ...r,
+        id: String(r.id),
+        last_error_message: sanitizeString(r.last_error_message || ""),
+        created_at: toIsoOrNull(r.created_at),
+        updated_at: toIsoOrNull(r.updated_at),
+        next_retry_at: toIsoOrNull(r.next_retry_at),
+      })),
+    },
+    outbox: {
+      available: hasOutboxTable,
+      counts: outboxCounts,
+      backlogCount: outboxBacklogCount,
+      dlqCount: outboxDlqCount,
+      oldestPendingAgeSeconds: outboxOldestPendingAgeSeconds,
+      lastSentAt: lastOutboxSentAt,
+      failedAndDlqItems: outboxFailedAndDlqItems,
+    },
+    checkpoints,
+    conflicts: {
+      openCount: Number(conflictCounts.open || 0),
+      countsByStatus: conflictCounts,
+      openByType: openConflictsByType,
+    },
+    lastSuccessfulSyncTimestamps: {
+      lastInboxProcessedAt,
+      lastOutboxSentAt,
+      latestCheckpointUpdatedAt,
+    },
+  };
+};
+
+/**
+ * Re-queues a failed, dead-lettered, or cancelled `course_integration_outbox` item.
+ */
+export const retryCourseOutboxJob = async (
+  db = defaultDb,
+  { outboxId, actorId = null, correlationId = null } = {},
+  { recordAudit = recordAuditEvent, env = process.env } = {},
+) => {
+  assertRepairMutationsAllowed(env, { metricName: "course.outbox.retry_blocked_kill_switch" });
+  const id = parsePositiveBigIntId(outboxId, "outboxId");
+  const parsedActorId = actorId == null ? null : parsePositiveBigIntId(actorId, "actorId");
+  const corr = resolveCorrelationId(correlationId);
+
+  if (!(await hasTable(db, "course_integration_outbox"))) {
+    throw new ExternalIntegrationError(503, "OUTBOX_UNAVAILABLE", "course_integration_outbox table is not available.");
+  }
+
+  return runWithTransaction(db, async (tx) => {
+    const existingRes = await tx.query(
+      `SELECT * FROM course_integration_outbox WHERE id = $1 FOR UPDATE`,
+      [id],
+    );
+    const existing = existingRes.rows[0];
+    if (!existing) {
+      throw new ExternalIntegrationError(404, "NOT_FOUND", `Outbox item ${id} not found.`);
+    }
+    if (existing.status === "sent") {
+      return { retried: false, alreadySent: true, outbox: existing };
+    }
+    if (!["failed", "dead_letter", "cancelled", "pending"].includes(existing.status)) {
+      throw new ExternalIntegrationError(
+        409,
+        "OUTBOX_RETRY_NOT_ALLOWED",
+        `Cannot retry outbox item while status is '${existing.status}'.`,
+      );
+    }
+
+    const updatedRes = await tx.query(
+      `UPDATE course_integration_outbox
+       SET status = 'pending',
+           attempt_count = 0,
+           next_retry_at = NOW(),
+           locked_until = NULL,
+           locked_by = NULL,
+           last_error_code = NULL,
+           last_error_message = NULL,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id],
+    );
+    const updated = updatedRes.rows[0];
+
+    await recordAudit({
+      db: tx,
+      actorId: parsedActorId,
+      action: "integration.course_outbox_manual_retry",
+      entityType: "course_integration_outbox",
+      entityId: Number(updated.id),
+      beforeState: {
+        status: existing.status,
+        attempt_count: existing.attempt_count,
+        last_error_code: existing.last_error_code,
+      },
+      afterState: { status: updated.status, attempt_count: updated.attempt_count },
+      metadata: { event_id: updated.event_id, event_type: updated.event_type, correlation_id: corr },
+    });
+
+    recordIntegrationMetric("course.outbox.manual_retry");
+    integrationLog.info(
+      "course_outbox_manual_retry",
+      {
+        outboxId: Number(updated.id),
+        eventId: updated.event_id,
+        previousStatus: existing.status,
+        actorId: parsedActorId,
+      },
+      corr,
+    );
+
+    return { retried: true, alreadySent: false, outbox: updated };
+  });
+};
+
+const requeueSubjectOutboxRowsTx = async (tx, { userIds, externalUserId, courseIds, profileIds }) => {
+  if (!(await hasTable(tx, "course_integration_outbox"))) return 0;
+  const userIdStrings = userIds.map(String);
+  const courseIdStrings = courseIds.map(String);
+  const profileIdStrings = profileIds.map(String);
+  const res = await tx.query(
+    `UPDATE course_integration_outbox
+     SET status = 'pending',
+         attempt_count = 0,
+         next_retry_at = NOW(),
+         locked_until = NULL,
+         locked_by = NULL,
+         last_error_code = NULL,
+         last_error_message = NULL,
+         updated_at = NOW()
+     WHERE status IN ('failed', 'dead_letter', 'cancelled')
+       AND (
+         (cardinality($1::text[]) > 0 AND payload->>'userId' = ANY($1::text[]))
+         OR ($2::text IS NOT NULL AND (payload->>'externalUserId' = $2 OR payload->'externalUserIds' ? $2))
+         OR (cardinality($3::text[]) > 0 AND (
+              payload->>'courseId' = ANY($3::text[])
+              OR (aggregate_type = 'course' AND aggregate_id = ANY($3::text[]))
+            ))
+         OR (cardinality($4::text[]) > 0 AND (
+              payload->>'profileId' = ANY($4::text[])
+              OR (aggregate_type = 'profile' AND aggregate_id = ANY($4::text[]))
+            ))
+       )
+     RETURNING id`,
+    [userIdStrings, externalUserId, courseIdStrings, profileIdStrings],
+  );
+  return res.rows.length;
+};
+
+const requeueSubjectInboxRowsTx = async (tx, { externalUserIds, externalCourseIds }) => {
+  if (externalUserIds.length === 0 && externalCourseIds.length === 0) return 0;
+  const res = await tx.query(
+    `UPDATE integration_inbox
+     SET status = 'pending',
+         attempt_count = 0,
+         next_retry_at = NOW(),
+         locked_until = NULL,
+         locked_by = NULL,
+         last_error_code = NULL,
+         last_error_message = NULL,
+         updated_at = NOW()
+     WHERE source_system = 'moly'
+       AND status IN ('failed', 'dead_letter')
+       AND (
+         (cardinality($1::text[]) > 0 AND payload->>'external_user_id' = ANY($1::text[]))
+         OR (cardinality($2::text[]) > 0 AND payload->>'external_course_id' = ANY($2::text[]))
+       )
+     RETURNING id`,
+    [externalUserIds, externalCourseIds],
+  );
+  return res.rows.length;
+};
+
+const RETRY_SUBJECT_DOMAINS = new Set(["all", "content", "progress", "entitlement"]);
+
+/**
+ * Performs per-subject repair / event re-emission across failed inbox/outbox rows,
+ * catalog/curriculum outbox, entitlement projection, and learner progress snapshots.
+ */
+export const retryMolySubjectSync = async (
+  db = defaultDb,
+  {
+    externalUserId = null,
+    userId = null,
+    courseId = null,
+    profileId = null,
+    domain = "all",
+    actorId = null,
+    correlationId = null,
+  } = {},
+  { recordAudit = recordAuditEvent, env = process.env } = {},
+) => {
+  assertRepairMutationsAllowed(env, { metricName: "moly.ops.retry_subject_blocked_kill_switch" });
+  const normalizedDomain = String(domain || "all").trim().toLowerCase();
+  if (!RETRY_SUBJECT_DOMAINS.has(normalizedDomain)) {
+    throw new ExternalIntegrationError(
+      422,
+      "VALIDATION_ERROR",
+      "domain must be one of: all, content, progress, entitlement.",
+    );
+  }
+  const corr = resolveCorrelationId(correlationId);
+  const parsedActorId = actorId == null ? null : parsePositiveBigIntId(actorId, "actorId");
+  const parsedCourseId = parseOptionalPositiveId(courseId, "courseId");
+  const parsedProfileId = parseOptionalPositiveId(profileId, "profileId");
+  const userScope = await resolveReconciliationUsers(db, { externalUserId, userId });
+
+  if (!userScope.normalizedExtUserId && !userScope.parsedUserId && !parsedCourseId && !parsedProfileId) {
+    throw new ExternalIntegrationError(
+      422,
+      "VALIDATION_ERROR",
+      "Supply at least one subject selector: externalUserId, userId, courseId, or profileId.",
+    );
+  }
+
+  const userIds = userScope.targetUserIds || [];
+  const externalUserIds = [];
+  if (userScope.normalizedExtUserId) externalUserIds.push(userScope.normalizedExtUserId);
+  if (userIds.length > 0) {
+    const extRes = await db.query(
+      `SELECT external_user_id FROM external_identities WHERE source_system = 'moly' AND user_id = ANY($1::bigint[])`,
+      [userIds],
+    );
+    for (const r of extRes.rows) {
+      if (!externalUserIds.includes(r.external_user_id)) externalUserIds.push(r.external_user_id);
+    }
+  }
+
+  const profileRows = (
+    await db.query(
+      `SELECT id, course_id, mode, source_live_class_id, management_class_id, deleted_at
+       FROM video_course_profiles
+       WHERE ($1::bigint IS NOT NULL AND id = $1)
+          OR ($1::bigint IS NULL AND $2::bigint IS NOT NULL AND course_id = $2)
+       ORDER BY id ASC`,
+      [parsedProfileId, parsedCourseId],
+    )
+  ).rows;
+  const courseIds = [...new Set([
+    ...(parsedCourseId ? [parsedCourseId] : []),
+    ...profileRows.map((p) => Number(p.course_id)),
+  ])];
+  const profileIds = [...new Set([
+    ...(parsedProfileId ? [parsedProfileId] : []),
+    ...profileRows.map((p) => Number(p.id)),
+  ])];
+
+  const externalCourseIds = [];
+  if (courseIds.length > 0 || profileIds.length > 0) {
+    const mapRes = await db.query(
+      `SELECT external_course_id
+       FROM external_course_mappings
+       WHERE source_system = 'moly'
+         AND (
+           (cardinality($1::bigint[]) > 0 AND local_course_id = ANY($1::bigint[]))
+           OR (cardinality($2::bigint[]) > 0 AND local_video_course_profile_id = ANY($2::bigint[]))
+         )`,
+      [courseIds, profileIds],
+    );
+    for (const r of mapRes.rows) externalCourseIds.push(r.external_course_id);
+  }
+
+  const { reQueuedInboxCount, reQueuedOutboxCount } = await runWithTransaction(db, async (tx) => {
+    const inboxCnt = await requeueSubjectInboxRowsTx(tx, { externalUserIds, externalCourseIds });
+    const outboxCnt = await requeueSubjectOutboxRowsTx(tx, {
+      userIds,
+      externalUserId: userScope.normalizedExtUserId,
+      courseIds,
+      profileIds,
+    });
+    return { reQueuedInboxCount: inboxCnt, reQueuedOutboxCount: outboxCnt };
+  });
+
+  let reEmittedContentEvents = 0;
+  if ((normalizedDomain === "all" || normalizedDomain === "content") && (courseIds.length > 0 || profileRows.length > 0)) {
+    for (const cId of courseIds) {
+      const courseRes = await db.query(`SELECT id, sync_deleted_at FROM courses WHERE id = $1 LIMIT 1`, [cId]);
+      const courseRow = courseRes.rows[0];
+      if (courseRow) {
+        const deleted = Boolean(courseRow.sync_deleted_at);
+        const envRow = await recordCourseCatalogMutation({
+          db,
+          courseId: cId,
+          eventType: deleted ? "course.tombstoned" : "course.upserted",
+          deleted,
+          deletedAt: courseRow.sync_deleted_at,
+          correlationId: corr,
+        });
+        if (envRow) reEmittedContentEvents += 1;
+      }
+    }
+    for (const prof of profileRows) {
+      const deleted = Boolean(prof.deleted_at);
+      const profEnv = await recordProfileCatalogMutation({
+        db,
+        profileId: prof.id,
+        courseId: prof.course_id,
+        eventType: deleted ? "profile.tombstoned" : "profile.upserted",
+        deleted,
+        deletedAt: prof.deleted_at,
+        correlationId: corr,
+        bumpParentCourse: false,
+      });
+      if (profEnv) reEmittedContentEvents += 1;
+      if (!deleted) {
+        const curEnv = await safeRecordCurriculumMutation({
+          db,
+          courseId: prof.course_id,
+          profileId: prof.id,
+          eventType: "curriculum.upserted",
+          correlationId: corr,
+        });
+        if (curEnv) reEmittedContentEvents += 1;
+      }
+    }
+  }
+
+  let reSyncedEntitlements = 0;
+  if (normalizedDomain === "all" || normalizedDomain === "entitlement") {
+    const entRes = await db.query(
+      `SELECT id, user_id, source_system, local_course_id, local_video_course_profile_id, status
+       FROM external_entitlements
+       WHERE user_id IS NOT NULL
+         AND ($1::boolean = FALSE OR user_id = ANY($2::bigint[]))
+         AND ($3::boolean = FALSE OR local_course_id = ANY($4::bigint[]))
+       ORDER BY id ASC
+       LIMIT 100`,
+      [userIds.length > 0, userIds.length > 0 ? userIds : [0], courseIds.length > 0, courseIds.length > 0 ? courseIds : [0]],
+    );
+    if (entRes.rows.length > 0) {
+      await runWithTransaction(db, async (tx) => {
+        for (const ent of entRes.rows) {
+          await syncCourseEnrollmentProjectionTx(tx, {
+            userId: ent.user_id,
+            sourceSystem: ent.source_system,
+            entitlementId: ent.id,
+            localCourseId: ent.local_course_id,
+            localVideoCourseProfileId: ent.local_video_course_profile_id,
+            isRevokeTombstone: ent.status !== "active",
+          });
+          reSyncedEntitlements += 1;
+        }
+      });
+    }
+  }
+
+  let reEmittedProgressEvents = 0;
+  if ((normalizedDomain === "all" || normalizedDomain === "progress") && userIds.length > 0) {
+    const targetProfilesRes = await db.query(
+      `SELECT DISTINCT vcp.id AS profile_id, vcp.course_id, vcp.mode, vcp.source_live_class_id
+       FROM video_course_profiles vcp
+       WHERE vcp.deleted_at IS NULL
+         AND (cardinality($1::bigint[]) = 0 OR vcp.course_id = ANY($1::bigint[]))
+         AND (cardinality($2::bigint[]) = 0 OR vcp.id = ANY($2::bigint[]))
+       ORDER BY vcp.id ASC
+       LIMIT 20`,
+      [courseIds, profileIds],
+    );
+    for (const uid of userIds) {
+      for (const prof of targetProfilesRes.rows) {
+        const rawUnits = await loadProfileUnitsWithProgress(db, {
+          profileRow: {
+            profile_id: prof.profile_id,
+            course_id: prof.course_id,
+            mode: prof.mode,
+            source_live_class_id: prof.source_live_class_id,
+          },
+          userId: uid,
+        });
+        const unitsAfter = applySequentialLocks(rawUnits, { isPublicPreviewAccess: false });
+        const unitsWithProgress = unitsAfter.filter(
+          (u) => u.isCompleted || Number(u.progressPercent || 0) > 0 || Number(u.watchedSeconds || 0) > 0,
+        );
+        for (const unit of unitsWithProgress) {
+          const emitted = await emitProgressOutboxEventsForProfile({
+            db,
+            userId: uid,
+            externalUserIds,
+            profileRow: prof,
+            unitsAfter,
+            targetUnitAfter: unit,
+            wasCompletedBefore: !unit.isCompleted,
+            correlationId: corr,
+          });
+          reEmittedProgressEvents += emitted.length;
+        }
+      }
+    }
+  }
+
+  await runWithTransaction(db, async (tx) => {
+    await recordAudit({
+      db: tx,
+      actorId: parsedActorId,
+      action: "integration.subject_repair_triggered",
+      entityType: "integration_subject",
+      entityId: parsedCourseId || parsedProfileId || (userIds[0] ?? 0),
+      beforeState: null,
+      afterState: {
+        domain: normalizedDomain,
+        reQueuedInboxCount,
+        reQueuedOutboxCount,
+        reEmittedContentEvents,
+        reSyncedEntitlements,
+        reEmittedProgressEvents,
+      },
+      metadata: {
+        externalUserId: userScope.normalizedExtUserId,
+        userIds: userIds.map(String),
+        courseIds: courseIds.map(String),
+        profileIds: profileIds.map(String),
+        correlation_id: corr,
+      },
+    });
+  });
+
+  recordIntegrationMetric("moly.ops.subject_repair_triggered");
+  integrationLog.info(
+    "moly_subject_repair_completed",
+    {
+      domain: normalizedDomain,
+      reQueuedInboxCount,
+      reQueuedOutboxCount,
+      reEmittedContentEvents,
+      reSyncedEntitlements,
+      reEmittedProgressEvents,
+    },
+    corr,
+  );
+
+  return {
+    correlationId: corr,
+    domain: normalizedDomain,
+    reQueuedInboxCount,
+    reQueuedOutboxCount,
+    reEmittedContentEvents,
+    reSyncedEntitlements,
+    reEmittedProgressEvents,
+  };
+};
+
+/**
+ * Returns safe contract & migration readiness booleans, queue depths, and split kill-switch
+ * state for Day 9-10 deploy probes without exposing secrets, tokens, URLs, or PII.
+ */
+export const getMolyIntegrationHealthProbe = async (db = defaultDb, { env = process.env } = {}) => {
+  let dbConnected = false;
+  try {
+    await db.query("SELECT 1");
+    dbConnected = true;
+  } catch {
+    dbConnected = false;
+  }
+
+  const [
+    tIdentities,
+    tCourseMappings,
+    tExternalEntitlements,
+    tInbox,
+    tConflicts,
+    colExtEntProfile,
+    tSsoCodes,
+    tSsoLinks,
+    tSsoBrowserTxs,
+    tOutbox,
+    tCheckpoints,
+    tDeviceBindings,
+    tDelegatedSessions,
+    tBookmarks,
+    tQaThreads,
+    tQaMessages,
+  ] = dbConnected
+    ? await Promise.all([
+      hasTable(db, "external_identities"),
+      hasTable(db, "external_course_mappings"),
+      hasTable(db, "external_entitlements"),
+      hasTable(db, "integration_inbox"),
+      hasTable(db, "integration_conflicts"),
+      hasColumn(db, "external_entitlements", "local_video_course_profile_id"),
+      hasTable(db, "integration_sso_codes"),
+      hasTable(db, "integration_sso_link_requests"),
+      hasTable(db, "integration_sso_browser_txs"),
+      hasTable(db, "course_integration_outbox"),
+      hasTable(db, "course_sync_checkpoints"),
+      hasTable(db, "moly_device_bindings"),
+      hasTable(db, "delegated_learning_sessions"),
+      hasTable(db, "video_course_unit_bookmarks"),
+      hasTable(db, "learning_unit_qa_threads"),
+      hasTable(db, "learning_unit_qa_messages"),
+    ])
+    : Array(16).fill(false);
+
+  const migrations = {
+    "079_foundation": tIdentities && tCourseMappings && tExternalEntitlements && tInbox && tConflicts,
+    "080_profile_scope": colExtEntProfile,
+    "081_sso": tSsoCodes && tSsoLinks,
+    "082_sso_browser_txs": tSsoBrowserTxs,
+    "083_full_sync_foundation": tOutbox && tCheckpoints && tDeviceBindings && tDelegatedSessions,
+    "084_day5_7_parity": tBookmarks && tQaThreads && tQaMessages,
+  };
+
+  let inboxQueueDepth = 0;
+  let inboxDlqCount = 0;
+  let outboxQueueDepth = 0;
+  let outboxDlqCount = 0;
+  let openConflictsCount = 0;
+
+  if (dbConnected && tInbox) {
+    const res = await db.query(
+      `SELECT COUNT(*) FILTER (WHERE status IN ('pending', 'processing', 'failed'))::int AS depth,
+              COUNT(*) FILTER (WHERE status = 'dead_letter')::int AS dlq
+       FROM integration_inbox
+       WHERE source_system = 'moly'`,
+    );
+    inboxQueueDepth = Number(res.rows[0]?.depth || 0);
+    inboxDlqCount = Number(res.rows[0]?.dlq || 0);
+  }
+  if (dbConnected && tOutbox) {
+    const res = await db.query(
+      `SELECT COUNT(*) FILTER (WHERE status IN ('pending', 'processing', 'failed'))::int AS depth,
+              COUNT(*) FILTER (WHERE status = 'dead_letter')::int AS dlq
+       FROM course_integration_outbox`,
+    );
+    outboxQueueDepth = Number(res.rows[0]?.depth || 0);
+    outboxDlqCount = Number(res.rows[0]?.dlq || 0);
+  }
+  if (dbConnected && tConflicts) {
+    const res = await db.query(
+      `SELECT COUNT(*)::int AS cnt
+       FROM integration_conflicts
+       WHERE source_system = 'moly' AND status = 'open'`,
+    );
+    openConflictsCount = Number(res.rows[0]?.cnt || 0);
+  }
+
+  const allMigrationsReady = Object.values(migrations).every(Boolean);
+
+  return {
+    ready: dbConnected && allMigrationsReady,
+    dbConnected,
+    contractVersion: "2.0.0",
+    schemaVersion: CATALOG_SYNC_SCHEMA_VERSION,
+    migrations,
+    killSwitches: getSplitKillSwitchesState(env),
+    supportedScopes: [...ALLOWED_DELEGATED_SCOPES],
+    queues: {
+      inboxQueueDepth,
+      inboxDlqCount,
+      outboxQueueDepth,
+      outboxDlqCount,
+      openConflictsCount,
     },
   };
 };

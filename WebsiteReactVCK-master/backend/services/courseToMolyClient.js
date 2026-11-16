@@ -108,7 +108,7 @@ export function createCourseToMolyClient({ config = {}, env = process.env, fetch
         const code = parsed?.errorCode || parsed?.code || errorFallbackCode;
         const message = parsed?.message || errorFallbackMessage;
         throw new CourseToMolyClientError(response.status || 502, code, message, {
-          retryable: [429, 502, 503, 504].includes(response.status),
+          retryable: [408, 425, 429, 502, 503, 504].includes(response.status),
           details: parsed?.details,
         });
       }

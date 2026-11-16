@@ -504,10 +504,10 @@ test("Day 3 CSCA-Course delegated learning enforces opaque TTL <=300s, sequentia
   assert.equal(JSON.stringify(lockedJson).includes("Secret theory B2"), false);
   assert.equal(JSON.stringify(lockedJson).includes("SECRET_VOCAB_B2"), false);
 
-  // 5. Completing Unit 1 video >= 60% PLUS required quiz unlocks Unit 2 cleanly
+  // 5. Completing Unit 1 video >= 50% PLUS required quiz unlocks Unit 2 cleanly
   await pg.query(
     `INSERT INTO video_watch_progress (user_id, video_asset_id, class_session_id, last_position_seconds, completion_percent, is_completed, completed_at)
-     VALUES ($1, $2, $3, 450, 75, TRUE, NOW())`,
+     VALUES ($1, $2, $3, 330, 55, TRUE, NOW())`,
     [fix.learner.id, fix.asset1.id, fix.session1.id],
   );
   // Video alone (with pending quiz) still keeps Unit 2 locked

@@ -11,11 +11,14 @@ import {
   upsertManualCourseMapping,
 } from "../services/externalCourseMapping.service.js";
 import {
+  getMolyOpsV2Overview,
   linkExternalIdentityManually,
   listIntegrationConflicts,
   listMolyInboxOps,
   resolveIntegrationConflict,
+  retryCourseOutboxJob,
   retryMolyInboxJob,
+  retryMolySubjectSync,
 } from "../services/molyIntegration.service.js";
 
 const sendError = (res, error) => {
@@ -50,6 +53,7 @@ export const createExternalCourseMappingRouter = ({
   recordAudit = recordAuditEvent,
   protect = protectRoute,
   adminGuard = requireAdmin,
+  env = process.env,
 } = {}) => {
   const router = express.Router();
   const guard = [protect, adminGuard];
@@ -96,6 +100,7 @@ export const createExternalCourseMappingRouter = ({
             ip: req.ip || null,
             via: "admin_api",
           },
+          env,
         },
       );
       return res.status(201).json({
@@ -124,6 +129,7 @@ export const createExternalCourseMappingRouter = ({
             ip: req.ip || null,
             via: "admin_api",
           },
+          env,
         },
       );
       return res.json({ success: true, data: updated });
@@ -157,7 +163,7 @@ export const createExternalCourseMappingRouter = ({
           replayInbox: req.body?.replayInbox !== false,
           actorId: req.user?.id ?? null,
         },
-        { recordAudit },
+        { recordAudit, env },
       );
       return res.json({ success: true, data: result });
     } catch (error) {
@@ -177,7 +183,7 @@ export const createExternalCourseMappingRouter = ({
           sourceUpdatedAt: req.body?.sourceUpdatedAt || new Date(),
           actorId: req.user?.id ?? null,
         },
-        { recordAudit },
+        { recordAudit, env },
       );
       return res.status(200).json({ success: true, data: result });
     } catch (error) {
@@ -206,7 +212,57 @@ export const createExternalCourseMappingRouter = ({
           actorId: req.user?.id ?? null,
           correlationId: req.headers["x-correlation-id"] || req.body?.correlationId || null,
         },
-        { recordAudit },
+        { recordAudit, env },
+      );
+      return res.json({ success: true, data: result });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  router.get("/ops/v2", ...guard, async (req, res) => {
+    try {
+      const overview = await getMolyOpsV2Overview(db, {
+        limit: req.query.limit,
+        env,
+      });
+      return res.json({ success: true, data: overview });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  router.post("/outbox/:id/retry", ...guard, async (req, res) => {
+    try {
+      const result = await retryCourseOutboxJob(
+        db,
+        {
+          outboxId: req.params.id,
+          actorId: req.user?.id ?? null,
+          correlationId: req.headers["x-correlation-id"] || req.body?.correlationId || null,
+        },
+        { recordAudit, env },
+      );
+      return res.json({ success: true, data: result });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  router.post("/ops/retry-subject", ...guard, async (req, res) => {
+    try {
+      const result = await retryMolySubjectSync(
+        db,
+        {
+          externalUserId: req.body?.externalUserId ?? req.body?.external_user_id ?? null,
+          userId: req.body?.userId ?? req.body?.user_id ?? null,
+          courseId: req.body?.courseId ?? req.body?.course_id ?? null,
+          profileId: req.body?.profileId ?? req.body?.profile_id ?? null,
+          domain: req.body?.domain || "all",
+          actorId: req.user?.id ?? null,
+          correlationId: req.headers["x-correlation-id"] || req.body?.correlationId || null,
+        },
+        { recordAudit, env },
       );
       return res.json({ success: true, data: result });
     } catch (error) {

@@ -1,7 +1,7 @@
 # Moly Studio <-> CSCA-Course Integration Contract v2 (Full Sync)
 
-- **Version**: `2.0.0-day1` (extends `MOLY_COURSE_INTEGRATION_CONTRACT.md` v1)
-- **Status**: Day 1 Foundation (Catalog auto-sync, Delegated learning, Cross-app device binding, Schema & Conflict rules)
+- **Version**: `2.0.0` (extends `MOLY_COURSE_INTEGRATION_CONTRACT.md` v1)
+- **Status**: CSCA-Course Days 1–10 Implemented (`migrations 079–084`, v2 API, split kill switches, reconciliation & readiness probes; PGlite-verified — live multi-process Staging E2E pending deploy)
 - **Systems**:
   - `csca-course`: Source of truth for Record/Video courses, offerings (`video_course_profiles`), curriculum/content/files, quiz/assignment authoring & grading, watch/completion computation, personal notes, and Record device slots.
   - `moly`: Source of truth for storefront pricing/packages (`video_packages`), payments/refunds, native courses (`content_origin = 'moly_native'`), and BFF for learner UI (`/khoa-hoc`, `/hoc/...`, `/my-learning`).
@@ -22,7 +22,7 @@ Every synchronized entity or field has strictly **one** canonical owner. The non
 | Video course offerings (`1 course : N profiles`, `mode`, `allow_file_download`, `device_limit`) | `csca-course` (`video_course_profiles`) | `moly` (`course_profile_projections` + `external_course_mappings`) | `csca-course -> moly` | Local package binding / commercial toggle (cannot open sale without price config) |
 | Curriculum (`sections`, `lessons`, `class_sessions`, `video_parts`, `theory`, `vocabulary`, `formulas`, `files`) | `csca-course` | `moly` (`course_unit_projections`, `course_file_projections`) | `csca-course -> moly` + delegated read | Read-only projection; sensitive body withheld when unit locked or user unentitled |
 | Native Moly courses (`courses.content_origin = 'moly_native'`) | `moly` | None | Local only | Full Moly control; Course sync must fail-closed if targeting `moly_native` without explicit admin flag |
-| Watch time, completion (`60%` + quiz), sequential unit unlock, resume position | `csca-course` | `moly` (`course_progress_projections`) | Delegated write -> Course -> event `moly` (+ read-through on resume) | None (Moly displays projected state + refetches canonical state before critical gating) |
+| Watch time, completion (`50%` + quiz), sequential unit unlock, resume position | `csca-course` | `moly` (`course_progress_projections`) | Delegated write -> Course -> event `moly` (+ read-through on resume) | None (Moly displays projected state + refetches canonical state before critical gating) |
 | Quizzes, accommodations, solution embargo, assignments, grading/rubrics | `csca-course` | `moly` (`course_assessment_projections`) | Delegated mutation -> Course -> outbox event `moly` | None (Moly UI renders questions/status without exposing embargoed answers) |
 | Timestamp notes (`video_course_unit_notes`) | `csca-course` | `moly` (`course_note_projections`) | Delegated CRUD (optimistic `revision`) -> Course -> event `moly` | None |
 | Unit Q&A (`csca_course` vs `moly_native`) | `csca-course` (for `csca_course`), `moly` (for `moly_native`) | Opposite app cache | Delegated CRUD -> owner | None on projection |
@@ -71,6 +71,19 @@ All endpoints enforce live entitlement (`external_entitlements` / local grant), 
 - `GET/POST/PUT/DELETE /api/integrations/v2/learning/offerings/:profileId/units/:unitId/notes` (with `expectedRevision`)
 - `GET/POST/PUT /api/integrations/v2/learning/offerings/:profileId/units/:unitId/qa`
 
+- `GET/POST/DELETE /api/integrations/v2/learning/offerings/:profileId/units/:unitId/bookmarks` (`bookmarks:rw`, with `expectedRevision`)
+
+### 2.4 Health, Drift Reconciliation & Admin Ops v2 APIs (Days 8–10)
+- `GET /api/integrations/v2/health` (S2S authenticated via `requireMolyCatalogRead`; unaffected by kill switches; exposes contract version `2.0.0`, schema version `2.0`, migration `079`–`084` table readiness booleans, split kill switches, supported scopes, and integer queue/DLQ counts — zero secrets/PII).
+- `GET /api/health/integration` (unauthenticated safe deploy readiness probe on Course returning boolean readiness & counts only — zero secrets/PII).
+- `GET /api/integrations/v2/reconciliation/content-state` (`courseId`, `profileId`, `limit`): canonical courses, profiles, active/tombstoned unit & file counts, and max `sync_revision`. Stays readable unless global kill switch is active.
+- `GET /api/integrations/v2/reconciliation/learning-state` (`externalUserId`, `userId`, `courseId`, `profileId`, `limit`): canonical `video_watch_progress`, sequential unit completions, `quiz_attempts`, `assignment_submissions`, `notes`, `bookmarks`, and `qaThreads`. Stays readable unless global kill switch is active.
+- `POST /api/integrations/v1/moly/reconciliation/snapshot`: supports optional `courseId` / `profileId` filters and `includeContent: true` (`content_drift_summary`). Stays readable unless global kill switch is active.
+- Admin Ops v2 (`/api/v1/admin/integrations`):
+  - `GET /ops/v2`: split kill switches, inbound inbox & outbound v2 outbox backlog/DLQ/age, `course_sync_checkpoints`, conflicts, and last sync timestamps.
+  - `POST /outbox/:id/retry`: retries failed/dead-lettered/cancelled `course_integration_outbox` item (gated by `isRepairMutationsKillSwitchActive`).
+  - `POST /ops/retry-subject`: per-subject repair across `{ externalUserId, userId, courseId, profileId, domain }` (gated by `isRepairMutationsKillSwitchActive`).
+
 ---
 
 ## 3. Event Envelope, Outbox/Inbox, Revision & Tombstone Rules
@@ -116,7 +129,7 @@ All endpoints enforce live entitlement (`external_entitlements` / local grant), 
    - Issued inside Course (`delegated_learning_sessions`) upon verified S2S request from Moly BFF (`aud = "csca-course:delegated-learning"`).
    - Scoped explicitly to one `(user_id, external_user_id, video_course_profile_id, course_id)` and bound `moly_device_binding_id` (if learner role).
 2. **Allowed Scopes**:
-   - `workspace:read`, `video:play`, `progress:write`, `file:view`, `file:download`, `quiz:attempt`, `assignment:submit`, `notes:rw`, `qa:rw`.
+   - `workspace:read`, `video:play`, `progress:write`, `file:view`, `file:download`, `quiz:attempt`, `assignment:submit`, `notes:rw`, `bookmarks:rw`, `qa:rw`.
    - `file:download` is granted ONLY if `video_course_profiles.allow_file_download = true` at mint time AND re-checked at download/stream time.
 3. **TTL, Nonce & Storage**:
    - Session `TTL <= 300` seconds; playback/file stream token `TTL <= 60` seconds.
@@ -159,7 +172,7 @@ All endpoints enforce live entitlement (`external_entitlements` / local grant), 
 2. **Video Resume & Progress (`video_watch_progress`)**:
    - Authoritative store: Course (`video_watch_progress` + `last_heartbeat_seq` / `source_updated_at`).
    - `watched_seconds` is strictly non-decreasing and server-clamped against wall-clock elapsed interval * max playback speed (`seek` jumps never inflate watch seconds).
-   - `is_completed` latches `true` once threshold (`60%`) is reached (`is_completed = is_completed OR computed >= 60`).
+   - `is_completed` latches `true` once threshold (`50%`) is reached (`is_completed = is_completed OR computed >= 50`).
    - `last_position_seconds` accepts updates only if `(clientSequence > storedSeq)` within the same delegated `sessionJti` OR `eventTimestamp >= storedUpdatedAt` across sessions, preventing stale/retrying tabs from rewinding newer progress.
 3. **Quiz Attempts & Assignment Submissions**:
    - Authoritative store: Course (`quiz_attempts`, `assignment_submissions` with `video_course_profile_id`).
@@ -197,5 +210,6 @@ All endpoints enforce live entitlement (`external_entitlements` / local grant), 
 | `409` | `ATTEMPT_ALREADY_SUBMITTED` | No | Late save/resubmit against submitted quiz attempt |
 | `409` | `ATTEMPT_LIMIT_REACHED` | No | Learner exhausted `max_attempts` on quiz |
 | `200/202` | `STALE_EVENT_IGNORED` | No | Incoming event revision/timestamp older than stored projection |
-| `503` | `SYNC_KILL_SWITCH_ACTIVE` | Yes | Targeted stream disabled by `catalog_sync` / `delegated_learning` / `repair_mutations` switch |
+| `503` | `SYNC_KILL_SWITCH_ACTIVE` | Yes | Targeted stream disabled by `content_sync`/`catalog_sync`, `delegated_learning`, or `repair_mutations` switch |
+| `503` | `INTEGRATION_KILL_SWITCH_ACTIVE` | Yes | Global emergency brake (`MOLY_INTEGRATION_SYNC_DISABLED` / `MOLY_INTEGRATION_KILL_SWITCH`) active on v1 or reconciliation |
 | `503` | `COURSE_UNAVAILABLE` | Yes | Upstream Course backend timeout/unreachable (UI must NOT fake success) |

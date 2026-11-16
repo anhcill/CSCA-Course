@@ -525,6 +525,13 @@ export const revokeTrustedDevice = async ({
      WHERE id = $2`,
     [revokedBy, deviceId],
   );
+  const { handleTrustedDeviceRevoked } = await import("./delegatedDeviceBinding.service.js");
+  await handleTrustedDeviceRevoked({
+    db,
+    userId,
+    deviceId,
+    revokedBy,
+  });
   await recordAuditEvent({
     db,
     actorId: revokedBy,
