@@ -235,7 +235,11 @@ export default function CourseDetailPage() {
         <span className="text-slate-500 dark:text-slate-400 text-xs font-medium block">Học phí từ Internal</span>
         <div className="flex items-baseline gap-3">
           <span className="text-3xl font-black text-rose-500">
-            {course.is_free || Number(course.price) === 0 ? "Miễn Phí" : `${Number(course.price).toLocaleString("vi-VN")} đ`}
+            {course.is_free
+              ? "Miễn Phí"
+              : Number(course.price) > 0
+                ? `${Number(course.price).toLocaleString("vi-VN")} đ`
+                : "Liên hệ học phí"}
           </span>
         </div>
         <p className="pt-1 text-[11px] leading-5 text-slate-400">Website chưa thu tiền tự động. Admin sẽ xác nhận và cấp quyền sau khi bạn liên hệ.</p>
@@ -633,9 +637,11 @@ export default function CourseDetailPage() {
                       <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
                         <span className="text-slate-500 dark:text-slate-400 capitalize">Cấp độ: {relCourse.level}</span>
                         <span className="font-bold text-rose-500">
-                          {relCourse.is_free || Number(relCourse.price) === 0
+                          {relCourse.is_free
                             ? "Miễn Phí"
-                            : `${Number(relCourse.price).toLocaleString("vi-VN")} đ`}
+                            : Number(relCourse.price) > 0
+                              ? `${Number(relCourse.price).toLocaleString("vi-VN")} đ`
+                              : "Liên hệ"}
                         </span>
                       </div>
                     </div>
