@@ -347,23 +347,12 @@ export default function CourseDetailPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
-      {/* Breadcrumb Navigation Bar */}
-      <div className="bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800/80 text-xs py-3 px-4 backdrop-blur">
-        <div className="max-w-6xl mx-auto flex items-center gap-2 text-slate-500 dark:text-slate-400">
-          <Link to="/courses" className="hover:text-rose-600 dark:hover:text-white transition">Khóa học</Link>
-          <span>/</span>
-          <span className="uppercase text-slate-600 dark:text-slate-300">{course.category}</span>
-          <span>/</span>
-          <span className="text-slate-800 dark:text-slate-200 font-medium truncate">{course.title}</span>
-        </div>
-      </div>
-
+    <div className="min-h-screen bg-[#eaf5fc] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
       {/* Hero Banner Section */}
-      <div className="relative bg-gradient-to-br from-white via-sky-50 to-cyan-50/70 dark:from-slate-950 dark:via-slate-900 dark:to-sky-950/40 border-b border-sky-100 dark:border-slate-800 py-8 md:py-10">
-        <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-3 gap-10 items-start">
+      <div className="relative py-8 md:py-10">
+        <div className="relative max-w-6xl mx-auto px-4">
           {/* Left Hero Details (Spans 2 columns on desktop) */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="space-y-6 lg:w-[65%]">
             <div className="flex flex-wrap items-center gap-3">
               <span className={`px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wider ${categoryBadge}`}>
                 {course.category}
@@ -422,17 +411,15 @@ export default function CourseDetailPage() {
             </div>
           </div>
 
-          {/* Desktop Right Column: Sticky Card Placeholder */}
-          <div className="hidden lg:block lg:col-span-1">
-            <div className="sticky top-20">
-              <EnrollmentCard />
-            </div>
+          {/* Keep the desktop card out of the hero flow so it cannot push the curriculum down. */}
+          <div className="absolute right-4 top-0 z-10 hidden w-[30%] lg:block">
+            <EnrollmentCard />
           </div>
         </div>
       </div>
 
       {/* Main Content Layout */}
-      <div className="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <div className="max-w-6xl mx-auto px-4 pb-10 grid grid-cols-1 lg:grid-cols-3 gap-10">
         {/* Left Content Area (Spans 2 columns on desktop) */}
         <div className="lg:col-span-2 flex flex-col gap-8">
           {/* Mobile Enrollment Card */}
