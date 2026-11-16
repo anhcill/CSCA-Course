@@ -136,6 +136,13 @@ function LegacyVideoCourseRedirect() {
     : `/video-courses/${offeringId}`;
   return <Navigate to={target} replace />;
 }
+function LiveEnrollmentRoute({ children }) {
+  const { authUser, loading } = useAuthContext();
+  if (loading) return <RouteLoadingFallback />;
+  return authUser?.hasActiveLiveEnrollment === true
+    ? children
+    : <Navigate to="/lms/dashboard" replace />;
+}
 
 function AppRoutes({ pathname }) {
   return (
@@ -167,8 +174,8 @@ function AppRoutes({ pathname }) {
 
       {/* === Student LMS === */}
       <Route path="/lms" element={<Navigate to="/lms/dashboard" replace />} />
-      <Route path="/lms/my-learning" element={<StudentCourseListPage />} />
-      <Route path="/lms/catalog" element={<Navigate to="/lms/my-learning" replace />} />
+      <Route path="/lms/my-learning" element={<LiveEnrollmentRoute><StudentCourseListPage /></LiveEnrollmentRoute>} />
+      <Route path="/lms/catalog" element={<LiveEnrollmentRoute><Navigate to="/lms/my-learning" replace /></LiveEnrollmentRoute>} />
       <Route path="/lms/dashboard" element={<StudentDashboardPage />} />
       <Route path="/lms/analytics" element={<StudentAnalyticsPage />} />
       <Route path="/lms/live-schedule" element={<ClassCalendarPage />} />

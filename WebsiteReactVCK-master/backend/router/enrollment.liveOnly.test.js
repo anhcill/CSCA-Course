@@ -24,6 +24,14 @@ test("my-courses returns Live LMS enrollments and excludes Record enrollments", 
     `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
      VALUES ('list-student','list-student@example.test','user',TRUE,'active') RETURNING id`,
   )).rows[0];
+  const recordOnlyStudent = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('record-only-student','record-only-student@example.test','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
+  const ordinaryStudent = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('ordinary-student','ordinary-student@example.test','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
   const liveCourse = (await db.query(
     "INSERT INTO courses(name,slug,author_id,is_published,is_management_managed) VALUES ('Live course','list-live',$1,TRUE,TRUE) RETURNING id",
     [teacher.id],
@@ -44,6 +52,11 @@ test("my-courses returns Live LMS enrollments and excludes Record enrollments", 
     `INSERT INTO class_enrollments(user_id,live_class_id,status,learning_mode)
      VALUES ($1,$2,'active','live'),($1,$3,'active','recording')`,
     [student.id, liveClass.id, recordClass.id],
+  );
+  await db.query(
+    `INSERT INTO class_enrollments(user_id,live_class_id,status,learning_mode)
+     VALUES ($1,$2,'active','recording')`,
+    [recordOnlyStudent.id, liveClass.id],
   );
   await db.query(
     `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
@@ -68,4 +81,9 @@ test("my-courses returns Live LMS enrollments and excludes Record enrollments", 
   assert.equal(res.statusCode, 200, JSON.stringify(res.body));
   assert.deepEqual(res.body.data.map((course) => Number(course.course_id)), [Number(liveCourse.id)]);
   assert.deepEqual(res.body.data[0].classes.map((liveClassRow) => Number(liveClassRow.id)), [Number(liveClass.id)]);
+
+  const { getUserDtoById } = await import("../utils/userDto.js");
+  assert.equal((await getUserDtoById(student.id, db)).hasActiveLiveEnrollment, true);
+  assert.equal((await getUserDtoById(recordOnlyStudent.id, db)).hasActiveLiveEnrollment, false);
+  assert.equal((await getUserDtoById(ordinaryStudent.id, db)).hasActiveLiveEnrollment, false);
 });

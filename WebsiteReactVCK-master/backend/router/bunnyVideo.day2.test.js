@@ -244,20 +244,29 @@ test("Day 2 Bunny Stream E2E: TUS upload intent, idempotent & out-of-order webho
   assert.equal(tokenWhileProcessing.statusCode, 409);
   assert.equal(tokenWhileProcessing.body.errorCode, "VIDEO_NOT_READY");
 
-  // Webhook Status=3 (ready) with duration 200s
+  // Bunny production payloads may use lower camel case for metadata.
   const webhookReadyRes = await invokeRoute(bunnyVideoRouter, "post", "/webhooks/bunny-stream", {
     body: {
       EventId: "evt-ready-002",
       VideoLibraryId: "998877",
       VideoGuid: videoGuid,
       Status: 3,
-      Length: 200,
-      AvailableResolutions: "360p,720p,1080p",
+      length: 200,
+      storageSize: 12_345_678,
+      availableResolutions: "360p,720p,1080p",
     },
   });
   assert.equal(webhookReadyRes.statusCode, 200);
   assert.equal(webhookReadyRes.body.data.playbackStatus, "ready");
   assert.equal(webhookReadyRes.body.data.duplicate, false);
+  assert.equal(webhookReadyRes.body.data.durationSeconds, 200);
+  const readyAssetMetadata = (await db.query(
+    "SELECT duration_seconds, storage_bytes, available_resolutions FROM video_assets WHERE id = $1",
+    [assetId],
+  )).rows[0];
+  assert.equal(Number(readyAssetMetadata.duration_seconds), 200);
+  assert.equal(Number(readyAssetMetadata.storage_bytes), 12_345_678);
+  assert.equal(readyAssetMetadata.available_resolutions, "360p,720p,1080p");
 
   // Duplicate webhook with same EventId -> idempotent, duplicate: true
   const webhookDuplicateRes = await invokeRoute(bunnyVideoRouter, "post", "/webhooks/bunny-stream", {

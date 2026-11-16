@@ -497,7 +497,9 @@ export default function StudentDashboardPage() {
           </section>
 
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:col-span-2">
-            {QUICK_LINKS.map((item) => <QuickLink key={item.to} item={item} />)}
+            {QUICK_LINKS
+              .filter((item) => item.to !== "/lms/my-learning" || authUser?.hasActiveLiveEnrollment === true)
+              .map((item) => <QuickLink key={item.to} item={item} />)}
           </section>
 
           <section className="relative min-h-[360px] overflow-hidden rounded-3xl bg-cover bg-center shadow-[0_12px_38px_rgba(56,96,130,0.16)] dark:shadow-none xl:col-start-3 xl:row-start-2 xl:row-span-2" style={{ backgroundImage: "url('/student-campus-spring.webp')" }}>
@@ -508,6 +510,7 @@ export default function StudentDashboardPage() {
             </div>
           </section>
 
+          {authUser?.hasActiveLiveEnrollment === true && (
           <section className="rounded-3xl border border-white/80 bg-white/75 p-4 sm:p-5 shadow-[0_10px_35px_rgba(56,96,130,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none xl:col-span-2">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -537,6 +540,7 @@ export default function StudentDashboardPage() {
               </div>
             )}
           </section>
+          )}
         </div>
       </div>
     </div>

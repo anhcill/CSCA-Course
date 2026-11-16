@@ -371,7 +371,7 @@ export default function CourseDetailPage() {
         >
           <span>💬 Liên Hệ Mua Qua Zalo</span>
         </a>}
-        {authUser && (
+        {authUser?.hasActiveLiveEnrollment === true && (
           <Link to="/lms/my-learning" className="flex w-full items-center justify-center text-xs font-bold text-slate-500 hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-300">Khóa học của tôi →</Link>
         )}
       </div>

@@ -21,6 +21,7 @@ export const normalizeUserDto = (user) => {
         hasPassword: user.hasPassword ?? Boolean(user.password_hash),
         isManagementManaged: user.isManagementManaged ?? user.is_management_managed ?? false,
         lmsAccountStatus: user.lmsAccountStatus ?? user.lms_account_status ?? 'unmanaged',
+        hasActiveLiveEnrollment: Boolean(user.hasActiveLiveEnrollment ?? user.has_active_live_enrollment),
         welcomeSeenAt: user.welcomeSeenAt ?? user.welcome_seen_at ?? null,
         hasSeenWelcome: user.hasSeenWelcome ?? Boolean(user.welcomeSeenAt ?? user.welcome_seen_at),
         createdAt: user.createdAt ?? user.created_at ?? null,

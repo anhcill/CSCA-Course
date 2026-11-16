@@ -411,8 +411,11 @@ export const processBunnyWebhookEvent = async ({
     };
   }
 
-  const durationSeconds = payload.Length ?? payload.durationSeconds ?? asset.duration_seconds ?? 0;
-  const storageBytes = payload.StorageSize ?? payload.storageBytes ?? asset.storage_bytes ?? 0;
+  // Bunny uses PascalCase in some webhook examples, but production events and
+  // the Video API may use lower camel case. Accept both so a ready asset never
+  // remains at a zero duration and falls back to showing the session date.
+  const durationSeconds = payload.Length ?? payload.length ?? payload.durationSeconds ?? asset.duration_seconds ?? 0;
+  const storageBytes = payload.StorageSize ?? payload.storageSize ?? payload.storageBytes ?? asset.storage_bytes ?? 0;
   const availableResolutions = payload.AvailableResolutions ?? payload.availableResolutions ?? asset.available_resolutions ?? "360p,480p,720p,1080p";
   const thumbnailUrl = payload.ThumbnailUrl ?? payload.thumbnailUrl ?? asset.thumbnail_url;
   const processingError = nextStatus === "failed"

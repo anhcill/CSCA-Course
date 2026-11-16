@@ -61,6 +61,7 @@ export const toUserDto = (row, extras = {}) => {
     isManagementManaged: Boolean(row.is_management_managed),
     lmsAccountStatus: row.lms_account_status ?? "unmanaged",
     hasExternalLmsAccess: Boolean(row.has_external_lms_access),
+    hasActiveLiveEnrollment: Boolean(row.has_active_live_enrollment),
     isInternalTestAccount: Boolean(row.is_internal_test_account),
     welcomeSeenAt: row.welcome_seen_at ?? null,
     hasSeenWelcome: Boolean(row.welcome_seen_at),
@@ -87,6 +88,15 @@ export const getUserDtoById = async (userId, db = { query }) => {
             u.is_vip, u.vip_expires_at, u.email_verified, u.is_locked, u.oauth_provider,
             u.is_management_managed, u.lms_account_status, u.is_internal_test_account,
             (${EXTERNAL_LMS_ACCESS_EXISTS_SQL("u.id")}) AS has_external_lms_access,
+            EXISTS (
+              SELECT 1
+              FROM class_enrollments ce_live
+              JOIN live_classes lc_live ON lc_live.id = ce_live.live_class_id
+              WHERE ce_live.user_id = u.id
+                AND ce_live.status = 'active'
+                AND ce_live.learning_mode = 'live'
+                AND lc_live.status = 'active'
+            ) AS has_active_live_enrollment,
             u.password_hash, u.created_at, u.updated_at,
             u.management_display_name,
             u.external_student_id,

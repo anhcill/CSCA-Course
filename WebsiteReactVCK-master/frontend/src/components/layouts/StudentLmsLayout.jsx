@@ -132,7 +132,7 @@ function StudentNavItem({ item, onNavigate, unreadCount = 0, collapsed = false }
   );
 }
 
-function Sidebar({ onNavigate, unreadCount = 0, collapsed = false, onToggleCollapse }) {
+function Sidebar({ onNavigate, unreadCount = 0, collapsed = false, onToggleCollapse, showMyCourses = false }) {
   return (
     <div className={`flex h-full min-h-0 flex-col overflow-hidden py-6 transition-[padding] duration-300 ${collapsed ? 'px-2' : 'px-4'}`}>
       <div className={`shrink-0 flex items-center ${collapsed ? 'flex-col gap-2 px-0' : 'justify-between px-2'}`}>
@@ -184,7 +184,7 @@ function Sidebar({ onNavigate, unreadCount = 0, collapsed = false, onToggleColla
 
       <div className="my-5 h-px shrink-0 bg-slate-100 dark:bg-slate-800" />
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Điều hướng LMS học viên">
-        {STUDENT_NAV.map((item) => (
+        {STUDENT_NAV.filter((item) => item.path !== "/lms/my-learning" || showMyCourses).map((item) => (
           <StudentNavItem key={item.path} item={item} onNavigate={onNavigate} unreadCount={unreadCount} collapsed={collapsed} />
         ))}
       </nav>
@@ -476,6 +476,7 @@ export default function StudentLmsLayout({ children }) {
           unreadCount={unreadNotifs}
           collapsed={isSidebarCollapsed}
           onToggleCollapse={toggleSidebarCollapse}
+          showMyCourses={authUser?.hasActiveLiveEnrollment === true}
         />
       </aside>
 
@@ -483,7 +484,12 @@ export default function StudentLmsLayout({ children }) {
         <>
           <button type="button" className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Đóng menu học viên" />
           <div className="fixed inset-y-3 left-3 z-50 w-[min(18rem,88vw)] overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 shadow-2xl lg:hidden">
-            <Sidebar onNavigate={() => setMobileOpen(false)} unreadCount={unreadNotifs} collapsed={false} />
+            <Sidebar
+              onNavigate={() => setMobileOpen(false)}
+              unreadCount={unreadNotifs}
+              collapsed={false}
+              showMyCourses={authUser?.hasActiveLiveEnrollment === true}
+            />
           </div>
         </>
       )}
