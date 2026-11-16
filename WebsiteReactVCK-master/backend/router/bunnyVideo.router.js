@@ -100,22 +100,9 @@ export const verifyLearnerVideoAccess = async ({
     };
   }
 
-  if (courseId) {
-    const hasGrant = await hasEffectiveCourseEntitlement({
-      db,
-      userId: user.id,
-      courseId,
-      liveClassId,
-    });
-    if (!hasGrant) {
-      return {
-        allowed: false,
-        status: 403,
-        errorCode: "ENTITLEMENT_INACTIVE",
-        reason: "Quyền học khóa video không tồn tại, đã hết hạn hoặc đã hoàn học phí",
-      };
-    }
-  }
+  let enrollment = null;
+  let mirrorProfiles = [];
+  let entitledMirrorProfile = null;
 
   if (liveClassId) {
     const enrollRes = await db.query(
@@ -130,13 +117,15 @@ export const verifyLearnerVideoAccess = async ({
              ce.video_course_profile_id IS NOT NULL
              AND ce.learning_mode = 'recording'
              AND vcp.status = 'active'
+             AND vcp.mode = 'MIRROR'
              AND vcp.source_live_class_id = $2
-             AND ($3::bigint IS NULL OR vcp.course_id = $3)
            )
-         )`,
-      [user.id, liveClassId, courseId],
+         )
+       ORDER BY (ce.live_class_id = $2) DESC, ce.id ASC
+       LIMIT 1`,
+      [user.id, liveClassId],
     );
-    const enrollment = enrollRes.rows[0];
+    enrollment = enrollRes.rows[0] || null;
     if (!enrollment) {
       return {
         allowed: false,
@@ -145,24 +134,66 @@ export const verifyLearnerVideoAccess = async ({
         reason: "Bạn không thuộc danh sách lớp của khóa học này",
       };
     }
-    if (requireRecordingMode && enrollment.learning_mode !== "recording") {
-      const mirrorRes = await db.query(
-        `SELECT 1 FROM video_course_profiles
-         WHERE source_live_class_id = $1
-           AND status = 'active' AND mode = 'MIRROR'
-         LIMIT 1`,
-        [liveClassId],
-      );
-      if (mirrorRes.rows.length === 0) {
-        return {
-          allowed: false,
-          status: 403,
-          errorCode: "RECORD_MEMBERSHIP_REQUIRED",
-          reason: "Học viên lớp Live không có quyền truy cập khóa Record nếu chưa đăng ký gói Record",
-        };
-      }
+
+    const mirrorRes = await db.query(
+      `SELECT id, course_id
+       FROM video_course_profiles
+       WHERE source_live_class_id = $1
+         AND status = 'active'
+         AND mode = 'MIRROR'
+         AND ($2::bigint IS NULL OR id = $2)
+       ORDER BY id ASC`,
+      [liveClassId, enrollment.video_course_profile_id],
+    );
+    mirrorProfiles = mirrorRes.rows;
+
+    if (requireRecordingMode && enrollment.learning_mode !== "recording" && mirrorProfiles.length === 0) {
+      return {
+        allowed: false,
+        status: 403,
+        errorCode: "RECORD_MEMBERSHIP_REQUIRED",
+        reason: "Học viên lớp Live không có quyền truy cập khóa Record nếu chưa đăng ký gói Record",
+      };
     }
-  } else if (courseId && requireRecordingMode) {
+  }
+
+  if (courseId) {
+    let hasGrant = false;
+    if (liveClassId && enrollment?.learning_mode === "recording") {
+      for (const profile of mirrorProfiles) {
+        // Playback context points at the source Live course. A Record learner,
+        // however, must be entitled to the matching MIRROR offering itself.
+        const hasMirrorGrant = await hasEffectiveCourseEntitlement({
+          db,
+          userId: user.id,
+          courseId: profile.course_id,
+          profileId: profile.id,
+        });
+        if (hasMirrorGrant) {
+          hasGrant = true;
+          entitledMirrorProfile = profile;
+          break;
+        }
+      }
+    } else {
+      hasGrant = await hasEffectiveCourseEntitlement({
+        db,
+        userId: user.id,
+        courseId,
+        liveClassId,
+      });
+    }
+    if (!hasGrant) {
+      return {
+        allowed: false,
+        status: 403,
+        errorCode: "ENTITLEMENT_INACTIVE",
+        reason: "Quyền học khóa video không tồn tại, đã hết hạn hoặc đã hoàn học phí",
+      };
+    }
+  }
+
+  if (!liveClassId && courseId && requireRecordingMode) {
     // Independent mode: an entitlement alone is insufficient. The learner
     // must belong to an active paid Record offering or a live class mirrored by this course.
     const enrollsRes = await db.query(
@@ -203,6 +234,7 @@ export const verifyLearnerVideoAccess = async ({
       userId: user.id,
       courseId,
       liveClassId,
+      profileId: entitledMirrorProfile?.id || null,
     });
     if (!hasCourseAccess) {
       return {
@@ -221,8 +253,9 @@ export const verifyLearnerVideoAccess = async ({
          AND (
            ($3::bigint IS NOT NULL AND mode = 'MIRROR' AND source_live_class_id = $3)
            OR ($3::bigint IS NULL AND course_id = $1)
-         )`,
-      [courseId, 2, liveClassId],
+         )
+         AND ($4::bigint IS NULL OR id = $4)`,
+      [courseId, 2, liveClassId, entitledMirrorProfile?.id || null],
     );
     const profile = profileRes.rows[0] || {};
     try {

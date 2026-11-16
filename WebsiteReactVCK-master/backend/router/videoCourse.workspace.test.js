@@ -280,6 +280,30 @@ test("video course workspace: Live learner inherits only the matching MIRROR Rec
 
   // The same source class in recording mode must still finish previous units.
   await db.query("UPDATE class_enrollments SET learning_mode = 'recording' WHERE user_id = $1", [learner.id]);
+  const recordPlaybackWithoutRecordGrant = await verifyLearnerVideoAccess({
+    user: { ...learner, role: "user", is_management_managed: true, lms_account_status: "active" },
+    courseId: liveCourse.id,
+    liveClassId: liveClass.id,
+    req: { authSession: { trustedDeviceId: learnerDeviceId } },
+    db,
+  });
+  assert.equal(recordPlaybackWithoutRecordGrant.allowed, false);
+  assert.equal(recordPlaybackWithoutRecordGrant.errorCode, "ENTITLEMENT_INACTIVE");
+
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - INTERVAL '1 day',NOW())`,
+    [learner.id, recordCourse.id],
+  );
+  const recordPlaybackWithMirrorGrant = await verifyLearnerVideoAccess({
+    user: { ...learner, role: "user", is_management_managed: true, lms_account_status: "active" },
+    courseId: liveCourse.id,
+    liveClassId: liveClass.id,
+    req: { authSession: { trustedDeviceId: learnerDeviceId } },
+    db,
+  });
+  assert.equal(recordPlaybackWithMirrorGrant.allowed, true, JSON.stringify(recordPlaybackWithMirrorGrant));
+
   const recordReview = await invoke(learner, learnerDeviceId);
   assert.equal(recordReview.body.data.capabilities.canReviewFreely, false);
   assert.equal(recordReview.body.data.units.find(u => u.id === String(laterSession.id)).isLocked, true);
