@@ -282,7 +282,6 @@ export default function CourseDetailPage() {
                 : "Đang cập nhật"}
           </span>
         </div>
-        <p className="pt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">Giá được đồng bộ trực tiếp từ Internal. Website chưa thu tiền tự động; admin xác nhận thủ công sau khi bạn liên hệ.</p>
       </div>}
 
       {/* Action Buttons */}
