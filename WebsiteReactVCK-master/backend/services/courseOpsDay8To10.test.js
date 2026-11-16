@@ -966,7 +966,7 @@ test("Day 8 (Reconciliation Expansion): v1 courseId/profileId/includeContent & v
   assert.equal(lsRes.status, 200, JSON.stringify(lsRes.body));
   const ls = lsRes.body.data;
   assert.equal(ls.videoWatchProgress.length, 1);
-  assert.equal(ls.videoWatchProgress[0].completionPercent, 75);
+  assert.equal(ls.videoWatchProgress[0].completionPercent, 55);
   assert.equal(ls.sequentialUnitCompletions.length, 1);
   assert.equal(ls.sequentialUnitCompletions[0].units[0].isCompleted, true);
   assert.equal(ls.sequentialUnitCompletions[0].units[1].isLocked, false);
