@@ -7,10 +7,11 @@ const REQUIRED_WATCH_PERCENT = 50;
 export const hasLiveReviewMembership = async (db, profile, userId) => {
   if (profile?.mode !== "MIRROR" || !profile.source_live_class_id || !userId) return false;
   return Boolean((await db.query(
-    `SELECT 1 FROM class_enrollments
+    `SELECT 1 FROM class_enrollments ce
      WHERE user_id = $1 AND live_class_id = $2 AND status = 'active'
        AND learning_mode = 'live'
-       AND (video_course_profile_id IS NULL OR video_course_profile_id = $3)
+       AND (to_jsonb(ce)->>'video_course_profile_id' IS NULL
+         OR to_jsonb(ce)->>'video_course_profile_id' = $3::text)
      LIMIT 1`,
     [userId, profile.source_live_class_id, profile.id],
   )).rows[0]);
