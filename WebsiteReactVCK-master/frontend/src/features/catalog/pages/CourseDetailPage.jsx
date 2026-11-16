@@ -9,9 +9,75 @@ import {
   fetchVideoCourseAccess,
   fetchCourseRatings,
 } from "../../api/lmsClient";
-import { LoadingState, ErrorState } from "../../../components/common/StateView";
+import { ErrorState } from "../../../components/common/StateView";
 import { getClassCoverImage } from "../../../utils/classWallpapers";
 import { useAuthContext } from "../../../context/AuthContext";
+
+function CourseDetailLoading() {
+  return (
+    <div
+      className="min-h-screen bg-[#eaf5fc] px-4 py-8 text-slate-900 dark:bg-slate-950 dark:text-slate-100 md:py-10"
+      role="status"
+      aria-live="polite"
+      aria-label="Đang tải thông tin chi tiết khóa học"
+    >
+      <div className="mx-auto grid max-w-6xl grid-cols-1 items-start gap-8 lg:grid-cols-3 lg:gap-10">
+        <div className="space-y-8 lg:col-span-2">
+          <div className="animate-pulse space-y-6 motion-reduce:animate-none">
+            <div className="flex gap-3">
+              <div className="h-6 w-16 rounded-full bg-sky-200/80 dark:bg-slate-800" />
+              <div className="h-6 w-28 rounded-full bg-sky-200/80 dark:bg-slate-800" />
+              <div className="h-6 w-24 rounded-full bg-emerald-200/70 dark:bg-slate-800" />
+            </div>
+            <div className="h-11 w-4/5 max-w-xl rounded-2xl bg-sky-200/80 dark:bg-slate-800" />
+            <div className="space-y-3">
+              <div className="h-4 w-full rounded-full bg-sky-100 dark:bg-slate-800" />
+              <div className="h-4 w-3/4 rounded-full bg-sky-100 dark:bg-slate-800" />
+            </div>
+            <div className="flex items-center gap-4 border-t border-sky-200/80 pt-5 dark:border-slate-800">
+              <div className="h-11 w-11 rounded-full bg-sky-200 dark:bg-slate-800" />
+              <div className="space-y-2">
+                <div className="h-3 w-28 rounded-full bg-sky-100 dark:bg-slate-800" />
+                <div className="h-4 w-36 rounded-full bg-sky-200 dark:bg-slate-800" />
+              </div>
+            </div>
+          </div>
+
+          <section className="rounded-3xl border border-sky-200/80 bg-white/90 p-6 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 md:p-8">
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-lg dark:bg-sky-950/60">📚</div>
+                <div>
+                  <h2 className="font-bold text-slate-900 dark:text-white">Nội Dung Khóa Học</h2>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Đang chuẩn bị danh sách chương và bài học...</p>
+                </div>
+              </div>
+              <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-sky-200 border-t-sky-600 motion-reduce:animate-none dark:border-slate-700 dark:border-t-sky-400" />
+            </div>
+            <div className="animate-pulse space-y-3 motion-reduce:animate-none">
+              {["w-full", "w-11/12", "w-10/12", "w-full", "w-9/12"].map((width, index) => (
+                <div key={index} className="flex items-center gap-3 rounded-2xl border border-sky-100 bg-sky-50/80 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/40">
+                  <div className="h-7 w-7 shrink-0 rounded-lg bg-sky-200 dark:bg-slate-800" />
+                  <div className={`h-4 ${width} rounded-full bg-sky-200/80 dark:bg-slate-800`} />
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <aside className="hidden animate-pulse rounded-3xl border border-sky-200/80 bg-white/90 p-5 shadow-lg motion-reduce:animate-none dark:border-slate-800 dark:bg-slate-900/90 lg:block">
+          <div className="aspect-video rounded-2xl bg-sky-200 dark:bg-slate-800" />
+          <div className="mt-5 h-12 rounded-2xl bg-sky-600/75 dark:bg-sky-700/60" />
+          <div className="mt-5 space-y-3 border-t border-sky-100 pt-5 dark:border-slate-800">
+            <div className="h-4 w-3/4 rounded-full bg-sky-200 dark:bg-slate-800" />
+            <div className="h-4 w-full rounded-full bg-sky-100 dark:bg-slate-800" />
+            <div className="h-4 w-5/6 rounded-full bg-sky-100 dark:bg-slate-800" />
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
 
 export default function CourseDetailPage() {
   const { id, slug } = useParams();
@@ -158,18 +224,12 @@ export default function CourseDetailPage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
-        <div className="max-w-2xl w-full">
-          <LoadingState message="Đang tải thông tin chi tiết khóa học..." count={2} />
-        </div>
-      </div>
-    );
+    return <CourseDetailLoading />;
   }
 
   if (errorMessage || !courseData || !courseData.course) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+      <div className="min-h-screen bg-[#eaf5fc] text-slate-900 dark:bg-slate-950 dark:text-white flex items-center justify-center p-6">
         <div className="max-w-md w-full">
           <ErrorState
             title="Khóa Học Không Tồn Tại"

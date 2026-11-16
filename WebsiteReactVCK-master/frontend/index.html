@@ -2,6 +2,42 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
+    <style>
+      #app-boot-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: grid;
+        place-items: center;
+        background: #eaf5fc;
+        color: #17324a;
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .dark #app-boot-loader { background: #020617; color: #e2e8f0; }
+      .app-boot-card { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+      .app-boot-mark {
+        display: grid;
+        width: 52px;
+        height: 52px;
+        place-items: center;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #dc2626, #ef4444 58%, #f59e0b);
+        color: white;
+        font-size: 24px;
+        box-shadow: 0 14px 30px rgba(30, 64, 175, 0.15);
+      }
+      .app-boot-spinner {
+        width: 30px;
+        height: 30px;
+        border: 3px solid rgba(14, 165, 233, 0.22);
+        border-top-color: #0284c7;
+        border-radius: 999px;
+        animation: app-boot-spin 0.8s linear infinite;
+      }
+      .app-boot-label { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.01em; }
+      @keyframes app-boot-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .app-boot-spinner { animation: none; } }
+    </style>
     <script>
       (() => {
         try {
@@ -162,7 +198,15 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="app-boot-loader" role="status" aria-live="polite" aria-label="Đang khởi động Moly Course">
+        <div class="app-boot-card">
+          <div class="app-boot-mark" aria-hidden="true">M</div>
+          <div class="app-boot-spinner" aria-hidden="true"></div>
+          <p class="app-boot-label">Đang chuẩn bị Moly Course...</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

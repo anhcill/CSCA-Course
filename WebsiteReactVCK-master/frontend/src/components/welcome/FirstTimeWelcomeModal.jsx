@@ -486,7 +486,7 @@ export default function FirstTimeWelcomeModal({
       {isVisible && (
         <motion.div
           key="first-time-welcome-fullscreen"
-          initial={{ opacity: 0 }}
+          initial={false}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, scale: 1.03, filter: "blur(14px)" }}
           transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
