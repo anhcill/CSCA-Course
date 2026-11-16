@@ -419,9 +419,6 @@ export default function CourseDetailPage() {
               <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${levelBadge.bg}`}>
                 Trình độ: {levelBadge.text}
               </span>
-              <span className="px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                {videoOffering?.badgeLabel || "Khóa Record"}
-              </span>
             </div>
 
             <h1 className="text-3xl md:text-4xl font-black tracking-tight text-slate-950 dark:text-white leading-tight">
