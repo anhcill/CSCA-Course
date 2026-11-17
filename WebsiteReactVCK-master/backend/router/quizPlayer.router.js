@@ -55,6 +55,7 @@ const resolveVideoCourseProfile = async (
   const rows = (await db.query(
     `SELECT * FROM video_course_profiles
      WHERE status = 'active'
+       AND deleted_at IS NULL
        AND (
          ($3::bigint IS NULL AND $4::bigint IS NULL)
          OR course_id = $3
@@ -165,7 +166,26 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
   if (String(quiz.quiz_status || "").toUpperCase() !== "PUBLISHED") return false;
   if (quiz.session_is_public_preview) return true;
   if (quiz.lesson_is_public_preview && quiz.lesson_is_published !== false) return true;
-  if (!quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
+  if (!quiz.resolved_course_id || quiz.lesson_is_published === false) return false;
+  if (!quiz.course_is_published) {
+    // Allow published quiz access when an active MIRROR video course backed by a
+    // published offering mirrors this quiz's Live class (or matches recordProfile).
+    const publishedMirror = await db.query(
+      `SELECT 1
+       FROM video_course_profiles vcp
+       JOIN courses mc ON mc.id = vcp.course_id
+       WHERE vcp.status = 'active'
+         AND vcp.deleted_at IS NULL
+         AND mc.is_published = TRUE
+         AND (
+           ($1::bigint IS NOT NULL AND vcp.id = $1)
+           OR ($2::bigint IS NOT NULL AND vcp.mode = 'MIRROR' AND vcp.source_live_class_id = $2)
+         )
+       LIMIT 1`,
+      [recordProfile?.id || null, quiz.live_class_id || null],
+    );
+    if (!publishedMirror.rows[0]) return false;
+  }
 
   const access = await db.query(
     `SELECT 1 FROM lms_access_grants g
@@ -180,12 +200,12 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
          ))
          OR EXISTS (
            SELECT 1 FROM video_course_profiles vcp
-           WHERE vcp.course_id = g.course_id AND vcp.status = 'active'
+           WHERE vcp.course_id = g.course_id AND vcp.status = 'active' AND vcp.deleted_at IS NULL
              AND (vcp.source_live_class_id = $3 OR vcp.course_id = $2)
          )
          OR EXISTS (
            SELECT 1 FROM video_course_profiles vcp
-           WHERE vcp.course_id = $2 AND vcp.status = 'active'
+           WHERE vcp.course_id = $2 AND vcp.status = 'active' AND vcp.deleted_at IS NULL
              AND (
                vcp.source_live_class_id IN (SELECT lc.id FROM live_classes lc WHERE lc.course_id = g.course_id)
                OR vcp.source_live_class_id IN (SELECT ce.live_class_id FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.status = 'active')
@@ -195,7 +215,7 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
            g.course_id = $4
            OR EXISTS (
              SELECT 1 FROM video_course_profiles vcp
-             WHERE vcp.id = $5 AND (
+             WHERE vcp.id = $5 AND vcp.status = 'active' AND vcp.deleted_at IS NULL AND (
                vcp.course_id = g.course_id
                OR vcp.source_live_class_id IN (SELECT lc.id FROM live_classes lc WHERE lc.course_id = g.course_id)
                OR vcp.source_live_class_id IN (SELECT ce.live_class_id FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.status = 'active')
@@ -239,7 +259,7 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
            SELECT 1 FROM video_course_profiles vcp
            LEFT JOIN management_class_learning_aliases alias
              ON LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id)
-           WHERE vcp.source_live_class_id = $2 AND vcp.status = 'active'
+           WHERE vcp.source_live_class_id = $2 AND vcp.status = 'active' AND vcp.deleted_at IS NULL
              AND (
                (ce.learning_mode = 'recording' AND (
                  ce.management_class_alias_id = alias.id
@@ -253,7 +273,7 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
            SELECT 1 FROM video_course_profiles vcp
            LEFT JOIN management_class_learning_aliases alias
              ON LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id)
-           WHERE vcp.id = $4 AND vcp.status = 'active'
+           WHERE vcp.id = $4 AND vcp.status = 'active' AND vcp.deleted_at IS NULL
              AND (ce.video_course_profile_id IS NULL OR ce.video_course_profile_id = vcp.id)
              AND (
                ce.video_course_profile_id = vcp.id

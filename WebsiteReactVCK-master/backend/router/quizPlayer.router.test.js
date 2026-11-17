@@ -587,3 +587,133 @@ test("admin and teacher roles can access and complete quiz player without enroll
   assert.equal(teacherStart.statusCode, 200, JSON.stringify(teacherStart.body));
   assert.equal(teacherStart.body.data.quiz.title, "Quiz for Admin/Teacher");
 });
+
+test("MIRROR Record and active Live learners can start quizzes even when source live course is draft, while unauthorized learners stay rejected", async (t) => {
+  const db = await loadDatabase();
+  t.after(() => db.close());
+
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('mirror-q-teacher','mirror-q-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const recordStudent = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('mirror-q-record','mirror-q-record@example.test','user',TRUE,'active') RETURNING id,role,is_management_managed,lms_account_status`,
+  )).rows[0];
+  const liveStudent = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('mirror-q-live','mirror-q-live@example.test','user',TRUE,'active') RETURNING id,role,is_management_managed,lms_account_status`,
+  )).rows[0];
+  const outsider = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('mirror-q-outsider','mirror-q-outsider@example.test','user',TRUE,'active') RETURNING id,role,is_management_managed,lms_account_status`,
+  )).rows[0];
+
+  const sourceCourse = (await db.query(
+    "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Live Draft Parent','live-draft-parent',$1,FALSE) RETURNING id",
+    [teacher.id],
+  )).rows[0];
+  const recordCourse = (await db.query(
+    "INSERT INTO courses(name,slug,author_id,is_published) VALUES ('Record TTXH Published','record-ttxh-pub',$1,TRUE) RETURNING id",
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await db.query(
+    "INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('TTXH Live',$1,$2,'active') RETURNING id",
+    [sourceCourse.id, teacher.id],
+  )).rows[0];
+  const s1 = (await db.query(
+    "INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status,is_public_preview) VALUES ($1,'Buoi 1',NOW() - interval '2 days',NOW() - interval '2 days' + interval '1 hour','scheduled',TRUE) RETURNING id",
+    [liveClass.id],
+  )).rows[0];
+  const s2 = (await db.query(
+    "INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status,is_public_preview) VALUES ($1,'Buoi 2',NOW() - interval '1 day',NOW() - interval '1 day' + interval '1 hour','scheduled',FALSE) RETURNING id",
+    [liveClass.id],
+  )).rows[0];
+
+  const v1 = (await db.query(
+    "INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds) VALUES ('V1','bunny_stream','111','mq-v1','ready',100) RETURNING id",
+  )).rows[0];
+  await db.query(
+    "INSERT INTO class_session_videos(class_session_id,video_asset_id,video_type,is_published) VALUES ($1,$2,'primary',TRUE)",
+    [s1.id, v1.id],
+  );
+  const quiz1 = (await db.query(
+    "INSERT INTO quizzes(title,course_id,live_class_id,class_session_id,instructor_id,status,duration_minutes,passing_score) VALUES ('Q1',$1,$2,$3,$4,'PUBLISHED',15,60) RETURNING id",
+    [sourceCourse.id, liveClass.id, s1.id, teacher.id],
+  )).rows[0];
+  const quiz2 = (await db.query(
+    "INSERT INTO quizzes(title,course_id,live_class_id,class_session_id,instructor_id,status,duration_minutes,passing_score) VALUES ('Q2',$1,$2,$3,$4,'PUBLISHED',15,60) RETURNING id",
+    [sourceCourse.id, liveClass.id, s2.id, teacher.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO quiz_questions(quiz_id,question_text,question_type,options_json,correct_answer,points,sort_order)
+     VALUES ($1,'Cau hoi buoi 2','single_choice',$2::jsonb,'A',10,1)`,
+    [quiz2.id, JSON.stringify([{ key: "A", text: "A" }, { key: "B", text: "B" }])],
+  );
+
+  const recordProfile = (await db.query(
+    `INSERT INTO video_course_profiles(course_id,management_class_id,mode,source_live_class_id,status)
+     VALUES ($1,'mirror-q-alias','MIRROR',$2,'active') RETURNING id`,
+    [recordCourse.id, liveClass.id],
+  )).rows[0];
+  const alias = (await db.query(
+    `INSERT INTO management_class_learning_aliases(alias_class_source_id,source_class_source_id,live_class_id,course_id,learning_mode,recording_content_mode,title,status,management_source_updated_at)
+     VALUES ('mirror-q-alias','mirror-q-src',$1,$2,'recording','MIRROR','TTXH Record','active',NOW()) RETURNING id`,
+    [liveClass.id, recordCourse.id],
+  )).rows[0];
+
+  await db.query(
+    `INSERT INTO class_enrollments(user_id,live_class_id,course_id,learning_mode,management_class_alias_id,status)
+     VALUES ($1,$2,$3,'recording',$4,'active'), ($5,$2,$3,'live',NULL,'active')`,
+    [recordStudent.id, liveClass.id, sourceCourse.id, alias.id, liveStudent.id],
+  );
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - interval '1 day',NOW()), ($3,$4,'active',NOW() - interval '1 day',NOW())`,
+    [recordStudent.id, recordCourse.id, liveStudent.id, sourceCourse.id],
+  );
+
+  // Outsider stays rejected (403)
+  const outsiderStart = await invokeWithMiddleware("get", "/quizzes/:quizId/start", {
+    user: outsider,
+    params: { quizId: quiz2.id },
+  });
+  assert.equal(outsiderStart.statusCode, 403);
+
+  // Record learner is blocked until Buoi 1 is completed
+  const blockedBeforeS1 = await invokeWithMiddleware("get", "/quizzes/:quizId/start", {
+    user: recordStudent,
+    params: { quizId: quiz2.id },
+    query: { videoCourseProfileId: "mirror-q-alias" },
+  });
+  assert.equal(blockedBeforeS1.statusCode, 403);
+
+  // Complete Buoi 1 video & quiz1 scoped to recordProfile.id
+  await db.query(
+    `INSERT INTO video_watch_progress(user_id,video_asset_id,course_id,live_class_id,class_session_id,last_position_seconds,watched_seconds,completion_percent,is_completed)
+     VALUES ($1,$2,$3,$4,$5,60,60,60,TRUE)`,
+    [recordStudent.id, v1.id, recordCourse.id, liveClass.id, s1.id],
+  );
+  await db.query(
+    "INSERT INTO quiz_attempts(quiz_id,user_id,video_course_profile_id,status,score,max_score,submitted_at) VALUES ($1,$2,$3,'submitted',9,10,NOW())",
+    [quiz1.id, recordStudent.id, recordProfile.id],
+  );
+
+  const recordScopedStart = await invokeWithMiddleware("get", "/quizzes/:quizId/start", {
+    user: recordStudent,
+    params: { quizId: quiz2.id },
+    query: { videoCourseProfileId: "mirror-q-alias" },
+  });
+  assert.equal(recordScopedStart.statusCode, 200, JSON.stringify(recordScopedStart.body));
+
+  const recordDirectStart = await invokeWithMiddleware("get", "/quizzes/:quizId/start", {
+    user: recordStudent,
+    params: { quizId: quiz2.id },
+  });
+  assert.equal(recordDirectStart.statusCode, 200, JSON.stringify(recordDirectStart.body));
+
+  const liveStart = await invokeWithMiddleware("get", "/quizzes/:quizId/start", {
+    user: liveStudent,
+    params: { quizId: quiz2.id },
+  });
+  assert.equal(liveStart.statusCode, 200, JSON.stringify(liveStart.body));
+});

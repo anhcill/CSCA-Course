@@ -105,6 +105,20 @@ const normalizeAssignmentType = (value) => {
   return normalized === "writing" ? "essay" : normalized;
 };
 
+const publishedMirrorProfileExistsSql = (liveClassExpr, courseGrantExpr = null) => `
+  EXISTS (
+    SELECT 1
+    FROM video_course_profiles vcp
+    JOIN courses vc ON vc.id = vcp.course_id
+    WHERE vcp.status = 'active'
+      AND vcp.deleted_at IS NULL
+      AND vcp.mode = 'MIRROR'
+      AND vcp.source_live_class_id = ${liveClassExpr}
+      ${courseGrantExpr ? `AND vcp.course_id = ${courseGrantExpr}` : ""}
+      AND vc.is_published = true
+  )
+`;
+
 const getAssignment = async (assignmentId, db = { query }) => {
   const result = await db.query(
     `SELECT a.id, a.title, a.assignment_type, a.course_id, a.live_class_id, a.class_session_id, a.lesson_id, a.instructor_id,
@@ -209,10 +223,28 @@ const ensureAssignmentVisibleToStudent = async (assignment, userId, db = { query
 
   const courseId = assignment.resolved_course_id || assignment.course_id;
   if (courseId !== null) {
-    if (!assignment.course_is_published) return false;
+    const mirrorPublishedOk = assignment.live_class_id !== null
+      && assignment.live_class_status === "active"
+      && Boolean((await db.query(
+        `SELECT 1 WHERE ${publishedMirrorProfileExistsSql("$1")}`,
+        [assignment.live_class_id],
+      )).rows[0]);
+    if (!assignment.course_is_published && !mirrorPublishedOk) return false;
     const result = await db.query(
-      `SELECT 1 WHERE ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$1", "$2")}`,
-      [userId, courseId],
+      `SELECT 1 WHERE ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$1", "$2")}
+       OR (
+         $3::bigint IS NOT NULL
+         AND $4::text = 'active'
+         AND EXISTS (
+           SELECT 1 FROM lms_access_grants g
+           WHERE g.user_id = $1
+             AND g.access_status = 'active'
+             AND g.valid_from <= NOW()
+             AND (g.valid_until IS NULL OR g.valid_until > NOW())
+             AND ${publishedMirrorProfileExistsSql("$3", "g.course_id")}
+         )
+       )`,
+      [userId, courseId, assignment.live_class_id || null, assignment.live_class_status || null],
     );
     if (result.rows.length === 0) {
       const externalProfile = await findActiveExternalVideoCourseAssignmentProfile({
@@ -535,7 +567,12 @@ router.get("/", protectRoute, async (req, res) => {
           WHERE ce.live_class_id = lc.id AND ce.user_id = $3 AND ce.status = 'active'
             AND EXISTS (
               SELECT 1 FROM lms_access_grants g
-              WHERE g.user_id = $3 AND g.course_id = course_access.id AND g.access_status = 'active'
+              WHERE g.user_id = $3
+                AND (
+                  g.course_id = course_access.id
+                  OR ${publishedMirrorProfileExistsSql("lc.id", "g.course_id")}
+                )
+                AND g.access_status = 'active'
                 AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
             )
         )`;
@@ -563,10 +600,17 @@ router.get("/", protectRoute, async (req, res) => {
               WHERE ct0.live_class_id=lc.id AND ct0.teacher_id=$1)) OR EXISTS (SELECT 1 FROM class_teachers ct
               WHERE ct.live_class_id=a.live_class_id AND ct.teacher_id=$1 AND ct.status='active')))`
         : `(
-             COALESCE(c.is_published, class_course.is_published) = true
+             (
+               COALESCE(c.is_published, class_course.is_published) = true
+               OR (a.live_class_id IS NOT NULL AND lc.status = 'active' AND ${publishedMirrorProfileExistsSql("a.live_class_id")})
+             )
              AND EXISTS (
                SELECT 1 FROM lms_access_grants g
-               WHERE g.user_id = $1 AND g.course_id = COALESCE(a.course_id, lc.course_id)
+               WHERE g.user_id = $1
+                 AND (
+                   g.course_id = COALESCE(a.course_id, lc.course_id)
+                   OR (a.live_class_id IS NOT NULL AND ${publishedMirrorProfileExistsSql("a.live_class_id", "g.course_id")})
+                 )
                  AND g.access_status = 'active' AND g.valid_from <= NOW()
                  AND (g.valid_until IS NULL OR g.valid_until > NOW())
              )
@@ -582,9 +626,17 @@ router.get("/", protectRoute, async (req, res) => {
             q.live_class_id IS NOT NULL AND ((quiz_lc.instructor_id = $1 AND NOT EXISTS
               (SELECT 1 FROM class_teachers ct0 WHERE ct0.live_class_id=quiz_lc.id AND ct0.teacher_id=$1)) OR EXISTS
               (SELECT 1 FROM class_teachers ct WHERE ct.live_class_id=q.live_class_id AND ct.teacher_id=$1 AND ct.status='active')))`
-        : `q.status = 'PUBLISHED' AND c.is_published = true AND EXISTS (
+        : `q.status = 'PUBLISHED' AND (
+             c.is_published = true
+             OR (q.live_class_id IS NOT NULL AND quiz_lc.status = 'active' AND ${publishedMirrorProfileExistsSql("q.live_class_id")})
+           ) AND EXISTS (
              SELECT 1 FROM lms_access_grants g
-             WHERE g.user_id = $1 AND g.course_id = c.id AND g.access_status = 'active'
+             WHERE g.user_id = $1
+               AND (
+                 g.course_id = c.id
+                 OR (q.live_class_id IS NOT NULL AND ${publishedMirrorProfileExistsSql("q.live_class_id", "g.course_id")})
+               )
+               AND g.access_status = 'active'
                AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())
            ) AND (q.live_class_id IS NULL OR (
              quiz_lc.status = 'active' AND EXISTS (
@@ -2609,12 +2661,24 @@ const ensureQuizAccess = async (quiz, user, db = { query }) => {
     ? await isAssignedTeacher(quiz.live_class_id, user.id, db)
     : String(quiz.course_author_id) === String(user.id) || String(quiz.instructor_id) === String(user.id);
   if (user.role !== "user" || String(quiz.quiz_status || "").toUpperCase() !== "PUBLISHED") return false;
-  if (!quiz.resolved_course_id || !quiz.course_is_published || quiz.lesson_is_published === false) return false;
+  if (!quiz.resolved_course_id || quiz.lesson_is_published === false) return false;
+  if (!quiz.course_is_published) {
+    const mirrorPublished = quiz.live_class_id && (await db.query(
+      `SELECT 1 WHERE ${publishedMirrorProfileExistsSql("$1")}`,
+      [quiz.live_class_id],
+    )).rows[0];
+    if (!mirrorPublished) return false;
+  }
   const enrollment = await db.query(
-    `SELECT 1 FROM lms_access_grants
-     WHERE user_id = $1 AND course_id = $2 AND access_status = 'active'
-       AND valid_from <= NOW() AND (valid_until IS NULL OR valid_until > NOW())`,
-    [user.id, quiz.resolved_course_id],
+    `SELECT 1 FROM lms_access_grants g
+     WHERE g.user_id = $1
+       AND (
+         g.course_id = $2
+         OR ($3::bigint IS NOT NULL AND ${publishedMirrorProfileExistsSql("$3", "g.course_id")})
+       )
+       AND g.access_status = 'active'
+       AND g.valid_from <= NOW() AND (g.valid_until IS NULL OR g.valid_until > NOW())`,
+    [user.id, quiz.resolved_course_id, quiz.live_class_id || null],
   );
   if (enrollment.rows.length === 0) return false;
   if (!quiz.live_class_id) return true;

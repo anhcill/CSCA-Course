@@ -154,6 +154,7 @@ const resolveProfileOffering = async (offeringParam) => {
      JOIN courses c ON c.id = vcp.course_id
      LEFT JOIN users u ON u.id = c.author_id
      WHERE vcp.status = 'active'
+       AND vcp.deleted_at IS NULL
        AND (
          ($1::text <> '' AND LOWER(vcp.management_class_id) = LOWER($1))
          OR ($2::bigint IS NOT NULL AND vcp.id = $2)
@@ -164,8 +165,8 @@ const resolveProfileOffering = async (offeringParam) => {
   if (!result.rows[0]) return null;
   const row = result.rows[0];
   return {
-    profile: row,
-    course: row,
+    profile: { ...row, id: row.profile_id },
+    course: { ...row, id: row.course_id || row.id },
     liveClass: row.source_live_class_id ? { id: row.source_live_class_id } : null,
   };
 };
@@ -267,7 +268,7 @@ router.get("/", async (req, res) => {
        JOIN courses c ON c.id = vcp.course_id
        LEFT JOIN live_classes lc ON lc.id = vcp.source_live_class_id
        LEFT JOIN users u ON u.id = COALESCE(lc.instructor_id, c.author_id)
-       WHERE c.is_published = true AND vcp.status = 'active'
+       WHERE c.is_published = true AND vcp.status = 'active' AND vcp.deleted_at IS NULL
        ORDER BY c.id ASC, vcp.id ASC`,
     );
 
@@ -299,25 +300,51 @@ router.get("/", async (req, res) => {
   }
 });
 
+const findActiveProfilesForResolvedOffering = async ({ courseId, sourceLiveClassId = null }) => {
+  const result = await query(
+    `SELECT vcp.id, vcp.course_id, vcp.mode, vcp.source_live_class_id,
+            vcp.enforce_trusted_devices, vcp.allow_file_download,
+            vcp.device_limit, vcp.status, vcp.management_class_id,
+            lc.title AS source_class_title, lc.status AS source_class_status
+     FROM video_course_profiles vcp
+     LEFT JOIN live_classes lc ON lc.id = vcp.source_live_class_id
+     WHERE vcp.status = 'active'
+       AND vcp.deleted_at IS NULL
+       AND (
+         vcp.course_id = $1
+         OR ($2::bigint IS NOT NULL AND vcp.mode = 'MIRROR' AND vcp.source_live_class_id = $2)
+       )
+     ORDER BY CASE
+       WHEN $2::bigint IS NOT NULL AND vcp.source_live_class_id = $2 THEN 0
+       ELSE 1
+     END, vcp.id ASC`,
+    [courseId, sourceLiveClassId],
+  );
+  return result.rows;
+};
+
+const hydrateCourseForProfile = async (course, profile) => {
+  if (!profile?.course_id || String(profile.course_id) === String(course.id)) return course;
+  const resolved = await resolveOffering(profile.course_id);
+  return resolved?.course || course;
+};
+
 const resolveVideoCourseContext = async (offeringId) => {
   const directOffering = await resolveProfileOffering(offeringId);
   const resolved = directOffering || await resolveOffering(offeringId);
   if (!resolved?.course) return null;
 
-  const course = resolved.course;
+  let course = resolved.course;
   const courseId = Number(course.id);
-  const profileResult = directOffering
-    ? { rows: [directOffering.profile] }
-    : await query(
-      `SELECT vcp.id, vcp.mode, vcp.source_live_class_id, vcp.management_class_id,
-              vcp.device_limit, vcp.enforce_trusted_devices, vcp.status
-       FROM video_course_profiles vcp
-       WHERE vcp.course_id = $1 AND vcp.status = 'active'
-       ORDER BY vcp.id ASC LIMIT 1`,
-      [courseId],
-    );
-  const profile = profileResult.rows[0] || null;
+  const profileRows = directOffering
+    ? [directOffering.profile]
+    : await findActiveProfilesForResolvedOffering({
+      courseId,
+      sourceLiveClassId: resolved.liveClass?.id || null,
+    });
+  const profile = profileRows[0] || null;
   if (!profile) return { course, profile: null, mode: null, sourceLiveClassId: null };
+  course = await hydrateCourseForProfile(course, profile);
 
   let mode = profile.mode || "MIRROR";
   let sourceLiveClassId = profile.source_live_class_id || resolved.liveClass?.id || null;
@@ -554,26 +581,21 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
     const directOffering = await resolveProfileOffering(offeringId);
     const resolved = directOffering || await resolveOffering(offeringId);
     if (!resolved) return notFound(res, "Không tìm thấy khóa học");
-    const { course, liveClass: resolvedLiveClass } = resolved;
+    let { course, liveClass: resolvedLiveClass } = resolved;
     if (!course) return notFound(res, "Không tìm thấy khóa học");
 
-    const courseId = Number(course.id);
+    let courseId = Number(course.id);
     const isLearner = req.user.role === "user";
 
     // Load video course profile if any
-    const profileRes = directOffering ? { rows: [directOffering.profile] } : await query(
-      `SELECT vcp.id, vcp.mode, vcp.source_live_class_id, vcp.enforce_trusted_devices,
-              vcp.allow_file_download,
-              vcp.device_limit, vcp.status, vcp.management_class_id,
-              lc.title AS source_class_title, lc.status AS source_class_status
-       FROM video_course_profiles vcp
-       LEFT JOIN live_classes lc ON lc.id = vcp.source_live_class_id
-       WHERE vcp.course_id = $1 AND vcp.status = 'active'
-       ORDER BY vcp.id ASC`,
-      [courseId],
-    );
-    let profile = profileRes.rows[0] || null;
-    if (!directOffering && profileRes.rows.length > 1 && isLearner) {
+    const profileRows = directOffering
+      ? [directOffering.profile]
+      : await findActiveProfilesForResolvedOffering({
+        courseId,
+        sourceLiveClassId: resolvedLiveClass?.id || null,
+      });
+    let profile = profileRows[0] || null;
+    if (!directOffering && profileRows.length > 1 && isLearner) {
       const membershipProfile = await query(
         `SELECT vcp.*
          FROM video_course_profiles vcp
@@ -585,14 +607,21 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
            ON ce.management_class_alias_id = alias.id AND ce.user_id = $2 AND ce.status = 'active' AND ce.learning_mode = 'recording'
          LEFT JOIN class_enrollments ce_live
            ON ce_live.live_class_id = vcp.source_live_class_id AND ce_live.user_id = $2 AND ce_live.status = 'active'
-         WHERE vcp.course_id = $1 AND vcp.status = 'active'
+         WHERE vcp.status = 'active'
+           AND vcp.deleted_at IS NULL
+           AND (
+             vcp.course_id = $1
+             OR ($3::bigint IS NOT NULL AND vcp.mode = 'MIRROR' AND vcp.source_live_class_id = $3)
+           )
            AND (ce_profile.id IS NOT NULL OR ce.id IS NOT NULL OR (vcp.mode = 'MIRROR' AND ce_live.id IS NOT NULL))
          ORDER BY (ce_profile.id IS NOT NULL) DESC, (ce.id IS NOT NULL) DESC, vcp.id ASC LIMIT 1`,
-        [courseId, req.user.id],
+        [courseId, req.user.id, resolvedLiveClass?.id || null],
       );
       profile = membershipProfile.rows[0] || profile;
     }
     if (!profile) return notFound(res, "Khóa học này chưa được cấu hình khóa video");
+    course = await hydrateCourseForProfile(course, profile);
+    courseId = Number(course.id);
     const activeProfileId = Number(profile.profile_id || profile.id);
 
     // Determine mode
@@ -851,7 +880,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
          LEFT JOIN video_watch_progress vwp ON vwp.user_id = $2 AND vwp.video_asset_id = va.id
          WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
          ORDER BY cs.start_time ASC, cs.id ASC`,
-        [sourceLiveClassId, req.user.id, !isLearner, profile.id],
+        [sourceLiveClassId, req.user.id, !isLearner, activeProfileId],
       );
 
       const rawUnits = await Promise.all(sessionsRes.rows.map(async (row) => {
@@ -968,7 +997,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                     (SELECT sg.score FROM assignment_submissions s JOIN submission_grades sg ON sg.submission_id = s.id WHERE s.assignment_id = a.id AND s.user_id = $2 AND s.video_course_profile_id = $4 ORDER BY sg.id DESC LIMIT 1) AS score
              FROM assignments a
              WHERE a.course_id = $1 OR a.live_class_id = $3`,
-            [courseId, req.user.id, sourceLiveClassId, profile.id],
+            [courseId, req.user.id, sourceLiveClassId, activeProfileId],
           ),
           query(
             `SELECT q.id, q.title, q.duration_minutes, q.passing_score,
@@ -1000,7 +1029,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
              WHERE q.class_session_id = $1
                AND q.status = 'PUBLISHED'
              ORDER BY q.id ASC`,
-            [sessId, req.user.id, profile.id],
+            [sessId, req.user.id, activeProfileId],
           ),
           query(
             `SELECT sv.id, sv.term, sv.pinyin, sv.sino_vietnamese, sv.meaning,
@@ -1108,10 +1137,10 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             fileName: f.file_name,
             sizeBytes: Number(f.file_size_bytes || 0),
             mimeType: f.mime_type,
-            viewUrl: `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(profile.id)}`,
+            viewUrl: `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(activeProfileId)}`,
             downloadUrl: isPublicPreviewAccess || profile.allow_file_download !== true || f.allow_file_download === false
               ? null
-              : `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(profile.id)}&download=1`,
+              : `/api/files/${f.id}/download?classId=${encodeURIComponent(sourceLiveClassId)}&videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(activeProfileId)}&download=1`,
           })),
           assignments: assignRes.rows.map((a) => ({
             id: String(a.id),
@@ -1216,7 +1245,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
          LEFT JOIN video_watch_progress vwp ON vwp.user_id = $2 AND (vwp.video_asset_id = va.id OR vwp.lesson_id = l.id)
          WHERE l.course_id = $1 AND l.is_published = true
          ORDER BY COALESCE(s.sort_order, 0) ASC, l.sort_order ASC, l.id ASC`,
-        [courseId, req.user.id, !isLearner, profile.id],
+        [courseId, req.user.id, !isLearner, activeProfileId],
       );
 
       const rawUnits = await Promise.all(lessonsRes.rows.map(async (row, idx) => {
@@ -1310,7 +1339,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                     (SELECT sg.score FROM assignment_submissions s JOIN submission_grades sg ON sg.submission_id = s.id WHERE s.assignment_id = a.id AND s.user_id = $2 AND s.video_course_profile_id = $4 ORDER BY sg.id DESC LIMIT 1) AS score
              FROM assignments a
              WHERE a.lesson_id = $1 OR (a.course_id = $3 AND a.lesson_id IS NULL AND a.live_class_id IS NULL)`,
-            [lId, req.user.id, courseId, profile.id],
+            [lId, req.user.id, courseId, activeProfileId],
           ),
           query(
             `SELECT q.id, q.title, q.duration_minutes, q.passing_score,
@@ -1341,7 +1370,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
              FROM quizzes q
              WHERE q.lesson_id = $1 AND q.status = 'PUBLISHED'
              ORDER BY q.id ASC`,
-            [lId, req.user.id, profile.id],
+            [lId, req.user.id, activeProfileId],
           ),
           query(
             `SELECT sv.id, sv.term, sv.pinyin, sv.sino_vietnamese, sv.meaning,
@@ -1451,10 +1480,10 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             fileName: f.file_name,
             sizeBytes: Number(f.file_size_bytes || 0),
             mimeType: f.mime_type,
-            viewUrl: `/api/files/${f.id}/download?videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(profile.id)}`,
+            viewUrl: `/api/files/${f.id}/download?videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(activeProfileId)}`,
             downloadUrl: isPublicPreviewAccess || profile.allow_file_download !== true
               ? null
-              : `/api/files/${f.id}/download?videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(profile.id)}&download=1`,
+              : `/api/files/${f.id}/download?videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(activeProfileId)}&download=1`,
           })),
           assignments: assignRes.rows.map((a) => ({
             id: String(a.id),
@@ -1542,7 +1571,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
     return res.json({
       success: true,
       data: {
-        videoCourseProfileId: String(profile.id),
+        videoCourseProfileId: String(activeProfileId),
         mode: mode === "MIRROR" ? "RECORD_MIRROR" : "RECORD_INDEPENDENT",
         course: {
           id: String(course.id),
@@ -1654,22 +1683,20 @@ const assertNativeActorCourseAccess = async ({
 const resolveNativeAuthorizedUnit = async ({ req, offeringId, unitId, requestedUnitType = null }) => {
   const directOffering = await resolveProfileOffering(offeringId);
   const resolved = directOffering || await resolveOffering(offeringId);
-  const course = resolved?.course || null;
+  let course = resolved?.course || null;
   if (!course) {
     throw new ExternalIntegrationError(404, "NOT_FOUND", "Không tìm thấy khóa học");
   }
 
   let profile = directOffering?.profile || null;
   if (!profile) {
-    const profileRes = await query(
-      `SELECT vcp.id, vcp.mode, vcp.source_live_class_id
-       FROM video_course_profiles vcp
-       WHERE vcp.course_id = $1 AND vcp.status = 'active'
-       ORDER BY vcp.id ASC LIMIT 1`,
-      [course.id],
-    );
-    profile = profileRes.rows[0] || null;
+    const profileRows = await findActiveProfilesForResolvedOffering({
+      courseId: course.id,
+      sourceLiveClassId: resolved?.liveClass?.id || null,
+    });
+    profile = profileRows[0] || null;
   }
+  course = await hydrateCourseForProfile(course, profile);
   const activeProfileId = profile ? Number(profile.profile_id || profile.id) : null;
   const sourceLiveClassId = resolved?.liveClass?.id || profile?.source_live_class_id || null;
 
@@ -2065,7 +2092,15 @@ export const computeCoursePublishChecklist = async (courseId) => {
             vcp.mode, vcp.source_live_class_id, vcp.management_class_id, vcp.status AS profile_status,
             lc.status AS source_class_status
      FROM courses c
-     LEFT JOIN video_course_profiles vcp ON vcp.course_id = c.id
+     LEFT JOIN LATERAL (
+       SELECT vcp_in.*
+       FROM video_course_profiles vcp_in
+       WHERE vcp_in.course_id = c.id
+         AND vcp_in.status <> 'archived'
+         AND vcp_in.deleted_at IS NULL
+       ORDER BY (vcp_in.status = 'active') DESC, vcp_in.id ASC
+       LIMIT 1
+     ) vcp ON TRUE
      LEFT JOIN live_classes lc ON lc.id = vcp.source_live_class_id
      WHERE c.id = $1`,
     [courseId],
@@ -2240,7 +2275,7 @@ export const computeCoursePublishChecklist = async (courseId) => {
   };
 };
 
-// Admin: GET /api/video-courses/admin/courses - List all courses with video profiles & publish checklist
+// Admin: GET /api/video-courses/admin/courses - List video courses with active/draft profiles (excluding archived-only courses)
 router.get("/admin/courses", protectRoute, requireAdmin, async (req, res) => {
   try {
     const coursesRes = await query(
@@ -2256,8 +2291,23 @@ router.get("/admin/courses", protectRoute, requireAdmin, async (req, res) => {
               lc.title AS source_class_title, lc.status AS source_class_status
        FROM courses c
        LEFT JOIN users u ON u.id = c.author_id
-       LEFT JOIN video_course_profiles vcp ON vcp.course_id = c.id
+       LEFT JOIN LATERAL (
+         SELECT vcp_in.*
+         FROM video_course_profiles vcp_in
+         WHERE vcp_in.course_id = c.id
+           AND vcp_in.status <> 'archived'
+           AND vcp_in.deleted_at IS NULL
+         ORDER BY (vcp_in.status = 'active') DESC, vcp_in.id ASC
+         LIMIT 1
+       ) vcp ON TRUE
        LEFT JOIN live_classes lc ON lc.id = vcp.source_live_class_id
+       WHERE (
+         vcp.id IS NOT NULL
+         OR NOT EXISTS (
+           SELECT 1 FROM video_course_profiles vcp_any
+           WHERE vcp_any.course_id = c.id
+         )
+       )
        ORDER BY c.id ASC`,
     );
 
@@ -2363,7 +2413,15 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
               vcp.status AS profile_status
        FROM courses c
        LEFT JOIN users u ON u.id = c.author_id
-       LEFT JOIN video_course_profiles vcp ON vcp.course_id = c.id
+       LEFT JOIN LATERAL (
+         SELECT vcp_in.*
+         FROM video_course_profiles vcp_in
+         WHERE vcp_in.course_id = c.id
+           AND vcp_in.status <> 'archived'
+           AND vcp_in.deleted_at IS NULL
+         ORDER BY (vcp_in.status = 'active') DESC, vcp_in.id ASC
+         LIMIT 1
+       ) vcp ON TRUE
        WHERE c.id = $1`,
       [courseId],
     );

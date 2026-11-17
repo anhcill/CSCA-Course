@@ -888,3 +888,212 @@ test("admin revokes only one Record profile while preserving Live/LMS and online
   assert.equal(listAfter.body.data.revokedCount, 1);
   assert.equal(listAfter.body.data.students[0].accessStatus, "revoked");
 });
+
+test("cross-course MIRROR offering isolates profile.id from course.id, unlocks Session 2, preserves Live review, and hides archived-only parent course from admin Video Courses list", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^\"]+\.sql"/g)]
+    .map((match) => JSON.parse(match[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
+  const { pool } = await import("../db/connect.js");
+  bindPoolToDb(pool, db);
+  const { recordVideoWatchProgress } = await import("../services/bunnyStream.service.js");
+  const videoCourseRouter = (await import("./videoCourse.router.js")).default;
+
+  const admin = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('ttxh-admin','ttxh-admin@example.test','admin') RETURNING id,role",
+  )).rows[0];
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('ttxh-teacher','ttxh-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const recordStudent = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('ttxh-record-student','ttxh-record@example.test','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
+  const liveStudent = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('ttxh-live-student','ttxh-live@example.test','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
+  const recordDeviceId = await addTrustedDevice(db, recordStudent.id, "ttxh-rec");
+  const liveDeviceId = await addTrustedDevice(db, liveStudent.id, "ttxh-live");
+
+  const liveCourse = (await db.query(
+    `INSERT INTO courses(name,slug,author_id,is_published,is_management_managed)
+     VALUES ('Khoa Live Me','khoa-live-me',$1,TRUE,TRUE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO courses(name,slug,author_id,is_published,is_management_managed)
+     VALUES ('Khoa Phu De LeCh ID','khoa-phu-lech-id',$1,FALSE,FALSE)`,
+    [teacher.id],
+  );
+  const recordCourse = (await db.query(
+    `INSERT INTO courses(name,slug,author_id,is_published,is_management_managed)
+     VALUES ('Khoa Hoc Record TTXH','khoa-record-ttxh',$1,TRUE,TRUE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+
+  const liveClass = (await db.query(
+    `INSERT INTO live_classes(id,title,course_id,instructor_id,status)
+     VALUES (8,'Tieng Trung Xa Hoi',$1,$2,'active') RETURNING id`,
+    [liveCourse.id, teacher.id],
+  )).rows[0];
+
+  const session1 = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status,is_public_preview)
+     VALUES ($1,'Buoi 1',NOW() - interval '2 days',NOW() - interval '2 days' + interval '1 hour','scheduled',TRUE) RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+  const session2 = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status,is_public_preview)
+     VALUES ($1,'Buoi 2',NOW() - interval '1 day',NOW() - interval '1 day' + interval '1 hour','scheduled',FALSE) RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+
+  const v1 = (await db.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds)
+     VALUES ('Video Buoi 1','bunny_stream','111','ttxh-v1','ready',100) RETURNING id`,
+  )).rows[0];
+  const v2 = (await db.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds)
+     VALUES ('Video Buoi 2','bunny_stream','111','ttxh-v2','ready',100) RETURNING id`,
+  )).rows[0];
+  await db.query(
+    `INSERT INTO class_session_videos(class_session_id,video_asset_id,video_type,is_published)
+     VALUES ($1,$2,'primary',TRUE), ($3,$4,'primary',TRUE)`,
+    [session1.id, v1.id, session2.id, v2.id],
+  );
+
+  const quiz1 = (await db.query(
+    `INSERT INTO quizzes(title,course_id,class_session_id,live_class_id,duration_minutes,passing_score,status)
+     VALUES ('Quiz Buoi 1',$1,$2,$3,45,60,'PUBLISHED') RETURNING id`,
+    [liveCourse.id, session1.id, liveClass.id],
+  )).rows[0];
+
+  // Profile 1: accidental archived duplicate on parent liveCourse
+  await db.query(
+    `INSERT INTO video_course_profiles(course_id,management_class_id,mode,source_live_class_id,status,deleted_at)
+     VALUES ($1,'old-duplicate-alias','MIRROR',$2,'archived',NOW())`,
+    [liveCourse.id, liveClass.id],
+  );
+  // Profile 2: active MIRROR profile on recordCourse (note recordCourse.id !== recordProfile.id)
+  const recordProfile = (await db.query(
+    `INSERT INTO video_course_profiles(course_id,management_class_id,mode,source_live_class_id,status)
+     VALUES ($1,'fe99d3a784614ac693328b97d49945e0','MIRROR',$2,'active') RETURNING *`,
+    [recordCourse.id, liveClass.id],
+  )).rows[0];
+  assert.notEqual(String(recordProfile.id), String(recordCourse.id));
+
+  const alias2 = (await db.query(
+    `INSERT INTO management_class_learning_aliases
+       (alias_class_source_id,source_class_source_id,live_class_id,course_id,learning_mode,recording_content_mode,title,status,management_source_updated_at)
+     VALUES ('fe99d3a784614ac693328b97d49945e0','src-ttxh',$1,$2,'recording','MIRROR','Khoa record TTXH','active',NOW()) RETURNING id`,
+    [liveClass.id, recordCourse.id],
+  )).rows[0];
+
+  await db.query(
+    `INSERT INTO class_enrollments(user_id,live_class_id,course_id,learning_mode,management_class_alias_id,status)
+     VALUES ($1,$2,$3,'recording',$4,'active'), ($5,$2,$3,'live',NULL,'active')`,
+    [recordStudent.id, liveClass.id, liveCourse.id, alias2.id, liveStudent.id],
+  );
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - interval '1 day',NOW()), ($3,$4,'active',NOW() - interval '1 day',NOW())`,
+    [recordStudent.id, recordCourse.id, liveStudent.id, liveCourse.id],
+  );
+
+  // Record student watched >= 50% and submitted quiz1 scoped explicitly to recordProfile.id
+  await recordVideoWatchProgress({
+    userId: recordStudent.id,
+    videoAssetId: v1.id,
+    courseId: recordCourse.id,
+    liveClassId: liveClass.id,
+    classSessionId: session1.id,
+    currentTimeSeconds: 0,
+    watchedDeltaSeconds: 0,
+    durationSeconds: 100,
+  });
+  await db.query(
+    `UPDATE video_watch_progress SET last_heartbeat_at = NOW() - INTERVAL '65 seconds'
+     WHERE user_id = $1 AND video_asset_id = $2`,
+    [recordStudent.id, v1.id],
+  );
+  await recordVideoWatchProgress({
+    userId: recordStudent.id,
+    videoAssetId: v1.id,
+    courseId: recordCourse.id,
+    liveClassId: liveClass.id,
+    classSessionId: session1.id,
+    currentTimeSeconds: 60,
+    watchedDeltaSeconds: 60,
+    durationSeconds: 100,
+  });
+  await db.query(
+    `INSERT INTO quiz_attempts(quiz_id,user_id,video_course_profile_id,attempt_number,score,max_score,status,submitted_at)
+     VALUES ($1,$2,$3,1,9.10,10,'submitted',NOW())`,
+    [quiz1.id, recordStudent.id, recordProfile.id],
+  );
+
+  const callRoute = (method, path, reqProps) => new Promise((resolve, reject) => {
+    const layer = videoCourseRouter.stack.find((l) => l.route?.path === path && l.route.methods[method]);
+    assert.ok(layer, `${method.toUpperCase()} ${path} missing`);
+    const res = {
+      statusCode: 200,
+      body: null,
+      status(code) { this.statusCode = code; return this; },
+      json(body) { this.body = body; resolve(res); return this; },
+    };
+    Promise.resolve(layer.route.stack.at(-1).handle({ params: {}, query: {}, body: {}, ...reqProps }, res))
+      .then(() => { if (!res.body) resolve(res); })
+      .catch(reject);
+  });
+
+  // 1. Record learner workspace recognizes scoped quiz attempt on recordProfile.id and unlocks Session 2
+  const wsRes = await callRoute("get", "/:offeringId/workspace", {
+    user: { id: recordStudent.id, role: "user", is_management_managed: true, lms_account_status: "active" },
+    authSession: { trustedDeviceId: recordDeviceId },
+    params: { offeringId: "fe99d3a784614ac693328b97d49945e0" },
+    query: {},
+  });
+  assert.equal(wsRes.statusCode, 200, JSON.stringify(wsRes.body));
+  assert.equal(wsRes.body.data.videoCourseProfileId, String(recordProfile.id));
+  assert.equal(wsRes.body.data.units[0].isVideoCompleted, true);
+  assert.equal(wsRes.body.data.units[0].completedQuizCount, 1);
+  assert.equal(wsRes.body.data.units[0].isQuizCompleted, true);
+  assert.equal(wsRes.body.data.units[0].isCompleted, true);
+  assert.equal(wsRes.body.data.units[1].isLocked, false);
+  assert.equal(wsRes.body.data.activeUnit.quizzes[0].attemptsCount, 1);
+  assert.equal(wsRes.body.data.activeUnit.quizzes[0].isCompleted, true);
+  assert.equal(wsRes.body.data.activeUnit.quizzes[0].bestScore, 9.1);
+
+  // 2. Live learner retains full MIRROR review access via both alias UUID and liveClass.id
+  for (const offering of ["fe99d3a784614ac693328b97d49945e0", String(liveClass.id)]) {
+    const liveWs = await callRoute("get", "/:offeringId/workspace", {
+      user: { id: liveStudent.id, role: "user", is_management_managed: true, lms_account_status: "active" },
+      authSession: { trustedDeviceId: liveDeviceId },
+      params: { offeringId: offering },
+      query: {},
+    });
+    assert.equal(liveWs.statusCode, 200, JSON.stringify(liveWs.body));
+    assert.equal(liveWs.body.data.capabilities.canReviewFreely, true);
+    assert.equal(liveWs.body.data.units[1].isLocked, false);
+  }
+
+  // 3. Admin list hides archived-only liveCourse and shows recordCourse; public catalog shows only active record offering
+  const adminCourses = await callRoute("get", "/admin/courses", { user: admin });
+  assert.equal(adminCourses.statusCode, 200);
+  const adminCourseIds = adminCourses.body.data.courses.map((c) => c.id);
+  assert.equal(adminCourseIds.includes(String(liveCourse.id)), false, "Archived-only liveCourse should be hidden");
+  assert.equal(adminCourseIds.includes(String(recordCourse.id)), true);
+
+  const catalogRes = await callRoute("get", "/", { user: null });
+  assert.equal(catalogRes.statusCode, 200);
+  assert.deepEqual(
+    catalogRes.body.data.map((c) => c.offeringId),
+    ["fe99d3a784614ac693328b97d49945e0"],
+  );
+});
