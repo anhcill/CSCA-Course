@@ -68,6 +68,51 @@ export const EFFECTIVE_COURSE_GRANT_EXISTS_SQL = (userIdExpr = "$1", courseIdExp
 `;
 
 /**
+ * Checks whether a learner holds an active entitlement on a Record MIRROR
+ * profile whose `source_live_class_id` mirrors `liveClassIdExpr`, together with
+ * a matching active membership (direct profile, class, or active alias).
+ */
+export const EFFECTIVE_MIRROR_PROFILE_GRANT_EXISTS_SQL = (
+  userIdExpr = "$1",
+  liveClassIdExpr = "$2",
+  profileIdExpr = "NULL::bigint",
+) => `
+  (
+    ${liveClassIdExpr} IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM video_course_profiles vcp_mir
+      LEFT JOIN management_class_learning_aliases alias_mir
+        ON LOWER(alias_mir.alias_class_source_id) = LOWER(vcp_mir.management_class_id)
+       AND alias_mir.status = 'active'
+      JOIN class_enrollments ce_mir
+        ON ce_mir.user_id = ${userIdExpr}
+       AND ce_mir.status = 'active'
+      WHERE vcp_mir.status = 'active'
+        AND vcp_mir.deleted_at IS NULL
+        AND vcp_mir.mode = 'MIRROR'
+        AND vcp_mir.source_live_class_id = ${liveClassIdExpr}
+        AND (${profileIdExpr} IS NULL OR vcp_mir.id = ${profileIdExpr})
+        AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL(userIdExpr, "vcp_mir.course_id")}
+        AND (
+          ce_mir.video_course_profile_id = vcp_mir.id
+          OR (
+            ce_mir.video_course_profile_id IS NULL
+            AND (
+              ce_mir.live_class_id = ${liveClassIdExpr}
+              OR (
+                ce_mir.learning_mode = 'recording'
+                AND vcp_mir.management_class_id IS NOT NULL
+                AND ce_mir.management_class_alias_id = alias_mir.id
+              )
+            )
+          )
+        )
+    )
+  )
+`;
+
+/**
  * Checks in DB whether a user has active external LMS access.
  */
 export const hasActiveExternalLmsAccess = async (userId, db = { query }) => {
@@ -129,6 +174,36 @@ export const hasEffectiveCourseEntitlement = async ({
                AND ce.user_id = $1
                AND ce.status = 'active'
            ))
+           OR ($3::bigint IS NOT NULL AND EXISTS (
+             SELECT 1
+             FROM video_course_profiles vcp_mir
+             LEFT JOIN management_class_learning_aliases alias_mir
+               ON LOWER(alias_mir.alias_class_source_id) = LOWER(vcp_mir.management_class_id)
+              AND alias_mir.status = 'active'
+             JOIN class_enrollments ce_mir
+               ON ce_mir.user_id = $1
+              AND ce_mir.status = 'active'
+             WHERE vcp_mir.course_id = g.course_id
+               AND vcp_mir.status = 'active'
+               AND vcp_mir.deleted_at IS NULL
+               AND vcp_mir.mode = 'MIRROR'
+               AND vcp_mir.source_live_class_id = $3
+               AND ($4::bigint IS NULL OR vcp_mir.id = $4)
+               AND (
+                 ce_mir.video_course_profile_id = vcp_mir.id
+                 OR (
+                   ce_mir.video_course_profile_id IS NULL
+                   AND (
+                     ce_mir.live_class_id = $3
+                     OR (
+                       ce_mir.learning_mode = 'recording'
+                       AND vcp_mir.management_class_id IS NOT NULL
+                       AND ce_mir.management_class_alias_id = alias_mir.id
+                     )
+                   )
+                 )
+               )
+           ))
          )
          AND g.access_status = 'active'
          AND g.valid_from <= NOW()
@@ -155,6 +230,18 @@ export const hasEffectiveCourseEntitlement = async ({
          AND (
            ee.local_course_id = $2
            OR ($3::bigint IS NOT NULL AND ee.local_live_class_id = $3)
+           OR ($3::bigint IS NOT NULL AND EXISTS (
+             SELECT 1
+             FROM video_course_profiles vcp_ext
+             WHERE vcp_ext.status = 'active'
+               AND vcp_ext.deleted_at IS NULL
+               AND vcp_ext.mode = 'MIRROR'
+               AND vcp_ext.source_live_class_id = $3
+               AND (
+                 vcp_ext.id = ee.local_video_course_profile_id
+                 OR (ee.local_video_course_profile_id IS NULL AND vcp_ext.course_id = ee.local_course_id)
+               )
+           ))
          )
          AND (
            $4::bigint IS NULL

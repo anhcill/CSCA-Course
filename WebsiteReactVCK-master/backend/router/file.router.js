@@ -4,7 +4,10 @@ import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
-import { EFFECTIVE_COURSE_GRANT_EXISTS_SQL } from "../services/externalEntitlementAccess.service.js";
+import {
+  EFFECTIVE_COURSE_GRANT_EXISTS_SQL,
+  EFFECTIVE_MIRROR_PROFILE_GRANT_EXISTS_SQL,
+} from "../services/externalEntitlementAccess.service.js";
 import { query } from "../db/connect.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import {
@@ -558,7 +561,10 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
   if (file.visibility === "PRIVATE") return { error: "forbidden" };
   const access = await query(
     `SELECT 1
-     WHERE ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "$3")}
+     WHERE (
+       ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "$3")}
+       OR ${EFFECTIVE_MIRROR_PROFILE_GRANT_EXISTS_SQL("$2", "$1::bigint")}
+     )
        AND ($4 = 'COURSE' OR ($4 = 'CLASS_ONLY' AND $1::bigint IS NOT NULL
          AND EXISTS (
            SELECT 1 FROM live_classes lc
@@ -568,6 +574,7 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
                  SELECT 1 FROM class_enrollments ce
                  WHERE ce.live_class_id = lc.id AND ce.user_id = $2 AND ce.status = 'active'
                )
+               OR ${EFFECTIVE_MIRROR_PROFILE_GRANT_EXISTS_SQL("$2", "lc.id")}
                OR EXISTS (
                  SELECT 1 FROM external_entitlements ee
                  LEFT JOIN video_course_profiles vcp ON vcp.id = ee.local_video_course_profile_id AND vcp.deleted_at IS NULL
@@ -1443,20 +1450,33 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
     let videoCourseAllowsDownload = true;
     let selectedVideoProfile = null;
     const fileCourseId = access.file.course_id || access.file.class_course_id;
+    const fileLiveClassId = access.file.live_class_id || requestedClassId || null;
     if (videoCourseProfileId) {
       const policyRes = await query(
         `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
          FROM video_course_profiles
-         WHERE id = $1 AND course_id = $2
-           AND ($3::bigint IS NULL OR course_id = $3)`,
-        [videoCourseProfileId, fileCourseId, videoCourseId],
+         WHERE id = $1
+           AND deleted_at IS NULL
+           AND status <> 'archived'
+           AND ($3::bigint IS NULL OR course_id = $3)
+           AND (
+             course_id = $2
+             OR (mode = 'MIRROR' AND $4::bigint IS NOT NULL AND source_live_class_id = $4)
+           )`,
+        [videoCourseProfileId, fileCourseId, videoCourseId, fileLiveClassId],
       );
       if (!policyRes.rows[0]) {
         const fallbackRes = await query(
           `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
            FROM video_course_profiles
-           WHERE course_id = $1 ORDER BY (status = 'active') DESC, id DESC LIMIT 1`,
-          [fileCourseId || videoCourseId],
+           WHERE deleted_at IS NULL
+             AND status <> 'archived'
+             AND (
+               course_id = $1
+               OR (mode = 'MIRROR' AND $2::bigint IS NOT NULL AND source_live_class_id = $2)
+             )
+           ORDER BY (status = 'active') DESC, id DESC LIMIT 1`,
+          [fileCourseId || videoCourseId, fileLiveClassId],
         );
         if (fallbackRes.rows[0]) {
           selectedVideoProfile = fallbackRes.rows[0];
@@ -1469,16 +1489,23 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
         videoCourseAllowsDownload = selectedVideoProfile.allow_file_download === true;
       }
     } else if (videoCourseId) {
-      if (String(videoCourseId) !== String(fileCourseId)) {
-        return errorResponse(res, 403, "Tài liệu không thuộc khóa học video này", "FORBIDDEN");
-      }
       const policyRes = await query(
         `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
          FROM video_course_profiles
-         WHERE course_id = $1 ORDER BY (status = 'active') DESC, id DESC`,
-        [videoCourseId],
+         WHERE course_id = $1
+           AND deleted_at IS NULL
+           AND status <> 'archived'
+           AND (
+             course_id = $2
+             OR (mode = 'MIRROR' AND $3::bigint IS NOT NULL AND source_live_class_id = $3)
+           )
+         ORDER BY (status = 'active') DESC, id DESC`,
+        [videoCourseId, fileCourseId, fileLiveClassId],
       );
       if (policyRes.rows.length === 0) {
+        if (String(videoCourseId) !== String(fileCourseId)) {
+          return errorResponse(res, 403, "Tài liệu không thuộc khóa học video này", "FORBIDDEN");
+        }
         return errorResponse(res, 404, "Không tìm thấy cấu hình khóa học video", "NOT_FOUND");
       }
       selectedVideoProfile = policyRes.rows[0];
@@ -1491,7 +1518,12 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
         `SELECT vcp.id, vcp.course_id, vcp.mode, vcp.source_live_class_id,
                 vcp.management_class_id, vcp.allow_file_download
          FROM video_course_profiles vcp
-         WHERE vcp.course_id = $1 AND vcp.status = 'active'
+         WHERE vcp.status = 'active'
+           AND vcp.deleted_at IS NULL
+           AND (
+             vcp.course_id = $1
+             OR (vcp.mode = 'MIRROR' AND $3::bigint IS NOT NULL AND vcp.source_live_class_id = $3)
+           )
            AND EXISTS (
              SELECT 1
              FROM class_enrollments ce
@@ -1499,16 +1531,17 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
                ON alias.id = ce.management_class_alias_id AND alias.status = 'active'
              WHERE ce.user_id = $2 AND ce.status = 'active' AND ce.learning_mode = 'recording'
                AND (
-                 (vcp.management_class_id IS NOT NULL
+                 (ce.video_course_profile_id = vcp.id)
+                 OR (ce.video_course_profile_id IS NULL AND vcp.management_class_id IS NOT NULL
                    AND LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id))
-                 OR (vcp.management_class_id IS NULL AND vcp.mode = 'MIRROR'
+                 OR (ce.video_course_profile_id IS NULL AND vcp.management_class_id IS NULL AND vcp.mode = 'MIRROR'
                    AND ce.live_class_id = vcp.source_live_class_id)
-                 OR (vcp.management_class_id IS NULL AND vcp.mode = 'INDEPENDENT'
+                 OR (ce.video_course_profile_id IS NULL AND vcp.management_class_id IS NULL AND vcp.mode = 'INDEPENDENT'
                    AND ce.course_id = vcp.course_id)
                )
            )
          ORDER BY vcp.id`,
-        [fileCourseId, req.user.id],
+        [fileCourseId, req.user.id, fileLiveClassId],
       );
       if (inferredPolicy.rows.length > 0) {
         selectedVideoProfile = inferredPolicy.rows[0];

@@ -19,6 +19,7 @@ export const hasUnrevokedVideoCourseAccess = async ({ db, userId, courseId, live
     `SELECT 1
      FROM video_course_profiles vcp
      WHERE vcp.status = 'active'
+       AND vcp.deleted_at IS NULL
        AND (
          ($3::bigint IS NOT NULL
            AND vcp.mode = 'MIRROR'

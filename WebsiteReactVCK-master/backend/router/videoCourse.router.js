@@ -2721,6 +2721,7 @@ const resolveAdminCourseProfile = async (courseId, requestedProfileId = null) =>
     `SELECT id, course_id, management_class_id, mode, source_live_class_id, status
      FROM video_course_profiles
      WHERE course_id = $1
+       AND deleted_at IS NULL
        AND status <> 'archived'
        AND ($2::bigint IS NULL OR id = $2)
      ORDER BY (status = 'active') DESC, id ASC
@@ -2761,7 +2762,37 @@ router.get("/admin/courses/:courseId/students", protectRoute, requireAdmin, asyn
              OR (u.is_management_managed = TRUE AND u.lms_account_status = 'active')
              OR ${EXTERNAL_LMS_ACCESS_EXISTS_SQL("u.id")}
            )
-           AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("u.id", "$1")}
+           AND (
+             ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("u.id", "$1")}
+             OR (
+               $3::text = 'MIRROR'
+               AND $4::bigint IS NOT NULL
+               AND ce.live_class_id = $4
+               AND (
+                 (lc.course_id IS NOT NULL AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("u.id", "lc.course_id")})
+                 OR EXISTS (
+                   SELECT 1
+                   FROM external_entitlements ee_mir
+                   JOIN external_identities ei_mir
+                     ON (
+                       ei_mir.id = ee_mir.external_identity_id
+                       OR (
+                         ee_mir.external_identity_id IS NULL
+                         AND ei_mir.user_id = ee_mir.user_id
+                         AND ei_mir.source_system = ee_mir.source_system
+                         AND ei_mir.external_user_id = ee_mir.external_user_id
+                       )
+                     )
+                   WHERE ee_mir.user_id = u.id
+                     AND ee_mir.local_live_class_id = $4
+                     AND ei_mir.status = 'active'
+                     AND ee_mir.status = 'active'
+                     AND ee_mir.valid_from <= NOW()
+                     AND (ee_mir.valid_until IS NULL OR ee_mir.valid_until > NOW())
+                 )
+               )
+             )
+           )
            AND (
              (ce.video_course_profile_id IS NOT NULL AND ce.video_course_profile_id = $2)
              OR (
@@ -2790,7 +2821,19 @@ router.get("/admin/courses/:courseId/students", protectRoute, requireAdmin, asyn
          SELECT MAX(vwp.updated_at) AS last_access_at,
                 ROUND(AVG(vwp.completion_percent)::numeric, 2) AS progress_percent
          FROM video_watch_progress vwp
-         WHERE vwp.user_id = eligible.user_id AND vwp.course_id = $1
+         WHERE vwp.user_id = eligible.user_id
+           AND (
+             vwp.course_id = $1
+             OR (
+               $3::text = 'MIRROR'
+               AND $4::bigint IS NOT NULL
+               AND vwp.class_session_id IN (
+                 SELECT cs.id
+                 FROM class_sessions cs
+                 WHERE cs.live_class_id = $4 AND cs.status <> 'cancelled'
+               )
+             )
+           )
        ) progress ON TRUE
        LEFT JOIN LATERAL (
          SELECT COUNT(*) FILTER (
@@ -3404,7 +3447,7 @@ router.post("/admin/courses/:courseId/publish", protectRoute, requireAdmin, asyn
     if (!isPublished) {
       await query(`UPDATE courses SET is_published = FALSE, updated_at = NOW() WHERE id = $1`, [courseId]);
       const profRes = await query(
-        `UPDATE video_course_profiles SET status = 'draft', updated_at = NOW() WHERE course_id = $1 RETURNING id`,
+        `UPDATE video_course_profiles SET status = 'draft', updated_at = NOW() WHERE course_id = $1 AND deleted_at IS NULL AND status <> 'archived' RETURNING id`,
         [courseId],
       );
       const corr = req.get?.("X-Correlation-ID") || null;
@@ -3474,7 +3517,7 @@ router.post("/admin/courses/:courseId/publish", protectRoute, requireAdmin, asyn
 
     await query(`UPDATE courses SET is_published = TRUE, updated_at = NOW() WHERE id = $1`, [courseId]);
     const profRes = await query(
-      `UPDATE video_course_profiles SET status = 'active', updated_at = NOW() WHERE course_id = $1 RETURNING id`,
+      `UPDATE video_course_profiles SET status = 'active', updated_at = NOW() WHERE course_id = $1 AND deleted_at IS NULL AND status <> 'archived' RETURNING id`,
       [courseId],
     );
     const corr = req.get?.("X-Correlation-ID") || null;
