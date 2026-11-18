@@ -586,14 +586,10 @@ export async function streamDelegatedLearningFile({
   }
 
   const allowDownload = Boolean(
-    session && (
-      isAdminSession
-      || (
-        profileRow.allow_file_download === true
-        && file.class_allow_file_download !== false
-        && membership.matchedClassAllowDownload !== false
-      )
-    ),
+    session
+    && profileRow.allow_file_download === true
+    && file.class_allow_file_download !== false
+    && membership.matchedClassAllowDownload !== false,
   );
   if (normalizedDisposition === "attachment" && !allowDownload) {
     throw new ExternalIntegrationError(

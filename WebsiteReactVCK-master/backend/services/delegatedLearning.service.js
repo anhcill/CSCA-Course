@@ -1426,7 +1426,7 @@ export async function getDelegatedWorkspace({
       });
     } else {
       activeUnit = await loadUnlockedUnitDetail(db, {
-        profileRow: isAdminSession ? { ...profileRow, allow_file_download: true } : profileRow,
+        profileRow,
         unitMeta: targetUnit,
         userId: session.user_id,
         isPublicPreviewAccess: false,
@@ -1490,7 +1490,7 @@ export async function getDelegatedWorkspace({
       canManageNotes: (session.scopes || []).includes("notes:rw"),
       canManageBookmarks: (session.scopes || []).includes("bookmarks:rw"),
       canManageQa: (session.scopes || []).includes("qa:rw"),
-      allowFileDownload: isAdminSession || profileRow.allow_file_download === true,
+      allowFileDownload: profileRow.allow_file_download === true,
       deviceLimit: Number(profileRow.device_limit || 2),
       enforceTrustedDevices: !isAdminSession && profileRow.enforce_trusted_devices !== false,
       isPublicPreviewAccess: false,
@@ -1569,7 +1569,7 @@ export async function getDelegatedUnitDetail({
   }
 
   return loadUnlockedUnitDetail(db, {
-    profileRow: isAdminSession ? { ...profileRow, allow_file_download: true } : profileRow,
+    profileRow,
     unitMeta: targetUnit,
     userId: session.user_id,
     isPublicPreviewAccess: false,
