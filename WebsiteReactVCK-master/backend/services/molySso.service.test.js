@@ -621,12 +621,12 @@ test("Course -> Moly outbound SSO: stores code_hash only, supports an isolated a
   assert.equal(adminExchange.role, "student");
   assert.equal(adminExchange.source_role, "admin");
   assert.equal(adminExchange.learning_persona, true);
-  assert.equal(adminExchange.email, `course-admin-${admin.id}@learner.moly.invalid`);
+  assert.equal(adminExchange.email, admin.email.toLowerCase());
 
   const adminBind = await ctx.ssoService.bindPeerIdentityFromMoly({
     externalUserId: "moly:99001",
     targetUserId: admin.id,
-    email: adminExchange.email,
+    email: admin.email,
     learningPersona: true,
   });
   assert.equal(adminBind.bound, true);
@@ -657,14 +657,19 @@ test("Course -> Moly outbound SSO: stores code_hash only, supports an isolated a
   assert.equal((await expRes.json()).errorCode, "SSO_CODE_EXPIRED");
 });
 
-test("Safe Linking vs auto-merge prohibition + wrong/right password + active session + privileged email collision", async (t) => {
+test("Verified email linking + Safe Linking fallback + active session + privileged email collision", async (t) => {
   const ctx = await setupDay4CourseEnv(t);
   const passwordHash = await bcrypt.hash("CorrectPass99!", 6);
 
   // 1) Existing unlinked Course student sharing email
   const existingLearner = (await ctx.db.query(
     `INSERT INTO users (username, email, password_hash, role, email_verified, is_locked)
-     VALUES ('legacy_student', 'collision@example.com', $1, 'user', true, false) RETURNING *`,
+     VALUES ('legacy_student', 'collision@example.com', $1, 'user', false, false) RETURNING *`,
+    [passwordHash],
+  )).rows[0];
+  const verifiedLearner = (await ctx.db.query(
+    `INSERT INTO users (username, email, password_hash, role, email_verified, is_locked)
+     VALUES ('verified_student', 'verified.both@example.com', $1, 'user', true, false) RETURNING *`,
     [passwordHash],
   )).rows[0];
 
@@ -702,7 +707,39 @@ test("Safe Linking vs auto-merge prohibition + wrong/right password + active ses
   assert.equal((await privRes.json()).errorCode, "PRIVILEGED_ROLE_COLLISION");
   assert.ok(!parseSetCookies(privRes).map.jwt, "must not issue session jwt cookie on rejected login");
 
-  // Unlinked learner collision -> NEVER auto-merges; returns LINK_REQUIRED without jwt cookies (only HttpOnly link binding cookie)
+  // Course and Moly ids remain independent. A verified exact email match
+  // links the existing Course learner and preserves that local account.
+  ctx.setExchangeHandler(async ({ nonce }) => ({
+    status: 200,
+    body: {
+      success: true,
+      data: {
+        source_system: "moly",
+        source_user_id: "779",
+        email: "verified.both@example.com",
+        email_verified: true,
+        role: "student",
+        target_path: "/courses",
+        nonce,
+      },
+    },
+  }));
+  const verifiedAgent = createCourseFetchAgent(ctx.courseBaseUrl);
+  const verifiedTx = await verifiedAgent.startSso({ targetPath: "/courses" });
+  const verifiedRes = await verifiedAgent.request("/api/auth/sso/consume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: { code: "code-verified-email", state: verifiedTx.state },
+  });
+  assert.equal(verifiedRes.status, 200);
+  const verifiedJson = await verifiedRes.json();
+  assert.equal(verifiedJson.data.status, "AUTHENTICATED");
+  assert.equal(Number(verifiedJson.data.user.id), Number(verifiedLearner.id));
+  assert.equal((await ctx.db.query(
+    "SELECT link_method FROM external_identities WHERE external_user_id = 'moly:779'",
+  )).rows[0].link_method, "auto_safe_link");
+
+  // If either side is not verified, require explicit owner verification.
   ctx.setExchangeHandler(async ({ nonce }) => ({
     status: 200,
     body: {
@@ -786,7 +823,7 @@ test("Safe Linking vs auto-merge prohibition + wrong/right password + active ses
   // Active-session safe linking (when user already holds valid jwt + trusted device cookies)
   const noPassLearner = (await ctx.db.query(
     `INSERT INTO users (username, email, password_hash, role, email_verified, is_locked)
-     VALUES ('oauth_learner', 'active.session@example.com', NULL, 'user', true, false) RETURNING *`,
+     VALUES ('oauth_learner', 'active.session@example.com', NULL, 'user', false, false) RETURNING *`,
   )).rows[0];
   const activeSession = await establishLoginSession({
     userId: noPassLearner.id,

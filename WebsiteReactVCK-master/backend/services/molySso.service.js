@@ -36,7 +36,6 @@ const CSCA_SSO_LINK_COOKIE = "csca_sso_link";
 const PRIVILEGED_ROLES = new Set(["admin", "creator", "teacher", "super_admin", "staff"]);
 const isPrivilegedAccount = (user) => PRIVILEGED_ROLES.has(user?.role)
   || user?.management_staff_source_id != null;
-const adminLearningAliasEmail = (userId) => `course-admin-${Number(userId)}@learner.moly.invalid`;
 
 function normalizeEmail(email) {
   return typeof email === "string" && email.trim() ? email.trim().toLowerCase() : null;
@@ -524,9 +523,12 @@ export function createMolySsoService({
       return {
         source_system: "csca-course",
         source_user_id: String(user.id),
-        email: learningPersona ? adminLearningAliasEmail(user.id) : normalizeEmail(user.email),
-        email_verified: learningPersona ? true : Boolean(user.email_verified),
-        username: learningPersona ? `course-admin-${user.id}` : user.username,
+        // Admins keep their verified real identity so an existing Moly admin
+        // can be linked in place. Moly never imports this source role; it only
+        // uses it to authorize the exact admin-to-admin bridge.
+        email: normalizeEmail(user.email),
+        email_verified: Boolean(user.email_verified),
+        username: user.username,
         display_name: user.management_display_name || user.username,
         role: "student",
         source_role: user.role,
@@ -613,11 +615,17 @@ export function createMolySsoService({
     // 2. If source already knows its paired Course local user ID and no conflicting active identity exists, verify safely
     // (still requires email collision check if not linked!).
     if (email) {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
+        "moly:verified-email", email,
+      ]);
       const emailCandidates = (await client.query(
-        `SELECT id, username, email, role, is_locked, password_hash, oauth_provider, management_staff_source_id
-         FROM users
+        `SELECT u.id, u.username, u.email, u.role, u.is_locked, u.email_verified,
+                u.password_hash, u.oauth_provider, u.management_staff_source_id,
+                u.is_management_managed, u.lms_account_status,
+                (${EXTERNAL_LMS_ACCESS_EXISTS_SQL("u.id")}) AS has_external_lms_access
+         FROM users u
          WHERE LOWER(email) = LOWER($1)
-         ORDER BY id ASC`,
+         ORDER BY u.id ASC`,
         [email],
       )).rows;
 
@@ -638,6 +646,39 @@ export function createMolySsoService({
         const candidate = emailCandidates[0];
         if (candidate.is_locked) {
           throw new SsoPolicyError(403, "SSO_USER_REVOKED", "Matching Course account is locked.");
+        }
+
+        if (exchanged.email_verified === true && candidate.email_verified === true) {
+          const otherActiveIdentity = (await client.query(
+            `SELECT id
+             FROM external_identities
+             WHERE source_system = 'moly'
+               AND user_id = $1
+               AND status = 'active'
+             LIMIT 1`,
+            [candidate.id],
+          )).rows[0];
+          if (!otherActiveIdentity) {
+            await client.query(
+              `INSERT INTO external_identities (
+                 source_system, external_user_id, user_id, status,
+                 email_snapshot, link_method, source_updated_at, last_synced_at, correlation_id
+               ) VALUES (
+                 'moly', $1, $2, 'active',
+                 $3, 'auto_safe_link', $4, $4, $5
+               )`,
+              [namespacedExtUserId, candidate.id, email, current.toISOString(), corr],
+            );
+            const authenticatedCandidate = { ...candidate };
+            delete authenticatedCandidate.password_hash;
+            return {
+              outcome: "AUTHENTICATED",
+              user: authenticatedCandidate,
+              targetPath,
+              externalUserId: namespacedExtUserId,
+              verifiedEmailLinked: true,
+            };
+          }
         }
 
         // Existing unlinked learner collision -> ALWAYS stop and require Safe Linking verification!
@@ -1213,7 +1254,7 @@ export function createMolySsoService({
         "moly:identity", namespacedExtUserId,
       ]);
       const localUser = (await client.query(
-        `SELECT id, email, role, is_locked, management_staff_source_id
+        `SELECT id, email, role, is_locked, email_verified, management_staff_source_id
          FROM users
          WHERE id = $1
          FOR UPDATE`,
@@ -1224,7 +1265,8 @@ export function createMolySsoService({
       }
       const validAdminLearningPersona = localUser.role === "admin"
         && learningPersona === true
-        && normalizeEmail(email) === adminLearningAliasEmail(localUser.id);
+        && localUser.email_verified === true
+        && normalizeEmail(email) === normalizeEmail(localUser.email);
       if (isPrivilegedAccount(localUser) && !validAdminLearningPersona) {
         throw new SsoPolicyError(403, "PRIVILEGED_ROLE_COLLISION", "Cannot bind privileged accounts.");
       }
