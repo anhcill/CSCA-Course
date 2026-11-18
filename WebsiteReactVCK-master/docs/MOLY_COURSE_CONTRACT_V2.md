@@ -1,10 +1,10 @@
 # Moly Studio <-> CSCA-Course Integration Contract v2 (Full Sync)
 
-- **Version**: `2.0.0` (extends `MOLY_COURSE_INTEGRATION_CONTRACT.md` v1)
+- **Version**: `2.1.0-commerce-projection` (extends `MOLY_COURSE_INTEGRATION_CONTRACT.md` v1)
 - **Status**: CSCA-Course Days 1–10 Implemented (`migrations 079–084`, v2 API, split kill switches, reconciliation & readiness probes; PGlite-verified — live multi-process Staging E2E pending deploy)
 - **Systems**:
   - `csca-course`: Source of truth for Record/Video courses, offerings (`video_course_profiles`), curriculum/content/files, quiz/assignment authoring & grading, watch/completion computation, personal notes, and Record device slots.
-  - `moly`: Source of truth for storefront pricing/packages (`video_packages`), payments/refunds, native courses (`content_origin = 'moly_native'`), and BFF for learner UI (`/khoa-hoc`, `/hoc/...`, `/my-learning`).
+  - `moly`: Checkout/payment/refund owner, projection target for the Internal-managed list price of synchronized courses, owner of native-course pricing, and BFF for learner UI (`/khoa-hoc`, `/hoc/...`, `/my-learning`).
 
 > **Backward Compatibility**: All v1 `/api/integrations/v1/*` and `/api/sso/*` contracts remain active and unchanged for Commerce/Entitlement/SSO flows built during Days 1–5. Contract v2 adds versioned `/api/integrations/v2/*` pull/push/delegated endpoints and additive tables/columns.
 
@@ -17,8 +17,9 @@ Every synchronized entity or field has strictly **one** canonical owner. The non
 | Domain / Entity | Canonical Owner | Projection Target | Sync Direction | Mutable Fields Allowed on Receiver |
 | --- | --- | --- | --- | --- |
 | Identity link (`external_identities`) | Shared link registry (manual / Safe Link SSO) | Both | Bidirectional (email collision never auto-merged) | Local display/audit cache only |
-| Video packages, pricing, checkout, payments, refunds | `moly` | `csca-course` (`external_entitlements`) | `moly -> csca-course` (v1 outbox) | Entitlement status & valid window via outbox |
-| Record course catalog metadata (`title`, `description`, `thumbnail`, `subject`, `level`, `is_published`, `deleted_at`) | `csca-course` | `moly` (`courses` where `content_origin='csca_course'`) | `csca-course -> moly` (`course_integration_outbox` / backfill) | Local commercial fields ONLY (`price_vnd`, `compare_at_price_vnd`, featured/hot UI badges, local `video_packages` binding) |
+| Synchronized course list price | `InternalManagement` (projected into `csca-course.courses.price`) | `moly.courses.price_vnd` + generated video package | `InternalManagement -> csca-course -> moly` | Moly payment execution remains local; source list price is read-only |
+| Checkout, vouchers, coins, payment, refund | `moly` | `csca-course` (`external_entitlements`) | `moly -> csca-course` (v1 outbox) | Entitlement status & valid window via outbox |
+| Record course catalog metadata (`title`, `description`, `thumbnail`, `subject`, `level`, `priceVnd`, `isFree`, `is_published`, `deleted_at`) | `csca-course` | `moly` (`courses` where `content_origin='csca_course'`) | `csca-course -> moly` (`course_integration_outbox` / backfill) | Featured/hot UI badges remain local; synchronized list price is read-only |
 | Video course offerings (`1 course : N profiles`, `mode`, `allow_file_download`, `device_limit`) | `csca-course` (`video_course_profiles`) | `moly` (`course_profile_projections` + `external_course_mappings`) | `csca-course -> moly` | Local package binding / commercial toggle (cannot open sale without price config) |
 | Curriculum (`sections`, `lessons`, `class_sessions`, `video_parts`, `theory`, `vocabulary`, `formulas`, `files`) | `csca-course` | `moly` (`course_unit_projections`, `course_file_projections`) | `csca-course -> moly` + delegated read | Read-only projection; sensitive body withheld when unit locked or user unentitled |
 | Native Moly courses (`courses.content_origin = 'moly_native'`) | `moly` | None | Local only | Full Moly control; Course sync must fail-closed if targeting `moly_native` without explicit admin flag |
@@ -48,7 +49,7 @@ Retains v1 fail-closed authentication on all `/api/integrations/v2/*` endpoints:
 1. `GET /api/integrations/v2/catalog/courses`
    - **Query**: `afterRevision` (BIGINT, default `0`), `afterId` (BIGINT, keyset tie-breaker), `snapshotAnchorRevision` (BIGINT, optional pin), `limit` (default `100`, max `500`), `includeTombstoned` (`true` by default for backfill correctness).
    - **Response**:
-     - `courses[]`: `{ courseId, revision, slug, title, description, thumbnailUrl, category, level, subjectCode, isPublished, instructor, deleted, deletedAt, sourceUpdatedAt, profiles[] }`
+     - `courses[]`: `{ courseId, revision, slug, title, description, thumbnailUrl, category, level, subjectCode, priceVnd, isFree, isPublished, instructor, deleted, deletedAt, sourceUpdatedAt, profiles[] }`
      - `profiles[]`: `{ profileId, externalOfferingId ("profile:<id>" or managementClassId), courseId, mode ("MIRROR"|"INDEPENDENT"), managementClassId, sourceLiveClassId, status, allowFileDownload, deviceLimit, enforceTrustedDevices, badgeLabel, revision, deleted, deletedAt, sourceUpdatedAt }`
      - `pagination`: `{ nextCursor, hasMore, highWaterRevision, snapshotAnchorRevision, highWaterUpdatedAt }`
    - **Invariant**: Sweep never infers deletion from missing rows across paginated `LIMIT` pages; deletion is only signaled via explicit `deleted: true` / `deletedAt` tombstones.

@@ -8,6 +8,7 @@ import {
 import { normalizeSessionKind, shiftCancelledSessionCurriculum } from "./sessionCurriculumShift.service.js";
 import { notifyClassStudents } from "./liveClass.service.js";
 import { createManagedUsername } from "../utils/usernameGenerator.js";
+import { recordCourseCatalogMutation } from "./courseCatalogSync.service.js";
 
 const EVENT_TYPES = new Set([
   "teacher.upserted",
@@ -454,6 +455,12 @@ const syncCourse = async (client, event) => {
        RETURNING id, external_course_id, title, is_published`,
       [input.title, input.description, input.category, input.level, teacher.id, input.isPublished, input.price, input.sourceUpdatedAt, course.id],
     );
+    await recordCourseCatalogMutation({
+      db: client,
+      courseId: course.id,
+      eventType: updated.rows[0]?.is_published ? "course.published" : "course.upserted",
+      correlationId: event.eventId || event.idempotencyKey || null,
+    });
     return { action: "course.synced", entityType: "course", entityId: Number(course.id), data: updated.rows[0] };
   }
 
@@ -466,6 +473,12 @@ const syncCourse = async (client, event) => {
     [input.title, safeSlug("moly", input.courseSourceId), input.description, input.category,
       input.level, teacher.id, input.isPublished, input.price ?? 0, input.courseSourceId, input.sourceUpdatedAt],
   );
+  await recordCourseCatalogMutation({
+    db: client,
+    courseId: created.rows[0].id,
+    eventType: created.rows[0]?.is_published ? "course.published" : "course.upserted",
+    correlationId: event.eventId || event.idempotencyKey || null,
+  });
   return { action: "course.synced", entityType: "course", entityId: Number(created.rows[0].id), data: created.rows[0] };
 };
 
@@ -588,6 +601,12 @@ const syncClass = async (client, event) => {
         "UPDATE courses SET price = $1, is_free = FALSE WHERE id = $2",
         [input.price, course.id],
       );
+      await recordCourseCatalogMutation({
+        db: client,
+        courseId: course.id,
+        eventType: "course.upserted",
+        correlationId: event.eventId || event.idempotencyKey || null,
+      });
     }
     const conflictingLiveClass = await client.query(
       "SELECT id FROM live_classes WHERE LOWER(management_class_source_id) = LOWER($1)",

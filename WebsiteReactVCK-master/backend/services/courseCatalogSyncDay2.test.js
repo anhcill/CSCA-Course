@@ -13,6 +13,7 @@ import {
   buildV2EventEnvelope,
   deriveMolySubjectCode,
   exportCatalogCourses,
+  formatCourseExportRecord,
   normalizeMolyLevel,
   processAvailableCourseCatalogOutbox,
   recordCourseCatalogMutation,
@@ -77,6 +78,38 @@ const buildSignedGetHeaders = (originalUrl, {
     originalUrl,
     secret: cfg.hmacSecret,
   }),
+});
+
+test("Day 2 catalog contract carries the Internal-managed course list price to Moly", () => {
+  const priced = formatCourseExportRecord({
+    id: 91,
+    slug: "record-csca-91",
+    title: "Record CSCA 91",
+    category: "MATH",
+    level: "beginner",
+    price: 799000,
+    is_free: false,
+    is_published: true,
+    sync_revision: 4,
+    updated_at: "2026-11-18T00:00:00.000Z",
+  });
+  assert.equal(priced.priceVnd, 799000);
+  assert.equal(priced.isFree, false);
+
+  const free = formatCourseExportRecord({
+    id: 92,
+    slug: "hoc-thu-csca-92",
+    title: "Học thử CSCA 92",
+    category: "MATH",
+    level: "beginner",
+    price: 0,
+    is_free: true,
+    is_published: true,
+    sync_revision: 5,
+    updated_at: "2026-11-18T00:00:00.000Z",
+  });
+  assert.equal(free.priceVnd, 0);
+  assert.equal(free.isFree, true);
 });
 
 test("Day 2 CSCA-Course catalog export paginates >2,000 courses without duplicates or skips via signed v2 HTTP", async (t) => {

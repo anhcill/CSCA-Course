@@ -145,6 +145,8 @@ export function formatCourseExportRecord(row, profiles = []) {
       title,
       slug: row.slug,
     }),
+    priceVnd: Math.max(0, Number(row.price || 0)),
+    isFree: Boolean(row.is_free),
     isPublished: !deleted && Boolean(row.is_published),
     totalLessons: Number(row.total_lessons || 0),
     instructor: displayName
@@ -258,7 +260,7 @@ async function fetchFormattedCoursesByIds(runner, courseIds = []) {
 
   const coursesRes = await runner.query(
     `SELECT c.id, c.name, c.title, c.slug, c.description, c.image_url, c.thumbnail_url,
-            c.category, c.level, c.author_id, c.is_published, c.total_lessons,
+            c.category, c.level, c.author_id, c.is_published, c.is_free, c.price, c.total_lessons,
             c.sync_revision, c.sync_deleted_at, c.created_at, c.updated_at,
             COALESCE(NULLIF(u.management_display_name, ''), NULLIF(sp.full_name, ''), u.username) AS instructor_display_name,
             u.avatar_url AS instructor_avatar_url
@@ -379,7 +381,7 @@ export async function exportCatalogCourses({
 
   const pageRowsRes = await db.query(
     `SELECT c.id, c.name, c.title, c.slug, c.description, c.image_url, c.thumbnail_url,
-            c.category, c.level, c.author_id, c.is_published, c.total_lessons,
+            c.category, c.level, c.author_id, c.is_published, c.is_free, c.price, c.total_lessons,
             c.sync_revision, c.sync_deleted_at, c.created_at, c.updated_at,
             COALESCE(NULLIF(u.management_display_name, ''), NULLIF(sp.full_name, ''), u.username) AS instructor_display_name,
             u.avatar_url AS instructor_avatar_url
