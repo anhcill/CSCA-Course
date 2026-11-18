@@ -722,7 +722,13 @@ export async function streamDelegatedLearningFile({
       "content-length": upstreamRes.headers?.get?.("content-length") || null,
       "accept-ranges": upstreamRes.headers?.get?.("accept-ranges") || "bytes",
     };
-    body = Buffer.from(await upstreamRes.arrayBuffer());
+    const hasStreamBody = Boolean(
+      upstreamRes.body
+      && (typeof upstreamRes.body.getReader === "function" || typeof upstreamRes.body.pipe === "function"),
+    );
+    body = hasStreamBody
+      ? upstreamRes.body
+      : Buffer.from(await upstreamRes.arrayBuffer());
   }
 
   const pickHeader = (name) => {
@@ -733,14 +739,17 @@ export async function streamDelegatedLearningFile({
     return null;
   };
 
+  const fallbackContentLength = Buffer.isBuffer(body)
+    ? String(body.length)
+    : (!rangeHeader && file.size_bytes != null ? String(file.size_bytes) : null);
+  const resolvedContentLength = pickHeader("content-length") || fallbackContentLength;
+
   const resolvedHeaders = {
     "Content-Type": pickHeader("content-type") || file.mime_type || "application/octet-stream",
     "Content-Disposition": contentDisposition,
     "Accept-Ranges": pickHeader("accept-ranges") || "bytes",
     ...(pickHeader("content-range") ? { "Content-Range": pickHeader("content-range") } : {}),
-    ...(pickHeader("content-length")
-      ? { "Content-Length": pickHeader("content-length") }
-      : (Buffer.isBuffer(body) ? { "Content-Length": String(body.length) } : {})),
+    ...(resolvedContentLength ? { "Content-Length": resolvedContentLength } : {}),
     "Cache-Control": "private, no-store, no-cache, must-revalidate",
     "Pragma": "no-cache",
     "Expires": "0",

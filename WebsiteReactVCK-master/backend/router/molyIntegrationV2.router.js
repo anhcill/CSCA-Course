@@ -386,11 +386,20 @@ export const createMolyIntegrationV2Router = ({
       if (Buffer.isBuffer(result.body) || typeof result.body === "string") {
         return res.send(result.body);
       }
-      if (typeof result.body?.pipe === "function") {
-        return result.body.pipe(res);
-      }
-      if (typeof result.body?.getReader === "function") {
-        return Readable.fromWeb(result.body).pipe(res);
+      const nodeStream = typeof result.body?.pipe === "function"
+        ? result.body
+        : (typeof result.body?.getReader === "function" ? Readable.fromWeb(result.body) : null);
+      if (nodeStream) {
+        const cleanup = () => {
+          if (!res.writableEnded) {
+            nodeStream.destroy?.();
+          }
+        };
+        res.on("close", cleanup);
+        nodeStream.on("error", () => {
+          if (!res.writableEnded) res.destroy();
+        });
+        return nodeStream.pipe(res);
       }
       return res.end();
     } catch (error) {
