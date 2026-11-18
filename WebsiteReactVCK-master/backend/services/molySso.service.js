@@ -729,22 +729,28 @@ export function createMolySsoService({
   async function finalizeScopedEntitlementIfAny(userId, exchanged) {
     if (exchanged.scope_type === "course") {
       const mapping = (await runner.query(
-        `SELECT local_course_id, local_video_course_profile_id
-         FROM external_course_mappings
-         WHERE source_system = 'moly'
-           AND external_course_id = $1
-           AND status = 'active'
+        `SELECT ecm.local_course_id, ecm.local_video_course_profile_id, vcp.source_live_class_id
+         FROM external_course_mappings ecm
+         LEFT JOIN video_course_profiles vcp ON vcp.id = ecm.local_video_course_profile_id
+         WHERE ecm.source_system = 'moly'
+           AND ecm.external_course_id = $1
+           AND ecm.status = 'active'
          LIMIT 1`,
         [exchanged.scoped_external_course_id],
       )).rows[0];
       if (!mapping?.local_video_course_profile_id) {
         throw new SsoPolicyError(409, "COURSE_MAPPING_MISSING", "An active video profile mapping is required.");
       }
-      const scope = {
+      const entitlementScope = {
+        db: runner, userId, courseId: mapping.local_course_id,
+        liveClassId: mapping.source_live_class_id || null,
+        profileId: mapping.local_video_course_profile_id,
+      };
+      const profileScope = {
         db: runner, userId, courseId: mapping.local_course_id,
         profileId: mapping.local_video_course_profile_id,
       };
-      if (!(await hasEffectiveCourseEntitlement(scope)) || !(await hasUnrevokedVideoCourseAccess(scope))) {
+      if (!(await hasEffectiveCourseEntitlement(entitlementScope)) || !(await hasUnrevokedVideoCourseAccess(profileScope))) {
         throw new SsoPolicyError(403, "VIDEO_COURSE_ACCESS_REVOKED", "No effective access to this video offering.");
       }
       return `/video-courses/profile-${mapping.local_video_course_profile_id}`;

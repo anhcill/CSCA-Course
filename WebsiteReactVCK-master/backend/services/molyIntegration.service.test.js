@@ -1340,3 +1340,186 @@ test("Day 5: reconciliation snapshot, manual inbox retry, kill switch, and redac
   assert.equal(redactSensitiveData({ payment_payload: { x: 1 } }).payment_payload, REDACTED);
   assert.ok(typeof getIntegrationMetricsSnapshot().counters === "object");
 });
+
+test("MIRROR cross-course Live students inherit ownership/reconciliation/entitlement checks while sibling Live classes stay isolated and v2 offering IDs grant cleanly", async (t) => {
+  const { db, baseUrl } = await setupMolyTestEnv(t);
+  const { buildReconciliationSnapshotForMoly } = await import("./molyIntegration.service.js");
+
+  const teacher = (await db.query(
+    `INSERT INTO users(username,email,role) VALUES ('mir-teacher','mir-teacher@example.test','creator') RETURNING id`,
+  )).rows[0];
+  const liveSocStudent = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('live-soc','live-soc@example.test','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
+  const liveMathStudent = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('live-math','live-math@example.test','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
+  const buyer = (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('moly-buyer','moly-buyer@example.test','user',FALSE,'unmanaged') RETURNING id`,
+  )).rows[0];
+
+  await linkExternalIdentityManually(db, {
+    sourceSystem: "moly",
+    externalUserId: "moly:58",
+    targetUserId: liveSocStudent.id,
+    actorId: teacher.id,
+  });
+  await linkExternalIdentityManually(db, {
+    sourceSystem: "moly",
+    externalUserId: "moly:45",
+    targetUserId: liveMathStudent.id,
+    actorId: teacher.id,
+  });
+  await linkExternalIdentityManually(db, {
+    sourceSystem: "moly",
+    externalUserId: "moly:900",
+    targetUserId: buyer.id,
+    actorId: teacher.id,
+  });
+
+  const liveParentCourse = (await db.query(
+    `INSERT INTO courses(name,title,slug,author_id,is_published,is_management_managed)
+     VALUES ('Live Container','Live Container','live-container',$1,TRUE,TRUE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const recordCourse = (await db.query(
+    `INSERT INTO courses(name,title,slug,author_id,is_published,is_management_managed,price,is_free)
+     VALUES ('Record TTXH','Record TTXH','record-ttxh',$1,TRUE,TRUE,888000,FALSE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+
+  const liveClassSoc = (await db.query(
+    `INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('Tieng Trung XH 8',$1,$2,'active') RETURNING id`,
+    [liveParentCourse.id, teacher.id],
+  )).rows[0];
+  const liveClassMath = (await db.query(
+    `INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('Toan 5',$1,$2,'active') RETURNING id`,
+    [liveParentCourse.id, teacher.id],
+  )).rows[0];
+
+  const v2OfferingId = "fe99d3a784614ac693328b97d49945e0";
+  const recordProfile = (await db.query(
+    `INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,management_class_id,status)
+     VALUES ($1,'MIRROR',$2,$3,'active') RETURNING id`,
+    [recordCourse.id, liveClassSoc.id, v2OfferingId],
+  )).rows[0];
+
+  await upsertManualCourseMapping(db, {
+    sourceSystem: "moly",
+    externalCourseId: v2OfferingId,
+    localCourseId: recordCourse.id,
+    localVideoCourseProfileId: recordProfile.id,
+  });
+
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - INTERVAL '1 day',NOW()),
+            ($3,$2,'active',NOW() - INTERVAL '1 day',NOW())`,
+    [liveSocStudent.id, liveParentCourse.id, liveMathStudent.id],
+  );
+  await db.query(
+    `INSERT INTO class_enrollments(user_id,course_id,live_class_id,learning_mode,status,enrollment_source)
+     VALUES ($1,$2,$3,'live','active','local'),
+            ($4,$2,$5,'live','active','local')`,
+    [liveSocStudent.id, liveParentCourse.id, liveClassSoc.id, liveMathStudent.id, liveClassMath.id],
+  );
+
+  // Live #8 student owns Record offering; Toán #5 student on same parent course does NOT
+  const socOwn = await queryCourseOwnershipForMoly(db, {
+    correlation_id: "mir-soc",
+    subject: { external_user_id: "moly:58" },
+    external_course_ids: [v2OfferingId],
+  });
+  assert.equal(socOwn.data.items[0].owned, true);
+
+  const mathOwn = await queryCourseOwnershipForMoly(db, {
+    correlation_id: "mir-math",
+    subject: { external_user_id: "moly:45" },
+    external_course_ids: [v2OfferingId],
+  });
+  assert.equal(mathOwn.data.items[0].owned, false);
+
+  // Profile-scoped entitlement helper also recognizes MIRROR inheritance when liveClassId is omitted
+  assert.equal(
+    await hasEffectiveCourseEntitlement({ db, userId: liveSocStudent.id, courseId: recordCourse.id, profileId: recordProfile.id }),
+    true,
+  );
+  assert.equal(
+    await hasEffectiveCourseEntitlement({ db, userId: liveMathStudent.id, courseId: recordCourse.id, profileId: recordProfile.id }),
+    false,
+  );
+
+  // Reconciliation snapshot emits active entitlement for Live #8 on v2OfferingId, not Toán #5
+  const recon = await buildReconciliationSnapshotForMoly(db, { courseId: recordCourse.id });
+  const reconUsers = recon.data.entitlements.filter((e) => e.external_course_id === v2OfferingId && e.effective_active);
+  assert.deepEqual(reconUsers.map((e) => e.external_user_id), ["moly:58"]);
+
+  // Revoking Live #8 student on Record profile flips ownership back to false
+  await db.query(
+    `INSERT INTO video_course_access_revocations(video_course_profile_id,user_id,revoked_by) VALUES ($1,$2,$3)`,
+    [recordProfile.id, liveSocStudent.id, teacher.id],
+  );
+  const socRevoked = await queryCourseOwnershipForMoly(db, {
+    correlation_id: "mir-soc-rev",
+    subject: { external_user_id: "moly:58" },
+    external_course_ids: [v2OfferingId],
+  });
+  assert.equal(socRevoked.data.items[0].owned, false);
+
+  // v2 non-moly-prefixed offering ID accepted on grant/revoke while email still rejected
+  const emailBad = await postMolySigned(baseUrl, "/entitlements/grant", {
+    event_id: "moly:evt:v2-bad",
+    idempotency_key: "idem-v2-bad",
+    correlation_id: "corr-v2-bad",
+    source_system: "moly",
+    external_user_id: "moly:900",
+    external_course_id: "bad@example.com",
+    external_grant_id: "moly:grant:v2-bad",
+    status: "active",
+    valid_from: "2026-11-18T00:00:00.000Z",
+    source_updated_at: "2026-11-18T00:00:00.000Z",
+  });
+  assert.equal(emailBad.status, 422);
+  assert.equal(emailBad.body.errorCode, "INVALID_EXTERNAL_ID");
+
+  const grantRes = await postMolySigned(baseUrl, "/entitlements/grant", {
+    event_id: "moly:evt:v2-ok",
+    idempotency_key: "idem-v2-ok",
+    correlation_id: "corr-v2-ok",
+    source_system: "moly",
+    external_user_id: "moly:900",
+    external_course_id: v2OfferingId,
+    external_grant_id: "moly:grant:v2-ok",
+    status: "active",
+    valid_from: "2026-11-18T00:00:00.000Z",
+    source_updated_at: "2026-11-18T00:00:00.000Z",
+  });
+  assert.equal(grantRes.status, 202);
+  assert.equal((await processNextMolyInboxJob({ db })).status, "processed");
+  assert.equal(
+    await hasEffectiveCourseEntitlement({ db, userId: buyer.id, courseId: recordCourse.id, profileId: recordProfile.id }),
+    true,
+  );
+
+  const revokeRes = await postMolySigned(baseUrl, "/entitlements/revoke", {
+    event_id: "moly:evt:v2-rev",
+    idempotency_key: "idem-v2-rev",
+    correlation_id: "corr-v2-rev",
+    source_system: "moly",
+    external_user_id: "moly:900",
+    external_course_id: v2OfferingId,
+    external_grant_id: "moly:grant:v2-ok",
+    status: "revoked",
+    reason: "refunded",
+    source_updated_at: "2026-11-18T00:05:00.000Z",
+  });
+  assert.equal(revokeRes.status, 202);
+  assert.equal((await processNextMolyInboxJob({ db })).status, "processed");
+  assert.equal(
+    await hasEffectiveCourseEntitlement({ db, userId: buyer.id, courseId: recordCourse.id, profileId: recordProfile.id }),
+    false,
+  );
+});

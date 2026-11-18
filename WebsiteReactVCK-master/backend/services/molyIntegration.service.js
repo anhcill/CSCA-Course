@@ -106,6 +106,18 @@ const requireMolyNamespacedId = (value, fieldName, { disallowEmail = true } = {}
   return trimmed;
 };
 
+const requireMolyOfferingId = (value, fieldName) => {
+  const trimmed = normalizeExternalId(value, fieldName, 128);
+  if (trimmed.includes("@")) {
+    throw new ExternalIntegrationError(
+      422,
+      "INVALID_EXTERNAL_ID",
+      `${fieldName} must be an opaque canonical ID, never an email address.`,
+    );
+  }
+  return trimmed;
+};
+
 const resolveEnvelopeIds = (body, headerMeta = {}) => {
   const eventId = normalizeExternalId(body.event_id, "event_id", 128);
   const headerIdem = headerMeta.idempotencyKey ? String(headerMeta.idempotencyKey).trim() : null;
@@ -200,7 +212,7 @@ export const parseGrantWirePayload = (rawBody, headerMeta = {}) => {
   const { eventId, idempotencyKey, correlationId } = resolveEnvelopeIds(rawBody, headerMeta);
   const sourceSystem = requireMolySourceSystem(rawBody.source_system);
   const externalUserId = requireMolyNamespacedId(rawBody.external_user_id, "external_user_id");
-  const externalCourseId = requireMolyNamespacedId(rawBody.external_course_id, "external_course_id");
+  const externalCourseId = requireMolyOfferingId(rawBody.external_course_id, "external_course_id");
   const externalGrantId = requireMolyNamespacedId(rawBody.external_grant_id, "external_grant_id");
   const status = typeof rawBody.status === "string" ? rawBody.status.trim().toLowerCase() : "active";
   if (!EXTERNAL_ENTITLEMENT_STATUSES.has(status) || status === "revoked") {
@@ -258,7 +270,7 @@ export const parseRevokeWirePayload = (rawBody, headerMeta = {}) => {
   const { eventId, idempotencyKey, correlationId } = resolveEnvelopeIds(rawBody, headerMeta);
   const sourceSystem = requireMolySourceSystem(rawBody.source_system);
   const externalUserId = requireMolyNamespacedId(rawBody.external_user_id, "external_user_id");
-  const externalCourseId = requireMolyNamespacedId(rawBody.external_course_id, "external_course_id");
+  const externalCourseId = requireMolyOfferingId(rawBody.external_course_id, "external_course_id");
   const externalGrantId = requireMolyNamespacedId(rawBody.external_grant_id, "external_grant_id");
   const status = typeof rawBody.status === "string" ? rawBody.status.trim().toLowerCase() : "revoked";
   if (!["revoked", "suspended", "expired"].includes(status)) {
@@ -331,7 +343,7 @@ export const parseOwnershipQueryWirePayload = (rawBody, headerMeta = {}) => {
     ? rawBody.external_course_ids
     : [];
   const externalCourseIds = [...new Set(
-    externalCourseIdsRaw.map((id, idx) => requireMolyNamespacedId(id, `external_course_ids[${idx}]`)),
+    externalCourseIdsRaw.map((id, idx) => requireMolyOfferingId(id, `external_course_ids[${idx}]`)),
   )];
   if (externalCourseIds.length > 100) {
     throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "external_course_ids cannot exceed 100 entries.");
@@ -1655,6 +1667,40 @@ export const processAvailableMolyInboxJobs = async ({
 };
 
 /**
+ * Finds active MIRROR video profiles whose source Live class belongs to another local course
+ * where the given user holds an active class_enrollments row.
+ */
+const loadActiveMirrorGrantLinksForUser = async (db, { userId, targetCourseIds = null, targetProfileId = null } = {}) => {
+  if (!userId) return [];
+  const cleanIds = Array.isArray(targetCourseIds)
+    ? [...new Set(targetCourseIds.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))]
+    : [];
+  const res = await db.query(
+    `SELECT DISTINCT
+            vcp.id AS profile_id,
+            vcp.course_id AS target_course_id,
+            vcp.source_live_class_id,
+            lc.course_id AS source_course_id
+     FROM video_course_profiles vcp
+     JOIN live_classes lc ON lc.id = vcp.source_live_class_id
+     JOIN class_enrollments ce
+       ON ce.user_id = $1
+      AND ce.status = 'active'
+      AND ce.learning_mode = 'live'
+      AND ce.live_class_id = vcp.source_live_class_id
+     WHERE vcp.status = 'active'
+       AND vcp.deleted_at IS NULL
+       AND vcp.mode = 'MIRROR'
+       AND vcp.source_live_class_id IS NOT NULL
+       AND (cardinality($2::bigint[]) = 0 OR vcp.course_id = ANY($2::bigint[]))
+       AND ($3::bigint IS NULL OR vcp.id = $3)
+     ORDER BY vcp.id ASC`,
+    [userId, cleanIds, targetProfileId],
+  );
+  return res.rows || [];
+};
+
+/**
  * Queries course ownership on CSCA-Course for a Moly external user identity across
  * both independent `external_entitlements` and Management `lms_access_grants`
  * mapped through `external_course_mappings`.
@@ -1748,7 +1794,20 @@ export const queryCourseOwnershipForMoly = async (db = defaultDb, rawBody, heade
           || g.local_video_course_profile_id == null
           || Number(g.local_video_course_profile_id) === Number(map.local_video_course_profile_id)),
     );
-    const matchingMgmt = mgmtGrants.filter((g) => Number(g.local_course_id) === Number(map.local_course_id));
+    const matchingMgmt = [...mgmtGrants.filter((g) => Number(g.local_course_id) === Number(map.local_course_id))];
+    const mirrorLinks = await loadActiveMirrorGrantLinksForUser(db, {
+      userId: identity.user_id,
+      targetCourseIds: [Number(map.local_course_id)],
+      targetProfileId: map.local_video_course_profile_id ?? null,
+    });
+    if (mirrorLinks.length > 0) {
+      const mirrorSourceCourses = new Set(mirrorLinks.map((m) => Number(m.source_course_id)));
+      for (const g of mgmtGrants) {
+        if (mirrorSourceCourses.has(Number(g.local_course_id)) && !matchingMgmt.includes(g)) {
+          matchingMgmt.push(g);
+        }
+      }
+    }
 
     const bestActive = matchingExt.find(isGrantActiveNow) || matchingMgmt.find(isGrantActiveNow) || null;
     const fallbackLatest = bestActive || matchingExt[0] || matchingMgmt[0] || null;
@@ -1766,11 +1825,15 @@ export const queryCourseOwnershipForMoly = async (db = defaultDb, rawBody, heade
       };
     }
 
-    const profileAccessible = !bestActive || map.local_video_course_profile_id == null
+    const targetProfileId = map.local_video_course_profile_id
+      ?? (mirrorLinks.length > 0 && !mgmtGrants.some((g) => Number(g.local_course_id) === Number(map.local_course_id))
+        ? mirrorLinks[0].profile_id
+        : null);
+    const profileAccessible = !bestActive || targetProfileId == null
       ? true
       : await hasUnrevokedVideoCourseAccess({
         db, userId: identity.user_id, courseId: map.local_course_id,
-        profileId: map.local_video_course_profile_id,
+        profileId: targetProfileId,
       });
     return {
       external_course_id: extCourseId,
@@ -2310,10 +2373,23 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
      WHERE ei.source_system = 'moly'
        AND ei.status = 'active'
        AND ($1::text IS NULL OR ei.external_user_id = $1)
-       AND ($2::bigint IS NULL OR g.course_id = $2)
+       AND (
+         $2::bigint IS NULL
+         OR g.course_id = $2
+         OR g.course_id IN (
+           SELECT lc.course_id
+           FROM video_course_profiles vcp
+           JOIN live_classes lc ON lc.id = vcp.source_live_class_id
+           WHERE vcp.course_id = $2
+             AND vcp.mode = 'MIRROR'
+             AND vcp.status = 'active'
+             AND vcp.deleted_at IS NULL
+             AND ($3::bigint IS NULL OR vcp.id = $3)
+         )
+       )
      ORDER BY g.id DESC
-     LIMIT $3`,
-    [filterExternalUserId, filterCourseId, limit],
+     LIMIT $4`,
+    [filterExternalUserId, filterCourseId, filterProfileId, limit],
   );
 
   const inboxSummaryRes = await db.query(
@@ -2387,6 +2463,31 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
     });
   }
 
+  const mirrorReconRes = await db.query(
+    `SELECT vcp.id AS profile_id,
+            vcp.course_id AS target_course_id,
+            vcp.source_live_class_id,
+            lc.course_id AS source_course_id
+     FROM video_course_profiles vcp
+     JOIN live_classes lc ON lc.id = vcp.source_live_class_id
+     WHERE vcp.mode = 'MIRROR'
+       AND vcp.status = 'active'
+       AND vcp.deleted_at IS NULL
+       AND vcp.source_live_class_id IS NOT NULL
+       AND ($1::bigint IS NULL OR vcp.course_id = $1)
+       AND ($2::bigint IS NULL OR vcp.id = $2)
+     ORDER BY vcp.id ASC`,
+    [filterCourseId, filterProfileId],
+  );
+  const mirrorTargetsBySourceCourse = new Map();
+  for (const mr of mirrorReconRes.rows) {
+    const srcCid = Number(mr.source_course_id);
+    if (!mirrorTargetsBySourceCourse.has(srcCid)) mirrorTargetsBySourceCourse.set(srcCid, []);
+    mirrorTargetsBySourceCourse.get(srcCid).push(mr);
+  }
+  const seenMgmtReconKeys = new Set();
+  const mirrorCandidateGrants = [];
+
   for (const row of mgmtRes.rows) {
     const active = row.status === "active"
       && (!row.valid_from || new Date(row.valid_from).getTime() <= nowMs)
@@ -2400,27 +2501,95 @@ export const buildReconciliationSnapshotForMoly = async (db = defaultDb, rawBody
         : mapping.metadata?.moly_external_course_id || mapping.external_course_id)
       : null;
 
-    if (filterExternalCourseId && resolvedExtCourseId !== filterExternalCourseId) {
-      continue;
+    if (!filterExternalCourseId || resolvedExtCourseId === filterExternalCourseId) {
+      const reconKey = `${row.external_user_id}::${resolvedExtCourseId || `local:${row.local_course_id}`}`;
+      seenMgmtReconKeys.add(reconKey);
+      entitlements.push({
+        source: "lms_access_grants",
+        id: Number(row.grant_id),
+        external_user_id: row.external_user_id,
+        local_user_id: Number(row.local_user_id),
+        local_course_id: Number(row.local_course_id),
+        local_video_course_profile_id: null,
+        external_course_id: resolvedExtCourseId,
+        external_grant_id: `internal-management:grant:${row.grant_id}`,
+        status: row.status,
+        effective_active: active,
+        identity_status: row.identity_status || "active",
+        valid_from: row.valid_from ? new Date(row.valid_from).toISOString() : null,
+        valid_until: row.valid_until ? new Date(row.valid_until).toISOString() : null,
+        revoked_at: null,
+        source_updated_at: row.source_updated_at ? new Date(row.source_updated_at).toISOString() : null,
+      });
     }
 
-    entitlements.push({
-      source: "lms_access_grants",
-      id: Number(row.grant_id),
-      external_user_id: row.external_user_id,
-      local_user_id: Number(row.local_user_id),
-      local_course_id: Number(row.local_course_id),
-      local_video_course_profile_id: null,
-      external_course_id: resolvedExtCourseId,
-      external_grant_id: `internal-management:grant:${row.grant_id}`,
-      status: row.status,
-      effective_active: active,
-      identity_status: row.identity_status || "active",
-      valid_from: row.valid_from ? new Date(row.valid_from).toISOString() : null,
-      valid_until: row.valid_until ? new Date(row.valid_until).toISOString() : null,
-      revoked_at: null,
-      source_updated_at: row.source_updated_at ? new Date(row.source_updated_at).toISOString() : null,
-    });
+    const mirrorTargets = mirrorTargetsBySourceCourse.get(Number(row.local_course_id)) || [];
+    if (mirrorTargets.length > 0) {
+      mirrorCandidateGrants.push({ row, active, mirrorTargets });
+    }
+  }
+
+  const mirrorLiveClassIds = [...new Set(mirrorReconRes.rows.map((mr) => Number(mr.source_live_class_id)).filter((id) => Number.isSafeInteger(id) && id > 0))];
+  const liveMirrorMembershipKeys = new Set();
+  if (mirrorCandidateGrants.length > 0 && mirrorLiveClassIds.length > 0) {
+    const enrollRes = await db.query(
+      `SELECT user_id, live_class_id
+       FROM class_enrollments
+       WHERE live_class_id = ANY($1::bigint[])
+         AND status = 'active'
+         AND learning_mode = 'live'`,
+      [mirrorLiveClassIds],
+    );
+    for (const er of enrollRes.rows) {
+      liveMirrorMembershipKeys.add(`${Number(er.user_id)}::${Number(er.live_class_id)}`);
+    }
+  }
+
+  for (const { row, active, mirrorTargets } of mirrorCandidateGrants) {
+    for (const mt of mirrorTargets) {
+      if (Number(mt.target_course_id) === Number(row.local_course_id)) continue;
+      if (!liveMirrorMembershipKeys.has(`${Number(row.local_user_id)}::${Number(mt.source_live_class_id)}`)) continue;
+      const targetMapping = mappingsRes.rows.find(
+        (m) => Number(m.local_course_id) === Number(mt.target_course_id)
+          && m.status === "active"
+          && (m.local_video_course_profile_id == null
+            || Number(m.local_video_course_profile_id) === Number(mt.profile_id)),
+      ) || null;
+      if (!targetMapping) continue;
+      const targetExtCourseId = targetMapping.source_system === "moly"
+        ? targetMapping.external_course_id
+        : targetMapping.metadata?.moly_external_course_id || targetMapping.external_course_id;
+      if (filterExternalCourseId && targetExtCourseId !== filterExternalCourseId) continue;
+      const targetReconKey = `${row.external_user_id}::${targetExtCourseId || `profile:${mt.profile_id}`}`;
+      if (seenMgmtReconKeys.has(targetReconKey)) continue;
+
+      const unrevokedMirror = await hasUnrevokedVideoCourseAccess({
+        db,
+        userId: row.local_user_id,
+        courseId: mt.target_course_id,
+        profileId: mt.profile_id,
+      });
+      if (!unrevokedMirror) continue;
+
+      seenMgmtReconKeys.add(targetReconKey);
+      entitlements.push({
+        source: "lms_access_grants",
+        id: Number(row.grant_id),
+        external_user_id: row.external_user_id,
+        local_user_id: Number(row.local_user_id),
+        local_course_id: Number(mt.target_course_id),
+        local_video_course_profile_id: Number(mt.profile_id),
+        external_course_id: targetExtCourseId,
+        external_grant_id: `internal-management:grant:${row.grant_id}:profile:${mt.profile_id}`,
+        status: row.status,
+        effective_active: active,
+        identity_status: row.identity_status || "active",
+        valid_from: row.valid_from ? new Date(row.valid_from).toISOString() : null,
+        valid_until: row.valid_until ? new Date(row.valid_until).toISOString() : null,
+        revoked_at: null,
+        source_updated_at: row.source_updated_at ? new Date(row.source_updated_at).toISOString() : null,
+      });
+    }
   }
 
   const inboxSummary = {};

@@ -204,6 +204,21 @@ export const hasEffectiveCourseEntitlement = async ({
                  )
                )
            ))
+           OR ($4::bigint IS NOT NULL AND $3::bigint IS NULL AND EXISTS (
+             SELECT 1
+             FROM video_course_profiles vcp_prof
+             JOIN live_classes lc_prof ON lc_prof.id = vcp_prof.source_live_class_id
+             JOIN class_enrollments ce_prof ON ce_prof.live_class_id = lc_prof.id
+             WHERE vcp_prof.id = $4
+               AND vcp_prof.course_id = $2
+               AND vcp_prof.status = 'active'
+               AND vcp_prof.deleted_at IS NULL
+               AND vcp_prof.mode = 'MIRROR'
+               AND lc_prof.course_id = g.course_id
+               AND ce_prof.user_id = $1
+               AND ce_prof.status = 'active'
+               AND ce_prof.learning_mode = 'live'
+           ))
          )
          AND g.access_status = 'active'
          AND g.valid_from <= NOW()
