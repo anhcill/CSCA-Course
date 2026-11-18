@@ -914,6 +914,19 @@ test("offering/profile isolation, InternalManagement coexistence, HTTP workspace
     external_course_ids: ["moly:crs:iso_offer_a"],
   });
   assert.equal(adminBlockedOwnership.data.items[0].owned, false);
+
+  // The same profile revocation must not block the isolated learner persona
+  // used when a Course administrator opens Moly.
+  await db.query("UPDATE users SET role = 'admin' WHERE id = $1", [pureIdentity.user_id]);
+  const adminLearningOwnership = await queryCourseOwnershipForMoly(db, {
+    correlation_id: "admin-learning-persona", subject: { external_user_id: "moly:usr:iso_pure" },
+    external_course_ids: ["moly:crs:iso_offer_a"],
+  });
+  assert.equal(adminLearningOwnership.data.items[0].owned, true);
+  assert.equal(adminLearningOwnership.data.items[0].status, "active");
+  assert.match(adminLearningOwnership.data.items[0].external_grant_id, /^internal-management:grant:admin:/);
+  await db.query("UPDATE users SET role = 'user' WHERE id = $1", [pureIdentity.user_id]);
+
   await db.query(
     "DELETE FROM video_course_access_revocations WHERE video_course_profile_id = $1 AND user_id = $2",
     [profileA.id, pureIdentity.user_id],

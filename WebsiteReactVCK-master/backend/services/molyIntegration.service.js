@@ -1840,7 +1840,11 @@ export const queryCourseOwnershipForMoly = async (db = defaultDb, rawBody, heade
       ?? (mirrorLinks.length > 0 && !mgmtGrants.some((g) => Number(g.local_course_id) === Number(map.local_course_id))
         ? mirrorLinks[0].profile_id
         : null);
-    const profileAccessible = !bestActive || targetProfileId == null
+    // An administrator enters Moly through a deliberately isolated learner
+    // persona. Their synthetic learning grant is authoritative and must not be
+    // downgraded by a historical per-profile revocation created while testing
+    // a Record class as a learner.
+    const profileAccessible = adminLearningAccess || !bestActive || targetProfileId == null
       ? true
       : await hasUnrevokedVideoCourseAccess({
         db, userId: identity.user_id, courseId: map.local_course_id,
