@@ -328,10 +328,23 @@ export const buildQuizResult = (questions, answers) => {
       ? (qAttachments.length > 0 ? qAttachments : overallAttachments)
       : [];
 
+    const rawOptions = parseJsonArray(question.options_json);
+    const linkedOptions = parseJsonArray(question.linked_options);
+    const effectiveOptions = rawOptions.length > 0 ? rawOptions : linkedOptions;
+
     return {
       questionId: question.id,
       position: index + 1,
       sortOrder: Number(question.sort_order || index + 1),
+      groupId: question.group_id ?? null,
+      groupType: question.group_type || null,
+      passageText: question.passage_text || null,
+      passageTextCn: question.passage_text_cn || null,
+      passageImageUrl: question.passage_image_url || null,
+      clozeMode: question.cloze_mode || null,
+      linkedOptions,
+      imageUrl: question.image_url || null,
+      explanationImageUrl: question.explanation_image_url || null,
       questionText: question.question_text || question.questionText || "",
       questionTextCn: question.question_text_cn || question.questionTextCn || null,
       questionTextVi: question.question_text || question.questionText || null,
@@ -340,7 +353,7 @@ export const buildQuizResult = (questions, answers) => {
       correctAnswer: isEssay ? null : parseStoredAnswer(question.correct_answer),
       explanation: question.explanation || "",
       explanationCn: question.explanation_cn || question.explanationCn || null,
-      options: parseJsonArray(question.options_json),
+      options: effectiveOptions,
       points,
       earnedPoints,
       isCorrect: isEssay ? (typeof earnedPoints === "number" && earnedPoints > 0 ? true : (qGrade || essayGrade ? false : null)) : isCorrect,

@@ -1376,3 +1376,141 @@ test("Day 7: Notes, Bookmarks & Unit Q&A across lesson + class_session with opti
   const notifCount = Number((await pg.query(`SELECT COUNT(*)::int AS cnt FROM notifications`)).rows[0].cnt);
   assert.equal(notifCount, 0);
 });
+
+test("Day 6+ admin role bypasses sequential lock & attempt limits while fill_blank_pool exposes linkedOptions", async (t) => {
+  const pg = new PGlite();
+  t.after(() => pg.close());
+  await loadFullCourseSchema(pg);
+  bindPoolToDb(pool, pg);
+  const db = makeDbAdapter(pg);
+
+  const adminUser = (await pg.query(
+    `INSERT INTO users (username, email, role, is_locked, is_management_managed, lms_account_status)
+     VALUES ('admin-lms', 'admin@example.test', 'admin', FALSE, FALSE, 'active') RETURNING *`,
+  )).rows[0];
+  const course = (await pg.query(
+    `INSERT INTO courses (name, title, slug, is_published, author_id)
+     VALUES ('CSCA Admin Unlock Course', 'CSCA Admin Unlock Course', 'admin-unlock', TRUE, $1) RETURNING *`,
+    [adminUser.id],
+  )).rows[0];
+  const liveClass = (await pg.query(
+    `INSERT INTO live_classes(title,course_id,instructor_id,status)
+     VALUES ('Admin Unlock Live Class',$1,$2,'active') RETURNING *`,
+    [course.id, adminUser.id],
+  )).rows[0];
+  const profile = (await pg.query(
+    `INSERT INTO video_course_profiles (course_id, mode, source_live_class_id, allow_file_download, status)
+     VALUES ($1, 'MIRROR', $2, FALSE, 'active') RETURNING *`,
+    [course.id, liveClass.id],
+  )).rows[0];
+  const l1 = (await pg.query(
+    `INSERT INTO class_sessions (live_class_id, title, start_time, end_time, status)
+     VALUES ($1, 'Unit 1', NOW() - INTERVAL '4 hours', NOW() - INTERVAL '3 hours', 'ended') RETURNING *`,
+    [liveClass.id],
+  )).rows[0];
+  const l2 = (await pg.query(
+    `INSERT INTO class_sessions (live_class_id, title, start_time, end_time, status)
+     VALUES ($1, 'Unit 2 (Locked for Student)', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour', 'ended') RETURNING *`,
+    [liveClass.id],
+  )).rows[0];
+  const l1Vid = (await pg.query(
+    `INSERT INTO video_assets(title,r2_key,provider,provider_video_id,duration_seconds,playback_status)
+     VALUES ('Admin Vid 1','videos/admin-v1.mp4','bunny_stream','bunny-adm-1',100,'ready') RETURNING *`,
+  )).rows[0];
+  await pg.query(
+    `INSERT INTO class_session_videos(class_session_id,video_asset_id,title,video_type,sort_order,is_published)
+     VALUES ($1,$2,'Part 1','primary',0,TRUE)`,
+    [l1.id, l1Vid.id],
+  );
+  await pg.query(
+    `INSERT INTO session_vocabularies (session_id, class_id, term, pinyin, meaning, order_index)
+     VALUES ($1, $2, '高兴', 'gāoxìng', 'vui vẻ', 1)`,
+    [l2.id, liveClass.id],
+  );
+
+  const quiz = (await pg.query(
+    `INSERT INTO quizzes (course_id, live_class_id, class_session_id, instructor_id, title, status, passing_score, attempt_limit, review_policy, duration_minutes)
+     VALUES ($1, $2, $3, $4, 'Quiz Bo Thu', 'PUBLISHED', 60, 1, 'after_submit', 10) RETURNING *`,
+    [course.id, liveClass.id, l2.id, adminUser.id],
+  )).rows[0];
+  const grp = (await pg.query(
+    `INSERT INTO quiz_question_groups (quiz_id, group_type, passage_text, linked_options, cloze_mode, sort_order)
+     VALUES ($1, 'fill_blank_pool', 'Nối bộ thủ', $2::jsonb, 'sentences', 1) RETURNING *`,
+    [quiz.id, JSON.stringify([{ key: "A", text: "Lời nói" }, { key: "C", text: "Bệnh tật" }])],
+  )).rows[0];
+  const qq = (await pg.query(
+    `INSERT INTO quiz_questions (quiz_id, group_id, item_order, question_text, question_type, options_json, correct_answer, explanation, points, sort_order)
+     VALUES ($1, $2, 1, '(1) Bộ 疒', 'fill_blank_item', '[]'::jsonb, 'C', 'Liên quan bệnh tật', 10, 1) RETURNING *`,
+    [quiz.id, grp.id],
+  )).rows[0];
+
+  const app = express();
+  app.use(express.json({ limit: "2mb", verify: (req, res, buf) => { req.rawBody = Buffer.from(buf); } }));
+  const verifyRead = createRequireMolyIntegration({ requireIdempotencyKey: false, allowBodylessGet: true, configOverrides: TEST_MOLY_CFG });
+  const verifyWrite = createRequireMolyIntegration({ requireIdempotencyKey: true, allowBodylessDelete: true, configOverrides: TEST_MOLY_CFG });
+  app.use("/api/integrations/v2", createMolyIntegrationV2Router({ db, verifyRead, verifyWrite }));
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => stopServer(server));
+
+  // Direct S2S mint for Moly admin without external_identities link unlocks Unit 2 immediately
+  const adminMintRes = await callV2(baseUrl, {
+    method: "POST",
+    path: "/learning/sessions",
+    body: {
+      externalUserId: "moly-5",
+      profileId: profile.id,
+      scopes: ["workspace:read", "quiz:attempt"],
+      actorRole: "admin",
+      actorEmail: "admin@example.test",
+    },
+    idempotencyKey: "mint-admin-direct-1",
+  });
+  assert.equal(adminMintRes.status, 201);
+  const adminToken = (await adminMintRes.json()).data.sessionToken;
+
+  const wsRes = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/offerings/${profile.id}/workspace?unitId=${l2.id}`,
+    sessionToken: adminToken,
+  });
+  assert.equal(wsRes.status, 200);
+  const wsData = (await wsRes.json()).data;
+  assert.equal(wsData.units.every((u) => u.isLocked === false), true);
+  assert.equal(wsData.activeUnit.isLocked, false);
+  assert.equal(wsData.activeUnit.vocabulary.length, 1);
+
+  const quizDetailRes = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/offerings/${profile.id}/units/${l2.id}/quizzes/${quiz.id}`,
+    sessionToken: adminToken,
+  });
+  assert.equal(quizDetailRes.status, 200);
+  const qDetail = (await quizDetailRes.json()).data;
+  assert.equal(qDetail.canStartAttempt, true);
+  assert.equal(qDetail.quiz.items[0].kind, "fill_blank_group");
+  assert.equal(qDetail.quiz.items[0].linkedOptions[1].text, "Bệnh tật");
+
+  // Take 2 attempts despite attempt_limit = 1 because viewer is admin
+  for (const idx of [1, 2]) {
+    const sRes = await callV2(baseUrl, {
+      method: "POST",
+      path: `/learning/quizzes/${quiz.id}/attempts/start`,
+      body: { profileId: profile.id, unitId: l2.id },
+      sessionToken: adminToken,
+      idempotencyKey: `admin-quiz-start-${idx}`,
+    });
+    assert.equal(sRes.status, 200);
+    const attemptId = (await sRes.json()).data.attempt.id;
+    const subRes = await callV2(baseUrl, {
+      method: "POST",
+      path: `/learning/quizzes/attempts/${attemptId}/submit`,
+      body: { answers: { [String(qq.id)]: "C" } },
+      sessionToken: adminToken,
+      idempotencyKey: `admin-quiz-submit-${idx}`,
+    });
+    assert.equal(subRes.status, 200);
+    const subData = (await subRes.json()).data;
+    assert.equal(subData.score, 10);
+    assert.equal(subData.review[0].options[1].text, "Bệnh tật");
+  }
+});

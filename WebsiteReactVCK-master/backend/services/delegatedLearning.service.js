@@ -66,6 +66,10 @@ export const parsePositiveId = (value) => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+export const isDelegatedAdminRole = (role) => ["admin", "creator"].includes(
+  String(role || "").trim().toLowerCase(),
+);
+
 export function inferFileKind(mimeType, fileName) {
   const mime = String(mimeType || "").toLowerCase();
   const name = String(fileName || "").toLowerCase();
@@ -104,7 +108,21 @@ function buildLockedUnitPayload({ id, type, title, sessionNumber, sectionTitle =
   };
 }
 
-export function applySequentialLocks(rawUnits, { isPublicPreviewAccess = false } = {}) {
+export function applySequentialLocks(
+  rawUnits,
+  { isPublicPreviewAccess = false, bypassSequentialLock = false } = {},
+) {
+  if (bypassSequentialLock && !isPublicPreviewAccess) {
+    return rawUnits.map((current) => ({
+      ...current,
+      isLocked: false,
+      lockReason: null,
+      requiredPrevUnitId: null,
+      requiredPrevUnitTitle: null,
+      requiredPrevUnitNumber: null,
+    }));
+  }
+
   if (isPublicPreviewAccess) {
     return rawUnits.map((current) => ({
       ...current,
@@ -1031,6 +1049,8 @@ export async function mintDelegatedLearningSession({
   deviceSlotProof = null,
   clientIp = null,
   userAgent = "",
+  actorRole = null,
+  actorEmail = null,
   correlationId = null,
   metadata = {},
   now = () => new Date(),
@@ -1074,7 +1094,36 @@ export async function mintDelegatedLearningSession({
      LIMIT 1`,
     [extUser],
   );
-  const identity = identityRes.rows[0] || null;
+  let identity = identityRes.rows[0] || null;
+  let isS2SAdminDirect = false;
+
+  // Signed S2S calls on behalf of a verified Moly admin without a learner link
+  // resolve cleanly to an unlocked Course admin/creator account so platform
+  // admins can inspect any synced course/unit without weakening student checks.
+  if (!identity && isDelegatedAdminRole(actorRole)) {
+    const cleanActorEmail = typeof actorEmail === "string" && actorEmail.trim()
+      ? actorEmail.trim().toLowerCase()
+      : null;
+    const adminRes = await db.query(
+      `SELECT u.id AS user_id, u.role, u.is_locked, u.locked_reason, u.device_limit_attempts
+       FROM users u
+       WHERE u.role::text IN ('admin', 'creator')
+         AND COALESCE(u.is_locked, FALSE) = FALSE
+       ORDER BY (CASE WHEN $1::text IS NOT NULL AND LOWER(u.email) = $1::text THEN 0 ELSE 1 END),
+                (CASE WHEN u.role::text = 'admin' THEN 0 ELSE 1 END),
+                u.id ASC
+       LIMIT 1`,
+      [cleanActorEmail],
+    );
+    if (adminRes.rows[0]) {
+      identity = {
+        ...adminRes.rows[0],
+        identity_status: "active",
+      };
+      isS2SAdminDirect = true;
+    }
+  }
+
   if (!identity || identity.identity_status !== "active") {
     throw new ExternalIntegrationError(
       403,
@@ -1094,15 +1143,18 @@ export async function mintDelegatedLearningSession({
     );
   }
 
-  await assertLiveLearnerProfileAccess(db, {
-    userId: identity.user_id,
-    profileRow,
-  });
+  const isAdminSession = isDelegatedAdminRole(identity.role) || isS2SAdminDirect;
+  if (!isAdminSession) {
+    await assertLiveLearnerProfileAccess(db, {
+      userId: identity.user_id,
+      profileRow,
+    });
+  }
 
   let trustedDeviceId = null;
   let deviceBindingId = null;
   let deviceSlot = null;
-  if (deviceSlotProof) {
+  if (deviceSlotProof && !isS2SAdminDirect) {
     const verifiedProof = verifyDeviceSlotProof(deviceSlotProof, {
       expectedExternalUserId: extUser,
       now: () => now().getTime(),
@@ -1122,7 +1174,7 @@ export async function mintDelegatedLearningSession({
         userAgent: verifiedProof.userAgent || userAgent,
         ipAddress: verifiedProof.ipAddress || clientIp,
         deviceLimit: Number(profileRow.device_limit || 2),
-        enforce: profileRow.enforce_trusted_devices !== false,
+        enforce: !isAdminSession && profileRow.enforce_trusted_devices !== false,
         correlationId: corr,
         metadata: {
           profileId: String(profileRow.profile_id),
@@ -1134,6 +1186,9 @@ export async function mintDelegatedLearningSession({
     }
   }
 
+  const effectiveScopes = isAdminSession
+    ? [...new Set([...normalizedScopes, ...ALLOWED_DELEGATED_SCOPES])]
+    : normalizedScopes;
   const parsedTtl = Number.parseInt(String(ttlSeconds ?? MAX_TTL_SECONDS), 10);
   const effectiveTtl = Number.isFinite(parsedTtl)
     ? Math.max(MIN_TTL_SECONDS, Math.min(MAX_TTL_SECONDS, parsedTtl))
@@ -1143,6 +1198,11 @@ export async function mintDelegatedLearningSession({
   const jti = crypto.randomUUID();
   const sessionToken = `dls_${crypto.randomBytes(32).toString("base64url")}`;
   const nonce = crypto.randomBytes(24).toString("base64url");
+  const sessionMetadata = {
+    ...(metadata && typeof metadata === "object" ? metadata : {}),
+    ...(isAdminSession ? { isAdminSession: true } : {}),
+    ...(isS2SAdminDirect ? { isS2SAdminSession: true } : {}),
+  };
 
   await db.query(
     `INSERT INTO delegated_learning_sessions (
@@ -1161,11 +1221,11 @@ export async function mintDelegatedLearningSession({
       profileRow.profile_id,
       trustedDeviceId,
       deviceBindingId,
-      normalizedScopes,
+      effectiveScopes,
       corr,
       issuedAt.toISOString(),
       expiresAt.toISOString(),
-      JSON.stringify(metadata && typeof metadata === "object" ? metadata : {}),
+      JSON.stringify(sessionMetadata),
     ],
   );
 
@@ -1176,7 +1236,8 @@ export async function mintDelegatedLearningSession({
     jti,
     nonce,
     audience: "csca-course:delegated-learning",
-    scopes: normalizedScopes,
+    scopes: effectiveScopes,
+    isAdmin: isAdminSession,
     courseId: String(profileRow.course_id),
     profileId: String(profileRow.profile_id),
     trustedDeviceId: trustedDeviceId != null ? String(trustedDeviceId) : null,
@@ -1259,7 +1320,10 @@ export async function verifyAndResolveDelegatedSession({
     );
   }
 
-  if (session.identity_status !== "active") {
+  const isS2SAdminSession = Boolean(
+    session.metadata?.isS2SAdminSession === true && isDelegatedAdminRole(session.user_role),
+  );
+  if (!isS2SAdminSession && session.identity_status !== "active") {
     throw new ExternalIntegrationError(403, "ENTITLEMENT_REVOKED", "Learner identity is inactive.");
   }
   if (session.is_locked === true) {
@@ -1283,16 +1347,18 @@ export async function verifyAndResolveDelegatedSession({
   }
 
   const profileRow = await resolveProfileAndCourse(db, session.video_course_profile_id);
-  try {
-    await assertLiveLearnerProfileAccess(db, { userId: session.user_id, profileRow });
-  } catch (err) {
-    await db.query(
-      `UPDATE delegated_learning_sessions
-       SET revoked_at = NOW(), revoked_reason = $2
-       WHERE id = $1 AND revoked_at IS NULL`,
-      [session.id, err.errorCode || "entitlement_lost"],
-    ).catch(() => {});
-    throw err;
+  if (!isDelegatedAdminRole(session.user_role)) {
+    try {
+      await assertLiveLearnerProfileAccess(db, { userId: session.user_id, profileRow });
+    } catch (err) {
+      await db.query(
+        `UPDATE delegated_learning_sessions
+         SET revoked_at = NOW(), revoked_reason = $2
+         WHERE id = $1 AND revoked_at IS NULL`,
+        [session.id, err.errorCode || "entitlement_lost"],
+      ).catch(() => {});
+      throw err;
+    }
   }
 
   await db.query(
@@ -1326,11 +1392,15 @@ export async function getDelegatedWorkspace({
     env,
   });
 
+  const isAdminSession = isDelegatedAdminRole(session.user_role);
   const rawUnits = await loadProfileUnitsWithProgress(db, {
     profileRow,
     userId: session.user_id,
   });
-  const units = applySequentialLocks(rawUnits, { isPublicPreviewAccess: false });
+  const units = applySequentialLocks(rawUnits, {
+    isPublicPreviewAccess: false,
+    bypassSequentialLock: isAdminSession,
+  });
 
   let targetUnit = null;
   if (unitId != null && String(unitId).trim() !== "") {
@@ -1356,7 +1426,7 @@ export async function getDelegatedWorkspace({
       });
     } else {
       activeUnit = await loadUnlockedUnitDetail(db, {
-        profileRow,
+        profileRow: isAdminSession ? { ...profileRow, allow_file_download: true } : profileRow,
         unitMeta: targetUnit,
         userId: session.user_id,
         isPublicPreviewAccess: false,
@@ -1420,10 +1490,11 @@ export async function getDelegatedWorkspace({
       canManageNotes: (session.scopes || []).includes("notes:rw"),
       canManageBookmarks: (session.scopes || []).includes("bookmarks:rw"),
       canManageQa: (session.scopes || []).includes("qa:rw"),
-      allowFileDownload: profileRow.allow_file_download === true,
+      allowFileDownload: isAdminSession || profileRow.allow_file_download === true,
       deviceLimit: Number(profileRow.device_limit || 2),
-      enforceTrustedDevices: profileRow.enforce_trusted_devices !== false,
+      enforceTrustedDevices: !isAdminSession && profileRow.enforce_trusted_devices !== false,
       isPublicPreviewAccess: false,
+      isAdmin: isAdminSession,
     },
   };
 }
@@ -1465,11 +1536,15 @@ export async function getDelegatedUnitDetail({
     env,
   });
 
+  const isAdminSession = isDelegatedAdminRole(session.user_role);
   const rawUnits = await loadProfileUnitsWithProgress(db, {
     profileRow,
     userId: session.user_id,
   });
-  const units = applySequentialLocks(rawUnits, { isPublicPreviewAccess: false });
+  const units = applySequentialLocks(rawUnits, {
+    isPublicPreviewAccess: false,
+    bypassSequentialLock: isAdminSession,
+  });
   const targetUnit = units.find((u) => String(u.id) === String(unitId).trim()) || null;
 
   if (!targetUnit) {
@@ -1494,7 +1569,7 @@ export async function getDelegatedUnitDetail({
   }
 
   return loadUnlockedUnitDetail(db, {
-    profileRow,
+    profileRow: isAdminSession ? { ...profileRow, allow_file_download: true } : profileRow,
     unitMeta: targetUnit,
     userId: session.user_id,
     isPublicPreviewAccess: false,
@@ -1684,14 +1759,17 @@ async function findPublishedVideoInUnit(db, { unitMeta, videoId }) {
   return legacyRes.rows[0] || null;
 }
 
-async function resolveTargetUnitAndVideo(db, { profileRow, userId, unitId = null, videoId }) {
+async function resolveTargetUnitAndVideo(
+  db,
+  { profileRow, userId, unitId = null, videoId, bypassSequentialLock = false },
+) {
   const parsedVideoId = parsePositiveId(videoId);
   if (!parsedVideoId) {
     throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "videoId must be a positive integer.");
   }
 
   const rawUnits = await loadProfileUnitsWithProgress(db, { profileRow, userId });
-  const units = applySequentialLocks(rawUnits);
+  const units = applySequentialLocks(rawUnits, { bypassSequentialLock });
 
   if (unitId != null && String(unitId).trim() !== "") {
     const parsedUnitId = parsePositiveId(unitId);
@@ -1917,6 +1995,9 @@ export async function emitNativeProgressOutboxEvents({
   const unitType = classSessionId ? "class_session" : "lesson";
   const targetUnitId = String(classSessionId || lessonId || "");
 
+  const userRoleRes = await db.query(`SELECT role FROM users WHERE id = $1 LIMIT 1`, [userId]).catch(() => ({ rows: [] }));
+  const bypassSequentialLock = isDelegatedAdminRole(userRoleRes.rows[0]?.role);
+
   for (const profileRow of profiles) {
     const accessOk = await hasEffectiveCourseEntitlement({
       db,
@@ -1925,7 +2006,7 @@ export async function emitNativeProgressOutboxEvents({
     }).catch(() => false);
     if (!accessOk) continue;
     const rawUnits = await loadProfileUnitsWithProgress(db, { profileRow, userId });
-    const unitsAfter = applySequentialLocks(rawUnits);
+    const unitsAfter = applySequentialLocks(rawUnits, { bypassSequentialLock });
     const targetUnitAfter = unitsAfter.find((u) => u.unitType === unitType && String(u.id) === targetUnitId);
     if (!targetUnitAfter) continue;
     const rows = await emitProgressOutboxEventsForProfile({
@@ -2045,11 +2126,13 @@ export async function mintDelegatedVideoPlaybackToken({
     }
   }
 
+  const isAdminSession = isDelegatedAdminRole(session.user_role);
   const { targetUnit, videoAsset } = await resolveTargetUnitAndVideo(db, {
     profileRow,
     userId: session.user_id,
     unitId,
     videoId,
+    bypassSequentialLock: isAdminSession,
   });
 
   if (String(videoAsset.playback_status || "") !== "ready") {
@@ -2164,11 +2247,13 @@ export async function recordDelegatedVideoProgress({
     env,
   });
 
+  const isAdminSession = isDelegatedAdminRole(session.user_role);
   const { targetUnit, videoAsset } = await resolveTargetUnitAndVideo(db, {
     profileRow,
     userId: session.user_id,
     unitId,
     videoId,
+    bypassSequentialLock: isAdminSession,
   });
 
   const parsedCurrentTime = Number(currentTimeSeconds);
@@ -2231,7 +2316,9 @@ export async function recordDelegatedVideoProgress({
 
     if (staleReason) {
       const [unitsCurrent, unitAggregate] = await Promise.all([
-        loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }).then(applySequentialLocks),
+        loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }).then((raw) =>
+          applySequentialLocks(raw, { bypassSequentialLock: isAdminSession }),
+        ),
         getUnitVideoProgressAggregate({ db: tx, userId: session.user_id, classSessionId, lessonId }),
       ]);
       const currentUnit = unitsCurrent.find((u) => String(u.id) === String(targetUnit.id)) || targetUnit;
@@ -2311,6 +2398,7 @@ export async function recordDelegatedVideoProgress({
 
     const unitsAfter = applySequentialLocks(
       await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
+      { bypassSequentialLock: isAdminSession },
     );
     const targetUnitAfter = unitsAfter.find((u) => String(u.id) === String(targetUnit.id)) || targetUnit;
     const occurredAt = effectiveClock().toISOString();

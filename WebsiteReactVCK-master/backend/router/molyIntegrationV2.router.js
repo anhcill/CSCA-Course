@@ -236,6 +236,8 @@ export const createMolyIntegrationV2Router = ({
           || null,
         clientIp: req.body?.clientIp || req.ip || null,
         userAgent: req.body?.userAgent || req.get?.("User-Agent") || "",
+        actorRole: req.body?.actorRole ?? req.body?.metadata?.actorRole ?? null,
+        actorEmail: req.body?.actorEmail ?? req.body?.metadata?.actorEmail ?? null,
         correlationId,
         metadata: req.body?.metadata || {},
         env,

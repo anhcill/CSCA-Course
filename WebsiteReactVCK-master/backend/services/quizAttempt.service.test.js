@@ -186,3 +186,34 @@ test("group-aware snapshots shuffle top-level items without splitting group ques
   assert.equal(snapshot[2].item_order, 2);
   assert.equal(snapshot[3].item_order, 3);
 });
+
+test("buildQuizResult includes linkedOptions and passage context for fill_blank_item groups", () => {
+  const pool = [
+    { key: "A", text: "Lời nói" },
+    { key: "C", text: "Bệnh tật" },
+  ];
+  const questions = [
+    {
+      id: 549,
+      quiz_id: 24,
+      group_id: 1,
+      group_type: "fill_blank_pool",
+      passage_text: "Nối bộ thủ ở Cột A với ý nghĩa ở Cột B",
+      linked_options: pool,
+      cloze_mode: "sentences",
+      question_type: "fill_blank_item",
+      question_text: "(1) Bộ 疒",
+      options_json: [],
+      correct_answer: "C",
+      explanation: "Biểu thị bệnh tật",
+      points: 1,
+      sort_order: 1,
+    },
+  ];
+  const result = buildQuizResult(questions, { 549: "C" });
+  assert.equal(result.score, 1);
+  assert.equal(result.review[0].groupId, 1);
+  assert.equal(result.review[0].passageText, "Nối bộ thủ ở Cột A với ý nghĩa ở Cột B");
+  assert.deepEqual(result.review[0].linkedOptions, pool);
+  assert.deepEqual(result.review[0].options, pool);
+});

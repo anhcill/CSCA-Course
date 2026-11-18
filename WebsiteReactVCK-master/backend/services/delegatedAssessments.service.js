@@ -13,6 +13,7 @@ import {
   applySequentialLocks,
   assertUnitNotCrossProfile,
   emitProgressOutboxEventsForProfile,
+  isDelegatedAdminRole,
   loadProfileUnitsWithProgress,
   parsePositiveId,
   resolveProfileAndCourse,
@@ -207,7 +208,26 @@ function computeQuizCanViewSolution(quiz, attempts = [], currentNow = new Date()
 
 function attemptEffectiveQuestions(attempt, fallbackQuestions) {
   const snapshot = parseJsonArray(attempt?.question_snapshot);
-  return snapshot.length > 0 ? snapshot : fallbackQuestions;
+  if (snapshot.length === 0) return fallbackQuestions;
+  const fallbackById = new Map((fallbackQuestions || []).map((q) => [String(q.id), q]));
+  return snapshot.map((q) => {
+    const fb = fallbackById.get(String(q.id));
+    if (!fb) return q;
+    const snapOpts = parseJsonArray(q.options_json);
+    const snapLinked = parseJsonArray(q.linked_options);
+    return {
+      ...fb,
+      ...q,
+      options_json: snapOpts.length > 0 ? snapOpts : fb.options_json,
+      linked_options: snapLinked.length > 0 ? snapLinked : fb.linked_options,
+      passage_text: q.passage_text ?? fb.passage_text ?? null,
+      passage_text_cn: q.passage_text_cn ?? fb.passage_text_cn ?? null,
+      passage_text_en: q.passage_text_en ?? fb.passage_text_en ?? null,
+      passage_image_url: q.passage_image_url ?? fb.passage_image_url ?? null,
+      group_type: q.group_type ?? fb.group_type ?? null,
+      cloze_mode: q.cloze_mode ?? fb.cloze_mode ?? null,
+    };
+  });
 }
 
 function serializeDelegatedAttempt(attempt) {
@@ -401,7 +421,7 @@ async function finalizeQuizAttemptInTx(tx, {
     [computed.score, computed.maxScore, occurredAt, Boolean(autoSubmitted), rev, attempt.id],
   )).rows[0];
 
-  const canViewSolution = computeQuizCanViewSolution(quiz, [updated], currentNow);
+  const canViewSolution = isDelegatedAdminRole(quiz._viewerRole) || computeQuizCanViewSolution(quiz, [updated], currentNow);
   const passed = computed.percentage >= Number(quiz.passing_score || 60);
 
   await emitAttemptUpdatedOutbox(tx, {
@@ -429,6 +449,7 @@ async function finalizeQuizAttemptInTx(tx, {
 
   const unitsAfter = applySequentialLocks(
     await loadProfileUnitsWithProgress(tx, { profileRow, userId }),
+    { bypassSequentialLock: isDelegatedAdminRole(quiz._viewerRole) },
   );
   const targetUnitAfter = unitsAfter.find((u) => String(u.id) === String(targetUnit.id)) || targetUnit;
   await emitProgressOutboxEventsForProfile({
@@ -483,8 +504,10 @@ export async function getDelegatedQuizDetail({
     env,
   });
 
+  const isAdminSession = isDelegatedAdminRole(session.user_role);
   const units = applySequentialLocks(
     await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id }),
+    { bypassSequentialLock: isAdminSession },
   );
   const targetUnit = units.find((u) => String(u.id) === String(unitId).trim()) || null;
   if (!targetUnit) {
@@ -516,10 +539,17 @@ export async function getDelegatedQuizDetail({
   const attempts = attemptsRes.rows;
   const activeAttempt = attempts.find((a) => a.status === "in_progress") || null;
   const submittedAttempts = attempts.filter((a) => a.status !== "in_progress");
-  const canViewSolution = computeQuizCanViewSolution(quiz, submittedAttempts, currentNow);
+  const canViewSolution = isAdminSession || computeQuizCanViewSolution(quiz, submittedAttempts, currentNow);
   const latestSubmitted = submittedAttempts[0] || null;
   const effectiveQuestions = attemptEffectiveQuestions(activeAttempt || latestSubmitted, questions);
   const parsedMeta = parseQuizDescriptionMetadata(quiz.description);
+  const effectiveAttemptLimit = isAdminSession ? null : quiz.attempt_limit;
+  const attemptsRemaining = effectiveAttemptLimit != null
+    ? Math.max(0, Number(effectiveAttemptLimit) - submittedAttempts.length)
+    : null;
+  const canStartAttempt = Boolean(
+    activeAttempt || isAdminSession || attemptsRemaining === null || attemptsRemaining > 0,
+  );
 
   let latestResult = null;
   if (latestSubmitted) {
@@ -528,7 +558,7 @@ export async function getDelegatedQuizDetail({
       latestSubmitted.answers_json || {},
     );
     latestResult = buildSanitizedQuizResult({
-      quiz,
+      quiz: { ...quiz, attempt_limit: effectiveAttemptLimit },
       attempt: latestSubmitted,
       computed,
       canViewSolution,
@@ -544,6 +574,12 @@ export async function getDelegatedQuizDetail({
     courseId: String(profileRow.course_id),
     unitId: String(targetUnit.id),
     unitType: targetUnit.unitType,
+    attemptsCount: submittedAttempts.length,
+    maxAttempts: effectiveAttemptLimit,
+    attemptsRemaining,
+    canStartAttempt,
+    canViewSolution,
+    isAdminBypass: isAdminSession,
     quiz: {
       id: String(quiz.id),
       title: quiz.title,
@@ -552,7 +588,7 @@ export async function getDelegatedQuizDetail({
       activityScope: quiz.activity_scope || "session",
       durationMinutes: Number(quiz.duration_minutes || 0),
       passingScore: Number(quiz.passing_score || 60),
-      attemptLimit: quiz.attempt_limit,
+      attemptLimit: effectiveAttemptLimit,
       attemptsUsed: submittedAttempts.length,
       reviewPolicy: quiz.review_policy || "after_submit",
       availableFrom: toIso(quiz.available_from),
@@ -618,6 +654,7 @@ export async function startDelegatedQuizAttempt({
     : null;
   const currentNow = typeof now === "function" ? now() : new Date();
 
+  const isAdminSession = isDelegatedAdminRole(session.user_role);
   const outcome = await runDelegatedTx(db, async (tx) => {
     await tx.query(`SELECT id FROM quizzes WHERE id = $1 FOR UPDATE`, [parsedQuizId]);
     const rawQuiz = await loadQuizRow(tx, parsedQuizId);
@@ -627,10 +664,14 @@ export async function startDelegatedQuizAttempt({
 
     const units = applySequentialLocks(
       await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
+      { bypassSequentialLock: isAdminSession },
     );
     const targetUnit = resolveQuizUnitMatch(units, rawQuiz, unitId);
     const accommodation = await loadQuizAccommodation(tx, parsedQuizId, session.user_id);
-    const quiz = buildEffectiveDelegatedQuiz(rawQuiz, accommodation);
+    const quiz = {
+      ...buildEffectiveDelegatedQuiz(rawQuiz, accommodation),
+      _viewerRole: session.user_role,
+    };
     const questions = await loadQuizQuestions(tx, parsedQuizId);
     if (questions.length === 0) {
       throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "Quiz has no questions.");
@@ -756,9 +797,9 @@ export async function startDelegatedQuizAttempt({
       };
     }
 
-    // 3. Enforce attempt limit
+    // 3. Enforce attempt limit (admins bypass limits for QA & content review)
     const submittedAttempts = existingAttempts.filter((a) => a.status !== "in_progress");
-    if (quiz.attempt_limit !== null && submittedAttempts.length >= Number(quiz.attempt_limit)) {
+    if (!isAdminSession && quiz.attempt_limit !== null && submittedAttempts.length >= Number(quiz.attempt_limit)) {
       throw new ExternalIntegrationError(
         409,
         "ATTEMPT_LIMIT_REACHED",
@@ -770,7 +811,7 @@ export async function startDelegatedQuizAttempt({
       );
     }
 
-    if (accommodation?.due_at && new Date(accommodation.due_at).getTime() <= currentNow.getTime()) {
+    if (!isAdminSession && accommodation?.due_at && new Date(accommodation.due_at).getTime() <= currentNow.getTime()) {
       throw new ExternalIntegrationError(409, "QUIZ_CLOSED", "Quiz deadline has passed.");
     }
 
@@ -897,7 +938,10 @@ export async function saveDelegatedQuizAnswers({
       throw new ExternalIntegrationError(404, "QUIZ_NOT_FOUND", "Quiz not found.");
     }
     const accommodation = await loadQuizAccommodation(tx, attempt.quiz_id, session.user_id);
-    const quiz = buildEffectiveDelegatedQuiz(rawQuiz, accommodation);
+    const quiz = {
+      ...buildEffectiveDelegatedQuiz(rawQuiz, accommodation),
+      _viewerRole: session.user_role,
+    };
     const questions = attemptEffectiveQuestions(attempt, await loadQuizQuestions(tx, attempt.quiz_id));
 
     const configuredExpiry = getAttemptExpiry({
@@ -910,6 +954,7 @@ export async function saveDelegatedQuizAnswers({
     if (expiresAt && expiresAt.getTime() <= currentNow.getTime()) {
       const units = applySequentialLocks(
         await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
+        { bypassSequentialLock: isDelegatedAdminRole(session.user_role) },
       );
       const targetUnit = resolveQuizUnitMatch(units, rawQuiz);
       const externalUserIds = await resolveMolyExternalUserIds(tx, session.user_id, session.external_user_id);
@@ -1064,7 +1109,11 @@ export async function submitDelegatedQuizAttempt({
       throw new ExternalIntegrationError(404, "QUIZ_NOT_FOUND", "Quiz not found.");
     }
     const accommodation = await loadQuizAccommodation(tx, attempt.quiz_id, session.user_id);
-    const quiz = buildEffectiveDelegatedQuiz(rawQuiz, accommodation);
+    const quiz = {
+      ...buildEffectiveDelegatedQuiz(rawQuiz, accommodation),
+      _viewerRole: session.user_role,
+    };
+    const isAdminSession = isDelegatedAdminRole(session.user_role);
     const questions = attemptEffectiveQuestions(attempt, await loadQuizQuestions(tx, attempt.quiz_id));
 
     if (attempt.status !== "in_progress") {
@@ -1093,9 +1142,10 @@ export async function submitDelegatedQuizAttempt({
       }
 
       const computed = buildQuizResult(questions, attempt.answers_json || {});
-      const canView = computeQuizCanViewSolution(quiz, [attempt], currentNow);
+      const canView = isAdminSession || computeQuizCanViewSolution(quiz, [attempt], currentNow);
       const replayUnits = applySequentialLocks(
         await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
+        { bypassSequentialLock: isAdminSession },
       );
       const replayUnit = resolveQuizUnitMatch(replayUnits, rawQuiz);
       return buildSanitizedQuizResult({
@@ -1143,6 +1193,7 @@ export async function submitDelegatedQuizAttempt({
 
     const units = applySequentialLocks(
       await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
+      { bypassSequentialLock: isAdminSession },
     );
     const targetUnit = resolveQuizUnitMatch(units, rawQuiz);
     const externalUserIds = await resolveMolyExternalUserIds(tx, session.user_id, session.external_user_id);
@@ -1282,6 +1333,7 @@ export async function getDelegatedAssignmentDetail({
 
   const units = applySequentialLocks(
     await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id }),
+    { bypassSequentialLock: isDelegatedAdminRole(session.user_role) },
   );
   const targetUnit = units.find((u) => String(u.id) === String(unitId).trim()) || null;
   if (!targetUnit) {
@@ -1449,6 +1501,7 @@ export async function uploadDelegatedSubmissionAsset({
   }
   const units = applySequentialLocks(
     await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id }),
+    { bypassSequentialLock: isDelegatedAdminRole(session.user_role) },
   );
   resolveAssignmentUnitMatch(units, assignment, profileRow, unitId);
 
@@ -1595,6 +1648,7 @@ export async function submitDelegatedAssignment({
     }
     const units = applySequentialLocks(
       await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
+      { bypassSequentialLock: isDelegatedAdminRole(session.user_role) },
     );
     const targetUnit = resolveAssignmentUnitMatch(units, assignment, profileRow, unitId);
 

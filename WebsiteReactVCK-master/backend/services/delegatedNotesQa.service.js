@@ -7,6 +7,7 @@ import {
 import {
   applySequentialLocks,
   assertUnitNotCrossProfile,
+  isDelegatedAdminRole,
   loadProfileUnitsWithProgress,
   parsePositiveId,
   resolveProfileAndCourse,
@@ -269,7 +270,10 @@ async function resolveDelegatedUnitContext({
     profileRow,
     userId: session.user_id,
   });
-  const units = applySequentialLocks(rawUnits, { isPublicPreviewAccess: false });
+  const units = applySequentialLocks(rawUnits, {
+    isPublicPreviewAccess: false,
+    bypassSequentialLock: isDelegatedAdminRole(session.user_role),
+  });
   const targetUnit = units.find((u) => String(u.id) === String(parsedUnitId)) || null;
   if (!targetUnit) {
     await assertUnitNotCrossProfile(db, { profileRow, unitId: parsedUnitId });
@@ -1342,7 +1346,10 @@ async function resolveDelegatedThreadAccess({
 
   const unitId = threadRow.class_session_id || threadRow.lesson_id;
   const rawUnits = await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id });
-  const units = applySequentialLocks(rawUnits, { isPublicPreviewAccess: false });
+  const units = applySequentialLocks(rawUnits, {
+    isPublicPreviewAccess: false,
+    bypassSequentialLock: isDelegatedAdminRole(session.user_role),
+  });
   const targetUnit = units.find((u) => String(u.id) === String(unitId)) || null;
   if (!targetUnit) {
     throw new ExternalIntegrationError(409, "PROFILE_SCOPE_MISMATCH", "Thread unit does not belong to delegated session profile.");

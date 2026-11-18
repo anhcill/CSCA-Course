@@ -9,6 +9,7 @@ import {
   applySequentialLocks,
   assertUnitNotCrossProfile,
   inferFileKind,
+  isDelegatedAdminRole,
   loadProfileUnitsWithProgress,
   parsePositiveId,
   resolveProfileAndCourse,
@@ -509,11 +510,15 @@ export async function streamDelegatedLearningFile({
     throw new ExternalIntegrationError(403, "FILE_ACCESS_FORBIDDEN", "Private files cannot be accessed by learners.");
   }
 
+  const isAdminSession = Boolean(session && isDelegatedAdminRole(session.user_role));
   const rawUnits = await loadProfileUnitsWithProgress(db, {
     profileRow,
     userId: session ? session.user_id : null,
   });
-  const units = applySequentialLocks(rawUnits, { isPublicPreviewAccess: !session });
+  const units = applySequentialLocks(rawUnits, {
+    isPublicPreviewAccess: !session,
+    bypassSequentialLock: isAdminSession,
+  });
 
   const membership = await resolveFileMembershipInProfile(db, { file, profileRow, units });
 
@@ -572,17 +577,23 @@ export async function streamDelegatedLearningFile({
     }
   }
 
-  await assertQuizSolutionNotEmbargoed(db, {
-    fileId: parsedFileId,
-    userId: session ? session.user_id : null,
-    currentNow,
-  });
+  if (!isAdminSession) {
+    await assertQuizSolutionNotEmbargoed(db, {
+      fileId: parsedFileId,
+      userId: session ? session.user_id : null,
+      currentNow,
+    });
+  }
 
   const allowDownload = Boolean(
-    session
-    && profileRow.allow_file_download === true
-    && file.class_allow_file_download !== false
-    && membership.matchedClassAllowDownload !== false,
+    session && (
+      isAdminSession
+      || (
+        profileRow.allow_file_download === true
+        && file.class_allow_file_download !== false
+        && membership.matchedClassAllowDownload !== false
+      )
+    ),
   );
   if (normalizedDisposition === "attachment" && !allowDownload) {
     throw new ExternalIntegrationError(
