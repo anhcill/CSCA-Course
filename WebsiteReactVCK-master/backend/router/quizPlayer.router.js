@@ -16,7 +16,7 @@ import {
   parseQuizDescriptionMetadata,
   publicQuizItems,
 } from "../services/quizAttempt.service.js";
-import { getVideoCourseUnitAccessContext } from "../services/videoCourseUnitAccess.service.js";
+import { getVideoCourseUnitAccessContext, hasLiveReviewMembership } from "../services/videoCourseUnitAccess.service.js";
 import { resolveEffectiveStudentLmsAccess } from "../services/externalEntitlementAccess.service.js";
 
 const router = express.Router();
@@ -298,18 +298,21 @@ const getAccommodation = async (db, quizId, userId) => (await db.query(
   [quizId, userId],
 )).rows[0] || null;
 
-const effectiveQuizForStudent = (quiz, accommodation, { recordScopeId = null } = {}) => {
+const effectiveQuizForStudent = (quiz, accommodation, { recordScopeId = null, freeLiveReview = false } = {}) => {
   const isRecordScope = Boolean(recordScopeId);
   return {
     ...quiz,
-    available_from: isRecordScope ? null : quiz.available_from,
-    due_date: accommodation?.due_at || (isRecordScope ? null : quiz.due_date),
-    available_until: accommodation?.due_at || (isRecordScope ? null : quiz.available_until),
+    available_from: (isRecordScope || freeLiveReview) ? null : quiz.available_from,
+    due_date: accommodation?.due_at || ((isRecordScope || freeLiveReview) ? null : quiz.due_date),
+    available_until: accommodation?.due_at || ((isRecordScope || freeLiveReview) ? null : quiz.available_until),
     duration_minutes: Number(quiz.duration_minutes || 0) + Number(accommodation?.extra_time_minutes || 0),
-    attempt_limit: isRecordScope ? null : (accommodation?.attempt_limit_override || quiz.attempt_limit),
-    review_policy: isRecordScope && quiz.review_policy === "after_close" ? "after_submit" : quiz.review_policy,
+    attempt_limit: (isRecordScope || freeLiveReview) ? null : (accommodation?.attempt_limit_override || quiz.attempt_limit),
+    review_policy: freeLiveReview
+      ? "after_submit"
+      : (isRecordScope && quiz.review_policy === "after_close" ? "after_submit" : quiz.review_policy),
     video_course_profile_id: recordScopeId,
     is_record_course_access: isRecordScope,
+    can_review_freely: Boolean(freeLiveReview),
     accommodation: accommodation || null,
   };
 };
@@ -527,6 +530,14 @@ const lockStudentAttempt = async (client, attemptId, userId) => {
     attempt.due_date = null;
     attempt.is_record_course_access = true;
     if (attempt.review_policy === "after_close") attempt.review_policy = "after_submit";
+    const profileRow = (await client.query(
+      "SELECT id, mode, source_live_class_id FROM video_course_profiles WHERE id = $1 LIMIT 1",
+      [attempt.video_course_profile_id],
+    )).rows[0] || null;
+    if (profileRow && await hasLiveReviewMembership(client, profileRow, userId)) {
+      attempt.can_review_freely = true;
+      attempt.review_policy = "after_submit";
+    }
   }
   return attempt;
 };
@@ -566,7 +577,7 @@ const serializeAttempt = (attempt) => attempt ? {
 
 const serializeQuiz = (quiz, questions, attempt, isOverdueUnsubmitted = false) => {
   const description = parseQuizDescriptionMetadata(quiz.description);
-  const reviewAvailable = isOverdueUnsubmitted || (attempt?.status === "submitted" && reviewIsAvailable(quiz));
+  const reviewAvailable = isOverdueUnsubmitted || Boolean(quiz.can_review_freely) || (attempt?.status === "submitted" && reviewIsAvailable(quiz));
   return {
     id: String(quiz.id),
     quizId: String(quiz.id),
@@ -583,8 +594,9 @@ const serializeQuiz = (quiz, questions, attempt, isOverdueUnsubmitted = false) =
     availableUntil: quiz.available_until || null,
     durationMinutes: Number(quiz.duration_minutes || 0),
     passingScore: Number(quiz.passing_score || 0),
-    attemptLimit: Number(quiz.attempt_limit || 1),
+    attemptLimit: (quiz.is_record_course_access || quiz.can_review_freely) ? null : Number(quiz.attempt_limit || 1),
     reviewPolicy: quiz.review_policy || "after_submit",
+    canReviewFreely: Boolean(quiz.can_review_freely),
     items: publicQuizItems(questions),
     paperUrl: quiz.paper_file_id && quiz.paper_status === "ready" ? `/api/files/${quiz.paper_file_id}/download` : null,
     solutionUrl: reviewAvailable && quiz.solution_file_id && quiz.solution_status === "ready"
@@ -597,7 +609,7 @@ const serializeQuiz = (quiz, questions, attempt, isOverdueUnsubmitted = false) =
 };
 
 const resultPayload = ({ quiz, attempt, computed, alreadySubmitted = false, gamification = null, isOverdueUnsubmitted = false }) => {
-  const reviewAvailable = isOverdueUnsubmitted || reviewIsAvailable(quiz);
+  const reviewAvailable = isOverdueUnsubmitted || Boolean(quiz.can_review_freely) || reviewIsAvailable(quiz);
   const passed = isOverdueUnsubmitted ? false : computed.percentage >= Number(quiz.passing_score);
   return {
     attemptId: String(attempt.id),
@@ -710,7 +722,11 @@ router.get("/quizzes/:quizId/start", protectRoute, requireQuizPlayerAccess, asyn
     const questions = await getQuizQuestions(client, quizId);
     if (questions.length === 0) throw Object.assign(new Error("Đề thi chưa có câu hỏi"), { status: 404 });
     const accommodation = await getAccommodation(client, quizId, req.user.id);
-    const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation, { recordScopeId });
+    const isLiveReviewMember = Boolean(resolvedProfile && await hasLiveReviewMembership(client, resolvedProfile, req.user.id));
+    const effectiveQuiz = effectiveQuizForStudent(quiz, accommodation, {
+      recordScopeId,
+      freeLiveReview: isLiveReviewMember,
+    });
     const state = await getStudentAttempt({
       client,
       quiz: effectiveQuiz,
@@ -732,6 +748,7 @@ router.get("/quizzes/:quizId/start", protectRoute, requireQuizPlayerAccess, asyn
           isOverdueUnsubmitted,
         })
       : null;
+    const canViewPreviewReview = isPrivileged || isLiveReviewMember;
     return res.json({
       success: true,
       data: {
@@ -739,7 +756,9 @@ router.get("/quizzes/:quizId/start", protectRoute, requireQuizPlayerAccess, asyn
         attempt: serializeAttempt(state.attempt),
         result,
         isOverdueUnsubmitted,
-        canStartNewAttempt: Boolean(state.canStartNewAttempt),
+        canStartNewAttempt: Boolean(state.canStartNewAttempt || isLiveReviewMember),
+        canReviewFreely: isLiveReviewMember,
+        ...(canViewPreviewReview ? { previewReview: buildQuizResult(effectiveQuestions, {}).review } : {}),
       },
     });
   } catch (error) {

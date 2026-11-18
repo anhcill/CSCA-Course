@@ -1514,3 +1514,227 @@ test("Day 6+ admin role bypasses sequential lock & attempt limits while fill_bla
     assert.equal(subData.review[0].options[1].text, "Bệnh tật");
   }
 });
+
+test("Day 10 Live vs Record flow separation: live MIRROR learner bypasses locks, previews answers, and retries past attempt_limit while recording stays gated", async (t) => {
+  await withTempR2Env(t);
+  const pg = new PGlite();
+  t.after(() => pg.close());
+  await loadFullCourseSchema(pg);
+  bindPoolToDb(pool, pg);
+  const db = makeDbAdapter(pg);
+
+  const teacher = (await pg.query(
+    `INSERT INTO users(username,email,role) VALUES ('sep-teacher','sep-teacher@example.test','creator') RETURNING id`,
+  )).rows[0];
+  const liveLearner = (await pg.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('sep-live','sep-live@example.test','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
+  const recLearner = (await pg.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('sep-rec','sep-rec@example.test','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
+
+  await pg.query(
+    `INSERT INTO external_identities(user_id,source_system,external_user_id,status,source_updated_at)
+     VALUES ($1,'moly','moly-sep-live','active',NOW()), ($2,'moly','moly-sep-rec','active',NOW())`,
+    [liveLearner.id, recLearner.id],
+  );
+
+  const course = (await pg.query(
+    `INSERT INTO courses(name,title,slug,author_id,is_published,is_management_managed)
+     VALUES ('Course Sep','Course Sep','course-sep',$1,TRUE,TRUE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await pg.query(
+    `INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('Sep Live Class',$1,$2,'active') RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+  const sess1 = (await pg.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status,is_public_preview)
+     VALUES ($1,'Buoi 1',NOW() - INTERVAL '3 days',NOW() - INTERVAL '3 days' + INTERVAL '1 hour','scheduled',FALSE) RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+  const sess2 = (await pg.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status,is_public_preview)
+     VALUES ($1,'Buoi 2',NOW() - INTERVAL '1 day',NOW() - INTERVAL '1 day' + INTERVAL '1 hour','scheduled',FALSE) RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+
+  const v1 = (await pg.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds)
+     VALUES ('Sep V1','bunny_stream','111','sep-v1','ready',120) RETURNING id`,
+  )).rows[0];
+  const v2 = (await pg.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds)
+     VALUES ('Sep V2','bunny_stream','111','sep-v2','ready',120) RETURNING id`,
+  )).rows[0];
+  await pg.query(
+    `INSERT INTO class_session_videos(class_session_id,video_asset_id,video_type,is_published)
+     VALUES ($1,$2,'primary',TRUE), ($3,$4,'primary',TRUE)`,
+    [sess1.id, v1.id, sess2.id, v2.id],
+  );
+
+  const profileMirror = (await pg.query(
+    `INSERT INTO video_course_profiles(course_id,management_class_id,mode,source_live_class_id,enforce_trusted_devices,allow_file_download,status)
+     VALUES ($1,'sep-alias-1','MIRROR',$2,FALSE,FALSE,'active') RETURNING id`,
+    [course.id, liveClass.id],
+  )).rows[0];
+
+  await pg.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$3,'active',NOW() - INTERVAL '1 hour',NOW()), ($2,$3,'active',NOW() - INTERVAL '1 hour',NOW())`,
+    [liveLearner.id, recLearner.id, course.id],
+  );
+  await pg.query(
+    `INSERT INTO class_enrollments(user_id,live_class_id,course_id,learning_mode,status)
+     VALUES ($1,$3,$4,'live','active'), ($2,$3,$4,'recording','active')`,
+    [liveLearner.id, recLearner.id, liveClass.id, course.id],
+  );
+
+  const solBytes = Buffer.from("%PDF-1.4\nLIVE-SOLUTION\n");
+  const solFile = (await pg.query(
+    `INSERT INTO lms_learning_files(course_id,uploaded_by,original_name,storage_key,mime_type,size_bytes,visibility,status)
+     VALUES ($1,$2,'SepSolution.pdf','learning-files/sep-sol.pdf','application/pdf',$3,'COURSE','ready') RETURNING id`,
+    [course.id, teacher.id, solBytes.length],
+  )).rows[0];
+  await pg.query(
+    `INSERT INTO lms_learning_file_placements(file_id,live_class_id,class_session_id,attached_by,visibility)
+     VALUES ($1,$2,$3,$4,'COURSE')`,
+    [solFile.id, liveClass.id, sess2.id, teacher.id],
+  );
+
+  const quiz2 = (await pg.query(
+    `INSERT INTO quizzes(title,course_id,live_class_id,class_session_id,instructor_id,status,duration_minutes,passing_score,attempt_limit,review_policy,available_until,solution_file_id)
+     VALUES ('Quiz Buoi 2',$1,$2,$3,$4,'PUBLISHED',30,60,1,'never',NOW() + INTERVAL '2 days',$5) RETURNING id`,
+    [course.id, liveClass.id, sess2.id, teacher.id, solFile.id],
+  )).rows[0];
+  const q1 = (await pg.query(
+    `INSERT INTO quiz_questions(quiz_id,question_text,question_type,options_json,correct_answer,explanation,points,sort_order)
+     VALUES ($1,'Chon nghia dung','single_choice',$2::jsonb,'A','Giai thich A',10,1) RETURNING id`,
+    [quiz2.id, JSON.stringify([{ key: "A", text: "Chuan" }, { key: "B", text: "Sai" }])],
+  )).rows[0];
+
+  const liveSession = await mintDelegatedLearningSession({
+    db,
+    externalUserId: "moly-sep-live",
+    profileId: profileMirror.id,
+    scopes: ["workspace:read", "video:play", "progress:write", "file:view", "quiz:attempt", "assignment:submit"],
+    ttlSeconds: 300,
+    correlationId: "corr-sep-live",
+  });
+  const recSession = await mintDelegatedLearningSession({
+    db,
+    externalUserId: "moly-sep-rec",
+    profileId: profileMirror.id,
+    scopes: ["workspace:read", "video:play", "progress:write", "file:view", "quiz:attempt", "assignment:submit"],
+    ttlSeconds: 300,
+    correlationId: "corr-sep-rec",
+  });
+
+  const app = express();
+  app.use(express.json({ limit: "2mb", verify: (req, res, buf) => { req.rawBody = Buffer.from(buf); } }));
+  const verifyRead = createRequireMolyIntegration({ requireIdempotencyKey: false, allowBodylessGet: true, configOverrides: TEST_MOLY_CFG });
+  const verifyWrite = createRequireMolyIntegration({ requireIdempotencyKey: true, allowBodylessDelete: true, configOverrides: TEST_MOLY_CFG });
+  app.use("/api/integrations/v2", createMolyIntegrationV2Router({
+    db,
+    verifyRead,
+    verifyWrite,
+    fileStreamFetchImpl: async () => new Response(solBytes, {
+      status: 200,
+      headers: { "content-type": "application/pdf", "content-length": String(solBytes.length), "accept-ranges": "bytes" },
+    }),
+  }));
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => stopServer(server));
+
+  // Record learner stays sequentially gated (Buoi 2 locked until Buoi 1 video >= 50% + quiz completed)
+  const recWs = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/offerings/${profileMirror.id}/workspace`,
+    sessionToken: recSession.sessionToken,
+  });
+  assert.equal(recWs.status, 200);
+  const recWsData = (await recWs.json()).data;
+  assert.equal(recWsData.capabilities.canReviewFreely, false);
+  assert.equal(recWsData.units[1].isLocked, true);
+
+  const recUnit2 = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/offerings/${profileMirror.id}/units/${sess2.id}`,
+    sessionToken: recSession.sessionToken,
+  });
+  assert.equal(recUnit2.status, 403);
+  assert.equal((await recUnit2.json()).errorCode, "UNIT_LOCKED");
+
+  // Live learner opens workspace & Buoi 2 directly with zero prior video/BTVN progress
+  const liveWs = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/offerings/${profileMirror.id}/workspace?unitId=${sess2.id}`,
+    sessionToken: liveSession.sessionToken,
+  });
+  assert.equal(liveWs.status, 200);
+  const liveWsData = (await liveWs.json()).data;
+  assert.equal(liveWsData.capabilities.canReviewFreely, true);
+  assert.equal(liveWsData.units[0].isLocked, false);
+  assert.equal(liveWsData.units[1].isLocked, false);
+
+  const liveUnit2 = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/offerings/${profileMirror.id}/units/${sess2.id}`,
+    sessionToken: liveSession.sessionToken,
+  });
+  assert.equal(liveUnit2.status, 200);
+  const liveUnit2Data = (await liveUnit2.json()).data;
+  assert.equal(liveUnit2Data.quizzes[0].attemptLimit, null);
+  assert.equal(liveUnit2Data.quizzes[0].canViewSolution, true);
+  assert.equal(liveUnit2Data.quizzes[0].canStartAttempt, true);
+
+  // Live quiz detail exposes instant reviewItems even with 0 attempts and review_policy='never'
+  const liveQuizDetailRes = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/offerings/${profileMirror.id}/units/${sess2.id}/quizzes/${quiz2.id}`,
+    sessionToken: liveSession.sessionToken,
+  });
+  assert.equal(liveQuizDetailRes.status, 200);
+  const liveQuizDetail = (await liveQuizDetailRes.json()).data;
+  assert.equal(liveQuizDetail.canReviewFreely, true);
+  assert.equal(liveQuizDetail.quiz.attemptLimit, null);
+  assert.equal(liveQuizDetail.quiz.canViewSolution, true);
+  assert.equal(String(liveQuizDetail.quiz.solutionFileId), String(solFile.id));
+  assert.ok(Array.isArray(liveQuizDetail.reviewItems) && liveQuizDetail.reviewItems.length === 1);
+  assert.equal(liveQuizDetail.reviewItems[0].correct_answer ?? liveQuizDetail.reviewItems[0].correctAnswer, "A");
+
+  // Live learner can complete 2+ attempts despite attempt_limit = 1
+  for (let attemptNo = 1; attemptNo <= 2; attemptNo += 1) {
+    const startRes = await callV2(baseUrl, {
+      method: "POST",
+      path: `/learning/quizzes/${quiz2.id}/attempts/start`,
+      body: { profileId: profileMirror.id, unitId: sess2.id },
+      sessionToken: liveSession.sessionToken,
+      idempotencyKey: `live-sep-start-${attemptNo}`,
+    });
+    assert.equal(startRes.status, 200);
+    const attemptId = (await startRes.json()).data.attempt.id;
+
+    const subRes = await callV2(baseUrl, {
+      method: "POST",
+      path: `/learning/quizzes/attempts/${attemptId}/submit`,
+      body: { answers: { [String(q1.id)]: "A" } },
+      sessionToken: liveSession.sessionToken,
+      idempotencyKey: `live-sep-sub-${attemptNo}`,
+    });
+    assert.equal(subRes.status, 200);
+    const subData = (await subRes.json()).data;
+    assert.equal(subData.score, 10);
+    assert.ok(Array.isArray(subData.review) && subData.review.length === 1);
+  }
+
+  // Live learner streams solution PDF immediately despite review_policy='never' & available_until in future
+  const liveSolRes = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/files/${solFile.id}/stream?profileId=${profileMirror.id}&unitId=${sess2.id}`,
+    sessionToken: liveSession.sessionToken,
+  });
+  assert.equal(liveSolRes.status, 200);
+});

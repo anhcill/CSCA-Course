@@ -716,4 +716,27 @@ test("MIRROR Record and active Live learners can start quizzes even when source 
     params: { quizId: quiz2.id },
   });
   assert.equal(liveStart.statusCode, 200, JSON.stringify(liveStart.body));
+
+  // MIRROR profile + Live enrollment unlocks Buoi 2 quiz freely (bypasses attempt_limit, embargo & Buoi 1 gate)
+  await db.query(
+    `UPDATE quizzes
+     SET attempt_limit = 1, review_policy = 'after_close', available_until = NOW() + interval '2 days'
+     WHERE id = $1`,
+    [quiz2.id],
+  );
+  await db.query(
+    `INSERT INTO quiz_attempts(quiz_id,user_id,video_course_profile_id,attempt_number,status,score,max_score,submitted_at)
+     VALUES ($1,$2,$3,1,'submitted',8,10,NOW())`,
+    [quiz2.id, liveStudent.id, recordProfile.id],
+  );
+  const liveMirrorStart = await invokeWithMiddleware("get", "/quizzes/:quizId/start", {
+    user: liveStudent,
+    params: { quizId: quiz2.id },
+    query: { videoCourseProfileId: "mirror-q-alias" },
+  });
+  assert.equal(liveMirrorStart.statusCode, 200, JSON.stringify(liveMirrorStart.body));
+  assert.equal(liveMirrorStart.body.data.quiz.attemptLimit, null);
+  assert.equal(liveMirrorStart.body.data.canReviewFreely, true);
+  assert.ok(Array.isArray(liveMirrorStart.body.data.previewReview) && liveMirrorStart.body.data.previewReview.length === 1);
+  assert.equal(liveMirrorStart.body.data.previewReview[0].correctAnswer, "A");
 });

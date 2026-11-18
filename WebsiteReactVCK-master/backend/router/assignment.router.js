@@ -42,7 +42,7 @@ import {
   publicQuizQuestion,
 } from "../services/quizAttempt.service.js";
 import { buildQuizReportSnapshot } from "../services/quizCloseReport.service.js";
-import { getVideoCourseUnitAccessContext } from "../services/videoCourseUnitAccess.service.js";
+import { getVideoCourseUnitAccessContext, hasLiveReviewMembership } from "../services/videoCourseUnitAccess.service.js";
 import { EFFECTIVE_COURSE_GRANT_EXISTS_SQL, resolveEffectiveStudentLmsAccess } from "../services/externalEntitlementAccess.service.js";
 import { isVideoCourseProfileAccessRevoked } from "../services/videoCourseAccessRevocation.service.js";
 import { applySequentialLocks, loadProfileUnitsWithProgress } from "../services/delegatedLearning.service.js";
@@ -314,7 +314,8 @@ const studentCanAccessAssignment = async (assignment, user, db = { query }, vide
   if (!externalProfile) return false;
   if (unitType && unitId) {
     const rawUnits = await loadProfileUnitsWithProgress(db, { profileRow: externalProfile, userId: user.id });
-    const units = applySequentialLocks(rawUnits, { isPublicPreviewAccess: false });
+    const canBypass = await hasLiveReviewMembership(db, externalProfile, user.id);
+    const units = applySequentialLocks(rawUnits, { isPublicPreviewAccess: false, bypassSequentialLock: canBypass });
     const targetUnit = units.find((unit) => String(unit.id) === String(unitId));
     return Boolean(targetUnit && !targetUnit.isLocked);
   }

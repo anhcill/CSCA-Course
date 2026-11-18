@@ -8,6 +8,7 @@ import {
 import {
   applySequentialLocks,
   assertUnitNotCrossProfile,
+  canBypassSequentialProgress,
   inferFileKind,
   isDelegatedAdminRole,
   loadProfileUnitsWithProgress,
@@ -510,14 +511,20 @@ export async function streamDelegatedLearningFile({
     throw new ExternalIntegrationError(403, "FILE_ACCESS_FORBIDDEN", "Private files cannot be accessed by learners.");
   }
 
-  const isAdminSession = Boolean(session && isDelegatedAdminRole(session.user_role));
+  const bypassFileLock = Boolean(
+    session && await canBypassSequentialProgress(db, {
+      profileRow,
+      userId: session.user_id,
+      userRole: session.user_role,
+    }),
+  );
   const rawUnits = await loadProfileUnitsWithProgress(db, {
     profileRow,
     userId: session ? session.user_id : null,
   });
   const units = applySequentialLocks(rawUnits, {
     isPublicPreviewAccess: !session,
-    bypassSequentialLock: isAdminSession,
+    bypassSequentialLock: bypassFileLock,
   });
 
   const membership = await resolveFileMembershipInProfile(db, { file, profileRow, units });
@@ -577,7 +584,7 @@ export async function streamDelegatedLearningFile({
     }
   }
 
-  if (!isAdminSession) {
+  if (!bypassFileLock) {
     await assertQuizSolutionNotEmbargoed(db, {
       fileId: parsedFileId,
       userId: session ? session.user_id : null,

@@ -12,6 +12,7 @@ import {
 import {
   applySequentialLocks,
   assertUnitNotCrossProfile,
+  canBypassSequentialProgress,
   emitProgressOutboxEventsForProfile,
   isDelegatedAdminRole,
   loadProfileUnitsWithProgress,
@@ -21,6 +22,7 @@ import {
   toIso,
   verifyAndResolveDelegatedSession,
 } from "./delegatedLearning.service.js";
+import { hasLiveReviewMembership } from "./videoCourseUnitAccess.service.js";
 import { ExternalIntegrationError } from "./externalCourseMapping.service.js";
 import {
   isDelegatedLearningKillSwitchActive,
@@ -425,7 +427,8 @@ async function finalizeQuizAttemptInTx(tx, {
     [computed.score, computed.maxScore, occurredAt, Boolean(autoSubmitted), rev, attempt.id],
   )).rows[0];
 
-  const canViewSolution = isDelegatedAdminRole(quiz._viewerRole) || computeQuizCanViewSolution(quiz, [updated], currentNow);
+  const hasFreeReview = isDelegatedAdminRole(quiz._viewerRole) || Boolean(quiz._freeReviewAccess);
+  const canViewSolution = hasFreeReview || computeQuizCanViewSolution(quiz, [updated], currentNow);
   const passed = computed.percentage >= Number(quiz.passing_score || 60);
 
   await emitAttemptUpdatedOutbox(tx, {
@@ -441,7 +444,7 @@ async function finalizeQuizAttemptInTx(tx, {
     maxScore: computed.maxScore,
     passed,
     attemptCount: Number(updated.attempt_number || 1),
-    maxAttempts: quiz.attempt_limit != null ? Number(quiz.attempt_limit) : null,
+    maxAttempts: hasFreeReview ? null : (quiz.attempt_limit != null ? Number(quiz.attempt_limit) : null),
     autoSubmitted: Boolean(updated.auto_submitted),
     canViewSolution,
     submittedAt: toIso(updated.submitted_at) || occurredAt,
@@ -453,7 +456,7 @@ async function finalizeQuizAttemptInTx(tx, {
 
   const unitsAfter = applySequentialLocks(
     await loadProfileUnitsWithProgress(tx, { profileRow, userId }),
-    { bypassSequentialLock: isDelegatedAdminRole(quiz._viewerRole) },
+    { bypassSequentialLock: hasFreeReview },
   );
   const targetUnitAfter = unitsAfter.find((u) => String(u.id) === String(targetUnit.id)) || targetUnit;
   await emitProgressOutboxEventsForProfile({
@@ -509,9 +512,11 @@ export async function getDelegatedQuizDetail({
   });
 
   const isAdminSession = isDelegatedAdminRole(session.user_role);
+  const canReviewFreely = !isAdminSession && await hasLiveReviewMembership(db, profileRow, session.user_id);
+  const hasFreeReview = isAdminSession || canReviewFreely;
   const units = applySequentialLocks(
     await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id }),
-    { bypassSequentialLock: isAdminSession },
+    { bypassSequentialLock: hasFreeReview },
   );
   const targetUnit = units.find((u) => String(u.id) === String(unitId).trim()) || null;
   if (!targetUnit) {
@@ -543,16 +548,16 @@ export async function getDelegatedQuizDetail({
   const attempts = attemptsRes.rows;
   const activeAttempt = attempts.find((a) => a.status === "in_progress") || null;
   const submittedAttempts = attempts.filter((a) => a.status !== "in_progress");
-  const canViewSolution = isAdminSession || computeQuizCanViewSolution(quiz, submittedAttempts, currentNow);
+  const canViewSolution = hasFreeReview || computeQuizCanViewSolution(quiz, submittedAttempts, currentNow);
   const latestSubmitted = submittedAttempts[0] || null;
   const effectiveQuestions = attemptEffectiveQuestions(activeAttempt || latestSubmitted, questions);
   const parsedMeta = parseQuizDescriptionMetadata(quiz.description);
-  const effectiveAttemptLimit = isAdminSession ? null : quiz.attempt_limit;
+  const effectiveAttemptLimit = hasFreeReview ? null : quiz.attempt_limit;
   const attemptsRemaining = effectiveAttemptLimit != null
     ? Math.max(0, Number(effectiveAttemptLimit) - submittedAttempts.length)
     : null;
   const canStartAttempt = Boolean(
-    activeAttempt || isAdminSession || attemptsRemaining === null || attemptsRemaining > 0,
+    activeAttempt || hasFreeReview || attemptsRemaining === null || attemptsRemaining > 0,
   );
 
   let latestResult = null;
@@ -569,6 +574,9 @@ export async function getDelegatedQuizDetail({
       alreadySubmitted: true,
     });
   }
+  const reviewItems = hasFreeReview
+    ? buildQuizResult(effectiveQuestions, {}).review
+    : undefined;
 
   recordIntegrationMetric("course.delegated_quiz_detail");
   observeIntegrationLatency("course.delegated_quiz_ms", Date.now() - startMs);
@@ -584,6 +592,8 @@ export async function getDelegatedQuizDetail({
     canStartAttempt,
     canViewSolution,
     isAdminBypass: isAdminSession,
+    canReviewFreely,
+    ...(reviewItems ? { reviewItems } : {}),
     quiz: {
       id: String(quiz.id),
       title: quiz.title,
@@ -659,6 +669,8 @@ export async function startDelegatedQuizAttempt({
   const currentNow = typeof now === "function" ? now() : new Date();
 
   const isAdminSession = isDelegatedAdminRole(session.user_role);
+  const canReviewFreely = !isAdminSession && await hasLiveReviewMembership(db, profileRow, session.user_id);
+  const hasFreeReview = isAdminSession || canReviewFreely;
   const outcome = await runDelegatedTx(db, async (tx) => {
     await tx.query(`SELECT id FROM quizzes WHERE id = $1 FOR UPDATE`, [parsedQuizId]);
     const rawQuiz = await loadQuizRow(tx, parsedQuizId);
@@ -668,13 +680,14 @@ export async function startDelegatedQuizAttempt({
 
     const units = applySequentialLocks(
       await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
-      { bypassSequentialLock: isAdminSession },
+      { bypassSequentialLock: hasFreeReview },
     );
     const targetUnit = resolveQuizUnitMatch(units, rawQuiz, unitId);
     const accommodation = await loadQuizAccommodation(tx, parsedQuizId, session.user_id);
     const quiz = {
       ...buildEffectiveDelegatedQuiz(rawQuiz, accommodation),
       _viewerRole: session.user_role,
+      _freeReviewAccess: hasFreeReview,
     };
     const questions = await loadQuizQuestions(tx, parsedQuizId);
     if (questions.length === 0) {
@@ -701,9 +714,9 @@ export async function startDelegatedQuizAttempt({
           );
         }
         const effectiveQuestions = attemptEffectiveQuestions(existingIdem, questions);
-        const canView = existingIdem.status !== "in_progress"
+        const canView = hasFreeReview || (existingIdem.status !== "in_progress"
           ? computeQuizCanViewSolution(quiz, [existingIdem], currentNow)
-          : false;
+          : false);
         const result = existingIdem.status !== "in_progress"
           ? buildSanitizedQuizResult({
             quiz,
@@ -801,9 +814,9 @@ export async function startDelegatedQuizAttempt({
       };
     }
 
-    // 3. Enforce attempt limit (admins bypass limits for QA & content review)
+    // 3. Enforce attempt limit (admins and Live review members bypass limits & deadlines)
     const submittedAttempts = existingAttempts.filter((a) => a.status !== "in_progress");
-    if (!isAdminSession && quiz.attempt_limit !== null && submittedAttempts.length >= Number(quiz.attempt_limit)) {
+    if (!hasFreeReview && quiz.attempt_limit !== null && submittedAttempts.length >= Number(quiz.attempt_limit)) {
       throw new ExternalIntegrationError(
         409,
         "ATTEMPT_LIMIT_REACHED",
@@ -815,7 +828,7 @@ export async function startDelegatedQuizAttempt({
       );
     }
 
-    if (!isAdminSession && accommodation?.due_at && new Date(accommodation.due_at).getTime() <= currentNow.getTime()) {
+    if (!hasFreeReview && accommodation?.due_at && new Date(accommodation.due_at).getTime() <= currentNow.getTime()) {
       throw new ExternalIntegrationError(409, "QUIZ_CLOSED", "Quiz deadline has passed.");
     }
 
@@ -942,9 +955,15 @@ export async function saveDelegatedQuizAnswers({
       throw new ExternalIntegrationError(404, "QUIZ_NOT_FOUND", "Quiz not found.");
     }
     const accommodation = await loadQuizAccommodation(tx, attempt.quiz_id, session.user_id);
+    const hasFreeReviewSave = await canBypassSequentialProgress(tx, {
+      profileRow,
+      userId: session.user_id,
+      userRole: session.user_role,
+    });
     const quiz = {
       ...buildEffectiveDelegatedQuiz(rawQuiz, accommodation),
       _viewerRole: session.user_role,
+      _freeReviewAccess: hasFreeReviewSave,
     };
     const questions = attemptEffectiveQuestions(attempt, await loadQuizQuestions(tx, attempt.quiz_id));
 
@@ -958,7 +977,7 @@ export async function saveDelegatedQuizAnswers({
     if (expiresAt && expiresAt.getTime() <= currentNow.getTime()) {
       const units = applySequentialLocks(
         await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
-        { bypassSequentialLock: isDelegatedAdminRole(session.user_role) },
+        { bypassSequentialLock: hasFreeReviewSave },
       );
       const targetUnit = resolveQuizUnitMatch(units, rawQuiz);
       const externalUserIds = await resolveMolyExternalUserIds(tx, session.user_id, session.external_user_id);
@@ -1113,11 +1132,17 @@ export async function submitDelegatedQuizAttempt({
       throw new ExternalIntegrationError(404, "QUIZ_NOT_FOUND", "Quiz not found.");
     }
     const accommodation = await loadQuizAccommodation(tx, attempt.quiz_id, session.user_id);
+    const isAdminSession = isDelegatedAdminRole(session.user_role);
+    const hasFreeReviewSubmit = await canBypassSequentialProgress(tx, {
+      profileRow,
+      userId: session.user_id,
+      userRole: session.user_role,
+    });
     const quiz = {
       ...buildEffectiveDelegatedQuiz(rawQuiz, accommodation),
       _viewerRole: session.user_role,
+      _freeReviewAccess: hasFreeReviewSubmit,
     };
-    const isAdminSession = isDelegatedAdminRole(session.user_role);
     const questions = attemptEffectiveQuestions(attempt, await loadQuizQuestions(tx, attempt.quiz_id));
 
     if (attempt.status !== "in_progress") {
@@ -1146,14 +1171,14 @@ export async function submitDelegatedQuizAttempt({
       }
 
       const computed = buildQuizResult(questions, attempt.answers_json || {});
-      const canView = isAdminSession || computeQuizCanViewSolution(quiz, [attempt], currentNow);
+      const canView = hasFreeReviewSubmit || computeQuizCanViewSolution(quiz, [attempt], currentNow);
       const replayUnits = applySequentialLocks(
         await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
-        { bypassSequentialLock: isAdminSession },
+        { bypassSequentialLock: hasFreeReviewSubmit },
       );
       const replayUnit = resolveQuizUnitMatch(replayUnits, rawQuiz);
       return buildSanitizedQuizResult({
-        quiz,
+        quiz: hasFreeReviewSubmit ? { ...quiz, attempt_limit: null } : quiz,
         attempt,
         computed,
         canViewSolution: canView,
@@ -1197,7 +1222,7 @@ export async function submitDelegatedQuizAttempt({
 
     const units = applySequentialLocks(
       await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
-      { bypassSequentialLock: isAdminSession },
+      { bypassSequentialLock: hasFreeReviewSubmit },
     );
     const targetUnit = resolveQuizUnitMatch(units, rawQuiz);
     const externalUserIds = await resolveMolyExternalUserIds(tx, session.user_id, session.external_user_id);
@@ -1217,7 +1242,7 @@ export async function submitDelegatedQuizAttempt({
     });
 
     return buildSanitizedQuizResult({
-      quiz,
+      quiz: hasFreeReviewSubmit ? { ...quiz, attempt_limit: null } : quiz,
       attempt: finalized.attempt,
       computed: finalized.computed,
       canViewSolution: finalized.canViewSolution,
@@ -1337,7 +1362,7 @@ export async function getDelegatedAssignmentDetail({
 
   const units = applySequentialLocks(
     await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id }),
-    { bypassSequentialLock: isDelegatedAdminRole(session.user_role) },
+    { bypassSequentialLock: await canBypassSequentialProgress(db, { profileRow, userId: session.user_id, userRole: session.user_role }) },
   );
   const targetUnit = units.find((u) => String(u.id) === String(unitId).trim()) || null;
   if (!targetUnit) {
@@ -1505,7 +1530,7 @@ export async function uploadDelegatedSubmissionAsset({
   }
   const units = applySequentialLocks(
     await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id }),
-    { bypassSequentialLock: isDelegatedAdminRole(session.user_role) },
+    { bypassSequentialLock: await canBypassSequentialProgress(db, { profileRow, userId: session.user_id, userRole: session.user_role }) },
   );
   resolveAssignmentUnitMatch(units, assignment, profileRow, unitId);
 
@@ -1652,7 +1677,7 @@ export async function submitDelegatedAssignment({
     }
     const units = applySequentialLocks(
       await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
-      { bypassSequentialLock: isDelegatedAdminRole(session.user_role) },
+      { bypassSequentialLock: await canBypassSequentialProgress(tx, { profileRow, userId: session.user_id, userRole: session.user_role }) },
     );
     const targetUnit = resolveAssignmentUnitMatch(units, assignment, profileRow, unitId);
 

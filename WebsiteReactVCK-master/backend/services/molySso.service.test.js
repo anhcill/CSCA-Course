@@ -1146,7 +1146,7 @@ test("P1 Security (Course): 2-browser-context Login-CSRF & Safe-Link cookie isol
   )).rows[0];
   const pwlessLocal = (await ctx.db.query(
     `INSERT INTO users (username, email, password_hash, role, email_verified, is_locked)
-     VALUES ('pwless_csca', 'pwless.csca@example.com', NULL, 'user', true, false) RETURNING *`,
+     VALUES ('pwless_csca', 'pwless.csca@example.com', NULL, 'user', false, false) RETURNING *`,
   )).rows[0];
 
   const exchangeCalls = [];

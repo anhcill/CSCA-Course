@@ -7,6 +7,7 @@ import {
 import {
   applySequentialLocks,
   assertUnitNotCrossProfile,
+  canBypassSequentialProgress,
   isDelegatedAdminRole,
   loadProfileUnitsWithProgress,
   parsePositiveId,
@@ -270,9 +271,14 @@ async function resolveDelegatedUnitContext({
     profileRow,
     userId: session.user_id,
   });
+  const bypassSequentialLock = await canBypassSequentialProgress(db, {
+    profileRow,
+    userId: session.user_id,
+    userRole: session.user_role,
+  });
   const units = applySequentialLocks(rawUnits, {
     isPublicPreviewAccess: false,
-    bypassSequentialLock: isDelegatedAdminRole(session.user_role),
+    bypassSequentialLock,
   });
   const targetUnit = units.find((u) => String(u.id) === String(parsedUnitId)) || null;
   if (!targetUnit) {
@@ -1346,9 +1352,14 @@ async function resolveDelegatedThreadAccess({
 
   const unitId = threadRow.class_session_id || threadRow.lesson_id;
   const rawUnits = await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id });
+  const bypassSequentialLock = await canBypassSequentialProgress(db, {
+    profileRow,
+    userId: session.user_id,
+    userRole: session.user_role,
+  });
   const units = applySequentialLocks(rawUnits, {
     isPublicPreviewAccess: false,
-    bypassSequentialLock: isDelegatedAdminRole(session.user_role),
+    bypassSequentialLock,
   });
   const targetUnit = units.find((u) => String(u.id) === String(unitId)) || null;
   if (!targetUnit) {

@@ -27,7 +27,7 @@ import {
   getR2PublicUrl,
 } from "../services/video.service.js";
 import { createCloudinaryUploadSignature } from "../services/cloudinary.service.js";
-import { isVideoCourseUnitUnlocked } from "../services/videoCourseUnitAccess.service.js";
+import { hasLiveReviewMembership, isVideoCourseUnitUnlocked } from "../services/videoCourseUnitAccess.service.js";
 import { isVideoCourseProfileAccessRevoked } from "../services/videoCourseAccessRevocation.service.js";
 import { reviewIsAvailable } from "../services/assessmentPolicy.service.js";
 import {
@@ -1560,7 +1560,10 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
       }
     }
 
-    if (req.user.role === "user") {
+    const canBypassSolutionEmbargo = Boolean(
+      selectedVideoProfile && await hasLiveReviewMembership({ query }, selectedVideoProfile, req.user.id),
+    );
+    if (req.user.role === "user" && !canBypassSolutionEmbargo) {
       const solutionQuizzes = (await query(
         `SELECT id, review_policy, available_until, due_date, activity_scope
          FROM quizzes

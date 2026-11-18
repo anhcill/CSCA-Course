@@ -26,6 +26,7 @@ import {
 } from "./externalCourseMapping.service.js";
 import { hasEffectiveCourseEntitlement } from "./externalEntitlementAccess.service.js";
 import { isVideoCourseProfileAccessRevoked } from "./videoCourseAccessRevocation.service.js";
+import { hasLiveReviewMembership } from "./videoCourseUnitAccess.service.js";
 import {
   isDelegatedLearningKillSwitchActive,
   observeIntegrationLatency,
@@ -69,6 +70,12 @@ export const parsePositiveId = (value) => {
 export const isDelegatedAdminRole = (role) => ["admin", "creator"].includes(
   String(role || "").trim().toLowerCase(),
 );
+
+export async function canBypassSequentialProgress(db, { profileRow, userId, userRole }) {
+  if (isDelegatedAdminRole(userRole)) return true;
+  if (!profileRow || !userId) return false;
+  return hasLiveReviewMembership(db, profileRow, userId);
+}
 
 export function inferFileKind(mimeType, fileName) {
   const mime = String(mimeType || "").toLowerCase();
@@ -541,7 +548,7 @@ async function loadUnitBookmarksAndQa(db, { unitMeta, effectiveUserId, isPublicP
 
 export async function loadUnlockedUnitDetail(
   db,
-  { profileRow, unitMeta, userId = null, isPublicPreviewAccess = false },
+  { profileRow, unitMeta, userId = null, isPublicPreviewAccess = false, allowFreeQuizReview = false },
 ) {
   const unitId = Number(unitMeta.id);
   const effectiveUserId = userId || 0;
@@ -693,6 +700,7 @@ export async function loadUnlockedUnitDetail(
       qaThreads: extras.qaThreads,
       allowDownload,
       isPublicPreviewAccess,
+      allowFreeQuizReview,
     });
   }
 
@@ -842,6 +850,7 @@ export async function loadUnlockedUnitDetail(
     qaThreads: extras.qaThreads,
     allowDownload,
     isPublicPreviewAccess,
+    allowFreeQuizReview,
   });
 }
 
@@ -859,6 +868,7 @@ function formatUnlockedUnitResponse({
   qaThreads = [],
   allowDownload,
   isPublicPreviewAccess,
+  allowFreeQuizReview = false,
 }) {
   const unitVideos = videos.map((v, idx) => ({
     id: String(v.asset_id),
@@ -974,17 +984,17 @@ function formatUnlockedUnitResponse({
     quizzes: quizzes.map((q) => {
       const hasSubmitted = Number(q.attempts_count || 0) > 0;
       const canViewSolution = !isPublicPreviewAccess
-        && q.review_policy !== "never"
-        && hasSubmitted
-        && reviewIsAvailable(q);
+        && (allowFreeQuizReview || (q.review_policy !== "never" && hasSubmitted && reviewIsAvailable(q)));
       return {
         id: String(q.id),
         title: q.title,
         durationMinutes: q.duration_minutes != null ? Number(q.duration_minutes) : null,
         passingScore: Number(q.passing_score || 60),
-        attemptLimit: q.attempt_limit != null ? Number(q.attempt_limit) : null,
+        attemptLimit: allowFreeQuizReview ? null : (q.attempt_limit != null ? Number(q.attempt_limit) : null),
         reviewPolicy: q.review_policy || "after_submit",
         canViewSolution,
+        canStartAttempt: !isPublicPreviewAccess
+          && (allowFreeQuizReview || q.attempt_limit == null || Number(q.attempts_count || 0) < Number(q.attempt_limit)),
         attemptsCount: isPublicPreviewAccess ? 0 : Number(q.attempts_count || 0),
         isCompleted: isPublicPreviewAccess ? false : hasSubmitted,
         bestScore: !isPublicPreviewAccess && q.best_score != null ? Number(q.best_score) : null,
@@ -1393,13 +1403,15 @@ export async function getDelegatedWorkspace({
   });
 
   const isAdminSession = isDelegatedAdminRole(session.user_role);
+  const canReviewFreely = !isAdminSession && await hasLiveReviewMembership(db, profileRow, session.user_id);
+  const bypassSequentialLock = isAdminSession || canReviewFreely;
   const rawUnits = await loadProfileUnitsWithProgress(db, {
     profileRow,
     userId: session.user_id,
   });
   const units = applySequentialLocks(rawUnits, {
     isPublicPreviewAccess: false,
-    bypassSequentialLock: isAdminSession,
+    bypassSequentialLock,
   });
 
   let targetUnit = null;
@@ -1430,6 +1442,7 @@ export async function getDelegatedWorkspace({
         unitMeta: targetUnit,
         userId: session.user_id,
         isPublicPreviewAccess: false,
+        allowFreeQuizReview: bypassSequentialLock,
       });
     }
   }
@@ -1495,6 +1508,7 @@ export async function getDelegatedWorkspace({
       enforceTrustedDevices: !isAdminSession && profileRow.enforce_trusted_devices !== false,
       isPublicPreviewAccess: false,
       isAdmin: isAdminSession,
+      canReviewFreely,
     },
   };
 }
@@ -1537,13 +1551,15 @@ export async function getDelegatedUnitDetail({
   });
 
   const isAdminSession = isDelegatedAdminRole(session.user_role);
+  const canReviewFreely = !isAdminSession && await hasLiveReviewMembership(db, profileRow, session.user_id);
+  const bypassSequentialLock = isAdminSession || canReviewFreely;
   const rawUnits = await loadProfileUnitsWithProgress(db, {
     profileRow,
     userId: session.user_id,
   });
   const units = applySequentialLocks(rawUnits, {
     isPublicPreviewAccess: false,
-    bypassSequentialLock: isAdminSession,
+    bypassSequentialLock,
   });
   const targetUnit = units.find((u) => String(u.id) === String(unitId).trim()) || null;
 
@@ -1573,6 +1589,7 @@ export async function getDelegatedUnitDetail({
     unitMeta: targetUnit,
     userId: session.user_id,
     isPublicPreviewAccess: false,
+    allowFreeQuizReview: bypassSequentialLock,
   });
 }
 
@@ -2005,8 +2022,9 @@ export async function emitNativeProgressOutboxEvents({
       courseId: Number(profileRow.course_id),
     }).catch(() => false);
     if (!accessOk) continue;
+    const bypassProfileLock = bypassSequentialLock || await hasLiveReviewMembership(db, profileRow, userId).catch(() => false);
     const rawUnits = await loadProfileUnitsWithProgress(db, { profileRow, userId });
-    const unitsAfter = applySequentialLocks(rawUnits, { bypassSequentialLock });
+    const unitsAfter = applySequentialLocks(rawUnits, { bypassSequentialLock: bypassProfileLock });
     const targetUnitAfter = unitsAfter.find((u) => u.unitType === unitType && String(u.id) === targetUnitId);
     if (!targetUnitAfter) continue;
     const rows = await emitProgressOutboxEventsForProfile({
@@ -2126,13 +2144,17 @@ export async function mintDelegatedVideoPlaybackToken({
     }
   }
 
-  const isAdminSession = isDelegatedAdminRole(session.user_role);
+  const bypassSequentialLock = await canBypassSequentialProgress(db, {
+    profileRow,
+    userId: session.user_id,
+    userRole: session.user_role,
+  });
   const { targetUnit, videoAsset } = await resolveTargetUnitAndVideo(db, {
     profileRow,
     userId: session.user_id,
     unitId,
     videoId,
-    bypassSequentialLock: isAdminSession,
+    bypassSequentialLock,
   });
 
   if (String(videoAsset.playback_status || "") !== "ready") {
@@ -2247,13 +2269,17 @@ export async function recordDelegatedVideoProgress({
     env,
   });
 
-  const isAdminSession = isDelegatedAdminRole(session.user_role);
+  const bypassSequentialLock = await canBypassSequentialProgress(db, {
+    profileRow,
+    userId: session.user_id,
+    userRole: session.user_role,
+  });
   const { targetUnit, videoAsset } = await resolveTargetUnitAndVideo(db, {
     profileRow,
     userId: session.user_id,
     unitId,
     videoId,
-    bypassSequentialLock: isAdminSession,
+    bypassSequentialLock,
   });
 
   const parsedCurrentTime = Number(currentTimeSeconds);
@@ -2317,7 +2343,7 @@ export async function recordDelegatedVideoProgress({
     if (staleReason) {
       const [unitsCurrent, unitAggregate] = await Promise.all([
         loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }).then((raw) =>
-          applySequentialLocks(raw, { bypassSequentialLock: isAdminSession }),
+          applySequentialLocks(raw, { bypassSequentialLock }),
         ),
         getUnitVideoProgressAggregate({ db: tx, userId: session.user_id, classSessionId, lessonId }),
       ]);
@@ -2398,7 +2424,7 @@ export async function recordDelegatedVideoProgress({
 
     const unitsAfter = applySequentialLocks(
       await loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }),
-      { bypassSequentialLock: isAdminSession },
+      { bypassSequentialLock },
     );
     const targetUnitAfter = unitsAfter.find((u) => String(u.id) === String(targetUnit.id)) || targetUnit;
     const occurredAt = effectiveClock().toISOString();

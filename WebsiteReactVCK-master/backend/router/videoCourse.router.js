@@ -1160,6 +1160,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             isCompleted: Number(q.attempts_count || 0) > 0,
             bestScore: q.best_score !== null && q.best_score !== undefined ? Number(q.best_score) : null,
             maxScore: q.max_score !== null && q.max_score !== undefined ? Number(q.max_score) : null,
+            ...(!isLearner || canReviewFreely ? { attemptLimit: null, canViewSolution: true } : {}),
           })),
           vocabulary: vocabRes.rows.map((v) => ({
             id: String(v.id),
@@ -1503,6 +1504,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             isCompleted: Number(q.attempts_count || 0) > 0,
             bestScore: q.best_score !== null && q.best_score !== undefined ? Number(q.best_score) : null,
             maxScore: q.max_score !== null && q.max_score !== undefined ? Number(q.max_score) : null,
+            ...(!isLearner || canReviewFreely ? { attemptLimit: null, canViewSolution: true } : {}),
           })),
           vocabulary: vocabRes.rows.map((v) => ({
             id: String(v.id),
