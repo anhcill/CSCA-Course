@@ -1709,9 +1709,11 @@ export const queryCourseOwnershipForMoly = async (db = defaultDb, rawBody, heade
   const parsed = parseOwnershipQueryWirePayload(rawBody, headerMeta);
 
   const identityRes = await db.query(
-    `SELECT id, source_system, external_user_id, user_id, status
-     FROM external_identities
-     WHERE source_system = $1 AND external_user_id = $2
+    `SELECT ei.id, ei.source_system, ei.external_user_id, ei.user_id, ei.status,
+            u.role::text AS user_role
+     FROM external_identities ei
+     JOIN users u ON u.id = ei.user_id
+     WHERE ei.source_system = $1 AND ei.external_user_id = $2
      LIMIT 1`,
     [parsed.subjectSourceSystem, parsed.externalUserId],
   );
@@ -1809,7 +1811,16 @@ export const queryCourseOwnershipForMoly = async (db = defaultDb, rawBody, heade
       }
     }
 
-    const bestActive = matchingExt.find(isGrantActiveNow) || matchingMgmt.find(isGrantActiveNow) || null;
+    const adminLearningAccess = identity?.user_role === "admin";
+    const bestActive = adminLearningAccess
+      ? {
+          id: `admin:${identity.user_id}:${map.local_course_id}`,
+          status: "active",
+          valid_from: new Date(0).toISOString(),
+          valid_until: null,
+          source_updated_at: new Date().toISOString(),
+        }
+      : matchingExt.find(isGrantActiveNow) || matchingMgmt.find(isGrantActiveNow) || null;
     const fallbackLatest = bestActive || matchingExt[0] || matchingMgmt[0] || null;
 
     if (!fallbackLatest) {

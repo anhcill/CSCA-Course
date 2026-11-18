@@ -36,6 +36,7 @@ const CSCA_SSO_LINK_COOKIE = "csca_sso_link";
 const PRIVILEGED_ROLES = new Set(["admin", "creator", "teacher", "super_admin", "staff"]);
 const isPrivilegedAccount = (user) => PRIVILEGED_ROLES.has(user?.role)
   || user?.management_staff_source_id != null;
+const adminLearningAliasEmail = (userId) => `course-admin-${Number(userId)}@learner.moly.invalid`;
 
 function normalizeEmail(email) {
   return typeof email === "string" && email.trim() ? email.trim().toLowerCase() : null;
@@ -237,7 +238,7 @@ export function createMolySsoService({
     if (user.is_locked) {
       throw new SsoPolicyError(403, "ACCOUNT_LOCKED", "Account is locked and cannot launch SSO.");
     }
-    if (isPrivilegedAccount(user)) {
+    if (isPrivilegedAccount(user) && user.role !== "admin") {
       throw new SsoPolicyError(403, "PRIVILEGED_ROLE_COLLISION", "Privileged accounts cannot launch cross-system SSO.");
     }
     if (scopeType === "course" && scopedLocalCourseId) {
@@ -453,7 +454,7 @@ export function createMolySsoService({
       if (!user || user.is_locked) {
         throw new SsoPolicyError(403, "SSO_USER_REVOKED", "Course user is inactive or locked.");
       }
-      if (isPrivilegedAccount(user)) {
+      if (isPrivilegedAccount(user) && user.role !== "admin") {
         throw new SsoPolicyError(403, "PRIVILEGED_ROLE_COLLISION", "Privileged accounts cannot authenticate across systems via SSO.");
       }
 
@@ -519,14 +520,17 @@ export function createMolySsoService({
         [ssoRow.id, current.toISOString(), consumeIp ? String(consumeIp).slice(0, 64) : null],
       );
 
+      const learningPersona = user.role === "admin";
       return {
         source_system: "csca-course",
         source_user_id: String(user.id),
-        email: normalizeEmail(user.email),
-        email_verified: Boolean(user.email_verified),
-        username: user.username,
+        email: learningPersona ? adminLearningAliasEmail(user.id) : normalizeEmail(user.email),
+        email_verified: learningPersona ? true : Boolean(user.email_verified),
+        username: learningPersona ? `course-admin-${user.id}` : user.username,
         display_name: user.management_display_name || user.username,
-        role: user.role === "admin" ? "admin" : user.role === "creator" ? "teacher" : "student",
+        role: "student",
+        source_role: user.role,
+        learning_persona: learningPersona,
         linked_target_user_id: activeMolyLink ? stripMolyPrefix(activeMolyLink.external_user_id) : null,
         target_path: safeTargetPath,
         scope_type: ssoRow.scope_type,
@@ -1193,6 +1197,7 @@ export function createMolySsoService({
     externalUserId,
     targetUserId,
     email = null,
+    learningPersona = false,
     correlationId = null,
   }) {
     const namespacedExtUserId = normalizeNamespacedMolyId(externalUserId);
@@ -1217,7 +1222,10 @@ export function createMolySsoService({
       if (!localUser || localUser.is_locked) {
         throw new SsoPolicyError(404, "USER_NOT_FOUND", "Target Course user does not exist or is locked.");
       }
-      if (isPrivilegedAccount(localUser)) {
+      const validAdminLearningPersona = localUser.role === "admin"
+        && learningPersona === true
+        && normalizeEmail(email) === adminLearningAliasEmail(localUser.id);
+      if (isPrivilegedAccount(localUser) && !validAdminLearningPersona) {
         throw new SsoPolicyError(403, "PRIVILEGED_ROLE_COLLISION", "Cannot bind privileged accounts.");
       }
 

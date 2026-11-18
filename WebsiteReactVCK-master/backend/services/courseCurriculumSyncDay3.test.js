@@ -414,6 +414,22 @@ test("Day 3 CSCA-Course curriculum export covers MIRROR + INDEPENDENT with metad
 });
 
 test("Day 3 CSCA-Course delegated learning enforces opaque TTL <=300s, sequential locks, sanitization, revocation, and public preview", async (t) => {
+  const previousBunnyEnv = {
+    libraryId: process.env.BUNNY_STREAM_LIBRARY_ID,
+    tokenKey: process.env.BUNNY_STREAM_TOKEN_SECURITY_KEY,
+    cdnHostname: process.env.BUNNY_STREAM_CDN_HOSTNAME,
+  };
+  process.env.BUNNY_STREAM_LIBRARY_ID = "test-preview-library";
+  process.env.BUNNY_STREAM_TOKEN_SECURITY_KEY = "test-preview-token-key";
+  process.env.BUNNY_STREAM_CDN_HOSTNAME = "preview-test.b-cdn.net";
+  t.after(() => {
+    if (previousBunnyEnv.libraryId === undefined) delete process.env.BUNNY_STREAM_LIBRARY_ID;
+    else process.env.BUNNY_STREAM_LIBRARY_ID = previousBunnyEnv.libraryId;
+    if (previousBunnyEnv.tokenKey === undefined) delete process.env.BUNNY_STREAM_TOKEN_SECURITY_KEY;
+    else process.env.BUNNY_STREAM_TOKEN_SECURITY_KEY = previousBunnyEnv.tokenKey;
+    if (previousBunnyEnv.cdnHostname === undefined) delete process.env.BUNNY_STREAM_CDN_HOSTNAME;
+    else process.env.BUNNY_STREAM_CDN_HOSTNAME = previousBunnyEnv.cdnHostname;
+  });
   const pg = new PGlite();
   t.after(() => pg.close());
   await loadFullCourseSchema(pg);
@@ -536,6 +552,9 @@ test("Day 3 CSCA-Course delegated learning enforces opaque TTL <=300s, sequentia
   const pubOkJson = await pubOkRes.json();
   assert.equal(pubOkJson.data.capabilities.isPublicPreviewAccess, true);
   assert.equal(pubOkJson.data.capabilities.allowFileDownload, false);
+  assert.match(pubOkJson.data.activeUnit.video.embedUrl, /^https:\/\/iframe\.mediadelivery\.net\/embed\//);
+  assert.match(pubOkJson.data.activeUnit.video.embedUrl, /[?&]token=/);
+  assert.equal(pubOkRes.headers.get("cache-control"), "private, no-store, max-age=0");
 
   const pubLockedUrl = `/api/integrations/v2/learning/preview/offerings/${fix.mirrorProfile.id}/units/${fix.session2.id}`;
   const pubLockedRes = await fetch(`${baseUrl}${pubLockedUrl}`, { headers: signedGetHeaders(pubLockedUrl) });

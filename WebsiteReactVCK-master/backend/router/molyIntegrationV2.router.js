@@ -283,6 +283,7 @@ export const createMolyIntegrationV2Router = ({
   router.get("/learning/preview/offerings/:profileId/units/:unitId", verifyRead, async (req, res) => {
     const correlationId = req.get?.("X-Correlation-ID") || null;
     try {
+      res.setHeader("Cache-Control", "private, no-store, max-age=0");
       const data = await getPublicPreviewUnit({
         db,
         profileId: req.params.profileId,

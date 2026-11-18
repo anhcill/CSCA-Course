@@ -446,7 +446,7 @@ test("Happy path: Moly -> Course SSO JIT creates passwordless learner, binds pee
   assert.equal(replayJson.errorCode, "SSO_CODE_ALREADY_USED");
 });
 
-test("Course -> Moly outbound SSO: stores code_hash only, blocks concurrent replay, expired codes, bad HMAC, and privileged roles", async (t) => {
+test("Course -> Moly outbound SSO: stores code_hash only, supports an isolated admin learner persona, and blocks unsafe privileged roles", async (t) => {
   const ctx = await setupDay4CourseEnv(t);
 
   // Seed active student and admin/creator
@@ -469,17 +469,7 @@ test("Course -> Moly outbound SSO: stores code_hash only, blocks concurrent repl
     (err) => err.code === "SSO_PKCE_REQUIRED" && err.status === 400,
   );
 
-  // Privileged users cannot authorize outbound PKCE SSO
-  await assert.rejects(
-    () => ctx.ssoService.authorizeMolySsoRequest({
-      userId: admin.id,
-      state: "admin-pkce-state",
-      codeChallenge: computePkceChallengeS256(generatePkceVerifier()),
-      codeChallengeMethod: "S256",
-      targetPath: "/khoa-hoc",
-    }),
-    (err) => err.code === "PRIVILEGED_ROLE_COLLISION" && err.status === 403,
-  );
+  // Creators/staff remain blocked; admins use a least-privilege learner persona below.
   await assert.rejects(
     () => ctx.ssoService.authorizeMolySsoRequest({
       userId: teacher.id,
@@ -613,6 +603,33 @@ test("Course -> Moly outbound SSO: stores code_hash only, blocks concurrent repl
   assert.equal(replayed.length, 4);
   assert.equal(succeeded[0].body.data.source_user_id, String(student.id));
   assert.equal(succeeded[0].body.data.role, "student");
+
+  const adminVerifier = generatePkceVerifier();
+  const adminIssued = await ctx.ssoService.authorizeMolySsoRequest({
+    userId: admin.id,
+    state: "admin-learning-persona-state",
+    codeChallenge: computePkceChallengeS256(adminVerifier),
+    codeChallengeMethod: "S256",
+    targetPath: "/khoa-hoc",
+  });
+  const adminExchange = await ctx.ssoService.exchangeCourseSsoCode({
+    code: adminIssued.code,
+    nonce: adminIssued.state,
+    codeVerifier: adminVerifier,
+    consumerSystem: "moly",
+  });
+  assert.equal(adminExchange.role, "student");
+  assert.equal(adminExchange.source_role, "admin");
+  assert.equal(adminExchange.learning_persona, true);
+  assert.equal(adminExchange.email, `course-admin-${admin.id}@learner.moly.invalid`);
+
+  const adminBind = await ctx.ssoService.bindPeerIdentityFromMoly({
+    externalUserId: "moly:99001",
+    targetUserId: admin.id,
+    email: adminExchange.email,
+    learningPersona: true,
+  });
+  assert.equal(adminBind.bound, true);
 
   // Expired code (> 90s TTL) fails with 401 SSO_CODE_EXPIRED
   const verifier3 = generatePkceVerifier();

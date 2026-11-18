@@ -155,6 +155,13 @@ export const hasEffectiveCourseEntitlement = async ({
     `SELECT 1
      WHERE EXISTS (
        SELECT 1
+       FROM users u_admin
+       WHERE u_admin.id = $1
+         AND u_admin.role::text = 'admin'
+         AND COALESCE(u_admin.is_locked, FALSE) = FALSE
+     )
+     OR EXISTS (
+       SELECT 1
        FROM lms_access_grants g
        JOIN users u ON u.id = g.user_id
        WHERE g.user_id = $1

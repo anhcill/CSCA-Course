@@ -195,6 +195,7 @@ export const createMolyIntegrationRouter = ({
         externalUserId: req.body?.external_user_id,
         targetUserId: req.body?.target_user_id,
         email: req.body?.email ?? null,
+        learningPersona: req.body?.learning_persona === true,
         correlationId,
       });
       return res.status(200).json({

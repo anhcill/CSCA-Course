@@ -1549,6 +1549,35 @@ export async function getPublicPreviewUnit({
     isPublicPreviewAccess: true,
   });
 
+  // Public previews still use short-lived signed Bunny embeds. Returning only
+  // the asset metadata leaves Moly with no playable URL even though the lesson
+  // is explicitly marked as a public preview.
+  const signedPreviewVideos = await Promise.all((activeUnit.videos || []).map(async (video) => {
+    const videoAsset = await findPublishedVideoInUnit(db, {
+      unitMeta: targetUnit,
+      videoId: video.assetId || video.id,
+    });
+    if (!videoAsset || String(videoAsset.playback_status || "") !== "ready") return video;
+    const signed = generateBunnySignedPlayback({
+      videoAsset,
+      userId: "public-preview",
+      userEmail: "public-preview",
+      ttlSeconds: 60,
+      minTtlSeconds: 60,
+      maxTtlSeconds: 60,
+    });
+    return {
+      ...video,
+      embedUrl: signed.embedUrl,
+      embedExpiresAt: signed.expiresAt,
+    };
+  }));
+  const playableActiveUnit = {
+    ...activeUnit,
+    video: signedPreviewVideos[0] || activeUnit.video || null,
+    videos: signedPreviewVideos,
+  };
+
   return {
     videoCourseProfileId: String(profileRow.profile_id),
     mode: profileRow.mode === "MIRROR" ? "RECORD_MIRROR" : "RECORD_INDEPENDENT",
@@ -1568,7 +1597,7 @@ export async function getPublicPreviewUnit({
       overallPercent: 0,
     },
     units,
-    activeUnit,
+    activeUnit: playableActiveUnit,
     capabilities: {
       canPlayVideo: true,
       canJoinLive: false,
