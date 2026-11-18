@@ -21,8 +21,10 @@ import {
   getDelegatedQuizDetail,
   saveDelegatedQuizAnswers,
   startDelegatedQuizAttempt,
+  streamDelegatedSubmissionAsset,
   submitDelegatedAssignment,
   submitDelegatedQuizAttempt,
+  uploadDelegatedQuizEssayAsset,
   uploadDelegatedSubmissionAsset,
 } from "../services/delegatedAssessments.service.js";
 import {
@@ -351,6 +353,35 @@ export const createMolyIntegrationV2Router = ({
     }
   });
 
+  const sendStreamedResult = (res, result) => {
+    for (const [headerName, headerValue] of Object.entries(result.headers || {})) {
+      if (headerValue !== undefined && headerValue !== null) {
+        res.setHeader(headerName, headerValue);
+      }
+    }
+    res.status(result.status || 200);
+
+    if (Buffer.isBuffer(result.body) || typeof result.body === "string") {
+      return res.send(result.body);
+    }
+    const nodeStream = typeof result.body?.pipe === "function"
+      ? result.body
+      : (typeof result.body?.getReader === "function" ? Readable.fromWeb(result.body) : null);
+    if (nodeStream) {
+      const cleanup = () => {
+        if (!res.writableEnded) {
+          nodeStream.destroy?.();
+        }
+      };
+      res.on("close", cleanup);
+      nodeStream.on("error", () => {
+        if (!res.writableEnded) res.destroy();
+      });
+      return nodeStream.pipe(res);
+    }
+    return res.end();
+  };
+
   // ============================================================================
   // Day 5: Delegated Learning File Streaming Proxy (BFF only, <= 60s TTL)
   // ============================================================================
@@ -375,33 +406,7 @@ export const createMolyIntegrationV2Router = ({
       if (result.mode === "metadata") {
         return res.status(200).json({ success: true, data: result });
       }
-
-      for (const [headerName, headerValue] of Object.entries(result.headers || {})) {
-        if (headerValue !== undefined && headerValue !== null) {
-          res.setHeader(headerName, headerValue);
-        }
-      }
-      res.status(result.status || 200);
-
-      if (Buffer.isBuffer(result.body) || typeof result.body === "string") {
-        return res.send(result.body);
-      }
-      const nodeStream = typeof result.body?.pipe === "function"
-        ? result.body
-        : (typeof result.body?.getReader === "function" ? Readable.fromWeb(result.body) : null);
-      if (nodeStream) {
-        const cleanup = () => {
-          if (!res.writableEnded) {
-            nodeStream.destroy?.();
-          }
-        };
-        res.on("close", cleanup);
-        nodeStream.on("error", () => {
-          if (!res.writableEnded) res.destroy();
-        });
-        return nodeStream.pipe(res);
-      }
-      return res.end();
+      return sendStreamedResult(res, result);
     } catch (error) {
       return sendV2Error(res, error, correlationId);
     }
@@ -478,6 +483,49 @@ export const createMolyIntegrationV2Router = ({
         env,
       });
       return res.status(200).json({ success: true, data });
+    } catch (error) {
+      return sendV2Error(res, error, correlationId);
+    }
+  });
+
+  router.post("/learning/quizzes/:quizId/submission-assets", verifyWrite, async (req, res) => {
+    const correlationId = getWriteCorrelationId(req);
+    try {
+      const data = await uploadDelegatedQuizEssayAsset({
+        db,
+        sessionToken: getDelegatedSessionHeader(req),
+        quizId: req.params.quizId,
+        profileId: req.body?.profileId ?? req.query?.profileId ?? null,
+        unitId: req.body?.unitId ?? req.query?.unitId ?? null,
+        assetKind: req.body?.assetKind ?? "file",
+        filename: req.body?.filename ?? req.body?.originalFilename ?? req.body?.fileName,
+        mimeType: req.body?.mimeType,
+        sizeBytes: req.body?.sizeBytes ?? null,
+        contentBase64: req.body?.contentBase64 ?? null,
+        uploadImpl: submissionUploadImpl || undefined,
+        fetchImpl: submissionFetchImpl || undefined,
+        env,
+      });
+      return res.status(201).json({ success: true, data });
+    } catch (error) {
+      return sendV2Error(res, error, correlationId);
+    }
+  });
+
+  router.get("/learning/submission-assets/:assetId/access", verifyRead, async (req, res) => {
+    const correlationId = req.get?.("X-Correlation-ID") || null;
+    try {
+      const result = await streamDelegatedSubmissionAsset({
+        db,
+        sessionToken: getDelegatedSessionHeader(req),
+        assetId: req.params.assetId,
+        profileId: req.query?.profileId ?? req.query?.profile_id ?? null,
+        disposition: req.query?.disposition ?? "inline",
+        fetchImpl: fileStreamFetchImpl || undefined,
+        readStreamImpl: fileReadStreamImpl || undefined,
+        env,
+      });
+      return sendStreamedResult(res, result);
     } catch (error) {
       return sendV2Error(res, error, correlationId);
     }

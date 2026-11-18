@@ -1738,3 +1738,198 @@ test("Day 10 Live vs Record flow separation: live MIRROR learner bypasses locks,
   });
   assert.equal(liveSolRes.status, 200);
 });
+
+test("Day 6 parity: delegated quiz essay asset upload, save/submit validation, and authenticated asset stream", async (t) => {
+  await withTempR2Env(t);
+  const pg = new PGlite();
+  t.after(() => pg.close());
+  await loadFullCourseSchema(pg);
+  bindPoolToDb(pool, pg);
+  const db = makeDbAdapter(pg);
+
+  const teacher = (await pg.query(
+    `INSERT INTO users(username,email,role) VALUES ('qt-essay','qt@csca.vn','creator') RETURNING id`,
+  )).rows[0];
+  const learner = (await pg.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('qs-essay','qs@csca.vn','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
+  const otherLearner = (await pg.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ('qo-essay','qo@csca.vn','user',TRUE,'active') RETURNING id`,
+  )).rows[0];
+
+  await pg.query(
+    `INSERT INTO external_identities(user_id,source_system,external_user_id,status,source_updated_at)
+     VALUES ($1,'moly','moly-essay-s','active',NOW()), ($2,'moly','moly-essay-o','active',NOW())`,
+    [learner.id, otherLearner.id],
+  );
+
+  const course = (await pg.query(
+    `INSERT INTO courses(name,title,slug,author_id,is_published,is_management_managed)
+     VALUES ('Essay Quiz Course','Essay Quiz Course','essay-quiz-course',$1,TRUE,TRUE) RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await pg.query(
+    `INSERT INTO live_classes(title,course_id,instructor_id,status) VALUES ('Essay LC',$1,$2,'active') RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+  const sess1 = (await pg.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status)
+     VALUES ($1,'Buoi 1 Essay',NOW() - INTERVAL '2 days',NOW() - INTERVAL '2 days' + INTERVAL '1 hour','scheduled') RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+  const profile = (await pg.query(
+    `INSERT INTO video_course_profiles(course_id,management_class_id,mode,source_live_class_id,enforce_trusted_devices,allow_file_download,status)
+     VALUES ($1,'essay-alias-1','MIRROR',$2,FALSE,FALSE,'active') RETURNING id`,
+    [course.id, liveClass.id],
+  )).rows[0];
+
+  await pg.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$3,'active',NOW() - INTERVAL '1 hour',NOW()), ($2,$3,'active',NOW() - INTERVAL '1 hour',NOW())`,
+    [learner.id, otherLearner.id, course.id],
+  );
+  await pg.query(
+    `INSERT INTO class_enrollments(user_id,live_class_id,course_id,learning_mode,status)
+     VALUES ($1,$3,$4,'live','active'), ($2,$3,$4,'live','active')`,
+    [learner.id, otherLearner.id, liveClass.id, course.id],
+  );
+
+  const quizDescJson = JSON.stringify({
+    text: "Bai thi co phan tu luan",
+    essayConfig: { enabled: true, maxScore: 5, prompt: "Viet chi tiet" },
+  });
+  const quiz = (await pg.query(
+    `INSERT INTO quizzes(title,description,course_id,live_class_id,class_session_id,instructor_id,status,duration_minutes,passing_score,attempt_limit,review_policy)
+     VALUES ('Quiz Essay',$1,$2,$3,$4,$5,'PUBLISHED',30,50,2,'after_submit') RETURNING id`,
+    [quizDescJson, course.id, liveClass.id, sess1.id, teacher.id],
+  )).rows[0];
+  const essayQ = (await pg.query(
+    `INSERT INTO quiz_questions(quiz_id,question_text,question_text_cn,question_type,options_json,correct_answer,points,sort_order)
+     VALUES ($1,'Viet doan van ngan','写一段短文','essay','[]'::jsonb,NULL,5,1) RETURNING id`,
+    [quiz.id],
+  )).rows[0];
+
+  const learnerSession = await mintDelegatedLearningSession({
+    db,
+    externalUserId: "moly-essay-s",
+    profileId: profile.id,
+    scopes: ["workspace:read", "quiz:attempt", "assignment:submit"],
+    ttlSeconds: 300,
+    correlationId: "corr-essay-s",
+  });
+  const otherSession = await mintDelegatedLearningSession({
+    db,
+    externalUserId: "moly-essay-o",
+    profileId: profile.id,
+    scopes: ["workspace:read", "quiz:attempt"],
+    ttlSeconds: 300,
+    correlationId: "corr-essay-o",
+  });
+
+  const storedAssets = new Map();
+  const imgBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
+  const app = express();
+  app.use(express.json({ limit: "2mb", verify: (req, res, buf) => { req.rawBody = Buffer.from(buf); } }));
+  const verifyRead = createRequireMolyIntegration({ requireIdempotencyKey: false, allowBodylessGet: true, configOverrides: TEST_MOLY_CFG });
+  const verifyWrite = createRequireMolyIntegration({ requireIdempotencyKey: true, allowBodylessDelete: true, configOverrides: TEST_MOLY_CFG });
+  app.use("/api/integrations/v2", createMolyIntegrationV2Router({
+    db,
+    verifyRead,
+    verifyWrite,
+    submissionUploadImpl: async ({ filename, buffer }) => {
+      const key = `submissions/test/${filename}`;
+      storedAssets.set(key, buffer);
+      return { storageKey: key };
+    },
+    fileReadStreamImpl: async ({ asset }) => ({
+      status: 200,
+      headers: { "content-type": asset.mime_type },
+      body: storedAssets.get(asset.storage_key) || imgBytes,
+    }),
+  }));
+  const { server, baseUrl } = await startServer(app);
+  t.after(() => stopServer(server));
+
+  const detailRes = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/offerings/${profile.id}/units/${sess1.id}/quizzes/${quiz.id}`,
+    sessionToken: learnerSession.sessionToken,
+  });
+  assert.equal(detailRes.status, 200);
+  const detailData = (await detailRes.json()).data;
+  assert.equal(detailData.quiz.essayConfig?.maxScore, 5);
+  assert.equal(detailData.quiz.description, "Bai thi co phan tu luan");
+
+  const startRes = await callV2(baseUrl, {
+    method: "POST",
+    path: `/learning/quizzes/${quiz.id}/attempts/start`,
+    body: { profileId: profile.id, unitId: sess1.id },
+    sessionToken: learnerSession.sessionToken,
+    idempotencyKey: "essay-start-1",
+  });
+  assert.equal(startRes.status, 200);
+  const attemptId = (await startRes.json()).data.attempt.id;
+
+  const uploadRes = await callV2(baseUrl, {
+    method: "POST",
+    path: `/learning/quizzes/${quiz.id}/submission-assets`,
+    body: {
+      profileId: profile.id,
+      unitId: sess1.id,
+      assetKind: "file",
+      filename: "handwriting.png",
+      mimeType: "image/png",
+      sizeBytes: imgBytes.length,
+      contentBase64: imgBytes.toString("base64"),
+    },
+    sessionToken: learnerSession.sessionToken,
+    idempotencyKey: "essay-upload-1",
+  });
+  assert.equal(uploadRes.status, 201);
+  const uploaded = (await uploadRes.json()).data;
+  assert.equal(uploaded.status, "ready");
+  assert.ok(uploaded.assetId);
+
+  const subRes = await callV2(baseUrl, {
+    method: "POST",
+    path: `/learning/quizzes/attempts/${attemptId}/submit`,
+    body: {
+      answers: {
+        [String(essayQ.id)]: {
+          text: "Day la bai viet tay",
+          notes: "Ghi chu",
+          attachments: [{
+            assetId: Number(uploaded.assetId),
+            name: "handwriting.png",
+            size: imgBytes.length,
+            mimeType: "image/png",
+          }],
+        },
+      },
+    },
+    sessionToken: learnerSession.sessionToken,
+    idempotencyKey: "essay-submit-1",
+  });
+  assert.equal(subRes.status, 200);
+  const subData = (await subRes.json()).data;
+  assert.equal(subData.essay.byQuestion[String(essayQ.id)].attachments.length, 1);
+
+  const ownerStream = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/submission-assets/${uploaded.assetId}/access?profileId=${profile.id}`,
+    sessionToken: learnerSession.sessionToken,
+  });
+  assert.equal(ownerStream.status, 200);
+  const gotBytes = Buffer.from(await ownerStream.arrayBuffer());
+  assert.deepEqual(gotBytes, imgBytes);
+
+  const otherStream = await callV2(baseUrl, {
+    method: "GET",
+    path: `/learning/submission-assets/${uploaded.assetId}/access?profileId=${profile.id}`,
+    sessionToken: otherSession.sessionToken,
+  });
+  assert.equal(otherStream.status, 403);
+  assert.equal((await otherStream.json()).errorCode, "ASSET_ACCESS_FORBIDDEN");
+});

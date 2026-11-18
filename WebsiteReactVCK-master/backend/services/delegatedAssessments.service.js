@@ -42,6 +42,8 @@ import {
   ALLOWED_SUBMISSION_FILE_MIME_TYPES,
   MAX_SUBMISSION_AUDIO_SIZE_BYTES,
   MAX_SUBMISSION_FILE_SIZE_BYTES,
+  buildContentDispositionHeader,
+  generateSubmissionPlaybackSignedUrl,
   generateSubmissionUploadPresignedUrl,
 } from "./video.service.js";
 
@@ -597,8 +599,9 @@ export async function getDelegatedQuizDetail({
     quiz: {
       id: String(quiz.id),
       title: quiz.title,
-      description: parsedMeta.cleanDescription,
-      instructions: parsedMeta.cleanDescription,
+      description: parsedMeta.description || "",
+      instructions: parsedMeta.description || "",
+      essayConfig: parsedMeta.essayConfig || null,
       activityScope: quiz.activity_scope || "session",
       durationMinutes: Number(quiz.duration_minutes || 0),
       passingScore: Number(quiz.passing_score || 60),
@@ -1453,31 +1456,14 @@ export async function getDelegatedAssignmentDetail({
   };
 }
 
-/**
- * Validates file/audio size and MIME allowlist, persists submission asset onto R2
- * (or injectable upload adapter for tests), and registers a `ready` `submission_assets` row.
- */
-export async function uploadDelegatedSubmissionAsset({
-  db = defaultDb,
-  sessionToken,
-  assignmentId,
-  profileId = null,
-  unitId = null,
+function validateAndPrepareSubmissionAssetInput({
   assetKind = "file",
   filename,
   mimeType,
   sizeBytes = null,
   contentBase64 = null,
   contentBuffer = null,
-  uploadImpl = null,
-  fetchImpl = globalThis.fetch,
-  now = () => new Date(),
-  env = process.env,
-} = {}) {
-  const parsedAssignmentId = parsePositiveId(assignmentId);
-  if (!parsedAssignmentId) {
-    throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "assignmentId must be a positive integer.");
-  }
+}) {
   if (assetKind !== "file" && assetKind !== "audio") {
     throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "assetKind must be 'file' or 'audio'.");
   }
@@ -1512,47 +1498,46 @@ export async function uploadDelegatedSubmissionAsset({
       `Decoded content exceeds allowed limit (${Math.round(maxSize / 1024 / 1024)}MB).`,
     );
   }
-  const actualSize = buffer ? buffer.length : declaredSize;
+  return {
+    cleanFilename: filename.trim(),
+    actualSize: buffer ? buffer.length : declaredSize,
+    buffer,
+  };
+}
 
-  const { session, profileRow } = await verifyAndResolveDelegatedSession({
-    db,
-    sessionToken,
-    requiredScope: "assignment:submit",
-    expectedProfileId: profileId,
-    isMutation: true,
-    now,
-    env,
-  });
-
-  const assignment = await loadAssignmentRow(db, parsedAssignmentId);
-  if (!assignment) {
-    throw new ExternalIntegrationError(404, "ASSIGNMENT_NOT_FOUND", `Assignment ${parsedAssignmentId} not found.`);
-  }
-  const units = applySequentialLocks(
-    await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id }),
-    { bypassSequentialLock: await canBypassSequentialProgress(db, { profileRow, userId: session.user_id, userRole: session.user_role }) },
-  );
-  resolveAssignmentUnitMatch(units, assignment, profileRow, unitId);
-
+async function persistDelegatedSubmissionAsset({
+  db,
+  userId,
+  assignmentId = null,
+  quizId = null,
+  assetKind,
+  cleanFilename,
+  mimeType,
+  actualSize,
+  buffer,
+  uploadImpl = null,
+  fetchImpl = globalThis.fetch,
+}) {
   let storageKey;
   if (typeof uploadImpl === "function") {
     const uploaded = await uploadImpl({
-      userId: session.user_id,
-      assignmentId: parsedAssignmentId,
+      userId,
+      assignmentId,
+      quizId,
       assetKind,
-      filename: filename.trim(),
+      filename: cleanFilename,
       mimeType,
       sizeBytes: actualSize,
       buffer,
     });
     storageKey = uploaded?.fileKey || uploaded?.storageKey
-      || `submissions/${session.user_id}/${Date.now()}_${crypto.randomBytes(6).toString("hex")}_${filename.trim()}`;
+      || `submissions/${userId}/${Date.now()}_${crypto.randomBytes(6).toString("hex")}_${cleanFilename}`;
   } else {
     let signed;
     try {
       signed = await generateSubmissionUploadPresignedUrl({
-        userId: session.user_id,
-        filename: filename.trim(),
+        userId,
+        filename: cleanFilename,
         mimeType,
         sizeBytes: actualSize,
         assetKind,
@@ -1582,7 +1567,7 @@ export async function uploadDelegatedSubmissionAsset({
        (user_id, assignment_id, asset_kind, original_filename, storage_key, mime_type, size_bytes, status)
      VALUES ($1, $2, $3, $4, $5, $6, $7, 'ready')
      RETURNING id, asset_kind, original_filename, mime_type, size_bytes, status, created_at`,
-    [session.user_id, parsedAssignmentId, assetKind, filename.trim(), storageKey, mimeType, actualSize],
+    [userId, assignmentId, assetKind, cleanFilename, storageKey, mimeType, actualSize],
   )).rows[0];
 
   return {
@@ -1593,6 +1578,253 @@ export async function uploadDelegatedSubmissionAsset({
     mimeType: inserted.mime_type,
     sizeBytes: Number(inserted.size_bytes || 0),
     status: inserted.status,
+    url: `/api/assignments/submission-assets/${inserted.id}/access`,
+  };
+}
+
+/**
+ * Validates file/audio size and MIME allowlist, persists submission asset onto R2
+ * (or injectable upload adapter for tests), and registers a `ready` `submission_assets` row.
+ */
+export async function uploadDelegatedSubmissionAsset({
+  db = defaultDb,
+  sessionToken,
+  assignmentId,
+  profileId = null,
+  unitId = null,
+  assetKind = "file",
+  filename,
+  mimeType,
+  sizeBytes = null,
+  contentBase64 = null,
+  contentBuffer = null,
+  uploadImpl = null,
+  fetchImpl = globalThis.fetch,
+  now = () => new Date(),
+  env = process.env,
+} = {}) {
+  const parsedAssignmentId = parsePositiveId(assignmentId);
+  if (!parsedAssignmentId) {
+    throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "assignmentId must be a positive integer.");
+  }
+  const { cleanFilename, actualSize, buffer } = validateAndPrepareSubmissionAssetInput({
+    assetKind,
+    filename,
+    mimeType,
+    sizeBytes,
+    contentBase64,
+    contentBuffer,
+  });
+
+  const { session, profileRow } = await verifyAndResolveDelegatedSession({
+    db,
+    sessionToken,
+    requiredScope: "assignment:submit",
+    expectedProfileId: profileId,
+    isMutation: true,
+    now,
+    env,
+  });
+
+  const assignment = await loadAssignmentRow(db, parsedAssignmentId);
+  if (!assignment) {
+    throw new ExternalIntegrationError(404, "ASSIGNMENT_NOT_FOUND", `Assignment ${parsedAssignmentId} not found.`);
+  }
+  const units = applySequentialLocks(
+    await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id }),
+    { bypassSequentialLock: await canBypassSequentialProgress(db, { profileRow, userId: session.user_id, userRole: session.user_role }) },
+  );
+  resolveAssignmentUnitMatch(units, assignment, profileRow, unitId);
+
+  return persistDelegatedSubmissionAsset({
+    db,
+    userId: session.user_id,
+    assignmentId: parsedAssignmentId,
+    assetKind,
+    cleanFilename,
+    mimeType,
+    actualSize,
+    buffer,
+    uploadImpl,
+    fetchImpl,
+  });
+}
+
+/**
+ * Uploads an attachment for a delegated quiz essay/translation question (`assignment_id = NULL`
+ * so Course's native `quizPlayer.router.js` and `assignment.router.js` teacher grading recognize it).
+ */
+export async function uploadDelegatedQuizEssayAsset({
+  db = defaultDb,
+  sessionToken,
+  quizId,
+  profileId = null,
+  unitId = null,
+  assetKind = "file",
+  filename,
+  mimeType,
+  sizeBytes = null,
+  contentBase64 = null,
+  contentBuffer = null,
+  uploadImpl = null,
+  fetchImpl = globalThis.fetch,
+  now = () => new Date(),
+  env = process.env,
+} = {}) {
+  const parsedQuizId = parsePositiveId(quizId);
+  if (!parsedQuizId) {
+    throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "quizId must be a positive integer.");
+  }
+  if (assetKind !== "file") {
+    throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "Quiz essay attachments require assetKind 'file'.");
+  }
+  const { cleanFilename, actualSize, buffer } = validateAndPrepareSubmissionAssetInput({
+    assetKind,
+    filename,
+    mimeType,
+    sizeBytes,
+    contentBase64,
+    contentBuffer,
+  });
+
+  const { session, profileRow } = await verifyAndResolveDelegatedSession({
+    db,
+    sessionToken,
+    requiredScope: "quiz:attempt",
+    expectedProfileId: profileId,
+    isMutation: true,
+    now,
+    env,
+  });
+
+  const rawQuiz = await loadQuizRow(db, parsedQuizId);
+  if (!rawQuiz) {
+    throw new ExternalIntegrationError(404, "QUIZ_NOT_FOUND", `Quiz ${parsedQuizId} not found.`);
+  }
+  const units = applySequentialLocks(
+    await loadProfileUnitsWithProgress(db, { profileRow, userId: session.user_id }),
+    { bypassSequentialLock: await canBypassSequentialProgress(db, { profileRow, userId: session.user_id, userRole: session.user_role }) },
+  );
+  resolveQuizUnitMatch(units, rawQuiz, unitId);
+
+  return persistDelegatedSubmissionAsset({
+    db,
+    userId: session.user_id,
+    assignmentId: null,
+    quizId: parsedQuizId,
+    assetKind,
+    cleanFilename,
+    mimeType,
+    actualSize,
+    buffer,
+    uploadImpl,
+    fetchImpl,
+  });
+}
+
+/**
+ * Streams a ready `submission_assets` item (used by quiz essay attachments or assignment feedback)
+ * to the delegated owner or admin without requiring a Course browser session cookie.
+ */
+export async function streamDelegatedSubmissionAsset({
+  db = defaultDb,
+  sessionToken,
+  assetId,
+  profileId = null,
+  disposition = "inline",
+  fetchImpl = globalThis.fetch,
+  readStreamImpl = null,
+  now = () => new Date(),
+  env = process.env,
+} = {}) {
+  const parsedAssetId = parsePositiveId(assetId);
+  if (!parsedAssetId) {
+    throw new ExternalIntegrationError(422, "VALIDATION_ERROR", "assetId must be a positive integer.");
+  }
+  const normalizedDisposition = String(disposition || "inline").trim().toLowerCase() === "attachment"
+    ? "attachment"
+    : "inline";
+
+  const { session } = await verifyAndResolveDelegatedSession({
+    db,
+    sessionToken,
+    requiredScope: null,
+    expectedProfileId: profileId != null && String(profileId).trim() !== "" ? profileId : null,
+    now,
+    env,
+  });
+  const scopes = session.scopes || [];
+  if (!scopes.some((s) => s === "workspace:read" || s === "quiz:attempt" || s === "assignment:submit")) {
+    throw new ExternalIntegrationError(403, "DELEGATED_SCOPE_DENIED", "Delegated session lacks access scope for submission assets.");
+  }
+
+  const assetRes = await db.query(
+    `SELECT id, user_id, asset_kind, original_filename, storage_key, mime_type, size_bytes, status
+     FROM submission_assets
+     WHERE id = $1
+     LIMIT 1`,
+    [parsedAssetId],
+  );
+  const asset = assetRes.rows[0] || null;
+  if (!asset) {
+    throw new ExternalIntegrationError(404, "ASSET_NOT_FOUND", `Submission asset ${parsedAssetId} not found.`);
+  }
+  const isOwner = String(asset.user_id) === String(session.user_id);
+  const isAdmin = isDelegatedAdminRole(session.user_role);
+  if (!isOwner && !isAdmin) {
+    throw new ExternalIntegrationError(403, "ASSET_ACCESS_FORBIDDEN", "You do not have permission to view this submission asset.");
+  }
+  if (asset.status !== "ready") {
+    throw new ExternalIntegrationError(409, "ASSET_NOT_READY", "Submission asset is not ready.");
+  }
+
+  const contentDisposition = buildContentDispositionHeader(normalizedDisposition, asset.original_filename || `asset-${parsedAssetId}`);
+  const mimeType = asset.mime_type || "application/octet-stream";
+
+  if (typeof readStreamImpl === "function") {
+    const custom = await readStreamImpl({ asset, disposition: normalizedDisposition });
+    const body = custom?.body ?? custom?.stream ?? Buffer.alloc(0);
+    return {
+      status: Number(custom?.status || 200),
+      headers: {
+        "Content-Type": custom?.headers?.["content-type"] || mimeType,
+        "Content-Disposition": contentDisposition,
+        "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        "X-Content-Type-Options": "nosniff",
+      },
+      body,
+    };
+  }
+
+  let signed;
+  try {
+    signed = await generateSubmissionPlaybackSignedUrl({ r2Key: asset.storage_key });
+  } catch (err) {
+    if (err?.code === "R2_NOT_CONFIGURED") {
+      throw new ExternalIntegrationError(503, "STORAGE_UNAVAILABLE", "Submission storage provider is not configured.");
+    }
+    throw err;
+  }
+  const upstreamRes = await fetchImpl(signed.playbackUrl, { method: "GET" });
+  if (!upstreamRes.ok) {
+    throw new ExternalIntegrationError(502, "FILE_STREAM_FAILED", `Failed to fetch submission asset (${upstreamRes.status}).`);
+  }
+  const hasStreamBody = Boolean(
+    upstreamRes.body
+    && (typeof upstreamRes.body.getReader === "function" || typeof upstreamRes.body.pipe === "function"),
+  );
+  const body = hasStreamBody ? upstreamRes.body : Buffer.from(await upstreamRes.arrayBuffer());
+  const contentLength = upstreamRes.headers?.get?.("content-length") || (asset.size_bytes ? String(asset.size_bytes) : null);
+  return {
+    status: upstreamRes.status || 200,
+    headers: {
+      "Content-Type": upstreamRes.headers?.get?.("content-type") || mimeType,
+      ...(contentLength ? { "Content-Length": contentLength } : {}),
+      "Content-Disposition": contentDisposition,
+      "Cache-Control": "private, no-store, no-cache, must-revalidate",
+      "X-Content-Type-Options": "nosniff",
+    },
+    body,
   };
 }
 
