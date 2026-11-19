@@ -2859,7 +2859,26 @@ export const exportContentStateForReconciliation = async (
               END AS tombstoned_unit_count,
               CASE
                 WHEN UPPER(vcp.mode) = 'MIRROR' AND vcp.source_live_class_id IS NOT NULL
-                  THEN (SELECT COUNT(*)::int FROM lms_learning_file_placements p WHERE p.live_class_id = vcp.source_live_class_id AND ${mirrorPlacementActiveCond})
+                  THEN (
+                    SELECT COUNT(*)::int
+                    FROM (
+                      SELECT lf.class_session_id AS unit_id, lf.id AS file_id
+                      FROM lms_learning_files lf
+                      JOIN class_sessions cs ON cs.id = lf.class_session_id
+                      WHERE cs.live_class_id = vcp.source_live_class_id
+                        AND cs.status <> 'cancelled'
+                        AND ${fileActiveCond.replace(/\bf\./g, "lf.")}
+                      UNION
+                      SELECT p.class_session_id AS unit_id, lf.id AS file_id
+                      FROM lms_learning_file_placements p
+                      JOIN lms_learning_files lf ON lf.id = p.file_id
+                      JOIN class_sessions cs ON cs.id = p.class_session_id
+                      WHERE cs.live_class_id = vcp.source_live_class_id
+                        AND cs.status <> 'cancelled'
+                        AND ${mirrorPlacementActiveCond}
+                        AND ${fileActiveCond.replace(/\bf\./g, "lf.")}
+                    ) AS mirror_active_files
+                  )
                 ELSE (SELECT COUNT(*)::int FROM lesson_learning_file_placements lp JOIN lessons l ON l.id = lp.lesson_id WHERE l.course_id = vcp.course_id AND l.is_published = TRUE)
               END AS active_file_placement_count,
               CASE

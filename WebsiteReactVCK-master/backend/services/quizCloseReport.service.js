@@ -1,4 +1,10 @@
 import { pool } from "../db/connect.js";
+import { reviewIsAvailable } from "./assessmentPolicy.service.js";
+import {
+  allocateNextSyncRevision,
+  buildV2EventEnvelope,
+  insertOutboxEnvelopeIfReady,
+} from "./courseCatalogSync.service.js";
 import { buildQuizResult } from "./quizAttempt.service.js";
 
 const MANUAL_TYPES = new Set(["essay", "translation"]);
@@ -109,6 +115,7 @@ export const processExpiredQuizAttempts = async ({
   limit = 100,
   now = new Date(),
 } = {}) => transaction(db, async (client) => {
+  const effectiveNow = asDate(now, new Date());
   const claimed = await client.query(
     `SELECT *
      FROM quiz_attempts
@@ -118,11 +125,40 @@ export const processExpiredQuizAttempts = async ({
      ORDER BY expires_at, id
      FOR UPDATE SKIP LOCKED
      LIMIT $2`,
-    [asDate(now, new Date()), Math.max(1, Number(limit) || 100)],
+    [effectiveNow, Math.max(1, Number(limit) || 100)],
   );
 
+  let caps = {
+    has_sync_rev: false,
+    has_profile_col: false,
+    has_outbox: false,
+    has_ext_id: false,
+    has_profiles: false,
+  };
+  if (claimed.rows.length > 0) {
+    const capRes = await client.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'quiz_attempts' AND column_name = 'sync_revision'
+         ) AS has_sync_rev,
+         EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'quiz_attempts' AND column_name = 'video_course_profile_id'
+         ) AS has_profile_col,
+         to_regclass('course_integration_outbox') IS NOT NULL AS has_outbox,
+         to_regclass('external_identities') IS NOT NULL AS has_ext_id,
+         to_regclass('video_course_profiles') IS NOT NULL AS has_profiles`,
+    );
+    caps = capRes.rows[0] || caps;
+  }
+
   const questionsByQuiz = new Map();
+  const quizMetaById = new Map();
+  const profileById = new Map();
+  const extIdsByUserId = new Map();
   let submitted = 0;
+
   for (const attempt of claimed.rows) {
     let questions = questionsForAttempt(attempt, []);
     if (questions.length === 0) {
@@ -132,19 +168,152 @@ export const processExpiredQuizAttempts = async ({
       questions = questionsByQuiz.get(String(attempt.quiz_id));
     }
     const computed = buildQuizResult(questions, attempt.answers_json || {});
-    const updated = await client.query(
-      `UPDATE quiz_attempts
-       SET score = $2,
-           max_score = $3,
-           status = 'submitted',
-           submitted_at = COALESCE(submitted_at, $4),
-           auto_submitted = TRUE,
-           updated_at = NOW()
-       WHERE id = $1 AND status = 'in_progress'
-       RETURNING id`,
-      [attempt.id, computed.score, computed.maxScore, asDate(now, new Date())],
+    const canSyncDelegated = Boolean(
+      caps.has_sync_rev
+      && caps.has_profile_col
+      && attempt.video_course_profile_id != null
+      && caps.has_outbox
+      && caps.has_ext_id
+      && caps.has_profiles,
     );
-    submitted += updated.rowCount || updated.rows.length;
+    const allocatedRev = canSyncDelegated ? await allocateNextSyncRevision(client) : null;
+
+    const updated = allocatedRev != null
+      ? await client.query(
+        `UPDATE quiz_attempts
+         SET score = $2,
+             max_score = $3,
+             status = 'submitted',
+             submitted_at = COALESCE(submitted_at, $4),
+             auto_submitted = TRUE,
+             sync_revision = $5,
+             updated_at = NOW()
+         WHERE id = $1 AND status = 'in_progress'
+         RETURNING *`,
+        [attempt.id, computed.score, computed.maxScore, effectiveNow, allocatedRev],
+      )
+      : caps.has_sync_rev
+        ? await client.query(
+          `UPDATE quiz_attempts
+           SET score = $2,
+               max_score = $3,
+               status = 'submitted',
+               submitted_at = COALESCE(submitted_at, $4),
+               auto_submitted = TRUE,
+               sync_revision = COALESCE(sync_revision, 1) + 1,
+               updated_at = NOW()
+           WHERE id = $1 AND status = 'in_progress'
+           RETURNING *`,
+          [attempt.id, computed.score, computed.maxScore, effectiveNow],
+        )
+        : await client.query(
+          `UPDATE quiz_attempts
+           SET score = $2,
+               max_score = $3,
+               status = 'submitted',
+               submitted_at = COALESCE(submitted_at, $4),
+               auto_submitted = TRUE,
+               updated_at = NOW()
+           WHERE id = $1 AND status = 'in_progress'
+           RETURNING *`,
+          [attempt.id, computed.score, computed.maxScore, effectiveNow],
+        );
+
+    const updatedRow = updated.rows[0];
+    if (!updatedRow) continue;
+    submitted += updated.rowCount || 1;
+
+    if (!canSyncDelegated) continue;
+
+    const uidKey = String(updatedRow.user_id);
+    if (!extIdsByUserId.has(uidKey)) {
+      const extRes = await client.query(
+        `SELECT external_user_id
+         FROM external_identities
+         WHERE user_id = $1 AND source_system = 'moly' AND status = 'active'
+         ORDER BY id ASC`,
+        [updatedRow.user_id],
+      );
+      extIdsByUserId.set(
+        uidKey,
+        extRes.rows.map((r) => String(r.external_user_id || "").trim()).filter(Boolean),
+      );
+    }
+    const externalUserIds = extIdsByUserId.get(uidKey) || [];
+    if (externalUserIds.length === 0) continue;
+
+    const qKey = String(updatedRow.quiz_id);
+    if (!quizMetaById.has(qKey)) {
+      const qRes = await client.query(
+        `SELECT id, course_id, lesson_id, class_session_id, passing_score, attempt_limit,
+                review_policy, available_from, available_until, status
+         FROM quizzes
+         WHERE id = $1
+         LIMIT 1`,
+        [updatedRow.quiz_id],
+      );
+      quizMetaById.set(qKey, qRes.rows[0] || null);
+    }
+    const quizRow = quizMetaById.get(qKey);
+
+    const pKey = String(updatedRow.video_course_profile_id);
+    if (!profileById.has(pKey)) {
+      const pRes = await client.query(
+        `SELECT id, course_id, mode
+         FROM video_course_profiles
+         WHERE id = $1
+         LIMIT 1`,
+        [updatedRow.video_course_profile_id],
+      );
+      profileById.set(pKey, pRes.rows[0] || null);
+    }
+    const profileRow = profileById.get(pKey);
+    if (!quizRow || !profileRow) continue;
+
+    const unitType = String(profileRow.mode || "").toUpperCase() === "MIRROR" ? "class_session" : "lesson";
+    const unitId = unitType === "class_session" ? quizRow.class_session_id : quizRow.lesson_id;
+    if (!unitId) continue;
+
+    const occurredIso = asIso(updatedRow.submitted_at) || asIso(effectiveNow) || new Date().toISOString();
+    const canViewSolution = quizRow.review_policy !== "never" && reviewIsAvailable(quizRow, effectiveNow);
+    const passed = Number(computed.percentage || 0) >= Number(quizRow.passing_score || 60);
+    const rev = Number(updatedRow.sync_revision || allocatedRev || 1);
+
+    const envelope = buildV2EventEnvelope({
+      eventType: "assessment.attempt.updated",
+      aggregateType: "quiz_attempt",
+      aggregateId: String(updatedRow.id),
+      revision: rev,
+      sourceUpdatedAt: occurredIso,
+      occurredAt: occurredIso,
+      deleted: false,
+      deletedAt: null,
+      payload: {
+        userId: String(updatedRow.user_id),
+        externalUserId: externalUserIds[0],
+        externalUserIds,
+        courseId: String(profileRow.course_id),
+        profileId: String(profileRow.id),
+        unitId: String(unitId),
+        unitType,
+        itemType: "quiz",
+        itemId: String(quizRow.id),
+        attemptOrSubId: String(updatedRow.id),
+        attemptId: String(updatedRow.id),
+        submissionId: null,
+        status: updatedRow.status,
+        score: Number(updatedRow.score ?? computed.score ?? 0),
+        maxScore: Number(updatedRow.max_score ?? computed.maxScore ?? 0),
+        passed,
+        attemptCount: Number(updatedRow.attempt_number || 1),
+        ...(quizRow.attempt_limit != null ? { maxAttempts: Number(quizRow.attempt_limit) } : {}),
+        autoSubmitted: true,
+        canViewSolution: Boolean(canViewSolution),
+        submittedAt: occurredIso,
+        revision: rev,
+      },
+    });
+    await insertOutboxEnvelopeIfReady(client, envelope);
   }
 
   return { scanned: claimed.rows.length, submitted };
