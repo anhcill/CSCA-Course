@@ -195,7 +195,7 @@ export const enqueueManagementEvent = async ({ event, rawBody, idempotencyKey, c
       if (String(row.status || "").toUpperCase() === "DEAD_LETTER") {
         await client.query(
           `UPDATE lms_sync_inbox
-           SET status = 'RECEIVED', processed_at = NULL, last_error = NULL
+           SET status = 'PENDING', processed_at = NULL, last_error = NULL
            WHERE id = $1`,
           [row.id],
         );
