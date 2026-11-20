@@ -2359,6 +2359,7 @@ router.get("/admin/courses", protectRoute, requireAdmin, async (req, res) => {
 
     // Section 5.1: Accounts currently having > 2 active trusted devices are not auto-deleted;
     // admin receives a warning and selects which device to revoke.
+    // Admin / creator accounts are exempt from the 2-device learner limit.
     const overLimitRes = await query(
       `SELECT u.id AS user_id, u.username, u.email,
               COUNT(d.id)::int AS active_device_count,
@@ -2372,7 +2373,9 @@ router.get("/admin/courses", protectRoute, requireAdmin, async (req, res) => {
               ) AS devices
        FROM trusted_login_devices d
        JOIN users u ON u.id = d.user_id
-       WHERE d.revoked_at IS NULL AND d.record_access_granted_at IS NOT NULL
+       WHERE d.revoked_at IS NULL
+         AND d.record_access_granted_at IS NOT NULL
+         AND u.role::text NOT IN ('admin', 'creator')
        GROUP BY u.id, u.username, u.email
        HAVING COUNT(d.id) > 2
        ORDER BY COUNT(d.id) DESC, u.id ASC`,

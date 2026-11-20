@@ -67,16 +67,33 @@ function sanitizeUsernameSeed(rawSeed, fallbackId) {
   return base.length >= 3 ? base : `moly_${String(fallbackId).replace(/[^a-z0-9]/gi, "").slice(0, 12) || "user"}`;
 }
 
+function isConnectedPgClient(db) {
+  return Boolean(
+    db
+    && typeof db.query === "function"
+    && (typeof db.release === "function" || db._connected === true || db._connecting === true),
+  );
+}
+
 function createDbRunner(db) {
   if (!db) {
     return {
       query: (sql, params) => defaultQuery(sql, params),
       getClient: () => getClient(),
+      isExistingClient: false,
     };
   }
+  const existingClient = isConnectedPgClient(db);
   return {
     query: (sql, params) => db.query(sql, params),
+    isExistingClient: existingClient,
     getClient: () => {
+      if (existingClient) {
+        return {
+          query: (sql, params) => db.query(sql, params),
+          release() {},
+        };
+      }
       if (typeof db.getClient === "function") return db.getClient();
       if (typeof db.connect === "function") return db.connect();
       if (db.pool && typeof db.pool.connect === "function") return db.pool.connect();
@@ -89,6 +106,9 @@ function createDbRunner(db) {
 }
 
 async function runSsoTransaction(runner, work) {
+  if (runner?.isExistingClient) {
+    return work(runner);
+  }
   const client = await runner.getClient();
   try {
     await client.query("BEGIN");

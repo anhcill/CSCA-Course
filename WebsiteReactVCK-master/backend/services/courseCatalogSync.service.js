@@ -198,11 +198,22 @@ export function buildV2EventEnvelope({
   };
 }
 
+function isConnectedPgClient(db) {
+  return Boolean(
+    db
+    && typeof db.query === "function"
+    && (typeof db.release === "function" || db._connected === true || db._connecting === true),
+  );
+}
+
 async function runInTx(db = defaultDb, work) {
   if (db && typeof db.transaction === "function") {
     return db.transaction(work);
   }
-  if (db && typeof db.query === "function" && typeof db.getClient !== "function" && typeof db.connect !== "function") {
+  if (
+    isConnectedPgClient(db)
+    || (db && typeof db.query === "function" && typeof db.getClient !== "function" && typeof db.connect !== "function")
+  ) {
     return work(db);
   }
   const client = typeof db.getClient === "function"

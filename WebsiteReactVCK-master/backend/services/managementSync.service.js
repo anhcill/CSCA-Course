@@ -8,7 +8,10 @@ import {
 import { normalizeSessionKind, shiftCancelledSessionCurriculum } from "./sessionCurriculumShift.service.js";
 import { notifyClassStudents } from "./liveClass.service.js";
 import { createManagedUsername } from "../utils/usernameGenerator.js";
-import { recordCourseCatalogMutation } from "./courseCatalogSync.service.js";
+import {
+  recordCourseCatalogMutation,
+  recordProfileCatalogMutation,
+} from "./courseCatalogSync.service.js";
 
 const EVENT_TYPES = new Set([
   "teacher.upserted",
@@ -188,6 +191,35 @@ export const enqueueManagementEvent = async ({ event, rawBody, idempotencyKey, c
       if (row.event_id !== event.eventId || row.idempotency_key !== idempotencyKey || row.payload_hash !== payloadHash) {
         await client.query("ROLLBACK");
         return { conflict: true };
+      }
+      if (String(row.status || "").toUpperCase() === "DEAD_LETTER") {
+        await client.query(
+          `UPDATE lms_sync_inbox
+           SET status = 'RECEIVED', processed_at = NULL, last_error = NULL
+           WHERE id = $1`,
+          [row.id],
+        );
+        let requeuedJobId = row.job_id ? Number(row.job_id) : null;
+        if (requeuedJobId) {
+          await client.query(
+            `UPDATE lms_sync_jobs
+             SET status = 'PENDING', retry_count = 0, next_attempt_at = NOW(),
+                 locked_at = NULL, processed_at = NULL, last_error = NULL, updated_at = NOW()
+             WHERE id = $1`,
+            [requeuedJobId],
+          );
+        } else {
+          const newJob = await client.query(
+            `INSERT INTO lms_sync_jobs
+               (inbox_id, event_type, entity_type, entity_id, status, payload, idempotency_key, correlation_id, next_attempt_at)
+             VALUES ($1, $2, 'management_event', $3, 'PENDING', $4::jsonb, $5, $6, NOW())
+             RETURNING id`,
+            [row.id, event.eventType, event.eventId, JSON.stringify({ eventId: event.eventId }), `management-event:${event.eventId}`, correlationId],
+          );
+          requeuedJobId = Number(newJob.rows[0].id);
+        }
+        await client.query("COMMIT");
+        return { duplicate: false, requeued: true, inboxId: Number(row.id), jobId: requeuedJobId, status: "PENDING" };
       }
       await client.query("COMMIT");
       return { duplicate: true, inboxId: Number(row.id), jobId: row.job_id ? Number(row.job_id) : null, status: row.status };
@@ -645,7 +677,7 @@ const syncClass = async (client, event) => {
                    course_id, learning_mode, recording_content_mode, title, status`,
         [input.classSourceId, course.id, input.title, input.status, input.sourceUpdatedAt],
       );
-      await client.query(
+      const profileRes = await client.query(
         `INSERT INTO video_course_profiles
            (course_id, management_class_id, mode, source_live_class_id, status)
          VALUES ($1, $2, 'INDEPENDENT', NULL, $3)
@@ -654,9 +686,20 @@ const syncClass = async (client, event) => {
            mode = 'INDEPENDENT',
            source_live_class_id = NULL,
            status = EXCLUDED.status,
-           updated_at = NOW()`,
+           updated_at = NOW()
+         RETURNING id`,
         [course.id, input.classSourceId, profileStatus],
       );
+      if (profileRes.rows[0]?.id) {
+        await recordProfileCatalogMutation({
+          db: client,
+          profileId: profileRes.rows[0].id,
+          courseId: course.id,
+          eventType: profileStatus === "archived" ? "profile.tombstoned" : "profile.upserted",
+          deleted: profileStatus === "archived",
+          correlationId: event.eventId || event.idempotencyKey || null,
+        });
+      }
       return {
         action: "class.recording_alias.synced",
         entityType: "class_learning_alias",
@@ -687,7 +730,7 @@ const syncClass = async (client, event) => {
                  course_id, learning_mode, recording_content_mode, title, status`,
       [input.classSourceId, input.sourceClassSourceId, sourceClass.id, course.id, input.title, input.status, input.sourceUpdatedAt],
     );
-    await client.query(
+    const mirrorProfileRes = await client.query(
       `INSERT INTO video_course_profiles
          (course_id, management_class_id, mode, source_live_class_id, status)
        VALUES ($1, $2, 'MIRROR', $3, $4)
@@ -696,9 +739,20 @@ const syncClass = async (client, event) => {
          mode = 'MIRROR',
          source_live_class_id = EXCLUDED.source_live_class_id,
          status = EXCLUDED.status,
-         updated_at = NOW()`,
+         updated_at = NOW()
+       RETURNING id`,
       [course.id, input.classSourceId, sourceClass.id, profileStatus],
     );
+    if (mirrorProfileRes.rows[0]?.id) {
+      await recordProfileCatalogMutation({
+        db: client,
+        profileId: mirrorProfileRes.rows[0].id,
+        courseId: course.id,
+        eventType: profileStatus === "archived" ? "profile.tombstoned" : "profile.upserted",
+        deleted: profileStatus === "archived",
+        correlationId: event.eventId || event.idempotencyKey || null,
+      });
+    }
     const migratedEnrollmentCount = await migrateRecordingAliasEnrollments(client, {
       aliasId: alias.rows[0].id,
       previousLiveClassId: existingAlias.rows[0]?.live_class_id,

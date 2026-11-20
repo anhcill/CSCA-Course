@@ -219,11 +219,20 @@ export const verifyDeviceSlotProof = (
   };
 };
 
+const isConnectedPgClient = (db) => Boolean(
+  db
+  && typeof db.query === "function"
+  && (typeof db.release === "function" || db._connected === true || db._connecting === true),
+);
+
 const runInTransaction = async (db, work, { tx = null } = {}) => {
   if (tx && typeof tx.query === "function") {
     return work(tx);
   }
   const runner = db && typeof db.query === "function" ? db : { query, getClient };
+  if (isConnectedPgClient(runner)) {
+    return work(runner);
+  }
   const client = typeof runner.getClient === "function"
     ? await runner.getClient()
     : typeof runner.connect === "function"

@@ -1164,7 +1164,7 @@ export async function mintDelegatedLearningSession({
   let trustedDeviceId = null;
   let deviceBindingId = null;
   let deviceSlot = null;
-  if (deviceSlotProof && !isS2SAdminDirect) {
+  if (deviceSlotProof && !isAdminSession) {
     const verifiedProof = verifyDeviceSlotProof(deviceSlotProof, {
       expectedExternalUserId: extUser,
       now: () => now().getTime(),
@@ -1704,8 +1704,19 @@ export async function getPublicPreviewUnit({
   };
 }
 
+function isConnectedPgClient(db) {
+  return Boolean(
+    db
+    && typeof db.query === "function"
+    && (typeof db.release === "function" || db._connected === true || db._connecting === true),
+  );
+}
+
 export async function runDelegatedTx(db, work) {
   const runner = db && typeof db.query === "function" ? db : defaultDb;
+  if (isConnectedPgClient(runner)) {
+    return work(runner);
+  }
   const client = typeof runner.getClient === "function"
     ? await runner.getClient()
     : typeof runner.connect === "function"
@@ -2105,7 +2116,7 @@ export async function mintDelegatedVideoPlaybackToken({
         );
       }
     }
-  } else if (verifiedProof) {
+  } else if (verifiedProof && isRestrictedLearner) {
     const regRes = await db.query(`SELECT to_regclass('moly_device_bindings') IS NOT NULL AS has_bindings`);
     if (regRes.rows[0]?.has_bindings) {
       deviceSlot = await bindMolyDeviceToTrustedSlot({
@@ -2118,7 +2129,7 @@ export async function mintDelegatedVideoPlaybackToken({
         userAgent: verifiedProof.userAgent || userAgent,
         ipAddress: verifiedProof.ipAddress || clientIp,
         deviceLimit: Number(profileRow.device_limit || 2),
-        enforce: profileRow.enforce_trusted_devices !== false,
+        enforce: enforceDevices,
         correlationId: corr,
         metadata: {
           profileId: String(profileRow.profile_id),

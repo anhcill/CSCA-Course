@@ -69,16 +69,28 @@ const retryAt = (attempts, now) => {
   return new Date(asDate(now, new Date()).getTime() + minutes * 60_000);
 };
 
+const isConnectedPgClient = (db) => Boolean(
+  db
+  && typeof db.query === "function"
+  && (typeof db.release === "function" || db._connected === true || db._connecting === true),
+);
+
 const acquireClient = async (db) => {
+  if (isConnectedPgClient(db)) {
+    return { client: db, release: () => {}, isNested: true };
+  }
   if (typeof db?.connect === "function") {
     const client = await db.connect();
-    return { client, release: () => client.release?.() };
+    return { client, release: () => client.release?.(), isNested: false };
   }
-  return { client: db, release: () => {} };
+  return { client: db, release: () => {}, isNested: false };
 };
 
 const transaction = async (db, callback) => {
-  const { client, release } = await acquireClient(db);
+  const { client, release, isNested } = await acquireClient(db);
+  if (isNested) {
+    return callback(client);
+  }
   try {
     await client.query("BEGIN");
     const result = await callback(client);
