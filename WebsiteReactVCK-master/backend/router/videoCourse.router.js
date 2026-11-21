@@ -994,7 +994,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         const completedQuizCount = Number(row.completed_quiz_count || 0);
         const isVideoCompleted = Boolean(aggregate?.isCompleted);
         const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
-        const isCompleted = isVideoCompleted && isQuizCompleted;
+        const isCompleted = (hasVideo || quizCount > 0) && isVideoCompleted && isQuizCompleted;
 
         return {
           id: String(row.id),
@@ -1428,7 +1428,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         const completedQuizCount = Number(row.completed_quiz_count || 0);
         const isVideoCompleted = Boolean(aggregate?.isCompleted);
         const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
-        const isCompleted = isVideoCompleted && isQuizCompleted;
+        const isCompleted = (hasVideo || quizCount > 0) && isVideoCompleted && isQuizCompleted;
 
         return {
           id: String(row.id),
@@ -1742,9 +1742,9 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
     }
 
     const completedUnitsCount = units.filter((u) => u.isCompleted).length;
-    const totalUnitsCount = units.length || 1;
+    const totalUnitsCount = units.length;
     const overallProgressPercent = totalUnitsCount > 0
-      ? Math.round(units.reduce((sum, unit) => sum + Math.min(100, Math.max(0, Number(unit.progressPercent || 0))), 0) / totalUnitsCount)
+      ? Math.round((completedUnitsCount / totalUnitsCount) * 100)
       : 0;
 
     return res.json({

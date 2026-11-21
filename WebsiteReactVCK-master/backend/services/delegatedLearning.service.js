@@ -401,6 +401,7 @@ async function loadReferencedProfileUnitsWithProgress(db, { profileRow, userId =
       const quizCount = Number(row.quiz_count || 0);
       const completedQuizCount = Number(row.completed_quiz_count || 0);
       const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
+      const hasCompletionRequirement = hasVideo || quizCount > 0;
       return {
         id: String(virtualReferenceUnitId(row)),
         type: "class_session",
@@ -433,7 +434,7 @@ async function loadReferencedProfileUnitsWithProgress(db, { profileRow, userId =
         quizCount,
         completedQuizCount,
         isQuizCompleted,
-        isCompleted: isVideoCompleted && isQuizCompleted,
+        isCompleted: hasCompletionRequirement && isVideoCompleted && isQuizCompleted,
         lastPositionSeconds: Math.max(0, ...videos.map((video) => Number(video.last_position_seconds || 0))),
       };
     });
@@ -500,6 +501,7 @@ export async function loadProfileUnitsWithProgress(db, { profileRow, userId = nu
       const completedQuizCount = Number(row.completed_quiz_count || 0);
       const isVideoCompleted = !hasVideo || Boolean(aggregate?.isCompleted);
       const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
+      const hasCompletionRequirement = hasVideo || quizCount > 0;
 
       return {
         id: String(row.id),
@@ -524,7 +526,7 @@ export async function loadProfileUnitsWithProgress(db, { profileRow, userId = nu
         quizCount,
         completedQuizCount,
         isQuizCompleted,
-        isCompleted: isVideoCompleted && isQuizCompleted,
+        isCompleted: hasCompletionRequirement && isVideoCompleted && isQuizCompleted,
         lastPositionSeconds: Number(row.last_position_seconds || 0),
         sourceLiveClassId: row.live_class_id,
       };
@@ -585,6 +587,7 @@ export async function loadProfileUnitsWithProgress(db, { profileRow, userId = nu
     const completedQuizCount = Number(row.completed_quiz_count || 0);
     const isVideoCompleted = !hasBunnyVideo || Boolean(aggregate?.isCompleted);
     const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
+    const hasCompletionRequirement = hasVideo || quizCount > 0;
 
     return {
       id: String(row.id),
@@ -608,7 +611,7 @@ export async function loadProfileUnitsWithProgress(db, { profileRow, userId = nu
       quizCount,
       completedQuizCount,
       isQuizCompleted,
-      isCompleted: isVideoCompleted && isQuizCompleted,
+      isCompleted: hasCompletionRequirement && isVideoCompleted && isQuizCompleted,
       lastPositionSeconds: Number(row.last_position_seconds || 0),
     };
   }));
@@ -1672,7 +1675,7 @@ export async function getDelegatedWorkspace({
 
   const completedUnitsCount = units.filter((u) => u.isCompleted).length;
   const overallProgressPercent = units.length > 0
-    ? Math.round(units.reduce((sum, u) => sum + Math.min(100, Math.max(0, Number(u.progressPercent || 0))), 0) / units.length)
+    ? Math.round((completedUnitsCount / units.length) * 100)
     : 0;
 
   let sourceClass = null;

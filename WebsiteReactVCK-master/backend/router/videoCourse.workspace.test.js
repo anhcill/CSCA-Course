@@ -689,7 +689,8 @@ test("video course workspace: multipart units require every video part >=50% plu
 
   ws = await fetchWorkspace();
   assert.equal(ws.units[0].progressPercent, 41.33);
-  assert.equal(ws.progress.overallPercent, 21);
+  assert.equal(ws.progress.completedUnits, 0);
+  assert.equal(ws.progress.overallPercent, 0);
   assert.equal(ws.units[0].isVideoCompleted, false);
   assert.equal(ws.units[0].isQuizCompleted, false);
   assert.equal(ws.units[0].isCompleted, false);
