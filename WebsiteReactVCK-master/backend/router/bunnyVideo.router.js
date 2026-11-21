@@ -1012,6 +1012,18 @@ const resolvePlaybackVideoContext = async (videoIdParam, requestedUnitId = null)
       );
       asset = csvRes.rows[0] || null;
     }
+
+    if (!asset) {
+      // Check if numericId is a recording_curriculum_unit_videos.id
+      const refVidRes = await query(
+        `SELECT va.*
+         FROM recording_curriculum_unit_videos rv
+         JOIN video_assets va ON va.id = rv.video_asset_id
+         WHERE rv.id = $1 AND va.deleted_at IS NULL`,
+        [numericId],
+      ).catch(() => ({ rows: [] }));
+      asset = refVidRes.rows[0] || null;
+    }
   } else if (typeof videoIdParam === "string" && videoIdParam.trim()) {
     const res = await query(
       `SELECT * FROM video_assets WHERE provider_video_id = $1 AND deleted_at IS NULL LIMIT 1`,
@@ -1050,8 +1062,69 @@ const resolvePlaybackVideoContext = async (videoIdParam, requestedUnitId = null)
   let liveClassId = placement?.live_class_id || null;
   let classSessionId = placement?.class_session_id || null;
   let lessonId = placement?.lesson_id || null;
+  let recordingUnitOverrideId = null;
+  let virtualUnitId = null;
   let isPublished = Boolean(placement?.is_published || asset.published_at);
   let isPublicPreview = Boolean(placement?.session_is_public_preview || placement?.lesson_is_public_preview);
+
+  // Check INDEPENDENT recording curriculum reference video placements
+  // (e.g. Khóa record toán csca referencing sessions/slices via recording_curriculum_unit_videos)
+  const shouldCheckReferenced = !courseId
+    || (requestedUnitId && String(classSessionId || "") !== String(requestedUnitId) && String(lessonId || "") !== String(requestedUnitId));
+  if (shouldCheckReferenced) {
+    const refPlacementsRes = await query(
+      `SELECT rv.id AS placement_id, rv.unit_override_id, rv.is_published,
+              o.source_class_session_id, o.slice_key,
+              o.is_published_override, o.is_public_preview_override,
+              r.video_course_profile_id,
+              vcp.course_id AS profile_course_id,
+              cs.is_public_preview AS session_is_public_preview
+       FROM recording_curriculum_unit_videos rv
+       JOIN recording_curriculum_unit_overrides o ON o.id = rv.unit_override_id
+       JOIN recording_curriculum_references r ON r.id = o.curriculum_reference_id
+       JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
+       LEFT JOIN class_sessions cs ON cs.id = o.source_class_session_id
+       WHERE rv.video_asset_id = $1
+         AND vcp.deleted_at IS NULL
+       ORDER BY rv.is_published DESC, rv.id DESC`,
+      [asset.id],
+    ).catch(() => ({ rows: [] }));
+
+    if (refPlacementsRes.rows.length > 0) {
+      const computeVirtualUnitId = (row) => (
+        String(row.slice_key || "default") === "default"
+          ? String(row.source_class_session_id)
+          : String(1_000_000_000_000 + Number(row.unit_override_id))
+      );
+      let refPlacement = refPlacementsRes.rows[0];
+      if (requestedUnitId) {
+        const matchedRef = refPlacementsRes.rows.find((row) => {
+          const vId = computeVirtualUnitId(row);
+          return vId === String(requestedUnitId)
+            || String(row.source_class_session_id) === String(requestedUnitId)
+            || String(row.unit_override_id) === String(requestedUnitId);
+        });
+        if (matchedRef) {
+          refPlacement = matchedRef;
+        } else if (courseId) {
+          refPlacement = null;
+        }
+      }
+      if (refPlacement) {
+        courseId = refPlacement.profile_course_id;
+        liveClassId = null;
+        classSessionId = refPlacement.source_class_session_id;
+        lessonId = null;
+        recordingUnitOverrideId = Number(refPlacement.unit_override_id);
+        virtualUnitId = computeVirtualUnitId(refPlacement);
+        isPublished = Boolean(refPlacement.is_published || asset.published_at);
+        isPublicPreview = refPlacement.is_public_preview_override !== null
+          && refPlacement.is_public_preview_override !== undefined
+          ? Boolean(refPlacement.is_public_preview_override)
+          : Boolean(refPlacement.session_is_public_preview);
+      }
+    }
+  }
 
   // Fallback: check direct lessons.video_asset_id link
   if (!courseId) {
@@ -1073,6 +1146,8 @@ const resolvePlaybackVideoContext = async (videoIdParam, requestedUnitId = null)
     liveClassId,
     classSessionId,
     lessonId,
+    recordingUnitOverrideId,
+    virtualUnitId,
     isPublished,
     isPublicPreview,
   };
@@ -1106,8 +1181,10 @@ router.post("/videos/:videoId/playback-token", protectRoute, async (req, res) =>
     // If unitId was explicitly requested, ensure the video actually belongs to that unit
     if (unitId) {
       const belongsToUnit = String(ctx.classSessionId || "") === String(unitId)
-        || String(ctx.lessonId || "") === String(unitId);
-      if ((ctx.classSessionId || ctx.lessonId) && !belongsToUnit) {
+        || String(ctx.lessonId || "") === String(unitId)
+        || (ctx.virtualUnitId && String(ctx.virtualUnitId) === String(unitId))
+        || (ctx.recordingUnitOverrideId && String(ctx.recordingUnitOverrideId) === String(unitId));
+      if ((ctx.classSessionId || ctx.lessonId || ctx.virtualUnitId) && !belongsToUnit) {
         await recordAuditEvent({
           actorId: req.user.id,
           action: "video.playback.rejected",
@@ -1208,6 +1285,7 @@ router.post("/videos/:videoId/playback-token", protectRoute, async (req, res) =>
       userId: req.user.id,
       classSessionId: ctx.classSessionId,
       lessonId: ctx.lessonId,
+      recordingUnitOverrideId: ctx.recordingUnitOverrideId,
     });
 
     return res.json({
@@ -1251,7 +1329,9 @@ router.put("/videos/:videoId/progress", protectRoute, async (req, res) => {
 
     if (unitId) {
       const belongsToUnit = String(ctx.classSessionId || "") === String(unitId)
-        || String(ctx.lessonId || "") === String(unitId);
+        || String(ctx.lessonId || "") === String(unitId)
+        || (ctx.virtualUnitId && String(ctx.virtualUnitId) === String(unitId))
+        || (ctx.recordingUnitOverrideId && String(ctx.recordingUnitOverrideId) === String(unitId));
       if (!belongsToUnit) {
         return sendError(res, 403, "Video không thuộc buổi học hoặc bài học được yêu cầu", "UNIT_MISMATCH");
       }
@@ -1278,6 +1358,7 @@ router.put("/videos/:videoId/progress", protectRoute, async (req, res) => {
       userId: req.user.id,
       classSessionId: ctx.classSessionId,
       lessonId: ctx.lessonId,
+      recordingUnitOverrideId: ctx.recordingUnitOverrideId,
     }).catch(() => null);
 
     const progress = await recordVideoWatchProgress({
@@ -1287,6 +1368,7 @@ router.put("/videos/:videoId/progress", protectRoute, async (req, res) => {
       liveClassId: ctx.liveClassId,
       classSessionId: ctx.classSessionId,
       lessonId: ctx.lessonId,
+      recordingUnitOverrideId: ctx.recordingUnitOverrideId,
       currentTimeSeconds,
       watchedDeltaSeconds,
       durationSeconds,
@@ -1300,6 +1382,8 @@ router.put("/videos/:videoId/progress", protectRoute, async (req, res) => {
       liveClassId: ctx.liveClassId,
       classSessionId: ctx.classSessionId,
       lessonId: ctx.lessonId,
+      recordingUnitOverrideId: ctx.recordingUnitOverrideId,
+      virtualUnitId: ctx.virtualUnitId,
       videoAssetId: ctx.asset.id,
       videoProgress: progress,
       wasCompletedBefore: Boolean(prevUnitProgress?.isCompleted),

@@ -176,16 +176,16 @@ export function applySequentialLocks(
 
     if (prev.isLocked) {
       isLocked = true;
-      lockReason = `Bạn hãy hoàn thành buổi học trước để tiếp tục nhé (xem khoảng ${VIDEO_COMPLETION_PERCENT}% video và hoàn thành bài trắc nghiệm nếu có).`;
+      lockReason = `Bạn hãy hoàn thành buổi học trước để tiếp tục nhé (xem từ ${VIDEO_COMPLETION_PERCENT}% video và đạt từ 6/10 điểm trắc nghiệm nếu có).`;
     } else if (!prev.isVideoCompleted && !prev.isQuizCompleted) {
       isLocked = true;
-      lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video. Xem thêm đến ${VIDEO_COMPLETION_PERCENT}% và hoàn thành ${prev.completedQuizCount}/${prev.quizCount} bài trắc nghiệm của ${prevLabel} để tiếp tục nhé.`;
+      lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video. Xem thêm đến ${VIDEO_COMPLETION_PERCENT}% và đạt từ 6/10 điểm ở ${prevLabel} để tiếp tục nhé.`;
     } else if (!prev.isVideoCompleted) {
       isLocked = true;
       lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video của ${prevLabel}. Xem thêm đến ${VIDEO_COMPLETION_PERCENT}% là có thể tiếp tục bài kế tiếp nhé.`;
     } else if (!prev.isQuizCompleted) {
       isLocked = true;
-      lockReason = `Cần hoàn thành ${prev.completedQuizCount}/${prev.quizCount} bài trắc nghiệm của ${prevLabel} để mở khóa buổi tiếp theo.`;
+      lockReason = `Bạn cần đạt từ 6/10 điểm trắc nghiệm của ${prevLabel} để mở khóa buổi tiếp theo.`;
     }
 
     lockedList.push({
@@ -346,6 +346,8 @@ async function loadReferencedProfileUnitsWithProgress(db, { profileRow, userId =
                      AND (qa.video_course_profile_id = $4 OR qa.video_course_profile_id IS NULL)
                      AND (qa.status IN ('SUBMITTED','GRADED','COMPLETED','submitted','graded','completed')
                           OR qa.submitted_at IS NOT NULL)
+                     AND qa.max_score > 0
+                     AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
                  )) AS completed_quiz_count
        FROM class_sessions cs
        LEFT JOIN class_chapters cc ON cc.id = cs.chapter_id
@@ -463,6 +465,8 @@ export async function loadProfileUnitsWithProgress(db, { profileRow, userId = nu
                    WHERE qa.quiz_id = q.id AND qa.user_id = $2
                      AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                      AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                     AND qa.max_score > 0
+                     AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
                  )) AS completed_quiz_count
        FROM class_sessions cs
        LEFT JOIN class_chapters cc ON cc.id = cs.chapter_id
@@ -545,6 +549,8 @@ export async function loadProfileUnitsWithProgress(db, { profileRow, userId = nu
                  WHERE qa.quiz_id = q.id AND qa.user_id = $2
                    AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                    AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                   AND qa.max_score > 0
+                   AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
                )) AS completed_quiz_count
      FROM lessons l
      LEFT JOIN sections s ON s.id = l.section_id
@@ -806,6 +812,14 @@ export async function loadUnlockedUnitDetail(
                     AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                 ) ELSE 0 END AS attempts_count,
                 CASE WHEN $2::bigint > 0 THEN (
+                  SELECT COUNT(*)::int FROM quiz_attempts qa
+                  WHERE qa.quiz_id = q.id AND qa.user_id = $2
+                    AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
+                    AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                    AND qa.max_score > 0
+                    AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
+                ) ELSE 0 END AS passed_attempts_count,
+                CASE WHEN $2::bigint > 0 THEN (
                   SELECT MAX(qa.score) FROM quiz_attempts qa
                   WHERE qa.quiz_id = q.id AND qa.user_id = $2
                     AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
@@ -961,6 +975,14 @@ export async function loadUnlockedUnitDetail(
                   AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                   AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
               ) ELSE 0 END AS attempts_count,
+              CASE WHEN $2::bigint > 0 THEN (
+                SELECT COUNT(*)::int FROM quiz_attempts qa
+                WHERE qa.quiz_id = q.id AND qa.user_id = $2
+                  AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
+                  AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                  AND qa.max_score > 0
+                  AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
+              ) ELSE 0 END AS passed_attempts_count,
               CASE WHEN $2::bigint > 0 THEN (
                 SELECT MAX(qa.score) FROM quiz_attempts qa
                 WHERE qa.quiz_id = q.id AND qa.user_id = $2
@@ -1180,6 +1202,7 @@ function formatUnlockedUnitResponse({
     }),
     quizzes: quizzes.map((q) => {
       const hasSubmitted = Number(q.attempts_count || 0) > 0;
+      const hasPassed = Number(q.passed_attempts_count || 0) > 0;
       const canViewSolution = !isPublicPreviewAccess
         && (allowFreeQuizReview || (q.review_policy !== "never" && hasSubmitted && reviewIsAvailable(q)));
       return {
@@ -1193,7 +1216,7 @@ function formatUnlockedUnitResponse({
         canStartAttempt: !isPublicPreviewAccess
           && (allowFreeQuizReview || q.attempt_limit == null || Number(q.attempts_count || 0) < Number(q.attempt_limit)),
         attemptsCount: isPublicPreviewAccess ? 0 : Number(q.attempts_count || 0),
-        isCompleted: isPublicPreviewAccess ? false : hasSubmitted,
+        isCompleted: isPublicPreviewAccess ? false : hasPassed,
         bestScore: !isPublicPreviewAccess && q.best_score != null ? Number(q.best_score) : null,
         maxScore: !isPublicPreviewAccess && q.max_score != null ? Number(q.max_score) : null,
         latestAttemptId: !isPublicPreviewAccess && q.latest_attempt_id ? String(q.latest_attempt_id) : null,
@@ -2179,6 +2202,8 @@ export async function emitNativeProgressOutboxEvents({
   liveClassId = null,
   classSessionId = null,
   lessonId = null,
+  recordingUnitOverrideId = null,
+  virtualUnitId = null,
   videoAssetId,
   videoProgress,
   wasCompletedBefore = false,
@@ -2200,7 +2225,21 @@ export async function emitNativeProgressOutboxEvents({
   if (!externalUserIds.length) return [];
 
   let profiles = [];
-  if (classSessionId) {
+  if (recordingUnitOverrideId) {
+    const pRes = await db.query(
+      `SELECT vcp.id AS profile_id, vcp.course_id, vcp.mode, vcp.source_live_class_id,
+              vcp.management_class_id, vcp.allow_file_download, vcp.device_limit,
+              vcp.enforce_trusted_devices, vcp.status
+       FROM recording_curriculum_unit_overrides o
+       JOIN recording_curriculum_references r ON r.id = o.curriculum_reference_id
+       JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
+       WHERE o.id = $1
+         AND vcp.deleted_at IS NULL
+         AND vcp.status <> 'archived'`,
+      [recordingUnitOverrideId],
+    ).catch(() => ({ rows: [] }));
+    profiles = pRes.rows;
+  } else if (classSessionId) {
     const pRes = await db.query(
       `SELECT vcp.id AS profile_id, vcp.course_id, vcp.mode, vcp.source_live_class_id,
               vcp.management_class_id, vcp.allow_file_download, vcp.device_limit,
@@ -2229,8 +2268,8 @@ export async function emitNativeProgressOutboxEvents({
 
   const emitted = [];
   const occurredAt = now().toISOString();
-  const unitType = classSessionId ? "class_session" : "lesson";
-  const targetUnitId = String(classSessionId || lessonId || "");
+  const unitType = classSessionId || recordingUnitOverrideId ? "class_session" : "lesson";
+  const targetUnitId = String(virtualUnitId || classSessionId || lessonId || "");
 
   const userRoleRes = await db.query(`SELECT role FROM users WHERE id = $1 LIMIT 1`, [userId]).catch(() => ({ rows: [] }));
   const bypassSequentialLock = isDelegatedAdminRole(userRoleRes.rows[0]?.role);
@@ -2529,8 +2568,13 @@ export async function recordDelegatedVideoProgress({
     parsedEventMs = ts;
   }
 
-  const classSessionId = targetUnit.unitType === "class_session" ? Number(targetUnit.id) : null;
+  const classSessionId = targetUnit.unitType === "class_session"
+    ? Number(targetUnit.sourceClassSessionId || targetUnit.id)
+    : null;
   const lessonId = targetUnit.unitType === "lesson" ? Number(targetUnit.id) : null;
+  const recordingUnitOverrideId = targetUnit.isRecordingReference && targetUnit.unitOverrideId
+    ? Number(targetUnit.unitOverrideId)
+    : null;
   const liveClassId = profileRow.mode === "MIRROR" && profileRow.source_live_class_id
     ? Number(profileRow.source_live_class_id)
     : null;
@@ -2565,7 +2609,13 @@ export async function recordDelegatedVideoProgress({
         loadProfileUnitsWithProgress(tx, { profileRow, userId: session.user_id }).then((raw) =>
           applySequentialLocks(raw, { bypassSequentialLock }),
         ),
-        getUnitVideoProgressAggregate({ db: tx, userId: session.user_id, classSessionId, lessonId }),
+        getUnitVideoProgressAggregate({
+          db: tx,
+          userId: session.user_id,
+          classSessionId,
+          lessonId,
+          recordingUnitOverrideId,
+        }),
       ]);
       const currentUnit = unitsCurrent.find((u) => String(u.id) === String(targetUnit.id)) || targetUnit;
       const completedUnitsCount = unitsCurrent.filter((u) => u.isCompleted).length;
@@ -2616,6 +2666,7 @@ export async function recordDelegatedVideoProgress({
       liveClassId,
       classSessionId,
       lessonId,
+      recordingUnitOverrideId,
       currentTimeSeconds: parsedCurrentTime,
       watchedDeltaSeconds: parsedDelta,
       durationSeconds,

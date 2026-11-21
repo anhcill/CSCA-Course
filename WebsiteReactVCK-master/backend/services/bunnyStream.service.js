@@ -414,10 +414,38 @@ export const processBunnyWebhookEvent = async ({
   // Bunny uses PascalCase in some webhook examples, but production events and
   // the Video API may use lower camel case. Accept both so a ready asset never
   // remains at a zero duration and falls back to showing the session date.
-  const durationSeconds = payload.Length ?? payload.length ?? payload.durationSeconds ?? asset.duration_seconds ?? 0;
-  const storageBytes = payload.StorageSize ?? payload.storageSize ?? payload.storageBytes ?? asset.storage_bytes ?? 0;
-  const availableResolutions = payload.AvailableResolutions ?? payload.availableResolutions ?? asset.available_resolutions ?? "360p,480p,720p,1080p";
-  const thumbnailUrl = payload.ThumbnailUrl ?? payload.thumbnailUrl ?? asset.thumbnail_url;
+  let durationSeconds = payload.Length ?? payload.length ?? payload.durationSeconds ?? asset.duration_seconds ?? 0;
+  let storageBytes = payload.StorageSize ?? payload.storageSize ?? payload.storageBytes ?? asset.storage_bytes ?? 0;
+  let availableResolutions = payload.AvailableResolutions ?? payload.availableResolutions ?? asset.available_resolutions ?? "360p,480p,720p,1080p";
+  let thumbnailUrl = payload.ThumbnailUrl ?? payload.thumbnailUrl ?? asset.thumbnail_url;
+
+  // Bunny Stream webhooks only send { VideoLibraryId, VideoGuid, Status } without Length.
+  // Fetch authoritative metadata from Bunny Video API when ready and duration is still 0.
+  if (nextStatus === "ready" && Number(durationSeconds || 0) <= 0) {
+    const config = getBunnyConfig();
+    if (config.liveHttpEnabled && config.apiKey && typeof globalThis.fetch === "function") {
+      try {
+        const metaRes = await globalThis.fetch(
+          `https://video.bunnycdn.com/library/${encodeURIComponent(libraryId)}/videos/${encodeURIComponent(videoGuid)}`,
+          { headers: { AccessKey: config.apiKey, Accept: "application/json" } },
+        );
+        if (metaRes.ok) {
+          const meta = await metaRes.json().catch(() => null);
+          if (meta && typeof meta === "object") {
+            const metaLen = Number(meta.length ?? meta.Length ?? 0);
+            if (Number.isFinite(metaLen) && metaLen > 0) durationSeconds = metaLen;
+            const metaSize = Number(meta.storageSize ?? meta.StorageSize ?? 0);
+            if (Number.isFinite(metaSize) && metaSize > 0) storageBytes = Math.max(Number(storageBytes || 0), metaSize);
+            if (meta.availableResolutions || meta.AvailableResolutions) {
+              availableResolutions = meta.availableResolutions || meta.AvailableResolutions;
+            }
+          }
+        }
+      } catch {
+        // Non-fatal: keep webhook processing resilient if Bunny metadata lookup times out
+      }
+    }
+  }
   const processingError = nextStatus === "failed"
     ? String(payload.ErrorMessage || payload.errorMessage || "Bunny Stream encoding failed")
     : null;
@@ -635,11 +663,26 @@ export const getUnitVideoProgressAggregate = async ({
   userId,
   classSessionId = null,
   lessonId = null,
+  recordingUnitOverrideId = null,
 }) => {
-  if (!userId || (!classSessionId && !lessonId)) return null;
+  if (!userId || (!classSessionId && !lessonId && !recordingUnitOverrideId)) return null;
 
   let parts = [];
-  if (classSessionId) {
+  if (recordingUnitOverrideId) {
+    parts = (await db.query(
+      `SELECT va.id AS video_asset_id, va.duration_seconds,
+              COALESCE(vwp.watched_seconds, 0) AS watched_seconds,
+              COALESCE(vwp.completion_percent, 0) AS completion_percent,
+              COALESCE(vwp.is_completed, FALSE) AS is_completed
+       FROM recording_curriculum_unit_videos rv
+       JOIN video_assets va ON va.id = rv.video_asset_id AND va.deleted_at IS NULL
+       LEFT JOIN video_watch_progress vwp
+         ON vwp.user_id = $2 AND vwp.video_asset_id = va.id
+       WHERE rv.unit_override_id = $1 AND rv.is_published = TRUE
+       ORDER BY (rv.video_type = 'primary') DESC, rv.sort_order, rv.id`,
+      [recordingUnitOverrideId, userId],
+    )).rows;
+  } else if (classSessionId) {
     parts = (await db.query(
       `SELECT va.id AS video_asset_id, va.duration_seconds,
               COALESCE(vwp.watched_seconds, 0) AS watched_seconds,
@@ -720,6 +763,7 @@ export const recordVideoWatchProgress = async ({
   liveClassId = null,
   classSessionId = null,
   lessonId = null,
+  recordingUnitOverrideId = null,
   currentTimeSeconds = 0,
   watchedDeltaSeconds = null,
   durationSeconds = null,
@@ -831,6 +875,7 @@ export const recordVideoWatchProgress = async ({
     userId,
     classSessionId,
     lessonId,
+    recordingUnitOverrideId,
   });
 
   // Also sync lesson_progress table if this is an independent lesson
