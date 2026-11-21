@@ -270,6 +270,50 @@ router.get("/", async (req, res) => {
               (SELECT COUNT(*)::int FROM class_sessions cs
                WHERE cs.live_class_id = vcp.source_live_class_id
                  AND cs.status <> 'cancelled' AND cs.is_public_preview = true) AS preview_sessions_count
+              ,(SELECT COUNT(*)::int
+                FROM recording_curriculum_references r
+                JOIN class_sessions cs ON cs.live_class_id = r.source_live_class_id
+                LEFT JOIN recording_curriculum_unit_overrides o
+                  ON o.curriculum_reference_id = r.id AND o.source_class_session_id = cs.id
+                WHERE r.video_course_profile_id = vcp.id
+                  AND cs.status <> 'cancelled'
+                  AND COALESCE(o.is_published_override, TRUE) = TRUE
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(r.excluded_session_source_ids) excluded(source_id)
+                    WHERE LOWER(excluded.source_id) = LOWER(COALESCE(cs.management_session_source_id, ''))
+                  )) AS referenced_units_count
+              ,(SELECT COUNT(DISTINCT COALESCE(
+                           cs.course_section_id::text,
+                           cs.chapter_id::text,
+                           'default'
+                         ))::int
+                FROM recording_curriculum_references r
+                JOIN class_sessions cs ON cs.live_class_id = r.source_live_class_id
+                LEFT JOIN recording_curriculum_unit_overrides o
+                  ON o.curriculum_reference_id = r.id AND o.source_class_session_id = cs.id
+                WHERE r.video_course_profile_id = vcp.id
+                  AND cs.status <> 'cancelled'
+                  AND COALESCE(o.is_published_override, TRUE) = TRUE
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(r.excluded_session_source_ids) excluded(source_id)
+                    WHERE LOWER(excluded.source_id) = LOWER(COALESCE(cs.management_session_source_id, ''))
+                  )) AS referenced_sections_count
+              ,(SELECT COUNT(*)::int
+                FROM recording_curriculum_references r
+                JOIN class_sessions cs ON cs.live_class_id = r.source_live_class_id
+                LEFT JOIN recording_curriculum_unit_overrides o
+                  ON o.curriculum_reference_id = r.id AND o.source_class_session_id = cs.id
+                WHERE r.video_course_profile_id = vcp.id
+                  AND cs.status <> 'cancelled'
+                  AND COALESCE(o.is_published_override, TRUE) = TRUE
+                  AND o.is_public_preview_override = TRUE
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(r.excluded_session_source_ids) excluded(source_id)
+                    WHERE LOWER(excluded.source_id) = LOWER(COALESCE(cs.management_session_source_id, ''))
+                  )) AS referenced_preview_units_count
        FROM video_course_profiles vcp
        JOIN courses c ON c.id = vcp.course_id
        LEFT JOIN live_classes lc ON lc.id = vcp.source_live_class_id
@@ -290,9 +334,13 @@ router.get("/", async (req, res) => {
       price: Number(row.price || 0),
       isFree: Boolean(row.is_free),
       thumbnailUrl: row.thumbnail_url,
-      totalLessons: row.published_lessons_count || row.total_lessons || 0,
-      sectionsCount: row.sections_count || 0,
-      previewUnitsCount: Number(row.preview_lessons_count || 0) + Number(row.preview_sessions_count || 0),
+      totalLessons: Number(row.published_lessons_count || 0)
+        + Number(row.referenced_units_count || 0)
+        || Number(row.total_lessons || 0),
+      sectionsCount: Number(row.sections_count || 0) + Number(row.referenced_sections_count || 0),
+      previewUnitsCount: Number(row.preview_lessons_count || 0)
+        + Number(row.preview_sessions_count || 0)
+        + Number(row.referenced_preview_units_count || 0),
       instructorName: row.instructor_name || "Moly Course",
       videoMode: row.video_mode || "MIRROR",
       badgeLabel: row.video_mode === "INDEPENDENT" ? "Video độc lập" : "Record kế thừa",
@@ -481,6 +529,40 @@ router.get("/:offeringId/overview", async (req, res) => {
         }
       }
       sections = Array.from(bySection.values());
+
+      const referenced = await loadReferencedRecordingCurriculum(
+        { query },
+        {
+          course,
+          profile,
+          includeTombstoned: false,
+          includeUnpublishedVideos: false,
+        },
+      );
+      if (referenced.reference) {
+        const referencedSections = referenced.sections
+          .map((section) => ({
+            id: String(section.sectionId),
+            title: section.title || "Nội dung khóa học",
+            description: "",
+            position: Number(section.sortOrder || 0),
+            lessons: referenced.units
+              .filter((unit) => String(unit.sectionId) === String(section.sectionId))
+              .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+              .map((unit) => ({
+                id: String(unit.unitId),
+                title: unit.title || "Bài học",
+                durationSeconds: Number(unit.durationSeconds || 0),
+                isPreview: Boolean(unit.isPublicPreview),
+                status: "published",
+                startTime: null,
+                endTime: null,
+              })),
+          }))
+          .filter((section) => section.lessons.length > 0);
+        sections = [...sections, ...referencedSections]
+          .sort((a, b) => Number(a.position || 0) - Number(b.position || 0));
+      }
     }
 
     const lessons = sections.flatMap((section) => section.lessons);
