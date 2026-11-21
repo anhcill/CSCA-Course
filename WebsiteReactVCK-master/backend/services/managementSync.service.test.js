@@ -147,6 +147,33 @@ test("independent recording curriculum link reuses source material without sourc
   assert.equal((await db.query("SELECT COUNT(*)::int AS count FROM class_sessions")).rows[0].count, 3);
 
   const reference = (await db.query("SELECT * FROM recording_curriculum_references")).rows[0];
+  const makeupOverride = (await db.query(
+    `SELECT o.id, o.is_published_override
+     FROM recording_curriculum_unit_overrides o
+     WHERE o.curriculum_reference_id = $1 AND o.source_class_session_id = $2`,
+    [reference.id, sessions[1].id],
+  )).rows[0];
+  assert.equal(makeupOverride.is_published_override, false);
+  await db.query(
+    "UPDATE recording_curriculum_unit_overrides SET is_published_override=TRUE WHERE id=$1",
+    [makeupOverride.id],
+  );
+  await applyManagementEvent(db, {
+    eventId: "evt-curriculum-link-repair",
+    eventType: "class.curriculum.linked",
+    occurredAt: new Date("2026-11-21T09:02:00Z"),
+    payload: {
+      classSourceId: "record-toan-01",
+      contentSourceClassSourceId: "source-toan-01",
+      includeVideos: false,
+      excludedSessionSourceIds: ["session-makeup"],
+      sourceUpdatedAt: "2026-11-21T09:02:00Z",
+    },
+  });
+  assert.equal((await db.query(
+    "SELECT is_published_override FROM recording_curriculum_unit_overrides WHERE id=$1",
+    [makeupOverride.id],
+  )).rows[0].is_published_override, false);
   const destinationVideo = (await db.query(
     `INSERT INTO video_assets(title,r2_key,duration_seconds,provider,playback_status)
      VALUES ('Video khóa Record','destination-video',900,'r2_legacy','ready') RETURNING id`,
