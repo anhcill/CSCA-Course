@@ -91,7 +91,8 @@ async function run() {
         options.forEach((option) => validateLatex(option.text, `${prefix} lựa chọn ${option.key}`, issues));
         validateLatex(row.explanation, `${prefix} lời giải`, issues);
       }
-      if (questions.length !== 15) issues.push(`Số câu là ${questions.length}, cần đúng 15`);
+      const expectedCount = /集合练习|不等式练习/u.test(quiz.title) ? 15 : 20;
+      if (questions.length !== expectedCount) issues.push(`Số câu là ${questions.length}, cần đúng ${expectedCount}`);
       if (Math.abs(totalPoints - 10) > 0.0001) issues.push(`Tổng điểm là ${totalPoints}, cần đúng 10`);
       if (Number(quiz.passing_score) !== 60) issues.push(`Mốc đạt là ${quiz.passing_score}%, cần 60% (6/10)`);
       report.push({
@@ -105,9 +106,9 @@ async function run() {
         issues,
       });
     }
-    const expectedQuizzes = report.filter((item) => /集合练习|不等式练习|Tập hợp|Bất đẳng thức/u.test(item.title));
+    const expectedQuizzes = report.filter((item) => /集合练习|不等式练习|函数基础练习|指对幂与反函数练习|三角函数练习|Tập hợp|Bất đẳng thức|Hàm số/u.test(item.title));
     console.log(JSON.stringify({
-      ready: expectedQuizzes.length === 2 && expectedQuizzes.every((item) => item.ready),
+      ready: expectedQuizzes.length >= 2 && expectedQuizzes.every((item) => item.ready),
       profileId: PROFILE_ID,
       quizzes: expectedQuizzes,
     }, null, 2));
