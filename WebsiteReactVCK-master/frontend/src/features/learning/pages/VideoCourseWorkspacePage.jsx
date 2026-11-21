@@ -172,16 +172,16 @@ const recomputeSequentialLocks = (rawUnits = [], previewOnly = false, canSkipSeq
 
     if (prev.isLocked) {
       isLocked = true;
-      lockReason = `Bạn hãy hoàn thành buổi học trước để tiếp tục nhé (xem khoảng ${REQUIRED_WATCH_PERCENT}% video và hoàn thành trắc nghiệm nếu có).`;
+      lockReason = `Bạn hãy hoàn thành bài trước để tiếp tục nhé (xem từ ${REQUIRED_WATCH_PERCENT}% video và đạt từ 6/10 điểm trắc nghiệm nếu có).`;
     } else if (!prev.isVideoCompleted && !prev.isQuizCompleted) {
       isLocked = true;
-      lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video. Xem thêm đến ${REQUIRED_WATCH_PERCENT}% và hoàn thành ${prev.completedQuizCount || 0}/${prev.quizCount || 0} bài trắc nghiệm của ${prevLabel} để tiếp tục nhé.`;
+      lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video. Xem thêm đến ${REQUIRED_WATCH_PERCENT}% và đạt từ 6/10 điểm ở ${prevLabel} để tiếp tục nhé.`;
     } else if (!prev.isVideoCompleted) {
       isLocked = true;
       lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video của ${prevLabel}. Xem thêm đến ${REQUIRED_WATCH_PERCENT}% là có thể tiếp tục bài kế tiếp nhé.`;
     } else if (!prev.isQuizCompleted) {
       isLocked = true;
-      lockReason = `Cần hoàn thành ${prev.completedQuizCount || 0}/${prev.quizCount || 0} bài trắc nghiệm của ${prevLabel} để mở khóa buổi tiếp theo.`;
+      lockReason = `Bạn cần đạt từ 6/10 điểm trắc nghiệm của ${prevLabel} để mở khóa bài tiếp theo.`;
     }
 
     result.push({
@@ -840,7 +840,7 @@ export default function VideoCourseWorkspacePage() {
                   </div>
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5 space-y-1">
                     <p className="text-[10px] font-black uppercase tracking-wider text-sky-400">Điều kiện 2</p>
-                    <p className="text-xs font-bold text-white">Hoàn thành Trắc nghiệm (Quiz)</p>
+                    <p className="text-xs font-bold text-white">Đạt từ 6/10 điểm Trắc nghiệm</p>
                     <p className="text-[11px] text-slate-400">Nộp xong bài trắc nghiệm củng cố (nếu buổi học đó có bài trắc nghiệm).</p>
                   </div>
                 </div>
@@ -1026,7 +1026,7 @@ export default function VideoCourseWorkspacePage() {
                     )}
                     <span className="font-bold truncate">
                       {(activeUnitMeta?.quizCount || activeUnit?.quizzes?.length || 0) > 0
-                        ? "2. Hoàn thành bài Trắc nghiệm (Quiz)"
+                        ? "2. Đạt từ 6/10 điểm Trắc nghiệm"
                         : "2. Trắc nghiệm: Không bắt buộc ở buổi này"}
                     </span>
                   </div>
@@ -1898,7 +1898,7 @@ export default function VideoCourseWorkspacePage() {
               <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2">
                 <ShieldCheck className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                 <p className="leading-snug">
-                  {workspaceData?.capabilities?.canReviewFreely ? <>Bạn là học viên lớp Live, có thể chọn bất kỳ bài nào để xem lại.</> : <>Học theo thứ tự: Xem khoảng <strong>{REQUIRED_WATCH_PERCENT}% video</strong> và <strong>hoàn thành Quiz</strong> để tiếp tục bài kế tiếp nhé.</>}
+                  {workspaceData?.capabilities?.canReviewFreely ? <>Bạn là học viên lớp Live, có thể chọn bất kỳ bài nào để xem lại.</> : <>Học theo thứ tự: Xem từ <strong>{REQUIRED_WATCH_PERCENT}% video</strong> và đạt từ <strong>6/10 điểm Quiz</strong> để tiếp tục bài kế tiếp nhé.</>}
                 </p>
               </div>
             </div>
@@ -2247,7 +2247,7 @@ export default function VideoCourseWorkspacePage() {
             <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2">
               <ShieldCheck className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
               <p className="leading-snug">
-                {workspaceData?.capabilities?.canReviewFreely ? <>Bạn là học viên lớp Live, có thể chọn bất kỳ bài nào để xem lại.</> : <>Học theo thứ tự: Xem khoảng <strong>{REQUIRED_WATCH_PERCENT}% video</strong> và <strong>hoàn thành Quiz</strong> để tiếp tục bài kế tiếp nhé.</>}
+                {workspaceData?.capabilities?.canReviewFreely ? <>Bạn là học viên lớp Live, có thể chọn bất kỳ bài nào để xem lại.</> : <>Học theo thứ tự: Xem từ <strong>{REQUIRED_WATCH_PERCENT}% video</strong> và đạt từ <strong>6/10 điểm Quiz</strong> để tiếp tục bài kế tiếp nhé.</>}
               </p>
             </div>
 

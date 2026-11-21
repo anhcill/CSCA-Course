@@ -58,6 +58,8 @@ const loadMirrorUnits = async (db, profile, userId) => {
                  AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                  AND (qa.status IN ('SUBMITTED','GRADED','COMPLETED','submitted','graded','completed')
                    OR qa.submitted_at IS NOT NULL)
+                 AND qa.max_score > 0
+                 AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
              )) AS completed_quiz_count
    FROM class_sessions cs
    LEFT JOIN LATERAL (
@@ -100,6 +102,8 @@ const loadIndependentUnits = async (db, profile, userId) => {
                  AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                  AND (qa.status IN ('SUBMITTED','GRADED','COMPLETED','submitted','graded','completed')
                    OR qa.submitted_at IS NOT NULL)
+                 AND qa.max_score > 0
+                 AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
              )) AS completed_quiz_count
    FROM lessons l
    LEFT JOIN sections s ON s.id = l.section_id

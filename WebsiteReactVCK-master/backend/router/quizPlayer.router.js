@@ -201,11 +201,13 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
          OR EXISTS (
            SELECT 1 FROM video_course_profiles vcp
            WHERE vcp.course_id = g.course_id AND vcp.status = 'active' AND vcp.deleted_at IS NULL
+             AND vcp.mode = 'MIRROR'
              AND (vcp.source_live_class_id = $3 OR vcp.course_id = $2)
          )
          OR EXISTS (
            SELECT 1 FROM video_course_profiles vcp
            WHERE vcp.course_id = $2 AND vcp.status = 'active' AND vcp.deleted_at IS NULL
+             AND vcp.mode = 'MIRROR'
              AND (
                vcp.source_live_class_id IN (SELECT lc.id FROM live_classes lc WHERE lc.course_id = g.course_id)
                OR vcp.source_live_class_id IN (SELECT ce.live_class_id FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.status = 'active')
@@ -217,8 +219,10 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
              SELECT 1 FROM video_course_profiles vcp
              WHERE vcp.id = $5 AND vcp.status = 'active' AND vcp.deleted_at IS NULL AND (
                vcp.course_id = g.course_id
-               OR vcp.source_live_class_id IN (SELECT lc.id FROM live_classes lc WHERE lc.course_id = g.course_id)
-               OR vcp.source_live_class_id IN (SELECT ce.live_class_id FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.status = 'active')
+               OR (vcp.mode = 'MIRROR' AND (
+                 vcp.source_live_class_id IN (SELECT lc.id FROM live_classes lc WHERE lc.course_id = g.course_id)
+                 OR vcp.source_live_class_id IN (SELECT ce.live_class_id FROM class_enrollments ce WHERE ce.user_id = $1 AND ce.status = 'active')
+               ))
              )
            )
          ))
@@ -259,7 +263,7 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
            SELECT 1 FROM video_course_profiles vcp
            LEFT JOIN management_class_learning_aliases alias
              ON LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id)
-           WHERE vcp.source_live_class_id = $2 AND vcp.status = 'active' AND vcp.deleted_at IS NULL
+           WHERE vcp.mode = 'MIRROR' AND vcp.source_live_class_id = $2 AND vcp.status = 'active' AND vcp.deleted_at IS NULL
              AND (
                (ce.learning_mode = 'recording' AND (
                  ce.management_class_alias_id = alias.id
@@ -279,7 +283,7 @@ const ensureQuizAccess = async (db, quiz, user, { recordProfile = null } = {}) =
                ce.video_course_profile_id = vcp.id
                OR (ce.learning_mode = 'recording' AND (
                  ce.management_class_alias_id = alias.id
-                 OR ce.live_class_id = vcp.source_live_class_id
+                 OR (vcp.mode = 'MIRROR' AND ce.live_class_id = vcp.source_live_class_id)
                  OR ce.course_id = vcp.course_id
                ))
                OR (vcp.mode = 'MIRROR' AND ce.live_class_id = vcp.source_live_class_id)

@@ -425,11 +425,22 @@ test("video course workspace: INDEPENDENT mode returns lessons without live clas
      VALUES ($1, $2, 'Bài 1', 'Bài 1: Khảo sát hàm số lượng giác', 1800, TRUE, 1) RETURNING id`,
     [course.id, section.id],
   )).rows[0];
-  await db.query(
+  const independentProfile = (await db.query(
     `INSERT INTO video_course_profiles
        (course_id, mode, source_live_class_id, enforce_trusted_devices, device_limit, status)
-     VALUES ($1, 'INDEPENDENT', NULL, TRUE, 2, 'active')`,
+     VALUES ($1, 'INDEPENDENT', NULL, TRUE, 2, 'active') RETURNING id`,
     [course.id],
+  )).rows[0];
+  const independentQuiz = (await db.query(
+    `INSERT INTO quizzes(title,course_id,lesson_id,status,passing_score)
+     VALUES ('Quiz cần đạt 6/10',$1,$2,'PUBLISHED',60) RETURNING id`,
+    [course.id, lesson.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO quiz_attempts
+       (quiz_id,user_id,video_course_profile_id,attempt_number,score,max_score,status,submitted_at)
+     VALUES ($1,$2,$3,1,5,10,'submitted',NOW())`,
+    [independentQuiz.id, student.id, independentProfile.id],
   );
   await db.query(
     `INSERT INTO lms_access_grants
@@ -479,6 +490,9 @@ test("video course workspace: INDEPENDENT mode returns lessons without live clas
   assert.equal(res.body.data.mode, "RECORD_INDEPENDENT");
   assert.equal(res.body.data.units.length, 1);
   assert.equal(res.body.data.units[0].title, "Bài 1: Khảo sát hàm số lượng giác");
+  assert.equal(res.body.data.units[0].quizCount, 1);
+  assert.equal(res.body.data.units[0].completedQuizCount, 0);
+  assert.equal(res.body.data.units[0].isQuizCompleted, false, "5/10 must not pass a 60% quiz");
   assert.equal(res.body.data.sourceClass, null);
   assert.equal(res.body.data.capabilities.canPlayVideo, true);
   assert.equal(res.body.data.capabilities.canJoinLive, false);
@@ -1336,4 +1350,429 @@ test("cross-course MIRROR: admin student list includes Live students and Record 
   }, recordFileBlockedDownload);
   assert.equal(recordFileBlockedDownload.statusCode, 403);
   assert.equal(recordFileBlockedDownload.body.errorCode, "FILE_DOWNLOAD_DISABLED");
+});
+
+test("sequential unlock matrix: requires BOTH >=50% video AND >=6/10 quiz score (passing_score=60)", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^\"]+\.sql"/g)].map((m) => JSON.parse(m[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
+  process.env.BUNNY_STREAM_LIBRARY_ID = "12345";
+  process.env.BUNNY_STREAM_TOKEN_SECURITY_KEY = "test-bunny-token-secret";
+
+  const { pool } = await import("../db/connect.js");
+  bindPoolToDb(pool, db);
+  const videoCourseRouter = (await import("./videoCourse.router.js")).default;
+
+  const insertUser = async (name, role = "user") => (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ($1,$2,$3,TRUE,'active') RETURNING id,username,email,role,is_management_managed,lms_account_status`,
+    [name, `${name}@example.test`, role],
+  )).rows[0];
+
+  const [teacher, student] = await Promise.all([
+    insertUser("unlock-teacher", "creator"),
+    insertUser("unlock-student"),
+  ]);
+  const deviceId = await addTrustedDevice(db, student.id, "unlock-student");
+
+  const course = (await db.query(
+    `INSERT INTO courses(name,title,slug,author_id,is_published,is_management_managed,external_course_id)
+     VALUES ('Khoa Toan Unlock','Khoa Toan Unlock','khoa-toan-unlock',$1,TRUE,TRUE,'internal_unlock_math') RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const section = (await db.query(
+    `INSERT INTO sections(course_id,title,sort_order) VALUES ($1,'Chuong 1',1) RETURNING id`,
+    [course.id],
+  )).rows[0];
+  const [lesson1, lesson2] = await Promise.all([1, 2].map(async (idx) => (await db.query(
+    `INSERT INTO lessons(course_id,section_id,name,title,duration_seconds,is_published,sort_order)
+     VALUES ($1,$2,$3,$4,100,TRUE,$5) RETURNING id`,
+    [course.id, section.id, `Bai ${idx}`, `Bai ${idx}`, idx],
+  )).rows[0]));
+  const [v1, v2] = await Promise.all([1, 2].map(async (idx) => (await db.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds)
+     VALUES ($1,'bunny_stream','12345',$2,'ready',100) RETURNING id`,
+    [`Unlock Video ${idx}`, `unlock-guid-${idx}`],
+  )).rows[0]));
+  await db.query(
+    `INSERT INTO class_session_videos(lesson_id,video_asset_id,video_type,is_published)
+     VALUES ($1,$2,'primary',TRUE),($3,$4,'primary',TRUE)`,
+    [lesson1.id, v1.id, lesson2.id, v2.id],
+  );
+  const profile = (await db.query(
+    `INSERT INTO video_course_profiles(course_id,mode,source_live_class_id,enforce_trusted_devices,device_limit,status)
+     VALUES ($1,'INDEPENDENT',NULL,TRUE,2,'active') RETURNING id`,
+    [course.id],
+  )).rows[0];
+  const quiz1 = (await db.query(
+    `INSERT INTO quizzes(title,course_id,lesson_id,status,passing_score)
+     VALUES ('Quiz Unlock 60%',$1,$2,'PUBLISHED',60) RETURNING id`,
+    [course.id, lesson1.id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - INTERVAL '1 hour',NOW())`,
+    [student.id, course.id],
+  );
+  await db.query(
+    `INSERT INTO class_enrollments(user_id,course_id,video_course_profile_id,learning_mode,status)
+     VALUES ($1,$2,$3,'recording','active')`,
+    [student.id, course.id, profile.id],
+  );
+
+  const invoke = (routerObj, method, path, reqProps) => {
+    const layer = routerObj.stack.find((l) => l.route?.path === path && l.route.methods[method]);
+    assert.ok(layer, `${method.toUpperCase()} ${path} missing`);
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: null,
+      setHeader(k, v) { this.headers[String(k).toLowerCase()] = v; return this; },
+      status(code) { this.statusCode = code; return this; },
+      json(body) { this.body = body; return this; },
+      send(body) { this.body = body; return this; },
+    };
+    return Promise.resolve(layer.route.stack.at(-1).handle({ params: {}, query: {}, body: {}, ...reqProps }, res)).then(() => res);
+  };
+
+  const fetchWs = async () => {
+    const res = await invoke(videoCourseRouter, "get", "/:offeringId/workspace", {
+      user: student,
+      authSession: { trustedDeviceId: deviceId },
+      params: { offeringId: String(course.id) },
+      query: {},
+    });
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    return res.body.data;
+  };
+
+  // Case 1: Video >=50% (60%) + Quiz 5/10 (<60%) => quiz NOT completed, unit 2 LOCKED
+  await db.query(
+    `INSERT INTO video_watch_progress(user_id,video_asset_id,course_id,lesson_id,last_position_seconds,watched_seconds,completion_percent,is_completed,last_heartbeat_at)
+     VALUES ($1,$2,$3,$4,60,60,60,TRUE,NOW())`,
+    [student.id, v1.id, course.id, lesson1.id],
+  );
+  await db.query(
+    `INSERT INTO quiz_attempts(quiz_id,user_id,video_course_profile_id,attempt_number,score,max_score,status,submitted_at)
+     VALUES ($1,$2,$3,1,5,10,'submitted',NOW())`,
+    [quiz1.id, student.id, profile.id],
+  );
+  const wsFailQuiz = await fetchWs();
+  assert.equal(wsFailQuiz.units[0].isVideoCompleted, true);
+  assert.equal(wsFailQuiz.units[0].isQuizCompleted, false);
+  assert.equal(wsFailQuiz.activeUnit.quizzes[0].attemptsCount, 1);
+  assert.equal(wsFailQuiz.activeUnit.quizzes[0].isCompleted, false);
+  assert.equal(wsFailQuiz.units[1].isLocked, true, "5/10 quiz must keep unit 2 locked even with 60% video");
+
+  // Case 2: Video <50% (30%) + Quiz 6/10 (>=60%) => quiz completed, video NOT completed, unit 2 LOCKED
+  await db.query(
+    `UPDATE video_watch_progress SET last_position_seconds=30, watched_seconds=30, completion_percent=30, is_completed=FALSE
+     WHERE user_id=$1 AND video_asset_id=$2`,
+    [student.id, v1.id],
+  );
+  await db.query(
+    `INSERT INTO quiz_attempts(quiz_id,user_id,video_course_profile_id,attempt_number,score,max_score,status,submitted_at)
+     VALUES ($1,$2,$3,2,6,10,'submitted',NOW())`,
+    [quiz1.id, student.id, profile.id],
+  );
+  const wsLowVideo = await fetchWs();
+  assert.equal(wsLowVideo.units[0].isVideoCompleted, false);
+  assert.equal(wsLowVideo.units[0].isQuizCompleted, true);
+  assert.equal(wsLowVideo.activeUnit.quizzes[0].attemptsCount, 2);
+  assert.equal(wsLowVideo.activeUnit.quizzes[0].isCompleted, true);
+  assert.equal(wsLowVideo.units[1].isLocked, true, "Video <50% must keep unit 2 locked even when quiz >=6/10");
+
+  // Case 3: Video >=50% (50%) + Quiz 6/10 (>=60%) => BOTH met, unit 2 UNLOCKED
+  await db.query(
+    `UPDATE video_watch_progress SET last_position_seconds=50, watched_seconds=50, completion_percent=50, is_completed=TRUE
+     WHERE user_id=$1 AND video_asset_id=$2`,
+    [student.id, v1.id],
+  );
+  const wsUnlocked = await fetchWs();
+  assert.equal(wsUnlocked.units[0].isVideoCompleted, true);
+  assert.equal(wsUnlocked.units[0].isQuizCompleted, true);
+  assert.equal(wsUnlocked.units[0].isCompleted, true);
+  assert.equal(wsUnlocked.units[1].isLocked, false, "Video >=50% + quiz >=6/10 must unlock unit 2");
+});
+
+test("access control matrix: Live student accesses Live + MIRROR, denied INDEPENDENT Record reusing Live content across workspace, playback, Q&A, delegated learning, Moly projection, and SSO", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^\"]+\.sql"/g)].map((m) => JSON.parse(m[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/test";
+  process.env.BUNNY_STREAM_LIBRARY_ID = "12345";
+  process.env.BUNNY_STREAM_TOKEN_SECURITY_KEY = "test-bunny-token-secret";
+  process.env.BUNNY_STREAM_CDN_HOSTNAME = "vz-test.b-cdn.net";
+  process.env.MOLY_SSO_SECRET = "test-sso-secret-32-chars-minimum-key";
+
+  const { pool } = await import("../db/connect.js");
+  bindPoolToDb(pool, db);
+  const videoCourseRouter = (await import("./videoCourse.router.js")).default;
+  const bunnyVideoRouter = (await import("./bunnyVideo.router.js")).default;
+  const { assertLiveLearnerProfileAccess } = await import("../services/delegatedLearning.service.js");
+  const { queryCourseOwnershipForMoly } = await import("../services/molyIntegration.service.js");
+  const { createMolySsoService } = await import("../services/molySso.service.js");
+
+  const insertUser = async (name, role = "user") => (await db.query(
+    `INSERT INTO users(username,email,role,is_management_managed,lms_account_status)
+     VALUES ($1,$2,$3,TRUE,'active') RETURNING id,username,email,role,is_management_managed,lms_account_status`,
+    [name, `${name}@example.test`, role],
+  )).rows[0];
+
+  const [admin, teacher, liveStudent, recordBuyer] = await Promise.all([
+    insertUser("matrix-admin", "admin"),
+    insertUser("matrix-teacher", "creator"),
+    insertUser("matrix-live-student"),
+    insertUser("matrix-record-buyer"),
+  ]);
+  const [liveDeviceId, buyerDeviceId] = await Promise.all([
+    addTrustedDevice(db, liveStudent.id, "matrix-live"),
+    addTrustedDevice(db, recordBuyer.id, "matrix-buyer"),
+  ]);
+
+  // 1. Live Course + Live Class + Session
+  const liveCourse = (await db.query(
+    `INSERT INTO courses(name,title,slug,author_id,is_published,is_management_managed,external_course_id)
+     VALUES ('Toan Live','Toan Live','toan-live',$1,TRUE,TRUE,'internal_live_math') RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const liveClass = (await db.query(
+    `INSERT INTO live_classes(title,course_id,instructor_id,status,management_class_source_id)
+     VALUES ('Lop Toan Live 01',$1,$2,'active','live-class-math-01') RETURNING id`,
+    [liveCourse.id, teacher.id],
+  )).rows[0];
+  const liveSession = (await db.query(
+    `INSERT INTO class_sessions(live_class_id,title,start_time,end_time,status,is_public_preview)
+     VALUES ($1,'Chuong 1: Tap hop',NOW(),NOW() + INTERVAL '1 hour','scheduled',FALSE) RETURNING id`,
+    [liveClass.id],
+  )).rows[0];
+  const mirrorVideo = (await db.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds,published_at)
+     VALUES ('Mirror Video','bunny_stream','12345','mirror-guid-1','ready',120,NOW()) RETURNING id`,
+  )).rows[0];
+  await db.query(
+    `INSERT INTO class_session_videos(class_session_id,video_asset_id,video_type,is_published)
+     VALUES ($1,$2,'primary',TRUE)`,
+    [liveSession.id, mirrorVideo.id],
+  );
+
+  // 2. MIRROR Record course directly inheriting from liveClass
+  const mirrorCourse = (await db.query(
+    `INSERT INTO courses(name,title,slug,author_id,is_published,is_management_managed,external_course_id)
+     VALUES ('Toan Record Mirror','Toan Record Mirror','toan-record-mirror',$1,TRUE,TRUE,'internal_mirror_math') RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const mirrorProfile = (await db.query(
+    `INSERT INTO video_course_profiles(course_id,management_class_id,mode,source_live_class_id,enforce_trusted_devices,device_limit,status)
+     VALUES ($1,'mirror-math-offering','MIRROR',$2,TRUE,2,'active') RETURNING id`,
+    [mirrorCourse.id, liveClass.id],
+  )).rows[0];
+
+  // 3. INDEPENDENT Record course REUSING liveClass curriculum via recording_curriculum_references
+  const indepCourse = (await db.query(
+    `INSERT INTO courses(name,title,slug,author_id,is_published,is_management_managed,external_course_id)
+     VALUES ('Khoa Record Toan Doc Lap','Khoa Record Toan Doc Lap','khoa-record-toan-doc-lap',$1,TRUE,TRUE,'internal_indep_math') RETURNING id`,
+    [teacher.id],
+  )).rows[0];
+  const indepProfile = (await db.query(
+    `INSERT INTO video_course_profiles(course_id,management_class_id,mode,source_live_class_id,enforce_trusted_devices,device_limit,status)
+     VALUES ($1,'indep-math-offering','INDEPENDENT',NULL,TRUE,2,'active') RETURNING id`,
+    [indepCourse.id],
+  )).rows[0];
+  const ref = (await db.query(
+    `INSERT INTO recording_curriculum_references(video_course_profile_id,destination_management_class_id,source_live_class_id,source_management_class_id,include_videos,source_updated_at)
+     VALUES ($1,'indep-math-offering',$2,'live-class-math-01',FALSE,NOW()) RETURNING id`,
+    [indepProfile.id, liveClass.id],
+  )).rows[0];
+  const indepOverride = (await db.query(
+    `INSERT INTO recording_curriculum_unit_overrides(curriculum_reference_id,source_class_session_id,slice_key,title_override,is_published_override,is_public_preview_override)
+     VALUES ($1,$2,'default','Tap hop (Doc lap)',TRUE,FALSE) RETURNING id`,
+    [ref.id, liveSession.id],
+  )).rows[0];
+  const indepVideo = (await db.query(
+    `INSERT INTO video_assets(title,provider,provider_library_id,provider_video_id,playback_status,duration_seconds,published_at)
+     VALUES ('Indep Record Video','bunny_stream','12345','indep-guid-1','ready',180,NOW()) RETURNING id`,
+  )).rows[0];
+  await db.query(
+    `INSERT INTO recording_curriculum_unit_videos(unit_override_id,video_asset_id,title,video_type,sort_order,is_published,published_at)
+     VALUES ($1,$2,'Tap hop video','primary',0,TRUE,NOW())`,
+    [indepOverride.id, indepVideo.id],
+  );
+  const indepQaThread = (await db.query(
+    `INSERT INTO learning_unit_qa_threads(course_id,video_course_profile_id,class_session_id,author_id,title,status)
+     VALUES ($1,$2,$3,$4,'Hoi bai Tap hop doc lap','open') RETURNING id`,
+    [indepCourse.id, indepProfile.id, liveSession.id, recordBuyer.id],
+  )).rows[0];
+
+  // External mappings & Moly identity for liveStudent
+  await db.query(
+    `INSERT INTO external_identities(source_system,external_user_id,user_id,status,source_updated_at)
+     VALUES ('moly','moly:9001',$1,'active',NOW())`,
+    [liveStudent.id],
+  );
+  await db.query(
+    `INSERT INTO external_course_mappings(source_system,external_course_id,local_course_id,local_video_course_profile_id,status)
+     VALUES ('moly','mirror-math-offering',$1,$2,'active'),('moly','indep-math-offering',$3,$4,'active')`,
+    [mirrorCourse.id, mirrorProfile.id, indepCourse.id, indepProfile.id],
+  );
+
+  // Enrollments & Grants:
+  // liveStudent -> ONLY liveCourse + liveClass (NO grant/enrollment on indepCourse!)
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - INTERVAL '1 hour',NOW())`,
+    [liveStudent.id, liveCourse.id],
+  );
+  await db.query(
+    `INSERT INTO class_enrollments(user_id,live_class_id,learning_mode,status)
+     VALUES ($1,$2,'live','active')`,
+    [liveStudent.id, liveClass.id],
+  );
+
+  // recordBuyer -> Direct entitlement + recording enrollment on indepCourse / indepProfile
+  await db.query(
+    `INSERT INTO lms_access_grants(user_id,course_id,access_status,valid_from,source_updated_at)
+     VALUES ($1,$2,'active',NOW() - INTERVAL '1 hour',NOW())`,
+    [recordBuyer.id, indepCourse.id],
+  );
+  await db.query(
+    `INSERT INTO class_enrollments(user_id,course_id,video_course_profile_id,learning_mode,status)
+     VALUES ($1,$2,$3,'recording','active')`,
+    [recordBuyer.id, indepCourse.id, indepProfile.id],
+  );
+
+  const invoke = (routerObj, method, path, reqProps) => {
+    const layer = routerObj.stack.find((l) => l.route?.path === path && l.route.methods[method]);
+    assert.ok(layer, `${method.toUpperCase()} ${path} missing`);
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: null,
+      setHeader(k, v) { this.headers[String(k).toLowerCase()] = v; return this; },
+      status(code) { this.statusCode = code; return this; },
+      json(body) { this.body = body; return this; },
+      send(body) { this.body = body; return this; },
+    };
+    return Promise.resolve(layer.route.stack.at(-1).handle({ params: {}, query: {}, body: {}, ...reqProps }, res)).then(() => res);
+  };
+
+  // A. Live student CAN access MIRROR Record course
+  const mirrorAccessRes = await invoke(videoCourseRouter, "get", "/:offeringId/access", {
+    user: liveStudent,
+    params: { offeringId: "mirror-math-offering" },
+  });
+  assert.equal(mirrorAccessRes.statusCode, 200);
+  assert.equal(mirrorAccessRes.body.data.canLearn, true);
+  assert.equal(mirrorAccessRes.body.data.accessType, "LIVE");
+
+  const mirrorWsRes = await invoke(videoCourseRouter, "get", "/:offeringId/workspace", {
+    user: liveStudent,
+    authSession: { trustedDeviceId: liveDeviceId },
+    params: { offeringId: "mirror-math-offering" },
+    query: {},
+  });
+  assert.equal(mirrorWsRes.statusCode, 200, JSON.stringify(mirrorWsRes.body));
+  assert.equal(mirrorWsRes.body.data.capabilities.canReviewFreely, true);
+
+  // B. Live student MUST BE DENIED on INDEPENDENT Record course (despite content reuse!)
+  const indepAccessRes = await invoke(videoCourseRouter, "get", "/:offeringId/access", {
+    user: liveStudent,
+    params: { offeringId: "indep-math-offering" },
+  });
+  assert.equal(indepAccessRes.statusCode, 200);
+  assert.equal(indepAccessRes.body.data.canLearn, false);
+  assert.equal(indepAccessRes.body.data.reasonCode, "ENTITLEMENT_INACTIVE");
+
+  const indepWsRes = await invoke(videoCourseRouter, "get", "/:offeringId/workspace", {
+    user: liveStudent,
+    authSession: { trustedDeviceId: liveDeviceId },
+    params: { offeringId: "indep-math-offering" },
+    query: {},
+  });
+  assert.equal(indepWsRes.statusCode, 403, "Live student must get 403 on INDEPENDENT workspace");
+
+  // Direct playback token on INDEPENDENT recording_curriculum_unit_videos must be DENIED for Live student
+  const indepPlayLiveRes = await invoke(bunnyVideoRouter, "post", "/videos/:videoId/playback-token", {
+    user: liveStudent,
+    authSession: { trustedDeviceId: liveDeviceId },
+    params: { videoId: String(indepVideo.id) },
+    body: { unitId: String(liveSession.id) },
+    ip: "127.0.0.1",
+  });
+  assert.equal(indepPlayLiveRes.statusCode, 403, "Live student must get 403 on INDEPENDENT playback-token");
+
+  // Q&A reply on INDEPENDENT thread referencing liveSession must be DENIED for Live student
+  const qaReplyRes = await invoke(videoCourseRouter, "post", "/qa/threads/:threadId/replies", {
+    user: liveStudent,
+    params: { threadId: String(indepQaThread.id) },
+    body: { body: "Attempt reply from Live student" },
+  });
+  assert.equal(qaReplyRes.statusCode, 403, "Live student must get 403 replying to INDEPENDENT Q&A thread");
+
+  // Delegated learning (Moly BFF) must DENY Live student on INDEPENDENT profile
+  await assert.rejects(
+    () => assertLiveLearnerProfileAccess(db, {
+      userId: liveStudent.id,
+      profileRow: { profile_id: indepProfile.id, course_id: indepCourse.id, mode: "INDEPENDENT", source_live_class_id: liveClass.id },
+    }),
+    (err) => err?.statusCode === 403 && err?.errorCode === "ENTITLEMENT_REQUIRED",
+  );
+
+  // Course -> Moly ownership projection: owned=true for MIRROR, owned=false for INDEPENDENT!
+  const ownership = await queryCourseOwnershipForMoly(db, {
+    subject: {
+      source_system: "moly",
+      external_user_id: "moly:9001",
+    },
+    external_course_ids: ["mirror-math-offering", "indep-math-offering"],
+  });
+  const byExt = Object.fromEntries(ownership.data.items.map((item) => [item.external_course_id, item]));
+  assert.equal(byExt["mirror-math-offering"].owned, true, "Live student owns MIRROR projection on Moly");
+  assert.equal(byExt["indep-math-offering"].owned, false, "Live student must NOT own INDEPENDENT projection on Moly");
+
+  // SSO launch scoped to INDEPENDENT offering must DENY Live student
+  const ssoService = createMolySsoService({ db });
+  await assert.rejects(
+    () => ssoService.checkMolyLaunchIntent({
+      userId: liveStudent.id,
+      targetSystem: "moly",
+      targetPath: "/khoa-hoc",
+      scopeType: "course",
+      scopedExternalCourseId: "indep-math-offering",
+    }),
+    (err) => err?.status === 403 && err?.code === "SSO_ENTITLEMENT_REVOKED",
+  );
+
+  // C. Direct Record buyer and Admin CAN access INDEPENDENT workspace & playback-token
+  for (const actor of [
+    { user: recordBuyer, authSession: { trustedDeviceId: buyerDeviceId }, label: "recordBuyer" },
+    { user: admin, authSession: {}, label: "admin" },
+  ]) {
+    const okWs = await invoke(videoCourseRouter, "get", "/:offeringId/workspace", {
+      user: actor.user,
+      authSession: actor.authSession,
+      params: { offeringId: "indep-math-offering" },
+      query: {},
+    });
+    assert.equal(okWs.statusCode, 200, `${actor.label} must access INDEPENDENT workspace`);
+
+    const okPlay = await invoke(bunnyVideoRouter, "post", "/videos/:videoId/playback-token", {
+      user: actor.user,
+      authSession: actor.authSession,
+      params: { videoId: String(indepVideo.id) },
+      body: { unitId: String(liveSession.id) },
+      ip: "127.0.0.1",
+    });
+    assert.equal(okPlay.statusCode, 200, `${actor.label} must get playback token for INDEPENDENT video`);
+    assert.ok(okPlay.body.data.embedUrl);
+  }
 });

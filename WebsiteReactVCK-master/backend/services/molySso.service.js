@@ -233,12 +233,70 @@ export function createMolySsoService({
     });
   }
 
+  async function resolveScopedCourseTarget(dbClient, { scopedLocalCourseId = null, scopedExternalCourseId = null }) {
+    if (scopedLocalCourseId) {
+      let profile = null;
+      if (scopedExternalCourseId) {
+        const pRes = await dbClient.query(
+          `SELECT id, course_id, mode, source_live_class_id
+           FROM video_course_profiles
+           WHERE LOWER(management_class_id) = LOWER($1) AND status = 'active' AND deleted_at IS NULL
+           LIMIT 1`,
+          [String(scopedExternalCourseId).trim()],
+        ).catch(() => ({ rows: [] }));
+        profile = pRes.rows[0] || null;
+      }
+      return {
+        courseId: Number(scopedLocalCourseId),
+        profileId: profile?.id ? Number(profile.id) : null,
+        liveClassId: profile?.mode === "MIRROR" && profile.source_live_class_id
+          ? Number(profile.source_live_class_id)
+          : null,
+      };
+    }
+    const extId = String(scopedExternalCourseId || "").trim();
+    if (!extId) return null;
+    const pRes = await dbClient.query(
+      `SELECT id, course_id, mode, source_live_class_id
+       FROM video_course_profiles
+       WHERE LOWER(management_class_id) = LOWER($1) AND status = 'active' AND deleted_at IS NULL
+       LIMIT 1`,
+      [extId],
+    ).catch(() => ({ rows: [] }));
+    if (pRes.rows[0]) {
+      const p = pRes.rows[0];
+      return {
+        courseId: Number(p.course_id),
+        profileId: Number(p.id),
+        liveClassId: p.mode === "MIRROR" && p.source_live_class_id ? Number(p.source_live_class_id) : null,
+      };
+    }
+    const mRes = await dbClient.query(
+      `SELECT ecm.local_course_id, ecm.local_video_course_profile_id, vcp.mode, vcp.source_live_class_id
+       FROM external_course_mappings ecm
+       LEFT JOIN video_course_profiles vcp ON vcp.id = ecm.local_video_course_profile_id AND vcp.deleted_at IS NULL
+       WHERE ecm.external_course_id = $1 AND ecm.status = 'active'
+       LIMIT 1`,
+      [extId],
+    ).catch(() => ({ rows: [] }));
+    if (mRes.rows[0]?.local_course_id) {
+      const m = mRes.rows[0];
+      return {
+        courseId: Number(m.local_course_id),
+        profileId: m.local_video_course_profile_id ? Number(m.local_video_course_profile_id) : null,
+        liveClassId: m.mode === "MIRROR" && m.source_live_class_id ? Number(m.source_live_class_id) : null,
+      };
+    }
+    return null;
+  }
+
   async function assertCourseLaunchEligible({
     userId,
     targetSystem = "moly",
     targetPath = "/khoa-hoc",
     scopeType = "account",
     scopedLocalCourseId = null,
+    scopedExternalCourseId = null,
   }) {
     if (targetSystem !== "moly") {
       throw new SsoPolicyError(400, "INVALID_SSO_TARGET_SYSTEM", "Course can only launch SSO toward Moly Studio.");
@@ -260,11 +318,17 @@ export function createMolySsoService({
     if (isPrivilegedAccount(user) && user.role !== "admin") {
       throw new SsoPolicyError(403, "PRIVILEGED_ROLE_COLLISION", "Privileged accounts cannot launch cross-system SSO.");
     }
-    if (scopeType === "course" && scopedLocalCourseId) {
+    if (scopeType === "course" && (scopedLocalCourseId || scopedExternalCourseId)) {
+      const scoped = await resolveScopedCourseTarget(runner, { scopedLocalCourseId, scopedExternalCourseId });
+      if (!scoped) {
+        throw new SsoPolicyError(403, "SSO_ENTITLEMENT_REVOKED", "Course access is not active for this account.");
+      }
       const access = await hasEffectiveCourseEntitlement({
         db: runner,
         userId: user.id,
-        courseId: Number(scopedLocalCourseId),
+        courseId: scoped.courseId,
+        liveClassId: scoped.liveClassId,
+        profileId: scoped.profileId,
       });
       if (!access) {
         throw new SsoPolicyError(403, "SSO_ENTITLEMENT_REVOKED", "Course access is not active for this account.");
@@ -289,6 +353,7 @@ export function createMolySsoService({
       targetPath,
       scopeType,
       scopedLocalCourseId,
+      scopedExternalCourseId,
     });
     const corr = correlationId || crypto.randomUUID();
     const targetWebBase = webBaseUrl || molyClient.getConfig().webBaseUrl || env.MOLY_WEB_BASE_URL || "";
@@ -332,6 +397,7 @@ export function createMolySsoService({
       targetPath,
       scopeType,
       scopedLocalCourseId,
+      scopedExternalCourseId,
     });
 
     const ttlSeconds = resolveSsoTtlSeconds(env.MOLY_SSO_TTL_SECONDS, DEFAULT_SSO_TTL_SECONDS);
@@ -489,11 +555,20 @@ export function createMolySsoService({
         throw new SsoPolicyError(403, "SSO_IDENTITY_REVOKED", "Linked identity access has been revoked.");
       }
 
-      if (ssoRow.scope_type === "course" && ssoRow.scoped_local_course_id) {
+      if (ssoRow.scope_type === "course" && (ssoRow.scoped_local_course_id || ssoRow.scoped_external_course_id)) {
+        const scoped = await resolveScopedCourseTarget(client, {
+          scopedLocalCourseId: ssoRow.scoped_local_course_id,
+          scopedExternalCourseId: ssoRow.scoped_external_course_id,
+        });
+        if (!scoped) {
+          throw new SsoPolicyError(403, "SSO_ENTITLEMENT_REVOKED", "Course access has expired or been revoked.");
+        }
         const access = await hasEffectiveCourseEntitlement({
           db: client,
           userId: user.id,
-          courseId: Number(ssoRow.scoped_local_course_id),
+          courseId: scoped.courseId,
+          liveClassId: scoped.liveClassId,
+          profileId: scoped.profileId,
         });
         if (!access) {
           throw new SsoPolicyError(403, "SSO_ENTITLEMENT_REVOKED", "Course access has expired or been revoked.");

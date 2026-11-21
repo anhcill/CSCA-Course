@@ -405,7 +405,9 @@ const resolveVideoCourseContext = async (offeringId) => {
   course = await hydrateCourseForProfile(course, profile);
 
   let mode = profile.mode || "MIRROR";
-  let sourceLiveClassId = profile.source_live_class_id || resolved.liveClass?.id || null;
+  let sourceLiveClassId = mode === "MIRROR"
+    ? (profile.source_live_class_id || resolved.liveClass?.id || null)
+    : null;
   if (mode === "MIRROR" && !sourceLiveClassId) {
     const liveResult = await query(
       `SELECT id FROM live_classes
@@ -718,7 +720,9 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
 
     // Determine mode
     let mode = profile ? profile.mode : "MIRROR";
-    let sourceLiveClassId = profile?.source_live_class_id || resolvedLiveClass?.id || null;
+    let sourceLiveClassId = mode === "MIRROR"
+      ? (profile?.source_live_class_id || resolvedLiveClass?.id || null)
+      : null;
 
     // If no source live class is set in profile, find the latest active/completed live class for this course
     if (mode === "MIRROR" && !sourceLiveClassId) {
@@ -896,16 +900,16 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
 
         if (prev.isLocked) {
           isLocked = true;
-          lockReason = `Bạn hãy hoàn thành buổi học trước để tiếp tục nhé (xem khoảng ${VIDEO_COMPLETION_PERCENT}% video và hoàn thành bài trắc nghiệm nếu có).`;
+          lockReason = `Bạn hãy hoàn thành buổi học trước để tiếp tục nhé (xem từ ${VIDEO_COMPLETION_PERCENT}% video và đạt từ 6/10 điểm trắc nghiệm nếu có).`;
         } else if (!prev.isVideoCompleted && !prev.isQuizCompleted) {
           isLocked = true;
-          lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video. Xem thêm đến ${VIDEO_COMPLETION_PERCENT}% và hoàn thành ${prev.completedQuizCount}/${prev.quizCount} bài trắc nghiệm của ${prevLabel} để tiếp tục nhé.`;
+          lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video. Xem thêm đến ${VIDEO_COMPLETION_PERCENT}% và đạt từ 6/10 điểm ở ${prevLabel} để tiếp tục nhé.`;
         } else if (!prev.isVideoCompleted) {
           isLocked = true;
           lockReason = `Bạn đã xem ${Math.round(prev.progressPercent || 0)}% video của ${prevLabel}. Xem thêm đến ${VIDEO_COMPLETION_PERCENT}% là có thể tiếp tục bài kế tiếp nhé.`;
         } else if (!prev.isQuizCompleted) {
           isLocked = true;
-          lockReason = `Cần hoàn thành ${prev.completedQuizCount}/${prev.quizCount} bài trắc nghiệm của ${prevLabel} để mở khóa buổi tiếp theo.`;
+          lockReason = `Bạn cần đạt từ 6/10 điểm trắc nghiệm của ${prevLabel} để mở khóa buổi tiếp theo.`;
         }
 
         result.push({
@@ -958,6 +962,8 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                         AND qa.user_id = $2
                         AND (qa.video_course_profile_id = $4 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                        AND qa.max_score > 0
+                        AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
                     )
                 ) AS completed_quiz_count
          FROM class_sessions cs
@@ -1101,6 +1107,16 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                         AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS attempts_count,
+                    (
+                      SELECT COUNT(*)::int
+                      FROM quiz_attempts qa
+                      WHERE qa.quiz_id = q.id
+                        AND qa.user_id = $2
+                        AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
+                        AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                        AND qa.max_score > 0
+                        AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
+                    ) AS passed_attempts_count,
                     (
                       SELECT MAX(qa.score)
                       FROM quiz_attempts qa
@@ -1249,7 +1265,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             durationMinutes: q.duration_minutes,
             passingScore: Number(q.passing_score || 60),
             attemptsCount: Number(q.attempts_count || 0),
-            isCompleted: Number(q.attempts_count || 0) > 0,
+            isCompleted: Number(q.passed_attempts_count || 0) > 0,
             bestScore: q.best_score !== null && q.best_score !== undefined ? Number(q.best_score) : null,
             maxScore: q.max_score !== null && q.max_score !== undefined ? Number(q.max_score) : null,
             ...(!isLearner || canReviewFreely ? { attemptLimit: null, canViewSolution: true } : {}),
@@ -1379,6 +1395,8 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                         AND qa.user_id = $2
                         AND (qa.video_course_profile_id = $4 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                        AND qa.max_score > 0
+                        AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
                     )
                 ) AS completed_quiz_count
          FROM lessons l
@@ -1500,6 +1518,16 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
                         AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
                         AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
                     ) AS attempts_count,
+                    (
+                      SELECT COUNT(*)::int
+                      FROM quiz_attempts qa
+                      WHERE qa.quiz_id = q.id
+                        AND qa.user_id = $2
+                        AND (qa.video_course_profile_id = $3 OR qa.video_course_profile_id IS NULL)
+                        AND (qa.status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR qa.submitted_at IS NOT NULL)
+                        AND qa.max_score > 0
+                        AND (qa.score * 100.0 / qa.max_score) >= COALESCE(q.passing_score, 60)
+                    ) AS passed_attempts_count,
                     (
                       SELECT MAX(qa.score)
                       FROM quiz_attempts qa
@@ -1649,7 +1677,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
             durationMinutes: q.duration_minutes,
             passingScore: Number(q.passing_score || 60),
             attemptsCount: Number(q.attempts_count || 0),
-            isCompleted: Number(q.attempts_count || 0) > 0,
+            isCompleted: Number(q.passed_attempts_count || 0) > 0,
             bestScore: q.best_score !== null && q.best_score !== undefined ? Number(q.best_score) : null,
             maxScore: q.max_score !== null && q.max_score !== undefined ? Number(q.max_score) : null,
             ...(!isLearner || canReviewFreely ? { attemptLimit: null, canViewSolution: true } : {}),
@@ -1796,18 +1824,21 @@ const assertNativeActorCourseAccess = async ({
   courseId,
   courseAuthorId = null,
   profileId = null,
+  profileMode = null,
+  managementClassId = null,
   sourceLiveClassId = null,
 }) => {
   if (user.role === "admin") return;
+  const effectiveLiveClassId = profileMode === "INDEPENDENT" ? null : (sourceLiveClassId || null);
   if (user.role === "creator") {
     if (courseAuthorId && String(courseAuthorId) === String(user.id)) return;
-    if (sourceLiveClassId) {
+    if (effectiveLiveClassId) {
       const staffRes = await query(
         `SELECT 1 FROM live_classes lc
          LEFT JOIN live_class_teachers lct ON lct.live_class_id = lc.id AND lct.user_id = $2
          WHERE lc.id = $1 AND (lc.instructor_id = $2 OR lct.user_id IS NOT NULL)
          LIMIT 1`,
-        [sourceLiveClassId, user.id],
+        [effectiveLiveClassId, user.id],
       );
       if (staffRes.rows[0]) return;
     }
@@ -1820,11 +1851,24 @@ const assertNativeActorCourseAccess = async ({
   const hasActiveLms = await resolveEffectiveStudentLmsAccess({ user, db: { query } });
   const hasEntitlement = hasActiveLms
     && await checkCourseEntitlement(courseId, user.id, {
-      sourceLiveClassId: sourceLiveClassId || null,
+      sourceLiveClassId: effectiveLiveClassId,
       profileId: profileId || null,
     });
   if (!hasEntitlement) {
     throw new ExternalIntegrationError(403, "VIDEO_COURSE_ACCESS_REQUIRED", ACCESS_HELP_MESSAGE);
+  }
+  if (profileId && profileMode) {
+    const member = await checkRecordMembership({
+      userId: user.id,
+      liveClassId: effectiveLiveClassId,
+      courseId,
+      managementClassId: managementClassId || null,
+      mode: profileMode,
+      profileId,
+    });
+    if (!member) {
+      throw new ExternalIntegrationError(403, "RECORD_MEMBERSHIP_REQUIRED", ACCESS_HELP_MESSAGE);
+    }
   }
   if (profileId && await isVideoCourseProfileAccessRevoked({ db: { query }, userId: user.id, profileId })) {
     throw new ExternalIntegrationError(403, "VIDEO_COURSE_ACCESS_REVOKED", "Quyền truy cập khóa học đã bị thu hồi.");
@@ -1849,7 +1893,10 @@ const resolveNativeAuthorizedUnit = async ({ req, offeringId, unitId, requestedU
   }
   course = await hydrateCourseForProfile(course, profile);
   const activeProfileId = profile ? Number(profile.profile_id || profile.id) : null;
-  const sourceLiveClassId = resolved?.liveClass?.id || profile?.source_live_class_id || null;
+  const profileMode = profile?.mode || null;
+  const sourceLiveClassId = profileMode === "INDEPENDENT"
+    ? null
+    : (resolved?.liveClass?.id || profile?.source_live_class_id || null);
 
   const parsedUnitId = parsePositiveId(unitId);
   if (!parsedUnitId) {
@@ -1877,7 +1924,9 @@ const resolveNativeAuthorizedUnit = async ({ req, offeringId, unitId, requestedU
     );
     if (csRes.rows[0]) {
       resolvedType = "class_session";
-      resolvedLiveClassId = resolvedLiveClassId || csRes.rows[0].live_class_id;
+      if (profileMode !== "INDEPENDENT") {
+        resolvedLiveClassId = resolvedLiveClassId || csRes.rows[0].live_class_id;
+      }
     } else {
       throw new ExternalIntegrationError(404, "UNIT_NOT_FOUND", "Không tìm thấy buổi học trong khóa học này");
     }
@@ -1888,6 +1937,8 @@ const resolveNativeAuthorizedUnit = async ({ req, offeringId, unitId, requestedU
     courseId: course.id,
     courseAuthorId: course.author_id,
     profileId: activeProfileId,
+    profileMode,
+    managementClassId: profile?.management_class_id || null,
     sourceLiveClassId: resolvedLiveClassId,
   });
 
@@ -1920,22 +1971,35 @@ const assertNativeThreadAccess = async ({ req, threadId }) => {
     throw new ExternalIntegrationError(404, "QA_THREAD_NOT_FOUND", "Không tìm thấy chủ đề Q&A");
   }
   let profileId = thread.video_course_profile_id ? Number(thread.video_course_profile_id) : null;
-  let sourceLiveClassId = thread.live_class_id ? Number(thread.live_class_id) : null;
-  if (!profileId) {
-    const pRes = await query(
-      `SELECT id, source_live_class_id FROM video_course_profiles WHERE course_id = $1 AND status = 'active' ORDER BY id ASC LIMIT 1`,
+  let profileMode = null;
+  let managementClassId = null;
+  let sourceLiveClassId = null;
+  const pRes = profileId
+    ? await query(
+      `SELECT id, mode, source_live_class_id, management_class_id FROM video_course_profiles WHERE id = $1 LIMIT 1`,
+      [profileId],
+    )
+    : await query(
+      `SELECT id, mode, source_live_class_id, management_class_id FROM video_course_profiles WHERE course_id = $1 AND status = 'active' ORDER BY id ASC LIMIT 1`,
       [thread.course_id],
     );
-    if (pRes.rows[0]) {
-      profileId = Number(pRes.rows[0].id);
-      sourceLiveClassId = sourceLiveClassId || pRes.rows[0].source_live_class_id;
-    }
+  if (pRes.rows[0]) {
+    profileId = Number(pRes.rows[0].id);
+    profileMode = pRes.rows[0].mode || null;
+    managementClassId = pRes.rows[0].management_class_id || null;
+    sourceLiveClassId = profileMode === "MIRROR"
+      ? (pRes.rows[0].source_live_class_id || (thread.live_class_id ? Number(thread.live_class_id) : null))
+      : null;
+  } else if (thread.live_class_id) {
+    sourceLiveClassId = Number(thread.live_class_id);
   }
   await assertNativeActorCourseAccess({
     user: req.user,
     courseId: thread.course_id,
     courseAuthorId: thread.course_author_id,
     profileId,
+    profileMode,
+    managementClassId,
     sourceLiveClassId,
   });
   return thread;

@@ -1,3 +1,4 @@
+import katex from "../frontend/node_modules/katex/dist/katex.mjs";
 import { getClient, pool } from "../backend/db/connect.js";
 import { safeRecordCurriculumMutation } from "../backend/services/courseCurriculumSync.service.js";
 
@@ -6,53 +7,121 @@ const PROFILE_ID = 5;
 const SOURCE_SESSION_ID = 121;
 const SOURCE_QUIZ_ID = 11;
 const shouldApply = process.argv.includes("--apply");
+const validateOnly = process.argv.includes("--validate-only");
+const raw = String.raw;
+const FORBIDDEN_MATH_UNICODE = /[∈∉∩∪⊂⊆√²³≥≤−∞∅△]/u;
+const VIETNAMESE_MARKER = /[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/iu;
 
 const choices = (items) => items.map((text, index) => ({
   key: String.fromCharCode(65 + index),
   text,
+  textCn: text,
 }));
 
 const question = (text, options, answer, explanation) => ({
   text,
+  textCn: text,
   options: choices(options),
   answer,
   explanation,
 });
 
 const setQuestions = [
-  question("Ký hiệu nào diễn tả đúng mệnh đề “x là phần tử của tập A”?", ["x ∈ A", "x ⊂ A", "x ∪ A", "x = A"], "A", "Ký hiệu ∈ dùng cho quan hệ phần tử thuộc tập hợp. Ký hiệu ⊂ dùng giữa hai tập hợp, còn ∪ là phép hợp."),
-  question("Cho A = {1, 2, 3} và B = {2, 3, 4}. A ∩ B bằng", ["{1, 4}", "{2, 3}", "{1, 2, 3, 4}", "{2, 3, 4}"], "B", "Giao chỉ giữ các phần tử xuất hiện trong cả A và B, đó là 2 và 3."),
-  question("Cho A = {a, b} và B = {b, c}. A ∪ B bằng", ["{b}", "{a, c}", "{a, b, c}", "{a, b, b, c}"], "C", "Hợp lấy mọi phần tử của hai tập nhưng mỗi phần tử chỉ được liệt kê một lần. Phương án D là bẫy lặp phần tử b."),
-  question("Khẳng định nào luôn đúng với mọi tập hợp A?", ["A ⊂ ∅", "∅ ⊂ A", "A ∈ A", "A ∩ ∅ = A"], "B", "Tập rỗng là tập con của mọi tập hợp. A ∩ ∅ phải bằng ∅, không phải A."),
-  question("Một tập hợp có 5 phần tử thì có bao nhiêu tập con?", ["5", "10", "25", "32"], "D", "Mỗi phần tử có hai lựa chọn: được lấy hoặc không được lấy. Vì vậy số tập con là 2⁵ = 32."),
-  question("Tập A có 4 phần tử. Số tập con thực sự của A là", ["8", "15", "16", "14"], "B", "A có 2⁴ = 16 tập con. Tập con thực sự không được bằng chính A nên còn 16 − 1 = 15; tập rỗng vẫn được tính."),
-  question("Theo định luật De Morgan, phần bù của A ∪ B là", ["Aᶜ ∪ Bᶜ", "Aᶜ ∩ Bᶜ", "A ∩ B", "Aᶜ ∖ Bᶜ"], "B", "De Morgan đổi phép hợp thành phép giao khi lấy phần bù: (A ∪ B)ᶜ = Aᶜ ∩ Bᶜ."),
-  question("Giao của hai khoảng [−2, 3) và (1, 5] là", ["[1, 3]", "(1, 3)", "[−2, 5]", "(1, 5]"], "B", "Phần chung phải lớn hơn 1 và nhỏ hơn 3. Hai đầu 1 và 3 đều bị loại vì ít nhất một khoảng không chứa đầu đó."),
-  question("Hiệu [−1, 4] ∖ (1, 3] bằng", ["[−1, 1] ∪ (3, 4]", "[−1, 1) ∪ [3, 4]", "(1, 3]", "[−1, 4]"], "A", "Ta bỏ mọi số lớn hơn 1 đến và gồm cả 3. Số 1 được giữ, số 3 bị bỏ, nên kết quả là [−1,1] ∪ (3,4]."),
-  question("Lớp có 28 bạn học tiếng Anh, 22 bạn học tiếng Trung và 12 bạn học cả hai. Có bao nhiêu bạn học ít nhất một trong hai ngoại ngữ?", ["38", "50", "62", "34"], "A", "Dùng công thức |A ∪ B| = |A| + |B| − |A ∩ B| = 28 + 22 − 12 = 38. Phải trừ phần giao vì đã bị đếm hai lần."),
-  question("Tập các số nguyên x thỏa x² < 10 có bao nhiêu phần tử?", ["5", "6", "7", "8"], "C", "Ta có −√10 < x < √10. Các số nguyên là −3, −2, −1, 0, 1, 2, 3, tổng cộng 7 phần tử."),
-  question("Nếu {1, a, 3} = {3, 2, 1} thì a bằng", ["1", "2", "3", "Có thể bằng 1, 2 hoặc 3"], "B", "Hai tập bằng nhau phải có đúng các phần tử giống nhau. Vế phải có phần tử 2 nên a bắt buộc bằng 2."),
-  question("Với đoạn [m, 4] không rỗng, điều kiện để [m, 4] ⊂ [1, 6] là", ["m ≤ 1", "m ≥ 1", "1 ≤ m ≤ 4", "m ≥ 4"], "C", "Đầu trái phải không nhỏ hơn 1 và đoạn không rỗng yêu cầu m ≤ 4. Kết hợp được 1 ≤ m ≤ 4; phương án B bỏ sót điều kiện không rỗng."),
-  question("Cho A = {1, 2, 3}, B = {3, 4}. Hiệu đối xứng A △ B là", ["{3}", "{1, 2, 4}", "{1, 2, 3, 4}", "{1, 2}"], "B", "Hiệu đối xứng gồm các phần tử chỉ thuộc đúng một trong hai tập. Phần tử 3 thuộc cả hai nên bị loại."),
-  question("Ba câu lạc bộ A, B, C có lần lượt 45, 30, 20 thành viên; |A∩B|=12, |A∩C|=8, |B∩C|=5 và |A∩B∩C|=2. Số người tham gia ít nhất một câu lạc bộ là", ["70", "72", "74", "95"], "B", "Áp dụng bao hàm–loại trừ: 45+30+20−12−8−5+2 = 72. Phần giao ba bị trừ ba lần rồi cần cộng lại một lần."),
+  question(raw`下列哪个符号正确表示“\(x\) 是集合 \(A\) 的元素”？`, [raw`\(x\in A\)`, raw`\(x\subset A\)`, raw`\(x\cup A\)`, raw`\(x=A\)`], "A", raw`**Bước 1.** Quan hệ giữa một phần tử và một tập hợp được ký hiệu bằng \(\in\). Vì vậy mệnh đề đúng là \(x\in A\).
+
+**Bước 2.** \(\subset\) dùng để so sánh hai tập hợp; \(\cup\) là phép hợp. Do đó B và C sai về loại quan hệ, còn D khẳng định hai đối tượng bằng nhau nên cũng sai.`),
+  question(raw`已知 \(A=\{1,2,3\}\)，\(B=\{2,3,4\}\)，则 \(A\cap B\) 等于`, [raw`\(\{1,4\}\)`, raw`\(\{2,3\}\)`, raw`\(\{1,2,3,4\}\)`, raw`\(\{2,3,4\}\)`], "B", raw`**Bước 1.** Phép giao \(A\cap B\) chỉ lấy những phần tử xuất hiện đồng thời trong cả hai tập.
+
+**Bước 2.** Trong \(A\), các phần tử \(2,3\) cũng thuộc \(B\); còn \(1\notin B\) và \(4\notin A\). Vậy \(A\cap B=\{2,3\}\).`),
+  question(raw`已知 \(A=\{a,b\}\)，\(B=\{b,c\}\)，则 \(A\cup B\) 等于`, [raw`\(\{b\}\)`, raw`\(\{a,c\}\)`, raw`\(\{a,b,c\}\)`, raw`\(\{a,b,b,c\}\)`], "C", raw`**Bước 1.** Phép hợp lấy tất cả phần tử thuộc \(A\) hoặc thuộc \(B\).
+
+**Bước 2.** Gộp hai danh sách ta có \(a,b,b,c\), nhưng trong tập hợp mỗi phần tử chỉ viết một lần. Do đó \(A\cup B=\{a,b,c\}\); phương án D là bẫy lặp phần tử \(b\).`),
+  question(raw`对任意集合 \(A\)，下列命题恒成立的是`, [raw`\(A\subseteq\varnothing\)`, raw`\(\varnothing\subseteq A\)`, raw`\(A\in A\)`, raw`\(A\cap\varnothing=A\)`], "B", raw`**Bước 1.** Tập rỗng không có phần tử nên mọi phần tử của \(\varnothing\) đều thuộc \(A\) một cách hiển nhiên. Vì thế \(\varnothing\subseteq A\) luôn đúng.
+
+**Bước 2.** \(A\subseteq\varnothing\) chỉ đúng khi \(A=\varnothing\); \(A\cap\varnothing=\varnothing\), không phải luôn bằng \(A\). Ký hiệu \(A\in A\) cũng không phải tính chất chung của tập hợp.`),
+  question(raw`一个集合有 \(5\) 个元素，它共有多少个子集？`, [raw`\(5\)`, raw`\(10\)`, raw`\(25\)`, raw`\(32\)`], "D", raw`**Bước 1.** Với mỗi phần tử, ta có đúng hai lựa chọn độc lập: chọn hoặc không chọn vào tập con.
+
+**Bước 2.** Có \(5\) phần tử nên số cách chọn là \(2^5=32\). Kết quả này đã bao gồm tập rỗng và chính tập ban đầu.`),
+  question(raw`集合 \(A\) 有 \(4\) 个元素，\(A\) 的真子集共有多少个？`, [raw`\(8\)`, raw`\(15\)`, raw`\(16\)`, raw`\(14\)`], "B", raw`**Bước 1.** Tổng số tập con của tập có \(4\) phần tử là \(2^4=16\).
+
+**Bước 2.** Tập con thực sự không được bằng chính \(A\), nên loại đúng một trường hợp là \(A\). Vì vậy có \(16-1=15\) tập con thực sự; tập rỗng vẫn được tính.`),
+  question(raw`根据德摩根定律，\(A\cup B\) 的补集是`, [raw`\(A^{c}\cup B^{c}\)`, raw`\(A^{c}\cap B^{c}\)`, raw`\(A\cap B\)`, raw`\(A^{c}\setminus B^{c}\)`], "B", raw`**Bước 1.** Định luật De Morgan cho biết khi lấy phần bù, phép hợp đổi thành phép giao.
+
+**Bước 2.** Do đó \((A\cup B)^c=A^c\cap B^c\). Có thể kiểm tra bằng logic: một phần tử không thuộc hợp khi và chỉ khi nó đồng thời không thuộc \(A\) và không thuộc \(B\).`),
+  question(raw`区间 \([-2,3)\) 与 \((1,5]\) 的交集是`, [raw`\([1,3]\)`, raw`\((1,3)\)`, raw`\([-2,5]\)`, raw`\((1,5]\)`], "B", raw`**Bước 1.** Phần chung phải đồng thời thỏa \(-2\le x<3\) và \(1<x\le5\), suy ra \(1<x<3\).
+
+**Bước 2.** Điểm \(1\) bị loại bởi khoảng thứ hai; điểm \(3\) bị loại bởi khoảng thứ nhất. Vậy giao là \((1,3)\).`),
+  question(raw`集合 \([-1,4]\setminus(1,3]\) 等于`, [raw`\([-1,1]\cup(3,4]\)`, raw`\([-1,1)\cup[3,4]\)`, raw`\((1,3]\)`, raw`\([-1,4]\)`], "A", raw`**Bước 1.** Từ đoạn \([-1,4]\), ta loại toàn bộ các số thuộc \((1,3]\).
+
+**Bước 2.** Số \(1\) không thuộc phần bị loại nên vẫn giữ; số \(3\) thuộc phần bị loại nên bỏ. Phần còn lại là \([-1,1]\cup(3,4]\).`),
+  question(raw`某班有 \(28\) 人学英语，\(22\) 人学汉语，其中 \(12\) 人两种语言都学。至少学习一种语言的有多少人？`, [raw`\(38\)`, raw`\(50\)`, raw`\(62\)`, raw`\(34\)`], "A", raw`**Bước 1.** Áp dụng công thức hai tập: \(|A\cup B|=|A|+|B|-|A\cap B|\).
+
+**Bước 2.** Thay số: \(|A\cup B|=28+22-12=38\). Ta phải trừ \(12\) vì những bạn học cả hai ngoại ngữ đã bị đếm hai lần trong tổng \(28+22\).`),
+  question(raw`满足 \(x^2<10\) 的整数 \(x\) 共有多少个？`, [raw`\(5\)`, raw`\(6\)`, raw`\(7\)`, raw`\(8\)`], "C", raw`**Bước 1.** Từ \(x^2<10\), suy ra \(-\sqrt{10}<x<\sqrt{10}\). Vì \(3<\sqrt{10}<4\), nên \(-4<x<4\).
+
+**Bước 2.** Các số nguyên thỏa mãn là \(-3,-2,-1,0,1,2,3\), tổng cộng \(7\) số.`),
+  question(raw`若 \(\{1,a,3\}=\{3,2,1\}\)，则 \(a\) 等于`, [raw`\(1\)`, raw`\(2\)`, raw`\(3\)`, raw`\(1,2,3\) 中任意一个`], "B", raw`**Bước 1.** Hai tập hợp bằng nhau khi chúng có đúng cùng các phần tử, không xét thứ tự viết.
+
+**Bước 2.** Tập bên phải có ba phần tử \(1,2,3\). Bên trái đã có \(1,3\), vì vậy \(a\) phải bổ sung phần tử còn thiếu là \(2\). Nếu \(a=1\) hoặc \(a=3\), hai tập sẽ không bằng nhau.`),
+  question(raw`非空区间 \([m,4]\) 满足 \([m,4]\subseteq[1,6]\) 的条件是`, [raw`\(m\le1\)`, raw`\(m\ge1\)`, raw`\(1\le m\le4\)`, raw`\(m\ge4\)`], "C", raw`**Bước 1.** Để \([m,4]\subseteq[1,6]\), đầu trái không được nhỏ hơn \(1\), nên \(m\ge1\). Đầu phải \(4\le6\) đã thỏa.
+
+**Bước 2.** Đoạn \([m,4]\) không rỗng yêu cầu \(m\le4\). Kết hợp hai điều kiện được \(1\le m\le4\).`),
+  question(raw`已知 \(A=\{1,2,3\}\)，\(B=\{3,4\}\)，则对称差 \(A\triangle B\) 是`, [raw`\(\{3\}\)`, raw`\(\{1,2,4\}\)`, raw`\(\{1,2,3,4\}\)`, raw`\(\{1,2\}\)`], "B", raw`**Bước 1.** Hiệu đối xứng là \(A\triangle B=(A\setminus B)\cup(B\setminus A)\), tức các phần tử chỉ thuộc đúng một tập.
+
+**Bước 2.** Ta có \(A\setminus B=\{1,2\}\) và \(B\setminus A=\{4\}\). Do đó \(A\triangle B=\{1,2,4\}\); phần tử \(3\) bị loại vì thuộc cả hai tập.`),
+  question(raw`三个社团 \(A,B,C\) 分别有 \(45,30,20\) 人，且 \(|A\cap B|=12\)，\(|A\cap C|=8\)，\(|B\cap C|=5\)，\(|A\cap B\cap C|=2\)。至少参加一个社团的有多少人？`, [raw`\(70\)`, raw`\(72\)`, raw`\(74\)`, raw`\(95\)`], "B", raw`**Bước 1.** Dùng nguyên lý bao hàm–loại trừ ba tập:
+\[|A\cup B\cup C|=|A|+|B|+|C|-|A\cap B|-|A\cap C|-|B\cap C|+|A\cap B\cap C|.\]
+
+**Bước 2.** Thay số: \(45+30+20-12-8-5+2=72\). Phần giao ba được cộng lại vì ở bước trừ các giao đôi, nó đã bị trừ quá nhiều.`),
 ];
 
 const inequalityQuestions = [
-  question("Nghiệm của bất đẳng thức x + 3 > 5 là", ["x > 2", "x < 2", "x ≥ 2", "x ≤ 2"], "A", "Trừ 3 ở cả hai vế, ta được x > 2. Dấu vẫn giữ nguyên vì chỉ cộng hoặc trừ cùng một số."),
-  question("Nghiệm của −2x < 6 là", ["x < −3", "x > −3", "x < 3", "x > 3"], "B", "Chia hai vế cho −2 phải đổi chiều bất đẳng thức, nên x > −3. Đây là bẫy đổi dấu thường gặp."),
-  question("Giải bất đẳng thức 3 − 2x ≥ 7.", ["x ≥ −2", "x ≤ −2", "x ≥ 2", "x ≤ 2"], "B", "Ta có −2x ≥ 4. Chia cho −2 và đổi chiều được x ≤ −2."),
-  question("Nghiệm của |x| < 4 là", ["x < 4", "x > −4", "−4 < x < 4", "x < −4 hoặc x > 4"], "C", "Khoảng cách từ x đến 0 nhỏ hơn 4 nên x nằm giữa −4 và 4. Hai đầu không được lấy vì dấu là <."),
-  question("Nghiệm của (x − 1)(x + 2) > 0 là", ["−2 < x < 1", "x < −2 hoặc x > 1", "x ≤ −2 hoặc x ≥ 1", "x > −2"], "B", "Tích dương khi hai thừa số cùng dấu. Bảng xét dấu cho kết quả ngoài hai nghiệm −2 và 1; dấu > nên không lấy hai đầu."),
-  question("Tập nghiệm của x² − 5x + 6 ≤ 0 là", ["(−∞, 2] ∪ [3, +∞)", "[2, 3]", "(2, 3)", "[−3, −2]"], "B", "Ta phân tích (x−2)(x−3) ≤ 0. Tam thức bậc hai hệ số đầu dương nên không dương ở giữa hai nghiệm và lấy cả hai đầu."),
-  question("Nghiệm của (x − 1)/(x + 2) ≥ 0 là", ["(−∞, −2) ∪ [1, +∞)", "(−∞, −2] ∪ [1, +∞)", "[−2, 1]", "(−2, 1)"], "A", "Các mốc là −2 và 1. Biểu thức không xác định tại −2 nên phải loại; bằng 0 tại 1 nên được lấy."),
-  question("Hệ bất đẳng thức x > 1 và x ≤ 4 có tập nghiệm", ["[1, 4]", "(1, 4]", "(1, 4)", "[1, 4)"], "B", "Lấy giao hai điều kiện: lớn hơn 1 nên mở tại 1, nhỏ hơn hoặc bằng 4 nên đóng tại 4."),
-  question("Điều kiện xác định của √((x − 2)/(x + 1)) là", ["(−1, 2)", "(−∞, −1) ∪ [2, +∞)", "(−∞, −1] ∪ [2, +∞)", "[2, +∞)"], "B", "Biểu thức trong căn phải ≥0 và mẫu khác 0. Xét dấu tại −1 và 2 được (−∞,−1)∪[2,+∞); −1 bị loại vì làm mẫu bằng 0."),
-  question("Với a, b > 0, bất đẳng thức AM–GM cho biết", ["a+b ≥ √(ab)", "a+b ≥ 2√(ab), đẳng thức khi a=b", "a+b ≤ 2√(ab)", "a²+b² ≤ 2ab"], "B", "AM–GM cho (a+b)/2 ≥ √(ab), tương đương a+b ≥ 2√(ab). Dấu bằng xảy ra đúng khi a=b."),
-  question("Với x, y > 0 và x + y = 10, giá trị nhỏ nhất của x² + y² là", ["25", "50", "100", "Không tồn tại"], "B", "Từ (x−y)² ≥ 0 suy ra x²+y² ≥ (x+y)²/2 = 50. Dấu bằng khi x=y=5."),
-  question("Bất đẳng thức x² − 4x + 4 ≥ 0 đúng với", ["x ≥ 2", "x ≤ 2", "mọi x thực", "x ≠ 2"], "C", "Vế trái là (x−2)², luôn không âm với mọi x thực và bằng 0 tại x=2. Phương án D sai vì x=2 vẫn thỏa."),
-  question("Để x² − 2mx + m + 2 > 0 với mọi x thực, m phải thỏa", ["m < −1 hoặc m > 2", "−1 < m < 2", "−1 ≤ m ≤ 2", "m > 0"], "B", "Hệ số bậc hai dương. Cần Δ < 0: 4m²−4(m+2)<0 ⇔ m²−m−2<0 ⇔ (m+1)(m−2)<0, nên −1<m<2."),
-  question("Nghiệm của 1/(x − 1) > 1/(x + 1) là", ["−1 < x < 1", "x < −1 hoặc x > 1", "x > 1", "mọi x ≠ ±1"], "B", "Chuyển vế được 2/(x²−1)>0. Tử dương nên mẫu phải dương: x²−1>0, tức x<−1 hoặc x>1. Không được nhân chéo tùy tiện khi chưa biết dấu mẫu."),
-  question("Có bao nhiêu nghiệm nguyên của |2x − 1| ≤ 5?", ["5", "6", "7", "8"], "B", "Ta có −5≤2x−1≤5, suy ra −2≤x≤3. Các nghiệm nguyên −2,−1,0,1,2,3 gồm 6 số."),
+  question(raw`不等式 \(x+3>5\) 的解集是`, [raw`\(x>2\)`, raw`\(x<2\)`, raw`\(x\ge2\)`, raw`\(x\le2\)`], "A", raw`**Bước 1.** Trừ \(3\) ở cả hai vế: \(x+3-3>5-3\).
+
+**Bước 2.** Suy ra \(x>2\). Khi cộng hoặc trừ cùng một số ở hai vế, chiều bất đẳng thức không thay đổi.`),
+  question(raw`不等式 \(-2x<6\) 的解集是`, [raw`\(x<-3\)`, raw`\(x>-3\)`, raw`\(x<3\)`, raw`\(x>3\)`], "B", raw`**Bước 1.** Chia cả hai vế cho \(-2\). Vì chia cho số âm nên bắt buộc đổi chiều dấu bất đẳng thức.
+
+**Bước 2.** Ta được \(x>\frac{6}{-2}=-3\). Bẫy thường gặp là quên đổi dấu và chọn \(x<-3\).`),
+  question(raw`解不等式 \(3-2x\ge7\)。`, [raw`\(x\ge-2\)`, raw`\(x\le-2\)`, raw`\(x\ge2\)`, raw`\(x\le2\)`], "B", raw`**Bước 1.** Chuyển \(3\) sang vế phải: \(-2x\ge7-3=4\).
+
+**Bước 2.** Chia hai vế cho \(-2\) và đổi chiều: \(x\le-2\). Thử \(x=-2\) cho \(3-2(-2)=7\), nên dấu bằng được nhận.`),
+  question(raw`不等式 \(|x|<4\) 的解集是`, [raw`\(x<4\)`, raw`\(x>-4\)`, raw`\(-4<x<4\)`, raw`\(x<-4\text{ 或 }x>4\)`], "C", raw`**Bước 1.** \(|x|\) là khoảng cách từ \(x\) đến \(0\). Khoảng cách nhỏ hơn \(4\) nghĩa là \(x\) nằm giữa \(-4\) và \(4\).
+
+**Bước 2.** Vì dấu là \(<\), hai biên không được lấy. Do đó nghiệm là \(-4<x<4\).`),
+  question(raw`不等式 \((x-1)(x+2)>0\) 的解集是`, [raw`\(-2<x<1\)`, raw`\(x<-2\text{ 或 }x>1\)`, raw`\(x\le-2\text{ 或 }x\ge1\)`, raw`\(x>-2\)`], "B", raw`**Bước 1.** Hai nghiệm làm tích bằng \(0\) là \(x=-2\) và \(x=1\). Hệ số của \(x^2\) dương nên tích dương ở ngoài hai nghiệm.
+
+**Bước 2.** Vì yêu cầu \(>0\), không lấy hai điểm \(-2,1\). Vậy \(x<-2\) hoặc \(x>1\).`),
+  question(raw`不等式 \(x^2-5x+6\le0\) 的解集是`, [raw`\(( -\infty,2]\cup[3,+\infty)\)`, raw`\([2,3]\)`, raw`\((2,3)\)`, raw`\([-3,-2]\)`], "B", raw`**Bước 1.** Phân tích \(x^2-5x+6=(x-2)(x-3)\). Hai nghiệm là \(2\) và \(3\).
+
+**Bước 2.** Tam thức có hệ số đầu dương nên không dương trên đoạn giữa hai nghiệm. Vì có dấu \(\le\), lấy cả hai đầu: \(x\in[2,3]\).`),
+  question(raw`不等式 \(\dfrac{x-1}{x+2}\ge0\) 的解集是`, [raw`\(( -\infty,-2)\cup[1,+\infty)\)`, raw`\(( -\infty,-2]\cup[1,+\infty)\)`, raw`\([-2,1]\)`, raw`\((-2,1)\)`], "A", raw`**Bước 1.** Các mốc xét dấu là \(x=-2\) (mẫu bằng \(0\), phải loại) và \(x=1\) (tử bằng \(0\), được nhận).
+
+**Bước 2.** Lập bảng dấu cho \(\dfrac{x-1}{x+2}\): biểu thức dương trên \(( -\infty,-2)\) và \((1,+\infty)\), bằng \(0\) tại \(1\). Vậy nghiệm là \(( -\infty,-2)\cup[1,+\infty)\).`),
+  question(raw`不等式组 \(x>1\) 且 \(x\le4\) 的解集是`, [raw`\([1,4]\)`, raw`\((1,4]\)`, raw`\((1,4)\)`, raw`\([1,4)\)`], "B", raw`**Bước 1.** Điều kiện thứ nhất cho khoảng \((1,+\infty)\); điều kiện thứ hai cho \(( -\infty,4]\).
+
+**Bước 2.** Lấy giao hai khoảng được \((1,4]\): mở tại \(1\) vì \(x>1\), đóng tại \(4\) vì \(x\le4\).`),
+  question(raw`根式 \(\sqrt{\dfrac{x-2}{x+1}}\) 的定义域是`, [raw`\((-1,2)\)`, raw`\(( -\infty,-1)\cup[2,+\infty)\)`, raw`\(( -\infty,-1]\cup[2,+\infty)\)`, raw`\([2,+\infty)\)`], "B", raw`**Bước 1.** Điều kiện xác định là \(\dfrac{x-2}{x+1}\ge0\) đồng thời \(x\ne-1\).
+
+**Bước 2.** Xét dấu theo hai mốc \(-1\) và \(2\): phân thức không âm trên \(( -\infty,-1)\cup[2,+\infty)\). Điểm \(-1\) bị loại do mẫu bằng \(0\), còn \(2\) được lấy vì biểu thức dưới căn bằng \(0\).`),
+  question(raw`若 \(a,b>0\)，算术—几何平均不等式给出`, [raw`\(a+b\ge\sqrt{ab}\)`, raw`\(a+b\ge2\sqrt{ab}\)，等号当且仅当 \(a=b\)`, raw`\(a+b\le2\sqrt{ab}\)`, raw`\(a^2+b^2\le2ab\)`], "B", raw`**Bước 1.** AM–GM cho hai số dương là \(\dfrac{a+b}{2}\ge\sqrt{ab}\).
+
+**Bước 2.** Nhân hai vế với \(2\), được \(a+b\ge2\sqrt{ab}\). Dấu bằng xảy ra khi và chỉ khi \(a=b\).`),
+  question(raw`若 \(x,y>0\) 且 \(x+y=10\)，则 \(x^2+y^2\) 的最小值是`, [raw`\(25\)`, raw`\(50\)`, raw`\(100\)`, `不存在`], "B", raw`**Bước 1.** Từ \((x-y)^2\ge0\), suy ra \(x^2+y^2\ge2xy\). Do đó \((x+y)^2=x^2+2xy+y^2\le2(x^2+y^2)\).
+
+**Bước 2.** Suy ra \(x^2+y^2\ge\dfrac{(x+y)^2}{2}=\dfrac{100}{2}=50\). Dấu bằng khi \(x=y=5\), thỏa điều kiện dương.`),
+  question(raw`不等式 \(x^2-4x+4\ge0\) 对哪些 \(x\) 成立？`, [raw`\(x\ge2\)`, raw`\(x\le2\)`, `所有实数`, raw`\(x\ne2\)`], "C", raw`**Bước 1.** Hoàn thành bình phương: \(x^2-4x+4=(x-2)^2\).
+
+**Bước 2.** Bình phương của mọi số thực luôn không âm, nên bất đẳng thức đúng với mọi \(x\in\mathbb{R}\). Tại \(x=2\), vế trái bằng \(0\) và vẫn thỏa dấu \(\ge\).`),
+  question(raw`要使 \(x^2-2mx+m+2>0\) 对一切实数 \(x\) 恒成立，\(m\) 应满足`, [raw`\(m<-1\text{ 或 }m>2\)`, raw`\(-1<m<2\)`, raw`\(-1\le m\le2\)`, raw`\(m>0\)`], "B", raw`**Bước 1.** Đây là tam thức bậc hai theo \(x\) có hệ số đầu \(a=1>0\). Để tam thức dương với mọi \(x\), cần \(\Delta<0\).
+
+**Bước 2.** \(\Delta=(-2m)^2-4(m+2)=4(m^2-m-2)=4(m+1)(m-2)\). Điều kiện \((m+1)(m-2)<0\) cho \(-1<m<2\). Hai đầu bị loại vì khi \(\Delta=0\), tam thức có lúc bằng \(0\), không thỏa dấu \(>0\).`),
+  question(raw`不等式 \(\dfrac{1}{x-1}>\dfrac{1}{x+1}\) 的解集是`, [raw`\(-1<x<1\)`, raw`\(x<-1\text{ 或 }x>1\)`, raw`\(x>1\)`, raw`\(x\ne\pm1\)`], "B", raw`**Bước 1.** Điều kiện xác định: \(x\ne1\) và \(x\ne-1\). Chuyển vế:
+\[\frac{1}{x-1}-\frac{1}{x+1}=\frac{2}{x^2-1}>0.\]
+
+**Bước 2.** Tử \(2>0\), nên cần \(x^2-1>0\), tức \((x-1)(x+1)>0\). Suy ra \(x<-1\) hoặc \(x>1\). Cách này tránh lỗi nhân chéo khi chưa biết dấu của mẫu.`),
+  question(raw`不等式 \(|2x-1|\le5\) 有多少个整数解？`, [raw`\(5\)`, raw`\(6\)`, raw`\(7\)`, raw`\(8\)`], "B", raw`**Bước 1.** Bỏ dấu giá trị tuyệt đối: \(-5\le2x-1\le5\).
+
+**Bước 2.** Cộng \(1\) rồi chia \(2\): \(-2\le x\le3\). Các nghiệm nguyên là \(-2,-1,0,1,2,3\), tổng cộng \(6\) nghiệm.`),
 ];
 
 const insertQuestions = async (client, quizId, questions) => {
@@ -60,22 +129,58 @@ const insertQuestions = async (client, quizId, questions) => {
     "SELECT COUNT(*)::int AS count FROM quiz_attempts WHERE quiz_id = $1",
     [quizId],
   )).rows[0]?.count || 0);
-  const existing = Number((await client.query(
-    "SELECT COUNT(*)::int AS count FROM quiz_questions WHERE quiz_id = $1",
+  const existingRows = (await client.query(
+    `SELECT id FROM quiz_questions
+     WHERE quiz_id = $1
+     ORDER BY COALESCE(item_order, sort_order), id`,
     [quizId],
-  )).rows[0]?.count || 0);
-  if (attempts > 0 && existing !== questions.length) {
+  )).rows;
+  if (attempts > 0 && existingRows.length !== questions.length) {
     throw new Error(`Quiz ${quizId} đã có lượt làm; từ chối thay đổi cấu trúc câu hỏi.`);
   }
-  if (attempts > 0) return;
+  const pointsForIndex = (index) => (index < 10 ? 0.67 : 0.66);
+
+  if (existingRows.length === questions.length) {
+    for (const [index, item] of questions.entries()) {
+      await client.query(
+        `UPDATE quiz_questions
+         SET item_order=$2, sort_order=$2, question_text=$3, question_text_cn=$4,
+             question_type='single_choice', options_json=$5::jsonb,
+             correct_answer=$6, explanation=$7, explanation_cn=NULL,
+             explanation_en=NULL, points=$8, updated_at=NOW()
+         WHERE id=$1`,
+        [
+          existingRows[index].id,
+          index + 1,
+          item.text,
+          item.textCn,
+          JSON.stringify(item.options),
+          item.answer,
+          item.explanation,
+          pointsForIndex(index),
+        ],
+      );
+    }
+    return;
+  }
+
   await client.query("DELETE FROM quiz_questions WHERE quiz_id = $1", [quizId]);
   for (const [index, item] of questions.entries()) {
     await client.query(
       `INSERT INTO quiz_questions
-       (quiz_id, item_order, question_text, question_type, options_json,
-        correct_answer, explanation, points, sort_order)
-       VALUES ($1,$2,$3,'single_choice',$4::jsonb,$5,$6,1,$2)`,
-      [quizId, index + 1, item.text, JSON.stringify(item.options), item.answer, item.explanation],
+       (quiz_id, item_order, question_text, question_text_cn, question_type,
+        options_json, correct_answer, explanation, points, sort_order)
+       VALUES ($1,$2,$3,$4,'single_choice',$5::jsonb,$6,$7,$8,$2)`,
+      [
+        quizId,
+        index + 1,
+        item.text,
+        item.textCn,
+        JSON.stringify(item.options),
+        item.answer,
+        item.explanation,
+        pointsForIndex(index),
+      ],
     );
   }
 };
@@ -83,8 +188,8 @@ const insertQuestions = async (client, quizId, questions) => {
 const ensureQuiz = async (client, { overrideId, title, description, questions, instructorId }) => {
   let quiz = (await client.query(
     `SELECT id FROM quizzes
-     WHERE recording_curriculum_unit_override_id = $1 AND title = $2
-     ORDER BY id LIMIT 1`,
+     WHERE recording_curriculum_unit_override_id = $1
+     ORDER BY (title = $2) DESC, id LIMIT 1`,
     [overrideId, title],
   )).rows[0];
   if (!quiz) {
@@ -99,19 +204,83 @@ const ensureQuiz = async (client, { overrideId, title, description, questions, i
     )).rows[0];
   } else {
     await client.query(
-      `UPDATE quizzes SET description=$2, course_id=$3, duration_minutes=40,
+      `UPDATE quizzes SET title=$2, description=$3, course_id=$4, duration_minutes=40,
          passing_score=60, status='PUBLISHED', shuffle_questions=TRUE,
-         instructor_id=$4, activity_scope='homework', attempt_limit=3,
+         instructor_id=$5, activity_scope='homework', attempt_limit=3,
          review_policy='after_submit', attempt_score_policy='best', updated_at=NOW()
        WHERE id=$1`,
-      [quiz.id, description, COURSE_ID, instructorId],
+      [quiz.id, title, description, COURSE_ID, instructorId],
     );
   }
   await insertQuestions(client, quiz.id, questions);
   return Number(quiz.id);
 };
 
+const validateQuestionBank = (title, questions) => {
+  const issues = [];
+  const pointsForIndex = (index) => (index < 10 ? 0.67 : 0.66);
+  let totalPoints = 0;
+  const checkLatex = (value, label) => {
+    const source = String(value || "");
+    const balanced = (source.match(/\\\(/g) || []).length === (source.match(/\\\)/g) || []).length
+      && (source.match(/\\\[/g) || []).length === (source.match(/\\\]/g) || []).length;
+    if (!balanced) issues.push(`${label}: cặp delimiter LaTeX không cân bằng`);
+    const paired = /\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g;
+    let match;
+    while ((match = paired.exec(source))) {
+      const formula = match[1] ?? match[2] ?? "";
+      try {
+        katex.renderToString(formula, { throwOnError: true, strict: "ignore" });
+      } catch (err) {
+        issues.push(`${label}: LaTeX lỗi (${err.message})`);
+      }
+    }
+  };
+  for (const [index, item] of questions.entries()) {
+    const prefix = `Câu ${index + 1}`;
+    const opts = Array.isArray(item.options) ? item.options : [];
+    const optText = opts.map((o) => String(o.text || "")).join(" ");
+    totalPoints += pointsForIndex(index);
+    if (!/[\u3400-\u9fff]/u.test(item.text || "")) issues.push(`${prefix}: đề chưa có tiếng Trung`);
+    if (VIETNAMESE_MARKER.test(`${item.text || ""} ${optText}`)) issues.push(`${prefix}: đề/lựa chọn còn tiếng Việt`);
+    if (
+      !VIETNAMESE_MARKER.test(item.explanation || "")
+      || !String(item.explanation || "").includes("Bước 1")
+      || !String(item.explanation || "").includes("Bước 2")
+    ) {
+      issues.push(`${prefix}: lời giải thiếu Bước 1/Bước 2 tiếng Việt`);
+    }
+    if (String(item.explanation || "").length < 150) issues.push(`${prefix}: lời giải ngắn (${String(item.explanation || "").length} ký tự)`);
+    if (FORBIDDEN_MATH_UNICODE.test(`${item.text || ""} ${optText} ${item.explanation || ""}`)) {
+      issues.push(`${prefix}: còn ký hiệu toán Unicode`);
+    }
+    if (!opts.some((o) => String(o.key) === String(item.answer))) {
+      issues.push(`${prefix}: đáp án ${item.answer} không khớp lựa chọn`);
+    }
+    checkLatex(item.text, `${prefix} đề`);
+    opts.forEach((o) => checkLatex(o.text, `${prefix} lựa chọn ${o.key}`));
+    checkLatex(item.explanation, `${prefix} lời giải`);
+  }
+  if (questions.length !== 15) issues.push(`Số câu là ${questions.length}, cần đúng 15`);
+  if (Math.abs(totalPoints - 10) > 0.0001) issues.push(`Tổng điểm là ${totalPoints}, cần đúng 10`);
+  return { title, questions: questions.length, totalPoints: Number(totalPoints.toFixed(2)), ready: issues.length === 0, issues };
+};
+
 const run = async () => {
+  const sourceAudit = [
+    validateQuestionBank("集合练习｜Trắc nghiệm Tập hợp", setQuestions),
+    validateQuestionBank("不等式练习｜Trắc nghiệm Bất đẳng thức", inequalityQuestions),
+  ];
+  if (validateOnly) {
+    const ready = sourceAudit.every((q) => q.ready);
+    console.log(JSON.stringify({ ready, validateOnly: true, quizzes: sourceAudit }, null, 2));
+    if (!ready) process.exitCode = 1;
+    return;
+  }
+  if (!sourceAudit.every((q) => q.ready)) {
+    throw new Error(`Nguồn câu hỏi chưa đạt chuẩn: ${JSON.stringify(sourceAudit.filter((q) => !q.ready))}`);
+  }
+
   const client = await getClient();
   try {
     const context = (await client.query(
@@ -184,15 +353,15 @@ const run = async () => {
 
     const setQuizId = await ensureQuiz(client, {
       overrideId: context.default_override_id,
-      title: "Trắc nghiệm Tập hợp – từ dễ đến khó",
-      description: "15 câu trắc nghiệm phân tầng, có phương án bẫy và lời giải chi tiết sau khi nộp bài.",
+      title: "集合练习｜Trắc nghiệm Tập hợp",
+      description: "15 câu trắc nghiệm tiếng Trung, tổng 10 điểm; đạt từ 6/10. Có phương án bẫy và lời giải tiếng Việt chi tiết sau khi nộp bài.",
       questions: setQuestions,
       instructorId: context.instructor_id,
     });
     const inequalityQuizId = await ensureQuiz(client, {
       overrideId: inequalityOverride.id,
-      title: "Trắc nghiệm Bất đẳng thức – từ dễ đến khó",
-      description: "15 câu trắc nghiệm phân tầng, chú trọng bẫy đổi dấu, điều kiện xác định và tham số.",
+      title: "不等式练习｜Trắc nghiệm Bất đẳng thức",
+      description: "15 câu trắc nghiệm tiếng Trung, tổng 10 điểm; đạt từ 6/10. Chú trọng bẫy đổi dấu, điều kiện xác định và tham số, kèm lời giải tiếng Việt chi tiết.",
       questions: inequalityQuestions,
       instructorId: context.instructor_id,
     });

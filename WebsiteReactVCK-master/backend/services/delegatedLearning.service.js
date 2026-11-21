@@ -259,12 +259,15 @@ export async function assertLiveLearnerProfileAccess(db, { userId, profileRow })
      LIMIT 1`,
     [userId, profileRow.profile_id],
   );
+  const mirrorLiveClassId = String(profileRow.mode || "").toUpperCase() === "MIRROR"
+    ? (profileRow.source_live_class_id || null)
+    : null;
   if (revokedEnrollmentRes.rows[0]) {
     const stillEntitled = await hasEffectiveCourseEntitlement({
       db,
       userId,
       courseId: profileRow.course_id,
-      liveClassId: profileRow.source_live_class_id || null,
+      liveClassId: mirrorLiveClassId,
       profileId: profileRow.profile_id,
     });
     if (!stillEntitled) {
@@ -280,7 +283,7 @@ export async function assertLiveLearnerProfileAccess(db, { userId, profileRow })
     db,
     userId,
     courseId: profileRow.course_id,
-    liveClassId: profileRow.source_live_class_id || null,
+    liveClassId: mirrorLiveClassId,
     profileId: profileRow.profile_id,
   });
   if (!hasAccess) {
