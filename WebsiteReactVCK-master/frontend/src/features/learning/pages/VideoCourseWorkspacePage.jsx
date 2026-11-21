@@ -215,6 +215,7 @@ export default function VideoCourseWorkspacePage() {
   const [errorCode, setErrorCode] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [mobileCurriculumOpen, setMobileCurriculumOpen] = useState(false);
+  const [curriculumExpanded, setCurriculumExpanded] = useState(true);
 
   // Video Player & Watch Progress state
   const [isCompletedUnit, setIsCompletedUnit] = useState(false);
@@ -242,6 +243,27 @@ export default function VideoCourseWorkspacePage() {
   const [trustedModalOpen, setTrustedModalOpen] = useState(false);
   const [deviceList, setDeviceList] = useState([]);
   const [deviceLoading, setDeviceLoading] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("course-workspace-curriculum-expanded");
+      if (saved === "false") setCurriculumExpanded(false);
+    } catch {
+      // Local storage may be unavailable in privacy mode; keep the useful default open.
+    }
+  }, []);
+
+  const toggleCurriculum = useCallback(() => {
+    setCurriculumExpanded((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem("course-workspace-curriculum-expanded", String(next));
+      } catch {
+        // The UI still works for this visit even when persistence is unavailable.
+      }
+      return next;
+    });
+  }, []);
 
   // Load workspace data
   const loadWorkspace = useCallback(async (unitTarget) => {
@@ -777,9 +799,21 @@ export default function VideoCourseWorkspacePage() {
 
       {/* 2. MAIN LAYOUT: Left Workspace & Right Curriculum Navigation */}
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="mb-3 flex justify-end">
+          <button
+            type="button"
+            onClick={toggleCurriculum}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
+            aria-expanded={curriculumExpanded}
+            aria-controls="course-curriculum-panel"
+          >
+            {curriculumExpanded ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            {curriculumExpanded ? "Thu gọn danh sách bài" : "Mở danh sách bài"}
+          </button>
+        </div>
+        <div className={`grid grid-cols-1 gap-6 items-start ${curriculumExpanded ? "lg:grid-cols-12" : "lg:grid-cols-1"}`}>
           {/* LEFT 8/12: Active Unit Media & 8-Tab Content Workspace */}
-          <main className="lg:col-span-8 space-y-5 min-w-0">
+          <main className={`${curriculumExpanded ? "lg:col-span-8" : "lg:col-span-1"} space-y-5 min-w-0`}>
             {/* 1. MEDIA PLAYER OR SEQUENTIAL LOCK GATE */}
             {activeUnit?.isLocked ? (
               <div className="rounded-3xl border border-amber-500/30 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 sm:p-10 text-center text-white shadow-2xl space-y-5">
@@ -1848,7 +1882,7 @@ export default function VideoCourseWorkspacePage() {
           </main>
 
           {/* RIGHT 4/12: Curriculum & Lessons Sidebar */}
-          <aside className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+          <aside id="course-curriculum-panel" className={`${curriculumExpanded ? "lg:col-span-4" : "hidden"} bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4`}>
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">

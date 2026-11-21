@@ -158,11 +158,35 @@ function buildEffectiveDelegatedQuiz(quiz, accommodation) {
 }
 
 function resolveQuizUnitMatch(units, quiz, explicitUnitId = null) {
-  const matchingUnit = units.find((u) => (
-    u.unitType === "class_session"
-      ? quiz.class_session_id && String(u.id) === String(quiz.class_session_id)
-      : quiz.lesson_id && String(u.id) === String(quiz.lesson_id)
-  )) || null;
+  const sourceQuizAllowed = (unit) => {
+    const filter = unit.contentFilter && typeof unit.contentFilter === "object"
+      ? unit.contentFilter
+      : {};
+    if (!Object.prototype.hasOwnProperty.call(filter, "sourceQuizIds")) return true;
+    return (Array.isArray(filter.sourceQuizIds) ? filter.sourceQuizIds : [])
+      .map(String)
+      .includes(String(quiz.id));
+  };
+  const unitMatchesQuiz = (unit) => {
+    if (
+      quiz.recording_curriculum_unit_override_id
+      && unit.unitOverrideId
+      && String(unit.unitOverrideId) === String(quiz.recording_curriculum_unit_override_id)
+    ) return true;
+    if (unit.isRecordingReference && quiz.class_session_id) {
+      return String(unit.sourceClassSessionId || unit.id) === String(quiz.class_session_id)
+        && sourceQuizAllowed(unit);
+    }
+    return unit.unitType === "class_session"
+      ? quiz.class_session_id && String(unit.id) === String(quiz.class_session_id)
+      : quiz.lesson_id && String(unit.id) === String(quiz.lesson_id);
+  };
+  const requestedUnit = explicitUnitId != null && String(explicitUnitId).trim() !== ""
+    ? units.find((unit) => String(unit.id) === String(explicitUnitId).trim()) || null
+    : null;
+  const matchingUnit = requestedUnit && unitMatchesQuiz(requestedUnit)
+    ? requestedUnit
+    : (units.find(unitMatchesQuiz) || null);
 
   if (!matchingUnit) {
     throw new ExternalIntegrationError(
@@ -1293,9 +1317,22 @@ function resolveAssignmentUnitMatch(units, assignment, profileRow, explicitUnitI
     }
   } else {
     if (assignment.class_session_id) {
-      matchedUnit = units.find((u) => (
-        u.isRecordingReference && String(u.id) === String(assignment.class_session_id)
-      )) || null;
+      const unitMatchesAssignment = (u) => (
+        u.isRecordingReference
+        && String(u.sourceClassSessionId || u.id) === String(assignment.class_session_id)
+        && (
+          !Object.prototype.hasOwnProperty.call(u.contentFilter || {}, "sourceAssignmentIds")
+          || (Array.isArray(u.contentFilter?.sourceAssignmentIds) ? u.contentFilter.sourceAssignmentIds : [])
+            .map(String)
+            .includes(String(assignment.id))
+        )
+      );
+      const requestedUnit = explicitUnitId != null && String(explicitUnitId).trim() !== ""
+        ? units.find((u) => String(u.id) === String(explicitUnitId).trim()) || null
+        : null;
+      matchedUnit = requestedUnit && unitMatchesAssignment(requestedUnit)
+        ? requestedUnit
+        : (units.find(unitMatchesAssignment) || null);
     } else if (assignment.lesson_id) {
       matchedUnit = units.find((u) => String(u.id) === String(assignment.lesson_id)) || null;
     } else if (!assignment.live_class_id && !assignment.class_session_id && String(assignment.course_id) === String(profileRow.course_id)) {
@@ -1332,6 +1369,9 @@ function resolveAssignmentUnitMatch(units, assignment, profileRow, explicitUnitI
   }
   return matchedUnit;
 }
+
+export const __testResolveQuizUnitMatch = resolveQuizUnitMatch;
+export const __testResolveAssignmentUnitMatch = resolveAssignmentUnitMatch;
 
 /**
  * Returns assignment brief, rubric, and current learner submission + grading detail.

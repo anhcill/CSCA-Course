@@ -280,6 +280,7 @@ async function resolveFileMembershipInProfile(db, { file, profileRow, units }) {
   const matchedUnitIds = new Set();
   let matchedClassAllowDownload = null;
   let classWideMatch = false;
+  let referencedSourceMatch = false;
 
   if (profileRow.mode === "MIRROR" && profileRow.source_live_class_id) {
     if (
@@ -338,12 +339,22 @@ async function resolveFileMembershipInProfile(db, { file, profileRow, units }) {
       }
     }
   } else {
-    const [placedRes, quizFileRes] = await Promise.all([
+    const nativeUnits = units.filter((unit) => !unit.isRecordingReference);
+    const referencedUnits = units.filter((unit) => unit.isRecordingReference);
+    const nativeUnitIds = nativeUnits.map((unit) => Number(unit.id));
+    const sourceSessionIds = [...new Set(referencedUnits
+      .map((unit) => Number(unit.sourceClassSessionId || unit.id))
+      .filter(Number.isFinite))];
+    const overrideIds = [...new Set(referencedUnits
+      .map((unit) => Number(unit.unitOverrideId))
+      .filter(Number.isFinite))];
+
+    const [placedRes, quizFileRes, sourcePlacedRes, sourceQuizFileRes] = await Promise.all([
       db.query(
         `SELECT llfp.lesson_id
          FROM lesson_learning_file_placements llfp
          WHERE llfp.file_id = $1 AND llfp.lesson_id = ANY($2::bigint[])`,
-        [file.id, units.map((u) => Number(u.id))],
+        [file.id, nativeUnitIds],
       ),
       db.query(
         `SELECT lesson_id
@@ -351,7 +362,26 @@ async function resolveFileMembershipInProfile(db, { file, profileRow, units }) {
          WHERE status = 'PUBLISHED'
            AND lesson_id = ANY($2::bigint[])
            AND (paper_file_id = $1 OR solution_file_id = $1)`,
-        [file.id, units.map((u) => Number(u.id))],
+        [file.id, nativeUnitIds],
+      ),
+      db.query(
+        `SELECT class_session_id
+         FROM lms_learning_file_placements
+         WHERE file_id = $1
+           AND class_session_id = ANY($2::bigint[])
+           AND deleted_at IS NULL`,
+        [file.id, sourceSessionIds],
+      ),
+      db.query(
+        `SELECT id, class_session_id, recording_curriculum_unit_override_id
+         FROM quizzes
+         WHERE status = 'PUBLISHED'
+           AND (paper_file_id = $1 OR solution_file_id = $1)
+           AND (
+             class_session_id = ANY($2::bigint[])
+             OR recording_curriculum_unit_override_id = ANY($3::bigint[])
+           )`,
+        [file.id, sourceSessionIds, overrideIds],
       ),
     ]);
 
@@ -360,12 +390,55 @@ async function resolveFileMembershipInProfile(db, { file, profileRow, units }) {
         matchedUnitIds.add(String(row.lesson_id));
       }
     }
+
+    const fileIsAllowedByUnit = (unit) => {
+      const filter = unit.contentFilter && typeof unit.contentFilter === "object"
+        ? unit.contentFilter
+        : {};
+      if (!Object.prototype.hasOwnProperty.call(filter, "sourceFileIds")) return true;
+      return (Array.isArray(filter.sourceFileIds) ? filter.sourceFileIds : [])
+        .map(String)
+        .includes(String(file.id));
+    };
+    const quizIsAllowedByUnit = (unit, quizId) => {
+      const filter = unit.contentFilter && typeof unit.contentFilter === "object"
+        ? unit.contentFilter
+        : {};
+      if (!Object.prototype.hasOwnProperty.call(filter, "sourceQuizIds")) return true;
+      return (Array.isArray(filter.sourceQuizIds) ? filter.sourceQuizIds : [])
+        .map(String)
+        .includes(String(quizId));
+    };
+
+    const directlyPlacedSourceIds = new Set(sourcePlacedRes.rows.map((row) => String(row.class_session_id)));
+    for (const unit of referencedUnits) {
+      const sourceId = String(unit.sourceClassSessionId || unit.id);
+      const directSourceFile = file.class_session_id && String(file.class_session_id) === sourceId;
+      if (directSourceFile || directlyPlacedSourceIds.has(sourceId)) referencedSourceMatch = true;
+      if ((directSourceFile || directlyPlacedSourceIds.has(sourceId)) && fileIsAllowedByUnit(unit)) {
+        matchedUnitIds.add(String(unit.id));
+      }
+    }
+
+    for (const quiz of sourceQuizFileRes.rows) {
+      referencedSourceMatch = true;
+      for (const unit of referencedUnits) {
+        const matchesOverride = quiz.recording_curriculum_unit_override_id
+          && unit.unitOverrideId
+          && String(quiz.recording_curriculum_unit_override_id) === String(unit.unitOverrideId);
+        const matchesSource = quiz.class_session_id
+          && String(quiz.class_session_id) === String(unit.sourceClassSessionId || unit.id)
+          && quizIsAllowedByUnit(unit, quiz.id);
+        if (matchesOverride || matchesSource) matchedUnitIds.add(String(unit.id));
+      }
+    }
   }
 
   const fileCourseId = file.course_id || file.class_course_id || null;
   const courseWideMatch = file.visibility === "COURSE"
     && fileCourseId != null
-    && String(fileCourseId) === String(profileRow.course_id);
+    && String(fileCourseId) === String(profileRow.course_id)
+    && !referencedSourceMatch;
 
   return {
     matchedUnitIds,
@@ -374,6 +447,8 @@ async function resolveFileMembershipInProfile(db, { file, profileRow, units }) {
     matchedClassAllowDownload,
   };
 }
+
+export const __testResolveFileMembershipInProfile = resolveFileMembershipInProfile;
 
 async function assertQuizSolutionNotEmbargoed(db, { fileId, userId = null, currentNow }) {
   const solRes = await db.query(

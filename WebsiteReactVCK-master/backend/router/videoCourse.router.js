@@ -52,7 +52,7 @@ import {
 } from "../services/delegatedLearning.service.js";
 
 const router = express.Router();
-const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
+const ACCESS_HELP_MESSAGE = "Bạn chưa mua khóa học này nhaa 💛 Nhắn Zalo admin 0812352005 để được hỗ trợ mở khóa nhé.";
 const VIDEO_COMPLETION_PERCENT = 50;
 
 const validationError = (res, message) => res.status(422).json({
