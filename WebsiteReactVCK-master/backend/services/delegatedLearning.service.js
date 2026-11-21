@@ -353,7 +353,7 @@ async function loadReferencedProfileUnitsWithProgress(db, { profileRow, userId =
        LEFT JOIN recording_curriculum_unit_overrides o
          ON o.curriculum_reference_id = $2 AND o.source_class_session_id = cs.id
        WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
-       ORDER BY COALESCE(o.sort_order_override, s.sort_order, cc.position, 0), cs.start_time, cs.id`,
+       ORDER BY COALESCE(o.sort_order_override, s.sort_order, cc.position, 0), cs.start_time, cs.id, o.id`,
       [reference.source_live_class_id, reference.id, userId || 0, profileRow.profile_id],
     )
   ).rows.filter((row) => !excluded.has(String(row.management_session_source_id || "").toLowerCase()));

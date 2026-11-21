@@ -84,7 +84,7 @@ export async function loadReferencedRecordingCurriculum(
        WHERE cs.live_class_id = $1
          AND cs.status <> 'cancelled'
        ORDER BY COALESCE(o.sort_order_override, s.sort_order, cc.position, 0) ASC,
-                cs.start_time ASC, cs.id ASC`,
+                cs.start_time ASC, cs.id ASC, o.id ASC`,
       [reference.source_live_class_id, reference.id],
     )
   ).rows.filter((row) => !excluded.has(String(row.management_session_source_id || "").toLowerCase()));
