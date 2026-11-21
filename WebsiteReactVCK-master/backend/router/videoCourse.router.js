@@ -1337,6 +1337,13 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
               allowFreeQuizReview: !isLearner || canReviewFreely,
             },
           );
+          activeUnitData.files = (activeUnitData.files || []).map((file) => ({
+            ...file,
+            viewUrl: `/api/files/${file.id}/download?classId=${encodeURIComponent(curriculumReference.source_live_class_id)}&videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(activeProfileId)}`,
+            downloadUrl: isPublicPreviewAccess || profile.allow_file_download !== true
+              ? null
+              : `/api/files/${file.id}/download?classId=${encodeURIComponent(curriculumReference.source_live_class_id)}&videoCourseId=${encodeURIComponent(courseId)}&videoCourseProfileId=${encodeURIComponent(activeProfileId)}&download=1`,
+          }));
         }
       } else {
       // INDEPENDENT: Units are sections -> lessons
@@ -2860,7 +2867,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
         lessons: referenced.units
           .filter((unit) => String(unit.sectionId) === String(sec.sectionId))
           .map((unit) => ({
-            id: String(unit.sourceClassSessionId),
+            id: String(unit.unitId),
             unitType: "recording_reference",
             sourceClassSessionId: String(unit.sourceClassSessionId),
             curriculumReferenceId: String(unit.curriculumReferenceId),
@@ -3712,12 +3719,13 @@ router.put("/admin/courses/:courseId/referenced-units/:sessionId", protectRoute,
     const sessionId = parsePositiveId(req.params.sessionId);
     if (!courseId || !sessionId) return validationError(res, "courseId hoặc sessionId không hợp lệ");
 
+    const requestedOverrideId = parsePositiveId(req.body?.unitOverrideId);
     const current = (
       await query(
         `SELECT r.id AS reference_id, r.video_course_profile_id, cs.id AS source_class_session_id,
                 cs.title AS source_title, o.id AS override_id, o.title_override,
                 o.summary_override, o.duration_seconds_override, o.sort_order_override,
-                o.is_published_override, o.is_public_preview_override
+                o.is_published_override, o.is_public_preview_override, o.slice_key
          FROM recording_curriculum_references r
          JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
          JOIN class_sessions cs ON cs.live_class_id = r.source_live_class_id AND cs.id = $2
@@ -3726,8 +3734,10 @@ router.put("/admin/courses/:courseId/referenced-units/:sessionId", protectRoute,
          WHERE vcp.course_id = $1 AND vcp.mode = 'INDEPENDENT'
            AND vcp.source_live_class_id IS NULL AND vcp.deleted_at IS NULL
            AND cs.status <> 'cancelled'
+           AND ($3::bigint IS NULL OR o.id = $3)
+         ORDER BY CASE WHEN o.id = $3 THEN 0 ELSE 1 END, o.id ASC
          LIMIT 1`,
-        [courseId, sessionId],
+        [courseId, sessionId, requestedOverrideId],
       )
     ).rows[0];
     if (!current) return notFound(res, "Không tìm thấy bài học dùng lại trong khóa Record này");
@@ -3789,11 +3799,11 @@ router.put("/admin/courses/:courseId/referenced-units/:sessionId", protectRoute,
     const saved = (
       await query(
         `INSERT INTO recording_curriculum_unit_overrides
-           (curriculum_reference_id, source_class_session_id, title_override, summary_override,
+           (curriculum_reference_id, source_class_session_id, slice_key, title_override, summary_override,
             duration_seconds_override, sort_order_override, is_published_override,
             is_public_preview_override)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         ON CONFLICT (curriculum_reference_id, source_class_session_id) DO UPDATE SET
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (curriculum_reference_id, source_class_session_id, slice_key) DO UPDATE SET
            title_override = EXCLUDED.title_override,
            summary_override = EXCLUDED.summary_override,
            duration_seconds_override = EXCLUDED.duration_seconds_override,
@@ -3802,7 +3812,17 @@ router.put("/admin/courses/:courseId/referenced-units/:sessionId", protectRoute,
            is_public_preview_override = EXCLUDED.is_public_preview_override,
            updated_at = NOW()
          RETURNING *`,
-        [current.reference_id, sessionId, nextTitle, nextSummary, nextDuration, nextOrder, nextPublished, nextPreview],
+        [
+          current.reference_id,
+          sessionId,
+          current.slice_key || "default",
+          nextTitle,
+          nextSummary,
+          nextDuration,
+          nextOrder,
+          nextPublished,
+          nextPreview,
+        ],
       )
     ).rows[0];
 

@@ -68,6 +68,18 @@ export const parsePositiveId = (value) => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const virtualReferenceUnitId = (row) => (
+  String(row.slice_key || "default") === "default"
+    ? Number(row.id)
+    : 1_000_000_000_000 + Number(row.override_id)
+);
+
+const filterRowsByUnitContent = (rows, filter, key) => {
+  if (!filter || !Object.prototype.hasOwnProperty.call(filter, key)) return rows;
+  const allowed = new Set((Array.isArray(filter[key]) ? filter[key] : []).map((id) => String(id)));
+  return rows.filter((row) => allowed.has(String(row.id)));
+};
+
 export const isDelegatedAdminRole = (role) => ["admin", "creator"].includes(
   String(role || "").trim().toLowerCase(),
 );
@@ -305,10 +317,29 @@ async function loadReferencedProfileUnitsWithProgress(db, { profileRow, userId =
               o.id AS override_id, o.title_override, o.summary_override,
               o.duration_seconds_override, o.sort_order_override,
               o.is_published_override, o.is_public_preview_override,
+              o.slice_key, o.content_filter,
               (SELECT COUNT(*)::int FROM quizzes q
-               WHERE q.class_session_id = cs.id AND q.status = 'PUBLISHED') AS quiz_count,
+               WHERE q.status = 'PUBLISHED' AND (
+                 (q.class_session_id = cs.id AND (
+                   NOT (COALESCE(o.content_filter, '{}'::jsonb) ? 'sourceQuizIds')
+                   OR EXISTS (
+                     SELECT 1 FROM jsonb_array_elements_text(o.content_filter->'sourceQuizIds') allowed(id)
+                     WHERE allowed.id = q.id::text
+                   )
+                 ))
+                 OR q.recording_curriculum_unit_override_id = o.id
+               )) AS quiz_count,
               (SELECT COUNT(*)::int FROM quizzes q
-               WHERE q.class_session_id = cs.id AND q.status = 'PUBLISHED'
+               WHERE q.status = 'PUBLISHED' AND (
+                   (q.class_session_id = cs.id AND (
+                     NOT (COALESCE(o.content_filter, '{}'::jsonb) ? 'sourceQuizIds')
+                     OR EXISTS (
+                       SELECT 1 FROM jsonb_array_elements_text(o.content_filter->'sourceQuizIds') allowed(id)
+                       WHERE allowed.id = q.id::text
+                     )
+                   ))
+                   OR q.recording_curriculum_unit_override_id = o.id
+                 )
                  AND $3::bigint > 0 AND EXISTS (
                    SELECT 1 FROM quiz_attempts qa
                    WHERE qa.quiz_id = q.id AND qa.user_id = $3
@@ -366,12 +397,17 @@ async function loadReferencedProfileUnitsWithProgress(db, { profileRow, userId =
       const completedQuizCount = Number(row.completed_quiz_count || 0);
       const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
       return {
-        id: String(row.id),
+        id: String(virtualReferenceUnitId(row)),
         type: "class_session",
         unitType: "class_session",
         isRecordingReference: true,
         curriculumReferenceId: String(reference.id),
         unitOverrideId: row.override_id ? String(row.override_id) : null,
+        sourceClassSessionId: String(row.id),
+        sliceKey: row.slice_key || "default",
+        contentFilter: row.content_filter && typeof row.content_filter === "object"
+          ? row.content_filter
+          : {},
         sourceLiveClassId: reference.source_live_class_id,
         sessionNumber: index + 1,
         sectionId: `ref:${reference.id}:${row.section_id}`,
@@ -574,7 +610,7 @@ export async function loadProfileUnitsWithProgress(db, { profileRow, userId = nu
  */
 async function loadUnitBookmarksAndQa(db, { unitMeta, effectiveUserId, isPublicPreviewAccess = false }) {
   const unitCol = unitMeta.type === "class_session" ? "class_session_id" : "lesson_id";
-  const unitId = Number(unitMeta.id);
+  const unitId = Number(unitMeta.sourceClassSessionId || unitMeta.id);
 
   const [bookmarksRes, threadsRes] = await Promise.all([
     !isPublicPreviewAccess && effectiveUserId > 0
@@ -672,7 +708,7 @@ export async function loadUnlockedUnitDetail(
   db,
   { profileRow, unitMeta, userId = null, isPublicPreviewAccess = false, allowFreeQuizReview = false },
 ) {
-  const unitId = Number(unitMeta.id);
+  const unitId = Number(unitMeta.sourceClassSessionId || unitMeta.id);
   const effectiveUserId = userId || 0;
   const allowDownload = !isPublicPreviewAccess && profileRow.allow_file_download === true;
 
@@ -762,6 +798,7 @@ export async function loadUnlockedUnitDetail(
       db.query(
         `SELECT q.id, q.title, q.duration_minutes, q.passing_score, q.attempt_limit, q.review_policy,
                 q.available_until, q.due_date, q.activity_scope,
+                q.recording_curriculum_unit_override_id,
                 CASE WHEN $2::bigint > 0 THEN (
                   SELECT COUNT(*)::int FROM quiz_attempts qa
                   WHERE qa.quiz_id = q.id AND qa.user_id = $2
@@ -787,9 +824,10 @@ export async function loadUnlockedUnitDetail(
                   ORDER BY qa.id DESC LIMIT 1
                 ) ELSE NULL END AS latest_attempt_id
          FROM quizzes q
-         WHERE q.class_session_id = $1 AND q.status = 'PUBLISHED'
+         WHERE (q.class_session_id = $1 OR q.recording_curriculum_unit_override_id = $4)
+           AND q.status = 'PUBLISHED'
          ORDER BY q.id ASC`,
-        [unitId, effectiveUserId, profileRow.profile_id],
+        [unitId, effectiveUserId, profileRow.profile_id, Number(unitMeta.unitOverrideId) || null],
       ),
       db.query(
         `SELECT id, term, pinyin, sino_vietnamese, meaning, part_of_speech,
@@ -817,8 +855,30 @@ export async function loadUnlockedUnitDetail(
       loadUnitBookmarksAndQa(db, { unitMeta, effectiveUserId, isPublicPreviewAccess }),
     ]);
 
+    const contentFilter = unitMeta.contentFilter && typeof unitMeta.contentFilter === "object"
+      ? unitMeta.contentFilter
+      : {};
+    const filteredFiles = filterRowsByUnitContent(filesRes.rows, contentFilter, "sourceFileIds");
+    const filteredVocabulary = filterRowsByUnitContent(
+      vocabRes.rows, contentFilter, "sourceVocabularyIds",
+    );
+    const filteredFormulas = filterRowsByUnitContent(
+      formulaRes.rows, contentFilter, "sourceFormulaIds",
+    );
+    const allowedSourceQuizIds = Object.prototype.hasOwnProperty.call(contentFilter, "sourceQuizIds")
+      ? new Set((Array.isArray(contentFilter.sourceQuizIds) ? contentFilter.sourceQuizIds : []).map(String))
+      : null;
+    const filteredQuizzes = quizRes.rows.filter((quiz) => (
+      quiz.recording_curriculum_unit_override_id
+      || !allowedSourceQuizIds
+      || allowedSourceQuizIds.has(String(quiz.id))
+    ));
     const isFirstUnit = Number(unitMeta.sessionNumber || 1) === 1;
-    const directAssignments = assignRes.rows.filter((a) => String(a.class_session_id || "") === String(unitId));
+    const directAssignments = filterRowsByUnitContent(
+      assignRes.rows.filter((a) => String(a.class_session_id || "") === String(unitId)),
+      contentFilter,
+      "sourceAssignmentIds",
+    );
     const effectiveAssignments = directAssignments.length > 0
       ? directAssignments
       : (isFirstUnit ? assignRes.rows : []);
@@ -827,11 +887,11 @@ export async function loadUnlockedUnitDetail(
       unitMeta,
       videos: videosRes.rows,
       theory: theoryRes.rows[0] || null,
-      files: filesRes.rows,
+      files: filteredFiles,
       assignments: effectiveAssignments,
-      quizzes: quizRes.rows,
-      vocabulary: vocabRes.rows,
-      formulas: formulaRes.rows,
+      quizzes: filteredQuizzes,
+      vocabulary: filteredVocabulary,
+      formulas: filteredFormulas,
       notes: notesRes.rows,
       bookmarks: extras.bookmarks,
       qaThreads: extras.qaThreads,

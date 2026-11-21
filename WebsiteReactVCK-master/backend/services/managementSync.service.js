@@ -945,9 +945,9 @@ const syncCurriculumReference = async (client, event) => {
     if (excludedKeys.has(lower(session.management_session_source_id))) continue;
     await client.query(
       `INSERT INTO recording_curriculum_unit_overrides
-         (curriculum_reference_id, source_class_session_id, is_published_override)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (curriculum_reference_id, source_class_session_id) DO UPDATE SET
+         (curriculum_reference_id, source_class_session_id, slice_key, is_published_override)
+       VALUES ($1, $2, 'default', $3)
+       ON CONFLICT (curriculum_reference_id, source_class_session_id, slice_key) DO UPDATE SET
          is_published_override = FALSE
        WHERE EXCLUDED.is_published_override = FALSE
          AND recording_curriculum_unit_overrides.is_published_override IS DISTINCT FROM FALSE`,

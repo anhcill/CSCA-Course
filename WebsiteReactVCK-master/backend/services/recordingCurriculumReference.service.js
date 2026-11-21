@@ -14,6 +14,18 @@ const groupBy = (rows, key = "unit_id") => {
   return grouped;
 };
 
+const filterRowsByConfiguredIds = (rows, filter, key, idField = "id") => {
+  if (!filter || !Object.prototype.hasOwnProperty.call(filter, key)) return rows;
+  const allowed = new Set((Array.isArray(filter[key]) ? filter[key] : []).map((id) => String(id)));
+  return rows.filter((row) => allowed.has(String(row[idField])));
+};
+
+const virtualSliceUnitId = (row) => (
+  String(row.slice_key || "default") === "default"
+    ? String(row.id)
+    : String(1_000_000_000_000 + Number(row.override_id))
+);
+
 export function normalizeReferencedLessonTitle(value, fallback = "Bài học") {
   const source = String(value || fallback).trim();
   const normalized = source
@@ -62,7 +74,8 @@ export async function loadReferencedRecordingCurriculum(
               s.title AS section_title, s.sort_order AS section_sort_order,
               o.id AS override_id, o.title_override, o.summary_override,
               o.duration_seconds_override, o.sort_order_override, o.is_published_override,
-              o.is_public_preview_override, o.metadata AS override_metadata
+              o.is_public_preview_override, o.metadata AS override_metadata,
+              o.slice_key, o.content_filter
        FROM class_sessions cs
        LEFT JOIN class_chapters cc ON cc.id = cs.chapter_id
        LEFT JOIN sections s ON s.id = cs.course_section_id
@@ -82,7 +95,8 @@ export async function loadReferencedRecordingCurriculum(
   const sessionIds = sessionRows.map((row) => Number(row.id));
   const overrideIds = sessionRows.map((row) => Number(row.override_id)).filter(Boolean);
 
-  const [theoryRes, vocabRes, formulaRes, directFilesRes, placedFilesRes, quizRes, assignmentRes, videosRes] = await Promise.all([
+  const [theoryRes, vocabRes, formulaRes, directFilesRes, placedFilesRes, quizRes,
+    destinationQuizRes, assignmentRes, videosRes] = await Promise.all([
     runner.query(
       `SELECT class_session_id AS unit_id, title, summary,
               (NULLIF(btrim(COALESCE(content_html, '')), '') IS NOT NULL) AS has_content_html,
@@ -94,13 +108,13 @@ export async function loadReferencedRecordingCurriculum(
       [sessionIds],
     ),
     runner.query(
-      `SELECT session_id AS unit_id, COUNT(*)::int AS cnt
-       FROM session_vocabularies WHERE session_id = ANY($1::bigint[]) GROUP BY session_id`,
+      `SELECT id, session_id AS unit_id
+       FROM session_vocabularies WHERE session_id = ANY($1::bigint[])`,
       [sessionIds],
     ),
     runner.query(
-      `SELECT session_id AS unit_id, COUNT(*)::int AS cnt
-       FROM session_formulas WHERE session_id = ANY($1::bigint[]) GROUP BY session_id`,
+      `SELECT id, session_id AS unit_id
+       FROM session_formulas WHERE session_id = ANY($1::bigint[])`,
       [sessionIds],
     ),
     runner.query(
@@ -125,6 +139,16 @@ export async function loadReferencedRecordingCurriculum(
        FROM quizzes WHERE class_session_id = ANY($1::bigint[]) AND status = 'PUBLISHED'`,
       [sessionIds],
     ),
+    overrideIds.length > 0
+      ? runner.query(
+        `SELECT id, recording_curriculum_unit_override_id AS unit_id,
+                title, duration_minutes, passing_score, updated_at
+         FROM quizzes
+         WHERE recording_curriculum_unit_override_id = ANY($1::bigint[])
+           AND status = 'PUBLISHED'`,
+        [overrideIds],
+      )
+      : Promise.resolve({ rows: [] }),
     runner.query(
       `SELECT id, class_session_id AS unit_id, title, max_score, due_date, updated_at
        FROM assignments WHERE class_session_id = ANY($1::bigint[])`,
@@ -147,10 +171,11 @@ export async function loadReferencedRecordingCurriculum(
   ]);
 
   const theory = new Map(theoryRes.rows.map((row) => [String(row.unit_id), row]));
-  const vocab = new Map(vocabRes.rows.map((row) => [String(row.unit_id), Number(row.cnt || 0)]));
-  const formulas = new Map(formulaRes.rows.map((row) => [String(row.unit_id), Number(row.cnt || 0)]));
+  const vocab = groupBy(vocabRes.rows);
+  const formulas = groupBy(formulaRes.rows);
   const files = groupBy([...directFilesRes.rows, ...placedFilesRes.rows]);
   const quizzes = groupBy(quizRes.rows);
+  const destinationQuizzes = groupBy(destinationQuizRes.rows);
   const assignments = groupBy(assignmentRes.rows);
   const videos = groupBy(videosRes.rows, "unit_override_id");
   const sectionMap = new Map();
@@ -159,6 +184,9 @@ export async function loadReferencedRecordingCurriculum(
 
   const units = sessionRows.map((row, index) => {
     const sourceId = String(row.id);
+    const contentFilter = row.content_filter && typeof row.content_filter === "object"
+      ? row.content_filter
+      : {};
     const secId = row.course_section_id
       ? `ref-sec-${reference.id}-${row.course_section_id}`
       : row.chapter_id
@@ -182,7 +210,10 @@ export async function loadReferencedRecordingCurriculum(
     const th = theory.get(sourceId) || null;
     const uniqueFiles = new Map();
     for (const file of files.get(sourceId) || []) uniqueFiles.set(String(file.file_id), file);
-    const unitFiles = [...uniqueFiles.values()].map((file, fileIndex) => ({
+    const filteredFiles = filterRowsByConfiguredIds(
+      [...uniqueFiles.values()], contentFilter, "sourceFileIds", "file_id",
+    );
+    const unitFiles = filteredFiles.map((file, fileIndex) => ({
       fileId: String(file.file_id),
       title: file.original_name || `Tài liệu ${fileIndex + 1}`,
       originalFilename: file.original_name || null,
@@ -220,7 +251,13 @@ export async function loadReferencedRecordingCurriculum(
           : [],
         processingError: video.processing_error || null,
       }));
-    const unitQuizzes = (quizzes.get(sourceId) || []).map((quiz) => ({
+    const sourceQuizzes = filterRowsByConfiguredIds(
+      quizzes.get(sourceId) || [], contentFilter, "sourceQuizIds",
+    );
+    const unitQuizzes = [
+      ...sourceQuizzes,
+      ...(destinationQuizzes.get(String(row.override_id)) || []),
+    ].map((quiz) => ({
       quizId: String(quiz.id),
       title: quiz.title,
       durationMinutes: quiz.duration_minutes != null ? Number(quiz.duration_minutes) : null,
@@ -233,13 +270,17 @@ export async function loadReferencedRecordingCurriculum(
       dueDate: toIso(assignment.due_date),
     }));
     return {
-      unitKey: `class_session:${row.id}`,
+      unitKey: String(row.slice_key || "default") === "default"
+        ? `class_session:${row.id}`
+        : `recording_reference:${row.override_id}`,
       unitType: "class_session",
-      unitId: String(row.id),
+      unitId: virtualSliceUnitId(row),
       isRecordingReference: true,
       curriculumReferenceId: String(reference.id),
       unitOverrideId: row.override_id ? String(row.override_id) : null,
       sourceClassSessionId: sourceId,
+      sliceKey: row.slice_key || "default",
+      contentFilter,
       sectionId: secId,
       sectionTitle: secTitle,
       sectionSortOrder: Number(row.section_sort_order ?? row.chapter_position ?? 0),
@@ -269,8 +310,12 @@ export async function loadReferencedRecordingCurriculum(
       },
       counts: {
         videos: videoParts.length,
-        vocab: vocab.get(sourceId) || 0,
-        formulas: formulas.get(sourceId) || 0,
+        vocab: filterRowsByConfiguredIds(
+          vocab.get(sourceId) || [], contentFilter, "sourceVocabularyIds",
+        ).length,
+        formulas: filterRowsByConfiguredIds(
+          formulas.get(sourceId) || [], contentFilter, "sourceFormulaIds",
+        ).length,
         files: unitFiles.length,
         quizzes: unitQuizzes.length,
         assignments: unitAssignments.length,

@@ -558,12 +558,17 @@ const AdminVideoCoursesPage = () => {
     try {
       setSavingLesson(true);
       const save = editingLesson.unitType === "recording_reference"
-        ? updateAdminReferencedVideoCourseUnit(selectedCourseId, editingLesson.id, {
+        ? updateAdminReferencedVideoCourseUnit(
+          selectedCourseId,
+          editingLesson.sourceClassSessionId || editingLesson.id,
+          {
+            unitOverrideId: editingLesson.unitOverrideId,
           title,
           description: editingLesson.description || "",
           durationSeconds: Math.round(minutes * 60),
           isPublished: Boolean(editingLesson.isPublished),
-        })
+          },
+        )
         : updateAdminVideoCourseLesson(editingLesson.id, {
           title,
           description: editingLesson.description || "",
@@ -585,7 +590,11 @@ const AdminVideoCoursesPage = () => {
     try {
       const nextValue = !lesson.isPublished;
       if (lesson.unitType === "recording_reference") {
-        await updateAdminReferencedVideoCourseUnit(selectedCourseId, lesson.id, { isPublished: nextValue });
+        await updateAdminReferencedVideoCourseUnit(
+          selectedCourseId,
+          lesson.sourceClassSessionId || lesson.id,
+          { unitOverrideId: lesson.unitOverrideId, isPublished: nextValue },
+        );
       } else {
         await updateAdminVideoCourseLesson(lesson.id, { isPublished: nextValue });
       }
@@ -600,6 +609,8 @@ const AdminVideoCoursesPage = () => {
   const openUploadModal = (unit, unitType, replaceVideoId = null) => {
     setUploadModalUnit({
       id: unit.id,
+      sourceClassSessionId: unit.sourceClassSessionId || null,
+      unitOverrideId: unit.unitOverrideId || null,
       title: unit.title,
       unitType,
       profileId: courseDetail?.profile?.id || null,
@@ -651,14 +662,18 @@ const AdminVideoCoursesPage = () => {
       if (uploadModalUnit.replaceVideoId) {
         await replaceAdminVideo(uploadModalUnit.replaceVideoId, Number(intent.assetId));
       } else {
-        await attachVideoToLearningUnit(uploadModalUnit.id, {
+        await attachVideoToLearningUnit(
+          uploadModalUnit.sourceClassSessionId || uploadModalUnit.id,
+          {
           videoAssetId: Number(intent.assetId),
           unitType: uploadModalUnit.unitType,
           profileId: uploadModalUnit.profileId,
+          unitOverrideId: uploadModalUnit.unitOverrideId,
           title: uploadVideoTitle.trim(),
           videoType: "primary",
           isPublished: uploadAutoPublish,
-        });
+          },
+        );
       }
 
       setUploadProgress(100);
@@ -716,7 +731,11 @@ const AdminVideoCoursesPage = () => {
     try {
       const nextValue = !unit.isPublicPreview;
       const res = unit.unitType === "recording_reference"
-        ? await updateAdminReferencedVideoCourseUnit(selectedCourseId, unit.id, { isPublicPreview: nextValue })
+        ? await updateAdminReferencedVideoCourseUnit(
+          selectedCourseId,
+          unit.sourceClassSessionId || unit.id,
+          { unitOverrideId: unit.unitOverrideId, isPublicPreview: nextValue },
+        )
         : await updateAdminVideoCourseUnitPreview(unitType, unit.id, nextValue);
       toast.success(res?.message || (nextValue ? "Đã mở buổi học thử" : "Đã tắt buổi học thử"));
       await loadCourseDetail(selectedCourseId);

@@ -511,7 +511,7 @@ const courseAccess = async (courseId, user) => {
   return { error: "forbidden" };
 };
 
-const fileAccess = async (fileId, user, requestedClassId = null) => {
+const fileAccess = async (fileId, user, requestedClassId = null, requestedVideoProfileId = null) => {
   const result = await query(
     `SELECT f.*, lc.instructor_id, lc.course_id AS class_course_id,
             COALESCE(lc.allow_file_download, TRUE) AS allow_file_download,
@@ -559,11 +559,41 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
   }
   if (user.role !== "user") return { error: "forbidden" };
   if (file.visibility === "PRIVATE") return { error: "forbidden" };
+  const effectiveReferenceGrant = `
+    ($5::bigint IS NOT NULL AND $1::bigint IS NOT NULL AND EXISTS (
+      SELECT 1
+      FROM video_course_profiles vcp_ref
+      JOIN recording_curriculum_references r_ref
+        ON r_ref.video_course_profile_id = vcp_ref.id
+       AND r_ref.source_live_class_id = $1
+      LEFT JOIN management_class_learning_aliases alias_ref
+        ON LOWER(alias_ref.alias_class_source_id) = LOWER(vcp_ref.management_class_id)
+       AND alias_ref.status = 'active'
+      WHERE vcp_ref.id = $5
+        AND vcp_ref.mode = 'INDEPENDENT'
+        AND vcp_ref.status = 'active'
+        AND vcp_ref.deleted_at IS NULL
+        AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "vcp_ref.course_id")}
+        AND EXISTS (
+          SELECT 1 FROM class_enrollments ce_ref
+          WHERE ce_ref.user_id = $2 AND ce_ref.status = 'active'
+            AND (
+              ce_ref.video_course_profile_id = vcp_ref.id
+              OR (ce_ref.video_course_profile_id IS NULL
+                AND ce_ref.learning_mode = 'recording'
+                AND ce_ref.management_class_alias_id = alias_ref.id)
+              OR (ce_ref.video_course_profile_id IS NULL
+                AND vcp_ref.management_class_id IS NULL
+                AND ce_ref.course_id = vcp_ref.course_id)
+            )
+        )
+    ))`;
   const access = await query(
     `SELECT 1
      WHERE (
        ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "$3")}
        OR ${EFFECTIVE_MIRROR_PROFILE_GRANT_EXISTS_SQL("$2", "$1::bigint")}
+       OR ${effectiveReferenceGrant}
      )
        AND ($4 = 'COURSE' OR ($4 = 'CLASS_ONLY' AND $1::bigint IS NOT NULL
          AND EXISTS (
@@ -582,10 +612,17 @@ const fileAccess = async (fileId, user, requestedClassId = null) => {
                    AND ee.valid_from <= NOW() AND (ee.valid_until IS NULL OR ee.valid_until > NOW())
                    AND (ee.local_live_class_id = lc.id OR vcp.source_live_class_id = lc.id)
                )
+               OR ${effectiveReferenceGrant}
              )
          )))
      LIMIT 1`,
-    [file.live_class_id, user.id, file.live_class_id ? file.class_course_id : file.course_id, file.visibility],
+    [
+      file.live_class_id,
+      user.id,
+      file.live_class_id ? file.class_course_id : file.course_id,
+      file.visibility,
+      requestedVideoProfileId,
+    ],
   );
   if (!access.rows.length) {
     const preview = await query(
@@ -1444,7 +1481,7 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
     return errorResponse(res, 422, "videoCourseProfileId không hợp lệ", "VALIDATION_ERROR");
   }
   try {
-    const access = await fileAccess(fileId, req.user, requestedClassId);
+    const access = await fileAccess(fileId, req.user, requestedClassId, videoCourseProfileId);
     if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
     if (access.error) return errorResponse(res, 403, "Bạn chưa được cấp quyền tải tài liệu", "FORBIDDEN");
     let videoCourseAllowsDownload = true;
@@ -1462,6 +1499,11 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
            AND (
              course_id = $2
              OR (mode = 'MIRROR' AND $4::bigint IS NOT NULL AND source_live_class_id = $4)
+             OR (mode = 'INDEPENDENT' AND $4::bigint IS NOT NULL AND EXISTS (
+               SELECT 1 FROM recording_curriculum_references r
+               WHERE r.video_course_profile_id = video_course_profiles.id
+                 AND r.source_live_class_id = $4
+             ))
            )`,
         [videoCourseProfileId, fileCourseId, videoCourseId, fileLiveClassId],
       );
@@ -1474,6 +1516,11 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
              AND (
                course_id = $1
                OR (mode = 'MIRROR' AND $2::bigint IS NOT NULL AND source_live_class_id = $2)
+               OR (mode = 'INDEPENDENT' AND $2::bigint IS NOT NULL AND EXISTS (
+                 SELECT 1 FROM recording_curriculum_references r
+                 WHERE r.video_course_profile_id = video_course_profiles.id
+                   AND r.source_live_class_id = $2
+               ))
              )
            ORDER BY (status = 'active') DESC, id DESC LIMIT 1`,
           [fileCourseId || videoCourseId, fileLiveClassId],
@@ -1498,6 +1545,11 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
            AND (
              course_id = $2
              OR (mode = 'MIRROR' AND $3::bigint IS NOT NULL AND source_live_class_id = $3)
+             OR (mode = 'INDEPENDENT' AND $3::bigint IS NOT NULL AND EXISTS (
+               SELECT 1 FROM recording_curriculum_references r
+               WHERE r.video_course_profile_id = video_course_profiles.id
+                 AND r.source_live_class_id = $3
+             ))
            )
          ORDER BY (status = 'active') DESC, id DESC`,
         [videoCourseId, fileCourseId, fileLiveClassId],

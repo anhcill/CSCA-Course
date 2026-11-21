@@ -402,11 +402,12 @@ router.post("/admin/learning-units/:unitId/videos", protectRoute, requireAdmin, 
 
     if (unitType === "recording_reference") {
       const profileId = parsePositiveId(req.body?.profileId);
+      const requestedOverrideId = parsePositiveId(req.body?.unitOverrideId);
       if (!profileId) return sendError(res, 422, "profileId không hợp lệ", "VALIDATION_ERROR");
       const target = (
         await query(
           `SELECT r.id AS reference_id, vcp.course_id, r.video_course_profile_id,
-                  cs.id AS source_class_session_id, o.id AS override_id
+                  cs.id AS source_class_session_id, o.id AS override_id, o.slice_key
            FROM recording_curriculum_references r
            JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
            JOIN class_sessions cs ON cs.live_class_id = r.source_live_class_id AND cs.id = $2
@@ -415,8 +416,10 @@ router.post("/admin/learning-units/:unitId/videos", protectRoute, requireAdmin, 
            WHERE r.video_course_profile_id = $1 AND vcp.mode = 'INDEPENDENT'
              AND vcp.source_live_class_id IS NULL AND vcp.deleted_at IS NULL
              AND cs.status <> 'cancelled'
+             AND ($3::bigint IS NULL OR o.id = $3)
+           ORDER BY CASE WHEN o.id = $3 THEN 0 ELSE 1 END, o.id ASC
            LIMIT 1`,
-          [profileId, unitId],
+          [profileId, unitId, requestedOverrideId],
         )
       ).rows[0];
       if (!target) return sendError(res, 404, "Không tìm thấy bài học dùng lại trong khóa Record", "NOT_FOUND");
@@ -426,9 +429,9 @@ router.post("/admin/learning-units/:unitId/videos", protectRoute, requireAdmin, 
         overrideId = (
           await query(
             `INSERT INTO recording_curriculum_unit_overrides
-               (curriculum_reference_id, source_class_session_id)
-             VALUES ($1, $2)
-             ON CONFLICT (curriculum_reference_id, source_class_session_id)
+               (curriculum_reference_id, source_class_session_id, slice_key)
+             VALUES ($1, $2, 'default')
+             ON CONFLICT (curriculum_reference_id, source_class_session_id, slice_key)
              DO UPDATE SET updated_at = recording_curriculum_unit_overrides.updated_at
              RETURNING id`,
             [target.reference_id, unitId],
