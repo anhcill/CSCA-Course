@@ -1292,7 +1292,11 @@ function resolveAssignmentUnitMatch(units, assignment, profileRow, explicitUnitI
         : (units[0] || null);
     }
   } else {
-    if (assignment.lesson_id) {
+    if (assignment.class_session_id) {
+      matchedUnit = units.find((u) => (
+        u.isRecordingReference && String(u.id) === String(assignment.class_session_id)
+      )) || null;
+    } else if (assignment.lesson_id) {
       matchedUnit = units.find((u) => String(u.id) === String(assignment.lesson_id)) || null;
     } else if (!assignment.live_class_id && !assignment.class_session_id && String(assignment.course_id) === String(profileRow.course_id)) {
       matchedUnit = explicitUnitId

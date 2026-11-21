@@ -485,6 +485,31 @@ export const processBunnyWebhookEvent = async ({
         [asset.id],
       );
     }
+
+    const referenceAutoPublishRes = await db.query(
+      `UPDATE recording_curriculum_unit_videos
+       SET is_published = TRUE,
+           published_at = COALESCE(published_at, NOW()),
+           updated_at = NOW()
+       WHERE video_asset_id = $1
+         AND EXISTS (
+           SELECT 1 FROM video_assets
+           WHERE id = $1
+             AND COALESCE(provider_metadata ->> 'publishWhenReady', 'false') = 'true'
+         )
+       RETURNING id`,
+      [asset.id],
+    ).catch(() => ({ rows: [] }));
+    if (referenceAutoPublishRes.rows.length > 0 && autoPublishRes.rows.length === 0) {
+      await db.query(
+        `UPDATE video_assets
+         SET published_at = COALESCE(published_at, NOW()),
+             provider_metadata = COALESCE(provider_metadata, '{}'::jsonb) - 'publishWhenReady',
+             updated_at = NOW()
+         WHERE id = $1`,
+        [asset.id],
+      );
+    }
   }
 
   await db.query(

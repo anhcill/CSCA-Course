@@ -1885,6 +1885,13 @@ export const updateAdminVideoCourseLesson = async (lessonId, payload) => (
   })
 );
 
+export const updateAdminReferencedVideoCourseUnit = async (courseId, sessionId, payload) => (
+  request(`/video-courses/admin/courses/${encodeURIComponent(courseId)}/referenced-units/${encodeURIComponent(sessionId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+);
+
 export const deleteAdminVideoCourseLesson = async (lessonId) => (
   request(`/video-courses/admin/lessons/${encodeURIComponent(lessonId)}`, {
     method: "DELETE",

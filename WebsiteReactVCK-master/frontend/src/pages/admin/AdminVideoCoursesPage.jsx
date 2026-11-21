@@ -50,6 +50,8 @@ import {
   revokeAdminVideoCourseStudentAccess,
   saveAdminVideoCourseProfile,
   unpublishAdminVideo,
+  updateAdminVideoCourseLesson,
+  updateAdminReferencedVideoCourseUnit,
   updateAdminVideoCourseUnitPreview,
 } from "../../features/api/lmsClient";
 import UnitContentEditorModal from "../../features/admin/components/UnitContentEditorModal";
@@ -180,6 +182,22 @@ const formatDuration = (seconds) => {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 };
 
+const normalizeRecordLessonTitle = (value) => {
+  const seen = new Set();
+  return String(value || "")
+    .trim()
+    .split(/\s*;\s*/u)
+    .map((part) => part.replace(/^\s*chương\s+\d+(?:[.-]\d+)*\s*[:–—-]\s*/iu, "").trim())
+    .filter(Boolean)
+    .filter((part) => {
+      const key = part.toLocaleLowerCase("vi");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(" · ");
+};
+
 const formatStudentDate = (value) => {
   if (!value) return "Chưa có dữ liệu";
   const date = new Date(value);
@@ -223,6 +241,8 @@ const AdminVideoCoursesPage = () => {
   const [addingSection, setAddingSection] = useState(false);
   const [newLessonBySection, setNewLessonBySection] = useState({});
   const [addingLessonSectionId, setAddingLessonSectionId] = useState(null);
+  const [editingLesson, setEditingLesson] = useState(null);
+  const [savingLesson, setSavingLesson] = useState(false);
 
   // Video Upload / Attach modal state
   const [uploadModalUnit, setUploadModalUnit] = useState(null); // { id, title, unitType: 'class_session' | 'lesson', replaceVideoId?: string }
@@ -451,7 +471,8 @@ const AdminVideoCoursesPage = () => {
 
   const handleAddLesson = async (sectionId) => {
     const draft = newLessonBySection[sectionId] || {};
-    const title = (draft.title || "").trim();
+    const rawTitle = (draft.title || "").trim();
+    const title = normalizeRecordLessonTitle(rawTitle);
     if (!title) {
       toast.error("Vui lòng nhập tên bài học");
       return;
@@ -462,7 +483,7 @@ const AdminVideoCoursesPage = () => {
         sectionId: sectionId === "unsectioned" ? null : Number(sectionId),
         title,
         durationSeconds: Number(draft.durationMinutes || 15) * 60,
-        isPublished: true,
+        isPublished: !/^\s*buổi\s+học\s+bù\s+26\s*\/\s*10(?:\b|\s|$)/iu.test(rawTitle),
       });
       setNewLessonBySection((prev) => ({
         ...prev,
@@ -499,6 +520,7 @@ const AdminVideoCoursesPage = () => {
   };
 
   const handleDeleteLesson = async (lessonId) => {
+    if (!window.confirm("Xóa hẳn bài học khỏi khóa Record? Nếu chỉ muốn học viên không thấy, hãy dùng nút Ẩn khỏi khóa.")) return;
     try {
       await deleteAdminVideoCourseLesson(lessonId);
       toast.success("Đã xóa bài học");
@@ -508,12 +530,79 @@ const AdminVideoCoursesPage = () => {
     }
   };
 
+  const openLessonEditor = (lesson) => {
+    setEditingLesson({
+      id: lesson.id,
+      title: lesson.title || "",
+      description: lesson.description || "",
+      durationMinutes: Math.max(0, Math.round(Number(lesson.durationSeconds || 0) / 60)),
+      isPublished: lesson.isPublished !== false,
+      unitType: lesson.unitType || "lesson",
+    });
+  };
+
+  const handleSaveLesson = async (e) => {
+    e.preventDefault();
+    if (!editingLesson?.id) return;
+    const title = normalizeRecordLessonTitle(editingLesson.title);
+    if (!title) {
+      toast.error("Vui lòng nhập tên bài học");
+      return;
+    }
+    const minutes = Number(editingLesson.durationMinutes);
+    if (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440) {
+      toast.error("Thời lượng phải từ 0 đến 1440 phút");
+      return;
+    }
+
+    try {
+      setSavingLesson(true);
+      const save = editingLesson.unitType === "recording_reference"
+        ? updateAdminReferencedVideoCourseUnit(selectedCourseId, editingLesson.id, {
+          title,
+          description: editingLesson.description || "",
+          durationSeconds: Math.round(minutes * 60),
+          isPublished: Boolean(editingLesson.isPublished),
+        })
+        : updateAdminVideoCourseLesson(editingLesson.id, {
+          title,
+          description: editingLesson.description || "",
+          durationSeconds: Math.round(minutes * 60),
+          isPublished: Boolean(editingLesson.isPublished),
+        });
+      const res = await save;
+      toast.success(res?.message || "Đã cập nhật bài học");
+      setEditingLesson(null);
+      await Promise.all([loadOverview(selectedCourseId), loadCourseDetail(selectedCourseId)]);
+    } catch (error) {
+      toast.error(error?.message || "Không thể cập nhật bài học");
+    } finally {
+      setSavingLesson(false);
+    }
+  };
+
+  const handleToggleLessonVisibility = async (lesson) => {
+    try {
+      const nextValue = !lesson.isPublished;
+      if (lesson.unitType === "recording_reference") {
+        await updateAdminReferencedVideoCourseUnit(selectedCourseId, lesson.id, { isPublished: nextValue });
+      } else {
+        await updateAdminVideoCourseLesson(lesson.id, { isPublished: nextValue });
+      }
+      toast.success(nextValue ? "Đã hiện bài học trong khóa Record" : "Đã ẩn bài học, dữ liệu vẫn được giữ nguyên");
+      await Promise.all([loadOverview(selectedCourseId), loadCourseDetail(selectedCourseId)]);
+    } catch (error) {
+      toast.error(error?.message || "Không thể cập nhật trạng thái bài học");
+    }
+  };
+
   // Bunny Stream TUS Upload Intent & Attach Workflow
   const openUploadModal = (unit, unitType, replaceVideoId = null) => {
     setUploadModalUnit({
       id: unit.id,
       title: unit.title,
       unitType,
+      profileId: courseDetail?.profile?.id || null,
       replaceVideoId,
     });
     setUploadVideoTitle(unit.title || "Video bài giảng Bunny Stream");
@@ -565,6 +654,7 @@ const AdminVideoCoursesPage = () => {
         await attachVideoToLearningUnit(uploadModalUnit.id, {
           videoAssetId: Number(intent.assetId),
           unitType: uploadModalUnit.unitType,
+          profileId: uploadModalUnit.profileId,
           title: uploadVideoTitle.trim(),
           videoType: "primary",
           isPublished: uploadAutoPublish,
@@ -625,7 +715,9 @@ const AdminVideoCoursesPage = () => {
   const handleTogglePublicPreview = async (unit, unitType) => {
     try {
       const nextValue = !unit.isPublicPreview;
-      const res = await updateAdminVideoCourseUnitPreview(unitType, unit.id, nextValue);
+      const res = unit.unitType === "recording_reference"
+        ? await updateAdminReferencedVideoCourseUnit(selectedCourseId, unit.id, { isPublicPreview: nextValue })
+        : await updateAdminVideoCourseUnitPreview(unitType, unit.id, nextValue);
       toast.success(res?.message || (nextValue ? "Đã mở buổi học thử" : "Đã tắt buổi học thử"));
       await loadCourseDetail(selectedCourseId);
     } catch (error) {
@@ -1536,7 +1628,11 @@ const AdminVideoCoursesPage = () => {
                                 return (
                                   <div
                                     key={lesson.id}
-                                    className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs sm:flex-row sm:items-center dark:border-slate-700 dark:bg-slate-900"
+                                    className={`flex flex-col justify-between gap-3 rounded-xl border p-3.5 shadow-2xs sm:flex-row sm:items-center ${
+                                      lesson.isPublished
+                                        ? "border-slate-200/90 bg-white dark:border-slate-700 dark:bg-slate-900"
+                                        : "border-amber-200 bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/20"
+                                    }`}
                                   >
                                     <div className="space-y-1">
                                       <div className="flex flex-wrap items-center gap-2">
@@ -1552,6 +1648,11 @@ const AdminVideoCoursesPage = () => {
                                           <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dotClass}`} />
                                           {statusMeta.label}
                                         </span>
+                                        {!lesson.isPublished && (
+                                          <span className="rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+                                            Đang ẩn khỏi học viên
+                                          </span>
+                                        )}
                                       </div>
 
                                       <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs text-slate-500">
@@ -1619,7 +1720,29 @@ const AdminVideoCoursesPage = () => {
                                     <div className="flex flex-wrap items-center gap-1.5">
                                       <button
                                         type="button"
-                                        onClick={() => handleTogglePublicPreview(lesson, "lesson")}
+                                        onClick={() => openLessonEditor(lesson)}
+                                        className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300"
+                                        title="Sửa tên, mô tả, thời lượng và trạng thái bài học"
+                                      >
+                                        <FiEdit3 className="h-3.5 w-3.5" />
+                                        <span>Sửa thông tin</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleLessonVisibility(lesson)}
+                                        className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold transition ${
+                                          lesson.isPublished
+                                            ? "border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
+                                            : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                        }`}
+                                        title={lesson.isPublished ? "Ẩn khỏi danh sách học viên nhưng giữ nguyên dữ liệu" : "Hiện lại bài học trong khóa Record"}
+                                      >
+                                        {lesson.isPublished ? <FiEyeOff className="h-3.5 w-3.5" /> : <FiEye className="h-3.5 w-3.5" />}
+                                        <span>{lesson.isPublished ? "Ẩn khỏi khóa" : "Hiện lại"}</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTogglePublicPreview(lesson, lesson.unitType || "lesson")}
                                         className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold transition ${
                                           lesson.isPublicPreview
                                             ? "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-200"
@@ -1630,24 +1753,24 @@ const AdminVideoCoursesPage = () => {
                                         {lesson.isPublicPreview ? <FiEyeOff className="h-3.5 w-3.5" /> : <FiEye className="h-3.5 w-3.5" />}
                                         <span>{lesson.isPublicPreview ? "Tắt xem thử" : "Mở xem thử"}</span>
                                       </button>
-                                      <button
+                                      {lesson.unitType !== "recording_reference" && <button
                                         type="button"
                                         onClick={() => handleMoveLesson(sec, lIdx, -1)}
                                         className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-100 dark:border-slate-700"
                                         title="Lên"
                                       >
                                         <FiArrowUp className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button
+                                      </button>}
+                                      {lesson.unitType !== "recording_reference" && <button
                                         type="button"
                                         onClick={() => handleMoveLesson(sec, lIdx, 1)}
                                         className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-100 dark:border-slate-700"
                                         title="Xuống"
                                       >
                                         <FiArrowDown className="h-3.5 w-3.5" />
-                                      </button>
+                                      </button>}
 
-                                      <button
+                                      {lesson.unitType !== "recording_reference" ? <button
                                         type="button"
                                         onClick={() => openContentEditor(lesson, "lesson")}
                                         className="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-bold text-purple-700 shadow-2xs hover:bg-purple-100 dark:border-purple-900/40 dark:bg-purple-950/40 dark:text-purple-300"
@@ -1655,12 +1778,16 @@ const AdminVideoCoursesPage = () => {
                                       >
                                         <FiEdit3 className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
                                         <span>Học liệu & Bài tập</span>
-                                      </button>
+                                      </button> : (
+                                        <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-bold text-cyan-700 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-200">
+                                          Học liệu dùng chung · video riêng
+                                        </span>
+                                      )}
 
                                       {!primaryVideo ? (
                                         <button
                                           type="button"
-                                          onClick={() => openUploadModal(lesson, "lesson")}
+                                          onClick={() => openUploadModal(lesson, lesson.unitType || "lesson")}
                                           className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-500"
                                         >
                                           <FiUploadCloud className="h-3.5 w-3.5" />
@@ -1670,7 +1797,7 @@ const AdminVideoCoursesPage = () => {
                                         <>
                                           <button
                                             type="button"
-                                            onClick={() => openUploadModal(lesson, "lesson", primaryVideo.assetId)}
+                                            onClick={() => openUploadModal(lesson, lesson.unitType || "lesson", primaryVideo.assetId)}
                                             className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                                           >
                                             <FiRefreshCw className="h-3.5 w-3.5" />
@@ -1691,14 +1818,14 @@ const AdminVideoCoursesPage = () => {
                                         </>
                                       )}
 
-                                      <button
+                                      {lesson.unitType !== "recording_reference" && <button
                                         type="button"
                                         onClick={() => handleDeleteLesson(lesson.id)}
                                         className="rounded-xl border border-rose-200 bg-rose-50 p-1.5 text-rose-600 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/40"
-                                        title="Xóa bài học"
+                                        title="Xóa hẳn bài học (nên dùng Ẩn khỏi khóa nếu chỉ không muốn hiển thị)"
                                       >
                                         <FiTrash2 className="h-3.5 w-3.5" />
-                                      </button>
+                                      </button>}
                                     </div>
                                   </div>
                                 );
@@ -1754,6 +1881,111 @@ const AdminVideoCoursesPage = () => {
           )}
         </div>
       </div>
+
+      {/* Edit Independent Record lesson metadata without touching source Live data */}
+      {editingLesson && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">Chỉnh sửa buổi video</h3>
+                <p className="mt-0.5 text-xs text-slate-500">Tên hiển thị, mô tả, thời lượng và trạng thái trong khóa Record.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingLesson(null)}
+                disabled={savingLesson}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 dark:hover:bg-slate-800"
+                title="Đóng"
+              >
+                <FiX className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveLesson} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Tên bài học</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={1000}
+                  value={editingLesson.title}
+                  onChange={(e) => setEditingLesson((prev) => ({ ...prev, title: e.target.value }))}
+                  onBlur={() => setEditingLesson((prev) => ({ ...prev, title: normalizeRecordLessonTitle(prev.title) }))}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  placeholder="Ví dụ: Tập hợp · Bất đẳng thức"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Tiền tố “Chương 1:”, “Chương 2:” sẽ tự bỏ; nhiều tên được nối bằng dấu ·.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Mô tả ngắn</label>
+                <textarea
+                  rows={4}
+                  maxLength={5000}
+                  value={editingLesson.description}
+                  onChange={(e) => setEditingLesson((prev) => ({ ...prev, description: e.target.value }))}
+                  className="mt-1 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  placeholder="Tóm tắt nội dung buổi học cho học viên..."
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Thời lượng (phút)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1440}
+                    step={1}
+                    value={editingLesson.durationMinutes}
+                    onChange={(e) => setEditingLesson((prev) => ({ ...prev, durationMinutes: e.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+
+                <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+                  <span>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Hiện trong khóa Record</span>
+                    <span className="mt-0.5 block text-[10px] text-slate-500">Tắt để ẩn, không xóa dữ liệu.</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={editingLesson.isPublished}
+                    onChange={(e) => setEditingLesson((prev) => ({ ...prev, isPublished: e.target.checked }))}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-[11px] text-cyan-800 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-200">
+                Lưu thay đổi sẽ phát bản cập nhật curriculum sang Moly. Nếu không có thay đổi, máy chủ không tạo revision/outbox trùng.
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingLesson(null)}
+                  disabled={savingLesson}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingLesson}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <FiSave className="h-4 w-4" />
+                  <span>{savingLesson ? "Đang lưu..." : "Lưu thay đổi"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal 1: Bunny Stream Direct TUS Upload & Attach */}
       {uploadModalUnit && (

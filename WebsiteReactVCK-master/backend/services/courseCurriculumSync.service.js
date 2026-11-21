@@ -13,6 +13,7 @@ import {
   recordIntegrationMetric,
   resolveCorrelationId,
 } from "./integrationLogger.service.js";
+import { loadReferencedRecordingCurriculum } from "./recordingCurriculumReference.service.js";
 
 const defaultDb = { query, getClient };
 
@@ -655,6 +656,12 @@ export async function loadProfileCurriculumTree(
     };
   });
 
+  const referenced = await loadReferencedRecordingCurriculum(runner, {
+    course,
+    profile,
+    includeTombstoned,
+  });
+
   return {
     profileId: String(profile.id),
     externalOfferingId: profile.management_class_id ? String(profile.management_class_id) : `profile:${profile.id}`,
@@ -668,8 +675,8 @@ export async function loadProfileCurriculumTree(
       deviceLimit: Number(profile.device_limit || 2),
       enforceTrustedDevices: profile.enforce_trusted_devices !== false,
     },
-    sections,
-    units,
+    sections: [...sections, ...referenced.sections],
+    units: [...units, ...referenced.units],
   };
 }
 
@@ -1228,7 +1235,33 @@ export async function resolveBeforeDeleteUnitSnapshot(db = defaultDb, { unitType
 
 export async function safeRecordCurriculumMutation(params = {}) {
   try {
-    return await recordCurriculumMutation(params);
+    const primary = await recordCurriculumMutation(params);
+    const db = params.db || defaultDb;
+    const numericSessionId = params.unitType === "class_session"
+      ? normalizePositiveId(params.unitId)
+      : null;
+    if (!numericSessionId) return primary;
+
+    const refs = await db.query(
+      `SELECT DISTINCT r.video_course_profile_id AS profile_id, vcp.course_id
+       FROM class_sessions cs
+       JOIN recording_curriculum_references r ON r.source_live_class_id = cs.live_class_id
+       JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
+       WHERE cs.id = $1 AND vcp.deleted_at IS NULL AND vcp.status = 'active'`,
+      [numericSessionId],
+    );
+    const linked = [];
+    for (const row of refs.rows) {
+      const emitted = await recordCurriculumMutation({
+        db,
+        courseId: row.course_id,
+        profileId: row.profile_id,
+        eventType: params.eventType || "curriculum.upserted",
+        correlationId: params.correlationId || null,
+      });
+      if (emitted) linked.push(emitted);
+    }
+    return linked.length ? [primary, ...linked].filter(Boolean) : primary;
   } catch (error) {
     console.warn("[courseCurriculumSync] recordCurriculumMutation failed:", error?.message || error);
     return null;
@@ -1237,7 +1270,32 @@ export async function safeRecordCurriculumMutation(params = {}) {
 
 export async function safeRecordUnitContentMutation(params = {}) {
   try {
-    return await recordUnitContentMutation(params);
+    const primary = await recordUnitContentMutation(params);
+    const db = params.db || defaultDb;
+    const numericSessionId = params.unitType === "class_session"
+      ? normalizePositiveId(params.unitId)
+      : null;
+    if (!numericSessionId) return primary;
+    const refs = await db.query(
+      `SELECT DISTINCT r.video_course_profile_id AS profile_id, vcp.course_id
+       FROM class_sessions cs
+       JOIN recording_curriculum_references r ON r.source_live_class_id = cs.live_class_id
+       JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
+       WHERE cs.id = $1 AND vcp.deleted_at IS NULL AND vcp.status = 'active'`,
+      [numericSessionId],
+    );
+    const linked = [];
+    for (const row of refs.rows) {
+      const emitted = await recordCurriculumMutation({
+        db,
+        courseId: row.course_id,
+        profileId: row.profile_id,
+        eventType: "curriculum.upserted",
+        correlationId: params.correlationId || null,
+      });
+      if (emitted) linked.push(emitted);
+    }
+    return linked.length ? [primary, ...linked].filter(Boolean) : primary;
   } catch (error) {
     console.warn("[courseCurriculumSync] recordUnitContentMutation failed:", error?.message || error);
     return null;
@@ -1256,7 +1314,12 @@ export async function safeRecordLiveClassCurriculumMutation({
     const profRes = await db.query(
       `SELECT id, course_id
        FROM video_course_profiles
-       WHERE mode = 'MIRROR' AND source_live_class_id = $1 AND deleted_at IS NULL`,
+       WHERE mode = 'MIRROR' AND source_live_class_id = $1 AND deleted_at IS NULL
+       UNION
+       SELECT vcp.id, vcp.course_id
+       FROM recording_curriculum_references r
+       JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
+       WHERE r.source_live_class_id = $1 AND vcp.deleted_at IS NULL`,
       [numericClassId],
     );
     if (!profRes.rows.length) return null;
@@ -1318,6 +1381,23 @@ export async function safeRecordVideoAssetContentMutation({
           });
         }
       }
+    }
+    const referencedPlacements = await db.query(
+      `SELECT DISTINCT vcp.id AS profile_id, vcp.course_id
+       FROM recording_curriculum_unit_videos rv
+       JOIN recording_curriculum_unit_overrides o ON o.id = rv.unit_override_id
+       JOIN recording_curriculum_references r ON r.id = o.curriculum_reference_id
+       JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
+       WHERE rv.video_asset_id = $1 AND vcp.deleted_at IS NULL`,
+      [numericAssetId],
+    ).catch(() => ({ rows: [] }));
+    for (const row of referencedPlacements.rows) {
+      await safeRecordCurriculumMutation({
+        db,
+        courseId: row.course_id,
+        profileId: row.profile_id,
+        correlationId,
+      });
     }
     return [...seen];
   } catch (error) {

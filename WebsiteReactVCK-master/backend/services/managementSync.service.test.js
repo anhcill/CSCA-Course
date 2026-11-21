@@ -3,6 +3,8 @@ import test from "node:test";
 import fs from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { applyManagementEvent, SyncValidationError, parseManagementEvent, syncCalendarSession } from "./managementSync.service.js";
+import { loadProfileCurriculumTree } from "./courseCurriculumSync.service.js";
+import { loadProfileUnitsWithProgress, loadUnlockedUnitDetail } from "./delegatedLearning.service.js";
 
 const validEvent = (overrides = {}) => ({
   eventId: "evt-course-001",
@@ -50,6 +52,161 @@ test("parseManagementEvent accepts inbound Management calendar events", () => {
   ]) {
     assert.equal(parseManagementEvent(validEvent({ eventType })).eventType, eventType);
   }
+});
+
+test("independent recording curriculum link reuses source material without source videos or cloned sessions", async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(await fs.readFile("database/schema.sql", "utf8"));
+  const registry = await fs.readFile("run_sql.js", "utf8");
+  const migrations = [...registry.matchAll(/"database\/migrations\/[^"]+\.sql"/g)].map((match) => JSON.parse(match[0]));
+  for (const migration of migrations) await db.exec(await fs.readFile(migration, "utf8"));
+
+  const teacher = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('curriculum-teacher','curriculum-teacher@example.test','creator') RETURNING id",
+  )).rows[0];
+  const course = (await db.query(
+    `INSERT INTO courses(name,title,slug,author_id,external_course_id,is_published,is_management_managed)
+     VALUES ('Record Toán','Record Toán','record-toan',$1,'course-record-toan',TRUE,TRUE) RETURNING *`,
+    [teacher.id],
+  )).rows[0];
+  const sourceClass = (await db.query(
+    `INSERT INTO live_classes
+       (title,course_id,instructor_id,status,management_class_source_id,management_course_source_id,
+        management_source_updated_at,management_approval_status)
+     VALUES ('Toán CSCA - Lớp 01',$1,$2,'active','source-toan-01','course-record-toan',NOW(),'approved')
+     RETURNING id`,
+    [course.id, teacher.id],
+  )).rows[0];
+  const sessions = [];
+  for (const [sourceId, title, status, day] of [
+    ["session-keep", "Chương 1: Tập hợp; Chương 2: Bất đẳng thức", "scheduled", "2026-10-14"],
+    ["session-makeup", "Imported from CSCA Course LMS: Buổi học bù 26/10", "scheduled", "2026-10-26"],
+    ["session-cancelled", "Chương 14: Giới hạn", "cancelled", "2026-11-08"],
+  ]) {
+    sessions.push((await db.query(
+      `INSERT INTO class_sessions
+         (live_class_id,title,start_time,end_time,status,management_session_source_id,management_source_updated_at)
+       VALUES ($1,$2,$3::timestamptz,$3::timestamptz + INTERVAL '2 hours',$4,$5,NOW()) RETURNING id`,
+      [sourceClass.id, title, `${day}T13:00:00Z`, status, sourceId],
+    )).rows[0]);
+  }
+  await db.query(
+    `INSERT INTO learning_unit_theory (class_session_id,title,summary,content_html)
+     VALUES ($1,'Tóm tắt','Nội dung dùng chung','<p>Lý thuyết</p>')`,
+    [sessions[0].id],
+  );
+  const sourceVideo = (await db.query(
+    `INSERT INTO video_assets(title,r2_key,duration_seconds,provider,playback_status)
+     VALUES ('Video lớp live','source-video',1200,'r2_legacy','ready') RETURNING id`,
+  )).rows[0];
+  await db.query(
+    `INSERT INTO class_session_videos(class_session_id,video_asset_id,title,video_type,is_published)
+     VALUES ($1,$2,'Không được tái sử dụng','primary',TRUE)`,
+    [sessions[0].id, sourceVideo.id],
+  );
+
+  await applyManagementEvent(db, {
+    eventId: "evt-record-independent",
+    eventType: "class.upserted",
+    occurredAt: new Date("2026-11-21T09:00:00Z"),
+    payload: {
+      classSourceId: "record-toan-01",
+      courseSourceId: "course-record-toan",
+      title: "Khóa record toán csca",
+      classType: "RECORDING",
+      recordingContentMode: "INDEPENDENT",
+      status: "active",
+      sourceUpdatedAt: "2026-11-21T09:00:00Z",
+    },
+  });
+  const linked = await applyManagementEvent(db, {
+    eventId: "evt-curriculum-link",
+    eventType: "class.curriculum.linked",
+    occurredAt: new Date("2026-11-21T09:01:00Z"),
+    payload: {
+      classSourceId: "record-toan-01",
+      contentSourceClassSourceId: "source-toan-01",
+      includeVideos: false,
+      excludedSessionSourceIds: ["session-makeup"],
+      sourceUpdatedAt: "2026-11-21T09:01:00Z",
+    },
+  });
+  assert.equal(linked.action, "class.curriculum.linked");
+  const profile = (await db.query(
+    "SELECT * FROM video_course_profiles WHERE LOWER(management_class_id)=LOWER('record-toan-01')",
+  )).rows[0];
+  assert.equal(profile.mode, "INDEPENDENT");
+  assert.equal(profile.source_live_class_id, null);
+  assert.equal((await db.query("SELECT COUNT(*)::int AS count FROM class_sessions")).rows[0].count, 3);
+
+  const reference = (await db.query("SELECT * FROM recording_curriculum_references")).rows[0];
+  const destinationVideo = (await db.query(
+    `INSERT INTO video_assets(title,r2_key,duration_seconds,provider,playback_status)
+     VALUES ('Video khóa Record','destination-video',900,'r2_legacy','ready') RETURNING id`,
+  )).rows[0];
+  const override = (await db.query(
+    `INSERT INTO recording_curriculum_unit_overrides
+       (curriculum_reference_id,source_class_session_id,title_override,is_published_override)
+     VALUES ($1,$2,'Chương 1: Tập hợp; Chương 2: Bất đẳng thức',TRUE)
+     ON CONFLICT (curriculum_reference_id,source_class_session_id) DO UPDATE SET
+       title_override = EXCLUDED.title_override,
+       is_published_override = EXCLUDED.is_published_override
+     RETURNING id`,
+    [reference.id, sessions[0].id],
+  )).rows[0];
+  await db.query(
+    `INSERT INTO recording_curriculum_unit_videos
+       (unit_override_id,video_asset_id,title,video_type,is_published)
+     VALUES ($1,$2,'Video tự tải lên','primary',TRUE)`,
+    [override.id, destinationVideo.id],
+  );
+
+  const tree = await loadProfileCurriculumTree(db, { course, profile, includeTombstoned: false });
+  assert.equal(tree.units.length, 1, "cancelled and explicitly excluded sessions are omitted");
+  assert.equal(tree.units[0].title, "Tập hợp; Bất đẳng thức");
+  assert.equal(tree.units[0].theory.summary, "Nội dung dùng chung");
+  assert.equal(tree.units[0].videoParts.length, 1);
+  assert.equal(tree.units[0].videoParts[0].title, "Video tự tải lên");
+  assert.notEqual(tree.units[0].videoParts[0].assetId, String(sourceVideo.id));
+
+  const profileRow = {
+    profile_id: profile.id,
+    course_id: course.id,
+    mode: profile.mode,
+    source_live_class_id: null,
+    allow_file_download: false,
+  };
+  const delegatedUnits = await loadProfileUnitsWithProgress(db, { profileRow, userId: null });
+  assert.equal(delegatedUnits.length, 1);
+  assert.equal(delegatedUnits[0].isRecordingReference, true);
+  assert.equal(delegatedUnits[0].id, String(sessions[0].id));
+  const delegatedDetail = await loadUnlockedUnitDetail(db, {
+    profileRow,
+    unitMeta: delegatedUnits[0],
+    userId: null,
+  });
+  assert.equal(delegatedDetail.videos.length, 1);
+  assert.equal(delegatedDetail.videos[0].assetId, String(destinationVideo.id));
+  assert.notEqual(delegatedDetail.videos[0].assetId, String(sourceVideo.id));
+  assert.equal(delegatedDetail.theory.summary, "Nội dung dùng chung");
+
+  const stale = await applyManagementEvent(db, {
+    eventId: "evt-curriculum-link-stale",
+    eventType: "class.curriculum.linked",
+    occurredAt: new Date("2026-11-21T08:59:00Z"),
+    payload: {
+      classSourceId: "record-toan-01",
+      contentSourceClassSourceId: "source-toan-01",
+      includeVideos: false,
+      excludedSessionSourceIds: [],
+      sourceUpdatedAt: "2026-11-21T08:59:00Z",
+    },
+  });
+  assert.equal(stale.action, "class.curriculum.link.stale_ignored");
+  assert.deepEqual((await db.query(
+    "SELECT excluded_session_source_ids FROM recording_curriculum_references",
+  )).rows[0].excluded_session_source_ids, ["session-makeup"]);
 });
 
 test("recording class aliases enroll paid learners into the source LMS class", async (t) => {

@@ -292,6 +292,53 @@ test("Day 3 Bunny Stream E2E: InternalManagement MIRROR & INDEPENDENT sync, Fina
   assert.equal(lesson2Res.statusCode, 201);
   const lesson2Id = lesson2Res.body.data.id;
 
+  // Admin can edit Record metadata without deleting the lesson/source. Chapter
+  // prefixes are presentation-only and a repeated PUT is a no-op.
+  const editPayload = {
+    title: "Chương 1: Tập hợp; Chương 2: Bất đẳng thức",
+    description: "Ôn tập hai chủ đề trong một buổi video.",
+    durationSeconds: 1800,
+    isPublished: false,
+  };
+  const editLessonRes = await invokeRoute(
+    videoCourseRouter,
+    "put",
+    "/admin/lessons/:lessonId",
+    {
+      user: admin,
+      params: { lessonId: String(lesson1Id) },
+      body: editPayload,
+    },
+  );
+  assert.equal(editLessonRes.statusCode, 200);
+  assert.equal(editLessonRes.body.data.title, "Tập hợp · Bất đẳng thức");
+  assert.equal(editLessonRes.body.data.isPublished, false);
+
+  const repeatEditRes = await invokeRoute(
+    videoCourseRouter,
+    "put",
+    "/admin/lessons/:lessonId",
+    {
+      user: admin,
+      params: { lessonId: String(lesson1Id) },
+      body: editPayload,
+    },
+  );
+  assert.equal(repeatEditRes.statusCode, 200);
+  assert.equal(repeatEditRes.body.data.unchanged, true);
+
+  // Restore visibility so the later publish-checklist scenario remains valid.
+  await invokeRoute(
+    videoCourseRouter,
+    "put",
+    "/admin/lessons/:lessonId",
+    {
+      user: admin,
+      params: { lessonId: String(lesson1Id) },
+      body: { isPublished: true },
+    },
+  );
+
   // Reorder lessons (Lesson 2 before Lesson 1)
   const reorderRes = await invokeRoute(
     videoCourseRouter,

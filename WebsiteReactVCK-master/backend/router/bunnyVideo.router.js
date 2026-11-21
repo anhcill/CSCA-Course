@@ -24,6 +24,7 @@ import {
   resolveEffectiveStudentLmsAccess,
 } from "../services/externalEntitlementAccess.service.js";
 import {
+  safeRecordCurriculumMutation,
   safeRecordUnitContentMutation,
   safeRecordVideoAssetContentMutation,
 } from "../services/courseCurriculumSync.service.js";
@@ -399,6 +400,111 @@ router.post("/admin/learning-units/:unitId/videos", protectRoute, requireAdmin, 
     const publishWhenReady = Boolean(isPublished) && asset.playback_status !== "ready";
     let publishNow = Boolean(isPublished) && asset.playback_status === "ready";
 
+    if (unitType === "recording_reference") {
+      const profileId = parsePositiveId(req.body?.profileId);
+      if (!profileId) return sendError(res, 422, "profileId không hợp lệ", "VALIDATION_ERROR");
+      const target = (
+        await query(
+          `SELECT r.id AS reference_id, vcp.course_id, r.video_course_profile_id,
+                  cs.id AS source_class_session_id, o.id AS override_id
+           FROM recording_curriculum_references r
+           JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
+           JOIN class_sessions cs ON cs.live_class_id = r.source_live_class_id AND cs.id = $2
+           LEFT JOIN recording_curriculum_unit_overrides o
+             ON o.curriculum_reference_id = r.id AND o.source_class_session_id = cs.id
+           WHERE r.video_course_profile_id = $1 AND vcp.mode = 'INDEPENDENT'
+             AND vcp.source_live_class_id IS NULL AND vcp.deleted_at IS NULL
+             AND cs.status <> 'cancelled'
+           LIMIT 1`,
+          [profileId, unitId],
+        )
+      ).rows[0];
+      if (!target) return sendError(res, 404, "Không tìm thấy bài học dùng lại trong khóa Record", "NOT_FOUND");
+
+      let overrideId = target.override_id;
+      if (!overrideId) {
+        overrideId = (
+          await query(
+            `INSERT INTO recording_curriculum_unit_overrides
+               (curriculum_reference_id, source_class_session_id)
+             VALUES ($1, $2)
+             ON CONFLICT (curriculum_reference_id, source_class_session_id)
+             DO UPDATE SET updated_at = recording_curriculum_unit_overrides.updated_at
+             RETURNING id`,
+            [target.reference_id, unitId],
+          )
+        ).rows[0].id;
+      }
+
+      const placement = (
+        await query(
+          `INSERT INTO recording_curriculum_unit_videos
+             (unit_override_id, video_asset_id, title, video_type, sort_order, is_published, published_at)
+           VALUES ($1,$2,$3,$4,$5,$6,CASE WHEN $6 THEN NOW() ELSE NULL END)
+           RETURNING *`,
+          [
+            overrideId,
+            parsedAssetId,
+            title ? String(title).trim().slice(0, 255) : asset.title,
+            videoType,
+            Math.max(0, Number(sortOrder || 0)),
+            publishNow,
+          ],
+        )
+      ).rows[0];
+
+      if (publishWhenReady) {
+        const pending = await query(
+          `UPDATE video_assets
+           SET provider_metadata = COALESCE(provider_metadata, '{}'::jsonb)
+                 || '{"publishWhenReady":true}'::jsonb,
+               updated_at = NOW()
+           WHERE id = $1 RETURNING playback_status`,
+          [parsedAssetId],
+        );
+        if (pending.rows[0]?.playback_status === "ready") {
+          publishNow = true;
+          await query(
+            `UPDATE recording_curriculum_unit_videos
+             SET is_published = TRUE, published_at = COALESCE(published_at, NOW()), updated_at = NOW()
+             WHERE id = $1`,
+            [placement.id],
+          );
+        }
+      }
+
+      await recordAuditEvent({
+        actorId: req.user.id,
+        action: "video.attached_to_recording_reference",
+        entityType: "recording_reference",
+        entityId: String(unitId),
+        afterState: { placementId: placement.id, videoAssetId: parsedAssetId, profileId, isPublished: publishNow },
+      });
+      await safeRecordCurriculumMutation({
+        courseId: target.course_id,
+        profileId: target.video_course_profile_id,
+        correlationId: req.get?.("X-Correlation-ID") || null,
+      });
+      return res.status(201).json({
+        success: true,
+        data: {
+          id: String(placement.id),
+          unitId: String(unitId),
+          unitType: "recording_reference",
+          videoAssetId: String(parsedAssetId),
+          title: placement.title || asset.title,
+          videoType: placement.video_type,
+          sortOrder: placement.sort_order,
+          isPublished: publishNow,
+          publishWhenReady: publishWhenReady && !publishNow,
+          playbackStatus: asset.playback_status,
+        },
+        message: publishWhenReady && !publishNow
+          ? "Đã gắn video riêng; video sẽ tự phát hành sau khi xử lý xong."
+          : "Đã gắn video riêng vào bài học dùng chung.",
+      });
+    }
+
     // Determine whether unitId is a class_session or a lesson
     let resolvedType = unitType;
     if (!resolvedType) {
@@ -612,6 +718,12 @@ router.post("/admin/videos/:videoId/publish", protectRoute, requireAdmin, async 
        WHERE video_asset_id = $1`,
       [target.assetId],
     );
+    await query(
+      `UPDATE recording_curriculum_unit_videos
+       SET is_published = TRUE, published_at = COALESCE(published_at, NOW()), updated_at = NOW()
+       WHERE video_asset_id = $1`,
+      [target.assetId],
+    ).catch(() => {});
 
     await recordAuditEvent({
       actorId: req.user.id,
@@ -669,6 +781,12 @@ router.post("/admin/videos/:videoId/unpublish", protectRoute, requireAdmin, asyn
        WHERE video_asset_id = $1`,
       [target.assetId],
     );
+    await query(
+      `UPDATE recording_curriculum_unit_videos
+       SET is_published = FALSE, updated_at = NOW()
+       WHERE video_asset_id = $1`,
+      [target.assetId],
+    ).catch(() => {});
 
     await recordAuditEvent({
       actorId: req.user.id,
@@ -729,6 +847,15 @@ router.post("/admin/videos/:videoId/replace", protectRoute, requireAdmin, async 
        WHERE video_asset_id = $3`,
       [newAssetId, newAsset.playback_status, target.assetId],
     );
+    await query(
+      `UPDATE recording_curriculum_unit_videos
+       SET video_asset_id = $1,
+           is_published = CASE WHEN $2 = 'ready' THEN is_published ELSE FALSE END,
+           published_at = CASE WHEN $2 = 'ready' THEN published_at ELSE NULL END,
+           updated_at = NOW()
+       WHERE video_asset_id = $3`,
+      [newAssetId, newAsset.playback_status, target.assetId],
+    ).catch(() => {});
 
     await query(
       `UPDATE lessons
@@ -781,6 +908,15 @@ router.delete("/admin/videos/:videoId", protectRoute, requireAdmin, async (req, 
       `SELECT class_session_id, lesson_id FROM class_session_videos WHERE video_asset_id = $1`,
       [target.assetId],
     );
+    const referencedBeforeDelete = await query(
+      `SELECT DISTINCT vcp.id AS profile_id, vcp.course_id
+       FROM recording_curriculum_unit_videos rv
+       JOIN recording_curriculum_unit_overrides o ON o.id = rv.unit_override_id
+       JOIN recording_curriculum_references r ON r.id = o.curriculum_reference_id
+       JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
+       WHERE rv.video_asset_id = $1`,
+      [target.assetId],
+    ).catch(() => ({ rows: [] }));
 
     await deleteBunnyVideo({ videoAsset: target.asset });
 
@@ -792,6 +928,10 @@ router.delete("/admin/videos/:videoId", protectRoute, requireAdmin, async (req, 
       `DELETE FROM class_session_videos WHERE video_asset_id = $1`,
       [target.assetId],
     );
+    await query(
+      `DELETE FROM recording_curriculum_unit_videos WHERE video_asset_id = $1`,
+      [target.assetId],
+    ).catch(() => {});
     await query(
       `UPDATE video_assets
        SET playback_status = 'deleted', status = 'deleted', published_at = NULL, deleted_at = NOW(), updated_at = NOW()
@@ -817,6 +957,13 @@ router.delete("/admin/videos/:videoId", protectRoute, requireAdmin, async (req, 
           correlationId: req.get?.("X-Correlation-ID") || null,
         });
       }
+    }
+    for (const refRow of referencedBeforeDelete.rows) {
+      await safeRecordCurriculumMutation({
+        courseId: refRow.course_id,
+        profileId: refRow.profile_id,
+        correlationId: req.get?.("X-Correlation-ID") || null,
+      });
     }
 
     await recordAuditEvent({

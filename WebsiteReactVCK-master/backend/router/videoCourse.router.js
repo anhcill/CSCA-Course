@@ -40,6 +40,12 @@ import {
   updateUnitQaThreadStatusForAuthorizedActor,
 } from "../services/delegatedNotesQa.service.js";
 import { ExternalIntegrationError } from "../services/externalCourseMapping.service.js";
+import {
+  normalizeRecordLessonDescription,
+  normalizeRecordLessonTitle,
+  shouldHideRecordLessonByDefault,
+} from "../services/videoCourseLessonMetadata.service.js";
+import { loadReferencedRecordingCurriculum } from "../services/recordingCurriculumReference.service.js";
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
@@ -2091,7 +2097,7 @@ export const computeCoursePublishChecklist = async (courseId) => {
     `SELECT c.id, c.name, COALESCE(c.title, c.name) AS title,
             COALESCE(c.thumbnail_url, c.image_url) AS thumbnail_url,
             c.is_published, c.is_management_managed, c.external_course_id,
-            vcp.mode, vcp.source_live_class_id, vcp.management_class_id, vcp.status AS profile_status,
+            vcp.id AS profile_id, vcp.mode, vcp.source_live_class_id, vcp.management_class_id, vcp.status AS profile_status,
             lc.status AS source_class_status
      FROM courses c
      LEFT JOIN LATERAL (
@@ -2166,6 +2172,29 @@ export const computeCoursePublishChecklist = async (courseId) => {
       [courseId],
     );
     unitRows = lessRes.rows;
+    if (course.profile_id) {
+      const refRes = await query(
+        `SELECT cs.id AS unit_id, COALESCE(o.title_override, cs.title) AS unit_title,
+                va.id AS asset_id, va.playback_status, va.processing_error,
+                COALESCE(va.thumbnail_url, va.provider_video_id) AS video_thumb,
+                rv.is_published
+         FROM recording_curriculum_references r
+         JOIN recording_curriculum_unit_overrides o ON o.curriculum_reference_id = r.id
+         JOIN class_sessions cs ON cs.id = o.source_class_session_id AND cs.status <> 'cancelled'
+         LEFT JOIN LATERAL (
+           SELECT rv_in.* FROM recording_curriculum_unit_videos rv_in
+           WHERE rv_in.unit_override_id = o.id
+           ORDER BY (rv_in.video_type = 'primary') DESC, rv_in.sort_order, rv_in.id
+           LIMIT 1
+         ) rv ON TRUE
+         LEFT JOIN video_assets va ON va.id = rv.video_asset_id AND va.deleted_at IS NULL
+         WHERE r.video_course_profile_id = $1
+           AND COALESCE(o.is_published_override, TRUE) = TRUE
+         ORDER BY COALESCE(o.sort_order_override, 0), cs.start_time, cs.id`,
+        [course.profile_id],
+      );
+      unitRows.push(...refRes.rows);
+    }
   }
 
   const totalUnits = unitRows.length;
@@ -2192,6 +2221,16 @@ export const computeCoursePublishChecklist = async (courseId) => {
   let mappingDetail = mode === "MIRROR"
     ? `Kế thừa lớp Live #${sourceLiveClassId || "chưa chọn"}`
     : "Khóa video độc lập (INDEPENDENT)";
+  if (mode === "INDEPENDENT" && unitRows.some((unit) => String(unit.unit_id))) {
+    const refCount = await query(
+      `SELECT COUNT(*)::int AS count FROM recording_curriculum_references
+       WHERE video_course_profile_id = $1`,
+      [course.profile_id || null],
+    ).catch(() => ({ rows: [{ count: 0 }] }));
+    if (Number(refCount.rows[0]?.count || 0) > 0) {
+      mappingDetail = "Khóa video độc lập, dùng chung học liệu phi-video và giữ video riêng";
+    }
+  }
 
   if (mode === "MIRROR") {
     if (
@@ -2284,6 +2323,7 @@ router.get("/admin/courses", protectRoute, requireAdmin, async (req, res) => {
       `SELECT c.id, c.name, COALESCE(c.title, c.name) AS title, c.slug,
               c.description, c.category, c.level, c.price, c.is_free,
               c.is_published, c.is_management_managed, c.external_course_id,
+              c.sync_revision, c.sync_deleted_at,
               COALESCE(c.thumbnail_url, c.image_url) AS thumbnail_url,
               u.username AS instructor_name,
               vcp.id AS profile_id, vcp.mode, vcp.source_live_class_id,
@@ -2414,7 +2454,8 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
               u.username AS instructor_name,
               vcp.id AS profile_id, vcp.mode, vcp.source_live_class_id,
               vcp.management_class_id, vcp.device_limit, vcp.enforce_trusted_devices,
-              vcp.allow_file_download,
+              vcp.allow_file_download, vcp.sync_revision AS profile_sync_revision,
+              vcp.deleted_at AS profile_deleted_at,
               vcp.status AS profile_status
        FROM courses c
        LEFT JOIN users u ON u.id = c.author_id
@@ -2657,6 +2698,76 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
       });
     }
 
+    const referenced = course.profile_id ? await loadReferencedRecordingCurriculum(
+      { query },
+      {
+        course,
+        profile: {
+          id: course.profile_id,
+          mode,
+          status: course.profile_status,
+          deleted_at: course.profile_deleted_at,
+          sync_revision: course.profile_sync_revision,
+          allow_file_download: course.allow_file_download,
+        },
+        includeTombstoned: true,
+        includeUnpublishedVideos: true,
+      },
+    ) : { sections: [], units: [], reference: null };
+
+    for (const sec of referenced.sections) {
+      independentSections.push({
+        id: String(sec.sectionId),
+        title: sec.title,
+        sortOrder: Number(sec.sortOrder || 0),
+        isReferenced: true,
+        lessons: referenced.units
+          .filter((unit) => String(unit.sectionId) === String(sec.sectionId))
+          .map((unit) => ({
+            id: String(unit.sourceClassSessionId),
+            unitType: "recording_reference",
+            sourceClassSessionId: String(unit.sourceClassSessionId),
+            curriculumReferenceId: String(unit.curriculumReferenceId),
+            unitOverrideId: unit.unitOverrideId ? String(unit.unitOverrideId) : null,
+            sectionId: String(unit.sectionId),
+            title: unit.title,
+            description: unit.summary || "",
+            durationSeconds: Number(unit.durationSeconds || 0),
+            sortOrder: Number(unit.sortOrder || 0),
+            isPublished: Boolean(unit.isPublished),
+            isPublicPreview: Boolean(unit.isPublicPreview),
+            isReferenced: true,
+            videoStatus: computeUnitVideoStatus(unit.videoParts || []),
+            videos: (unit.videoParts || []).map((video) => ({
+              placementId: String(video.placementId),
+              assetId: String(video.assetId),
+              title: video.title,
+              videoType: video.videoType,
+              sortOrder: Number(video.sortOrder || 0),
+              isPublished: Boolean(video.isPublished),
+              publishedAt: video.publishedAt || null,
+              provider: video.provider,
+              libraryId: video.libraryId,
+              videoId: video.videoId,
+              playbackStatus: video.playbackStatus,
+              durationSeconds: Number(video.durationSeconds || 0),
+              thumbnailUrl: video.thumbnailUrl || null,
+              availableResolutions: video.availableResolutions || [],
+              processingError: video.processingError || null,
+            })),
+            theory: unit.theory?.hasTheory ? unit.theory : null,
+            counts: {
+              theory: unit.theory?.hasTheory ? 1 : 0,
+              files: Number(unit.counts?.files || 0),
+              vocabulary: Number(unit.counts?.vocab || 0),
+              formulas: Number(unit.counts?.formulas || 0),
+              assignments: Number(unit.counts?.assignments || 0),
+              quizzes: Number(unit.counts?.quizzes || 0),
+            },
+          })),
+      });
+    }
+
     const publishChecklist = await computeCoursePublishChecklist(courseId);
 
     return res.json({
@@ -2687,6 +2798,7 @@ router.get("/admin/courses/:courseId", protectRoute, requireAdmin, async (req, r
           enforceTrustedDevices: course.enforce_trusted_devices !== false,
           allowFileDownload: course.allow_file_download === true,
           status: course.profile_status || "active",
+          hasCurriculumReference: Boolean(referenced.reference),
         },
         availableLiveClasses: liveClassesRes.rows.map((lc) => ({
           id: String(lc.id),
@@ -3225,19 +3337,42 @@ router.post("/admin/courses/:courseId/lessons", protectRoute, requireAdmin, asyn
     const courseId = parsePositiveId(req.params.courseId);
     if (!courseId) return validationError(res, "courseId không hợp lệ");
 
+    const body = req.body || {};
     const {
       sectionId = null,
       title,
       description = "",
       durationSeconds = 900,
       sortOrder,
-      isPublished = true,
-    } = req.body || {};
+    } = body;
 
-    const trimmedTitle = typeof title === "string" ? title.trim() : "";
-    if (!trimmedTitle) return validationError(res, "Tên bài học không được để trống");
+    const normalizedTitle = normalizeRecordLessonTitle(title);
+    if (!normalizedTitle) return validationError(res, "Tên bài học không được để trống");
+    if (typeof title !== "string" || title.trim().length > 1000) {
+      return validationError(res, "Tên bài học không hợp lệ hoặc quá dài");
+    }
+
+    const parsedDuration = Number(durationSeconds);
+    if (!Number.isFinite(parsedDuration) || parsedDuration < 0 || parsedDuration > 86_400) {
+      return validationError(res, "Thời lượng bài học phải từ 0 đến 86400 giây");
+    }
+    if (body.isPublished !== undefined && typeof body.isPublished !== "boolean") {
+      return validationError(res, "Trạng thái hiển thị bài học không hợp lệ");
+    }
+    if (description !== undefined && typeof description !== "string") {
+      return validationError(res, "Mô tả bài học phải là văn bản");
+    }
 
     const parsedSectionId = sectionId ? parsePositiveId(sectionId) : null;
+    if (sectionId && !parsedSectionId) return validationError(res, "sectionId không hợp lệ");
+    if (parsedSectionId) {
+      const sectionRes = await query(
+        `SELECT id FROM sections WHERE id = $1 AND course_id = $2 LIMIT 1`,
+        [parsedSectionId, courseId],
+      );
+      if (!sectionRes.rows[0]) return validationError(res, "Chương học không thuộc khóa đang chỉnh sửa");
+    }
+
     let nextOrder = Number(sortOrder);
     if (!Number.isSafeInteger(nextOrder) || nextOrder < 0) {
       const maxRes = await query(
@@ -3246,6 +3381,12 @@ router.post("/admin/courses/:courseId/lessons", protectRoute, requireAdmin, asyn
       );
       nextOrder = Number(maxRes.rows[0]?.next_order || 0);
     }
+    if (nextOrder > 100_000) return validationError(res, "Thứ tự bài học không hợp lệ");
+
+    // Preserve the source Live session. Only its Record lesson copy is hidden.
+    const isPublished = body.isPublished !== undefined
+      ? body.isPublished
+      : !shouldHideRecordLessonByDefault(title);
 
     const insertRes = await query(
       `INSERT INTO lessons
@@ -3256,11 +3397,11 @@ router.post("/admin/courses/:courseId/lessons", protectRoute, requireAdmin, asyn
       [
         courseId,
         parsedSectionId,
-        trimmedTitle,
-        typeof description === "string" ? description.trim() : "",
-        Math.max(0, Math.round(Number(durationSeconds || 0))),
+        normalizedTitle,
+        normalizeRecordLessonDescription(description),
+        Math.round(parsedDuration),
         nextOrder,
-        Boolean(isPublished),
+        isPublished,
       ],
     );
 
@@ -3313,18 +3454,81 @@ router.put("/admin/lessons/:lessonId", protectRoute, requireAdmin, async (req, r
     const existing = existingRes.rows[0];
     if (!existing) return notFound(res, "Không tìm thấy bài học");
 
-    const nextTitle = typeof title === "string" && title.trim()
-      ? title.trim()
-      : (existing.title || existing.name);
-    const nextDesc = description !== undefined ? String(description || "").trim() : existing.description;
-    const nextSectionId = sectionId !== undefined ? (sectionId ? parsePositiveId(sectionId) : null) : existing.section_id;
-    const nextDuration = durationSeconds !== undefined
-      ? Math.max(0, Math.round(Number(durationSeconds || 0)))
-      : existing.duration_seconds;
-    const nextOrder = sortOrder !== undefined && Number.isSafeInteger(Number(sortOrder))
-      ? Number(sortOrder)
-      : existing.sort_order;
-    const nextPublished = isPublished !== undefined ? Boolean(isPublished) : existing.is_published;
+    if (title !== undefined && (typeof title !== "string" || !title.trim() || title.trim().length > 1000)) {
+      return validationError(res, "Tên bài học không hợp lệ hoặc quá dài");
+    }
+    if (description !== undefined && typeof description !== "string") {
+      return validationError(res, "Mô tả bài học phải là văn bản");
+    }
+    if (isPublished !== undefined && typeof isPublished !== "boolean") {
+      return validationError(res, "Trạng thái hiển thị bài học không hợp lệ");
+    }
+
+    const nextTitle = title !== undefined
+      ? normalizeRecordLessonTitle(title)
+      : normalizeRecordLessonTitle(existing.title || existing.name);
+    const nextDesc = description !== undefined
+      ? normalizeRecordLessonDescription(description)
+      : (existing.description || "");
+
+    let nextSectionId = existing.section_id;
+    if (sectionId !== undefined) {
+      nextSectionId = sectionId === null || sectionId === "" ? null : parsePositiveId(sectionId);
+      if (sectionId !== null && sectionId !== "" && !nextSectionId) {
+        return validationError(res, "sectionId không hợp lệ");
+      }
+    }
+    if (nextSectionId) {
+      const sectionRes = await query(
+        `SELECT id FROM sections WHERE id = $1 AND course_id = $2 LIMIT 1`,
+        [nextSectionId, existing.course_id],
+      );
+      if (!sectionRes.rows[0]) return validationError(res, "Chương học không thuộc khóa của bài học");
+    }
+
+    let nextDuration = Number(existing.duration_seconds || 0);
+    if (durationSeconds !== undefined) {
+      const parsedDuration = Number(durationSeconds);
+      if (!Number.isFinite(parsedDuration) || parsedDuration < 0 || parsedDuration > 86_400) {
+        return validationError(res, "Thời lượng bài học phải từ 0 đến 86400 giây");
+      }
+      nextDuration = Math.round(parsedDuration);
+    }
+
+    let nextOrder = Number(existing.sort_order || 0);
+    if (sortOrder !== undefined) {
+      const parsedOrder = Number(sortOrder);
+      if (!Number.isSafeInteger(parsedOrder) || parsedOrder < 0 || parsedOrder > 100_000) {
+        return validationError(res, "Thứ tự bài học không hợp lệ");
+      }
+      nextOrder = parsedOrder;
+    }
+    const nextPublished = isPublished !== undefined ? isPublished : Boolean(existing.is_published);
+
+    const unchanged = nextTitle === (existing.title || existing.name)
+      && nextDesc === (existing.description || "")
+      && String(nextSectionId || "") === String(existing.section_id || "")
+      && nextDuration === Number(existing.duration_seconds || 0)
+      && nextOrder === Number(existing.sort_order || 0)
+      && nextPublished === Boolean(existing.is_published);
+
+    if (unchanged) {
+      return res.json({
+        success: true,
+        data: {
+          id: String(existing.id),
+          courseId: String(existing.course_id),
+          sectionId: existing.section_id ? String(existing.section_id) : null,
+          title: nextTitle,
+          description: nextDesc,
+          durationSeconds: nextDuration,
+          sortOrder: nextOrder,
+          isPublished: nextPublished,
+          unchanged: true,
+        },
+        message: "Bài học không có thay đổi",
+      });
+    }
 
     const updateRes = await query(
       `UPDATE lessons
@@ -3345,11 +3549,149 @@ router.put("/admin/lessons/:lessonId", protectRoute, requireAdmin, async (req, r
 
     return res.json({
       success: true,
-      data: updateRes.rows[0],
+      data: {
+        id: String(updateRes.rows[0].id),
+        courseId: String(updateRes.rows[0].course_id),
+        sectionId: updateRes.rows[0].section_id ? String(updateRes.rows[0].section_id) : null,
+        title: updateRes.rows[0].title,
+        description: updateRes.rows[0].description || "",
+        durationSeconds: Number(updateRes.rows[0].duration_seconds || 0),
+        sortOrder: Number(updateRes.rows[0].sort_order || 0),
+        isPublished: Boolean(updateRes.rows[0].is_published),
+        unchanged: false,
+      },
       message: "Cập nhật bài học thành công",
     });
   } catch (error) {
     console.error("Update video course lesson error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi máy chủ", errorCode: "INTERNAL_ERROR" });
+  }
+});
+
+// Admin: edit destination-owned metadata for one referenced Live session.
+// Source content remains untouched and the Record profile stays INDEPENDENT.
+router.put("/admin/courses/:courseId/referenced-units/:sessionId", protectRoute, requireAdmin, async (req, res) => {
+  try {
+    const courseId = parsePositiveId(req.params.courseId);
+    const sessionId = parsePositiveId(req.params.sessionId);
+    if (!courseId || !sessionId) return validationError(res, "courseId hoặc sessionId không hợp lệ");
+
+    const current = (
+      await query(
+        `SELECT r.id AS reference_id, r.video_course_profile_id, cs.id AS source_class_session_id,
+                cs.title AS source_title, o.id AS override_id, o.title_override,
+                o.summary_override, o.duration_seconds_override, o.sort_order_override,
+                o.is_published_override, o.is_public_preview_override
+         FROM recording_curriculum_references r
+         JOIN video_course_profiles vcp ON vcp.id = r.video_course_profile_id
+         JOIN class_sessions cs ON cs.live_class_id = r.source_live_class_id AND cs.id = $2
+         LEFT JOIN recording_curriculum_unit_overrides o
+           ON o.curriculum_reference_id = r.id AND o.source_class_session_id = cs.id
+         WHERE vcp.course_id = $1 AND vcp.mode = 'INDEPENDENT'
+           AND vcp.source_live_class_id IS NULL AND vcp.deleted_at IS NULL
+           AND cs.status <> 'cancelled'
+         LIMIT 1`,
+        [courseId, sessionId],
+      )
+    ).rows[0];
+    if (!current) return notFound(res, "Không tìm thấy bài học dùng lại trong khóa Record này");
+
+    const body = req.body || {};
+    if (body.title !== undefined && (typeof body.title !== "string" || !body.title.trim())) {
+      return validationError(res, "Tên bài học không hợp lệ");
+    }
+    if (body.description !== undefined && typeof body.description !== "string") {
+      return validationError(res, "Mô tả bài học phải là văn bản");
+    }
+    if (body.isPublished !== undefined && typeof body.isPublished !== "boolean") {
+      return validationError(res, "Trạng thái hiển thị không hợp lệ");
+    }
+    if (body.isPublicPreview !== undefined && typeof body.isPublicPreview !== "boolean") {
+      return validationError(res, "Trạng thái học thử không hợp lệ");
+    }
+
+    const nextTitle = body.title !== undefined
+      ? normalizeRecordLessonTitle(body.title)
+      : (current.title_override || normalizeRecordLessonTitle(current.source_title));
+    const nextSummary = body.description !== undefined
+      ? normalizeRecordLessonDescription(body.description)
+      : (current.summary_override || "");
+    let nextDuration = current.duration_seconds_override;
+    if (body.durationSeconds !== undefined) {
+      const parsed = Number(body.durationSeconds);
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 86_400) {
+        return validationError(res, "Thời lượng bài học phải từ 0 đến 86400 giây");
+      }
+      nextDuration = Math.round(parsed);
+    }
+    let nextOrder = current.sort_order_override;
+    if (body.sortOrder !== undefined) {
+      const parsed = Number(body.sortOrder);
+      if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 100_000) {
+        return validationError(res, "Thứ tự bài học không hợp lệ");
+      }
+      nextOrder = parsed;
+    }
+    const nextPublished = body.isPublished !== undefined
+      ? body.isPublished
+      : (current.is_published_override ?? true);
+    const nextPreview = body.isPublicPreview !== undefined
+      ? body.isPublicPreview
+      : (current.is_public_preview_override ?? false);
+
+    const unchanged = Boolean(current.override_id)
+      && nextTitle === (current.title_override || normalizeRecordLessonTitle(current.source_title))
+      && nextSummary === (current.summary_override || "")
+      && String(nextDuration ?? "") === String(current.duration_seconds_override ?? "")
+      && String(nextOrder ?? "") === String(current.sort_order_override ?? "")
+      && nextPublished === (current.is_published_override ?? true)
+      && nextPreview === (current.is_public_preview_override ?? false);
+    if (unchanged) {
+      return res.json({ success: true, data: { unchanged: true }, message: "Bài học không có thay đổi" });
+    }
+
+    const saved = (
+      await query(
+        `INSERT INTO recording_curriculum_unit_overrides
+           (curriculum_reference_id, source_class_session_id, title_override, summary_override,
+            duration_seconds_override, sort_order_override, is_published_override,
+            is_public_preview_override)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (curriculum_reference_id, source_class_session_id) DO UPDATE SET
+           title_override = EXCLUDED.title_override,
+           summary_override = EXCLUDED.summary_override,
+           duration_seconds_override = EXCLUDED.duration_seconds_override,
+           sort_order_override = EXCLUDED.sort_order_override,
+           is_published_override = EXCLUDED.is_published_override,
+           is_public_preview_override = EXCLUDED.is_public_preview_override,
+           updated_at = NOW()
+         RETURNING *`,
+        [current.reference_id, sessionId, nextTitle, nextSummary, nextDuration, nextOrder, nextPublished, nextPreview],
+      )
+    ).rows[0];
+
+    await safeRecordCurriculumMutation({
+      courseId,
+      profileId: current.video_course_profile_id,
+      correlationId: req.get?.("X-Correlation-ID") || null,
+    });
+    return res.json({
+      success: true,
+      data: {
+        id: String(sessionId),
+        unitOverrideId: String(saved.id),
+        title: saved.title_override,
+        description: saved.summary_override || "",
+        durationSeconds: Number(saved.duration_seconds_override || 0),
+        sortOrder: saved.sort_order_override == null ? null : Number(saved.sort_order_override),
+        isPublished: saved.is_published_override !== false,
+        isPublicPreview: Boolean(saved.is_public_preview_override),
+        unchanged: false,
+      },
+      message: "Đã cập nhật bài học của khóa Record",
+    });
+  } catch (error) {
+    console.error("Admin update referenced Record unit error:", error);
     return res.status(500).json({ success: false, message: "Lỗi máy chủ", errorCode: "INTERNAL_ERROR" });
   }
 });

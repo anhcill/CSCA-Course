@@ -12,11 +12,13 @@ import {
   recordCourseCatalogMutation,
   recordProfileCatalogMutation,
 } from "./courseCatalogSync.service.js";
+import { safeRecordCurriculumMutation } from "./courseCurriculumSync.service.js";
 
 const EVENT_TYPES = new Set([
   "teacher.upserted",
   "course.upserted",
   "class.upserted",
+  "class.curriculum.linked",
   "class.schedule.upserted",
   "class.schedule.archived",
   "class.session.upserted",
@@ -159,6 +161,35 @@ const parseCourseSourceIds = (value) => {
   const ids = value.map((item) => sourceId(item, "courseSourceId"));
   if (new Set(ids.map(lower)).size !== ids.length) throw new SyncValidationError("courseSourceIds bị trùng");
   return ids;
+};
+
+const parseCurriculumReference = (payload, occurredAt) => {
+  const classSourceId = sourceId(payload.classSourceId, "classSourceId");
+  const contentSourceClassSourceId = sourceId(
+    payload.contentSourceClassSourceId,
+    "contentSourceClassSourceId",
+  );
+  if (lower(classSourceId) === lower(contentSourceClassSourceId)) {
+    throw new SyncValidationError("Lớp Record không thể tự tham chiếu nội dung của chính nó");
+  }
+  if (payload.includeVideos !== false) {
+    throw new SyncValidationError("includeVideos phải là false; video của khóa Record luôn độc lập");
+  }
+  const rawExcluded = payload.excludedSessionSourceIds ?? [];
+  if (!Array.isArray(rawExcluded) || rawExcluded.length > 500) {
+    throw new SyncValidationError("excludedSessionSourceIds không hợp lệ");
+  }
+  const excludedSessionSourceIds = rawExcluded.map((item) => sourceId(item, "excludedSessionSourceId"));
+  if (new Set(excludedSessionSourceIds.map(lower)).size !== excludedSessionSourceIds.length) {
+    throw new SyncValidationError("excludedSessionSourceIds bị trùng");
+  }
+  return {
+    classSourceId,
+    contentSourceClassSourceId,
+    includeVideos: false,
+    excludedSessionSourceIds,
+    sourceUpdatedAt: sourceDate(payload, occurredAt),
+  };
 };
 
 export const parseManagementEvent = (body) => {
@@ -817,6 +848,122 @@ const syncClass = async (client, event) => {
     });
   }
   return { action: "class.synced", entityType: "live_class", entityId: Number(row.id), data: row };
+};
+
+const syncCurriculumReference = async (client, event) => {
+  const input = parseCurriculumReference(event.payload, event.occurredAt);
+  const profile = (
+    await client.query(
+      `SELECT id, course_id, mode, source_live_class_id, status
+       FROM video_course_profiles
+       WHERE LOWER(management_class_id) = LOWER($1)
+         AND deleted_at IS NULL
+       LIMIT 1
+       FOR UPDATE`,
+      [input.classSourceId],
+    )
+  ).rows[0];
+  if (!profile) {
+    throw new SyncDependencyError(`Thiếu profile Record độc lập ${input.classSourceId}`);
+  }
+  if (profile.mode !== "INDEPENDENT" || profile.source_live_class_id !== null) {
+    throw new SyncValidationError("Chỉ profile INDEPENDENT không gắn lớp nguồn mới được tái sử dụng giáo trình");
+  }
+
+  const sourceClass = (
+    await client.query(
+      `SELECT id, status
+       FROM live_classes
+       WHERE LOWER(management_class_source_id) = LOWER($1)
+       LIMIT 1`,
+      [input.contentSourceClassSourceId],
+    )
+  ).rows[0];
+  if (!sourceClass) {
+    throw new SyncDependencyError(`Thiếu lớp nội dung nguồn ${input.contentSourceClassSourceId}`);
+  }
+  if (sourceClass.status === "cancelled") {
+    throw new SyncValidationError("Không thể tái sử dụng giáo trình của lớp đã hủy");
+  }
+
+  const existing = (
+    await client.query(
+      `SELECT id, source_updated_at
+       FROM recording_curriculum_references
+       WHERE video_course_profile_id = $1
+       FOR UPDATE`,
+      [profile.id],
+    )
+  ).rows[0];
+  if (existing && !sameOrNewer(existing.source_updated_at, input.sourceUpdatedAt)) {
+    return {
+      action: "class.curriculum.link.stale_ignored",
+      entityType: "recording_curriculum_reference",
+      entityId: Number(existing.id),
+      data: { classSourceId: input.classSourceId },
+    };
+  }
+
+  const saved = (
+    await client.query(
+      `INSERT INTO recording_curriculum_references
+         (video_course_profile_id, destination_management_class_id,
+          source_live_class_id, source_management_class_id, include_videos,
+          excluded_session_source_ids, source_updated_at)
+       VALUES ($1, $2, $3, $4, FALSE, $5::jsonb, $6)
+       ON CONFLICT (video_course_profile_id) DO UPDATE SET
+         destination_management_class_id = EXCLUDED.destination_management_class_id,
+         source_live_class_id = EXCLUDED.source_live_class_id,
+         source_management_class_id = EXCLUDED.source_management_class_id,
+         include_videos = FALSE,
+         excluded_session_source_ids = EXCLUDED.excluded_session_source_ids,
+         source_updated_at = EXCLUDED.source_updated_at
+       WHERE recording_curriculum_references.source_updated_at <= EXCLUDED.source_updated_at
+       RETURNING id, video_course_profile_id, destination_management_class_id,
+                 source_live_class_id, source_management_class_id, include_videos,
+                 excluded_session_source_ids, source_updated_at`,
+      [
+        profile.id,
+        input.classSourceId,
+        sourceClass.id,
+        input.contentSourceClassSourceId,
+        JSON.stringify(input.excludedSessionSourceIds),
+        input.sourceUpdatedAt,
+      ],
+    )
+  ).rows[0];
+
+  const excludedKeys = new Set(input.excludedSessionSourceIds.map((id) => lower(id)));
+  const sourceSessions = await client.query(
+    `SELECT id, management_session_source_id
+     FROM class_sessions
+     WHERE live_class_id = $1 AND status <> 'cancelled'`,
+    [sourceClass.id],
+  );
+  for (const session of sourceSessions.rows) {
+    if (excludedKeys.has(lower(session.management_session_source_id))) continue;
+    await client.query(
+      `INSERT INTO recording_curriculum_unit_overrides
+         (curriculum_reference_id, source_class_session_id)
+       VALUES ($1, $2)
+       ON CONFLICT (curriculum_reference_id, source_class_session_id) DO NOTHING`,
+      [saved.id, session.id],
+    );
+  }
+
+  await safeRecordCurriculumMutation({
+    db: client,
+    courseId: profile.course_id,
+    profileId: profile.id,
+    correlationId: event.eventId || event.correlationId || null,
+  });
+
+  return {
+    action: "class.curriculum.linked",
+    entityType: "recording_curriculum_reference",
+    entityId: Number(saved.id),
+    data: saved,
+  };
 };
 
 const parseCalendarSchedule = (payload, event) => {
@@ -1534,6 +1681,7 @@ export const applyManagementEvent = async (client, event) => {
     case "teacher.upserted": return syncTeacher(client, event);
     case "course.upserted": return syncCourse(client, event);
     case "class.upserted": return syncClass(client, event);
+    case "class.curriculum.linked": return syncCurriculumReference(client, event);
     case "class.schedule.upserted":
     case "class.schedule.archived": return syncCalendarSchedule(client, event);
     case "class.session.upserted":

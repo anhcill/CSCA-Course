@@ -27,6 +27,7 @@ import {
 import { hasEffectiveCourseEntitlement } from "./externalEntitlementAccess.service.js";
 import { isVideoCourseProfileAccessRevoked } from "./videoCourseAccessRevocation.service.js";
 import { hasLiveReviewMembership } from "./videoCourseUnitAccess.service.js";
+import { normalizeReferencedLessonTitle } from "./recordingCurriculumReference.service.js";
 import {
   isDelegatedLearningKillSwitchActive,
   observeIntegrationLatency,
@@ -279,6 +280,124 @@ export async function assertLiveLearnerProfileAccess(db, { userId, profileRow })
   }
 }
 
+async function loadReferencedProfileUnitsWithProgress(db, { profileRow, userId = null }) {
+  if (String(profileRow.mode || "").toUpperCase() !== "INDEPENDENT") return null;
+  const reference = (
+    await db.query(
+      `SELECT * FROM recording_curriculum_references
+       WHERE video_course_profile_id = $1 LIMIT 1`,
+      [profileRow.profile_id],
+    )
+  ).rows[0] || null;
+  if (!reference) return null;
+
+  const excluded = new Set(
+    (Array.isArray(reference.excluded_session_source_ids) ? reference.excluded_session_source_ids : [])
+      .map((id) => String(id).toLowerCase()),
+  );
+  const sessions = (
+    await db.query(
+      `SELECT cs.id, cs.management_session_source_id, cs.title, cs.start_time,
+              cs.course_section_id, cs.chapter_id,
+              COALESCE(s.id::text, cc.id::text, 'ref:default') AS section_id,
+              COALESCE(s.title, cc.title, 'Nội dung khóa học') AS section_title,
+              COALESCE(s.sort_order, cc.position, 0)::int AS section_sort_order,
+              o.id AS override_id, o.title_override, o.summary_override,
+              o.duration_seconds_override, o.sort_order_override,
+              o.is_published_override, o.is_public_preview_override,
+              (SELECT COUNT(*)::int FROM quizzes q
+               WHERE q.class_session_id = cs.id AND q.status = 'PUBLISHED') AS quiz_count,
+              (SELECT COUNT(*)::int FROM quizzes q
+               WHERE q.class_session_id = cs.id AND q.status = 'PUBLISHED'
+                 AND $3::bigint > 0 AND EXISTS (
+                   SELECT 1 FROM quiz_attempts qa
+                   WHERE qa.quiz_id = q.id AND qa.user_id = $3
+                     AND (qa.video_course_profile_id = $4 OR qa.video_course_profile_id IS NULL)
+                     AND (qa.status IN ('SUBMITTED','GRADED','COMPLETED','submitted','graded','completed')
+                          OR qa.submitted_at IS NOT NULL)
+                 )) AS completed_quiz_count
+       FROM class_sessions cs
+       LEFT JOIN class_chapters cc ON cc.id = cs.chapter_id
+       LEFT JOIN sections s ON s.id = cs.course_section_id
+       LEFT JOIN recording_curriculum_unit_overrides o
+         ON o.curriculum_reference_id = $2 AND o.source_class_session_id = cs.id
+       WHERE cs.live_class_id = $1 AND cs.status <> 'cancelled'
+       ORDER BY COALESCE(o.sort_order_override, s.sort_order, cc.position, 0), cs.start_time, cs.id`,
+      [reference.source_live_class_id, reference.id, userId || 0, profileRow.profile_id],
+    )
+  ).rows.filter((row) => !excluded.has(String(row.management_session_source_id || "").toLowerCase()));
+
+  const overrideIds = sessions.map((row) => Number(row.override_id)).filter(Boolean);
+  const videoRows = overrideIds.length > 0 ? (
+    await db.query(
+      `SELECT rv.unit_override_id, rv.video_asset_id, va.playback_status, va.duration_seconds,
+              vwp.last_position_seconds, vwp.watched_seconds, vwp.completion_percent, vwp.is_completed
+       FROM recording_curriculum_unit_videos rv
+       JOIN video_assets va ON va.id = rv.video_asset_id AND va.deleted_at IS NULL
+       LEFT JOIN video_watch_progress vwp
+         ON $2::bigint > 0 AND vwp.user_id = $2 AND vwp.video_asset_id = va.id
+       WHERE rv.unit_override_id = ANY($1::bigint[]) AND rv.is_published = TRUE
+       ORDER BY rv.unit_override_id, (rv.video_type = 'primary') DESC, rv.sort_order, rv.id`,
+      [overrideIds, userId || 0],
+    )
+  ).rows : [];
+  const videosByOverride = new Map();
+  for (const row of videoRows) {
+    const key = String(row.unit_override_id);
+    if (!videosByOverride.has(key)) videosByOverride.set(key, []);
+    videosByOverride.get(key).push(row);
+  }
+
+  return sessions
+    .filter((row) => row.is_published_override !== false)
+    .map((row, index) => {
+      const videos = videosByOverride.get(String(row.override_id)) || [];
+      const videoDurationSeconds = Number(row.duration_seconds_override ?? videos.reduce(
+        (sum, video) => sum + Number(video.duration_seconds || 0),
+        0,
+      ));
+      const watchedSeconds = videos.reduce((sum, video) => sum + Number(video.watched_seconds || 0), 0);
+      const progressPercent = videoDurationSeconds > 0
+        ? Math.min(100, Math.round((watchedSeconds / videoDurationSeconds) * 10000) / 100)
+        : 0;
+      const hasVideo = videos.length > 0;
+      const isVideoCompleted = !hasVideo || videos.every((video) => Boolean(video.is_completed));
+      const quizCount = Number(row.quiz_count || 0);
+      const completedQuizCount = Number(row.completed_quiz_count || 0);
+      const isQuizCompleted = quizCount === 0 || completedQuizCount >= quizCount;
+      return {
+        id: String(row.id),
+        type: "class_session",
+        unitType: "class_session",
+        isRecordingReference: true,
+        curriculumReferenceId: String(reference.id),
+        unitOverrideId: row.override_id ? String(row.override_id) : null,
+        sourceLiveClassId: reference.source_live_class_id,
+        sessionNumber: index + 1,
+        sectionId: `ref:${reference.id}:${row.section_id}`,
+        sectionTitle: normalizeReferencedLessonTitle(row.section_title, "Nội dung khóa học"),
+        sectionSortOrder: Number(row.section_sort_order || 0),
+        title: normalizeReferencedLessonTitle(row.title_override || row.title, `Bài ${index + 1}`),
+        description: row.summary_override || "",
+        startTime: toIso(row.start_time),
+        videoDurationSeconds,
+        watchedSeconds,
+        durationMinutes: videoDurationSeconds > 0 ? Math.max(1, Math.round(videoDurationSeconds / 60)) : 0,
+        hasVideo,
+        videoStatus: videos[0]?.playback_status || (hasVideo ? "ready" : "none"),
+        isPublished: true,
+        isPublicPreview: Boolean(row.is_public_preview_override),
+        progressPercent,
+        isVideoCompleted,
+        quizCount,
+        completedQuizCount,
+        isQuizCompleted,
+        isCompleted: isVideoCompleted && isQuizCompleted,
+        lastPositionSeconds: Math.max(0, ...videos.map((video) => Number(video.last_position_seconds || 0))),
+      };
+    });
+}
+
 export async function loadProfileUnitsWithProgress(db, { profileRow, userId = null }) {
   const mode = String(profileRow.mode || "INDEPENDENT").toUpperCase() === "MIRROR" ? "MIRROR" : "INDEPENDENT";
   const effectiveUserId = userId || 0;
@@ -369,6 +488,9 @@ export async function loadProfileUnitsWithProgress(db, { profileRow, userId = nu
     }));
     return rawUnits;
   }
+
+  const referencedUnits = await loadReferencedProfileUnitsWithProgress(db, { profileRow, userId });
+  if (referencedUnits) return referencedUnits;
 
   // INDEPENDENT
   const lessonsRes = await db.query(
@@ -555,8 +677,21 @@ export async function loadUnlockedUnitDetail(
   const allowDownload = !isPublicPreviewAccess && profileRow.allow_file_download === true;
 
   if (unitMeta.type === "class_session") {
-    const [videosRes, theoryRes, filesRes, assignRes, quizRes, vocabRes, formulaRes, notesRes, extras] = await Promise.all([
-      db.query(
+    const videosPromise = unitMeta.isRecordingReference
+      ? db.query(
+        `SELECT rv.id AS placement_id, rv.title AS part_title, rv.video_type, rv.sort_order, rv.is_published,
+                va.id AS asset_id, va.title AS asset_title, va.provider, va.playback_status,
+                va.duration_seconds, va.thumbnail_url, va.available_resolutions,
+                vwp.last_position_seconds, vwp.watched_seconds, vwp.completion_percent, vwp.is_completed
+         FROM recording_curriculum_unit_videos rv
+         JOIN video_assets va ON va.id = rv.video_asset_id AND va.deleted_at IS NULL
+         LEFT JOIN video_watch_progress vwp
+           ON $2::bigint > 0 AND vwp.user_id = $2 AND vwp.video_asset_id = va.id
+         WHERE rv.unit_override_id = $1 AND rv.is_published = TRUE
+         ORDER BY (rv.video_type = 'primary') DESC, rv.sort_order, rv.id`,
+        [Number(unitMeta.unitOverrideId), effectiveUserId],
+      )
+      : db.query(
         `SELECT csv.id AS placement_id, csv.title AS part_title, csv.video_type, csv.sort_order, csv.is_published,
                 va.id AS asset_id, va.title AS asset_title, va.provider, va.playback_status,
                 va.duration_seconds, va.thumbnail_url, va.available_resolutions,
@@ -567,7 +702,9 @@ export async function loadUnlockedUnitDetail(
          WHERE csv.class_session_id = $1 AND csv.is_published = TRUE
          ORDER BY (csv.video_type = 'primary') DESC, csv.sort_order ASC, csv.id ASC`,
         [unitId, effectiveUserId],
-      ),
+      );
+    const [videosRes, theoryRes, filesRes, assignRes, quizRes, vocabRes, formulaRes, notesRes, extras] = await Promise.all([
+      videosPromise,
       db.query(
         `SELECT id, title, content_html, summary, key_takeaways, transcript, timestamps_json
          FROM learning_unit_theory WHERE class_session_id = $1`,
@@ -1749,6 +1886,18 @@ export async function runDelegatedTx(db, work) {
 }
 
 async function findPublishedVideoInUnit(db, { unitMeta, videoId }) {
+  if (unitMeta.isRecordingReference) {
+    const res = await db.query(
+      `SELECT va.*
+       FROM recording_curriculum_unit_videos rv
+       JOIN video_assets va ON va.id = rv.video_asset_id AND va.deleted_at IS NULL
+       WHERE rv.unit_override_id = $1 AND rv.video_asset_id = $2
+         AND rv.is_published = TRUE
+       LIMIT 1`,
+      [Number(unitMeta.unitOverrideId), Number(videoId)],
+    );
+    return res.rows[0] || null;
+  }
   if (unitMeta.type === "class_session") {
     const res = await db.query(
       `SELECT va.*
