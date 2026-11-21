@@ -147,7 +147,7 @@ const insertQuestions = async (client, quizId, questions) => {
          SET item_order=$2, sort_order=$2, question_text=$3, question_text_cn=$4,
              question_type='single_choice', options_json=$5::jsonb,
              correct_answer=$6, explanation=$7, explanation_cn=NULL,
-             explanation_en=NULL, points=$8, updated_at=NOW()
+             explanation_en=NULL, points=$8
          WHERE id=$1`,
         [
           existingRows[index].id,
