@@ -13,6 +13,7 @@ import {
   recordProfileCatalogMutation,
 } from "./courseCatalogSync.service.js";
 import { safeRecordCurriculumMutation } from "./courseCurriculumSync.service.js";
+import { shouldHideRecordLessonByDefault } from "./videoCourseLessonMetadata.service.js";
 
 const EVENT_TYPES = new Set([
   "teacher.upserted",
@@ -935,7 +936,7 @@ const syncCurriculumReference = async (client, event) => {
 
   const excludedKeys = new Set(input.excludedSessionSourceIds.map((id) => lower(id)));
   const sourceSessions = await client.query(
-    `SELECT id, management_session_source_id
+    `SELECT id, management_session_source_id, title
      FROM class_sessions
      WHERE live_class_id = $1 AND status <> 'cancelled'`,
     [sourceClass.id],
@@ -944,10 +945,14 @@ const syncCurriculumReference = async (client, event) => {
     if (excludedKeys.has(lower(session.management_session_source_id))) continue;
     await client.query(
       `INSERT INTO recording_curriculum_unit_overrides
-         (curriculum_reference_id, source_class_session_id)
-       VALUES ($1, $2)
+         (curriculum_reference_id, source_class_session_id, is_published_override)
+       VALUES ($1, $2, $3)
        ON CONFLICT (curriculum_reference_id, source_class_session_id) DO NOTHING`,
-      [saved.id, session.id],
+      [
+        saved.id,
+        session.id,
+        shouldHideRecordLessonByDefault(session.title) ? false : null,
+      ],
     );
   }
 

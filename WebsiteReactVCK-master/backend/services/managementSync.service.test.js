@@ -88,7 +88,13 @@ test("independent recording curriculum link reuses source material without sourc
       `INSERT INTO class_sessions
          (live_class_id,title,start_time,end_time,status,management_session_source_id,management_source_updated_at)
        VALUES ($1,$2,$3::timestamptz,$3::timestamptz + INTERVAL '2 hours',$4,$5,NOW()) RETURNING id`,
-      [sourceClass.id, title, `${day}T13:00:00Z`, status, sourceId],
+      [
+        sourceClass.id,
+        title,
+        `${day}T13:00:00Z`,
+        status,
+        sourceId === "session-makeup" ? null : sourceId,
+      ],
     )).rows[0]);
   }
   await db.query(

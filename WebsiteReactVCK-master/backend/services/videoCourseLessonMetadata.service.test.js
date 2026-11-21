@@ -24,6 +24,7 @@ test("Record lesson title removes duplicate chapter names without losing order",
 
 test("make-up 26/10 session is marked for hiding, not deletion", () => {
   assert.equal(shouldHideRecordLessonByDefault("Buổi học bù 26/10"), true);
+  assert.equal(shouldHideRecordLessonByDefault("Imported from CSCA Course LMS: Buổi học bù 26/10"), true);
   assert.equal(shouldHideRecordLessonByDefault(" Buổi học bù 26 / 10 - Toán 01"), true);
   assert.equal(shouldHideRecordLessonByDefault("Buổi học bù 27/10"), false);
 });

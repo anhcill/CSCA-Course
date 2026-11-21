@@ -1,5 +1,5 @@
 const CHAPTER_PREFIX_RE = /^\s*chương\s+\d+(?:[.-]\d+)*\s*[:–—-]\s*/iu;
-const MAKEUP_2610_RE = /^\s*buổi\s+học\s+bù\s+26\s*\/\s*10(?:\b|\s|$)/iu;
+const MAKEUP_2610_RE = /^\s*(?:Imported\s+from\s+CSCA\s+Course\s+LMS\s*:\s*)?buổi\s+học\s+bù\s+26\s*\/\s*10(?:\b|\s|$)/iu;
 
 /**
  * Turns source curriculum labels into learner-facing Record lesson names.
