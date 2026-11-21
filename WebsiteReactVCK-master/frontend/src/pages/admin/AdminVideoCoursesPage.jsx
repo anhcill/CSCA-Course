@@ -42,10 +42,12 @@ import {
   fetchAdminVideoCourseDetail,
   fetchAdminVideoCourseStudents,
   fetchAdminVideoCoursesOverview,
+  fetchPendingMembershipApprovals,
   publishAdminVideo,
   publishAdminVideoCourse,
   reorderAdminVideoCourseCurriculum,
   replaceAdminVideo,
+  reviewAdminMembership,
   revokeAdminUserTrustedDevice,
   revokeAdminVideoCourseStudentAccess,
   saveAdminVideoCourseProfile,
@@ -225,6 +227,8 @@ const AdminVideoCoursesPage = () => {
   const [studentQuery, setStudentQuery] = useState("");
   const [studentFilter, setStudentFilter] = useState("all");
   const [revokingStudentId, setRevokingStudentId] = useState(null);
+  const [pendingRecordApprovals, setPendingRecordApprovals] = useState([]);
+  const [reviewingMembershipId, setReviewingMembershipId] = useState(null);
 
   // Profile configuration form state
   const [modeInput, setModeInput] = useState("MIRROR");
@@ -259,10 +263,22 @@ const AdminVideoCoursesPage = () => {
   const loadOverview = useCallback(async (keepCourseId = null) => {
     try {
       setLoadingOverview(true);
-      const res = await fetchAdminVideoCoursesOverview();
+      const [res, approvalsRes] = await Promise.all([
+        fetchAdminVideoCoursesOverview(),
+        fetchPendingMembershipApprovals().catch(() => null),
+      ]);
       const list = res?.data?.courses || [];
       setCourses(list);
       setOverLimitAccounts(res?.data?.overLimitDeviceAccounts || []);
+      const allPending = Array.isArray(approvalsRes?.data) ? approvalsRes.data : [];
+      const videoCourseIds = new Set(list.map((c) => String(c.id)));
+      setPendingRecordApprovals(
+        allPending.filter(
+          (item) =>
+            String(item.learning_mode || "").toLowerCase() === "recording"
+            || (item.course_id != null && videoCourseIds.has(String(item.course_id))),
+        ),
+      );
       const targetId = keepCourseId || selectedCourseId || list[0]?.id || null;
       if (targetId) {
         setSelectedCourseId(String(targetId));
@@ -784,6 +800,22 @@ const AdminVideoCoursesPage = () => {
   }, [courseStudents, studentFilter, studentQuery]);
   const uploadBusy = ["intent", "tus", "attaching"].includes(uploadStage);
 
+  const handleReviewRecordMembership = async (membershipId, decision) => {
+    setReviewingMembershipId(`${membershipId}:${decision}`);
+    try {
+      await reviewAdminMembership(membershipId, decision);
+      toast.success(decision === "approved" ? "Đã duyệt ghi danh khóa Record" : "Đã từ chối ghi danh khóa Record");
+      await loadOverview(selectedCourseId);
+      if (selectedCourseId) {
+        await loadCourseStudents(selectedCourseId, courseDetail?.profile?.id);
+      }
+    } catch (error) {
+      toast.error(error?.message || "Không thể xử lý yêu cầu duyệt ghi danh");
+    } finally {
+      setReviewingMembershipId(null);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12">
       {/* Header Banner */}
@@ -830,6 +862,62 @@ const AdminVideoCoursesPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Pending Record Membership Approvals from InternalManagement */}
+      {pendingRecordApprovals.length > 0 && (
+        <div className="rounded-2xl border border-amber-300/80 bg-amber-50/90 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-950/30">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-amber-950 dark:text-amber-100">
+                Chờ duyệt học viên khóa Record từ hệ thống quản lý ({pendingRecordApprovals.length})
+              </h3>
+              <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-200">
+                Học viên đồng bộ từ InternalManagement vào khóa Record cần quản trị viên duyệt để mở quyền truy cập.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 space-y-2">
+            {pendingRecordApprovals.map((item) => (
+              <div
+                key={`record-approval-${item.id}`}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-800/70 dark:bg-slate-900"
+              >
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-bold text-slate-900 dark:text-white">{item.student_name}</span>
+                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300">
+                    Record
+                  </span>
+                  <span className="text-slate-600 dark:text-slate-300">{item.class_title}</span>
+                  <span className="text-slate-400">· {item.email}</span>
+                  {item.management_membership_status && item.management_membership_status !== "active" && (
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                      Internal: {item.management_membership_status}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={Boolean(reviewingMembershipId)}
+                    onClick={() => handleReviewRecordMembership(item.id, "approved")}
+                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    Duyệt ghi danh
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(reviewingMembershipId)}
+                    onClick={() => handleReviewRecordMembership(item.id, "rejected")}
+                    className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-300"
+                  >
+                    Từ chối
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Section 5.1: Over-Limit Trusted Devices Warning Banner */}
       {overLimitAccounts.length > 0 && (

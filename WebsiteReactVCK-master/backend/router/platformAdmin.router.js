@@ -373,14 +373,35 @@ router.get("/membership-approvals", ...adminOnly, async (req, res) => {
   try {
     const result = await query(
       `SELECT ce.id, ce.status, ce.management_membership_status, ce.learning_mode,
-              ce.management_membership_source_id, lc.id AS class_id,
-              COALESCE(record_alias.title, lc.title) AS class_title,
-              lc.management_approval_status AS class_approval_status,
+              ce.management_membership_source_id,
+              lc.id AS class_id,
+              COALESCE(ce.course_id, record_alias.course_id, lc.course_id) AS course_id,
+              COALESCE(ce.video_course_profile_id, vcp.id) AS video_course_profile_id,
+              COALESCE(record_alias.title, lc.title, c.title, c.name) AS class_title,
+              COALESCE(lc.management_approval_status, 'approved') AS class_approval_status,
               COALESCE(sp.full_name, u.username) AS student_name, u.email
        FROM class_enrollments ce
-       JOIN live_classes lc ON lc.id = ce.live_class_id
+       LEFT JOIN live_classes lc ON lc.id = ce.live_class_id
        LEFT JOIN management_class_learning_aliases record_alias
          ON record_alias.id = ce.management_class_alias_id
+       LEFT JOIN courses c
+         ON c.id = COALESCE(ce.course_id, record_alias.course_id, lc.course_id)
+       LEFT JOIN LATERAL (
+         SELECT p.id
+         FROM video_course_profiles p
+         WHERE p.status = 'active' AND p.deleted_at IS NULL
+           AND (
+             (record_alias.alias_class_source_id IS NOT NULL
+              AND LOWER(p.management_class_id) = LOWER(record_alias.alias_class_source_id))
+             OR (ce.learning_mode = 'recording'
+                 AND p.course_id = COALESCE(ce.course_id, record_alias.course_id, lc.course_id))
+           )
+         ORDER BY
+           (record_alias.alias_class_source_id IS NOT NULL
+            AND LOWER(p.management_class_id) = LOWER(record_alias.alias_class_source_id)) DESC,
+           p.id ASC
+         LIMIT 1
+       ) vcp ON TRUE
        JOIN users u ON u.id = ce.user_id
        LEFT JOIN student_profiles sp ON sp.user_id = u.id
        WHERE ce.management_approval_status = 'pending'

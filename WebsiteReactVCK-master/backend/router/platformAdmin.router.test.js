@@ -68,6 +68,51 @@ test("admin can approve a Management class and its enrollment", async (t) => {
   assert.deepEqual((await db.query("SELECT status,management_approval_status FROM class_enrollments WHERE id=$1", [membership.id])).rows[0],
     { status: "active", management_approval_status: "approved" });
 
+  // INDEPENDENT Record course enrollment (live_class_id IS NULL) MUST also appear in /membership-approvals and be approvable
+  const indepCourse = (await db.query(
+    "INSERT INTO courses(name,title,slug,author_id,is_published) VALUES ('Record Math','Khóa record toán csca','record-math',$1,TRUE) RETURNING id",
+    [admin.id],
+  )).rows[0];
+  const indepProfile = (await db.query(
+    "INSERT INTO video_course_profiles(course_id,management_class_id,mode,status) VALUES ($1,'record-math-source-1','INDEPENDENT','active') RETURNING id",
+    [indepCourse.id],
+  )).rows[0];
+  const indepAlias = (await db.query(
+    `INSERT INTO management_class_learning_aliases
+       (alias_class_source_id,source_class_source_id,course_id,live_class_id,recording_content_mode,title,status,management_source_updated_at)
+     VALUES ('record-math-source-1',NULL,$1,NULL,'INDEPENDENT','Khóa record toán csca','active',NOW()) RETURNING id`,
+    [indepCourse.id],
+  )).rows[0];
+  const indepStudent = (await db.query(
+    "INSERT INTO users(username,email,role) VALUES ('record-student','record-student@example.test','user') RETURNING id",
+  )).rows[0];
+  const indepMembership = (await db.query(
+    `INSERT INTO class_enrollments
+       (user_id,live_class_id,course_id,status,learning_mode,management_class_alias_id,
+        management_membership_source_id,management_membership_status,management_approval_status)
+     VALUES ($1,NULL,$2,'suspended','recording',$3,'indep-membership-1','active','pending') RETURNING id`,
+    [indepStudent.id, indepCourse.id, indepAlias.id],
+  )).rows[0];
+  const indepListRes = {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; return this; },
+  };
+  await listMembershipApprovals({ user: admin }, indepListRes);
+  assert.equal(indepListRes.statusCode, 200, JSON.stringify(indepListRes.body));
+  const indepRow = indepListRes.body.data.find((row) => String(row.id) === String(indepMembership.id));
+  assert.ok(indepRow, "Pending INDEPENDENT Record membership (live_class_id IS NULL) must appear in approval queue");
+  assert.equal(indepRow.class_title, "Khóa record toán csca");
+  assert.equal(String(indepRow.course_id), String(indepCourse.id));
+  assert.equal(String(indepRow.video_course_profile_id), String(indepProfile.id));
+  assert.equal(indepRow.learning_mode, "recording");
+  await invoke("/membership-approvals/:id", indepMembership.id, admin.id);
+  assert.deepEqual(
+    (await db.query("SELECT status,management_approval_status FROM class_enrollments WHERE id=$1", [indepMembership.id])).rows[0],
+    { status: "active", management_approval_status: "approved" },
+  );
+
   const updateDownloadPolicy = router.stack.find((layer) => (
     layer.route?.path === "/classes/:id/file-download-policy" && layer.route.methods.patch
   )).route.stack.at(-1).handle;

@@ -260,7 +260,20 @@ export default function AdminClassesPage() {
             ))}
             {pendingMemberships.map((item) => (
               <div key={`membership-${item.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-800 dark:bg-gray-900">
-                <div><span className="font-bold">Học viên: {item.student_name}</span><span className="ml-2 text-xs text-gray-500">{item.class_title} · {item.email}</span></div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold">Học viên: {item.student_name}</span>
+                  {String(item.learning_mode || "").toLowerCase() === "recording" && (
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300">
+                      Record
+                    </span>
+                  )}
+                  <span className="text-xs text-gray-500">{item.class_title} · {item.email}</span>
+                  {item.management_membership_status && item.management_membership_status !== "active" && (
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                      Internal: {item.management_membership_status}
+                    </span>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <button type="button" disabled={Boolean(reviewing)} onClick={() => review("membership", item.id, "approved")} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">Duyệt ghi danh</button>
                   <button type="button" disabled={Boolean(reviewing)} onClick={() => review("membership", item.id, "rejected")} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-bold text-rose-700 disabled:opacity-50">Từ chối</button>
