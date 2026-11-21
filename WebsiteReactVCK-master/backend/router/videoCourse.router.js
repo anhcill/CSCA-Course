@@ -46,6 +46,10 @@ import {
   shouldHideRecordLessonByDefault,
 } from "../services/videoCourseLessonMetadata.service.js";
 import { loadReferencedRecordingCurriculum } from "../services/recordingCurriculumReference.service.js";
+import {
+  loadProfileUnitsWithProgress,
+  loadUnlockedUnitDetail,
+} from "../services/delegatedLearning.service.js";
 
 const router = express.Router();
 const ACCESS_HELP_MESSAGE = "Bạn chưa được cấp quyền học khóa này. Nhắn Zalo 0812352005 để admin hỗ trợ bạn nhé 💙";
@@ -1286,6 +1290,55 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
         }
       }
     } else {
+      const curriculumReference = (
+        await query(
+          `SELECT id, source_live_class_id
+           FROM recording_curriculum_references
+           WHERE video_course_profile_id = $1
+           LIMIT 1`,
+          [activeProfileId],
+        )
+      ).rows[0] || null;
+
+      if (curriculumReference) {
+        const profileRow = {
+          profile_id: activeProfileId,
+          course_id: courseId,
+          mode: "INDEPENDENT",
+          source_live_class_id: curriculumReference.source_live_class_id,
+          allow_file_download: profile.allow_file_download === true,
+        };
+        const rawUnits = await loadProfileUnitsWithProgress(
+          { query },
+          { profileRow, userId: req.user.id },
+        );
+        units = applySequentialLocks(rawUnits);
+        const selectedUnitMeta = (unitId
+          ? units.find((current) => String(current.id) === String(unitId))
+          : null) || units[0] || null;
+
+        if (selectedUnitMeta?.isLocked && isLearner) {
+          activeUnitData = lockedUnitPayload({
+            id: selectedUnitMeta.id,
+            type: "class_session",
+            title: selectedUnitMeta.title,
+            sessionNumber: selectedUnitMeta.sessionNumber,
+            sectionTitle: selectedUnitMeta.sectionTitle,
+            meta: selectedUnitMeta,
+          });
+        } else if (selectedUnitMeta) {
+          activeUnitData = await loadUnlockedUnitDetail(
+            { query },
+            {
+              profileRow,
+              unitMeta: selectedUnitMeta,
+              userId: req.user.id,
+              isPublicPreviewAccess,
+              allowFreeQuizReview: !isLearner || canReviewFreely,
+            },
+          );
+        }
+      } else {
       // INDEPENDENT: Units are sections -> lessons
       const lessonsRes = await query(
         `SELECT l.id, l.section_id, l.title, l.description, l.duration_seconds,
@@ -1628,6 +1681,7 @@ router.get("/:offeringId/workspace", protectRoute, async (req, res) => {
           qaThreads: unitQaThreads,
         };
         }
+      }
       }
     }
 
