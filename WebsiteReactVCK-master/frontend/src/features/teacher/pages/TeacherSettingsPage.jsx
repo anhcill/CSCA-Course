@@ -40,6 +40,7 @@ import { useAuthContext } from "../../../context/AuthContext";
 import { useTheme } from "../../../context/ThemeContext";
 import useCUDUser from "../../../hooks/useCUDUser";
 import AvatarModal from "../../../components/AvatarModal";
+import PwaInstallCard from "../../../components/common/PwaInstallCard.jsx";
 import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
 import { fetchMyTrustedDevices } from "../../api/accountSecurityClient";
 import { fetchTeacherClassesLookup } from "../../api/lmsClient";
@@ -929,6 +930,9 @@ export default function TeacherSettingsPage() {
               </div>
             </div>
           </div>
+
+          {/* CARD 4.5: CÀI ĐẶT ỨNG DỤNG PWA */}
+          <PwaInstallCard variant="lms" />
         </div>
 
         {/* ================= CỘT PHẢI (RIGHT COLUMN) ================= */}

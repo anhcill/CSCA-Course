@@ -10,6 +10,7 @@ import { useAuthContext } from '../../context/AuthContext';
 import AvatarModal from '../../components/AvatarModal';
 import ProfileSettings from '../../components/profile/ProfileSettings';
 import CertificateModal from '../../components/profile/CertificateModal';
+import PwaInstallCard from '../../components/common/PwaInstallCard.jsx';
 import Meta from '../../components/Meta.jsx';
 import useCUDUser from '../../hooks/useCUDUser';
 import { getAvatarUrl, handleAvatarError } from '../../utils/avatar';
@@ -191,6 +192,7 @@ const Profile = () => {
                     <h3 className="text-lg font-bold">Chào mừng trở lại, {displayName}</h3>
                     <p className="mt-1 text-sm text-stone-600 dark:text-stone-400">Theo dõi tiến độ học, hoàn thiện kế hoạch du học và lưu giữ các chứng chỉ của bạn trong từng mục phía trên.</p>
                   </div>
+                  <PwaInstallCard variant="profile" className="mt-4" />
                 </>
               )}
             </section>

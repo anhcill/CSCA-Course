@@ -37,6 +37,7 @@ import { useAuthContext } from "../../../context/AuthContext";
 import { useTheme } from "../../../context/ThemeContext";
 import useCUDUser from "../../../hooks/useCUDUser";
 import AvatarModal from "../../../components/AvatarModal";
+import PwaInstallCard from "../../../components/common/PwaInstallCard.jsx";
 import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
 import { fetchMyTrustedDevices } from "../../api/accountSecurityClient";
 import { fetchNotificationPreferences, updateNotificationPreferences } from "../../api/lmsClient";
@@ -745,6 +746,9 @@ export default function StudentSettingsPage() {
               </div>
             </div>
           </div>
+
+          {/* CARD 3.5: CÀI ĐẶT ỨNG DỤNG PWA */}
+          <PwaInstallCard variant="lms" />
         </div>
 
         {/* ================= RIGHT COLUMN ================= */}

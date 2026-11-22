@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { FaGoogle, FaLock, FaSave, FaUserGraduate } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import useCUDUser from '../../hooks/useCUDUser';
+import PwaInstallCard from '../common/PwaInstallCard.jsx';
 
 const accountDefaults = (user) => ({
     username: user?.username || '',
@@ -73,6 +74,7 @@ const ProfileSettings = ({ authUser }) => {
 
     return (
         <div className="space-y-8">
+            <PwaInstallCard variant="profile" />
             <form onSubmit={saveStudyProfile} className="rounded-3xl border border-cyan-200 bg-[#f7fbfb] p-6 shadow-sm dark:border-stone-700 dark:bg-slate-800 md:p-8">
                 <div className="mb-6 flex items-start gap-4">
                     <span className="rounded-2xl bg-teal-100 p-3 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300"><FaUserGraduate /></span>

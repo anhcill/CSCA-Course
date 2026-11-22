@@ -34,6 +34,7 @@ import LmsRouteGuard from "./components/LmsRouteGuard.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { ThemeProvider } from "./context/ThemeContext";
 import { LoadingProvider } from "./context/LoadingContext.jsx";
+import { PwaProvider } from "./context/PwaContext.jsx";
 import { useAuthContext } from "./context/AuthContext.jsx";
 import { TEACHER_ROLES, USER_ROLES, isTeacherRole } from "./constants/roles";
 import SessionExpiredModal from "./components/auth/SessionExpiredModal.jsx";
@@ -471,10 +472,12 @@ function App() {
   return (
     <ThemeProvider>
       <LoadingProvider>
-        <AppErrorBoundary fullScreen>
-          <AppContent />
-        </AppErrorBoundary>
-        <OfflineScreen />
+        <PwaProvider>
+          <AppErrorBoundary fullScreen>
+            <AppContent />
+          </AppErrorBoundary>
+          <OfflineScreen />
+        </PwaProvider>
       </LoadingProvider>
     </ThemeProvider>
   );
