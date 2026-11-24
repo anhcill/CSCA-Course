@@ -56,7 +56,7 @@ const TEACHER_NAV = [
   { label: 'Hỗ trợ học viên', path: '/lms/teach/support', icon: MessageSquare, permission: 'lms.support.manage' },
 ];
 
-const MOBILE_BOTTOM_NAV = [
+const MOBILE_BOTTOM_NAV_LEFT = [
   {
     id: 'overview',
     label: 'Tổng quan',
@@ -73,18 +73,9 @@ const MOBILE_BOTTOM_NAV = [
     permission: 'lms.schedule.manage',
     isActive: (pathname) => pathname.startsWith('/lms/teach/calendar') || pathname === '/lms/teach/classes',
   },
-  {
-    id: 'attendance',
-    label: 'Điểm danh',
-    path: '/lms/teach/student-progress?tab=attendance',
-    icon: Users,
-    permission: 'lms.student.view',
-    altPermission: 'lms.attendance.manage',
-    isActive: (pathname) => (
-      pathname.startsWith('/lms/teach/student-progress')
-      || /^\/lms\/teach(?:er)?\/classes\/[^/]+\/attendance(?:\/|$)/.test(pathname)
-    ),
-  },
+];
+
+const MOBILE_BOTTOM_NAV_RIGHT = [
   {
     id: 'grading',
     label: 'Chấm bài',
@@ -500,7 +491,7 @@ export default function TeacherLmsLayout({ children }) {
       )}
 
       {/* Main Content Area */}
-      <main className={`min-h-screen min-w-0 pt-16 pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0 transition-[padding] duration-300 ease-in-out ${
+      <main className={`min-h-screen min-w-0 pt-16 pb-[calc(5.25rem+env(safe-area-inset-bottom))] lg:pb-0 transition-[padding] duration-300 ease-in-out ${
         isSidebarCollapsed ? 'lg:pl-[98px]' : 'lg:pl-[260px]'
       }`}>
         <header className={`teacher-lms-header fixed right-0 top-0 z-30 flex h-16 items-center justify-between gap-2 px-3 sm:px-6 transition-[left,background-color] duration-300 ease-in-out ${
@@ -526,7 +517,9 @@ export default function TeacherLmsLayout({ children }) {
             )}
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2">
-          <TeacherHeaderAttendanceButton isDarkMode={isDarkMode} />
+          <div className="hidden lg:block">
+            <TeacherHeaderAttendanceButton isDarkMode={isDarkMode} variant="header" />
+          </div>
           <button
             type="button"
             onClick={toggleTheme}
@@ -591,38 +584,103 @@ export default function TeacherLmsLayout({ children }) {
         ) : children}
       </main>
 
-      {/* Mobile PWA Bottom Navigation Bar (< lg) */}
+      {/* Mobile PWA Bottom Navigation Bar (< lg) with curved concave center dock for Face ID / Fingerprint */}
       <nav
         aria-label="Điều hướng nhanh di động"
-        className="teacher-mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-sky-200/80 bg-[#e6f4fd]/95 px-2 pt-1.5 pb-[calc(0.4rem+env(safe-area-inset-bottom))] shadow-[0_-8px_28px_rgba(20,60,100,0.1)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_-8px_28px_rgba(0,0,0,0.5)] lg:hidden"
+        className="teacher-mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 lg:hidden"
       >
-        <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
-          {MOBILE_BOTTOM_NAV
-            .filter((item) => (
-              isAdmin
-              || !item.permission
-              || permissions.has(item.permission)
-              || (item.altPermission && permissions.has(item.altPermission))
-            ))
-            .map((item) => {
-              const Icon = item.icon;
-              const active = !mobileOpen && item.isActive(location.pathname);
-              return (
-                <Link
-                  key={item.id}
-                  to={item.path}
-                  onClick={closeMobile}
-                  className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-bold transition ${
-                    active
-                      ? 'bg-blue-600/12 text-blue-700 dark:bg-sky-500/20 dark:text-sky-300 font-black'
-                      : 'text-[#17365f]/80 hover:text-blue-700 dark:text-slate-400 dark:hover:text-slate-200'
-                  }`}
-                >
-                  <Icon className={`h-4.5 w-4.5 shrink-0 ${active ? 'text-blue-600 dark:text-sky-400' : ''}`} />
-                  <span className="truncate max-w-full px-1">{item.label}</span>
-                </Link>
-              );
-            })}
+        {/* Curved Concave Backdrop (filter kept on backdrop only so fixed sheets inside nav stay viewport-fixed) */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 bottom-[env(safe-area-inset-bottom)] flex items-stretch"
+          style={{
+            filter: isDarkMode
+              ? 'drop-shadow(0 -8px 24px rgba(0, 0, 0, 0.55))'
+              : 'drop-shadow(0 -8px 22px rgba(20, 60, 100, 0.14))',
+          }}
+        >
+          <div
+            className={`flex-1 border-t ${
+              isDarkMode
+                ? 'border-slate-800 bg-slate-900/95'
+                : 'border-sky-200/90 bg-[#e6f4fd]/95'
+            }`}
+          />
+          <svg
+            viewBox="0 0 108 64"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            className="-mx-[1px] h-full w-[110px] shrink-0 block"
+          >
+            <path
+              d="M 0 0 C 12 0, 16 1, 20 8 C 25 22, 36 33, 54 33 C 72 33, 83 22, 88 8 C 92 1, 96 0, 108 0 L 108 64 L 0 64 Z"
+              fill={isDarkMode ? 'rgba(15, 23, 42, 0.95)' : 'rgba(230, 244, 253, 0.95)'}
+            />
+            <path
+              d="M 0 0.5 C 12 0.5, 16 1.2, 20 8 C 25 22, 36 33, 54 33 C 72 33, 83 22, 88 8 C 92 1.2, 96 0.5, 108 0.5"
+              fill="none"
+              stroke={isDarkMode ? '#1e293b' : 'rgba(186, 230, 253, 0.95)'}
+              strokeWidth="1.2"
+            />
+          </svg>
+          <div
+            className={`flex-1 border-t ${
+              isDarkMode
+                ? 'border-slate-800 bg-slate-900/95'
+                : 'border-sky-200/90 bg-[#e6f4fd]/95'
+            }`}
+          />
+        </div>
+
+        {/* Interactive 5-Slot Dock Row */}
+        <div className="relative z-10 mx-auto grid h-16 max-w-md grid-cols-5 items-center px-1.5">
+          {MOBILE_BOTTOM_NAV_LEFT.map((item) => {
+            const allowed = isAdmin || !item.permission || permissions.has(item.permission);
+            if (!allowed) return <div key={item.id} />;
+            const Icon = item.icon;
+            const active = !mobileOpen && item.isActive(location.pathname);
+            return (
+              <Link
+                key={item.id}
+                to={item.path}
+                onClick={closeMobile}
+                className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-bold transition ${
+                  active
+                    ? 'bg-blue-600/12 text-blue-700 dark:bg-sky-500/20 dark:text-sky-300 font-black'
+                    : 'text-[#17365f]/80 hover:text-blue-700 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <Icon className={`h-4.5 w-4.5 shrink-0 ${active ? 'text-blue-600 dark:text-sky-400' : ''}`} />
+                <span className="truncate max-w-full px-1">{item.label}</span>
+              </Link>
+            );
+          })}
+
+          {/* Center Recessed Face ID / Fingerprint Dock Button */}
+          <div className="flex items-start justify-center self-stretch pt-0">
+            <TeacherHeaderAttendanceButton isDarkMode={isDarkMode} variant="dock" />
+          </div>
+
+          {MOBILE_BOTTOM_NAV_RIGHT.map((item) => {
+            const allowed = isAdmin || !item.permission || permissions.has(item.permission);
+            if (!allowed) return <div key={item.id} />;
+            const Icon = item.icon;
+            const active = !mobileOpen && item.isActive(location.pathname);
+            return (
+              <Link
+                key={item.id}
+                to={item.path}
+                onClick={closeMobile}
+                className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-bold transition ${
+                  active
+                    ? 'bg-blue-600/12 text-blue-700 dark:bg-sky-500/20 dark:text-sky-300 font-black'
+                    : 'text-[#17365f]/80 hover:text-blue-700 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <Icon className={`h-4.5 w-4.5 shrink-0 ${active ? 'text-blue-600 dark:text-sky-400' : ''}`} />
+                <span className="truncate max-w-full px-1">{item.label}</span>
+              </Link>
+            );
+          })}
 
           <button
             type="button"
@@ -638,6 +696,13 @@ export default function TeacherLmsLayout({ children }) {
             <span>Menu</span>
           </button>
         </div>
+
+        {/* iOS Home Indicator Safe Area Strip */}
+        <div
+          className={`h-[env(safe-area-inset-bottom)] ${
+            isDarkMode ? 'bg-slate-900/95' : 'bg-[#e6f4fd]/95'
+          }`}
+        />
       </nav>
     </div>
   );

@@ -8,6 +8,7 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  ReceiptText,
   RefreshCw,
   ScanFace,
   ShieldCheck,
@@ -22,6 +23,7 @@ import {
   registerDeviceBiometrics,
   testDeviceBiometrics,
 } from "../utils/deviceBiometrics";
+import AttendanceReceiptModal from "./AttendanceReceiptModal.jsx";
 
 const AwsFaceLivenessModal = lazy(() => import("./AwsFaceLivenessModal.jsx"));
 
@@ -33,9 +35,10 @@ const fmtTime = (value) => {
     : d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 };
 
-export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
+export default function TeacherHeaderAttendanceButton({ isDarkMode, variant = "header" }) {
   const { authUser } = useAuthContext();
   const isAdmin = authUser?.role === "admin";
+  const isDock = variant === "dock";
   const bioSupported = isDeviceBiometricsSupported();
   const bioInfo = detectDeviceBiometricInfo();
   const BioIcon = bioInfo.kind === "face_id" ? ScanFace : Fingerprint;
@@ -45,6 +48,7 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
   const [loading, setLoading] = useState(false);
   const [bioBusy, setBioBusy] = useState(false);
   const [activeModal, setActiveModal] = useState(null);
+  const [receiptState, setReceiptState] = useState(null);
   const containerRef = useRef(null);
 
   const loadToday = useCallback(async () => {
@@ -101,12 +105,20 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
     if (hasDeviceBio && bioSupported) {
       try {
         setBioBusy(true);
+        const startedAt = Date.now();
         const res = await checkInOrOutWithDeviceBiometrics({ sessionId: session.id, type });
-        toast.success(res?.message || (type === "check_in" ? "Chấm Vào thành công!" : "Chấm Ra thành công!"));
+        const latencyMs = Date.now() - startedAt;
         setOpen(false);
+        setReceiptState({
+          mode: type,
+          record: res?.data || null,
+          session,
+          deviceLabel: res?.data?.deviceLabel || bioInfo.label,
+          latencyMs,
+        });
         await loadToday();
       } catch (error) {
-        toast.error(error?.message || "Xác thực Face ID / Vân tay thất bại");
+        toast.error(error?.message || `Xác thực ${bioInfo.label} thất bại`);
       } finally {
         setBioBusy(false);
       }
@@ -121,10 +133,10 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
     try {
       setBioBusy(true);
       await registerDeviceBiometrics();
-      toast.success("Đã bật Face ID / Vân tay máy này!");
+      toast.success(`Đã bật ${bioInfo.label} máy này!`);
       await loadToday();
     } catch (error) {
-      toast.error(error?.message || "Không thể đăng ký Face ID / Vân tay");
+      toast.error(error?.message || `Không thể đăng ký ${bioInfo.label}`);
     } finally {
       setBioBusy(false);
     }
@@ -134,8 +146,14 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
     try {
       setBioBusy(true);
       const res = await testDeviceBiometrics();
-      const ms = res?.data?.latencyMs ?? "";
-      toast.success(`Face ID / Vân tay OK!${ms ? ` (${ms}ms)` : ""}`);
+      setOpen(false);
+      setReceiptState({
+        mode: "test",
+        record: res?.data || null,
+        session: recommended?.session || sessions[0] || null,
+        deviceLabel: res?.data?.deviceLabel || bioInfo.label,
+        latencyMs: res?.data?.latencyMs ?? null,
+      });
       await loadToday();
     } catch (error) {
       toast.error(error?.message || "Xác thực thất bại");
@@ -160,33 +178,114 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
         ? "Đã chấm"
         : "Chấm công";
 
+  const dockLabel = isCheckInReady
+    ? "Chấm Vào"
+    : isCheckOutReady
+      ? "Chấm Ra"
+      : bioInfo.shortLabel;
+
+  const dockCircleClass = isCheckInReady
+    ? "bg-gradient-to-br from-indigo-500 via-blue-600 to-indigo-700 text-white ring-2 ring-indigo-300/60 shadow-[0_8px_22px_rgba(79,70,229,0.48)]"
+    : isCheckOutReady
+      ? "bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-700 text-white ring-2 ring-emerald-300/60 shadow-[0_8px_22px_rgba(16,185,129,0.48)]"
+      : isAllDone
+        ? "bg-gradient-to-br from-emerald-600 to-teal-700 text-white ring-2 ring-emerald-300/50 shadow-[0_8px_20px_rgba(16,185,129,0.35)]"
+        : !isDarkMode
+          ? "bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-700 text-white ring-2 ring-white/90 shadow-[0_8px_22px_rgba(37,99,235,0.38)]"
+          : "bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-700 text-white ring-2 ring-slate-800 shadow-[0_8px_24px_rgba(56,189,248,0.35)]";
+
+  const popoverClass = isDock
+    ? "fixed inset-x-3 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-[60] max-h-[calc(100dvh-7.5rem)] overflow-hidden rounded-3xl border border-[#c4def0] bg-white/96 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/96"
+    : "fixed inset-x-3 top-[4.5rem] z-[60] max-h-[calc(100dvh-5.5rem)] overflow-hidden rounded-2xl border border-[#c4def0] bg-white/95 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(20.5rem,calc(100vw-2rem))]";
+
   return (
     <>
-      <div ref={containerRef} className="relative">
-        <button
-          type="button"
-          onClick={() => {
-            const next = !open;
-            setOpen(next);
-            if (next) loadToday();
-          }}
-          aria-expanded={open}
-          title={`Chấm công ${bioInfo.label}`}
-          className={`relative inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-bold transition ${triggerClass}`}
-        >
-          {isAllDone ? (
-            <ShieldCheck className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
-          ) : (
-            <BioIcon className="h-4 w-4" />
-          )}
-          <span className="hidden sm:inline">{triggerLabel}</span>
-          {(isCheckInReady || isCheckOutReady) && (
-            <span className="flex h-2 w-2 rounded-full bg-white animate-pulse" />
-          )}
-        </button>
+      <div ref={containerRef} className={isDock ? "relative flex flex-col items-center justify-start" : "relative"}>
+        {isDock ? (
+          <button
+            type="button"
+            onClick={() => {
+              const next = !open;
+              setOpen(next);
+              if (next) loadToday();
+            }}
+            aria-expanded={open}
+            aria-label={`Chấm công ${bioInfo.label}`}
+            title={`Chấm công ${bioInfo.label}`}
+            className="group flex flex-col items-center focus:outline-none"
+          >
+            <span
+              className={`relative -mt-[26px] flex h-[52px] w-[52px] items-center justify-center rounded-full transition-transform duration-200 active:scale-95 ${dockCircleClass} ${
+                open ? "scale-105" : ""
+              }`}
+            >
+              {isAllDone ? (
+                <ShieldCheck className="h-6 w-6" />
+              ) : (
+                <BioIcon className="h-6 w-6" />
+              )}
+              {(isCheckInReady || isCheckOutReady) && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white dark:bg-slate-900">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full animate-ping absolute ${
+                      isCheckOutReady ? "bg-emerald-400" : "bg-indigo-400"
+                    }`}
+                  />
+                  <span
+                    className={`relative h-2 w-2 rounded-full ${
+                      isCheckOutReady ? "bg-emerald-500" : "bg-indigo-500"
+                    }`}
+                  />
+                </span>
+              )}
+            </span>
+            <span
+              className={`mt-2 truncate text-[10px] font-black leading-none ${
+                isCheckInReady
+                  ? "text-indigo-600 dark:text-sky-400"
+                  : isCheckOutReady || isAllDone
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-[#17365f] dark:text-sky-300"
+              }`}
+            >
+              {dockLabel}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              const next = !open;
+              setOpen(next);
+              if (next) loadToday();
+            }}
+            aria-expanded={open}
+            title={`Chấm công ${bioInfo.label}`}
+            className={`relative inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-bold transition ${triggerClass}`}
+          >
+            {isAllDone ? (
+              <ShieldCheck className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+            ) : (
+              <BioIcon className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">{triggerLabel}</span>
+            {(isCheckInReady || isCheckOutReady) && (
+              <span className="flex h-2 w-2 rounded-full bg-white animate-pulse" />
+            )}
+          </button>
+        )}
+
+        {open && isDock && (
+          <button
+            type="button"
+            aria-label="Đóng bảng chấm công"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-[55] bg-slate-950/35 backdrop-blur-[1px]"
+          />
+        )}
 
         {open && (
-          <div className="fixed inset-x-3 top-[4.5rem] z-[60] max-h-[calc(100dvh-5.5rem)] overflow-hidden rounded-2xl border border-[#c4def0] bg-white/95 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(20.5rem,calc(100vw-2rem))]">
+          <div className={popoverClass}>
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5 dark:border-slate-800">
               <div className="flex items-center gap-2">
@@ -317,7 +416,23 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
                           </p>
                         </div>
                         {att?.payrollEligible ? (
-                          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpen(false);
+                              setReceiptState({
+                                mode: "check_out",
+                                record: att,
+                                session: sess,
+                                deviceLabel: bioInfo.label,
+                                latencyMs: null,
+                              });
+                            }}
+                            title="Xem biên lai chấm công"
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Phiếu
+                          </button>
                         ) : canOut ? (
                           <button
                             type="button"
@@ -335,6 +450,24 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
                             className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white"
                           >
                             Vào
+                          </button>
+                        ) : att?.checkInAt ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpen(false);
+                              setReceiptState({
+                                mode: att?.checkOutAt ? "check_out" : "check_in",
+                                record: att,
+                                session: sess,
+                                deviceLabel: bioInfo.label,
+                                latencyMs: null,
+                              });
+                            }}
+                            title="Xem phiếu chấm công"
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-sky-300"
+                          >
+                            <ReceiptText className="h-3 w-3" /> Phiếu
                           </button>
                         ) : (
                           <Link
@@ -412,12 +545,33 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
             }
             type={activeModal.type}
             onClose={() => setActiveModal(null)}
-            onSuccess={() => {
-              if (!activeModal.adminTestMode) loadToday();
+            onSuccess={(resultData) => {
+              if (!activeModal.adminTestMode) {
+                setReceiptState({
+                  mode: activeModal.type === "check_out" ? "check_out" : "check_in",
+                  record: resultData || null,
+                  session: activeModal.session || null,
+                  deviceLabel: "Camera AWS",
+                  latencyMs: null,
+                });
+                loadToday();
+              }
             }}
           />
         </Suspense>
       )}
+
+      <AttendanceReceiptModal
+        isOpen={Boolean(receiptState)}
+        mode={receiptState?.mode || "check_in"}
+        record={receiptState?.record || null}
+        session={receiptState?.session || null}
+        teacherName={authUser?.fullName || authUser?.username || ""}
+        deviceLabel={receiptState?.deviceLabel || bioInfo.label}
+        biometricKind={bioInfo.kind}
+        latencyMs={receiptState?.latencyMs ?? null}
+        onClose={() => setReceiptState(null)}
+      />
     </>
   );
 }

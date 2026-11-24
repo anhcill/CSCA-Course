@@ -30,6 +30,7 @@ import {
   registerDeviceBiometrics,
   testDeviceBiometrics,
 } from "../utils/deviceBiometrics";
+import AttendanceReceiptModal from "./AttendanceReceiptModal.jsx";
 
 const AwsFaceLivenessModal = lazy(() => import("./AwsFaceLivenessModal.jsx"));
 
@@ -82,6 +83,7 @@ export default function FaceEnrollmentCard() {
   const [submitting, setSubmitting] = useState(false);
   const [reviewingSelf, setReviewingSelf] = useState(false);
   const [testModalOpen, setTestModalOpen] = useState(false);
+  const [receiptState, setReceiptState] = useState(null);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -146,8 +148,13 @@ export default function FaceEnrollmentCard() {
     try {
       setBioBusy(true);
       const res = await testDeviceBiometrics();
-      const ms = res?.data?.latencyMs ?? "";
-      toast.success(`Xác thực Face ID / Vân tay thành công!${ms ? ` (${ms}ms)` : ""}`);
+      setReceiptState({
+        mode: "test",
+        record: res?.data || null,
+        session: null,
+        deviceLabel: res?.data?.deviceLabel || bioInfo.label,
+        latencyMs: res?.data?.latencyMs ?? null,
+      });
       await loadStatus();
     } catch (error) {
       toast.error(error?.message || "Xác thực thất bại");
@@ -544,6 +551,18 @@ export default function FaceEnrollmentCard() {
           />
         </Suspense>
       )}
+
+      <AttendanceReceiptModal
+        isOpen={Boolean(receiptState)}
+        mode={receiptState?.mode || "test"}
+        record={receiptState?.record || null}
+        session={receiptState?.session || null}
+        teacherName={authUser?.fullName || authUser?.username || ""}
+        deviceLabel={receiptState?.deviceLabel || bioInfo.label}
+        biometricKind={bioInfo.kind}
+        latencyMs={receiptState?.latencyMs ?? null}
+        onClose={() => setReceiptState(null)}
+      />
     </>
   );
 }

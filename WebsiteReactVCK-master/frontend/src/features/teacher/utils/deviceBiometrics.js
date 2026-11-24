@@ -23,11 +23,17 @@ export const detectDeviceBiometricInfo = () => {
     return { kind: "fingerprint", label: "Vân tay", shortLabel: "Vân tay" };
   }
   const ua = navigator.userAgent || "";
-  const maxDim = Math.max(window.screen?.width || 0, window.screen?.height || 0);
-  const isIPhone = /iPhone/i.test(ua);
-  const isIPad = /iPad/i.test(ua) || (navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1);
+  const w = window.screen?.width || window.innerWidth || 0;
+  const h = window.screen?.height || window.innerHeight || 0;
+  const maxDim = Math.max(w, h);
+  const minDim = Math.min(w, h) || 1;
+  const aspectRatio = maxDim / minDim;
+  const isTouchMac = navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1;
+  const isIPhone = /iPhone/i.test(ua) || (isTouchMac && minDim <= 500);
+  const isIPad = /iPad/i.test(ua) || (isTouchMac && minDim > 500);
 
-  if ((isIPhone && maxDim >= 812) || (isIPad && maxDim >= 1180)) {
+  // Every Face ID iPhone has >=812pt OR >=2.0 tall aspect ratio (even with iOS Display Zoom on).
+  if ((isIPhone && (maxDim >= 812 || aspectRatio >= 2.0)) || (isIPad && maxDim >= 1180)) {
     return { kind: "face_id", label: "Face ID", shortLabel: "Face ID" };
   }
   if (isIPhone || isIPad || /Macintosh|Mac OS X/i.test(ua)) {

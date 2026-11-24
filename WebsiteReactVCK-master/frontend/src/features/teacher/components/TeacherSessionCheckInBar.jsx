@@ -6,6 +6,7 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  ReceiptText,
   ScanFace,
   ShieldCheck,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import {
   registerDeviceBiometrics,
   testDeviceBiometrics,
 } from "../utils/deviceBiometrics";
+import AttendanceReceiptModal from "./AttendanceReceiptModal.jsx";
 
 const AwsFaceLivenessModal = lazy(() => import("./AwsFaceLivenessModal.jsx"));
 
@@ -41,6 +43,7 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
   const [loading, setLoading] = useState(true);
   const [bioBusy, setBioBusy] = useState(false);
   const [modalConfig, setModalConfig] = useState(null);
+  const [receiptState, setReceiptState] = useState(null);
 
   const loadState = useCallback(async () => {
     if (!sessionId) return;
@@ -78,15 +81,33 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
   const enrollmentApproved = enrollment?.status === "approved";
   const canAttend = hasDeviceBio || enrollmentApproved;
 
+  const sessionInfo = {
+    id: sessionId,
+    title: sessionTitle || state?.session?.title,
+    classCode: state?.session?.classCode,
+    classTitle: state?.session?.classTitle,
+    startTime: state?.session?.startTime,
+    endTime: state?.session?.endTime,
+    liveClassId: state?.session?.liveClassId,
+  };
+
   const handleAction = async (type) => {
     if (hasDeviceBio && bioSupported) {
       try {
         setBioBusy(true);
+        const startedAt = Date.now();
         const res = await checkInOrOutWithDeviceBiometrics({ sessionId, type });
-        toast.success(res?.message || (type === "check_in" ? "Chấm Vào thành công!" : "Chấm Ra thành công!"));
+        const latencyMs = Date.now() - startedAt;
+        setReceiptState({
+          mode: type,
+          record: res?.data || null,
+          session: sessionInfo,
+          deviceLabel: res?.data?.deviceLabel || bioInfo.label,
+          latencyMs,
+        });
         await loadState();
       } catch (error) {
-        toast.error(error?.message || "Xác thực Face ID / Vân tay thất bại");
+        toast.error(error?.message || `Xác thực ${bioInfo.label} thất bại`);
       } finally {
         setBioBusy(false);
       }
@@ -99,10 +120,10 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
     try {
       setBioBusy(true);
       await registerDeviceBiometrics();
-      toast.success("Đã bật Face ID / Vân tay thiết bị này!");
+      toast.success(`Đã bật ${bioInfo.label} thiết bị này!`);
       await loadState();
     } catch (error) {
-      toast.error(error?.message || "Không thể đăng ký Face ID / Vân tay");
+      toast.error(error?.message || `Không thể đăng ký ${bioInfo.label}`);
     } finally {
       setBioBusy(false);
     }
@@ -112,8 +133,13 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
     try {
       setBioBusy(true);
       const res = await testDeviceBiometrics();
-      const ms = res?.data?.latencyMs ?? "";
-      toast.success(`Face ID / Vân tay OK!${ms ? ` (${ms}ms)` : ""}`);
+      setReceiptState({
+        mode: "test",
+        record: res?.data || null,
+        session: sessionInfo,
+        deviceLabel: res?.data?.deviceLabel || bioInfo.label,
+        latencyMs: res?.data?.latencyMs ?? null,
+      });
     } catch (error) {
       toast.error(error?.message || "Xác thực thất bại");
     } finally {
@@ -218,10 +244,40 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
                   Chấm Ra
                 </button>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Đã xong
-                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReceiptState({
+                      mode: "check_out",
+                      record: attendance,
+                      session: sessionInfo,
+                      deviceLabel: bioInfo.label,
+                      latencyMs: null,
+                    })
+                  }
+                  className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Đã xong · Xem phiếu
+                </button>
               )
+            )}
+
+            {canAttend && attendance?.checkInAt && !attendance?.checkOutAt && (
+              <button
+                type="button"
+                onClick={() =>
+                  setReceiptState({
+                    mode: "check_in",
+                    record: attendance,
+                    session: sessionInfo,
+                    deviceLabel: bioInfo.label,
+                    latencyMs: null,
+                  })
+                }
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              >
+                <ReceiptText className="h-3.5 w-3.5" /> Phiếu Vào
+              </button>
             )}
 
             {isAdmin && hasDeviceBio && bioSupported && (
@@ -265,12 +321,33 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
             }}
             type={modalConfig.type}
             onClose={() => setModalConfig(null)}
-            onSuccess={() => {
-              if (!modalConfig.adminTestMode) loadState();
+            onSuccess={(resultData) => {
+              if (!modalConfig.adminTestMode) {
+                setReceiptState({
+                  mode: modalConfig.type === "check_out" ? "check_out" : "check_in",
+                  record: resultData || null,
+                  session: sessionInfo,
+                  deviceLabel: "Camera AWS",
+                  latencyMs: null,
+                });
+                loadState();
+              }
             }}
           />
         </Suspense>
       )}
+
+      <AttendanceReceiptModal
+        isOpen={Boolean(receiptState)}
+        mode={receiptState?.mode || "check_in"}
+        record={receiptState?.record || null}
+        session={receiptState?.session || null}
+        teacherName={authUser?.fullName || authUser?.username || ""}
+        deviceLabel={receiptState?.deviceLabel || bioInfo.label}
+        biometricKind={bioInfo.kind}
+        latencyMs={receiptState?.latencyMs ?? null}
+        onClose={() => setReceiptState(null)}
+      />
     </>
   );
 }
