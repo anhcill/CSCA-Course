@@ -409,7 +409,7 @@ export default function SessionDetailPage() {
                 </button>
 
                 {calendarMenuOpen && (
-                  <div className="absolute right-0 top-full z-30 mt-2 w-52 overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                  <div className="absolute left-0 top-full z-30 mt-2 w-52 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl sm:left-auto sm:right-0 dark:border-slate-700 dark:bg-slate-900">
                     <a
                       href={googleCalendarEventUrl({
                         title: session.title,
@@ -466,7 +466,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* 4 Grouped Primary Tabs */}
-      <nav className="flex gap-1.5 overflow-x-auto rounded-2xl border border-white/85 bg-white/80 p-1.5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90" aria-label="Chức năng của buổi học">
+      <nav className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-2xl border border-white/85 bg-white/80 p-1.5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90" aria-label="Chức năng của buổi học">
         {primaryTabs.map((tab) => {
           const Icon = tab.icon;
           const count = tab.id === "study" ? sessionVocabs.length + sessionFormulas.length

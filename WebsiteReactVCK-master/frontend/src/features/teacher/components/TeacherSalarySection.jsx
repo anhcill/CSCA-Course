@@ -90,7 +90,7 @@ export default function TeacherSalarySection({ salaryData, onRefresh, refreshing
         </div>
 
         {/* Cụm đơn giá & tác vụ bên phải */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {hourlyRate > 0 ? (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/90 dark:bg-slate-800 border border-emerald-200 dark:border-emerald-800/60 shadow-2xs">
               <Coins className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />

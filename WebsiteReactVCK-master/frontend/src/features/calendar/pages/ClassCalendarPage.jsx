@@ -44,7 +44,7 @@ export default function ClassCalendarPage() {
   const canManageFixedSchedule = isAdmin;
 
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState("week"); // "week" | "month" | "list"
+  const [viewMode, setViewMode] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? "list" : "week")); // "week" | "month" | "list"
   const [sessions, setSessions] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -178,7 +178,7 @@ export default function ClassCalendarPage() {
     allValue: "all",
     ready: !loading,
     preferredValue: classId || null,
-    shareLastActive: Boolean(isTeacher || isAdmin),
+    shareLastActive: true,
   });
 
   const visibleEvents = useMemo(() => {

@@ -36,7 +36,7 @@ export default function AttendanceStudentTable({
       {/* Search + 1-Tap Filter Pills */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         {students.length > 3 ? (
-          <div className="relative flex-1 max-w-xs">
+          <div className="relative flex-1 sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <input
               type="text"
@@ -72,8 +72,106 @@ export default function AttendanceStudentTable({
         </div>
       </div>
 
-      {/* Table Container */}
-      <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800">
+      {/* Mobile 1-Tap Attendance Cards (< md): Zero horizontal scroll */}
+      <div className="space-y-2.5 md:hidden">
+        {filteredStudents.length === 0 ? (
+          <div className="rounded-2xl border border-slate-100 bg-white/80 py-8 text-center text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
+            Không tìm thấy học viên nào khớp với &quot;{search}&quot;.
+          </div>
+        ) : (
+          filteredStudents.map((student, idx) => {
+            const record = attendanceRecords[student.id] || { status: "present", note: "" };
+            const displayName = student.username || student.name || student.email || "Học viên";
+
+            return (
+              <div
+                key={student.id}
+                className="space-y-2.5 rounded-2xl border border-slate-200/80 bg-white/95 p-3.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900/90"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="w-5 shrink-0 text-center font-mono text-[11px] font-bold text-slate-400 dark:text-slate-500">
+                    {idx + 1}
+                  </span>
+                  <img
+                    src={getAvatarUrl(student)}
+                    onError={handleAvatarError}
+                    alt={displayName}
+                    className="h-9 w-9 shrink-0 rounded-full border-2 border-white object-cover shadow-2xs dark:border-slate-700"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-black text-[#102f63] dark:text-white">
+                      {displayName}
+                    </p>
+                    <p className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                      {student.email}
+                    </p>
+                    {student.attendance_source === "student" && (
+                      <span className="mt-0.5 inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                        <Check className="h-2.5 w-2.5" /> Học viên tự báo có mặt
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Full-width 3-button segmented control */}
+                <div className="grid grid-cols-3 gap-1 rounded-2xl border border-slate-200/80 bg-slate-100/90 p-1 dark:border-slate-800 dark:bg-slate-950/80">
+                  <button
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => onStatusChange(student.id, "present")}
+                    className={`flex items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      record.status === "present"
+                        ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/30"
+                        : "text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Có mặt
+                  </button>
+                  <button
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => onStatusChange(student.id, "absent")}
+                    className={`flex items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      record.status === "absent"
+                        ? "bg-rose-600 text-white shadow-sm shadow-rose-600/30"
+                        : "text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                    Vắng
+                  </button>
+                  <button
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => onStatusChange(student.id, "excused")}
+                    className={`flex items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      record.status === "excused"
+                        ? "bg-amber-600 text-white shadow-sm shadow-amber-600/30"
+                        : "text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    <Clock className="h-3.5 w-3.5" />
+                    Có phép
+                  </button>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Ghi chú nhanh (VD: Vào muộn 10p, có phép...)"
+                  value={record.note || ""}
+                  disabled={readOnly}
+                  onChange={(e) => onNoteChange(student.id, e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-1.5 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:ring-2 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200"
+                />
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop Table Container (>= md) */}
+      <div className="hidden overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800 md:block">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-[#edf6fd]/80 dark:bg-slate-800/80 border-b border-sky-100 dark:border-slate-700/60 text-[11px] font-black uppercase tracking-wider text-[#102f63] dark:text-sky-200">
@@ -100,12 +198,10 @@ export default function AttendanceStudentTable({
                     key={student.id}
                     className="hover:bg-sky-50/40 dark:hover:bg-slate-800/40 transition duration-150"
                   >
-                    {/* STT */}
                     <td className="py-3.5 px-3 text-center text-xs font-mono font-bold text-slate-400 dark:text-slate-500">
                       {idx + 1}
                     </td>
 
-                    {/* Student Info */}
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
                         <img
@@ -130,7 +226,6 @@ export default function AttendanceStudentTable({
                       </div>
                     </td>
 
-                    {/* 3 Status Segmented Button */}
                     <td className="py-3.5 px-4 text-center">
                       <div className="inline-flex bg-slate-100/90 dark:bg-slate-950/80 p-1 rounded-2xl border border-slate-200/80 dark:border-slate-800 gap-1 shadow-2xs">
                         <button
@@ -175,7 +270,6 @@ export default function AttendanceStudentTable({
                       </div>
                     </td>
 
-                    {/* Note input */}
                     <td className="py-3.5 px-4">
                       <input
                         type="text"

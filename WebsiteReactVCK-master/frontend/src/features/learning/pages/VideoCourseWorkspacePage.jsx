@@ -706,10 +706,10 @@ export default function VideoCourseWorkspacePage() {
         </div>
       )}
       {/* 1. TOP HEADER / SHELL */}
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 px-4 py-3 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 sm:px-6">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 px-3 py-2.5 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 sm:px-6 sm:py-3">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
           {/* Left: Back & Course Info */}
-          <div className="flex items-center gap-3 truncate">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <Link
               to="/courses"
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
@@ -720,7 +720,7 @@ export default function VideoCourseWorkspacePage() {
 
             <div className="truncate">
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-bold text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-bold text-amber-600 dark:text-amber-400 border border-amber-500/20">
                   <Sparkles className="h-3 w-3" />
                   Bài giảng Trực tuyến
                 </span>
@@ -799,8 +799,8 @@ export default function VideoCourseWorkspacePage() {
       </header>
 
       {/* 2. MAIN LAYOUT: Left Workspace & Right Curriculum Navigation */}
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        <div className="mb-3 flex justify-end">
+      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
+        <div className="mb-3 hidden justify-end lg:flex">
           <button
             type="button"
             onClick={toggleCurriculum}
@@ -866,7 +866,7 @@ export default function VideoCourseWorkspacePage() {
                 })()}
               </div>
             ) : capabilities.canPlayVideo !== false && (
-              <div className="rounded-3xl overflow-hidden shadow-2xl border border-slate-200/80 dark:border-slate-800 bg-black">
+              <div className="rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-slate-200/80 dark:border-slate-800 bg-black">
                 <BunnyStreamPlayer
                   key={activeUnit?.id}
                   video={activeUnit?.video}
@@ -1044,7 +1044,7 @@ export default function VideoCourseWorkspacePage() {
           </main>
 
           {/* RIGHT 4/12: Curriculum & Lessons Sidebar */}
-          <aside id="course-curriculum-panel" className={`${curriculumExpanded ? "lg:col-span-4" : "hidden"} bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4`}>
+          <aside id="course-curriculum-panel" className={`${curriculumExpanded ? "hidden lg:block lg:col-span-4" : "hidden"} bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4`}>
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
@@ -1277,7 +1277,7 @@ export default function VideoCourseWorkspacePage() {
           <section className="mt-6 space-y-5">
             {/* 3. TABS BAR: KÉO DÀI HẾT CHIỀU NGANG */}
             <div className="rounded-2xl bg-white/90 dark:bg-slate-900/90 p-2 sm:p-2.5 border border-slate-200/80 dark:border-slate-800 shadow-sm backdrop-blur-sm">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 sm:gap-2">
+              <div className="grid grid-cols-3 lg:grid-cols-6 gap-1.5 sm:gap-2">
                 {[
                   { id: "files", label: "Tài liệu", fullLabel: "Tài liệu đính kèm", icon: FolderOpen, badge: (activeUnit?.files?.length || 0) || null },
                   { id: "exercises", label: "Bài tập", fullLabel: "Bài tập & Quiz", icon: FileCheck2, badge: (activeUnit?.quizzes?.length || 0) + (activeUnit?.assignments?.length || 0) || null },
@@ -1290,7 +1290,7 @@ export default function VideoCourseWorkspacePage() {
                     key={id}
                     type="button"
                     onClick={() => setActiveTab(id)}
-                    className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition duration-150 ${
+                    className={`flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-xs font-bold transition duration-150 ${
                       activeTab === id
                         ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/15 ring-2 ring-indigo-500/20 dark:bg-indigo-400 dark:text-slate-950 dark:ring-indigo-300/20"
                         : "bg-slate-100/90 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -1951,7 +1951,7 @@ export default function VideoCourseWorkspacePage() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex flex-wrap items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                             <button
                               type="button"
                               onClick={() => setPreviewFile(file)}
@@ -2144,7 +2144,7 @@ export default function VideoCourseWorkspacePage() {
       {/* TRUSTED DEVICES DIALOG */}
       {trustedModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
@@ -2238,7 +2238,7 @@ export default function VideoCourseWorkspacePage() {
             className="fixed inset-0"
             onClick={() => setMobileCurriculumOpen(false)}
           />
-          <div className="relative z-10 max-h-[85vh] flex flex-col rounded-t-3xl bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-2xl p-4 sm:p-5 space-y-3.5">
+          <div className="relative z-10 max-h-[85dvh] flex flex-col rounded-t-3xl bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-2xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-5 space-y-3.5">
             {/* Drawer Handle */}
             <div className="mx-auto h-1 w-12 rounded-full bg-slate-300 dark:bg-slate-700" />
 
@@ -2283,7 +2283,7 @@ export default function VideoCourseWorkspacePage() {
             </div>
 
             {/* Drawer Units List */}
-            <div className="space-y-2 overflow-y-auto max-h-[50vh] pr-1 pb-4">
+            <div className="space-y-2 overflow-y-auto max-h-[55dvh] pr-1 pb-4">
               {filteredUnits.map((unit, index) => {
                 const isCurrent = String(unit.id) === String(activeUnitId);
                 const isDone = Boolean(unit.isCompleted);

@@ -686,7 +686,7 @@ export default function StudentSettingsPage() {
 
           {/* CARD 3: NGÔN NGỮ */}
           <div className="rounded-3xl border border-white/80 bg-white/95 p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-sm dark:bg-blue-950/60 dark:text-blue-400">
                   <Globe className="h-5 w-5" />

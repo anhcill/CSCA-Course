@@ -710,7 +710,7 @@ export default function TeacherGradingPage() {
             </div>
 
             {/* Danh sách thẻ bài nộp có thanh cuộn mượt mà */}
-            <div className="mt-3.5 max-h-[calc(100vh-360px)] space-y-2 overflow-y-auto pr-1">
+            <div className="mt-3.5 max-h-[38dvh] space-y-2 overflow-y-auto pr-1 lg:max-h-[calc(100vh-360px)]">
               {loading ? (
                 <Loading loading={true} text="Đang tải danh sách bài nộp..." fullScreen={false} className="py-10" />
               ) : filteredSubs.length === 0 ? (

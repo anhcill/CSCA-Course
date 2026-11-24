@@ -455,37 +455,37 @@ export default function StudentDashboardPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-2.5 sm:gap-3 lg:w-[460px]">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:w-[460px]">
             <Link
               to={authUser?.hasActiveLiveEnrollment === true ? "/lms/my-learning" : "/courses"}
-              className="group rounded-2xl border border-white/85 bg-white/90 px-3.5 py-2.5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-sky-300 dark:border-slate-800 dark:bg-slate-900/90"
+              className="group rounded-2xl border border-white/85 bg-white/90 px-2.5 py-2 sm:px-3.5 sm:py-2.5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-sky-300 dark:border-slate-800 dark:bg-slate-900/90"
             >
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Lớp theo học</span>
+              <span className="block truncate text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Lớp học</span>
               <span className="mt-1 flex items-baseline justify-between">
-                <strong className="font-mono text-xl sm:text-2xl font-black text-[#102f63] dark:text-white">{classCards.length}</strong>
-                <BookOpen className="h-4 w-4 text-sky-500 transition group-hover:scale-110" />
+                <strong className="font-mono text-lg sm:text-2xl font-black text-[#102f63] dark:text-white">{classCards.length}</strong>
+                <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-sky-500 transition group-hover:scale-110" />
               </span>
             </Link>
 
             <Link
               to="/lms/calendar"
-              className="group rounded-2xl border border-white/85 bg-white/90 px-3.5 py-2.5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-rose-300 dark:border-slate-800 dark:bg-slate-900/90"
+              className="group rounded-2xl border border-white/85 bg-white/90 px-2.5 py-2 sm:px-3.5 sm:py-2.5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-rose-300 dark:border-slate-800 dark:bg-slate-900/90"
             >
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Buổi hôm nay</span>
+              <span className="block truncate text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Hôm nay</span>
               <span className="mt-1 flex items-baseline justify-between">
-                <strong className="font-mono text-xl sm:text-2xl font-black text-[#102f63] dark:text-white">{todaySessionsCount}</strong>
-                <CalendarDays className="h-4 w-4 text-rose-500 transition group-hover:scale-110" />
+                <strong className="font-mono text-lg sm:text-2xl font-black text-[#102f63] dark:text-white">{todaySessionsCount}</strong>
+                <CalendarDays className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-rose-500 transition group-hover:scale-110" />
               </span>
             </Link>
 
             <Link
               to="/lms/assignments"
-              className="group rounded-2xl border border-white/85 bg-white/90 px-3.5 py-2.5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-amber-300 dark:border-slate-800 dark:bg-slate-900/90"
+              className="group rounded-2xl border border-white/85 bg-white/90 px-2.5 py-2 sm:px-3.5 sm:py-2.5 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-amber-300 dark:border-slate-800 dark:bg-slate-900/90"
             >
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Bài cần nộp</span>
+              <span className="block truncate text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Cần nộp</span>
               <span className="mt-1 flex items-baseline justify-between">
-                <strong className="font-mono text-xl sm:text-2xl font-black text-[#102f63] dark:text-white">{actionableTasks.length}</strong>
-                <FileCheck2 className="h-4 w-4 text-amber-500 transition group-hover:scale-110" />
+                <strong className="font-mono text-lg sm:text-2xl font-black text-[#102f63] dark:text-white">{actionableTasks.length}</strong>
+                <FileCheck2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500 transition group-hover:scale-110" />
               </span>
             </Link>
           </div>
