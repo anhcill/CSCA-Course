@@ -1,44 +1,60 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="512" height="512">
   <defs>
-    <!-- Background red gradient (red-600 #dc2626 to red-800 #991b1b) -->
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#dc2626" />
-      <stop offset="100%" stop-color="#991b1b" />
-    </linearGradient>
-
-    <!-- Top-right amber accent glow matching Logo.jsx (-right-3 -top-3 h-7 w-7 bg-amber-300/50 blur-sm) -->
-    <radialGradient id="amberGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#fde68a" stop-opacity="0.8" />
-      <stop offset="60%" stop-color="#fcd34d" stop-opacity="0.6" />
-      <stop offset="85%" stop-color="#fbbf24" stop-opacity="0.25" />
-      <stop offset="100%" stop-color="#fbbf24" stop-opacity="0" />
-    </radialGradient>
-
-    <!-- Squircle clip (rounded-2xl) -->
-    <clipPath id="squircleClip">
-      <rect x="0" y="0" width="512" height="512" rx="112" ry="112" />
+    <clipPath id="sqClip">
+      <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" />
     </clipPath>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e11d48" />
+      <stop offset="52%" stop-color="#b91c1c" />
+      <stop offset="100%" stop-color="#7f1d1d" />
+    </linearGradient>
+    <radialGradient id="ambientGlow1" cx="84%" cy="14%" r="60%">
+      <stop offset="0%" stop-color="#fde68a" stop-opacity="0.58" />
+      <stop offset="35%" stop-color="#f59e0b" stop-opacity="0.26" />
+      <stop offset="75%" stop-color="#dc2626" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="boardTopGrad" x1="20%" y1="10%" x2="82%" y2="88%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="52%" stop-color="#eef2ff" />
+      <stop offset="100%" stop-color="#dbe4f3" />
+    </linearGradient>
+    <linearGradient id="boardBevelGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#94a3b8" />
+      <stop offset="50%" stop-color="#cbd5e1" />
+      <stop offset="100%" stop-color="#94a3b8" />
+    </linearGradient>
+    <linearGradient id="domeGrad" x1="0%" y1="15%" x2="100%" y2="85%">
+      <stop offset="0%" stop-color="#94a3b8" />
+      <stop offset="28%" stop-color="#f8fafc" />
+      <stop offset="62%" stop-color="#e2e8f0" />
+      <stop offset="100%" stop-color="#94a3b8" />
+    </linearGradient>
+    <linearGradient id="domeTopShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" stop-opacity="0.24" />
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="45%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
   </defs>
-
-  <!-- Squircle container -->
-  <g clip-path="url(#squircleClip)">
-    <rect width="512" height="512" fill="url(#bgGrad)" />
-    <!-- Amber glow disc in top right: center ~(470, 42), radius 190 -->
-    <circle cx="470" cy="42" r="190" fill="url(#amberGlow)" />
-  </g>
-
-  <!-- Lucide GraduationCap icon (stroke-based, centered, pure white) -->
-  <g transform="translate(128, 128) scale(10.6667)"
-     fill="none"
-     stroke="#ffffff"
-     stroke-width="2.2"
-     stroke-linecap="round"
-     stroke-linejoin="round">
-    <!-- Mortarboard Diamond Top -->
-    <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" />
-    <!-- Tassel string hanging on right -->
-    <path d="M22 10v6" stroke-width="2.3" />
-    <!-- Cap base / skull arch -->
-    <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" />
+  <g clip-path="url(#sqClip)">
+    <rect width="1024" height="1024" fill="url(#bgGrad)" />
+    <rect width="1024" height="1024" fill="url(#ambientGlow1)" />
+    <g transform="translate(778, 224)">
+      <path d="M 0 -54 C 5 -14 14 -5 54 0 C 14 5 5 14 0 54 C -5 14 -14 5 -54 0 C -14 -5 -5 -14 0 -54 Z" fill="url(#goldGrad)" />
+      <circle cx="0" cy="0" r="10" fill="#ffffff" opacity="0.95" />
+    </g>
+    <g transform="translate(0, 12)">
+      <path d="M 314 486 L 314 634 C 314 708, 404 756, 512 756 C 620 756, 710 708, 710 634 L 710 486 Z" fill="url(#domeGrad)" />
+      <path d="M 314 486 L 512 586 L 710 486 L 710 562 L 512 652 L 314 562 Z" fill="url(#domeTopShadow)" />
+      <path d="M 192 430 C 182 436, 182 454, 198 463 L 484 598 C 502 606, 522 606, 540 598 L 826 463 C 842 454, 842 436, 832 430 L 832 446 C 832 456, 824 464, 814 469 L 540 608 C 522 617, 502 617, 484 608 L 210 469 C 200 464, 192 456, 192 446 Z" fill="url(#boardBevelGrad)" />
+      <path d="M 484 268 C 502 259, 522 259, 540 268 L 818 402 C 844 415, 844 449, 818 462 L 540 596 C 522 605, 502 605, 484 596 L 206 462 C 180 449, 180 415, 206 402 Z" fill="url(#boardTopGrad)" />
+      <path d="M 516 426 C 596 424, 694 446, 756 490 C 778 506, 788 532, 788 566 L 788 648" fill="none" stroke="url(#goldGrad)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+      <ellipse cx="512" cy="426" rx="26" ry="15" fill="url(#goldGrad)" />
+      <rect x="768" y="636" width="40" height="22" rx="11" fill="url(#goldGrad)" />
+      <path d="M 772 654 L 804 654 L 818 726 C 819 736, 811 744, 800 744 L 776 744 C 765 744, 757 736, 758 726 Z" fill="url(#goldGrad)" />
+    </g>
   </g>
 </svg>

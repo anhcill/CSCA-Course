@@ -43,7 +43,7 @@ export default function ClassCalendarPage() {
   const canManageFixedSchedule = isAdmin;
 
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? "list" : "week")); // "week" | "month" | "list"
+  const [viewMode, setViewMode] = useState("week"); // "week" (Google Calendar 7-day strip on mobile / 7-col grid on desktop) | "month" | "list"
   const [sessions, setSessions] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -352,6 +352,7 @@ export default function ClassCalendarPage() {
             {viewMode === "week" && (
               <ScheduleWeeklyTimetable
                 currentDate={currentDate}
+                onDateChange={setCurrentDate}
                 events={visibleEvents}
                 onSelectEvent={setSelectedEvent}
                 onJoinSession={handleJoinSession}
@@ -386,11 +387,13 @@ export default function ClassCalendarPage() {
 
           {/* Right Column */}
           <div className="space-y-4 min-w-0">
-            <ScheduleMiniCalendar
-              currentDate={currentDate}
-              onDateChange={setCurrentDate}
-              events={visibleEvents}
-            />
+            <div className="hidden lg:block">
+              <ScheduleMiniCalendar
+                currentDate={currentDate}
+                onDateChange={setCurrentDate}
+                events={visibleEvents}
+              />
+            </div>
 
             <ScheduleUpcomingEvents events={visibleEvents} onSelectEvent={setSelectedEvent} isTeacher={isTeacher} />
 
