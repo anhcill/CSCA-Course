@@ -55,6 +55,8 @@ export default function CourseWorkspaceOverviewPage() {
         otherSessions={activeUpcomingSessions.slice(1, 3)}
         basePath={basePath}
         recordingMode={recordingMode}
+        canJoinLive={learningCapabilities.canJoinLive}
+        canCheckIn={learningCapabilities.canCheckIn}
       />
 
       {recordingMode && <ClassRecordingsCard classId={classId} recordingMode />}

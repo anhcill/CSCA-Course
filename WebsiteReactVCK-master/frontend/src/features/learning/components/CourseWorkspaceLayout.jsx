@@ -126,12 +126,18 @@ export default function CourseWorkspaceLayout() {
               <ArrowLeft className="h-3.5 w-3.5" /> Khóa học của tôi
             </Link>
             <span className="text-slate-300 dark:text-slate-600">/</span>
-            <Link
-              to={`/lms/courses/${courseId}/classes`}
-              className="max-w-[200px] truncate text-[#244866] dark:text-slate-300 hover:text-blue-700 dark:hover:text-white transition sm:max-w-xs"
-            >
-              {course.title || "Khóa học"}
-            </Link>
+            {(workspace.classes || []).length > 1 ? (
+              <Link
+                to={`/lms/courses/${courseId}/classes`}
+                className="max-w-[200px] truncate text-[#244866] dark:text-slate-300 hover:text-blue-700 dark:hover:text-white transition sm:max-w-xs"
+              >
+                {course.title || "Khóa học"}
+              </Link>
+            ) : (
+              <span className="max-w-[200px] truncate text-[#244866] dark:text-slate-300 sm:max-w-xs">
+                {course.title || "Khóa học"}
+              </span>
+            )}
             <span className="text-slate-300 dark:text-slate-600">/</span>
             <span className="max-w-[240px] truncate font-bold text-[#102f63] dark:text-white sm:max-w-sm">
               {classDisplayName}

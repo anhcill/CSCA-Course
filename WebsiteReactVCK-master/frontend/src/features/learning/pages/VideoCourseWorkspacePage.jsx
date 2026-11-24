@@ -672,7 +672,7 @@ export default function VideoCourseWorkspacePage() {
             {(isAccessError || isDeviceLimitError) && (
               <Link
                 to="/lms/dashboard"
-                className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 Về LMS học viên
               </Link>
@@ -1975,7 +1975,7 @@ export default function VideoCourseWorkspacePage() {
                               <button
                                 type="button"
                                 onClick={() => openFileUrl(file.downloadUrl, file.fileName)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm border border-slate-200 dark:border-slate-600 hover:bg-slate-50 transition"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 transition"
                               >
                                 <Download className="h-3.5 w-3.5" />
                                 <span>Tải về</span>

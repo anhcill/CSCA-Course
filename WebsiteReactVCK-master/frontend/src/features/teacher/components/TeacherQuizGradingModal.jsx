@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import {
   FiX,
@@ -27,6 +28,37 @@ import {
 import Loading from "../../../components/Loading.jsx";
 import { attachmentsForQuestion, normalizeEssayResponse } from "../../assignments/utils/quizQuestionPresentation";
 import RichMathText from "../../../components/common/RichMathText.jsx";
+
+const QUESTION_QUICK_CHIPS = [
+  { label: "✓ Chính xác", text: "Lời giải rõ ràng, chính xác hoàn toàn." },
+  { label: "⚡ Thiếu bước", text: "Đúng hướng nhưng còn thiếu bước biến đổi / điều kiện xác định." },
+  { label: "📐 Sai tính toán", text: "Phương pháp đúng nhưng nhầm lẫn ở bước tính toán cuối." },
+  { label: "✍️ Trình bày", text: "Cần trình bày mạch lạc và kết luận đầy đủ hơn." },
+  { label: "⛔ Chưa làm", text: "Chưa nộp bài giải cho câu hỏi này." },
+];
+
+const OVERALL_QUICK_CHIPS = [
+  {
+    label: "🌟 Xuất sắc",
+    text: "Phần tự luận trình bày rất rõ ràng, tư duy chặt chẽ. Tiếp tục phát huy!",
+    cls: "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25",
+  },
+  {
+    label: "👍 Nắm chắc kiến thức",
+    text: "Em nắm chắc kiến thức cơ bản, chỉ cần rà soát kỹ hơn các bước biến đổi cuối.",
+    cls: "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25",
+  },
+  {
+    label: "📝 Cần ôn tự luận",
+    text: "Cần luyện tập thêm dạng bài tự luận và xem kỹ phần lời giải mẫu của giáo viên.",
+    cls: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25",
+  },
+  {
+    label: "⚠️ Chú ý thời gian",
+    text: "Chú ý phân bổ thời gian hợp lý hơn để hoàn thành đầy đủ tất cả các câu tự luận.",
+    cls: "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-300 dark:hover:bg-rose-500/25",
+  },
+];
 
 export default function TeacherQuizGradingModal({
   isOpen,
@@ -335,7 +367,25 @@ export default function TeacherQuizGradingModal({
     toast.success("Đã gỡ tệp đính kèm bài chữa");
   };
 
-  const saveGrade = async ({ moveNext = false } = {}) => {
+  const handleFillAllEssayScores = useCallback((mode) => {
+    if (!essayGroups.length) return;
+    setGradesByQuestion((prev) => {
+      const next = { ...prev };
+      let total = 0;
+      for (const group of essayGroups) {
+        const qId = String(group.id);
+        const pts = mode === "full" ? Number(group.points) || 0 : 0;
+        next[qId] = { ...(prev[qId] || {}), score: pts };
+        total += pts;
+      }
+      setEssayScore(Math.round(total * 100) / 100);
+      return next;
+    });
+    toast.success(mode === "full" ? "Đã điền điểm tối đa cho tất cả câu tự luận" : "Đã đặt điểm các câu tự luận về 0");
+  }, [essayGroups]);
+
+  const saveGrade = useCallback(async ({ moveNext = false } = {}) => {
+    if (saving || !student?.attemptId) return;
     const numericScore = Number(essayScore);
     if (isNaN(numericScore) || numericScore < 0) {
       toast.error("Điểm tự luận phải là số lớn hơn hoặc bằng 0!");
@@ -372,7 +422,29 @@ export default function TeacherQuizGradingModal({
     } finally {
       setSaving(false);
     }
-  };
+  }, [saving, student, essayScore, effectiveEssayMaxScore, quizId, essayFeedback, gradesByQuestion, onGraded, onNext, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        saveGrade({ moveNext: Boolean(onNext) });
+      } else if (event.altKey && event.key === "ArrowLeft" && onPrevious && !saving) {
+        event.preventDefault();
+        onPrevious();
+      } else if (event.altKey && event.key === "ArrowRight" && onNext && !saving) {
+        event.preventDefault();
+        onNext();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        if (lightboxImg) setLightboxImg(null);
+        else onClose?.();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, saveGrade, onNext, onPrevious, saving, lightboxImg, onClose]);
 
   const handleSave = (event) => {
     event.preventDefault();
@@ -381,8 +453,8 @@ export default function TeacherQuizGradingModal({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/65 backdrop-blur-md animate-fadeIn">
+  const modalContent = (
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[120] flex items-center justify-center p-2 sm:p-4 bg-slate-950/65 backdrop-blur-md animate-fadeIn">
       <div className="relative flex flex-col w-full max-w-6xl h-[92vh] max-h-[900px] rounded-3xl border border-white/80 bg-white/95 shadow-[0_24px_70px_rgba(32,78,120,0.25)] backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-900/95 overflow-hidden">
         {/* HEADER */}
         <header className="flex shrink-0 items-center justify-between border-b border-sky-100/70 bg-gradient-to-r from-sky-50/70 via-white to-white px-6 py-4 dark:border-slate-800 dark:bg-none dark:bg-slate-900">
@@ -515,16 +587,36 @@ export default function TeacherQuizGradingModal({
             <div className="grid grid-cols-1 lg:grid-cols-12 h-full divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-slate-800 overflow-hidden">
               {/* Left Column: Questions, Student Photos & Per-Question Grading (7 cols) */}
               <div className="lg:col-span-7 h-full overflow-y-auto p-4 sm:p-5 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
                     <span>Bài giải tự luận của học viên</span>
                     <span className="rounded-full bg-violet-100 dark:bg-violet-950/60 px-2 py-0.5 text-xs font-bold text-violet-700 dark:text-violet-300">
                       {attachments.length} ảnh bài giải
                     </span>
                   </h3>
-                  <span className="text-[11px] text-slate-400">
-                    Bấm vào ảnh để phóng to & xoay
-                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {essayGroups.length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleFillAllEssayScores("full")}
+                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25"
+                        >
+                          ✓ Tối đa tất cả ({effectiveEssayMaxScore}đ)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleFillAllEssayScores("zero")}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                        >
+                          Đặt 0đ
+                        </button>
+                      </>
+                    )}
+                    <span className="text-[11px] text-slate-400">
+                      Bấm ảnh để phóng to & xoay
+                    </span>
+                  </div>
                 </div>
 
                 {/* Render questions list */}
@@ -702,6 +794,23 @@ export default function TeacherQuizGradingModal({
                                 placeholder={`Nhận xét riêng cho Câu ${group.displayNumber} (ví dụ: Lời giải tốt, chú ý điều kiện tập xác định $\\Delta > 0$, $x \\in (0, 2)$)...`}
                                 className="w-full resize-none rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-2.5 text-xs text-slate-900 dark:text-white outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-medium transition"
                               />
+                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                {QUESTION_QUICK_CHIPS.map((chip) => (
+                                  <button
+                                    key={chip.label}
+                                    type="button"
+                                    onClick={() =>
+                                      handleQuestionFeedbackChange(
+                                        qId,
+                                        currentQFeedback.trim() ? `${currentQFeedback.trim()} ${chip.text}` : chip.text
+                                      )
+                                    }
+                                    className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 transition hover:border-violet-400 hover:bg-violet-50 hover:text-violet-700 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:border-violet-500/50 dark:hover:bg-violet-500/15 dark:hover:text-violet-300"
+                                  >
+                                    {chip.label}
+                                  </button>
+                                ))}
+                              </div>
 
                               {/* Live KaTeX Preview */}
                               {isPreviewingLatex && (
@@ -952,6 +1061,22 @@ export default function TeacherQuizGradingModal({
                       placeholder="Ghi nhận xét tổng quát bài làm, tiến độ, lời khen hoặc lưu ý chung cho học viên (hỗ trợ công thức LaTeX $...$)..."
                       className="w-full resize-none rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 text-xs outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:text-white transition"
                     />
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {OVERALL_QUICK_CHIPS.map((chip) => (
+                        <button
+                          key={chip.label}
+                          type="button"
+                          onClick={() =>
+                            setEssayFeedback((prev) =>
+                              prev.trim() ? `${prev.trim()}\n${chip.text}` : chip.text
+                            )
+                          }
+                          className={`rounded-lg border px-2 py-0.5 text-[10px] font-bold transition ${chip.cls}`}
+                        >
+                          {chip.label}
+                        </button>
+                      ))}
+                    </div>
 
                     {showOverallLatexPreview && (
                       <div className="rounded-xl border border-violet-200 dark:border-violet-900/60 bg-violet-50/50 dark:bg-violet-950/20 p-2.5 text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
@@ -996,11 +1121,15 @@ export default function TeacherQuizGradingModal({
                       type="button"
                       disabled={saving || !onNext}
                       onClick={() => saveGrade({ moveNext: true })}
-                      className="flex items-center justify-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-black text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-300"
+                      title="Phím tắt: Ctrl + Enter"
+                      className="flex items-center justify-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-black text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25"
                     >
-                      Lưu & chấm bài tiếp →
+                      <span>Lưu & chấm bài tiếp →</span>
                     </button>
                   </div>
+                  <p className="text-[10px] font-semibold text-slate-400 text-center">
+                    Phím tắt nhanh: <span className="font-mono text-slate-500 dark:text-slate-300">Ctrl+Enter</span> lưu & chuyển bài · <span className="font-mono text-slate-500 dark:text-slate-300">Alt+←/→</span> chuyển học viên
+                  </p>
                 </form>
 
                 <p className="text-[11px] text-slate-400 text-center">
@@ -1119,7 +1248,11 @@ export default function TeacherQuizGradingModal({
                               <tr
                                 key={item.questionId || idx}
                                 className={`transition hover:bg-slate-50 dark:hover:bg-slate-800/40 ${
-                                  isCorrect ? "bg-emerald-50/20" : isUnanswered ? "" : "bg-rose-50/20"
+                                  isCorrect
+                                    ? "bg-emerald-50/20 dark:bg-emerald-500/5"
+                                    : isUnanswered
+                                    ? ""
+                                    : "bg-rose-50/20 dark:bg-rose-500/5"
                                 }`}
                               >
                                 <td className="py-2 px-3 font-black text-slate-800 dark:text-slate-200">
@@ -1363,4 +1496,6 @@ export default function TeacherQuizGradingModal({
       )}
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modalContent, document.body) : modalContent;
 }

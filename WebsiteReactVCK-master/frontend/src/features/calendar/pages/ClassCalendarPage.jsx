@@ -7,6 +7,7 @@ import { isTeacherRole } from "../../../constants/roles";
 import { fetchMyLiveSchedule, fetchAssignments, getLiveSessionAccess } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { ErrorState } from "../../../components/common/StateView";
+import usePersistentClassSelectionBase from "../../../hooks/usePersistentClassSelection";
 
 import ScheduleControlBar from "../components/ScheduleControlBar";
 import ScheduleWeeklyTimetable from "../components/ScheduleWeeklyTimetable";
@@ -156,6 +157,35 @@ export default function ClassCalendarPage() {
     return [...sessionEvents, ...assignmentEvents];
   }, [sessions, assignments, outletContext]);
 
+  const calendarClasses = useMemo(() => {
+    const map = new Map();
+    for (const evt of allEvents) {
+      const id = evt.live_class_id ?? evt.class_id;
+      const title = evt.class_title ?? evt.live_class_title;
+      if (id && !map.has(String(id))) {
+        map.set(String(id), title || `Lớp #${id}`);
+      }
+    }
+    return [...map.entries()].map(([id, title]) => ({ id, title }));
+  }, [allEvents]);
+
+  const calendarClassIds = useMemo(() => calendarClasses.map((c) => c.id), [calendarClasses]);
+
+  const [selectedCalendarClassId, setSelectedCalendarClassId] = usePersistentClassSelectionBase({
+    storageNamespace: isTeacher || isAdmin ? "teacher" : "student",
+    scope: "calendar",
+    availableClassIds: calendarClassIds,
+    allValue: "all",
+    ready: !loading,
+    preferredValue: classId || null,
+    shareLastActive: Boolean(isTeacher || isAdmin),
+  });
+
+  const visibleEvents = useMemo(() => {
+    if (classId || selectedCalendarClassId === "all") return allEvents;
+    return allEvents.filter((evt) => String(evt.live_class_id ?? evt.class_id ?? "") === String(selectedCalendarClassId));
+  }, [allEvents, classId, selectedCalendarClassId]);
+
   const handleJoinSession = async (session) => {
     const meetingWindowState = getMeetingWindowState(session);
     if (!isAdmin && meetingWindowState.isClosed) return toast("Buổi học này đã kết thúc.");
@@ -221,17 +251,40 @@ export default function ClassCalendarPage() {
   return (
     <div className="min-h-full p-3 sm:p-4 xl:px-4 xl:py-3 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto max-w-[1440px]">
-        {/* Nút thêm lịch dành riêng cho Giáo viên / Admin */}
-        {(canManageFixedSchedule || isTeacher) && (
-          <div className="mb-3 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
-            >
-              <Plus className="h-4 w-4" />
-              Thêm buổi học
-            </button>
+        {/* Thanh lọc lớp & Nút thêm lịch */}
+        {((!classId && calendarClasses.length > 1) || canManageFixedSchedule || isTeacher) && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            {!classId && calendarClasses.length > 1 ? (
+              <div className="flex items-center gap-2">
+                <label htmlFor="calendar-class-filter" className="text-xs font-bold text-[#102f63] dark:text-slate-300">
+                  Lớp học:
+                </label>
+                <select
+                  id="calendar-class-filter"
+                  value={selectedCalendarClassId}
+                  onChange={(e) => setSelectedCalendarClassId(e.target.value)}
+                  className="rounded-xl border border-white/85 bg-white/90 px-3 py-1.5 text-xs font-bold text-[#102f63] shadow-sm outline-none backdrop-blur focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <option value="all">Tất cả lớp ({calendarClasses.length})</option>
+                  {calendarClasses.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : <div />}
+
+            {(canManageFixedSchedule || isTeacher) && (
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4" />
+                Thêm buổi học
+              </button>
+            )}
           </div>
         )}
 
@@ -267,7 +320,7 @@ export default function ClassCalendarPage() {
             {viewMode === "week" && (
               <ScheduleWeeklyTimetable
                 currentDate={currentDate}
-                events={allEvents}
+                events={visibleEvents}
                 onSelectEvent={setSelectedEvent}
                 onJoinSession={handleJoinSession}
               />
@@ -277,7 +330,7 @@ export default function ClassCalendarPage() {
               <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]">
                 <CalendarMonthView
                   currentDate={currentDate}
-                  events={allEvents}
+                  events={visibleEvents}
                   onSelectEvent={setSelectedEvent}
                   onSelectDate={(date) => {
                     setCurrentDate(date);
@@ -290,7 +343,7 @@ export default function ClassCalendarPage() {
             {viewMode === "list" && (
               <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]">
                 <CalendarListView
-                  events={allEvents}
+                  events={visibleEvents}
                   onSelectEvent={setSelectedEvent}
                   onJoinSession={handleJoinSession}
                   isTeacher={isTeacher}
@@ -305,16 +358,16 @@ export default function ClassCalendarPage() {
             <ScheduleMiniCalendar
               currentDate={currentDate}
               onDateChange={setCurrentDate}
-              events={allEvents}
+              events={visibleEvents}
             />
 
             {/* Widget 2: Sự kiện sắp tới */}
-            <ScheduleUpcomingEvents events={allEvents} onSelectEvent={setSelectedEvent} isTeacher={isTeacher} />
+            <ScheduleUpcomingEvents events={visibleEvents} onSelectEvent={setSelectedEvent} isTeacher={isTeacher} />
 
             {/* Widget 3: Lịch học hôm nay */}
             <ScheduleTodayList
               currentDate={currentDate}
-              events={allEvents}
+              events={visibleEvents}
               onJoinSession={handleJoinSession}
               isTeacher={isTeacher}
               isAdmin={isAdmin}

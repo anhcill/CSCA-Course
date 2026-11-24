@@ -1,12 +1,24 @@
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import {
   ArrowRight,
   CalendarDays,
+  CheckCircle2,
   Clock,
   GraduationCap,
+  Play,
   Sparkles,
+  UserCheck,
   Video,
 } from "lucide-react";
+import { checkInToSession, fetchMySessionCheckIn, getLiveSessionAccess } from "../../../api/lmsClient";
+import {
+  closeReservedMeeting,
+  getMeetingWindowState,
+  openReservedMeeting,
+  reserveMeetingWindow,
+} from "../../../liveClass/utils/meetingLaunch";
 import { isSessionRescheduled } from "../../../calendar/sessionScheduleChange.js";
 
 const formatDateTime = (value) => {
@@ -36,9 +48,73 @@ export default function ClassWorkspaceHero({
   otherSessions = [],
   basePath,
   recordingMode = false,
+  canJoinLive = true,
+  canCheckIn = true,
 }) {
+  const navigate = useNavigate();
   const classDisplayName = formatClassTitle(classTitle);
   const clampedPercent = Math.max(0, Math.min(100, Number(percent || 0)));
+  const [checkIn, setCheckIn] = useState(null);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [joining, setJoining] = useState(false);
+
+  const nextSessionId = nextSession?.id;
+  const windowState = nextSession ? getMeetingWindowState(nextSession) : null;
+  const isJoinable = Boolean(!recordingMode && canJoinLive && nextSession && (nextSession.status === "live" || windowState?.isOpen));
+
+  useEffect(() => {
+    if (recordingMode || !canCheckIn || !isTodaySession || !nextSessionId) {
+      setCheckIn(null);
+      return undefined;
+    }
+    let active = true;
+    fetchMySessionCheckIn(nextSessionId)
+      .then((res) => { if (active) setCheckIn(res?.data || null); })
+      .catch(() => { if (active) setCheckIn(null); });
+    return () => { active = false; };
+  }, [recordingMode, canCheckIn, isTodaySession, nextSessionId]);
+
+  const handleJoinNow = async () => {
+    if (!nextSession || joining) return;
+    setJoining(true);
+    const meetingWindow = reserveMeetingWindow();
+    try {
+      const result = await getLiveSessionAccess(nextSession.id);
+      if (!result?.success || !result?.data?.meetUrl) {
+        throw new Error(result?.message || "Phòng học chưa sẵn sàng");
+      }
+      openReservedMeeting(meetingWindow, result.data.meetUrl, {
+        sessionId: nextSession.id,
+        provider: result.data.provider,
+        navigate,
+      });
+      toast.success(`Đang mở phòng học ${result.data.provider || "trực tuyến"}...`);
+    } catch (err) {
+      closeReservedMeeting(meetingWindow);
+      toast.error(err?.message || "Không thể truy cập phòng học.");
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const handleSelfCheckIn = async () => {
+    if (!nextSessionId || checkingIn) return;
+    setCheckingIn(true);
+    try {
+      const res = await checkInToSession(nextSessionId);
+      setCheckIn((prev) => ({ ...(prev || {}), ...(res?.data || {}), status: res?.data?.status || "present", canCheckIn: false }));
+      window.dispatchEvent(new CustomEvent("csca:student-checkin-updated", { detail: { sessionId: nextSessionId } }));
+      toast.success(res?.message || "Đã báo có mặt thành công!");
+    } catch (err) {
+      toast.error(err?.message || "Chưa thể báo có mặt lúc này.");
+    } finally {
+      setCheckingIn(false);
+    }
+  };
+
+  const checkInStatus = String(checkIn?.status || checkIn?.attendance_status || "").toLowerCase();
+  const isCheckedIn = checkInStatus === "present" || checkInStatus === "late";
+  const showCheckInButton = Boolean(isTodaySession && checkIn?.canCheckIn && !checkInStatus);
 
   return (
     <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6 transition dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
@@ -152,13 +228,44 @@ export default function ClassWorkspaceHero({
             </div>
           )}
 
-          <div className="flex items-center justify-between gap-3 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {isJoinable && (
+              <button
+                type="button"
+                disabled={joining}
+                onClick={handleJoinNow}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition active:scale-95 disabled:opacity-60"
+              >
+                <Play className="h-3.5 w-3.5 fill-current" />
+                {joining ? "Đang mở phòng..." : "Vào phòng học ngay"}
+              </button>
+            )}
+            {showCheckInButton && (
+              <button
+                type="button"
+                disabled={checkingIn}
+                onClick={handleSelfCheckIn}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-3.5 py-2 text-xs font-bold text-emerald-700 shadow-2xs transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-500/40 dark:bg-slate-800 dark:text-emerald-300 dark:hover:bg-emerald-500/15"
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                {checkingIn ? "Đang ghi..." : "Tôi có mặt"}
+              </button>
+            )}
+            {isCheckedIn && (
+              <span className="inline-flex items-center gap-1 rounded-xl bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Đã điểm danh
+              </span>
+            )}
             <Link
               to={nextSession ? `${basePath}/sessions/${nextSession.id}` : `${basePath}/calendar`}
-              className="inline-flex items-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-700 px-4 py-2 text-xs font-bold text-white shadow-md shadow-sky-600/20 transition active:scale-95"
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition active:scale-95 ${
+                isJoinable
+                  ? "border border-sky-200 bg-white/90 text-[#102f63] hover:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  : "bg-sky-600 hover:bg-sky-700 text-white shadow-md shadow-sky-600/20"
+              }`}
             >
               <CalendarDays className="h-3.5 w-3.5" />
-              {nextSession ? "Xem chi tiết buổi học" : "Xem lịch học"}
+              {nextSession ? "Chi tiết buổi học" : "Xem lịch học"}
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>

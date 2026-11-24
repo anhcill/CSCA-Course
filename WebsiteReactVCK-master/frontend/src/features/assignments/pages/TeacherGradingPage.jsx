@@ -29,33 +29,38 @@ import usePersistentClassSelection from "../../teacher/hooks/usePersistentClassS
 const QUICK_FEEDBACK = [
   {
     label: "🌟 Xuất sắc",
-    text: "Bài làm rất xuất sắc! Em nắm vững ngữ pháp, từ vựng phong phú và diễn đạt tự nhiên.",
-    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100",
+    text: "Bài làm rất xuất sắc! Em nắm vững kiến thức, trình bày rõ ràng và diễn đạt tự nhiên.",
+    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 dark:hover:bg-emerald-500/25",
+  },
+  {
+    label: "👍 Khá tốt",
+    text: "Bài làm tương đối tốt, hướng giải đúng nhưng cần diễn đạt mạch lạc hơn ở vài ý nhỏ. Cố gắng phát huy!",
+    badgeClass: "bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30 dark:hover:bg-teal-500/25",
+  },
+  {
+    label: "📐 Thiếu bước giải",
+    text: "Em cần trình bày rõ các bước biến đổi và giải thích điều kiện để đạt điểm tối đa.",
+    badgeClass: "bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30 dark:hover:bg-sky-500/25",
   },
   {
     label: "🗣️ Khẩu ngữ HSKK",
     text: "Phần phát âm thanh điệu (đặc biệt thanh 4) cần dứt khoát hơn. Ngắt nhịp câu khá trôi chảy.",
-    badgeClass: "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100",
+    badgeClass: "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30 dark:hover:bg-violet-500/25",
   },
   {
     label: "✍️ Ngữ pháp 把/被",
     text: "Cần chú ý bổ ngữ kết quả sau động từ chính trong câu chữ 把 và câu bị động 被.",
-    badgeClass: "bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100",
-  },
-  {
-    label: "👍 Khá tốt",
-    text: "Bài làm tương đối tốt, còn một vài lỗi dùng liên từ chưa thật tự nhiên. Cố gắng phát huy!",
-    badgeClass: "bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100",
+    badgeClass: "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30 dark:hover:bg-indigo-500/25",
   },
   {
     label: "⚠️ Cần xem lại",
-    text: "Bài làm còn nhiều lỗi chính tả chữ Hán và sai cấu trúc câu. Em hãy xem lại bài giảng và nộp bổ sung nhé.",
-    badgeClass: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100",
+    text: "Bài làm còn một số lỗi cơ bản và thiếu ví dụ minh họa. Em hãy xem lại bài giảng và luyện thêm nhé.",
+    badgeClass: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30 dark:hover:bg-amber-500/25",
   },
   {
     label: "⏳ Nhắc nộp đúng hạn",
     text: "Lần sau em chú ý theo dõi deadline để nộp bài đúng hạn quy định của lớp nhé.",
-    badgeClass: "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100",
+    badgeClass: "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30 dark:hover:bg-rose-500/25",
   },
 ];
 
@@ -191,18 +196,40 @@ function normalizeAssignmentType(type) {
 function getTypeBadge(type) {
   const normalizedType = normalizeAssignmentType(type || "");
   if (normalizedType.includes("hskk") || normalizedType.includes("speak")) {
-    return { label: "HSKK Khẩu Ngữ", cls: "bg-violet-50 text-violet-700 border-violet-200" };
+    return {
+      label: "HSKK Khẩu Ngữ",
+      cls: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30",
+    };
   }
   if (normalizedType.includes("quiz")) {
-    return { label: "Trắc Nghiệm", cls: "bg-sky-50 text-sky-700 border-sky-200" };
+    return {
+      label: "Trắc Nghiệm",
+      cls: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30",
+    };
   }
   if (normalizedType === "essay") {
-    return { label: "Bài tự luận", cls: "bg-rose-50 text-rose-700 border-rose-200" };
+    return {
+      label: "Bài tự luận",
+      cls: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30",
+    };
   }
   if (normalizedType === "homework") {
-    return { label: "Bài tập về nhà", cls: "bg-amber-50 text-amber-700 border-amber-200" };
+    return {
+      label: "Bài tập về nhà",
+      cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
+    };
   }
-  return { label: "Bài tập", cls: "bg-slate-100 text-slate-700 border-slate-200" };
+  return {
+    label: "Bài tập",
+    cls: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
+  };
+}
+
+function getQuickScorePresets(maxScore = 10) {
+  const max = Number(maxScore) || 10;
+  if (max === 10) return [0, 5, 6.5, 7.5, 8, 8.5, 9, 9.5, 10];
+  const raw = [0, 0.5, 0.7, 0.8, 0.9, 1].map((ratio) => Math.round(max * ratio * 4) / 4);
+  return [...new Set(raw)].filter((value) => value >= 0 && value <= max);
 }
 
 export default function TeacherGradingPage() {
@@ -272,12 +299,16 @@ export default function TeacherGradingPage() {
         sessionId: requestedSessionId || undefined,
       });
       const rows = res.success && Array.isArray(res.data) ? res.data : [];
+      const firstPending = rows.find((row) => !row.returnRequested && ["submitted", "late"].includes(row.status));
       const initialSubmission = requestedSubmissionId
-        ? rows.find((row) => String(row.id) === String(requestedSubmissionId)) || rows[0]
-        : rows[0];
+        ? rows.find((row) => String(row.id) === String(requestedSubmissionId)) || firstPending || rows[0]
+        : firstPending || rows[0];
+      if (!firstPending && rows.length > 0 && !requestedSubmissionId) {
+        setFilterStatus("all");
+      }
       setSubmissions(rows);
       setSelectedSub(initialSubmission || null);
-      setScore(initialSubmission?.score ?? 0);
+      setScore(initialSubmission?.score !== null && initialSubmission?.score !== undefined ? initialSubmission.score : 8.5);
       setFeedback(initialSubmission?.feedbackText || "");
       setAnnotations(initialSubmission?.annotations || []);
       setChangeReason("");
@@ -318,6 +349,7 @@ export default function TeacherGradingPage() {
     let list = [...submissions];
 
     if (filterStatus === "pending") list = list.filter((s) => !s.returnRequested && ["submitted", "late"].includes(s.status));
+    if (filterStatus === "late") list = list.filter((s) => s.status === "late");
     if (filterStatus === "graded") list = list.filter((s) => s.status === "graded");
 
     if (filterClass !== "all") {
@@ -348,6 +380,24 @@ export default function TeacherGradingPage() {
 
     return list;
   }, [submissions, filterStatus, filterClass, filterType, searchQuery, sortByDeadline]);
+
+  const currentQueueIndex = useMemo(
+    () => (selectedSub ? filteredSubs.findIndex((s) => s.id === selectedSub.id) : -1),
+    [filteredSubs, selectedSub]
+  );
+
+  const prevQueueSub = currentQueueIndex > 0 ? filteredSubs[currentQueueIndex - 1] : null;
+  const nextQueueSub = currentQueueIndex >= 0 && currentQueueIndex < filteredSubs.length - 1
+    ? filteredSubs[currentQueueIndex + 1]
+    : null;
+  const nextPendingInQueue = useMemo(() => {
+    const isPending = (s) => !s.returnRequested && ["submitted", "late"].includes(s.status) && s.id !== selectedSub?.id;
+    if (currentQueueIndex >= 0) {
+      const forward = filteredSubs.slice(currentQueueIndex + 1).find(isPending);
+      if (forward) return forward;
+    }
+    return filteredSubs.find(isPending) || null;
+  }, [filteredSubs, currentQueueIndex, selectedSub?.id]);
 
   // Grade submit logic (with auto advance to next submission)
   const handleGradeSubmit = useCallback(
@@ -397,15 +447,14 @@ export default function TeacherGradingPage() {
             gradedAt: res.data?.graded_at || new Date().toISOString(),
           }));
 
-          // Automatically advance to the next pending submission if requested
+          // Automatically advance to the next pending submission (wrap-around supported)
           if (advanceToNext) {
-            const currentIndex = filteredSubs.findIndex((s) => s.id === selectedSub.id);
-            const nextSub = filteredSubs.find(
-              (s, i) => i > currentIndex && !s.returnRequested && ["submitted", "late"].includes(s.status)
-            );
+            const nextSub = nextPendingInQueue || nextQueueSub;
             if (nextSub) {
               handleSelectSub(nextSub);
-              toast("Đã chuyển sang bài nộp tiếp theo ➡️", { icon: "⏩" });
+              toast(`Đã chuyển sang bài của ${nextSub.studentName}`, { icon: "⏩" });
+            } else {
+              toast.success("Đã hoàn tất toàn bộ bài chờ trong hàng đợi hiện tại!");
             }
           }
         }
@@ -416,26 +465,33 @@ export default function TeacherGradingPage() {
         setGrading(false);
       }
     },
-    [selectedSub, score, feedback, rubricScores, annotations, changeReason, grading, filteredSubs, handleSelectSub]
+    [selectedSub, score, feedback, rubricScores, annotations, changeReason, grading, nextPendingInQueue, nextQueueSub, handleSelectSub]
   );
 
-  // Keyboard shortcut: Ctrl+Enter (or Cmd+Enter) to submit and advance
+  // Keyboard shortcuts: Ctrl+Enter (save & next), Alt+Left/Right (prev/next in queue)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
         handleGradeSubmit(true);
+      } else if (e.altKey && e.key === "ArrowLeft" && prevQueueSub) {
+        e.preventDefault();
+        handleSelectSub(prevQueueSub);
+      } else if (e.altKey && e.key === "ArrowRight" && nextQueueSub) {
+        e.preventDefault();
+        handleSelectSub(nextQueueSub);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleGradeSubmit]);
+  }, [handleGradeSubmit, prevQueueSub, nextQueueSub, handleSelectSub]);
 
   // Overall metrics
   const stats = useMemo(
     () => ({
       total: submissions.length,
       pending: submissions.filter((s) => !s.returnRequested && ["submitted", "late"].includes(s.status)).length,
+      late: submissions.filter((s) => s.status === "late").length,
       graded: submissions.filter((s) => s.status === "graded").length,
       avgScore: (() => {
         const scored = submissions.filter((s) => s.score !== null && s.score !== undefined);
@@ -454,17 +510,17 @@ export default function TeacherGradingPage() {
         {/* ================= 1. CALLIGRAPHIC HEADER HERO TRỰC TIẾP TRÊN NỀN PHONG CẢNH Á ĐÔNG ================= */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pt-1 pb-1">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/80 bg-white/85 px-3 py-1 text-xs font-bold text-[#102f63] shadow-2xs backdrop-blur-md">
-              <Award className="h-3.5 w-3.5 text-blue-600" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/80 bg-white/85 px-3 py-1 text-xs font-bold text-[#102f63] shadow-2xs backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/85 dark:text-sky-300">
+              <Award className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
               <span>Cổng chấm bài & Thẩm định chuyên môn</span>
             </div>
-            <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs">
+            <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs dark:text-white">
               Không Gian Chấm Bài & Đánh Giá
             </h1>
-            <p className="text-xs font-semibold italic text-slate-800 sm:text-sm">
+            <p className="text-xs font-semibold italic text-slate-800 sm:text-sm dark:text-slate-300">
               “Đánh giá công tâm, dẫn lối tri thức, tiếp sức tương lai.”
             </p>
-            <p className="font-['Ma_Shan_Zheng',cursive] text-sm sm:text-base tracking-wider text-slate-700">
+            <p className="font-['Ma_Shan_Zheng',cursive] text-sm sm:text-base tracking-wider text-slate-700 dark:text-slate-400">
               —— 师者所以传道受业解惑也 · 严谨笃学。
             </p>
           </div>
@@ -472,13 +528,13 @@ export default function TeacherGradingPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Link
               to={isAdminView ? "/admin/dashboard" : "/lms/teach"}
-              className="inline-flex items-center gap-2 rounded-2xl border border-white/80 bg-white/90 px-3.5 py-2 text-xs font-bold text-[#102f63] shadow-sm backdrop-blur transition hover:bg-white hover:text-blue-700"
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/80 bg-white/90 px-3.5 py-2 text-xs font-bold text-[#102f63] shadow-sm backdrop-blur transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-sky-300"
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Tổng quan
             </Link>
             <Link
               to={isAdminView ? "/admin/student-progress" : "/lms/teach/student-progress"}
-              className="inline-flex items-center gap-2 rounded-2xl border border-white/80 bg-white/90 px-3.5 py-2 text-xs font-bold text-[#102f63] shadow-sm backdrop-blur transition hover:bg-white hover:text-blue-700"
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/80 bg-white/90 px-3.5 py-2 text-xs font-bold text-[#102f63] shadow-sm backdrop-blur transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-sky-300"
             >
               <FileSpreadsheet className="h-3.5 w-3.5" /> Sổ điểm lớp
             </Link>
@@ -588,10 +644,11 @@ export default function TeacherGradingPage() {
               </button>
             </div>
 
-            {/* 3 Pills lọc trạng thái */}
-            <div className="mt-3 grid grid-cols-3 rounded-2xl bg-slate-100/80 p-1 text-[11px] font-bold dark:bg-slate-800/80">
+            {/* 4 Pills lọc trạng thái */}
+            <div className="mt-3 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100/80 p-1 text-[11px] font-bold dark:bg-slate-800/80">
               {[
                 { id: "pending", label: `Cần chấm (${stats.pending})` },
+                { id: "late", label: `Nộp muộn (${stats.late})` },
                 { id: "graded", label: `Đã chấm (${stats.graded})` },
                 { id: "all", label: `Tất cả (${stats.total})` },
               ].map((tab) => (
@@ -601,7 +658,9 @@ export default function TeacherGradingPage() {
                   onClick={() => setFilterStatus(tab.id)}
                   className={`rounded-xl py-1.5 transition text-center ${
                     filterStatus === tab.id
-                      ? "bg-white text-blue-700 font-black shadow-xs dark:bg-slate-900 dark:text-sky-300"
+                      ? tab.id === "late"
+                        ? "bg-white text-rose-600 font-black shadow-xs dark:bg-slate-900 dark:text-rose-300"
+                        : "bg-white text-blue-700 font-black shadow-xs dark:bg-slate-900 dark:text-sky-300"
                       : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
                   }`}
                 >
@@ -733,12 +792,55 @@ export default function TeacherGradingPage() {
               </div>
             ) : (
               <>
-                {/* Thanh thông tin học viên & bài tập hiện tại (Glass Hero Bar) */}
-                <div className="rounded-3xl border border-white/80 bg-white/92 p-4 sm:p-5 shadow-[0_8px_30px_rgba(32,78,120,0.06)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
+                {/* Thanh thông tin học viên & điều hướng hàng đợi (Queue Command Bar) */}
+                <div className="rounded-3xl border border-white/80 bg-white/92 p-4 sm:p-5 shadow-[0_8px_30px_rgba(32,78,120,0.06)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 font-mono text-[11px] font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                        {currentQueueIndex >= 0 ? `Bài ${currentQueueIndex + 1} / ${filteredSubs.length}` : `${filteredSubs.length} bài`}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                        Tiến độ: <strong className="text-emerald-600 dark:text-emerald-400">{stats.graded}/{stats.total}</strong> đã chấm
+                        {stats.pending > 0 ? ` · Còn ${stats.pending} bài chờ` : " · Đã chấm xong hết!"}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => prevQueueSub && handleSelectSub(prevQueueSub)}
+                        disabled={!prevQueueSub || grading}
+                        title="Bài trước (Alt + ←)"
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700 transition hover:border-blue-300 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-sky-500/40 dark:hover:text-sky-300"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" /> Trước
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => nextQueueSub && handleSelectSub(nextQueueSub)}
+                        disabled={!nextQueueSub || grading}
+                        title="Bài tiếp theo (Alt + →)"
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700 transition hover:border-blue-300 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-sky-500/40 dark:hover:text-sky-300"
+                      >
+                        Tiếp <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                      {nextPendingInQueue && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectSub(nextPendingInQueue)}
+                          disabled={grading}
+                          className="inline-flex items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-40 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25"
+                        >
+                          Bài chưa chấm tiếp →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-sky-300 border border-blue-200/60 font-mono">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-sky-300 border border-blue-200/60 dark:border-sky-500/30 font-mono">
                           <BookOpen className="h-3 w-3" /> {selectedSub.classTitle || "Lớp CSCA"}
                         </span>
                         {selectedSub.sessionTitle && (
@@ -747,7 +849,7 @@ export default function TeacherGradingPage() {
                           </span>
                         )}
                         {selectedSub.status === "late" && (
-                          <span className="rounded-full bg-rose-50 border border-rose-200 px-2.5 py-0.5 text-xs font-black text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                          <span className="rounded-full bg-rose-50 border border-rose-200 px-2.5 py-0.5 text-xs font-black text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-300">
                             Nộp muộn
                           </span>
                         )}
@@ -762,8 +864,8 @@ export default function TeacherGradingPage() {
                         {selectedSub.studentEmail && (
                           <span className="text-slate-400 font-mono">({selectedSub.studentEmail})</span>
                         )}
-                        <span className="text-slate-300">·</span>
-                        <span className="text-slate-500 font-medium">
+                        <span className="text-slate-300 dark:text-slate-600">·</span>
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">
                           Nộp lúc: {new Date(selectedSub.submittedAt).toLocaleString("vi-VN")}
                         </span>
                       </div>
@@ -799,10 +901,10 @@ export default function TeacherGradingPage() {
                     {selectedSub.contentText && (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <p className="text-xs font-black uppercase tracking-wider text-slate-500">
+                          <p className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
                             Nội dung tự luận chữ Hán
                           </p>
-                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700 font-mono">
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700 font-mono dark:bg-sky-500/15 dark:text-sky-300">
                             {countChineseChars(selectedSub.contentText)} chữ Hán
                           </span>
                         </div>
@@ -958,15 +1060,15 @@ export default function TeacherGradingPage() {
                     <div className="border-b border-slate-100 pb-3 dark:border-slate-800">
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-black text-[#102f63] dark:text-white flex items-center gap-1.5">
-                          <Award className="h-4 w-4 text-blue-600" />
+                          <Award className="h-4 w-4 text-blue-600 dark:text-sky-400" />
                           Ghi Điểm & Nhận Xét
                         </h3>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono text-slate-500 font-bold">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono text-slate-600 font-bold dark:bg-slate-800 dark:text-slate-300">
                           Ctrl + Enter
                         </span>
                       </div>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        Nhập điểm số và lời dặn dò của giảng viên
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        Nhập điểm, chạm chip nhận xét nhanh hoặc dùng Alt+←/→ để chuyển bài
                       </p>
                     </div>
 
@@ -1027,40 +1129,58 @@ export default function TeacherGradingPage() {
                         <label htmlFor="score-input" className="block text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400">
                           Tổng điểm bài thi
                         </label>
-                        <div className="mt-1 flex items-baseline gap-2">
-                          <input
-                            id="score-input"
-                            type="number"
-                            min="0"
-                            max={selectedSub.maxScore || 10}
-                            step="0.25"
-                            value={score}
-                            onChange={(event) => setScore(event.target.value)}
-                            className="w-24 border-b-2 border-blue-500 bg-transparent pb-0.5 text-3xl font-black font-mono text-[#102f63] outline-none focus:border-blue-700 dark:text-white"
-                          />
-                          <span className="text-sm font-bold text-slate-500">
-                            / {selectedSub.maxScore || 10} điểm
-                          </span>
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <div className="flex items-baseline gap-2">
+                            <input
+                              id="score-input"
+                              type="number"
+                              min="0"
+                              max={selectedSub.maxScore || 10}
+                              step="0.25"
+                              value={score}
+                              onChange={(event) => setScore(event.target.value)}
+                              className="w-24 border-b-2 border-blue-500 bg-transparent pb-0.5 text-3xl font-black font-mono text-[#102f63] outline-none focus:border-blue-700 dark:text-white"
+                            />
+                            <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
+                              / {selectedSub.maxScore || 10} điểm
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setScore((curr) => Math.max(0, Math.round(((Number(curr) || 0) - 0.5) * 4) / 4))}
+                              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                              title="Giảm 0.5 điểm"
+                            >
+                              -0.5
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setScore((curr) => Math.min(selectedSub.maxScore || 10, Math.round(((Number(curr) || 0) + 0.5) * 4) / 4))}
+                              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-black text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                              title="Tăng 0.5 điểm"
+                            >
+                              +0.5
+                            </button>
+                          </div>
                         </div>
 
                         {/* Quick score buttons */}
-                        <div className="mt-3 grid grid-cols-6 gap-1">
-                          {[0, 5, 7, 8, 9, 10]
-                            .filter((value) => value <= (selectedSub.maxScore || 10))
-                            .map((value) => (
-                              <button
-                                key={value}
-                                type="button"
-                                onClick={() => setScore(value)}
-                                className={`rounded-xl py-1 text-xs font-black transition ${
-                                  Number(score) === value
-                                    ? "bg-blue-600 text-white shadow-xs"
-                                    : "bg-white text-slate-700 hover:bg-blue-50 border border-slate-200/80 dark:bg-slate-800 dark:text-slate-200"
-                                }`}
-                              >
-                                {value}
-                              </button>
-                            ))}
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {getQuickScorePresets(selectedSub.maxScore || 10).map((value) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => setScore(value)}
+                              className={`min-w-[2.25rem] rounded-xl px-2 py-1 text-xs font-black transition ${
+                                Number(score) === value
+                                  ? "bg-blue-600 text-white shadow-xs"
+                                  : "bg-white text-slate-700 hover:bg-blue-50 border border-slate-200/80 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                              }`}
+                            >
+                              {value}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -1071,23 +1191,33 @@ export default function TeacherGradingPage() {
                         <label htmlFor="feedback-input" className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
                           Nhận xét chi tiết cho học viên
                         </label>
-                        <span className="text-[11px] text-slate-400">Tùy chọn</span>
+                        {feedback.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => setFeedback("")}
+                            className="text-[11px] font-bold text-rose-500 hover:text-rose-600 dark:text-rose-400"
+                          >
+                            Xóa nhanh
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">Tùy chọn</span>
+                        )}
                       </div>
                       <textarea
                         id="feedback-input"
-                        rows={5}
+                        rows={4}
                         value={feedback}
                         onChange={(event) => setFeedback(event.target.value)}
                         placeholder="Nhận xét ưu điểm, lỗi ngữ pháp, phát âm và hướng dẫn khắc phục..."
                         className="w-full rounded-2xl border border-slate-200/90 bg-white/95 p-3 text-xs leading-5 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 shadow-2xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                       />
 
-                      {/* Mẫu nhận xét nhanh */}
-                      <details className="text-xs">
-                        <summary className="cursor-pointer font-bold text-blue-600 hover:underline flex items-center gap-1">
-                          <Sparkles className="h-3.5 w-3.5" /> Chèn mẫu nhận xét nhanh
-                        </summary>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
+                      {/* Mẫu nhận xét nhanh - Hiển thị trực tiếp 1 chạm */}
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] font-bold text-blue-600 dark:text-sky-400 flex items-center gap-1">
+                          <Sparkles className="h-3.5 w-3.5" /> Chạm nhanh để chèn nhận xét:
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
                           {QUICK_FEEDBACK.map((template) => (
                             <button
                               key={template.label}
@@ -1103,7 +1233,7 @@ export default function TeacherGradingPage() {
                             </button>
                           ))}
                         </div>
-                      </details>
+                      </div>
                     </div>
 
                     {/* Lý do sửa điểm nếu đã từng chấm */}

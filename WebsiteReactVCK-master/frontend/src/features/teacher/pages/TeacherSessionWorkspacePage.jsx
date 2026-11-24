@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Bell, BookOpen, Binary, CalendarDays, Check, CheckCircle2, ClipboardList, Clock,
-  Download, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Languages, Library, Link2, Play, RefreshCw, Search, Trash2, Trophy, UploadCloud, UserCheck, Users, Video, X,
+  Download, FileSpreadsheet, FileText, Files, FolderOpen, GraduationCap, Languages, Library, Link2, Play, RefreshCw, Search, Trash2, Trophy, UploadCloud, UserCheck, Video, X,
 } from "lucide-react";
 import {
   attachTeacherFile, batchImportSessionVocabulary, createClassAnnouncement, createSessionVocabulary, deleteClassFile,
@@ -22,18 +22,47 @@ import { classCalendarIcsUrl, googleCalendarEventUrl } from "../../calendar/cale
 import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
 import TeacherSessionVocabularyTab from "../components/TeacherSessionVocabularyTab";
 import TeacherSessionFormulaTab from "../components/TeacherSessionFormulaTab";
+import TeacherSessionCheckInBar from "../components/TeacherSessionCheckInBar";
 
-const tabs = [
+const primaryTabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
-  { id: "students", label: "Học viên & Điểm danh", icon: UserCheck },
-  { id: "content", label: "Nội dung", icon: BookOpen },
-  { id: "vocabulary", label: "Từ vựng", icon: Languages },
-  { id: "formulas", label: "Công thức", icon: Binary },
-  { id: "tasks", label: "Bài tập & Quiz", icon: ClipboardList },
-  { id: "files", label: "Tài liệu", icon: FileText },
-  { id: "announcements", label: "Thông báo", icon: Bell },
-  { id: "results", label: "Bảng điểm", icon: Trophy },
+  { id: "students", label: "Điểm danh", icon: UserCheck },
+  { id: "lesson", label: "Giáo án buổi", icon: BookOpen },
+  { id: "tasks", label: "Bài tập & Điểm", icon: ClipboardList },
+  { id: "resources", label: "Tài liệu & Thông báo", icon: FileText },
 ];
+
+const VALID_LEAF_TABS = new Set([
+  "overview",
+  "students",
+  "content",
+  "vocabulary",
+  "formulas",
+  "tasks",
+  "results",
+  "files",
+  "announcements",
+]);
+
+const GROUP_DEFAULT_LEAF = {
+  overview: "overview",
+  students: "students",
+  lesson: "content",
+  tasks: "tasks",
+  resources: "files",
+};
+
+const LEAF_TO_GROUP = {
+  overview: "overview",
+  students: "students",
+  content: "lesson",
+  vocabulary: "lesson",
+  formulas: "lesson",
+  tasks: "tasks",
+  results: "tasks",
+  files: "resources",
+  announcements: "resources",
+};
 
 const formatDateTime = (value) => value ? new Date(value).toLocaleString("vi-VN", {
   weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
@@ -78,7 +107,11 @@ export default function TeacherSessionWorkspacePage() {
   const gradingPath = isAdminView ? "/admin/assignments/review" : "/lms/teacher/assignments/review";
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = tabs.some((tab) => tab.id === searchParams.get("tab")) ? searchParams.get("tab") : "overview";
+  const rawTab = searchParams.get("tab");
+  const activeTab = VALID_LEAF_TABS.has(rawTab)
+    ? rawTab
+    : (GROUP_DEFAULT_LEAF[rawTab] || "overview");
+  const activeGroup = LEAF_TO_GROUP[activeTab] || "overview";
   const [classData, setClassData] = useState(null);
   const [session, setSession] = useState(null);
   const [files, setFiles] = useState([]);
@@ -102,6 +135,7 @@ export default function TeacherSessionWorkspacePage() {
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [studentSearch, setStudentSearch] = useState("");
+  const [studentStatusFilter, setStudentStatusFilter] = useState("all");
 
   const sessionVocabs = currentVocabSession?.vocabularies || [];
   const sessionFormulas = currentFormulaSession?.formulas || [];
@@ -178,6 +212,26 @@ export default function TeacherSessionWorkspacePage() {
     toast.success(`Đã đánh dấu tất cả học viên: ${status === "present" ? "Có mặt" : "Vắng"}`);
   };
 
+  const handleSyncSelfCheckIn = () => {
+    const selfCheckedCount = attendanceRoster.filter((st) => st.attendance_source === "student").length;
+    if (selfCheckedCount === 0) {
+      toast("Chưa có học viên nào tự báo có mặt cho buổi này.", { icon: "ℹ️" });
+      return;
+    }
+    setAttendanceRecords((prev) => {
+      const next = { ...prev };
+      attendanceRoster.forEach((st) => {
+        next[st.id] = {
+          userId: st.id,
+          status: st.attendance_source === "student" ? "present" : "absent",
+          note: prev[st.id]?.note || "",
+        };
+      });
+      return next;
+    });
+    toast.success(`Đã đồng bộ ${selfCheckedCount}/${attendanceRoster.length} học viên tự check-in Có mặt.`);
+  };
+
   const handleSaveAttendance = async () => {
     setSavingAttendance(true);
     try {
@@ -213,15 +267,23 @@ export default function TeacherSessionWorkspacePage() {
     return { total, present, absent, excused, rate };
   }, [attendanceRoster, attendanceRecords]);
 
+  const selfCheckedInCount = useMemo(
+    () => attendanceRoster.filter((st) => st.attendance_source === "student").length,
+    [attendanceRoster],
+  );
+
   const filteredAttendanceStudents = useMemo(() => {
     const q = studentSearch.trim().toLowerCase();
-    if (!q) return attendanceRoster;
     return attendanceRoster.filter((st) => {
+      const rec = attendanceRecords[st.id] || { status: st.attendance_status || "present" };
+      if (studentStatusFilter === "self_checked" && st.attendance_source !== "student") return false;
+      if (["present", "absent", "excused"].includes(studentStatusFilter) && rec.status !== studentStatusFilter) return false;
+      if (!q) return true;
       const name = (st.name || st.username || st.email || "").toLowerCase();
       const email = (st.email || "").toLowerCase();
       return name.includes(q) || email.includes(q);
     });
-  }, [attendanceRoster, studentSearch]);
+  }, [attendanceRoster, attendanceRecords, studentSearch, studentStatusFilter]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -507,42 +569,142 @@ export default function TeacherSessionWorkspacePage() {
         </div>
       </section>
 
-      {/* Frosted sub-navigation tabs (Matching SessionDetailPage) */}
-      <nav className="flex gap-1.5 overflow-x-auto rounded-2xl border border-white/85 bg-white/80 p-1.5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90" aria-label="Chức năng của buổi dạy">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const count = tab.id === "vocabulary" ? sessionVocabs.length
-            : tab.id === "formulas" ? sessionFormulas.length
-            : tab.id === "tasks" ? tasks.length
-            : tab.id === "files" ? files.length
-            : tab.id === "students" ? students.length
-            : null;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })}
-              className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all duration-200 ${
-                activeTab === tab.id
-                  ? "bg-[#102f63] text-white shadow-md shadow-[#102f63]/25 ring-1 ring-[#102f63]/20 dark:bg-blue-600 dark:shadow-blue-500/25 dark:ring-blue-500/30"
-                  : "text-[#244866] hover:bg-white/90 hover:text-[#102f63] dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              <span>{tab.label}</span>
-              {count !== null && (
-                <span className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                  activeTab === tab.id
-                    ? "bg-white/20 text-white"
-                    : "bg-slate-100 text-[#487291] dark:bg-slate-800 dark:text-slate-300"
-                }`}>
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
+      {/* Teacher facial check-in / check-out bar (AWS Rekognition) */}
+      {!isAdminView && (
+        <TeacherSessionCheckInBar sessionId={sessionId} sessionTitle={session?.title} />
+      )}
+
+      {/* Compact 5-Tab Navigation Bar */}
+      <div className="space-y-2">
+        <nav
+          className="flex gap-1.5 overflow-x-auto rounded-2xl border border-white/85 bg-white/85 p-1.5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90"
+          aria-label="Chức năng của buổi dạy"
+        >
+          {primaryTabs.map((tab) => {
+            const Icon = tab.icon;
+            const count =
+              tab.id === "students"
+                ? students.length
+                : tab.id === "lesson"
+                  ? sessionVocabs.length + sessionFormulas.length
+                  : tab.id === "tasks"
+                    ? tasks.length
+                    : tab.id === "resources"
+                      ? files.length + announcements.length
+                      : null;
+            const isSelected = activeGroup === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  const nextLeaf = GROUP_DEFAULT_LEAF[tab.id] || "overview";
+                  setSearchParams(nextLeaf === "overview" ? {} : { tab: nextLeaf });
+                }}
+                className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all duration-200 ${
+                  isSelected
+                    ? "bg-[#102f63] text-white shadow-md shadow-[#102f63]/25 ring-1 ring-[#102f63]/20 dark:bg-blue-600 dark:shadow-blue-500/25 dark:ring-blue-500/30"
+                    : "text-[#244866] hover:bg-white/90 hover:text-[#102f63] dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{tab.label}</span>
+                {count !== null && count > 0 && (
+                  <span
+                    className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                      isSelected
+                        ? "bg-white/20 text-white"
+                        : "bg-slate-100 text-[#487291] dark:bg-slate-800 dark:text-slate-300"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Clean contextual sub-pills for grouped tabs */}
+        {activeGroup === "lesson" && (
+          <div className="flex flex-wrap items-center gap-1.5 px-1">
+            {[
+              { id: "content", label: "Nội dung buổi học", icon: BookOpen },
+              { id: "vocabulary", label: `Từ vựng (${sessionVocabs.length})`, icon: Languages },
+              { id: "formulas", label: `Công thức (${sessionFormulas.length})`, icon: Binary },
+            ].map((sub) => {
+              const SubIcon = sub.icon;
+              const active = activeTab === sub.id;
+              return (
+                <button
+                  key={sub.id}
+                  type="button"
+                  onClick={() => setSearchParams({ tab: sub.id })}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
+                    active
+                      ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-sky-500 dark:bg-blue-950/60 dark:text-sky-300"
+                      : "border-white/80 bg-white/70 text-slate-600 hover:bg-white dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  <SubIcon className="h-3.5 w-3.5" /> {sub.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {activeGroup === "tasks" && (
+          <div className="flex flex-wrap items-center gap-1.5 px-1">
+            {[
+              { id: "tasks", label: `Bài tập & Quiz (${tasks.length})`, icon: ClipboardList },
+              { id: "results", label: "Bảng điểm buổi học", icon: Trophy },
+            ].map((sub) => {
+              const SubIcon = sub.icon;
+              const active = activeTab === sub.id;
+              return (
+                <button
+                  key={sub.id}
+                  type="button"
+                  onClick={() => setSearchParams({ tab: sub.id })}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
+                    active
+                      ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-sky-500 dark:bg-blue-950/60 dark:text-sky-300"
+                      : "border-white/80 bg-white/70 text-slate-600 hover:bg-white dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  <SubIcon className="h-3.5 w-3.5" /> {sub.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {activeGroup === "resources" && (
+          <div className="flex flex-wrap items-center gap-1.5 px-1">
+            {[
+              { id: "files", label: `Tài liệu buổi (${files.length})`, icon: FileText },
+              { id: "announcements", label: `Thông báo (${announcements.length})`, icon: Bell },
+            ].map((sub) => {
+              const SubIcon = sub.icon;
+              const active = activeTab === sub.id;
+              return (
+                <button
+                  key={sub.id}
+                  type="button"
+                  onClick={() => setSearchParams({ tab: sub.id })}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
+                    active
+                      ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-sky-500 dark:bg-blue-950/60 dark:text-sky-300"
+                      : "border-white/80 bg-white/70 text-slate-600 hover:bg-white dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  <SubIcon className="h-3.5 w-3.5" /> {sub.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       <div className="space-y-4">
         {activeTab === "overview" && (
@@ -625,43 +787,85 @@ export default function TeacherSessionWorkspacePage() {
               </div>
             </div>
 
-            {/* Quick Actions & Search */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  value={studentSearch}
-                  onChange={(e) => setStudentSearch(e.target.value)}
-                  placeholder="Tìm học viên..."
-                  className="w-full rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none focus:border-blue-500 shadow-2xs"
-                />
+            {/* Policy notice when locked / outside attendance day */}
+            {attendancePolicy && attendancePolicy.canMarkAttendance === false && attendancePolicy.reason && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-2.5 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                {attendancePolicy.reason}
+              </div>
+            )}
+
+            {/* Quick Actions, Filter Pills & Search */}
+            <div className="flex flex-col gap-2.5 pt-1">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="relative flex-1 max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    placeholder="Tìm học viên..."
+                    className="w-full rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none focus:border-blue-500 shadow-2xs"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={attendancePolicy?.canMarkAttendance === false}
+                    onClick={() => handleMarkAllAttendance("present")}
+                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 hover:bg-emerald-100 transition disabled:opacity-50"
+                  >
+                    <Check className="inline h-3 w-3 mr-0.5" /> Tất cả Có mặt
+                  </button>
+                  <button
+                    type="button"
+                    disabled={attendancePolicy?.canMarkAttendance === false}
+                    onClick={handleSyncSelfCheckIn}
+                    className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-300 hover:bg-sky-100 transition disabled:opacity-50"
+                    title="Đánh dấu Có mặt cho học viên đã tự bấm báo có mặt"
+                  >
+                    <CheckCircle2 className="inline h-3 w-3 mr-0.5" /> Đồng bộ tự check-in ({selfCheckedInCount})
+                  </button>
+                  <button
+                    type="button"
+                    disabled={attendancePolicy?.canMarkAttendance === false}
+                    onClick={() => handleMarkAllAttendance("absent")}
+                    className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300 hover:bg-rose-100 transition disabled:opacity-50"
+                  >
+                    <X className="inline h-3 w-3 mr-0.5" /> Tất cả Vắng
+                  </button>
+                  <button
+                    type="button"
+                    onClick={loadAttendance}
+                    disabled={loadingAttendance}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition"
+                    title="Tải lại"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${loadingAttendance ? "animate-spin" : ""}`} />
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleMarkAllAttendance("present")}
-                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 hover:bg-emerald-100 transition"
-                >
-                  <Check className="inline h-3 w-3 mr-0.5" /> Tất cả Có mặt
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleMarkAllAttendance("absent")}
-                  className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300 hover:bg-rose-100 transition"
-                >
-                  <X className="inline h-3 w-3 mr-0.5" /> Tất cả Vắng
-                </button>
-                <button
-                  type="button"
-                  onClick={loadAttendance}
-                  disabled={loadingAttendance}
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition"
-                  title="Tải lại"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${loadingAttendance ? "animate-spin" : ""}`} />
-                </button>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                {[
+                  { id: "all", label: `Tất cả (${attendanceRoster.length})` },
+                  ...(selfCheckedInCount > 0 ? [{ id: "self_checked", label: `Tự check-in (${selfCheckedInCount})` }] : []),
+                  { id: "absent", label: `Vắng (${sessionAttendanceStats.absent})` },
+                  { id: "excused", label: `Có phép (${sessionAttendanceStats.excused})` },
+                ].map((pill) => (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => setStudentStatusFilter(pill.id)}
+                    className={`rounded-lg px-2.5 py-1 font-bold transition ${
+                      studentStatusFilter === pill.id
+                        ? "bg-[#102f63] text-white dark:bg-sky-600"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -701,6 +905,11 @@ export default function TeacherSessionWorkspacePage() {
                               <div className="min-w-0">
                                 <p className="font-bold text-[#102f63] dark:text-white truncate text-xs">{displayName}</p>
                                 <p className="text-[10px] text-slate-400 font-mono truncate">{st.email}</p>
+                                {st.attendance_source === "student" && (
+                                  <span className="mt-0.5 inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                                    <Check className="h-2.5 w-2.5" /> HV tự báo có mặt
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -755,6 +964,38 @@ export default function TeacherSessionWorkspacePage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Bottom Summary & Save Bar */}
+            {attendanceRoster.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-2xl border border-slate-200/80 bg-slate-50/90 px-4 py-3 text-xs dark:border-slate-800 dark:bg-slate-800/60">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="font-semibold text-slate-600 dark:text-slate-300">
+                    Có mặt: <strong className="font-black text-emerald-600 dark:text-emerald-400">{sessionAttendanceStats.present}</strong>
+                  </span>
+                  <span className="text-slate-300 dark:text-slate-700">·</span>
+                  <span className="font-semibold text-slate-600 dark:text-slate-300">
+                    Vắng: <strong className="font-black text-rose-600 dark:text-rose-400">{sessionAttendanceStats.absent}</strong>
+                  </span>
+                  <span className="text-slate-300 dark:text-slate-700">·</span>
+                  <span className="font-semibold text-slate-600 dark:text-slate-300">
+                    Có phép: <strong className="font-black text-amber-600 dark:text-amber-400">{sessionAttendanceStats.excused}</strong>
+                  </span>
+                  <span className="text-slate-300 dark:text-slate-700">·</span>
+                  <span className="font-semibold text-slate-600 dark:text-slate-300">
+                    Tỉ lệ: <strong className="font-black text-blue-600 dark:text-sky-400">{sessionAttendanceStats.rate}%</strong>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveAttendance}
+                  disabled={savingAttendance || loadingAttendance || attendancePolicy?.canMarkAttendance === false}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-2 text-xs font-bold text-white shadow-md shadow-blue-500/20 transition active:scale-95 disabled:opacity-50"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {savingAttendance ? "Đang lưu điểm danh..." : "Lưu & chốt điểm danh"}
+                </button>
               </div>
             )}
           </section>

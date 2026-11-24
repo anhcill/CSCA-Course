@@ -11,33 +11,66 @@ export default function AttendanceStudentTable({
   readOnly = false,
 }) {
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all"); // all | self_checked | present | absent | excused
+
+  const selfCheckedCount = useMemo(
+    () => students.filter((s) => s.attendance_source === "student").length,
+    [students],
+  );
 
   const filteredStudents = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return students;
     return students.filter((s) => {
+      const record = attendanceRecords[s.id] || { status: "present" };
+      if (statusFilter === "self_checked" && s.attendance_source !== "student") return false;
+      if (["present", "absent", "excused"].includes(statusFilter) && record.status !== statusFilter) return false;
+      if (!q) return true;
       const name = (s.username || s.name || "").toLowerCase();
       const email = (s.email || "").toLowerCase();
       return name.includes(q) || email.includes(q);
     });
-  }, [students, search]);
+  }, [students, attendanceRecords, search, statusFilter]);
 
   return (
     <div className="space-y-3">
-      {/* Search Input Filter for Roster */}
-      {students.length > 5 && (
-        <div className="relative max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm học viên theo tên, email..."
-            aria-label="Tìm kiếm học viên"
-            className="w-full rounded-xl border border-white/80 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 pl-9 pr-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 outline-none placeholder:text-slate-400 focus:border-sky-300 focus:ring-2 focus:ring-sky-500/10 shadow-2xs"
-          />
+      {/* Search + 1-Tap Filter Pills */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        {students.length > 3 ? (
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Tìm học viên theo tên, email..."
+              aria-label="Tìm kiếm học viên"
+              className="w-full rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 pl-9 pr-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/10 shadow-2xs"
+            />
+          </div>
+        ) : <div />}
+
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+          {[
+            { id: "all", label: `Tất cả (${students.length})` },
+            ...(selfCheckedCount > 0 ? [{ id: "self_checked", label: `Tự check-in (${selfCheckedCount})` }] : []),
+            { id: "absent", label: "Vắng" },
+            { id: "excused", label: "Có phép" },
+          ].map((pill) => (
+            <button
+              key={pill.id}
+              type="button"
+              onClick={() => setStatusFilter(pill.id)}
+              className={`rounded-lg px-2.5 py-1 font-bold transition ${
+                statusFilter === pill.id
+                  ? "bg-[#102f63] text-white dark:bg-sky-600"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              }`}
+            >
+              {pill.label}
+            </button>
+          ))}
         </div>
-      )}
+      </div>
 
       {/* Table Container */}
       <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800">

@@ -131,11 +131,6 @@ export default function StudentSettingsPage() {
     if (authUser?.id) loadTrustedDevices();
   }, [authUser?.id, loadTrustedDevices]);
 
-  const handleOpenDevices = () => {
-    setDevicesModalOpen(true);
-    loadTrustedDevices();
-  };
-
   // Notification Preferences State
   const [notifications, setNotifications] = useState({
     courses: true,
@@ -583,7 +578,7 @@ export default function StudentSettingsPage() {
                   type="button"
                   onClick={loadTrustedDevices}
                   disabled={devicesLoading}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-xs hover:bg-slate-50 transition"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition"
                   title="Làm mới danh sách thiết bị"
                 >
                   <RotateCcw className={`h-3.5 w-3.5 ${devicesLoading ? "animate-spin" : ""}`} />
@@ -782,7 +777,7 @@ export default function StudentSettingsPage() {
                   role="switch"
                   aria-checked={notifications.courses}
                   onClick={() => handleToggleNotification("courses")}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
                     notifications.courses ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700"
                   }`}
                 >
@@ -810,7 +805,7 @@ export default function StudentSettingsPage() {
                   role="switch"
                   aria-checked={notifications.assignments}
                   onClick={() => handleToggleNotification("assignments")}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
                     notifications.assignments ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700"
                   }`}
                 >
@@ -838,7 +833,7 @@ export default function StudentSettingsPage() {
                   role="switch"
                   aria-checked={notifications.calendar}
                   onClick={() => handleToggleNotification("calendar")}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
                     notifications.calendar ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700"
                   }`}
                 >
@@ -866,7 +861,7 @@ export default function StudentSettingsPage() {
                   role="switch"
                   aria-checked={notifications.announcements}
                   onClick={() => handleToggleNotification("announcements")}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
                     notifications.announcements ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700"
                   }`}
                 >
@@ -1004,7 +999,7 @@ export default function StudentSettingsPage() {
             {/* Horizontal Wallpaper Thumbnails */}
             <div className="mt-5 flex gap-3 overflow-x-auto pb-2 pt-1 [scrollbar-width:thin]">
               {wallpapers.map((wp) => {
-                const isSelected = currentWallpaper === wp.url;
+                const isSelected = currentWallpaper === wp.url || (Boolean(wp.cloudinaryUrl) && currentWallpaper === wp.cloudinaryUrl);
                 return (
                   <button
                     key={wp.id}
@@ -1398,7 +1393,7 @@ export default function StudentSettingsPage() {
               {/* File upload option */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Tải ảnh từ máy tính</label>
-                <label className="mt-1.5 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-blue-400 hover:bg-blue-50/40 dark:border-slate-700 dark:bg-slate-950/60">
+                <label className="mt-1.5 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-4 transition hover:border-blue-400 hover:bg-blue-50/40 dark:border-slate-700 dark:bg-slate-950/60 dark:hover:border-sky-500 dark:hover:bg-slate-800/80">
                   <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />
                   <span className="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Nhấn để chọn tệp hình ảnh</span>
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">JPG, PNG, WEBP (Tối đa 12MB)</span>

@@ -5,6 +5,7 @@ import { Calendar, FileText } from "lucide-react";
 import { fetchAssignments, fetchMyLiveSchedule } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { ErrorState } from "../../../components/common/StateView";
+import usePersistentClassSelection from "../../learning/hooks/usePersistentClassSelection";
 
 import AssignmentHeroHeader from "../components/AssignmentHeroHeader";
 import AssignmentFilterBar from "../components/AssignmentFilterBar";
@@ -32,6 +33,31 @@ function itemStatus(item) {
   const now = Date.now();
   const dueAt = item.due_date ? new Date(item.due_date).getTime() : null;
   return item.status === "late" || (dueAt && dueAt <= now) ? "overdue" : "todo";
+}
+
+function buildDeadlineMeta(dueTimestamp, normalizedStatus, now) {
+  if (!dueTimestamp || normalizedStatus === "completed" || normalizedStatus === "grading") {
+    return { deadlineHint: "", deadlineTone: "" };
+  }
+  const diffMs = dueTimestamp - now;
+  if (diffMs < 0) {
+    return { deadlineHint: "Quá hạn", deadlineTone: "overdue" };
+  }
+  const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+  if (diffHours <= 1) {
+    return { deadlineHint: "Còn < 1 giờ", deadlineTone: "urgent" };
+  }
+  if (diffHours <= 24) {
+    return { deadlineHint: `Còn ${diffHours} giờ`, deadlineTone: "urgent" };
+  }
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 2) {
+    return { deadlineHint: "Hạn ngày mai", deadlineTone: "soon" };
+  }
+  if (diffDays <= 5) {
+    return { deadlineHint: `Còn ${diffDays} ngày`, deadlineTone: "normal" };
+  }
+  return { deadlineHint: "", deadlineTone: "" };
 }
 
 export default function AssignmentListPage() {
@@ -89,15 +115,51 @@ export default function AssignmentListPage() {
     };
   }, [loadAssignments]);
 
+  const assignmentClasses = useMemo(() => {
+    const classMap = new Map();
+    rawAssignments.forEach((item) => {
+      const id = item.live_class_id ?? item.class_id ?? item.liveClassId;
+      if (!id) return;
+      const key = String(id);
+      if (!classMap.has(key)) {
+        classMap.set(key, {
+          id: key,
+          title: item.class_title || item.course_title || item.course_code || `Lớp #${key}`,
+        });
+      }
+    });
+    sessions.forEach((s) => {
+      const id = s.live_class_id ?? s.class_id ?? s.liveClassId;
+      if (!id) return;
+      const key = String(id);
+      if (!classMap.has(key)) {
+        classMap.set(key, {
+          id: key,
+          title: s.class_title || s.course_title || `Lớp #${key}`,
+        });
+      }
+    });
+    return Array.from(classMap.values());
+  }, [rawAssignments, sessions]);
+
+  const [selectedClassFilter, setSelectedClassFilter] = usePersistentClassSelection({
+    scope: "assignments",
+    availableClassIds: assignmentClasses.map((item) => item.id),
+    allValue: "all",
+    ready: !loading,
+    preferredValue: classId || null,
+  });
+
   // Xử lý dữ liệu thật từ API
   const allFormattedItems = useMemo(() => {
+    const now = Date.now();
     const formattedReal = rawAssignments.map((assignment) => {
       const isQuiz = itemType(assignment) === "quiz";
       const status = itemStatus(assignment);
       const due = assignment.due_date ? new Date(assignment.due_date) : null;
+      const dueTimestamp = due ? due.getTime() : null;
       const availableFrom = assignment.available_from ? new Date(assignment.available_from) : null;
       const availableUntil = assignment.available_until ? new Date(assignment.available_until) : due;
-      const now = Date.now();
       const isWithinWindow = (!availableFrom || availableFrom.getTime() <= now)
         && (!availableUntil || availableUntil.getTime() > now);
       const attemptLimit = Number(assignment.attempt_limit || 1);
@@ -119,17 +181,23 @@ export default function AssignmentListPage() {
           ? `${Number(assignment.score).toFixed(2)}/${Number(assignment.max_score || 10).toFixed(2)}`
           : "-";
 
+      const { deadlineHint, deadlineTone } = buildDeadlineMeta(dueTimestamp, normalizedStatus, now);
+      const resolvedClassId = assignment.live_class_id ?? assignment.class_id ?? assignment.liveClassId ?? null;
+
       return {
         id: assignment.id,
         raw: assignment,
+        classIdValue: resolvedClassId !== null ? String(resolvedClassId) : null,
         title: assignment.title,
         subTypeLabel: isQuiz ? "Kiểm tra trên máy" : "Bài tập cá nhân",
         courseTitle: assignment.course_title || "Khóa học CSCA",
-        courseCode: assignment.course_code || assignment.class_title || "CSCA",
+        courseCode: assignment.class_title || assignment.course_code || "CSCA",
         dueDateFormatted: due ? due.toLocaleDateString("vi-VN") : "Không thời hạn",
         dueTimeFormatted: due
           ? due.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
           : "",
+        deadlineHint,
+        deadlineTone,
         normalizedStatus,
         scoreDisplay,
         isQuiz,
@@ -137,7 +205,7 @@ export default function AssignmentListPage() {
         iconStyle: isQuiz ? "bg-rose-50 text-rose-500 dark:bg-rose-950/60 dark:text-rose-400" : "bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400",
         created_at: assignment.created_at || assignment.due_date || new Date().toISOString(),
         createdTimestamp: new Date(assignment.created_at || assignment.due_date || 0).getTime(),
-        dueTimestamp: due ? due.getTime() : null,
+        dueTimestamp,
         availableFromTimestamp: availableFrom ? availableFrom.getTime() : null,
         availableUntilTimestamp: availableUntil ? availableUntil.getTime() : null,
         isActionable,
@@ -149,21 +217,23 @@ export default function AssignmentListPage() {
       };
     });
 
-    return formattedReal.sort((a, b) => {
-      const timeA = new Date(a.created_at || 0).getTime();
-      const timeB = new Date(b.created_at || 0).getTime();
-      return timeB - timeA;
-    });
+    return formattedReal.sort((a, b) => (b.createdTimestamp || 0) - (a.createdTimestamp || 0));
   }, [rawAssignments]);
 
-  // Đếm số lượng theo danh mục cho thanh lọc (dựa trên dữ liệu thật)
+  // Lọc theo lớp đã chọn (khi ở trang tổng hợp /lms/assignments)
+  const classScopedItems = useMemo(() => {
+    if (classId || selectedClassFilter === "all") return allFormattedItems;
+    return allFormattedItems.filter((item) => item.classIdValue === String(selectedClassFilter));
+  }, [allFormattedItems, classId, selectedClassFilter]);
+
+  // Đếm số lượng theo danh mục cho thanh lọc
   const counts = useMemo(() => {
     let active = 0;
     let quiz = 0;
     let submitted = 0;
     let overdue = 0;
 
-    allFormattedItems.forEach((it) => {
+    classScopedItems.forEach((it) => {
       if (it.isActionable) active += 1;
       if (it.isQuiz) quiz += 1;
 
@@ -175,17 +245,17 @@ export default function AssignmentListPage() {
     });
 
     return {
-      all: allFormattedItems.length,
+      all: classScopedItems.length,
       active,
       quiz,
       submitted,
       overdue,
     };
-  }, [allFormattedItems]);
+  }, [classScopedItems]);
 
-  // Lọc theo tabs & tìm kiếm
+  // Lọc theo tabs & tìm kiếm + Sắp xếp thông minh theo hạn nộp gần nhất cho Cần làm / Quá hạn
   const visibleItems = useMemo(() => {
-    const filtered = allFormattedItems.filter((it) => {
+    const filtered = classScopedItems.filter((it) => {
       if (activeFilter === "active" && !it.isActionable) return false;
       if (activeFilter === "quiz" && !it.isQuiz) return false;
       if (activeFilter === "submitted" && it.normalizedStatus !== "completed" && it.normalizedStatus !== "grading") return false;
@@ -202,25 +272,33 @@ export default function AssignmentListPage() {
       return true;
     });
 
+    if (activeFilter === "active" || activeFilter === "overdue") {
+      return [...filtered].sort((a, b) => {
+        const dueA = a.dueTimestamp ?? Number.POSITIVE_INFINITY;
+        const dueB = b.dueTimestamp ?? Number.POSITIVE_INFINITY;
+        if (dueA !== dueB) return dueA - dueB;
+        return (b.createdTimestamp || 0) - (a.createdTimestamp || 0);
+      });
+    }
+
     return filtered;
-  }, [allFormattedItems, activeFilter, searchQuery]);
+  }, [classScopedItems, activeFilter, searchQuery]);
 
   // NỐI DỮ LIỆU THẬT CHO BOX 1: "Hạn nộp trong tuần này"
   const weekDeadlines = useMemo(() => {
-    const withDue = allFormattedItems.filter((item) => item.dueTimestamp);
+    const withDue = classScopedItems.filter((item) => item.dueTimestamp);
     const now = Date.now();
 
-    // Ưu tiên các bài chưa hoàn thành hoặc quá hạn cần xử lý
     const pending = withDue.filter(
       (item) => item.normalizedStatus === "todo" || item.normalizedStatus === "overdue"
     );
 
     const targetList = pending.length > 0 ? pending : withDue;
-    // Bài vừa được đăng luôn nổi lên đầu; cùng thời điểm mới ưu tiên hạn gần hơn.
     const sorted = [...targetList].sort((a, b) => {
-      const createdDiff = (b.createdTimestamp || 0) - (a.createdTimestamp || 0);
-      if (createdDiff !== 0) return createdDiff;
-      return (a.dueTimestamp || Number.POSITIVE_INFINITY) - (b.dueTimestamp || Number.POSITIVE_INFINITY);
+      const dueA = a.dueTimestamp ?? Number.POSITIVE_INFINITY;
+      const dueB = b.dueTimestamp ?? Number.POSITIVE_INFINITY;
+      if (dueA !== dueB) return dueA - dueB;
+      return (b.createdTimestamp || 0) - (a.createdTimestamp || 0);
     });
 
     const dayNames = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
@@ -264,15 +342,14 @@ export default function AssignmentListPage() {
         rawItem: item,
       };
     });
-  }, [allFormattedItems]);
+  }, [classScopedItems]);
 
   // NỐI DỮ LIỆU THẬT CHO BOX 2: "Lịch kiểm tra sắp tới"
   const upcomingExams = useMemo(() => {
     const list = [];
     const now = Date.now();
 
-    // 1. Lấy từ các bài thi / quiz thật của học viên
-    const quizItems = allFormattedItems.filter(
+    const quizItems = classScopedItems.filter(
       (item) => item.isQuiz || (item.title && /thi|kiểm tra|test|quiz/i.test(item.title))
     );
 
@@ -298,8 +375,11 @@ export default function AssignmentListPage() {
       });
     });
 
-    // 2. Lấy từ các buổi học trực tuyến có kiểm tra từ Live Schedule
-    sessions.forEach((s) => {
+    const scopedSessions = !classId && selectedClassFilter !== "all"
+      ? sessions.filter((s) => String(s.live_class_id ?? s.class_id ?? s.liveClassId ?? "") === String(selectedClassFilter))
+      : sessions;
+
+    scopedSessions.forEach((s) => {
       const date = new Date(s.start_time);
       const dayNum = String(date.getDate()).padStart(2, "0");
       const monthLabel = `THG ${date.getMonth() + 1}`;
@@ -326,14 +406,12 @@ export default function AssignmentListPage() {
       });
     });
 
-    // Sắp xếp theo thời gian gần nhất
     const upcoming = list.filter((item) => item.timestamp >= now - 24 * 60 * 60 * 1000);
     const sorted = (upcoming.length >= 3 ? upcoming : list).sort((a, b) => a.timestamp - b.timestamp);
 
     return sorted.slice(0, 5);
-  }, [allFormattedItems, sessions]);
+  }, [classId, classScopedItems, selectedClassFilter, sessions]);
 
-  // Xử lý điều hướng khi bấm nút trên bảng hoặc box Hạn nộp
   const handleAction = (item) => {
     const raw = item?.raw || item;
     if (raw) {
@@ -358,7 +436,6 @@ export default function AssignmentListPage() {
     navigate("/lms/assignments");
   };
 
-  // Xử lý điều hướng khi bấm box Lịch kiểm tra
   const handleExamClick = (examItem) => {
     if (examItem.type === "quiz" && examItem.rawItem) {
       handleAction(examItem.rawItem, "open");
@@ -395,40 +472,34 @@ export default function AssignmentListPage() {
   return (
     <div className="min-h-full p-2.5 sm:p-3.5 xl:px-4 xl:py-3 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto max-w-[1440px]">
-        {/* Bố cục 2 cột:
-            Cột trái: Tiêu đề, Thanh lọc, Bảng danh sách bài tập
-            Cột phải: 2 Box Widget kết nối dữ liệu thật */}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_255px] xl:grid-cols-[minmax(0,1fr)_270px]">
-          {/* Cột trái */}
           <div className="space-y-2.5 min-w-0">
-            {/* Chữ Bài tập & Kiểm tra trực tiếp trên nền sơn thủy */}
             <AssignmentHeroHeader />
 
-            {/* Thanh công cụ lọc & tìm kiếm */}
             <AssignmentFilterBar
               activeFilter={activeFilter}
               onFilterChange={setActiveFilter}
               counts={counts}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
+              classes={assignmentClasses}
+              selectedClass={selectedClassFilter}
+              onClassChange={setSelectedClassFilter}
+              hideClassSelect={Boolean(classId)}
             />
 
-            {/* Bảng danh sách bài tập chuẩn theo mockup, nối 100% dữ liệu thật */}
             <AssignmentTable
               items={visibleItems}
               onAction={handleAction}
             />
           </div>
 
-          {/* Cột phải: 2 Widget kết nối dữ liệu thật */}
           <div className="space-y-4">
-            {/* Widget 1: Hạn nộp trong tuần này */}
             <AssignmentWeekDeadlines
               deadlines={weekDeadlines}
               onAction={handleAction}
             />
 
-            {/* Widget 2: Lịch kiểm tra sắp tới */}
             <AssignmentUpcomingExams
               exams={upcomingExams}
               onExamClick={handleExamClick}

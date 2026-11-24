@@ -227,7 +227,7 @@ html:not(.dark):not(.assessment-mode) main {
 
 /* 2. Header & Navbar toàn hệ thống (Kính mờ xanh nước biển nhạt) */
 html:not(.dark):not(.assessment-mode) header,
-html:not(.dark):not(.assessment-mode) nav:not([aria-label="Breadcrumb"]) {
+html:not(.dark):not(.assessment-mode) nav:not([aria-label="Breadcrumb"]):not(.teacher-mobile-bottom-nav):not(.student-mobile-bottom-nav) {
   background-color: rgba(222, 239, 251, 0.92) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
@@ -568,7 +568,10 @@ html:not(.dark):not(.assessment-mode) .student-lms--dashboard > aside {
   border-color: rgba(255, 255, 255, 0.82) !important;
 }
 
-html:not(.dark):not(.assessment-mode) .student-lms--dashboard > aside nav {
+html:not(.dark):not(.assessment-mode) .student-lms--dashboard > aside nav,
+html:not(.dark):not(.assessment-mode) .teacher-lms--dashboard > aside nav,
+html:not(.dark):not(.assessment-mode) .teacher-lms div > nav[aria-label="Điều hướng LMS giảng viên"],
+html:not(.dark):not(.assessment-mode) .student-lms div > nav[aria-label="Điều hướng LMS học viên"] {
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
@@ -602,95 +605,444 @@ html:not(.dark):not(.assessment-mode) .student-dashboard-page span {
   background-image: none !important;
 }
 
-/* 3. Phủ màu tối cho Teacher LMS & Modal */
-.dark .teacher-lms [class~="bg-white"],
-.dark .teacher-lms [class*="bg-white/"],
-.dark .teacher-lms [class~="bg-slate-50"],
-.dark .teacher-lms [class~="bg-slate-100"],
-.dark [role="dialog"] [class~="bg-white"]:not(button):not(a):not(input):not(select):not(textarea),
-.dark [role="dialog"] [class*="bg-white/"]:not(button):not(a):not(input):not(select):not(textarea),
-.dark [role="dialog"] [class~="bg-slate-50"],
-.dark [role="dialog"] [class~="bg-slate-100"] {
+/* 3. Phủ màu tối có phân tầng cho Teacher LMS & Modal (không ghi đè dark:bg-* đã khai báo) */
+.dark .teacher-lms [class~="bg-white"]:not([class*="dark:bg-"]):not([role="switch"] *),
+.dark .teacher-lms [class~="bg-white/95"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-white/92"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-white/90"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-white/85"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-white/80"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-white/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-white/60"]:not([class*="dark:bg-"]),
+.dark [role="dialog"] [class~="bg-white"]:not(button):not(a):not(input):not(select):not(textarea):not([class*="dark:bg-"]):not([role="switch"] *),
+.dark [role="dialog"] [class~="bg-white/95"]:not(button):not(a):not(input):not(select):not(textarea):not([class*="dark:bg-"]),
+.dark [role="dialog"] [class~="bg-white/90"]:not(button):not(a):not(input):not(select):not(textarea):not([class*="dark:bg-"]) {
   background-color: #0f172a !important;
 }
 
-.dark .teacher-lms [class~="bg-gradient-to-r"]:not([class*="dark:from-"]):not([class*="dark:bg-none"]),
-.dark .teacher-lms [class~="bg-gradient-to-br"]:not([class*="dark:from-"]):not([class*="dark:bg-none"]) {
+/* Nút/thẻ con nền trung tính nhạt -> phân tầng rõ trên thẻ #0f172a */
+.dark .teacher-lms [class~="bg-slate-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-50/50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-50/60"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-50/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-50/80"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-50/90"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-gray-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-gray-50/90"]:not([class*="dark:bg-"]),
+.dark [role="dialog"] [class~="bg-slate-50"]:not([class*="dark:bg-"]),
+.dark [role="dialog"] [class~="bg-slate-50/60"]:not([class*="dark:bg-"]),
+.dark [role="dialog"] [class~="bg-slate-50/70"]:not([class*="dark:bg-"]),
+.dark [role="dialog"] [class~="bg-gray-50"]:not([class*="dark:bg-"]) {
+  background-color: rgba(30, 41, 59, 0.72) !important;
+}
+
+.dark .teacher-lms [class~="bg-slate-100"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-100/80"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-100/90"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-200"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-200/50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-200/60"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-200/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-slate-200/80"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-gray-100"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-gray-200"]:not([class*="dark:bg-"]),
+.dark [role="dialog"] [class~="bg-slate-100"]:not([class*="dark:bg-"]),
+.dark [role="dialog"] [class~="bg-gray-100"]:not([class*="dark:bg-"]) {
+  background-color: rgba(30, 41, 59, 0.92) !important;
+}
+
+/* Bảo vệ chấm tròn trắng của switch toggle trong Dark Mode */
+.dark .teacher-lms [role="switch"] > span {
+  background-color: #ffffff !important;
+}
+
+/* Nền pastel theo ngữ nghĩa (blue/sky/cyan/indigo/violet/emerald/teal/amber/rose) khi chưa có dark:bg-* */
+.dark .teacher-lms [class~="bg-blue-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-blue-50/40"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-blue-50/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-blue-50/80"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-blue-100"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-sky-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-sky-50/50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-sky-50/60"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-sky-50/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-sky-50/80"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-sky-50/90"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-sky-100"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-cyan-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-cyan-100"]:not([class*="dark:bg-"]) {
+  background-color: rgba(14, 165, 233, 0.14) !important;
+}
+
+.dark .teacher-lms [class~="bg-indigo-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-indigo-50/40"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-indigo-50/60"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-indigo-50/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-indigo-50/80"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-indigo-100"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-violet-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-violet-50/40"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-violet-50/50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-violet-50/60"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-violet-50/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-violet-100"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-purple-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-purple-100"]:not([class*="dark:bg-"]) {
+  background-color: rgba(139, 92, 246, 0.16) !important;
+}
+
+.dark .teacher-lms [class~="bg-emerald-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-emerald-50/20"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-emerald-50/30"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-emerald-50/40"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-emerald-50/50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-emerald-50/60"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-emerald-50/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-emerald-50/80"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-emerald-100"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-emerald-100/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-teal-50"]:not([class*="dark:bg-"]) {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
+.dark .teacher-lms [class~="bg-amber-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-amber-50/40"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-amber-50/50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-amber-50/60"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-amber-50/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-amber-50/80"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-amber-50/90"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-amber-100"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-amber-100/40"]:not([class*="dark:bg-"]) {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+
+.dark .teacher-lms [class~="bg-rose-50"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-rose-50/20"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-rose-50/30"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-rose-50/60"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-rose-50/70"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-rose-50/80"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-rose-100"]:not([class*="dark:bg-"]),
+.dark .teacher-lms [class~="bg-red-50/80"]:not([class*="dark:bg-"]) {
+  background-color: rgba(244, 63, 94, 0.15) !important;
+}
+
+/* Chống nháy sáng trắng khi hover vào nút/thẻ chưa có dark:hover:bg-* */
+.dark .teacher-lms [class~="hover:bg-white"]:not([class*="dark:hover:bg-"]):hover,
+.dark .teacher-lms [class~="hover:bg-slate-50"]:not([class*="dark:hover:bg-"]):hover,
+.dark .teacher-lms [class~="hover:bg-slate-100"]:not([class*="dark:hover:bg-"]):hover,
+.dark .teacher-lms [class~="hover:bg-slate-200"]:not([class*="dark:hover:bg-"]):hover {
+  background-color: rgba(51, 65, 85, 0.85) !important;
+}
+
+.dark .teacher-lms [class~="hover:bg-blue-50"]:not([class*="dark:hover:bg-"]):hover,
+.dark .teacher-lms [class~="hover:bg-blue-50/50"]:not([class*="dark:hover:bg-"]):hover,
+.dark .teacher-lms [class~="hover:bg-blue-100"]:not([class*="dark:hover:bg-"]):hover {
+  background-color: rgba(14, 165, 233, 0.24) !important;
+}
+
+.dark .teacher-lms [class~="bg-gradient-to-r"]:not([class*="dark:from-"]):not([class*="dark:bg-none"]):not([class*="from-blue-600"]):not([class*="from-emerald-"]),
+.dark .teacher-lms [class~="bg-gradient-to-br"]:not([class*="dark:from-"]):not([class*="dark:bg-none"]):not([class*="from-emerald-"]):not([class*="from-blue-600"]) {
   background-image: linear-gradient(130deg, #14213d 0%, #111b2e 54%, #0d1a30 100%);
 }
 
 /* ==========================================================================
-   DARK MODE SCOPED TOKENS (GIỮ NGUYÊN 100% CẤU HÌNH BAN ĐẦU)
+   DARK MODE SCOPED TOKENS — STUDENT LMS (PHÂN TẦNG ĐỒNG BỘ VỚI TEACHER LMS)
    ========================================================================== */
 .dark .student-lms,
 .dark .student-lms [class~="bg-[#f6f9fd]"] {
   background-color: #0b1220;
 }
 
-.dark .student-lms [class~="bg-white"],
-.dark .student-lms [class*="bg-white/"],
-.dark .student-lms [class~="bg-slate-50"],
-.dark .student-lms [class~="bg-slate-100"] {
-  background-color: #111b2e;
+/* Thẻ nền trắng/kính mờ -> #0f172a (không ghi đè dark:bg-* và không làm tối nút gạt switch) */
+.dark .student-lms [class~="bg-white"]:not([class*="dark:bg-"]):not([role="switch"] *),
+.dark .student-lms [class~="bg-white/95"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-white/92"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-white/90"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-white/85"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-white/80"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-white/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-white/60"]:not([class*="dark:bg-"]) {
+  background-color: #0f172a !important;
 }
 
-.dark .student-lms [class~="bg-blue-50"],
-.dark .student-lms [class~="bg-emerald-50"],
-.dark .student-lms [class~="bg-amber-50"],
-.dark .student-lms [class~="bg-violet-50"],
-.dark .student-lms [class~="bg-rose-50"] {
-  background-color: #17243a;
+/* Nút/thẻ con nền trung tính nhạt -> phân tầng rõ trên nền #0f172a */
+.dark .student-lms [class~="bg-slate-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-50/50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-50/60"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-50/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-50/80"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-50/90"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-gray-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-gray-50/90"]:not([class*="dark:bg-"]) {
+  background-color: rgba(30, 41, 59, 0.72) !important;
 }
 
-.dark .student-lms [class~="bg-gradient-to-r"],
-.dark .student-lms [class~="bg-gradient-to-br"] {
+.dark .student-lms [class~="bg-slate-100"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-100/80"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-100/90"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-200"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-200/50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-200/60"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-200/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-slate-200/80"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-gray-100"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-gray-200"]:not([class*="dark:bg-"]) {
+  background-color: rgba(30, 41, 59, 0.92) !important;
+}
+
+/* Bảo vệ chấm tròn trắng của switch toggle trong Dark Mode */
+.dark .student-lms [role="switch"] > span {
+  background-color: #ffffff !important;
+}
+
+/* Nền pastel theo ngữ nghĩa cho Student LMS khi chưa có dark:bg-* */
+.dark .student-lms [class~="bg-blue-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-blue-50/40"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-blue-50/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-blue-50/80"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-blue-100"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-sky-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-sky-50/50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-sky-50/60"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-sky-50/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-sky-50/80"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-sky-50/90"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-sky-100"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-cyan-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-cyan-100"]:not([class*="dark:bg-"]) {
+  background-color: rgba(14, 165, 233, 0.14) !important;
+}
+
+.dark .student-lms [class~="bg-indigo-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-indigo-50/40"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-indigo-50/60"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-indigo-50/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-indigo-50/80"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-indigo-100"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-violet-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-violet-50/40"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-violet-50/50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-violet-50/60"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-violet-50/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-violet-100"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-purple-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-purple-100"]:not([class*="dark:bg-"]) {
+  background-color: rgba(139, 92, 246, 0.16) !important;
+}
+
+.dark .student-lms [class~="bg-emerald-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-emerald-50/20"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-emerald-50/30"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-emerald-50/40"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-emerald-50/50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-emerald-50/60"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-emerald-50/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-emerald-50/80"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-emerald-100"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-emerald-100/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-teal-50"]:not([class*="dark:bg-"]) {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
+.dark .student-lms [class~="bg-amber-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-amber-50/40"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-amber-50/50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-amber-50/60"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-amber-50/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-amber-50/80"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-amber-50/90"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-amber-100"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-amber-100/40"]:not([class*="dark:bg-"]) {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+
+.dark .student-lms [class~="bg-rose-50"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-rose-50/20"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-rose-50/30"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-rose-50/60"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-rose-50/70"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-rose-50/80"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-rose-100"]:not([class*="dark:bg-"]),
+.dark .student-lms [class~="bg-red-50/80"]:not([class*="dark:bg-"]) {
+  background-color: rgba(244, 63, 94, 0.15) !important;
+}
+
+/* Chống nháy sáng trắng khi hover vào nút/thẻ Student LMS chưa có dark:hover:bg-* */
+.dark .student-lms [class~="hover:bg-white"]:not([class*="dark:hover:bg-"]):hover,
+.dark .student-lms [class~="hover:bg-slate-50"]:not([class*="dark:hover:bg-"]):hover,
+.dark .student-lms [class~="hover:bg-slate-100"]:not([class*="dark:hover:bg-"]):hover,
+.dark .student-lms [class~="hover:bg-slate-200"]:not([class*="dark:hover:bg-"]):hover {
+  background-color: rgba(51, 65, 85, 0.85) !important;
+}
+
+.dark .student-lms [class~="hover:bg-blue-50"]:not([class*="dark:hover:bg-"]):hover,
+.dark .student-lms [class~="hover:bg-blue-50/50"]:not([class*="dark:hover:bg-"]):hover,
+.dark .student-lms [class~="hover:bg-blue-100"]:not([class*="dark:hover:bg-"]):hover {
+  background-color: rgba(14, 165, 233, 0.24) !important;
+}
+
+/* Chỉ làm tối gradient nền sáng (bảo toàn màu các nút CTA xanh lá/xanh dương/cam/tím) */
+.dark .student-lms [class~="bg-gradient-to-r"]:not([class*="dark:from-"]):not([class*="dark:bg-none"]):not([class*="from-blue-"]):not([class*="from-emerald-"]):not([class*="from-amber-"]):not([class*="from-sky-500"]):not([class*="from-sky-600"]):not([class*="from-indigo-"]):not([class*="from-violet-"]):not([class*="from-rose-"]):not([class*="from-[#17365f]"]),
+.dark .student-lms [class~="bg-gradient-to-br"]:not([class*="dark:from-"]):not([class*="dark:bg-none"]):not([class*="from-blue-"]):not([class*="from-emerald-"]):not([class*="from-amber-"]):not([class*="from-sky-500"]):not([class*="from-sky-600"]):not([class*="from-indigo-"]):not([class*="from-violet-"]):not([class*="from-rose-"]):not([class*="from-[#17365f]"]) {
   background-image: linear-gradient(130deg, #14213d 0%, #111b2e 54%, #0d1a30 100%);
 }
 
-.dark .student-lms .border-slate-100,
-.dark .student-lms .border-slate-200,
-.dark .student-lms .border-slate-200\/80,
-.dark .student-lms .border-blue-100,
-.dark .student-lms .border-blue-200,
-.dark .student-lms .ring-slate-100,
-.dark .student-lms .ring-blue-100 {
-  border-color: #263650;
-  --tw-ring-color: #263650;
+/* Viền phân tầng cho Student LMS */
+.dark .student-lms .border-slate-100:not([class*="dark:border-"]),
+.dark .student-lms .border-slate-200:not([class*="dark:border-"]),
+.dark .student-lms .border-slate-200\/80:not([class*="dark:border-"]),
+.dark .student-lms .border-slate-300:not([class*="dark:border-"]),
+.dark .student-lms .border-gray-100:not([class*="dark:border-"]),
+.dark .student-lms .border-gray-200:not([class*="dark:border-"]),
+.dark .student-lms .ring-slate-100:not([class*="dark:ring-"]),
+.dark .student-lms .ring-blue-100:not([class*="dark:ring-"]) {
+  border-color: #263650 !important;
+  --tw-ring-color: #263650 !important;
 }
 
-/* 1. Phủ màu chữ trắng sáng và xám nhạt cho cả Teacher & Student LMS */
-.dark .student-lms .text-slate-950,
-.dark .student-lms .text-slate-900,
-.dark .student-lms .text-slate-800,
-.dark .student-lms .text-slate-700,
-.dark .student-lms .text-gray-950,
-.dark .student-lms .text-gray-900,
-.dark .student-lms .text-gray-800,
-.dark .student-lms .text-gray-700,
-.dark .teacher-lms .text-slate-950,
-.dark .teacher-lms .text-slate-900,
-.dark .teacher-lms .text-slate-800,
-.dark .teacher-lms .text-slate-700,
-.dark .teacher-lms .text-gray-950,
-.dark .teacher-lms .text-gray-900,
-.dark .teacher-lms .text-gray-800,
-.dark .teacher-lms .text-gray-700 {
+.dark .student-lms .border-blue-100:not([class*="dark:border-"]),
+.dark .student-lms .border-blue-200:not([class*="dark:border-"]),
+.dark .student-lms .border-blue-300:not([class*="dark:border-"]) {
+  border-color: rgba(56, 189, 248, 0.25) !important;
+}
+
+.dark .student-lms .border-indigo-200:not([class*="dark:border-"]),
+.dark .student-lms .border-violet-200:not([class*="dark:border-"]) {
+  border-color: rgba(139, 92, 246, 0.32) !important;
+}
+
+.dark .student-lms .border-emerald-200:not([class*="dark:border-"]),
+.dark .student-lms .border-teal-200:not([class*="dark:border-"]) {
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.dark .student-lms .border-amber-200:not([class*="dark:border-"]),
+.dark .student-lms .border-amber-300:not([class*="dark:border-"]) {
+  border-color: rgba(245, 158, 11, 0.34) !important;
+}
+
+.dark .student-lms .border-rose-200:not([class*="dark:border-"]),
+.dark .student-lms .border-red-200:not([class*="dark:border-"]) {
+  border-color: rgba(244, 63, 94, 0.34) !important;
+}
+
+/* Tăng tương phản chữ màu ngữ nghĩa đậm trên nền tối cho Student LMS */
+.dark .student-lms .text-blue-700:not([class*="dark:text-"]),
+.dark .student-lms .text-blue-800:not([class*="dark:text-"]),
+.dark .student-lms .text-blue-900:not([class*="dark:text-"]),
+.dark .student-lms .text-sky-800:not([class*="dark:text-"]) {
+  color: #7dd3fc !important;
+}
+
+.dark .student-lms .text-blue-600:not([class*="dark:text-"]) {
+  color: #60a5fa !important;
+}
+
+.dark .student-lms .text-indigo-700:not([class*="dark:text-"]),
+.dark .student-lms .text-indigo-800:not([class*="dark:text-"]),
+.dark .student-lms .text-violet-700:not([class*="dark:text-"]),
+.dark .student-lms .text-violet-800:not([class*="dark:text-"]),
+.dark .student-lms .text-purple-700:not([class*="dark:text-"]) {
+  color: #c4b5fd !important;
+}
+
+.dark .student-lms .text-emerald-700:not([class*="dark:text-"]),
+.dark .student-lms .text-emerald-800:not([class*="dark:text-"]),
+.dark .student-lms .text-emerald-900:not([class*="dark:text-"]),
+.dark .student-lms .text-teal-700:not([class*="dark:text-"]),
+.dark .student-lms .text-green-700:not([class*="dark:text-"]) {
+  color: #6ee7b7 !important;
+}
+
+.dark .student-lms .text-amber-700:not([class*="dark:text-"]),
+.dark .student-lms .text-amber-800:not([class*="dark:text-"]),
+.dark .student-lms .text-amber-900:not([class*="dark:text-"]) {
+  color: #fcd34d !important;
+}
+
+.dark .student-lms .text-rose-700:not([class*="dark:text-"]),
+.dark .student-lms .text-rose-800:not([class*="dark:text-"]),
+.dark .student-lms .text-rose-900:not([class*="dark:text-"]),
+.dark .student-lms .text-red-700:not([class*="dark:text-"]) {
+  color: #fda4af !important;
+}
+
+/* 1. Phủ màu chữ trắng sáng và xám nhạt cho cả Teacher & Student LMS (tôn trọng dark:text-* đã khai báo) */
+.dark .student-lms .text-slate-950:not([class*="dark:text-"]),
+.dark .student-lms .text-slate-900:not([class*="dark:text-"]),
+.dark .student-lms .text-slate-800:not([class*="dark:text-"]),
+.dark .student-lms .text-slate-700:not([class*="dark:text-"]),
+.dark .student-lms .text-gray-950:not([class*="dark:text-"]),
+.dark .student-lms .text-gray-900:not([class*="dark:text-"]),
+.dark .student-lms .text-gray-800:not([class*="dark:text-"]),
+.dark .student-lms .text-gray-700:not([class*="dark:text-"]),
+.dark .teacher-lms .text-slate-950:not([class*="dark:text-"]),
+.dark .teacher-lms .text-slate-900:not([class*="dark:text-"]),
+.dark .teacher-lms .text-slate-800:not([class*="dark:text-"]),
+.dark .teacher-lms .text-slate-700:not([class*="dark:text-"]),
+.dark .teacher-lms .text-gray-950:not([class*="dark:text-"]),
+.dark .teacher-lms .text-gray-900:not([class*="dark:text-"]),
+.dark .teacher-lms .text-gray-800:not([class*="dark:text-"]),
+.dark .teacher-lms .text-gray-700:not([class*="dark:text-"]) {
   color: #f1f5f9 !important;
 }
 
-.dark .student-lms .text-slate-600,
-.dark .student-lms .text-slate-500,
-.dark .student-lms .text-slate-400,
-.dark .student-lms .text-gray-600,
-.dark .student-lms .text-gray-500,
-.dark .student-lms .text-gray-400,
-.dark .teacher-lms .text-slate-600,
-.dark .teacher-lms .text-slate-500,
-.dark .teacher-lms .text-slate-400,
-.dark .teacher-lms .text-gray-600,
-.dark .teacher-lms .text-gray-500,
-.dark .teacher-lms .text-gray-400 {
+.dark .student-lms .text-slate-600:not([class*="dark:text-"]),
+.dark .student-lms .text-slate-500:not([class*="dark:text-"]),
+.dark .student-lms .text-slate-400:not([class*="dark:text-"]),
+.dark .student-lms .text-gray-600:not([class*="dark:text-"]),
+.dark .student-lms .text-gray-500:not([class*="dark:text-"]),
+.dark .student-lms .text-gray-400:not([class*="dark:text-"]),
+.dark .teacher-lms .text-slate-600:not([class*="dark:text-"]),
+.dark .teacher-lms .text-slate-500:not([class*="dark:text-"]),
+.dark .teacher-lms .text-slate-400:not([class*="dark:text-"]),
+.dark .teacher-lms .text-gray-600:not([class*="dark:text-"]),
+.dark .teacher-lms .text-gray-500:not([class*="dark:text-"]),
+.dark .teacher-lms .text-gray-400:not([class*="dark:text-"]) {
   color: #94a3b8 !important;
+}
+
+/* 1.5. Tăng tương phản chữ màu ngữ nghĩa đậm (blue/indigo/emerald/amber/rose/violet) trên nền tối khi chưa có dark:text-* */
+.dark .teacher-lms .text-blue-700:not([class*="dark:text-"]),
+.dark .teacher-lms .text-blue-800:not([class*="dark:text-"]),
+.dark .teacher-lms .text-blue-900:not([class*="dark:text-"]),
+.dark .teacher-lms .text-sky-800:not([class*="dark:text-"]) {
+  color: #7dd3fc !important;
+}
+
+.dark .teacher-lms .text-blue-600:not([class*="dark:text-"]) {
+  color: #60a5fa !important;
+}
+
+.dark .teacher-lms .text-indigo-700:not([class*="dark:text-"]),
+.dark .teacher-lms .text-indigo-800:not([class*="dark:text-"]),
+.dark .teacher-lms .text-violet-700:not([class*="dark:text-"]),
+.dark .teacher-lms .text-violet-800:not([class*="dark:text-"]),
+.dark .teacher-lms .text-purple-700:not([class*="dark:text-"]) {
+  color: #c4b5fd !important;
+}
+
+.dark .teacher-lms .text-emerald-700:not([class*="dark:text-"]),
+.dark .teacher-lms .text-emerald-800:not([class*="dark:text-"]),
+.dark .teacher-lms .text-emerald-900:not([class*="dark:text-"]),
+.dark .teacher-lms .text-teal-700:not([class*="dark:text-"]),
+.dark .teacher-lms .text-green-700:not([class*="dark:text-"]) {
+  color: #6ee7b7 !important;
+}
+
+.dark .teacher-lms .text-amber-700:not([class*="dark:text-"]),
+.dark .teacher-lms .text-amber-800:not([class*="dark:text-"]),
+.dark .teacher-lms .text-amber-900:not([class*="dark:text-"]) {
+  color: #fcd34d !important;
+}
+
+.dark .teacher-lms .text-rose-700:not([class*="dark:text-"]),
+.dark .teacher-lms .text-rose-800:not([class*="dark:text-"]),
+.dark .teacher-lms .text-rose-900:not([class*="dark:text-"]),
+.dark .teacher-lms .text-red-700:not([class*="dark:text-"]) {
+  color: #fda4af !important;
 }
 
 /* 2. Triệt để khắc phục lỗi chữ màu xanh navy Monet (#102f63, #17365f, #244866...) bị chìm vào nền tối */
@@ -748,43 +1100,67 @@ html:not(.dark):not(.assessment-mode) .student-dashboard-page span {
 }
 
 /* 4. Viền kính mờ (border-white/*) và viền bảng biểu trong Dark Mode */
-.dark .teacher-lms [class*="border-white/"],
-.dark .student-lms [class*="border-white/"] {
+.dark .teacher-lms [class*="border-white/"]:not([class*="dark:border-"]),
+.dark .student-lms [class*="border-white/"]:not([class*="dark:border-"]) {
   border-color: rgba(255, 255, 255, 0.09) !important;
 }
 
-.dark .teacher-lms .border-slate-100,
-.dark .teacher-lms .border-slate-200,
-.dark .teacher-lms .border-slate-200\/80,
-.dark .teacher-lms .border-blue-100,
-.dark .teacher-lms .border-blue-200,
-.dark .teacher-lms .ring-slate-100,
-.dark .teacher-lms .ring-blue-100 {
+.dark .teacher-lms .border-slate-100:not([class*="dark:border-"]),
+.dark .teacher-lms .border-slate-200:not([class*="dark:border-"]),
+.dark .teacher-lms .border-slate-200\/80:not([class*="dark:border-"]),
+.dark .teacher-lms .border-slate-300:not([class*="dark:border-"]),
+.dark .teacher-lms .border-gray-100:not([class*="dark:border-"]),
+.dark .teacher-lms .border-gray-200:not([class*="dark:border-"]),
+.dark .teacher-lms .ring-slate-100:not([class*="dark:ring-"]),
+.dark .teacher-lms .ring-blue-100:not([class*="dark:ring-"]) {
   border-color: #263650 !important;
   --tw-ring-color: #263650 !important;
 }
 
-.dark .teacher-lms [class*="border-sky-100"],
-.dark .student-lms [class*="border-sky-100"],
-.dark .teacher-lms [class*="border-sky-200"],
-.dark .student-lms [class*="border-sky-200"] {
-  border-color: rgba(56, 189, 248, 0.2) !important;
+.dark .teacher-lms .border-blue-100:not([class*="dark:border-"]),
+.dark .teacher-lms .border-blue-200:not([class*="dark:border-"]),
+.dark .teacher-lms .border-blue-300:not([class*="dark:border-"]),
+.dark .teacher-lms [class*="border-sky-100"]:not([class*="dark:border-"]),
+.dark .student-lms [class*="border-sky-100"]:not([class*="dark:border-"]),
+.dark .teacher-lms [class*="border-sky-200"]:not([class*="dark:border-"]),
+.dark .student-lms [class*="border-sky-200"]:not([class*="dark:border-"]) {
+  border-color: rgba(56, 189, 248, 0.25) !important;
+}
+
+.dark .teacher-lms .border-indigo-200:not([class*="dark:border-"]),
+.dark .teacher-lms .border-violet-200:not([class*="dark:border-"]) {
+  border-color: rgba(139, 92, 246, 0.32) !important;
+}
+
+.dark .teacher-lms .border-emerald-200:not([class*="dark:border-"]),
+.dark .teacher-lms .border-teal-200:not([class*="dark:border-"]) {
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.dark .teacher-lms .border-amber-200:not([class*="dark:border-"]),
+.dark .teacher-lms .border-amber-300:not([class*="dark:border-"]) {
+  border-color: rgba(245, 158, 11, 0.34) !important;
+}
+
+.dark .teacher-lms .border-rose-200:not([class*="dark:border-"]),
+.dark .teacher-lms .border-red-200:not([class*="dark:border-"]) {
+  border-color: rgba(244, 63, 94, 0.34) !important;
 }
 
 /* 5. Nút bấm phụ nền trắng kính mờ (bg-white/80, bg-white/90, etc.) trong Dark Mode */
-.dark .teacher-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]),
-.dark .teacher-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]),
-.dark .student-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]),
-.dark .student-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]) {
-  background-color: rgba(30, 41, 59, 0.8) !important;
+.dark .teacher-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]):not([class*="dark:bg-"]),
+.dark .teacher-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]):not([class*="dark:bg-"]),
+.dark .student-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]):not([class*="dark:bg-"]),
+.dark .student-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]):not([class*="dark:bg-"]) {
+  background-color: rgba(30, 41, 59, 0.85) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
   color: #e2e8f0 !important;
 }
 
-.dark .teacher-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]):hover,
-.dark .teacher-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]):hover,
-.dark .student-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]):hover,
-.dark .student-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]):hover {
+.dark .teacher-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]):not([class*="dark:hover:bg-"]):hover,
+.dark .teacher-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]):not([class*="dark:hover:bg-"]):hover,
+.dark .student-lms a[class*="bg-white/"]:not([class*="bg-gradient-"]):not([class*="dark:hover:bg-"]):hover,
+.dark .student-lms button[class*="bg-white/"]:not([class*="bg-gradient-"]):not([class*="dark:hover:bg-"]):hover {
   background-color: rgba(51, 65, 85, 0.95) !important;
   color: #ffffff !important;
 }
@@ -809,8 +1185,7 @@ html:not(.dark):not(.assessment-mode) .student-dashboard-page span {
 }
 
 /* 7. Icon màu xanh biển trong Dark Mode -> Màu xanh Sky sáng rõ */
-.dark .teacher-lms .text-sky-700,
-.dark .student-lms .text-sky-700 {
+.dark .teacher-lms .text-sky-700:not([class*="dark:text-"]),
+.dark .student-lms .text-sky-700:not([class*="dark:text-"]) {
   color: #38bdf8 !important;
 }
-

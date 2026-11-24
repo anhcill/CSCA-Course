@@ -2,6 +2,7 @@ import usePersistentClassSelectionBase from "../../../hooks/usePersistentClassSe
 
 export default function usePersistentClassSelection(options) {
   return usePersistentClassSelectionBase({
+    shareLastActive: true,
     ...options,
     storageNamespace: "student",
   });

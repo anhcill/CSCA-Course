@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   BarChart3,
-  Bell,
   Binary,
   BookA,
   BookOpen,
@@ -12,43 +11,79 @@ import {
   ChevronRight,
   FileCheck2,
   FolderOpen,
-  GraduationCap,
   Home,
+  Library,
   LogOut,
   Menu,
   Moon,
+  Palette,
   Settings,
   Sun,
-  UserRound,
   Video,
   X,
 } from "lucide-react";
 import NotificationBell from "../../features/notifications/components/NotificationBell";
-import { fetchUnreadNotificationsCount } from "../../features/api/lmsClient";
 import { useAuthContext } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import useLogout from "../../hooks/useLogout";
 import { getAvatarUrl, handleAvatarError } from "../../utils/avatar";
-import { normalizeLmsWallpaper } from "../../utils/classWallpapers";
+import { CSCA_WALLPAPERS, normalizeLmsWallpaper } from "../../utils/classWallpapers";
 
 const STUDENT_NAV = [
-  { label: "Tổng quan LMS", path: "/lms/dashboard", icon: Home, end: true },
-  { label: "Khóa học của tôi", path: "/lms/my-learning", icon: BookOpen, end: true },
+  { label: "Tổng quan", path: "/lms/dashboard", icon: Home, end: true },
+  { label: "Lớp học của tôi", path: "/lms/my-learning", icon: BookOpen, end: true },
   { label: "Lịch học", path: "/lms/calendar", icon: CalendarDays },
-  { label: "Bài tập & Kiểm tra", path: "/lms/assignments", icon: FileCheck2 },
-  { label: "Từ vựng", path: "/lms/vocabulary", icon: BookA },
-  { label: "Công thức", path: "/lms/formulas", icon: Binary },
-  { label: "Tài liệu", path: "/lms/files", icon: FolderOpen },
-  { label: "Bản ghi buổi học", path: "/lms/recordings", icon: Video },
-  { label: "Thông báo", path: "/lms/notifications", icon: Bell },
+  { label: "Bài tập & Quiz", path: "/lms/assignments", icon: FileCheck2 },
+  {
+    label: "Kho ôn tập & Học liệu",
+    path: "/lms/files",
+    icon: Library,
+    children: [
+      { label: "Từ vựng", path: "/lms/vocabulary", icon: BookA },
+      { label: "Công thức", path: "/lms/formulas", icon: Binary },
+      { label: "Tài liệu lớp", path: "/lms/files", icon: FolderOpen },
+      { label: "Bản ghi buổi học", path: "/lms/recordings", icon: Video },
+    ],
+  },
   { label: "Kết quả học tập", path: "/lms/analytics", icon: BarChart3 },
+];
+
+const MOBILE_BOTTOM_NAV = [
+  {
+    id: "dashboard",
+    label: "Tổng quan",
+    path: "/lms/dashboard",
+    icon: Home,
+    isActive: (pathname) => pathname === "/lms/dashboard",
+  },
+  {
+    id: "learning",
+    label: "Lớp học",
+    path: "/lms/my-learning",
+    icon: BookOpen,
+    isActive: (pathname) => pathname === "/lms/my-learning" || pathname.startsWith("/lms/courses") || pathname.startsWith("/lms/learn"),
+  },
+  {
+    id: "calendar",
+    label: "Lịch học",
+    path: "/lms/calendar",
+    icon: CalendarDays,
+    isActive: (pathname) => pathname === "/lms/calendar" || pathname === "/lms/live-schedule",
+  },
+  {
+    id: "assignments",
+    label: "Bài tập",
+    path: "/lms/assignments",
+    icon: FileCheck2,
+    isActive: (pathname) => pathname.startsWith("/lms/assignments") || pathname.startsWith("/lms/assignment/") || pathname.startsWith("/lms/quiz"),
+  },
 ];
 
 function Brand({ collapsed = false }) {
   return (
     <Link
       to="/lms/dashboard"
-      className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}
+      className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}
       aria-label="CSCA LMS - Trang chủ"
       title={collapsed ? "CSCA LMS - 知 行 合 一" : undefined}
     >
@@ -65,77 +100,141 @@ function Brand({ collapsed = false }) {
   );
 }
 
-function StudentNavItem({ item, onNavigate, unreadCount = 0, collapsed = false }) {
+function preloadLearningRoute(path) {
+  if (path === "/lms/vocabulary") {
+    import("../../features/learning/pages/StudentVocabularyHubPage.jsx").catch(() => {});
+  } else if (path === "/lms/formulas") {
+    import("../../features/learning/pages/StudentFormulaHubPage.jsx").catch(() => {});
+  } else if (path === "/lms/recordings") {
+    import("../../features/learning/pages/StudentRecordingsPage.jsx").catch(() => {});
+  }
+}
+
+function StudentNavItem({ item, onNavigate, collapsed = false }) {
   const location = useLocation();
   const Icon = item.icon;
-
-  const handleMouseEnter = () => {
-    if (item.path === "/lms/vocabulary") {
-      import("../../features/learning/pages/StudentVocabularyHubPage.jsx").catch(() => {});
-    } else if (item.path === "/lms/formulas") {
-      import("../../features/learning/pages/StudentFormulaHubPage.jsx").catch(() => {});
-    } else if (item.path === "/lms/recordings") {
-      import("../../features/learning/pages/StudentRecordingsPage.jsx").catch(() => {});
-    }
-  };
+  const hasChildren = Array.isArray(item.children) && item.children.length > 0;
 
   const isCourseSection = item.path === "/lms/my-learning" && (
     location.pathname.startsWith("/lms/courses") || location.pathname.startsWith("/lms/learn")
   );
+  const isCalendarSection = item.path === "/lms/calendar" && location.pathname === "/lms/live-schedule";
+  const isAssignmentSection = item.path === "/lms/assignments" && (
+    location.pathname.startsWith("/lms/assignment/") || location.pathname.startsWith("/lms/quiz")
+  );
+  const isChildMatch = hasChildren && item.children.some((sub) => (
+    location.pathname === sub.path
+    || location.pathname.startsWith(`${sub.path}/`)
+    || (sub.path === "/lms/files" && location.pathname.startsWith("/lms/materials"))
+  ));
+
+  const [isOpen, setIsOpen] = useState(isChildMatch);
+
+  useEffect(() => {
+    if (isChildMatch) setIsOpen(true);
+  }, [isChildMatch]);
+
+  if (!hasChildren) {
+    return (
+      <NavLink
+        to={item.path}
+        end={item.end}
+        onClick={onNavigate}
+        onMouseEnter={() => preloadLearningRoute(item.path)}
+        title={collapsed ? item.label : undefined}
+        className={({ isActive }) => {
+          const active = isActive || isCourseSection || isCalendarSection || isAssignmentSection;
+          return `group relative flex items-center rounded-xl text-sm font-semibold transition ${
+            collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
+          } ${
+            active
+              ? "bg-[#dff1ff] text-blue-700 shadow-sm dark:bg-sky-950/60 dark:text-sky-300"
+              : "text-[#17365f] hover:bg-blue-50/80 hover:text-blue-700 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-white"
+          }`;
+        }}
+      >
+        {({ isActive }) => {
+          const active = isActive || isCourseSection || isCalendarSection || isAssignmentSection;
+          return (
+            <>
+              <Icon className={`h-4.5 w-4.5 shrink-0 ${active ? "text-blue-600 dark:text-sky-400" : "text-[#17365f] dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-sky-400"}`} />
+              {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+            </>
+          );
+        }}
+      </NavLink>
+    );
+  }
 
   return (
-    <NavLink
-      to={item.path}
-      end={item.end}
-      onClick={onNavigate}
-      onMouseEnter={handleMouseEnter}
-      title={collapsed ? item.label : undefined}
-      className={({ isActive }) => {
-        const active = isActive || isCourseSection;
-        return `group relative flex items-center rounded-xl text-sm font-semibold transition ${
-          collapsed
-            ? "justify-center px-0 py-3"
-            : "gap-3 px-3 py-3"
-        } ${
-          active
-            ? "bg-[#dff1ff] text-blue-700 shadow-sm dark:bg-sky-950/60 dark:text-sky-300"
-            : "text-[#17365f] hover:bg-blue-50/80 hover:text-blue-700 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-white"
-        }`;
-      }}
-    >
-      {({ isActive }) => {
-        const active = isActive || isCourseSection;
-        return (
-          <>
-            <div className="relative flex items-center justify-center">
-              <Icon className={`h-5 w-5 shrink-0 ${active ? "text-blue-600 dark:text-sky-400" : "text-[#17365f] dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-sky-400"}`} />
-              {collapsed && item.label === "Thông báo" && unreadCount > 0 && (
-                <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-black text-white ring-2 ring-white dark:ring-slate-900">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
-            </div>
-            {!collapsed && (
-              <>
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                {item.label === "Thông báo" && unreadCount > 0 && (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
-              </>
-            )}
-          </>
-        );
-      }}
-    </NavLink>
+    <div className="space-y-1">
+      <div className="relative flex items-center">
+        {collapsed ? (
+          <Link
+            to={item.path}
+            onClick={onNavigate}
+            title={item.label}
+            className={`group relative flex flex-1 items-center justify-center rounded-xl px-0 py-2.5 text-sm font-semibold transition ${
+              isChildMatch
+                ? "bg-[#dff1ff] text-blue-700 shadow-sm dark:bg-sky-950/60 dark:text-sky-300"
+                : "text-[#17365f] hover:bg-blue-50/80 hover:text-blue-700 dark:text-slate-300 dark:hover:bg-slate-800/70"
+            }`}
+          >
+            <Icon className={`h-4.5 w-4.5 shrink-0 ${isChildMatch ? "text-blue-600 dark:text-sky-400" : "text-[#17365f] dark:text-slate-400 group-hover:text-blue-600"}`} />
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsOpen((prev) => !prev)}
+            aria-expanded={isOpen}
+            className={`group relative flex flex-1 items-center gap-3 rounded-xl px-3 py-2.5 pr-8 text-left text-sm font-semibold transition ${
+              isChildMatch
+                ? "bg-[#dff1ff] text-blue-700 shadow-sm dark:bg-sky-950/60 dark:text-sky-300"
+                : "text-[#17365f] hover:bg-blue-50/80 hover:text-blue-700 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-white"
+            }`}
+          >
+            <Icon className={`h-4.5 w-4.5 shrink-0 ${isChildMatch ? "text-blue-600 dark:text-sky-400" : "text-[#17365f] dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-sky-400"}`} />
+            <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            <ChevronDown className={`absolute right-2.5 h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+          </button>
+        )}
+      </div>
+
+      {!collapsed && isOpen && (
+        <div className="ml-3 pl-3 border-l-2 border-sky-200/80 dark:border-slate-800 space-y-1 py-1">
+          {item.children.map((sub) => {
+            const SubIcon = sub.icon;
+            const isSubActive =
+              location.pathname === sub.path
+              || location.pathname.startsWith(`${sub.path}/`)
+              || (sub.path === "/lms/files" && location.pathname.startsWith("/lms/materials"));
+            return (
+              <Link
+                key={sub.path}
+                to={sub.path}
+                onClick={onNavigate}
+                onMouseEnter={() => preloadLearningRoute(sub.path)}
+                className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition ${
+                  isSubActive
+                    ? "bg-blue-100/90 text-blue-800 dark:bg-sky-950/80 dark:text-sky-200 font-bold shadow-2xs"
+                    : "text-[#244866] dark:text-slate-400 hover:bg-blue-50/70 hover:text-blue-700 dark:hover:bg-slate-800/60 dark:hover:text-slate-200 font-medium"
+                }`}
+              >
+                <SubIcon className={`h-3.5 w-3.5 shrink-0 transition ${isSubActive ? "text-blue-600 dark:text-sky-400" : "text-slate-400 group-hover:text-blue-600"}`} />
+                <span className="truncate">{sub.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
-function Sidebar({ onNavigate, unreadCount = 0, collapsed = false, onToggleCollapse, showMyCourses = false }) {
+function Sidebar({ onNavigate, collapsed = false, onToggleCollapse, showMyCourses = false }) {
   return (
-    <div className={`flex h-full min-h-0 flex-col overflow-hidden py-6 transition-[padding] duration-300 ${collapsed ? 'px-2' : 'px-4'}`}>
-      <div className={`shrink-0 flex items-center ${collapsed ? 'flex-col gap-2 px-0' : 'justify-between px-2'}`}>
+    <div className={`flex h-full min-h-0 flex-col overflow-hidden transition-[padding] duration-300 ${collapsed ? "px-2 py-4" : "px-4 py-5"}`}>
+      <div className={`shrink-0 flex items-center ${collapsed ? "flex-col gap-2 px-0" : "justify-between px-1"}`}>
         <Brand collapsed={collapsed} />
         {onToggleCollapse && (
           <button
@@ -150,75 +249,76 @@ function Sidebar({ onNavigate, unreadCount = 0, collapsed = false, onToggleColla
         )}
       </div>
 
-      {/* Switcher: LMS vs Trang chủ Website */}
-      {!collapsed ? (
-        <div className="mt-3 shrink-0 rounded-2xl bg-slate-100/80 p-1 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
-          <div className="flex items-center gap-1">
-            <span className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-white dark:bg-slate-700 py-1.5 px-2 text-xs font-black text-blue-700 dark:text-sky-300 shadow-xs">
-              <GraduationCap className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
-              <span>LMS Học viên</span>
-            </span>
-            <Link
-              to="/"
-              onClick={onNavigate}
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-1.5 px-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-white/80 hover:text-blue-700 dark:hover:bg-slate-700/80 dark:hover:text-white transition"
-              title="Về Trang chủ Website (Khóa học & Record)"
-            >
-              <Home className="h-3.5 w-3.5" />
-              <span>Trang chủ</span>
-            </Link>
-          </div>
+      {/* Role Pill */}
+      {collapsed ? (
+        <div
+          className="mt-2 mb-2 flex shrink-0 items-center justify-center rounded-xl border border-sky-100 bg-[#eef7fd] dark:border-slate-800 dark:bg-slate-800/80 py-1.5 px-1 shadow-2xs"
+          title="Không gian Học viên CSCA"
+        >
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
         </div>
       ) : (
-        <div className="mt-3 shrink-0 flex justify-center">
-          <Link
-            to="/"
-            onClick={onNavigate}
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-100 hover:text-blue-700 dark:hover:bg-slate-700 transition"
-            title="Về Trang chủ Website (Khóa học & Record)"
-          >
-            <Home className="h-4 w-4" />
-          </Link>
+        <div className="mt-3 mb-2 flex shrink-0 items-center justify-between rounded-xl border border-sky-100 bg-[#eef7fd] dark:border-slate-800 dark:bg-slate-800/80 px-3 py-1.5 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[11px] font-black tracking-wide text-[#102f63] dark:text-slate-200">
+              Không gian Học viên
+            </span>
+          </div>
+          <span className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase text-emerald-700 dark:text-emerald-400">
+            STUDENT
+          </span>
         </div>
       )}
 
-      <div className="my-5 h-px shrink-0 bg-slate-100 dark:bg-slate-800" />
+      <div className="my-2 h-px shrink-0 bg-slate-100 dark:bg-slate-800" />
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Điều hướng LMS học viên">
         {STUDENT_NAV.filter((item) => item.path !== "/lms/my-learning" || showMyCourses).map((item) => (
-          <StudentNavItem key={item.path} item={item} onNavigate={onNavigate} unreadCount={unreadCount} collapsed={collapsed} />
+          <StudentNavItem key={item.path + item.label} item={item} onNavigate={onNavigate} collapsed={collapsed} />
         ))}
       </nav>
-      <div className="mt-4 shrink-0 border-t border-slate-200 dark:border-slate-800 pt-4 space-y-1">
+      <div className="mt-3 shrink-0 border-t border-slate-200 dark:border-slate-800 pt-3 space-y-1">
+        <Link
+          to="/courses"
+          onClick={onNavigate}
+          title={collapsed ? "Khóa học & Record" : undefined}
+          className={`flex items-center rounded-xl text-xs font-bold transition ${
+            collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2"
+          } text-purple-700 hover:bg-purple-50/80 dark:text-purple-300 dark:hover:bg-purple-950/40`}
+        >
+          <Video className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+          {!collapsed && <span className="min-w-0 flex-1 truncate">Khóa học Record</span>}
+        </Link>
+        <Link
+          to="/"
+          onClick={onNavigate}
+          title={collapsed ? "Trang chủ CSCA" : undefined}
+          className={`flex items-center rounded-xl text-xs font-semibold text-[#17365f] dark:text-slate-400 transition hover:bg-blue-50/80 hover:text-blue-700 dark:hover:bg-slate-800 dark:hover:text-white ${
+            collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2"
+          }`}
+        >
+          <Home className="h-4 w-4 shrink-0" />
+          {!collapsed && <span className="min-w-0 flex-1 truncate">Trang chủ CSCA</span>}
+        </Link>
         <NavLink
           to="/lms/settings"
           onClick={onNavigate}
-          title={collapsed ? "Cài đặt" : undefined}
-          className={({ isActive }) => `flex items-center rounded-xl text-sm font-semibold transition ${
-            collapsed ? "justify-center px-0 py-3" : "gap-3 px-3 py-3"
+          title={collapsed ? "Cài đặt học viên" : undefined}
+          className={({ isActive }) => `flex items-center rounded-xl text-xs font-semibold transition ${
+            collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2"
           } ${
             isActive
               ? "bg-[#dff1ff] text-blue-700 shadow-sm dark:bg-sky-950/60 dark:text-sky-300"
-              : "text-[#17365f] hover:bg-blue-50/80 hover:text-blue-700 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-white"
+              : "text-[#17365f] hover:bg-blue-50/80 hover:text-blue-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
           }`}
         >
           {({ isActive }) => (
             <>
-              <Settings className={`h-5 w-5 shrink-0 ${isActive ? "text-blue-600 dark:text-sky-400" : "text-[#17365f] dark:text-slate-400"}`} />
-              {!collapsed && <span className="min-w-0 flex-1 truncate">Cài đặt</span>}
+              <Settings className={`h-4 w-4 shrink-0 ${isActive ? "text-blue-600 dark:text-sky-400" : "text-[#17365f] dark:text-slate-400"}`} />
+              {!collapsed && <span className="min-w-0 flex-1 truncate">Cài đặt học viên</span>}
             </>
           )}
         </NavLink>
-        <Link
-          to="/courses"
-          onClick={onNavigate}
-          title={collapsed ? "Xem Khóa học & Record" : undefined}
-          className={`flex items-center rounded-xl text-sm font-semibold transition ${
-            collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
-          } text-purple-700 hover:bg-purple-50/80 dark:text-purple-300 dark:hover:bg-purple-950/40`}
-        >
-          <Video className="h-5 w-5 shrink-0 text-purple-600 dark:text-purple-400" />
-          {!collapsed && <span className="min-w-0 flex-1 truncate font-bold">Khóa học Record</span>}
-        </Link>
       </div>
     </div>
   );
@@ -262,30 +362,6 @@ export default function StudentLmsLayout({ children }) {
   const isCourses = location.pathname.startsWith("/lms/courses") || location.pathname.startsWith("/lms/learn");
   const hasScenicBackground = isDashboard || isCalendar || isAssignments || isCourseList || isVocabulary || isFormulas || isAnalytics || isNotifications || isSettings || isFiles || isRecordings || isCourses;
 
-  const [unreadNotifs, setUnreadNotifs] = useState(0);
-
-  useEffect(() => {
-    let isMounted = true;
-    const syncCount = async () => {
-      try {
-        const res = await fetchUnreadNotificationsCount();
-        const countVal = res?.data?.unreadCount ?? res?.data?.count;
-        if (isMounted && countVal !== undefined) {
-          setUnreadNotifs(Number(countVal));
-        }
-      } catch {
-        // fail silently
-      }
-    };
-    syncCount();
-    const handleSync = () => syncCount();
-    window.addEventListener("csca:notifications-updated", handleSync);
-    return () => {
-      isMounted = false;
-      window.removeEventListener("csca:notifications-updated", handleSync);
-    };
-  }, []);
-
   const [currentWallpaper, setCurrentWallpaper] = useState(() => {
     if (typeof window !== "undefined") {
       const savedWallpaper = localStorage.getItem("csca_lms_wallpaper");
@@ -305,6 +381,15 @@ export default function StudentLmsLayout({ children }) {
     window.addEventListener("csca_wallpaper_changed", handleWallpaperChange);
     return () => window.removeEventListener("csca_wallpaper_changed", handleWallpaperChange);
   }, []);
+
+  const cycleWallpaper = () => {
+    const currentIndex = CSCA_WALLPAPERS.findIndex((w) => w.url === currentWallpaper || w.cloudinaryUrl === currentWallpaper);
+    const nextIndex = (currentIndex + 1) % CSCA_WALLPAPERS.length;
+    const nextWp = CSCA_WALLPAPERS[nextIndex].cloudinaryUrl || CSCA_WALLPAPERS[nextIndex].url;
+    setCurrentWallpaper(nextWp);
+    localStorage.setItem("csca_lms_wallpaper", nextWp);
+    window.dispatchEvent(new CustomEvent("csca_wallpaper_changed", { detail: nextWp }));
+  };
 
   useEffect(() => setMobileOpen(false), [location.pathname]);
   useEffect(() => setProfileMenuOpen(false), [location.pathname]);
@@ -332,59 +417,27 @@ export default function StudentLmsLayout({ children }) {
       } : undefined}
     >
       <header className={`fixed right-0 top-0 z-40 h-16 transition-[left,colors] duration-300 ease-in-out ${
-        isSidebarCollapsed ? 'left-0 lg:left-[98px]' : 'left-0 lg:left-[252px]'
+        isSidebarCollapsed ? "left-0 lg:left-[98px]" : "left-0 lg:left-[252px]"
       } ${
         !isDarkMode
           ? (hasScenicBackground ? "bg-transparent" : "border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-xl")
           : "border-b border-slate-800/80 bg-slate-900/95 shadow-sm backdrop-blur-xl text-white"
       }`}>
-        <div className="flex h-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={() => setMobileOpen((open) => !open)}
-              className="rounded-xl bg-white/85 dark:bg-slate-800 p-2.5 text-slate-600 dark:text-slate-300 shadow-sm backdrop-blur lg:hidden"
-              aria-label={mobileOpen ? "Đóng menu học viên" : "Mở menu học viên"}
+        <div className="flex h-full items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-2">
+            <Link
+              to="/lms/dashboard"
+              className="flex items-center gap-2 rounded-xl border border-white/85 bg-white/85 px-2.5 py-1.5 shadow-sm backdrop-blur lg:hidden dark:border-slate-700 dark:bg-slate-800/90"
+              aria-label="CSCA LMS - Tổng quan"
             >
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
-
-            {/* Chuyển đổi màn hình: Trang chủ & Khóa học Record */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <Link
-                to="/"
-                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition shadow-xs ${
-                  !isDarkMode
-                    ? (hasScenicBackground
-                        ? "border border-white/85 bg-[#e4f4ff]/85 text-[#102f63] shadow-[0_4px_14px_rgba(32,91,135,0.14)] backdrop-blur-md hover:bg-white hover:text-blue-600"
-                        : "border border-slate-200 bg-white/90 text-slate-700 hover:bg-white hover:text-blue-600")
-                    : "border border-slate-700 bg-slate-800/90 text-slate-200 hover:bg-slate-700 hover:text-white"
-                }`}
-                title="Về Trang chủ Website để xem tất cả khóa học và video record"
-              >
-                <Home className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400 shrink-0" />
-                <span className="hidden sm:inline">Về Trang chủ</span>
-                <span className="sm:hidden">Trang chủ</span>
-              </Link>
-
-              <Link
-                to="/courses"
-                className={`hidden md:inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition shadow-xs ${
-                  !isDarkMode
-                    ? (hasScenicBackground
-                        ? "border border-white/85 bg-[#e4f4ff]/85 text-[#102f63] shadow-[0_4px_14px_rgba(32,91,135,0.14)] backdrop-blur-md hover:bg-white hover:text-purple-600"
-                        : "border border-slate-200 bg-white/90 text-slate-700 hover:bg-white hover:text-purple-600")
-                    : "border border-slate-700 bg-slate-800/90 text-slate-200 hover:bg-slate-700 hover:text-white"
-                }`}
-                title="Xem danh mục Khóa học & Bản ghi Record"
-              >
-                <Video className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
-                <span>Khóa học Record</span>
-              </Link>
-            </div>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
+                <BookOpen className="h-4 w-4" />
+              </span>
+              <span className="text-xs font-black tracking-tight text-[#102f63] dark:text-white">CSCA LMS</span>
+            </Link>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-2.5">
             {/* Dark Mode Toggle Button */}
             <button
               type="button"
@@ -402,21 +455,21 @@ export default function StudentLmsLayout({ children }) {
               {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
 
-            <NotificationBell variant={hasScenicBackground && !isDarkMode ? "bare" : "default"} />
-
-            <Link
-              to="/lms/assignments"
-              className={`hidden h-9 w-9 items-center justify-center rounded-xl transition sm:flex ${
+            <button
+              type="button"
+              onClick={cycleWallpaper}
+              className={`hidden sm:flex h-9 w-9 items-center justify-center rounded-xl transition ${
                 !isDarkMode
-                  ? (hasScenicBackground
-                      ? "border border-white/85 bg-[#e4f4ff]/85 text-[#17365f] shadow-[0_5px_18px_rgba(32,91,135,0.18)] backdrop-blur-md hover:bg-white hover:text-blue-600"
-                      : "bg-white/75 text-[#17365f] shadow-sm backdrop-blur hover:bg-white hover:text-blue-600")
-                  : "border border-slate-700 bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white"
+                  ? "border border-white/85 bg-[#e4f4ff]/85 text-[#17365f] shadow-[0_5px_18px_rgba(32,91,135,0.18)] backdrop-blur-md hover:bg-white hover:text-blue-700"
+                  : "border border-slate-700 bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white shadow-sm"
               }`}
-              aria-label="Bài tập và kiểm tra"
+              title="Đổi ảnh nền"
+              aria-label="Đổi ảnh nền"
             >
-              <FileCheck2 className="h-4 w-4" />
-            </Link>
+              <Palette className="h-4 w-4" />
+            </button>
+
+            <NotificationBell variant={hasScenicBackground && !isDarkMode ? "bare" : "default"} />
 
             {authUser && (
               <div className="relative" ref={profileMenuRef}>
@@ -426,7 +479,7 @@ export default function StudentLmsLayout({ children }) {
                   aria-label="Menu tài khoản"
                   aria-expanded={profileMenuOpen}
                   aria-haspopup="menu"
-                  className={`relative flex items-center gap-2.5 overflow-hidden rounded-xl px-2 py-1.5 transition ${
+                  className={`relative flex items-center gap-2 overflow-hidden rounded-xl px-2 py-1.5 transition ${
                     !isDarkMode
                       ? (hasScenicBackground
                           ? "border border-white/90 bg-[#d9efff]/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_7px_22px_rgba(24,75,118,0.18)] backdrop-blur-xl before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white before:to-transparent hover:bg-[#e8f6ff]"
@@ -443,19 +496,15 @@ export default function StudentLmsLayout({ children }) {
                 </button>
                 {profileMenuOpen && (
                   <div role="menu" className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-white/80 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-xl dark:text-slate-100">
-                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">Chuyển đổi khu vực</div>
-                    <Link to="/" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-blue-700 dark:text-sky-300 hover:bg-blue-50 dark:hover:bg-slate-800">
-                      <Home className="h-4 w-4" /> Trang chủ Website
+                    <Link to="/lms/settings" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-800 hover:text-blue-700 dark:hover:text-white">
+                      <Settings className="h-4 w-4" /> Cài đặt & Hồ sơ
                     </Link>
+                    <div className="my-1.5 h-px bg-slate-100 dark:bg-slate-800" />
                     <Link to="/courses" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-slate-800">
                       <Video className="h-4 w-4" /> Khóa học & Record
                     </Link>
-                    <div className="my-1.5 h-px bg-slate-100 dark:bg-slate-800" />
-                    <Link to="/lms/settings" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-800 hover:text-blue-700 dark:hover:text-white">
-                      <Settings className="h-4 w-4" /> Cài đặt
-                    </Link>
-                    <Link to="/lms/settings" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-800 hover:text-blue-700 dark:hover:text-white">
-                      <UserRound className="h-4 w-4" /> Hồ sơ cá nhân
+                    <Link to="/" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-blue-700 dark:text-sky-300 hover:bg-blue-50 dark:hover:bg-slate-800">
+                      <Home className="h-4 w-4" /> Trang chủ CSCA
                     </Link>
                     <div className="my-1.5 h-px bg-slate-100 dark:bg-slate-800" />
                     <button type="button" onClick={() => { setProfileMenuOpen(false); logout(); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40">
@@ -470,10 +519,9 @@ export default function StudentLmsLayout({ children }) {
       </header>
 
       <aside className={`fixed bottom-4 left-4 top-4 z-50 hidden overflow-hidden rounded-3xl border border-white/80 dark:border-slate-800 bg-white/92 dark:bg-slate-900/95 shadow-[0_16px_50px_rgba(32,78,120,0.15)] dark:shadow-[0_16px_50px_rgba(0,0,0,0.4)] backdrop-blur-xl transition-[width] duration-300 ease-in-out lg:flex lg:flex-col ${
-        isSidebarCollapsed ? 'w-[74px]' : 'w-[220px]'
+        isSidebarCollapsed ? "w-[74px]" : "w-[228px]"
       }`}>
         <Sidebar
-          unreadCount={unreadNotifs}
           collapsed={isSidebarCollapsed}
           onToggleCollapse={toggleSidebarCollapse}
           showMyCourses={authUser?.hasActiveLiveEnrollment === true}
@@ -482,11 +530,10 @@ export default function StudentLmsLayout({ children }) {
 
       {mobileOpen && (
         <>
-          <button type="button" className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Đóng menu học viên" />
-          <div className="fixed inset-y-3 left-3 z-50 w-[min(18rem,88vw)] overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 shadow-2xl lg:hidden">
+          <button type="button" className="fixed inset-0 z-50 bg-slate-950/45 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Đóng menu học viên" />
+          <div className="fixed inset-y-3 left-3 z-[60] w-[min(18rem,88vw)] overflow-hidden rounded-3xl bg-white/95 dark:bg-slate-900/95 border border-white/80 dark:border-slate-800 shadow-2xl lg:hidden">
             <Sidebar
               onNavigate={() => setMobileOpen(false)}
-              unreadCount={unreadNotifs}
               collapsed={false}
               showMyCourses={authUser?.hasActiveLiveEnrollment === true}
             />
@@ -494,9 +541,51 @@ export default function StudentLmsLayout({ children }) {
         </>
       )}
 
-      <main className={`min-h-screen pt-16 transition-[padding] duration-300 ease-in-out ${
-        isSidebarCollapsed ? 'lg:pl-[98px]' : 'lg:pl-[252px]'
+      <main className={`min-h-screen pt-16 pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0 transition-[padding] duration-300 ease-in-out ${
+        isSidebarCollapsed ? "lg:pl-[98px]" : "lg:pl-[256px]"
       }`}>{children}</main>
+
+      {/* Mobile PWA Bottom Navigation Bar (< lg) */}
+      <nav
+        aria-label="Điều hướng nhanh học viên"
+        className="student-mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-sky-200/80 bg-[#e6f4fd]/95 px-2 pt-1.5 pb-[calc(0.4rem+env(safe-area-inset-bottom))] shadow-[0_-8px_28px_rgba(20,60,100,0.1)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_-8px_28px_rgba(0,0,0,0.5)] lg:hidden"
+      >
+        <div className={`mx-auto grid max-w-md gap-1 ${authUser?.hasActiveLiveEnrollment === true ? "grid-cols-5" : "grid-cols-4"}`}>
+          {MOBILE_BOTTOM_NAV.filter((item) => item.id !== "learning" || authUser?.hasActiveLiveEnrollment === true).map((item) => {
+            const Icon = item.icon;
+            const active = !mobileOpen && item.isActive(location.pathname);
+            return (
+              <Link
+                key={item.id}
+                to={item.path}
+                onClick={() => setMobileOpen(false)}
+                className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-bold transition ${
+                  active
+                    ? "bg-blue-600/12 text-blue-700 dark:bg-sky-500/20 dark:text-sky-300 font-black"
+                    : "text-[#17365f]/80 hover:text-blue-700 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+                <Icon className={`h-4.5 w-4.5 shrink-0 ${active ? "text-blue-600 dark:text-sky-400" : ""}`} />
+                <span className="truncate max-w-full px-1">{item.label}</span>
+              </Link>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => setMobileOpen((open) => !open)}
+            aria-expanded={mobileOpen}
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-bold transition ${
+              mobileOpen
+                ? "bg-blue-600/12 text-blue-700 dark:bg-sky-500/20 dark:text-sky-300 font-black"
+                : "text-[#17365f]/80 hover:text-blue-700 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            {mobileOpen ? <X className="h-4.5 w-4.5 shrink-0 text-blue-600 dark:text-sky-400" /> : <Menu className="h-4.5 w-4.5 shrink-0" />}
+            <span>Menu</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }

@@ -246,6 +246,26 @@ export default function TeacherAttendancePage({ embedded = false, classId: propC
     );
   };
 
+  const handleSyncFromStudentCheckIns = () => {
+    if (!canMarkAttendance) return;
+    const checkedCount = students.filter((s) => s.attendance_source === "student").length;
+    if (checkedCount === 0) {
+      toast("Chưa có học viên nào tự báo có mặt cho buổi này.", { icon: "ℹ️" });
+      return;
+    }
+    setAttendanceRecords((prev) => {
+      const updated = { ...prev };
+      students.forEach((s) => {
+        updated[s.id] = {
+          ...(updated[s.id] || { userId: s.id, note: "" }),
+          status: s.attendance_source === "student" ? "present" : "absent",
+        };
+      });
+      return updated;
+    });
+    toast.success(`Đã đồng bộ: ${checkedCount} học viên tự check-in Có mặt, ${students.length - checkedCount} học viên chưa check-in.`);
+  };
+
   // Submit attendance to backend
   const handleSaveAttendance = async () => {
     if (!selectedSessionId) {
@@ -384,6 +404,16 @@ export default function TeacherAttendancePage({ embedded = false, classId: propC
               >
                 <UserX className="h-3.5 w-3.5" />
                 Tất cả vắng
+              </button>
+              <button
+                type="button"
+                onClick={handleSyncFromStudentCheckIns}
+                disabled={!canMarkAttendance}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/60 text-xs font-bold hover:bg-sky-100 dark:hover:bg-sky-900/50 disabled:cursor-not-allowed disabled:opacity-50 transition shadow-2xs"
+                title="Đánh dấu Có mặt cho học viên đã tự bấm báo có mặt, các bạn khác là Vắng"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Đồng bộ tự check-in
               </button>
             </div>
           </div>

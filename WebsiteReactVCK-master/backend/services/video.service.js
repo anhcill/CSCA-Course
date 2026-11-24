@@ -489,3 +489,50 @@ export const deleteLearningFileObject = async ({ r2Key }) => {
 
 export const deleteR2Object = async ({ r2Key }) => deleteLearningFileObject({ r2Key });
 
+export const isR2Configured = () => {
+  try {
+    getR2Config();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const uploadPrivateR2Buffer = async ({ r2Key, buffer, mimeType = "image/jpeg" }) => {
+  getR2Config();
+  if (!isSafeR2StorageKey(r2Key)) {
+    throw new Error("storageKey R2 không hợp lệ");
+  }
+  const uploadUrl = createPresignedUrl({ method: "PUT", key: r2Key, expiresInSeconds: 300 });
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": mimeType },
+    body: buffer,
+  });
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    const error = new Error(`Không thể tải tệp riêng tư lên Cloudflare R2 (status ${response.status}): ${errorText}`);
+    error.status = response.status;
+    throw error;
+  }
+  return { r2Key, mimeType, sizeBytes: buffer.length };
+};
+
+export const downloadPrivateR2Buffer = async ({ r2Key }) => {
+  getR2Config();
+  if (!isSafeR2StorageKey(r2Key)) {
+    throw new Error("storageKey R2 không hợp lệ");
+  }
+  const downloadUrl = createPresignedUrl({ method: "GET", key: r2Key, expiresInSeconds: 300 });
+  const response = await fetch(downloadUrl, { method: "GET" });
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    const error = new Error(`Không thể đọc tệp riêng tư từ Cloudflare R2 (status ${response.status}): ${errorText}`);
+    error.status = response.status;
+    throw error;
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+};
+
+

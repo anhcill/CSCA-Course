@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, BookOpen, GraduationCap, Sparkles, Users } from "lucide-react";
 import { fetchCourseWorkspace } from "../../api/lmsClient";
 import { EmptyState, ErrorState } from "../../../components/common/StateView";
@@ -47,6 +47,10 @@ export default function CourseClassListPage() {
   }
 
   const { course = {}, classes = [] } = data;
+
+  if (classes.length === 1 && classes[0]?.id) {
+    return <Navigate to={`/lms/courses/${courseId}/classes/${classes[0].id}`} replace />;
+  }
 
   return (
     <main className="min-h-full px-3 pb-12 pt-3 sm:px-5 lg:px-6">

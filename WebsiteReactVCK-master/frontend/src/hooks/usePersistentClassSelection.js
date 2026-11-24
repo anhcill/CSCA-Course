@@ -26,18 +26,29 @@ export default function usePersistentClassSelection({
   allValue = "ALL",
   ready = true,
   preferredValue = null,
+  shareLastActive = false,
 }) {
   const { authUser } = useAuthContext();
   const userId = authUser?.id ?? authUser?._id ?? null;
   const storageKey = userId && storageNamespace
     ? `csca:lms:${storageNamespace}-class-filter:${userId}:${scope}`
     : null;
+  const sharedStorageKey = userId && storageNamespace && shareLastActive
+    ? `csca:lms:${storageNamespace}-active-class:${userId}`
+    : null;
   const hasPreferredValue = preferredValue !== null && preferredValue !== undefined && preferredValue !== "";
   const normalizedPreferredValue = hasPreferredValue ? String(preferredValue) : null;
   const normalizedAllValue = String(allValue);
 
+  const resolveInitialStoredValue = useCallback(() => {
+    const scopedValue = readStoredValue(storageKey, null);
+    if (scopedValue !== null) return scopedValue;
+    const sharedValue = readStoredValue(sharedStorageKey, null);
+    return sharedValue !== null ? sharedValue : normalizedAllValue;
+  }, [normalizedAllValue, sharedStorageKey, storageKey]);
+
   const [selectedClassId, setSelectedClassIdState] = useState(() => (
-    normalizedPreferredValue || readStoredValue(storageKey, normalizedAllValue)
+    normalizedPreferredValue || resolveInitialStoredValue()
   ));
 
   const availableClassIdSet = useMemo(
@@ -47,14 +58,17 @@ export default function usePersistentClassSelection({
 
   useEffect(() => {
     if (!storageKey || normalizedPreferredValue !== null) return;
-    setSelectedClassIdState(readStoredValue(storageKey, normalizedAllValue));
-  }, [normalizedAllValue, normalizedPreferredValue, storageKey]);
+    setSelectedClassIdState(resolveInitialStoredValue());
+  }, [normalizedPreferredValue, resolveInitialStoredValue, storageKey]);
 
   useEffect(() => {
     if (normalizedPreferredValue === null) return;
     setSelectedClassIdState(normalizedPreferredValue);
     writeStoredValue(storageKey, normalizedPreferredValue);
-  }, [normalizedPreferredValue, storageKey]);
+    if (sharedStorageKey && normalizedPreferredValue !== normalizedAllValue) {
+      writeStoredValue(sharedStorageKey, normalizedPreferredValue);
+    }
+  }, [normalizedAllValue, normalizedPreferredValue, sharedStorageKey, storageKey]);
 
   useEffect(() => {
     if (!ready || selectedClassId === normalizedAllValue) return;
@@ -72,9 +86,12 @@ export default function usePersistentClassSelection({
         ? normalizedAllValue
         : String(value);
       writeStoredValue(storageKey, normalizedValue);
+      if (sharedStorageKey && normalizedValue !== normalizedAllValue) {
+        writeStoredValue(sharedStorageKey, normalizedValue);
+      }
       return normalizedValue;
     });
-  }, [normalizedAllValue, storageKey]);
+  }, [normalizedAllValue, sharedStorageKey, storageKey]);
 
   return [selectedClassId, setSelectedClassId];
 }

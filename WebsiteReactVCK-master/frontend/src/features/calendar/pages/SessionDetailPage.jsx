@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { enterAssessmentFullscreen } from "../../../utils/assessmentDisplay.js";
 import {
-  ArrowLeft, Bell, Binary, CalendarDays, CheckCircle2, ClipboardList, Clock,
-  Download, Eye, FileSpreadsheet, FileText, Files, FolderOpen, Languages, Lock, Play, Trophy, Users, Video, Search,
+  ArrowLeft, Bell, Binary, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, Clock,
+  Download, Eye, FileSpreadsheet, FileText, Files, FolderOpen, Languages, Lock, Play, Search, Trophy, Users, Video,
 } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { isTeacherRole } from "../../../constants/roles";
@@ -22,15 +22,19 @@ import SessionFormulaTab from "../../learning/components/SessionFormulaTab";
 import VocabularyPracticeModal from "../../learning/components/VocabularyPracticeModal";
 import { getLearningCapabilities } from "../../learning/utils/learningMode.js";
 
-const tabs = [
+const primaryTabs = [
   { id: "overview", label: "Tổng quan", icon: CalendarDays },
-  { id: "vocabulary", label: "Từ vựng", icon: Languages },
-  { id: "formulas", label: "Công thức", icon: Binary },
-  { id: "tasks", label: "Bài tập & Quiz", icon: ClipboardList },
-  { id: "materials", label: "Tài liệu", icon: FileText },
-  { id: "announcements", label: "Thông báo", icon: Bell },
-  { id: "results", label: "Kết quả", icon: Trophy },
+  { id: "study", label: "Ôn tập buổi", icon: Languages },
+  { id: "tasks", label: "Bài tập & Điểm", icon: ClipboardList },
+  { id: "resources", label: "Tài liệu & Thông báo", icon: FolderOpen },
 ];
+
+const resolveActiveGroup = (requestedTab) => {
+  if (requestedTab === "study" || requestedTab === "vocabulary" || requestedTab === "formulas") return "study";
+  if (requestedTab === "tasks" || requestedTab === "results") return "tasks";
+  if (requestedTab === "resources" || requestedTab === "materials" || requestedTab === "announcements") return "resources";
+  return "overview";
+};
 
 const formatDateTime = (value) => value ? new Date(value).toLocaleString("vi-VN", {
   weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
@@ -103,6 +107,11 @@ const taskHref = (basePath, task) => task.type === "quiz"
   ? `${basePath}/quizzes/${task.id}`
   : `${basePath}/assignments/${task.id}/submit`;
 
+const isTaskCompleted = (task) => {
+  const submittedLate = task.status === "late" && Boolean(task.submission_id || task.submitted_at);
+  return task.status === "graded" || task.status === "submitted" || submittedLate;
+};
+
 export default function SessionDetailPage() {
   const { courseId, classId, sessionId } = useParams();
   const navigate = useNavigate();
@@ -114,7 +123,8 @@ export default function SessionDetailPage() {
   const { recordingMode, canJoinLive, canCheckIn, showCalendar } = learningCapabilities;
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
-  const activeTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab : "overview";
+  const activeGroup = resolveActiveGroup(requestedTab);
+
   const [session, setSession] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [files, setFiles] = useState([]);
@@ -127,9 +137,22 @@ export default function SessionDetailPage() {
   const [currentVocabSession, setCurrentVocabSession] = useState(null);
   const [showVocabPractice, setShowVocabPractice] = useState(false);
   const [currentFormulaSession, setCurrentFormulaSession] = useState(null);
-  const sessionFormulas = currentFormulaSession?.formulas || [];
+  const [calendarMenuOpen, setCalendarMenuOpen] = useState(false);
+  const calendarMenuRef = useRef(null);
 
+  const sessionFormulas = currentFormulaSession?.formulas || [];
   const sessionVocabs = currentVocabSession?.vocabularies || [];
+
+  useEffect(() => {
+    if (!calendarMenuOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (calendarMenuRef.current && !calendarMenuRef.current.contains(event.target)) {
+        setCalendarMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [calendarMenuOpen]);
 
   const loadVocabulary = useCallback(async ({ silent = false } = {}) => {
     try {
@@ -212,7 +235,8 @@ export default function SessionDetailPage() {
     setCheckingIn(true);
     try {
       const response = await checkInToSession(sessionId);
-      setCheckIn((current) => ({ ...current, ...response.data, canCheckIn: false, reason: "Bạn đã được ghi nhận có mặt." }));
+      setCheckIn((current) => ({ ...current, ...response.data, status: response?.data?.status || "present", canCheckIn: false, reason: "Bạn đã được ghi nhận có mặt." }));
+      window.dispatchEvent(new CustomEvent("csca:student-checkin-updated", { detail: { sessionId } }));
       toast.success(response.message || "Đã báo có mặt.");
     } catch (requestError) {
       toast.error(requestError.message || "Không thể báo có mặt.");
@@ -246,12 +270,41 @@ export default function SessionDetailPage() {
   const meetingWindow = getMeetingWindowState(session);
   const isJoinable = canJoinLive && (isAdmin || meetingWindow.isOpen);
   const isEnded = meetingWindow.isClosed;
-  const completeTasks = tasks.filter((task) => ["submitted", "graded"].includes(task.status));
+  const completeTasks = tasks.filter(isTaskCompleted);
+
+  const checkInStatus = String(checkIn?.status || checkIn?.attendance_status || "").toLowerCase();
+  const isCheckedIn = checkInStatus === "present" || checkInStatus === "late";
+  const canTapCheckIn = !isTeacher && canCheckIn && Boolean(checkIn?.canCheckIn) && !checkInStatus;
+  const showAttendanceExceptionBanner = !isTeacher && canCheckIn && checkIn && (checkInStatus === "absent" || checkInStatus === "excused");
+
+  const studySubTab = requestedTab === "formulas"
+    ? "formulas"
+    : requestedTab === "vocabulary"
+      ? "vocabulary"
+      : sessionVocabs.length === 0 && sessionFormulas.length > 0
+        ? "formulas"
+        : "vocabulary";
+
+  const resourceSubTab = requestedTab === "announcements"
+    ? "announcements"
+    : requestedTab === "materials"
+      ? "materials"
+      : files.length === 0 && announcements.length > 0
+        ? "announcements"
+        : "materials";
+
   const tabClass = (isActive) =>
     `inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all duration-200 ${
       isActive
         ? "bg-[#102f63] text-white shadow-md shadow-[#102f63]/25 ring-1 ring-[#102f63]/20 dark:bg-blue-600 dark:shadow-blue-500/25 dark:ring-blue-500/30"
         : "text-[#244866] hover:bg-white/90 hover:text-[#102f63] dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white"
+    }`;
+
+  const subPillClass = (isActive) =>
+    `inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
+      isActive
+        ? "bg-sky-600 text-white shadow-xs dark:bg-sky-500"
+        : "bg-white/80 text-[#244866] border border-sky-100/80 hover:bg-white dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-800"
     }`;
 
   return (
@@ -263,11 +316,12 @@ export default function SessionDetailPage() {
         <ArrowLeft className="h-3.5 w-3.5" /> {recordingMode ? "Quay lại lớp học" : "Quay lại lớp và lịch học"}
       </Link>
 
-      {/* Hero Banner: Oriental Scholar Glassmorphic Theme */}
-      <section className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition dark:border-slate-800 dark:bg-slate-900/90">
-        {/* Background ambient subtle decorative glows */}
-        <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl dark:bg-sky-500/10" />
-        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl dark:bg-amber-500/10" />
+      {/* Hero Banner */}
+      <section className="relative rounded-3xl border border-white/85 bg-white/90 p-5 sm:p-6 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition dark:border-slate-800 dark:bg-slate-900/90">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
+          <div className="absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/35 blur-3xl dark:bg-sky-500/10" />
+          <div className="absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-amber-100/40 blur-3xl dark:bg-amber-500/10" />
+        </div>
 
         <div className="relative flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div className="min-w-0 space-y-2">
@@ -286,20 +340,19 @@ export default function SessionDetailPage() {
               {session.title}
             </h1>
 
-            {!recordingMode && (
+            {!recordingMode ? (
               <p className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#244866] dark:text-slate-300">
                 <Clock className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
                 {formatDateTime(session.start_time)}
               </p>
-            )}
-            {recordingMode && (
+            ) : (
               <p className="text-xs sm:text-sm font-semibold text-[#244866] dark:text-slate-300">
                 Xem bản ghi, từ vựng, lý thuyết, tài liệu và hoàn thành bài tập của buổi này.
               </p>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             {recordingMode ? (
               <Link
                 to="/lms/recordings"
@@ -311,35 +364,80 @@ export default function SessionDetailPage() {
               <button
                 type="button"
                 onClick={handleJoin}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition hover:brightness-105 active:scale-95 animate-pulse"
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition hover:brightness-105 active:scale-95"
               >
                 <Play className="h-4 w-4 fill-current" /> {isAdmin ? "Mở link phòng học" : "Vào lớp học"}
               </button>
             ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#487291] shadow-2xs dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-300">
+              <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#487291] shadow-2xs dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
                 {isEnded ? <CheckCircle2 className="h-3.5 w-3.5 text-slate-400" /> : <Lock className="h-3.5 w-3.5 text-amber-500" />}
                 {isEnded ? "Phòng đã đóng sau giờ học" : "Phòng mở trước 15 phút"}
               </span>
             )}
-            {showCalendar && <a
-              href={googleCalendarEventUrl({
-                title: session.title,
-                startTime: session.start_time,
-                endTime: session.end_time,
-                details: "Buổi học CSCA Academy",
-              })}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
-            >
-              <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Thêm Google Calendar
-            </a>}
-            {showCalendar && <a
-              href={classCalendarIcsUrl(classId)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
-            >
-              <FileText className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" /> Tải lịch .ics
-            </a>}
+
+            {/* 1-tap Self Check-in or Persistent Checked-in Badge right in Hero */}
+            {!isTeacher && canCheckIn && isCheckedIn && (
+              <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-700 shadow-2xs dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                {checkInStatus === "late" ? "Đã điểm danh (Trễ)" : "Đã điểm danh"}
+              </span>
+            )}
+
+            {canTapCheckIn && (
+              <button
+                type="button"
+                disabled={checkingIn}
+                onClick={handleCheckIn}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-sky-600/25 transition hover:bg-sky-500 active:scale-95 disabled:opacity-60 dark:bg-sky-500 dark:hover:bg-sky-400"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {checkingIn ? "Đang ghi nhận..." : "Tôi có mặt"}
+              </button>
+            )}
+
+            {/* Compact Calendar Dropdown */}
+            {showCalendar && (
+              <div ref={calendarMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setCalendarMenuOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/90 bg-white/80 px-3.5 py-2 text-xs font-bold text-[#17365f] shadow-2xs transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white"
+                >
+                  <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
+                  <span>Lưu lịch</span>
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${calendarMenuOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {calendarMenuOpen && (
+                  <div className="absolute right-0 top-full z-30 mt-2 w-52 overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                    <a
+                      href={googleCalendarEventUrl({
+                        title: session.title,
+                        startTime: session.start_time,
+                        endTime: session.end_time,
+                        details: "Buổi học CSCA Academy",
+                      })}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => setCalendarMenuOpen(false)}
+                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-sky-50 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-sky-300"
+                    >
+                      <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
+                      <span>Thêm vào Google Calendar</span>
+                    </a>
+                    <a
+                      href={classCalendarIcsUrl(classId)}
+                      onClick={() => setCalendarMenuOpen(false)}
+                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-sky-50 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-sky-300"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
+                      <span>Tải tệp lịch lớp (.ics)</span>
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
             {isTeacher && (
               <Link
                 to={`/lms/teach/classes/${classId}/attendance?sessionId=${session.id}`}
@@ -352,55 +450,43 @@ export default function SessionDetailPage() {
         </div>
       </section>
 
-      {/* Check-in attendance bar */}
-      {!isTeacher && canCheckIn && checkIn && String(checkIn.status || checkIn.attendance_status || "").toLowerCase() !== "present" && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50/70 via-white to-amber-50/40 p-3.5 sm:px-5 shadow-2xs backdrop-blur-sm">
+      {/* Only show attendance notice bar when marked absent/excused */}
+      {showAttendanceExceptionBanner && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/80 p-3.5 sm:px-5 shadow-2xs backdrop-blur-sm dark:border-amber-800/60 dark:bg-amber-950/40">
           <div className="flex items-center gap-2.5">
-            <CheckCircle2 className={`h-4 w-4 shrink-0 ${checkIn.status === "present" ? "text-emerald-500" : "text-amber-500"}`} />
-            <div>
-              <span className="text-xs font-bold text-[#102f63]">Báo có mặt buổi học: </span>
-              <span className="text-xs text-[#244866]">
-                {checkIn.status === "absent" ? "Giáo viên ghi vắng mặt" : checkIn.status === "excused" ? "Giáo viên ghi có phép" : checkIn.reason || "Bạn chưa báo có mặt"}
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="text-xs">
+              <span className="font-bold text-amber-900 dark:text-amber-200">Trạng thái chuyên cần: </span>
+              <span className="text-amber-800 dark:text-amber-300">
+                {checkInStatus === "absent" ? "Giáo viên ghi nhận vắng mặt" : "Giáo viên ghi nhận nghỉ có phép"}
               </span>
             </div>
           </div>
-          {checkIn.canCheckIn && !checkIn.status && (
-            <button
-              type="button"
-              disabled={checkingIn}
-              onClick={handleCheckIn}
-              className="rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm shadow-emerald-600/25 hover:bg-emerald-500 active:scale-95 disabled:opacity-60 transition"
-            >
-              {checkingIn ? "Đang ghi nhận..." : "Tôi có mặt"}
-            </button>
-          )}
         </div>
       )}
 
-      {/* Frosted glass sub-navigation tabs */}
+      {/* 4 Grouped Primary Tabs */}
       <nav className="flex gap-1.5 overflow-x-auto rounded-2xl border border-white/85 bg-white/80 p-1.5 shadow-2xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90" aria-label="Chức năng của buổi học">
-        {tabs.map((tab) => {
+        {primaryTabs.map((tab) => {
           const Icon = tab.icon;
-          const count = tab.id === "vocabulary" ? sessionVocabs.length
-            : tab.id === "formulas" ? sessionFormulas.length
+          const count = tab.id === "study" ? sessionVocabs.length + sessionFormulas.length
             : tab.id === "tasks" ? tasks.length
-            : tab.id === "materials" ? files.length
-            : tab.id === "announcements" ? announcements.length
-            : tab.id === "results" ? completeTasks.length
+            : tab.id === "resources" ? files.length + announcements.length
             : null;
+          const isActive = activeGroup === tab.id;
 
           return (
             <button
               key={tab.id}
               type="button"
               onClick={() => setSearchParams(tab.id === "overview" ? {} : { tab: tab.id })}
-              className={tabClass(activeTab === tab.id)}
+              className={tabClass(isActive)}
             >
               <Icon className="h-3.5 w-3.5" />
               <span>{tab.label}</span>
               {count !== null && (
                 <span className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                  activeTab === tab.id
+                  isActive
                     ? "bg-white/20 text-white"
                     : "bg-slate-100 text-[#487291] dark:bg-slate-800 dark:text-slate-300"
                 }`}>
@@ -413,61 +499,122 @@ export default function SessionDetailPage() {
       </nav>
 
       {resourcesLoading ? <Loading loading text="Đang đồng bộ học liệu của buổi..." fullScreen={false} className="min-h-40 py-10" /> : <>
-        {activeTab === "overview" && (
+        {activeGroup === "overview" && (
           <StudentOverviewTab
             tasks={tasks}
             completeTasks={completeTasks}
             files={files}
             announcements={announcements}
+            sessionVocabsCount={sessionVocabs.length}
+            sessionFormulasCount={sessionFormulas.length}
             basePath={basePath}
             setSearchParams={setSearchParams}
           />
         )}
-        {activeTab === "vocabulary" && (
-          <SessionVocabularyTab
-            session={session}
-            vocabularies={sessionVocabs}
-            onStartPractice={() => setShowVocabPractice(true)}
-            onToggleStar={isTeacher ? null : async (wordId) => {
-              try {
-                const response = await toggleVocabularyStar(wordId);
-                const isStarred = Boolean(response?.data?.isStarred);
-                setCurrentVocabSession((current) => current ? {
-                  ...current,
-                  vocabularies: current.vocabularies.map((word) => (
-                    String(word.id) === String(wordId) ? { ...word, isStarred } : word
-                  )),
-                } : current);
-              } catch (requestError) {
-                toast.error(requestError.message || "Không thể cập nhật từ đã đánh dấu.");
-              }
-            }}
+
+        {activeGroup === "study" && (
+          <div className="space-y-4">
+            {(sessionVocabs.length > 0 && sessionFormulas.length > 0) || (sessionVocabs.length === 0 && sessionFormulas.length === 0) ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSearchParams({ tab: "vocabulary" })}
+                  className={subPillClass(studySubTab === "vocabulary")}
+                >
+                  <Languages className="h-3.5 w-3.5" />
+                  <span>Từ vựng ({sessionVocabs.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchParams({ tab: "formulas" })}
+                  className={subPillClass(studySubTab === "formulas")}
+                >
+                  <Binary className="h-3.5 w-3.5" />
+                  <span>Công thức ({sessionFormulas.length})</span>
+                </button>
+              </div>
+            ) : null}
+
+            {studySubTab === "vocabulary" ? (
+              <SessionVocabularyTab
+                session={session}
+                vocabularies={sessionVocabs}
+                onStartPractice={() => setShowVocabPractice(true)}
+                onToggleStar={isTeacher ? null : async (wordId) => {
+                  try {
+                    const response = await toggleVocabularyStar(wordId);
+                    const isStarred = Boolean(response?.data?.isStarred);
+                    setCurrentVocabSession((current) => current ? {
+                      ...current,
+                      vocabularies: current.vocabularies.map((word) => (
+                        String(word.id) === String(wordId) ? { ...word, isStarred } : word
+                      )),
+                    } : current);
+                  } catch (requestError) {
+                    toast.error(requestError.message || "Không thể cập nhật từ đã đánh dấu.");
+                  }
+                }}
+              />
+            ) : (
+              <SessionFormulaTab
+                session={session}
+                formulas={sessionFormulas}
+                onToggleStar={isTeacher ? null : async (formulaId) => {
+                  try {
+                    const response = await toggleFormulaStarApi(formulaId);
+                    const isStarred = Boolean(response?.data?.isStarred);
+                    setCurrentFormulaSession((current) => current ? {
+                      ...current,
+                      formulas: current.formulas.map((formula) => (
+                        String(formula.id) === String(formulaId) ? { ...formula, isStarred } : formula
+                      )),
+                    } : current);
+                  } catch (requestError) {
+                    toast.error(requestError.message || "Không thể cập nhật công thức đã lưu.");
+                  }
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        {activeGroup === "tasks" && (
+          <SessionTaskList
+            tasks={tasks}
+            completeTasks={completeTasks}
+            basePath={basePath}
+            initialFilter={requestedTab === "results" ? "completed" : "all"}
           />
         )}
-        {activeTab === "formulas" && (
-          <SessionFormulaTab
-            session={session}
-            formulas={sessionFormulas}
-            onToggleStar={isTeacher ? null : async (formulaId) => {
-              try {
-                const response = await toggleFormulaStarApi(formulaId);
-                const isStarred = Boolean(response?.data?.isStarred);
-                setCurrentFormulaSession((current) => current ? {
-                  ...current,
-                  formulas: current.formulas.map((formula) => (
-                    String(formula.id) === String(formulaId) ? { ...formula, isStarred } : formula
-                  )),
-                } : current);
-              } catch (requestError) {
-                toast.error(requestError.message || "Không thể cập nhật công thức đã lưu.");
-              }
-            }}
-          />
+
+        {activeGroup === "resources" && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSearchParams({ tab: "materials" })}
+                className={subPillClass(resourceSubTab === "materials")}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                <span>Tài liệu đính kèm ({files.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchParams({ tab: "announcements" })}
+                className={subPillClass(resourceSubTab === "announcements")}
+              >
+                <Bell className="h-3.5 w-3.5" />
+                <span>Thông báo buổi học ({announcements.length})</span>
+              </button>
+            </div>
+
+            {resourceSubTab === "materials" ? (
+              <SessionFileList files={files} />
+            ) : (
+              <SessionAnnouncementList announcements={announcements} />
+            )}
+          </div>
         )}
-        {activeTab === "tasks" && <SessionTaskList tasks={tasks} basePath={basePath} />}
-        {activeTab === "materials" && <SessionFileList files={files} />}
-        {activeTab === "announcements" && <SessionAnnouncementList announcements={announcements} />}
-        {activeTab === "results" && <SessionResults tasks={completeTasks} basePath={basePath} />}
       </>}
 
       <VocabularyPracticeModal
@@ -493,6 +640,8 @@ function StudentOverviewTab({
   completeTasks,
   files,
   announcements,
+  sessionVocabsCount = 0,
+  sessionFormulasCount = 0,
   basePath,
   setSearchParams,
 }) {
@@ -501,51 +650,74 @@ function StudentOverviewTab({
 
   return (
     <div className="space-y-4">
-      {/* Main content grid */}
       <div className="grid gap-5 lg:grid-cols-3">
         {/* Left column (2 cols): Progress + Tasks */}
         <div className="space-y-5 lg:col-span-2">
           {/* Progress Banner */}
-          <div className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
-            <div className="flex items-center justify-between">
+          <div className="relative overflow-hidden rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <span className="text-[11px] font-black uppercase tracking-wider text-sky-700">Tiến độ bài học</span>
-                <h2 className="mt-0.5 text-base font-extrabold text-[#102f63]">
+                <span className="text-[11px] font-black uppercase tracking-wider text-sky-700 dark:text-sky-400">Tiến độ bài học</span>
+                <h2 className="mt-0.5 text-base font-extrabold text-[#102f63] dark:text-white">
                   {isAllComplete
-                    ? "🎉 Xuất sắc! Bạn đã hoàn thành tất cả nhiệm vụ buổi này!"
+                    ? "Xuất sắc! Bạn đã hoàn thành tất cả nhiệm vụ buổi này!"
                     : tasks.length === 0
-                    ? "Buổi học hiện chưa có bài tập hoặc quiz nào"
-                    : `Bạn còn ${tasks.length - completeTasks.length} nhiệm vụ cần hoàn thành`}
+                      ? "Buổi học hiện chưa có bài tập hoặc quiz nào"
+                      : `Bạn còn ${tasks.length - completeTasks.length} nhiệm vụ cần hoàn thành`}
                 </h2>
               </div>
-              <span className="text-2xl font-black text-[#102f63]">{progressPct}%</span>
+              <span className="text-2xl font-black text-[#102f63] dark:text-sky-300">{progressPct}%</span>
             </div>
-            <div className="mt-3.5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="mt-3.5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-[#17365f] via-[#102f63] to-sky-600 transition-all duration-500 shadow-2xs"
+                className="h-full rounded-full bg-gradient-to-r from-[#17365f] via-[#102f63] to-sky-600 transition-all duration-500 shadow-2xs dark:from-sky-500 dark:via-blue-500 dark:to-indigo-500"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
+
+            {(sessionVocabsCount > 0 || sessionFormulasCount > 0) && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-sky-100/70 pt-3 dark:border-slate-800">
+                <span className="text-xs font-semibold text-[#487291] dark:text-slate-400">Kiến thức trọng tâm:</span>
+                {sessionVocabsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchParams({ tab: "vocabulary" })}
+                    className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700 transition hover:bg-sky-100 dark:bg-sky-950/60 dark:text-sky-300 dark:hover:bg-sky-900/60"
+                  >
+                    <Languages className="h-3.5 w-3.5" /> {sessionVocabsCount} từ vựng
+                  </button>
+                )}
+                {sessionFormulasCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchParams({ tab: "formulas" })}
+                    className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                  >
+                    <Binary className="h-3.5 w-3.5" /> {sessionFormulasCount} công thức
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Tasks List Card */}
-          <div className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
-            <div className="flex items-center justify-between border-b border-sky-100/70 pb-3">
+          <div className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="flex items-center justify-between border-b border-sky-100/70 pb-3 dark:border-slate-800">
               <div>
-                <h2 className="text-base font-black text-[#102f63]">Bài tập & Quiz cần làm</h2>
-                <p className="text-xs text-[#487291]">Các hoạt động học tập được giao trong buổi này</p>
+                <h2 className="text-base font-black text-[#102f63] dark:text-white">Bài tập & Quiz buổi này</h2>
+                <p className="text-xs text-[#487291] dark:text-slate-400">Làm bài và xem điểm ngay trên một danh sách</p>
               </div>
               <button
                 type="button"
                 onClick={() => setSearchParams({ tab: "tasks" })}
-                className="text-xs font-bold text-sky-700 hover:text-blue-800 transition"
+                className="text-xs font-bold text-sky-700 hover:text-blue-800 transition dark:text-sky-400 dark:hover:text-sky-300"
               >
                 Xem tất cả ({tasks.length}) →
               </button>
             </div>
 
             {tasks.length === 0 ? (
-              <p className="py-6 text-center text-xs font-medium text-[#487291]">
+              <p className="py-6 text-center text-xs font-medium text-[#487291] dark:text-slate-400">
                 Chưa có bài tập hoặc quiz nào trong buổi này.
               </p>
             ) : (
@@ -553,46 +725,54 @@ function StudentOverviewTab({
                 {tasks.slice(0, 4).map((task) => {
                   const isHomeworkQuiz = task.type === "quiz" && (task.activity_scope || task.activityScope) === "homework";
                   const submittedLate = task.status === "late" && Boolean(task.submission_id || task.submitted_at);
-                  const isDone = task.status === "graded" || task.status === "submitted" || submittedLate;
+                  const isDone = isTaskCompleted(task);
+                  const hasScore = task.score !== null && task.score !== undefined;
                   return (
                     <Link
                       key={`${task.type}-${task.id}`}
                       to={taskHref(basePath, task)}
                       onClick={enterAssessmentFullscreen}
-                      className="flex flex-col justify-between gap-3 rounded-2xl border border-sky-100/70 bg-white/70 p-4 transition-all hover:border-sky-300 hover:bg-white hover:shadow-md sm:flex-row sm:items-center"
+                      className="flex flex-col justify-between gap-3 rounded-2xl border border-sky-100/70 bg-white/70 p-4 transition-all hover:border-sky-300 hover:bg-white hover:shadow-md sm:flex-row sm:items-center dark:border-slate-800 dark:bg-slate-800/50 dark:hover:border-sky-700 dark:hover:bg-slate-800"
                     >
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
                             task.type === "quiz"
                               ? isHomeworkQuiz
-                                ? "bg-amber-50 text-amber-700 border border-amber-200/80"
-                                : "bg-violet-50 text-violet-700 border border-violet-200/80"
-                              : "bg-sky-50 text-sky-700 border border-sky-200/80"
+                                ? "bg-amber-50 text-amber-700 border border-amber-200/80 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/60"
+                                : "bg-violet-50 text-violet-700 border border-violet-200/80 dark:bg-violet-950/60 dark:text-violet-300 dark:border-violet-800/60"
+                              : "bg-sky-50 text-sky-700 border border-sky-200/80 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800/60"
                           }`}>
                             {isHomeworkQuiz ? "QUIZ VỀ NHÀ" : task.type === "quiz" ? "QUIZ BUỔI HỌC" : "BÀI TẬP"}
                           </span>
-                          <h3 className="truncate text-xs sm:text-sm font-bold text-[#102f63]">{task.title}</h3>
+                          <h3 className="truncate text-xs sm:text-sm font-bold text-[#102f63] dark:text-white">{task.title}</h3>
                         </div>
-                        <p className="mt-1 text-[11px] text-[#487291]">
+                        <p className="mt-1 text-[11px] text-[#487291] dark:text-slate-400">
                           {task.due_date ? `Hạn nộp: ${formatDateTime(task.due_date)}` : "Chưa có hạn nộp cụ thể"}
                         </p>
                       </div>
-                      <span className={`shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
-                        isDone
-                          ? "border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-2xs"
-                          : "bg-[#102f63] text-white hover:bg-blue-800 shadow-xs"
-                      }`}>
-                        {task.status === "graded"
-                          ? "Đã có điểm"
-                          : submittedLate
-                            ? "Đã nộp trễ"
-                            : task.status === "submitted"
-                              ? "Đã nộp"
-                              : task.status === "late"
-                                ? "Quá hạn"
-                                : "Làm bài"}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {hasScore && (
+                          <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300">
+                            {task.score}/{task.max_score || 10}đ
+                          </span>
+                        )}
+                        <span className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
+                          isDone
+                            ? "border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-2xs dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300"
+                            : "bg-[#102f63] text-white hover:bg-blue-800 shadow-xs dark:bg-blue-600 dark:hover:bg-blue-500"
+                        }`}>
+                          {task.status === "graded"
+                            ? "Xem điểm"
+                            : submittedLate
+                              ? "Đã nộp trễ"
+                              : task.status === "submitted"
+                                ? "Đã nộp"
+                                : task.status === "late"
+                                  ? "Quá hạn"
+                                  : "Làm bài"}
+                        </span>
+                      </div>
                     </Link>
                   );
                 })}
@@ -604,19 +784,19 @@ function StudentOverviewTab({
         {/* Right column (1 col): Materials + Announcements */}
         <div className="space-y-5">
           {/* Card: Tài liệu */}
-          <div className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
-            <div className="flex items-center justify-between border-b border-sky-100/70 pb-3">
-              <h2 className="text-sm font-black text-[#102f63]">Tài liệu học tập ({files.length})</h2>
+          <div className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="flex items-center justify-between border-b border-sky-100/70 pb-3 dark:border-slate-800">
+              <h2 className="text-sm font-black text-[#102f63] dark:text-white">Tài liệu học tập ({files.length})</h2>
               <button
                 type="button"
                 onClick={() => setSearchParams({ tab: "materials" })}
-                className="text-xs font-bold text-sky-700 hover:text-blue-800 transition"
+                className="text-xs font-bold text-sky-700 hover:text-blue-800 transition dark:text-sky-400 dark:hover:text-sky-300"
               >
                 Xem tất cả →
               </button>
             </div>
             {files.length === 0 ? (
-              <p className="py-6 text-center text-xs text-[#487291]">Chưa có tài liệu nào cho buổi học này.</p>
+              <p className="py-6 text-center text-xs text-[#487291] dark:text-slate-400">Chưa có tài liệu nào cho buổi học này.</p>
             ) : (
               <div className="mt-3.5 space-y-2">
                 {files.slice(0, 3).map((file) => {
@@ -624,14 +804,14 @@ function StudentOverviewTab({
                   const cfg = kindConfig[k] || kindConfig.other;
                   const Icon = cfg.icon;
                   return (
-                    <div key={file.instanceId || file.id} className="flex items-center justify-between gap-2 rounded-xl border border-sky-100/70 bg-white/70 p-2.5 transition hover:bg-white">
+                    <div key={file.instanceId || file.id} className="flex items-center justify-between gap-2 rounded-xl border border-sky-100/70 bg-white/70 p-2.5 transition hover:bg-white dark:border-slate-800 dark:bg-slate-800/50 dark:hover:bg-slate-800">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[11px] font-bold ${cfg.badge}`}>
                           <Icon className="h-4 w-4" />
                         </span>
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-bold text-[#102f63]">{file.name}</p>
-                          <p className="text-[10px] text-[#487291]">{formatBytes(file.sizeBytes ?? file.size_bytes)}</p>
+                          <p className="truncate text-xs font-bold text-[#102f63] dark:text-slate-100">{file.name}</p>
+                          <p className="text-[10px] text-[#487291] dark:text-slate-400">{formatBytes(file.sizeBytes ?? file.size_bytes)}</p>
                         </div>
                       </div>
                       {(file.viewUrl || file.downloadUrl || file.file_url) && (
@@ -640,7 +820,7 @@ function StudentOverviewTab({
                           target="_blank"
                           rel="noreferrer"
                           download={Boolean(file.downloadUrl)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-sky-50 hover:text-blue-700 transition"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-sky-50 hover:text-blue-700 transition dark:hover:bg-slate-700 dark:hover:text-sky-300"
                           title="Tải về"
                         >
                           <Download className="h-4 w-4" />
@@ -654,76 +834,150 @@ function StudentOverviewTab({
           </div>
 
           {/* Card: Thông báo */}
-          <div className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6">
-            <div className="flex items-center justify-between border-b border-sky-100/70 pb-3">
-              <h2 className="text-sm font-black text-[#102f63]">Thông báo ({announcements.length})</h2>
+          <div className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md sm:p-6 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="flex items-center justify-between border-b border-sky-100/70 pb-3 dark:border-slate-800">
+              <h2 className="text-sm font-black text-[#102f63] dark:text-white">Thông báo ({announcements.length})</h2>
               <button
                 type="button"
                 onClick={() => setSearchParams({ tab: "announcements" })}
-                className="text-xs font-bold text-sky-700 hover:text-blue-800 transition"
+                className="text-xs font-bold text-sky-700 hover:text-blue-800 transition dark:text-sky-400 dark:hover:text-sky-300"
               >
                 Xem tất cả →
               </button>
             </div>
             {announcements.length === 0 ? (
-              <p className="py-6 text-center text-xs text-[#487291]">Chưa có thông báo nào trong buổi này.</p>
+              <p className="py-6 text-center text-xs text-[#487291] dark:text-slate-400">Chưa có thông báo nào trong buổi này.</p>
             ) : (
               <div className="mt-3.5 space-y-2.5">
                 {announcements.slice(0, 3).map((item) => (
-                  <div key={item.id} className="rounded-xl border border-sky-100/70 bg-white/70 p-3 transition hover:bg-white">
+                  <div key={item.id} className="rounded-xl border border-sky-100/70 bg-white/70 p-3 transition hover:bg-white dark:border-slate-800 dark:bg-slate-800/50 dark:hover:bg-slate-800">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="truncate text-xs font-bold text-[#102f63]">{item.title}</h3>
-                      <span className="shrink-0 text-[10px] text-[#487291]">
+                      <h3 className="truncate text-xs font-bold text-[#102f63] dark:text-slate-100">{item.title}</h3>
+                      <span className="shrink-0 text-[10px] text-[#487291] dark:text-slate-400">
                         {item.created_at ? new Date(item.created_at).toLocaleDateString("vi-VN") : ""}
                       </span>
                     </div>
-                    <p className="mt-1 line-clamp-2 text-[11px] text-[#244866]">{item.message}</p>
+                    <p className="mt-1 line-clamp-2 text-[11px] text-[#244866] dark:text-slate-300">{item.message}</p>
                   </div>
                 ))}
               </div>
             )}
           </div>
-
         </div>
       </div>
     </div>
   );
 }
 
-function SessionTaskList({ tasks, basePath }) {
-  if (!tasks.length) return <EmptyState icon={ClipboardList} title="Chưa có bài tập hoặc Quiz" description="Bài tập và Quiz giáo viên giao cho buổi này sẽ xuất hiện tại đây." />;
+function SessionTaskList({ tasks, completeTasks, basePath, initialFilter = "all" }) {
+  const [filter, setFilter] = useState(initialFilter);
+
+  useEffect(() => {
+    setFilter(initialFilter);
+  }, [initialFilter]);
+
+  if (!tasks.length) {
+    return <EmptyState icon={ClipboardList} title="Chưa có bài tập hoặc Quiz" description="Bài tập và Quiz giáo viên giao cho buổi này sẽ xuất hiện tại đây." />;
+  }
+
+  const pendingTasks = tasks.filter((t) => !isTaskCompleted(t));
+  const displayedTasks = filter === "pending"
+    ? pendingTasks
+    : filter === "completed"
+      ? completeTasks
+      : tasks;
+
   return (
-    <section className="space-y-3">
-      {tasks.map((task) => {
-        const isHomeworkQuiz = task.type === "quiz" && (task.activity_scope || task.activityScope) === "homework";
-        return (
-          <Link
-            key={`${task.type}-${task.id}`}
-            to={taskHref(basePath, task)}
-            onClick={enterAssessmentFullscreen}
-            className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition hover:shadow-lg hover:border-sky-300"
-          >
-            <div>
-              <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${
-                task.type === "quiz"
-                  ? isHomeworkQuiz
-                    ? "bg-amber-50 text-amber-700 border border-amber-200/80"
-                    : "bg-violet-50 text-violet-700 border border-violet-200/80"
-                  : "bg-sky-50 text-sky-700 border border-sky-200/80"
-              }`}>
-                {isHomeworkQuiz ? "QUIZ VỀ NHÀ" : task.type === "quiz" ? "QUIZ TRONG BUỔI" : "BÀI TẬP VỀ NHÀ"}
-              </span>
-              <h2 className="mt-2 text-sm sm:text-base font-black text-[#102f63]">{task.title}</h2>
-              <p className="mt-1 text-xs text-[#487291]">
-                {task.type === "quiz" && !isHomeworkQuiz ? "Làm trực tuyến và chấm điểm tự động trong buổi học" : `Hạn nộp: ${task.due_date ? formatDateTime(task.due_date) : "Giáo viên sẽ thông báo"}`}
-              </p>
-            </div>
-            <span className="shrink-0 rounded-xl bg-[#102f63] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-800 transition">
-              {task.status === "graded" ? "Xem kết quả" : task.status === "submitted" ? "Đã nộp" : "Mở bài"}
-            </span>
-          </Link>
-        );
-      })}
+    <section className="space-y-4">
+      {/* Filter Pills */}
+      <div className="flex flex-wrap items-center gap-2">
+        {[
+          { id: "all", label: `Tất cả (${tasks.length})` },
+          { id: "pending", label: `Cần làm (${pendingTasks.length})` },
+          { id: "completed", label: `Đã nộp & Điểm (${completeTasks.length})`, icon: Trophy },
+        ].map((item) => {
+          const Icon = item.icon;
+          const active = filter === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setFilter(item.id)}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
+                active
+                  ? "bg-sky-600 text-white shadow-xs dark:bg-sky-500"
+                  : "border border-sky-100/80 bg-white/80 text-[#244866] hover:bg-white dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-800"
+              }`}
+            >
+              {Icon && <Icon className="h-3.5 w-3.5" />}
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {displayedTasks.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-sky-200 bg-white/70 p-8 text-center text-xs font-medium text-[#487291] dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
+          {filter === "pending" ? "Tuyệt vời! Bạn không còn bài tập nào chưa làm trong buổi này." : "Chưa có bài nộp hoặc điểm chấm nào."}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {displayedTasks.map((task) => {
+            const isHomeworkQuiz = task.type === "quiz" && (task.activity_scope || task.activityScope) === "homework";
+            const hasScore = task.score !== null && task.score !== undefined;
+            const isDone = isTaskCompleted(task);
+            return (
+              <Link
+                key={`${task.type}-${task.id}`}
+                to={taskHref(basePath, task)}
+                onClick={enterAssessmentFullscreen}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition hover:shadow-lg hover:border-sky-300 dark:border-slate-800 dark:bg-slate-900/90 dark:hover:border-sky-700"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                      task.type === "quiz"
+                        ? isHomeworkQuiz
+                          ? "bg-amber-50 text-amber-700 border border-amber-200/80 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/60"
+                          : "bg-violet-50 text-violet-700 border border-violet-200/80 dark:bg-violet-950/60 dark:text-violet-300 dark:border-violet-800/60"
+                        : "bg-sky-50 text-sky-700 border border-sky-200/80 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800/60"
+                    }`}>
+                      {isHomeworkQuiz ? "QUIZ VỀ NHÀ" : task.type === "quiz" ? "QUIZ TRONG BUỔI" : "BÀI TẬP VỀ NHÀ"}
+                    </span>
+                    {isDone && !hasScore && (
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-300">
+                        Đang chờ chấm
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="mt-2 text-sm sm:text-base font-black text-[#102f63] dark:text-white">{task.title}</h2>
+                  <p className="mt-1 text-xs text-[#487291] dark:text-slate-400">
+                    {task.type === "quiz" && !isHomeworkQuiz
+                      ? "Làm trực tuyến và chấm điểm tự động trong buổi học"
+                      : `Hạn nộp: ${task.due_date ? formatDateTime(task.due_date) : "Giáo viên sẽ thông báo"}`}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0">
+                  {hasScore && (
+                    <span className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300">
+                      <Trophy className="h-3.5 w-3.5" />
+                      {task.score}/{task.max_score || 10}đ
+                    </span>
+                  )}
+                  <span className={`rounded-xl px-4 py-2 text-xs font-bold shadow-sm transition ${
+                    isDone
+                      ? "border border-slate-200 bg-white text-[#102f63] hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                      : "bg-[#102f63] text-white hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500"
+                  }`}>
+                    {task.status === "graded" ? "Xem kết quả" : isDone ? "Xem bài nộp" : "Làm bài ngay"}
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
@@ -758,28 +1012,26 @@ function SessionFileList({ files }) {
 
   return (
     <section className="space-y-4">
-      {/* Header banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#17365f] to-[#102f63] text-white shadow-md shadow-blue-950/20">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#17365f] to-[#102f63] text-white shadow-md shadow-blue-950/20 dark:from-sky-600 dark:to-blue-700">
             <FolderOpen className="h-5 w-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm sm:text-base font-black text-[#102f63]">
+              <h2 className="text-sm sm:text-base font-black text-[#102f63] dark:text-white">
                 Tài liệu & Học liệu đính kèm
               </h2>
-              <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-black text-sky-700 ring-1 ring-sky-200">
+              <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-black text-sky-700 ring-1 ring-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:ring-sky-800">
                 {files.length} tệp
               </span>
             </div>
-            <p className="mt-0.5 text-xs text-[#487291]">
+            <p className="mt-0.5 text-xs text-[#487291] dark:text-slate-400">
               Bấm vào tên tài liệu để mở xem; nút tải chỉ hiện khi lớp cho phép.
             </p>
           </div>
         </div>
 
-        {/* Filters if files >= 3 */}
         {files.length >= 3 && (
           <div className="flex items-center gap-2">
             <div className="relative flex-1 sm:w-48">
@@ -789,14 +1041,13 @@ function SessionFileList({ files }) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Tìm tài liệu..."
-                className="w-full rounded-xl border border-sky-100 bg-white/90 py-1.5 pl-8 pr-3 text-xs text-[#102f63] outline-none focus:border-sky-500"
+                className="w-full rounded-xl border border-sky-100 bg-white/90 py-1.5 pl-8 pr-3 text-xs text-[#102f63] outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
               />
             </div>
           </div>
         )}
       </div>
 
-      {/* Filter pills if >= 3 files */}
       {files.length >= 3 && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
           {[
@@ -812,8 +1063,8 @@ function SessionFileList({ files }) {
               onClick={() => setSelectedKind(k)}
               className={`rounded-xl px-3 py-1 text-xs font-bold transition ${
                 selectedKind === k
-                  ? "bg-[#102f63] text-white shadow-xs"
-                  : "bg-white/80 text-[#244866] hover:bg-white"
+                  ? "bg-[#102f63] text-white shadow-xs dark:bg-blue-600"
+                  : "bg-white/80 text-[#244866] hover:bg-white dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-800"
               }`}
             >
               {label}
@@ -822,9 +1073,8 @@ function SessionFileList({ files }) {
         </div>
       )}
 
-      {/* Grid of File Cards */}
       {filteredFiles.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-sky-200 bg-white/60 p-8 text-center text-xs text-[#487291]">
+        <div className="rounded-3xl border border-dashed border-sky-200 bg-white/60 p-8 text-center text-xs text-[#487291] dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
           Không tìm thấy tài liệu phù hợp với tìm kiếm.
         </div>
       ) : (
@@ -840,7 +1090,7 @@ function SessionFileList({ files }) {
             return (
               <div
                 key={file.id}
-                className="group relative flex flex-col justify-between rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_8px_24px_rgba(49,91,125,0.06)] backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+                className="group relative flex flex-col justify-between rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_8px_24px_rgba(49,91,125,0.06)] backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/90 dark:hover:border-slate-700"
               >
                 <div className="flex items-start gap-3.5">
                   <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-xs transition-transform duration-200 group-hover:scale-105 ${kindInfo.badge}`}>
@@ -852,18 +1102,18 @@ function SessionFileList({ files }) {
                         {kindInfo.label}
                       </span>
                       {(file.sizeBytes || file.size_bytes) ? (
-                        <span className="font-semibold text-[#487291]">
+                        <span className="font-semibold text-[#487291] dark:text-slate-400">
                           {formatBytes(file.sizeBytes || file.size_bytes)}
                         </span>
                       ) : null}
                       {file.uploadedAt && (
-                        <span className="text-[#487291]">
+                        <span className="text-[#487291] dark:text-slate-400">
                           • {new Date(file.uploadedAt).toLocaleDateString("vi-VN")}
                         </span>
                       )}
                     </div>
 
-                    <h3 className="text-sm font-bold text-[#102f63] line-clamp-2 leading-snug group-hover:text-blue-700 transition-colors" title={file.name}>
+                    <h3 className="text-sm font-bold text-[#102f63] line-clamp-2 leading-snug group-hover:text-blue-700 transition-colors dark:text-white dark:group-hover:text-sky-300" title={file.name}>
                       {viewUrl ? (
                         <a href={viewUrl} target="_blank" rel="noreferrer" className="hover:underline">
                           {file.name}
@@ -873,14 +1123,14 @@ function SessionFileList({ files }) {
                       )}
                     </h3>
 
-                    <p className="text-[11px] text-[#487291]">
+                    <p className="text-[11px] text-[#487291] dark:text-slate-400">
                       {file.uploadedBy ? `Đăng bởi: ${file.uploadedBy}` : (file.sessionTitle || "Tài liệu học tập")}
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between border-t border-sky-100/70 pt-3">
-                  <span className="text-[11px] text-[#487291] font-medium truncate max-w-[150px] sm:max-w-[200px]">
+                <div className="mt-4 flex items-center justify-between border-t border-sky-100/70 pt-3 dark:border-slate-800">
+                  <span className="text-[11px] text-[#487291] font-medium truncate max-w-[150px] sm:max-w-[200px] dark:text-slate-400">
                     {file.sessionTitle || "Buổi học này"}
                   </span>
 
@@ -890,13 +1140,13 @@ function SessionFileList({ files }) {
                         href={downloadUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#102f63] text-white hover:bg-blue-800 px-3.5 py-1.5 text-xs font-bold shadow-xs transition active:scale-95"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#102f63] text-white hover:bg-blue-800 px-3.5 py-1.5 text-xs font-bold shadow-xs transition active:scale-95 dark:bg-blue-600 dark:hover:bg-blue-500"
                       >
                         <Download className="h-3.5 w-3.5" />
                         <span>Tải tài liệu</span>
                       </a>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-700">
+                      <span className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/60 dark:text-amber-300">
                         <Eye className="h-3.5 w-3.5" />
                         <span>Chỉ xem</span>
                       </span>
@@ -917,45 +1167,19 @@ function SessionAnnouncementList({ announcements }) {
   return (
     <section className="space-y-3">
       {announcements.map((announcement) => (
-        <article key={announcement.id} className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md">
+        <article key={announcement.id} className="rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90">
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <h2 className="text-sm font-black text-[#102f63]">{announcement.title}</h2>
-            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-black text-sky-700">
+            <h2 className="text-sm font-black text-[#102f63] dark:text-white">{announcement.title}</h2>
+            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-black text-sky-700 dark:bg-sky-950/60 dark:text-sky-300">
               {announcement.sentAt ? new Date(announcement.sentAt).toLocaleString("vi-VN") : "Đã gửi"}
             </span>
           </div>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#244866]">{announcement.message}</p>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#244866] dark:text-slate-300">{announcement.message}</p>
           <div className="mt-4 flex flex-wrap gap-3">
-            {announcement.linkUrl && <a href={announcement.linkUrl} className="text-xs font-black text-sky-700 hover:underline">Mở liên kết</a>}
-            {announcement.attachmentUrl && <a href={announcement.attachmentUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-sky-700 hover:underline">Tải tài liệu đính kèm</a>}
+            {announcement.linkUrl && <a href={announcement.linkUrl} className="text-xs font-black text-sky-700 hover:underline dark:text-sky-400">Mở liên kết</a>}
+            {announcement.attachmentUrl && <a href={announcement.attachmentUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-sky-700 hover:underline dark:text-sky-400">Tải tài liệu đính kèm</a>}
           </div>
         </article>
-      ))}
-    </section>
-  );
-}
-
-function SessionResults({ tasks, basePath }) {
-  if (!tasks.length) return <EmptyState icon={Trophy} title="Chưa có kết quả" description="Kết quả của Quiz và bài tập sau khi nộp sẽ hiển thị tại đây." />;
-  return (
-    <section className="space-y-3">
-      {tasks.map((task) => (
-        <Link
-          key={`${task.type}-${task.id}`}
-          to={taskHref(basePath, task)}
-          onClick={enterAssessmentFullscreen}
-          className="flex items-center justify-between rounded-3xl border border-white/85 bg-white/90 p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] backdrop-blur-md transition hover:shadow-lg"
-        >
-          <div>
-            <h2 className="text-sm font-black text-[#102f63]">{task.title}</h2>
-            <p className="mt-1 text-xs text-[#487291]">
-              {task.status === "graded" ? "Đã chấm điểm" : "Đã nộp, đang chờ chấm"}
-            </p>
-          </div>
-          <span className="text-base font-black text-emerald-600">
-            {task.score !== null && task.score !== undefined ? `${task.score}/${task.max_score || 10}` : "—"}
-          </span>
-        </Link>
       ))}
     </section>
   );

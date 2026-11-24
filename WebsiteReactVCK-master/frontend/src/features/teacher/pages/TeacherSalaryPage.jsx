@@ -23,10 +23,12 @@ export default function TeacherSalaryPage() {
         .then((res) => {
           const list = Array.isArray(res?.data?.teachers) ? res.data.teachers : [];
           setTeachersList(list);
-          if (list.length > 0 && !selectedTeacherId) {
+          if (list.length > 0) {
             // Default to teacher who has assigned classes if admin has none
             const withClasses = list.find((t) => Number(t.assignedClassesCount || t.totalClasses || 0) > 0);
-            if (withClasses) setSelectedTeacherId(String(withClasses.id));
+            if (withClasses) {
+              setSelectedTeacherId((current) => current || String(withClasses.id));
+            }
           }
         })
         .catch((err) => console.warn("Could not load teachers list for admin salary preview:", err));
@@ -53,6 +55,20 @@ export default function TeacherSalaryPage() {
       loadSalary();
     }
   }, [isTeacher, selectedTeacherId, loadSalary]);
+
+  useEffect(() => {
+    if (!isTeacher) return undefined;
+    const onAttendanceUpdated = () => {
+      const targetTid = selectedTeacherId;
+      fetchTeacherSalarySummary(targetTid ? { teacherId: targetTid } : {})
+        .then((response) => {
+          if (response?.data) setSalaryData(response.data);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("csca:teacher-face-attendance-updated", onAttendanceUpdated);
+    return () => window.removeEventListener("csca:teacher-face-attendance-updated", onAttendanceUpdated);
+  }, [isTeacher, selectedTeacherId]);
 
   if (!isTeacher) {
     return (

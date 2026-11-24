@@ -36,6 +36,7 @@ import Loading from "../../../components/Loading.jsx";
 import QuestionBankSampler from "../components/QuestionBankSampler";
 import FileUploadProgressBox from "../../../components/common/FileUploadProgressBox.jsx";
 import TeacherQuizGradingModal from "../components/TeacherQuizGradingModal";
+import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
 import {
   createTeacherQuiz,
   createQuestionBankItem,
@@ -1198,6 +1199,32 @@ export default function TeacherQuizPage() {
     return [...quizzes].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   }, [quizzes]);
 
+  const quizClasses = useMemo(() => {
+    const map = new Map();
+    for (const q of quizzes) {
+      const id = q.liveClassId ?? q.classId ?? q.live_class_id;
+      if (id && !map.has(String(id))) {
+        map.set(String(id), q.classTitle || `Lớp #${id}`);
+      }
+    }
+    return [...map.entries()].map(([id, title]) => ({ id, title }));
+  }, [quizzes]);
+
+  const quizClassIds = useMemo(() => quizClasses.map((item) => item.id), [quizClasses]);
+  const [quizClassFilter, setQuizClassFilter] = usePersistentClassSelection({
+    scope: "quizzes",
+    availableClassIds: quizClassIds,
+    allValue: "all",
+    ready: !loading,
+    preferredValue: !shouldOpenBuilder && requestedClassId ? requestedClassId : null,
+  });
+
+  const baseFilteredByClass = useMemo(() => (
+    quizClassFilter === "all"
+      ? sortedQuizzes
+      : sortedQuizzes.filter((q) => String(q.liveClassId ?? q.classId ?? q.live_class_id ?? "") === String(quizClassFilter))
+  ), [sortedQuizzes, quizClassFilter]);
+
   const quizOverview = useMemo(() => {
     let active = 0;
     let expired = 0;
@@ -1205,7 +1232,7 @@ export default function TeacherQuizPage() {
     let archived = 0;
     let submissions = 0;
     const now = new Date();
-    for (const q of quizzes) {
+    for (const q of baseFilteredByClass) {
       submissions += Number(q.attemptsCount || 0);
       if (q.status === "DRAFT") {
         drafts++;
@@ -1218,15 +1245,15 @@ export default function TeacherQuizPage() {
         active++;
       }
     }
-    return { active, expired, drafts, archived, submissions, total: quizzes.length };
-  }, [quizzes]);
+    return { active, expired, drafts, archived, submissions, total: baseFilteredByClass.length };
+  }, [baseFilteredByClass]);
 
   const { active: activeQuizzesCount, expired: expiredQuizzesCount } = quizOverview;
 
   // Filtering Quizzes
   const filteredQuizzes = useMemo(() => {
     const now = new Date();
-    return sortedQuizzes.filter((quiz) => {
+    return baseFilteredByClass.filter((quiz) => {
       const expired = isQuizExpired(quiz, now);
       if (expiryTab === "active" && (quiz.status !== "PUBLISHED" || expired)) return false;
       if (expiryTab === "draft" && quiz.status !== "DRAFT") return false;
@@ -1243,7 +1270,7 @@ export default function TeacherQuizPage() {
       }
       return true;
     });
-  }, [sortedQuizzes, expiryTab, statusFilter, scopeFilter, searchQuery]);
+  }, [baseFilteredByClass, expiryTab, statusFilter, scopeFilter, searchQuery]);
 
   const resetBuilder = () => {
     setQuizTitle("");
@@ -2134,7 +2161,7 @@ export default function TeacherQuizPage() {
                         : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
                     }`}
                   >
-                    {quizzes.length}
+                    {quizOverview.total}
                   </span>
                 </button>
               </div>
@@ -2161,6 +2188,22 @@ export default function TeacherQuizPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {quizClasses.length > 1 && (
+                  <select
+                    aria-label="Lọc quiz theo lớp học"
+                    value={quizClassFilter}
+                    onChange={(e) => setQuizClassFilter(e.target.value)}
+                    className="rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2 text-xs font-bold text-slate-700 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+                  >
+                    <option value="all">Tất cả lớp ({quizClasses.length})</option>
+                    {quizClasses.map((cls) => (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
                 <select
                   value={scopeFilter}
                   onChange={(e) => setScopeFilter(e.target.value)}

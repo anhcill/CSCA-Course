@@ -13,6 +13,7 @@ import { LoadingState, EmptyState, ErrorState } from "../../../components/common
 import { subscribeToCalendarChanges } from "../../calendar/calendarSync";
 import { useAuthContext } from "../../../context/AuthContext";
 import { closeReservedMeeting, openReservedMeeting, reserveMeetingWindow } from "../../liveClass/utils/meetingLaunch";
+import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
 
 /* ── SVG Icons ───────────────────────────────────────────────── */
 const IconVideo = ({ className = "w-4 h-4" }) => (
@@ -278,7 +279,20 @@ export default function TeacherSchedulePage() {
     }
   };
 
-  const enriched = useMemo(() => sessions.map((s) => ({ ...s, _st: getSessionStatus(s) })), [sessions]);
+  const classIds = useMemo(() => liveClasses.map((c) => c.id), [liveClasses]);
+  const [selectedClassFilter, setSelectedClassFilter] = usePersistentClassSelection({
+    scope: "schedule-list",
+    availableClassIds: classIds,
+    allValue: "ALL",
+    ready: !loading,
+  });
+
+  const enriched = useMemo(() => {
+    const base = selectedClassFilter === "ALL"
+      ? sessions
+      : sessions.filter((s) => String(s.live_class_id ?? s.class_id ?? "") === String(selectedClassFilter));
+    return base.map((s) => ({ ...s, _st: getSessionStatus(s) }));
+  }, [sessions, selectedClassFilter]);
 
   const filtered = useMemo(() => {
     if (filter === "LIVE") return enriched.filter((s) => s._st === "LIVE");
@@ -301,11 +315,11 @@ export default function TeacherSchedulePage() {
   }, [enriched, filter]);
 
   const stats = useMemo(() => ({
-    total: sessions.length,
+    total: enriched.length,
     live: enriched.filter((s) => s._st === "LIVE").length,
     done: enriched.filter((s) => s._st === "ENDED").length,
     upcoming: enriched.filter((s) => !["ENDED", "LIVE"].includes(s._st)).length,
-  }), [enriched, sessions.length]);
+  }), [enriched]);
 
   const calGrid = useMemo(() => {
     const g = Array.from({ length: 7 }, () => []);
@@ -441,28 +455,45 @@ export default function TeacherSchedulePage() {
           })}
         </div>
 
-        {/* View Switcher: List vs Calendar */}
-        <div className="flex items-center gap-1 bg-white/75 dark:bg-slate-800/70 border border-white/80 dark:border-slate-700/60 rounded-xl p-1 shadow-2xs">
-          <button
-            onClick={() => setViewMode("list")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-              viewMode === "list"
-                ? "bg-[#1a446c] text-white shadow-sm"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-            }`}
-          >
-            Danh Sách
-          </button>
-          <button
-            onClick={() => setViewMode("calendar")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-              viewMode === "calendar"
-                ? "bg-[#1a446c] text-white shadow-sm"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-            }`}
-          >
-            Lịch Tuần
-          </button>
+        {/* Class Filter + View Switcher: List vs Calendar */}
+        <div className="flex flex-wrap items-center gap-2">
+          {liveClasses.length > 1 && (
+            <select
+              aria-label="Lọc theo lớp học"
+              value={selectedClassFilter}
+              onChange={(e) => setSelectedClassFilter(e.target.value)}
+              className="rounded-xl border border-white/80 bg-white/85 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              <option value="ALL">Tất cả lớp ({liveClasses.length})</option>
+              {liveClasses.map((cls) => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.title}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="flex items-center gap-1 bg-white/75 dark:bg-slate-800/70 border border-white/80 dark:border-slate-700/60 rounded-xl p-1 shadow-2xs">
+            <button
+              onClick={() => setViewMode("list")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                viewMode === "list"
+                  ? "bg-[#1a446c] text-white shadow-sm"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              Danh Sách
+            </button>
+            <button
+              onClick={() => setViewMode("calendar")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                viewMode === "calendar"
+                  ? "bg-[#1a446c] text-white shadow-sm"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              Lịch Tuần
+            </button>
+          </div>
         </div>
       </div>
 

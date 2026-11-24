@@ -32,7 +32,6 @@ import {
   Wallet,
   RotateCcw,
   Wifi,
-  AlertTriangle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
@@ -41,6 +40,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import useCUDUser from "../../../hooks/useCUDUser";
 import AvatarModal from "../../../components/AvatarModal";
 import PwaInstallCard from "../../../components/common/PwaInstallCard.jsx";
+import FaceEnrollmentCard from "../components/FaceEnrollmentCard.jsx";
 import { getAvatarUrl, handleAvatarError } from "../../../utils/avatar";
 import { fetchMyTrustedDevices } from "../../api/accountSecurityClient";
 import { fetchTeacherClassesLookup } from "../../api/lmsClient";
@@ -182,11 +182,6 @@ export default function TeacherSettingsPage() {
   useEffect(() => {
     if (authUser?.id) loadTrustedDevices();
   }, [authUser?.id, loadTrustedDevices]);
-
-  const handleOpenDevices = () => {
-    setDevicesModalOpen(true);
-    loadTrustedDevices();
-  };
 
   // Notification Preferences for Teachers
   const [notifications, setNotifications] = useState(() => {
@@ -464,17 +459,17 @@ export default function TeacherSettingsPage() {
     <div className="relative mx-auto max-w-6xl px-3 sm:px-6 lg:px-8 py-5 sm:py-6">
       {/* ================= HEADER HERO NGHỆ THUẬT ================= */}
       <div className="mb-6">
-        <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/80 bg-white/85 px-3 py-1 text-xs font-bold text-[#102f63] shadow-2xs backdrop-blur-md mb-2">
-          <Settings className="h-3.5 w-3.5 text-blue-600" />
+        <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/80 bg-white/85 px-3 py-1 text-xs font-bold text-[#102f63] shadow-2xs backdrop-blur-md mb-2 dark:border-slate-700 dark:bg-slate-900/85 dark:text-sky-300">
+          <Settings className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
           <span>Hồ sơ & Tài khoản Giảng viên</span>
         </div>
-        <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs">
+        <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs dark:text-white">
           Cài Đặt Giảng Viên
         </h1>
-        <p className="mt-1 text-xs font-semibold italic text-slate-800 sm:text-sm">
+        <p className="mt-1 text-xs font-semibold italic text-slate-800 sm:text-sm dark:text-slate-300">
           “Học quý ở người thầy, tận tâm gieo mầm tri thức cho thế hệ tương lai.”
         </p>
-        <p className="font-['Ma_Shan_Zheng',cursive] text-xs sm:text-sm tracking-wider text-slate-600">
+        <p className="font-['Ma_Shan_Zheng',cursive] text-xs sm:text-sm tracking-wider text-slate-600 dark:text-slate-400">
           —— 学贵得师，亦贵得友。
         </p>
       </div>
@@ -484,22 +479,22 @@ export default function TeacherSettingsPage() {
         {/* ================= CỘT TRÁI (LEFT COLUMN) ================= */}
         <div className="space-y-5">
           {/* CARD 1: THÔNG TIN HỒ SƠ GIẢNG VIÊN */}
-          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs dark:bg-blue-500/15 dark:text-sky-400">
                   <User className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-[#102f63]">Hồ sơ Giảng viên</h2>
-                  <p className="text-xs text-slate-500">Thông tin đào tạo và hồ sơ công tác</p>
+                  <h2 className="text-base font-bold text-[#102f63] dark:text-white">Hồ sơ Giảng viên</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Thông tin đào tạo và hồ sơ công tác</p>
                 </div>
               </div>
 
               <button
                 type="button"
                 onClick={handleOpenEditInfo}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/80 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 hover:text-blue-800 shadow-2xs"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/80 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 hover:text-blue-800 shadow-2xs dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25 dark:hover:text-sky-200"
                 title="Chỉnh sửa thông tin giảng viên"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -510,8 +505,8 @@ export default function TeacherSettingsPage() {
             <div className="mt-5 flex flex-col items-center gap-5 sm:flex-row sm:items-start">
               {/* Avatar with subtle glow */}
               <div className="relative shrink-0">
-                <div className="pointer-events-none absolute -inset-3 -z-10 flex items-center justify-center opacity-85">
-                  <div className="h-32 w-32 rounded-full bg-gradient-to-tr from-sky-200/50 via-blue-100/40 to-indigo-100/30 blur-md" />
+                <div className="pointer-events-none absolute -inset-3 -z-10 flex items-center justify-center opacity-85 dark:opacity-35">
+                  <div className="h-32 w-32 rounded-full bg-gradient-to-tr from-sky-200/50 via-blue-100/40 to-indigo-100/30 blur-md dark:from-sky-500/30 dark:via-blue-500/20 dark:to-indigo-500/20" />
                 </div>
 
                 <div className="relative">
@@ -519,12 +514,12 @@ export default function TeacherSettingsPage() {
                     src={getAvatarUrl(authUser)}
                     onError={handleAvatarError}
                     alt={teacherInfo.fullName}
-                    className="h-24 w-24 rounded-full border-4 border-white object-cover shadow-[0_8px_24px_rgba(30,80,120,0.18)]"
+                    className="h-24 w-24 rounded-full border-4 border-white object-cover shadow-[0_8px_24px_rgba(30,80,120,0.18)] dark:border-slate-800"
                   />
                   <button
                     type="button"
                     onClick={() => setAvatarModalOpen(true)}
-                    className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white shadow-md ring-2 ring-white transition hover:bg-blue-700 hover:scale-105"
+                    className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white shadow-md ring-2 ring-white transition hover:bg-blue-700 hover:scale-105 dark:ring-slate-900"
                     title="Đổi ảnh đại diện"
                     aria-label="Đổi ảnh đại diện"
                   >
@@ -536,58 +531,58 @@ export default function TeacherSettingsPage() {
               {/* Teacher details list */}
               <div className="w-full flex-1 space-y-2 text-xs sm:text-sm">
                 {/* Họ và tên */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="font-medium text-slate-500">Họ và tên</span>
-                  <span className="font-bold text-[#102f63]">{teacherInfo.fullName}</span>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Họ và tên</span>
+                  <span className="font-bold text-[#102f63] dark:text-white">{teacherInfo.fullName}</span>
                 </div>
 
                 {/* Mã Giảng viên / Nhân sự */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="font-medium text-slate-500">Mã nhân sự / GV</span>
-                  <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 font-mono font-bold text-blue-700 border border-blue-200">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Mã nhân sự / GV</span>
+                  <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 font-mono font-bold text-blue-700 border border-blue-200 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300">
                     {teacherInfo.teacherCode}
                   </span>
                 </div>
 
                 {/* Số điện thoại */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="font-medium text-slate-500">Số điện thoại</span>
-                  <span className="font-semibold text-slate-700">{teacherInfo.phone}</span>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Số điện thoại</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">{teacherInfo.phone}</span>
                 </div>
 
                 {/* Email công vụ */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="font-medium text-slate-500">Email công vụ</span>
-                  <span className="font-semibold text-slate-700 truncate max-w-[200px]" title={teacherInfo.email}>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Email công vụ</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[200px]" title={teacherInfo.email}>
                     {teacherInfo.email}
                   </span>
                 </div>
 
                 {/* Chức vụ / Vị trí Internal */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="font-medium text-slate-500">Chức vụ / Vị trí</span>
-                  <span className="font-semibold text-slate-700 text-right">{teacherInfo.title}</span>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Chức vụ / Vị trí</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200 text-right">{teacherInfo.title}</span>
                 </div>
 
                 {/* Tổ / Bộ môn */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="font-medium text-slate-500">Khoa / Bộ môn</span>
-                  <span className="font-semibold text-slate-700 text-right">{teacherInfo.department}</span>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Khoa / Bộ môn</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200 text-right">{teacherInfo.department}</span>
                 </div>
 
                 {/* Lớp phụ trách */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="font-medium text-slate-500">Mã lớp phụ trách</span>
-                  <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 font-mono font-bold text-slate-800 border border-slate-200">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Mã lớp phụ trách</span>
+                  <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 font-mono font-bold text-slate-800 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                     {teacherInfo.classCode}
                   </span>
                 </div>
 
                 {/* Vai trò hệ thống */}
                 <div className="flex items-center justify-between pt-0.5">
-                  <span className="font-medium text-slate-500">Vai trò hệ thống</span>
-                  <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700 border border-blue-100 font-mono">
-                    <span className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-pulse" />
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Vai trò hệ thống</span>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700 border border-blue-100 font-mono dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-sky-400 animate-pulse" />
                     {isAdmin ? "QUẢN TRỊ VIÊN (ADMIN)" : "GIẢNG VIÊN (TEACHER)"}
                   </span>
                 </div>
@@ -596,12 +591,12 @@ export default function TeacherSettingsPage() {
 
             {/* Tiểu sử giảng dạy */}
             {teacherInfo.bio && (
-              <div className="mt-4 rounded-2xl bg-sky-50/60 border border-sky-100 p-3 text-xs text-slate-700">
-                <p className="font-bold text-[#102f63] mb-1 flex items-center gap-1.5">
-                  <GraduationCap className="h-3.5 w-3.5 text-blue-600" />
+              <div className="mt-4 rounded-2xl bg-sky-50/60 border border-sky-100 p-3 text-xs text-slate-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-slate-300">
+                <p className="font-bold text-[#102f63] dark:text-sky-200 mb-1 flex items-center gap-1.5">
+                  <GraduationCap className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
                   Tiểu sử & Giới thiệu giảng dạy
                 </p>
-                <p className="text-slate-600 leading-relaxed italic">
+                <p className="text-slate-600 dark:text-slate-300 leading-relaxed italic">
                   &ldquo;{teacherInfo.bio}&rdquo;
                 </p>
               </div>
@@ -609,15 +604,15 @@ export default function TeacherSettingsPage() {
           </div>
 
           {/* CARD 2: LỚP HỌC ĐANG PHỤ TRÁCH (TEACHER CLASSES SUMMARY) */}
-          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg space-y-4 dark:border-slate-800 dark:bg-slate-900/95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 shadow-2xs">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 shadow-2xs dark:bg-emerald-500/15 dark:text-emerald-400">
                   <School className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-[#102f63]">Lớp học phụ trách</h2>
-                  <p className="text-xs text-slate-500">
+                  <h2 className="text-base font-bold text-[#102f63] dark:text-white">Lớp học phụ trách</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     {classesList.length} lớp học bạn đang trực tiếp giảng dạy
                   </p>
                 </div>
@@ -625,7 +620,7 @@ export default function TeacherSettingsPage() {
 
               <Link
                 to="/lms/teach/classes"
-                className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 transition"
+                className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-sky-400 dark:hover:text-sky-300 transition"
               >
                 <span>Xem tất cả</span>
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -638,7 +633,7 @@ export default function TeacherSettingsPage() {
                 Đang tải danh sách lớp học...
               </div>
             ) : classesList.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500">
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
                 Hiện tại bạn chưa được phân công lớp học nào.
               </div>
             ) : (
@@ -649,10 +644,10 @@ export default function TeacherSettingsPage() {
                     <Link
                       key={cls.id}
                       to={`/lms/teach/classes/${cls.id}`}
-                      className="group flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3 transition hover:border-sky-300 hover:bg-white hover:shadow-sm"
+                      className="group flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3 transition hover:border-sky-300 hover:bg-white hover:shadow-sm dark:border-slate-800 dark:bg-slate-800/60 dark:hover:border-sky-500/40 dark:hover:bg-slate-800"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="relative h-12 w-14 shrink-0 overflow-hidden rounded-xl bg-sky-100 border border-slate-200/80">
+                        <div className="relative h-12 w-14 shrink-0 overflow-hidden rounded-xl bg-sky-100 border border-slate-200/80 dark:border-slate-700 dark:bg-slate-900">
                           <img
                             src={cover}
                             alt={cls.title}
@@ -664,13 +659,13 @@ export default function TeacherSettingsPage() {
                           />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-sky-300 transition">
                             {cls.title}
                           </p>
-                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                             {cls.courseTitle || "Khóa học CSCA"}
                           </p>
-                          <p className="text-[10px] font-semibold text-blue-700 mt-0.5 flex items-center gap-2">
+                          <p className="text-[10px] font-semibold text-blue-700 dark:text-sky-400 mt-0.5 flex items-center gap-2">
                             <span>{cls.sessions?.length || 0} buổi học</span>
                             <span>·</span>
                             <span>{cls.total_students || 0} học viên</span>
@@ -678,14 +673,14 @@ export default function TeacherSettingsPage() {
                         </div>
                       </div>
 
-                      <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition shrink-0" />
+                      <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-sky-400 group-hover:translate-x-0.5 transition shrink-0" />
                     </Link>
                   );
                 })}
 
                 {classesList.length > 3 && (
-                  <p className="text-center text-[11px] text-slate-500 pt-1">
-                    Và còn <strong>{classesList.length - 3} lớp khác</strong> trong danh sách giảng dạy.
+                  <p className="text-center text-[11px] text-slate-500 dark:text-slate-400 pt-1">
+                    Và còn <strong className="text-slate-700 dark:text-slate-200">{classesList.length - 3} lớp khác</strong> trong danh sách giảng dạy.
                   </p>
                 )}
               </div>
@@ -693,50 +688,50 @@ export default function TeacherSettingsPage() {
           </div>
 
           {/* CARD 3: BẢO MẬT & ĐỔI MẬT KHẨU */}
-          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg space-y-4">
+          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg space-y-4 dark:border-slate-800 dark:bg-slate-900/95">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs dark:bg-blue-500/15 dark:text-sky-400">
                 <ShieldCheck className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-[#102f63]">Bảo mật</h2>
-                <p className="text-xs text-slate-500">Bảo vệ tài khoản và quyền truy cập giảng dạy</p>
+                <h2 className="text-base font-bold text-[#102f63] dark:text-white">Bảo mật</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Bảo vệ tài khoản và quyền truy cập giảng dạy</p>
               </div>
             </div>
 
             <div className="space-y-3">
               {/* Row 1: Mật khẩu */}
-              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5 transition hover:bg-slate-50">
+              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-200/80 text-slate-600">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-200/80 text-slate-600 dark:bg-slate-700/80 dark:text-slate-300">
                     <Lock className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-800 sm:text-sm">Mật khẩu</p>
-                    <p className="text-xs tracking-widest text-slate-400">••••••••••</p>
+                    <p className="text-xs font-bold text-slate-800 dark:text-white sm:text-sm">Mật khẩu</p>
+                    <p className="text-xs tracking-widest text-slate-400 dark:text-slate-500">••••••••••</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPasswordModalOpen(true)}
-                  className="rounded-xl border border-blue-200 bg-blue-50/80 px-3.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 hover:text-blue-800 shadow-2xs"
+                  className="rounded-xl border border-blue-200 bg-blue-50/80 px-3.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 hover:text-blue-800 shadow-2xs dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25 dark:hover:text-sky-200"
                 >
                   Đổi mật khẩu
                 </button>
               </div>
 
               {/* Row 2: 2FA */}
-              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5">
+              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5 dark:border-slate-800 dark:bg-slate-800/60">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400">
                     <ShieldCheck className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-800 sm:text-sm">Xác thực 2 bước (2FA)</p>
-                    <p className="text-xs text-slate-500">Bảo vệ nâng cao cho tài khoản giảng viên</p>
+                    <p className="text-xs font-bold text-slate-800 dark:text-white sm:text-sm">Xác thực 2 bước (2FA)</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Bảo vệ nâng cao cho tài khoản giảng viên</p>
                   </div>
                 </div>
-                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300">
                   Sắp ra mắt
                 </span>
               </div>
@@ -745,20 +740,20 @@ export default function TeacherSettingsPage() {
           </div>
 
           {/* CARD 3.5: THIẾT BỊ ĐĂNG NHẬP VÀO TÀI KHOẢN */}
-          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg space-y-4 dark:border-slate-800 dark:bg-slate-900/95">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-2xs">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-2xs dark:bg-indigo-500/15 dark:text-indigo-400">
                   <Laptop className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold text-[#102f63]">Thiết bị đăng nhập</h2>
-                    <span className="rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-0.5 text-[11px] font-black">
+                    <h2 className="text-base font-bold text-[#102f63] dark:text-white">Thiết bị đăng nhập</h2>
+                    <span className="rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-0.5 text-[11px] font-black dark:border-indigo-500/30 dark:bg-indigo-500/15 dark:text-indigo-300">
                       {trustedDevices.devices?.length || 0}/{trustedDevices.limit || 2} máy
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Danh sách các thiết bị máy tính, điện thoại đang đăng nhập tài khoản này
                   </p>
                 </div>
@@ -768,7 +763,7 @@ export default function TeacherSettingsPage() {
                 type="button"
                 onClick={loadTrustedDevices}
                 disabled={devicesLoading}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 transition"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 title="Làm mới danh sách thiết bị"
               >
                 <RotateCcw className={`h-3.5 w-3.5 ${devicesLoading ? "animate-spin" : ""}`} />
@@ -779,23 +774,23 @@ export default function TeacherSettingsPage() {
             {/* List of Devices directly on the page */}
             <div className="space-y-3">
               {devicesLoading ? (
-                <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 py-8 text-xs font-semibold text-slate-500">
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 py-8 text-xs font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
                   <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
                   Đang kiểm tra thiết bị...
                 </div>
               ) : devicesError ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-center text-xs text-rose-700">
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-center text-xs text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-300">
                   <p>{devicesError}</p>
                   <button
                     type="button"
                     onClick={loadTrustedDevices}
-                    className="mt-2 rounded-xl bg-white px-3 py-1 text-xs font-bold text-rose-600 shadow-xs"
+                    className="mt-2 rounded-xl bg-white px-3 py-1 text-xs font-bold text-rose-600 shadow-xs dark:bg-slate-800 dark:text-rose-300 dark:hover:bg-slate-700"
                   >
                     Thử lại
                   </button>
                 </div>
               ) : trustedDevices.devices?.length === 0 ? (
-                <div className="rounded-2xl border border-slate-100 bg-slate-50 py-8 text-center text-xs text-slate-500">
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 py-8 text-center text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
                   Chưa có thiết bị đăng nhập nào được ghi nhận.
                 </div>
               ) : (
@@ -807,8 +802,8 @@ export default function TeacherSettingsPage() {
                       key={device.id}
                       className={`rounded-2xl border p-4 transition ${
                         device.isCurrent
-                          ? "border-blue-300 bg-blue-50/70 shadow-xs"
-                          : "border-slate-200/80 bg-slate-50/70"
+                          ? "border-blue-300 bg-blue-50/70 shadow-xs dark:border-sky-500/40 dark:bg-sky-500/12"
+                          : "border-slate-200/80 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-800/60"
                       }`}
                     >
                       <div className="flex items-start gap-3.5">
@@ -816,7 +811,7 @@ export default function TeacherSettingsPage() {
                           className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-xs ${
                             device.isCurrent
                               ? "bg-blue-600 text-white"
-                              : "bg-slate-200 text-slate-700"
+                              : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
                           }`}
                         >
                           <DeviceIcon className="h-5 w-5" />
@@ -825,7 +820,7 @@ export default function TeacherSettingsPage() {
                         <div className="min-w-0 flex-1 space-y-1.5">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
-                              <p className="text-sm font-extrabold text-slate-900">
+                              <p className="text-sm font-extrabold text-slate-900 dark:text-white">
                                 {device.deviceName}
                               </p>
                               {device.isCurrent && (
@@ -834,12 +829,12 @@ export default function TeacherSettingsPage() {
                                 </span>
                               )}
                             </div>
-                            <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-200/70 px-2 py-0.5 rounded-md">
+                            <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-md dark:bg-slate-700/80 dark:text-slate-300">
                               Máy {idx + 1}
                             </span>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px] text-slate-500">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px] text-slate-500 dark:text-slate-400">
                             <span className="flex items-center gap-1 font-mono">
                               <Wifi className="h-3 w-3 text-slate-400" />
                               IP gần nhất: {device.lastIp || "Không xác định"}
@@ -861,8 +856,8 @@ export default function TeacherSettingsPage() {
             </div>
 
             {/* Note */}
-            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 text-[11px] text-amber-900 flex items-start gap-2.5">
-              <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 text-[11px] text-amber-900 flex items-start gap-2.5 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-200">
+              <ShieldCheck className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <p className="font-bold">Chính sách bảo mật giới hạn thiết bị:</p>
                 <p className="leading-relaxed">
@@ -874,15 +869,15 @@ export default function TeacherSettingsPage() {
           </div>
 
           {/* CARD 4: NGÔN NGỮ */}
-          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg">
+          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/95">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs dark:bg-blue-500/15 dark:text-sky-400">
                   <Globe className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-[#102f63]">Ngôn ngữ</h2>
-                  <p className="text-xs text-slate-500">Chọn ngôn ngữ hiển thị hệ thống giảng dạy</p>
+                  <h2 className="text-base font-bold text-[#102f63] dark:text-white">Ngôn ngữ</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Chọn ngôn ngữ hiển thị hệ thống giảng dạy</p>
                 </div>
               </div>
 
@@ -891,7 +886,7 @@ export default function TeacherSettingsPage() {
                 <button
                   type="button"
                   onClick={() => setLanguageOpen(!languageOpen)}
-                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-50/50"
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-50/50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-sky-500/40 dark:hover:bg-slate-700"
                 >
                   <span>{languages.find((l) => l.code === selectedLanguage)?.flag}</span>
                   <span>{languages.find((l) => l.code === selectedLanguage)?.name}</span>
@@ -899,7 +894,7 @@ export default function TeacherSettingsPage() {
                 </button>
 
                 {languageOpen && (
-                  <div className="absolute right-0 top-full z-20 mt-2 w-48 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1.5 shadow-xl">
+                  <div className="absolute right-0 top-full z-20 mt-2 w-48 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
                     {languages.map((lang) => (
                       <button
                         key={lang.code}
@@ -908,10 +903,10 @@ export default function TeacherSettingsPage() {
                         aria-disabled={!lang.available}
                         className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold transition ${
                           !lang.available
-                            ? "cursor-not-allowed text-slate-400"
+                            ? "cursor-not-allowed text-slate-400 dark:text-slate-500"
                             : selectedLanguage === lang.code
-                            ? "bg-blue-50 text-blue-700"
-                            : "text-slate-700 hover:bg-slate-50"
+                            ? "bg-blue-50 text-blue-700 dark:bg-sky-500/15 dark:text-sky-300"
+                            : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
                         }`}
                       >
                         <span className="flex items-center gap-2">
@@ -919,9 +914,9 @@ export default function TeacherSettingsPage() {
                           <span>{lang.name}</span>
                         </span>
                         {!lang.available ? (
-                          <span className="text-[9px] font-black uppercase tracking-wide text-slate-400">Sắp có</span>
+                          <span className="text-[9px] font-black uppercase tracking-wide text-slate-400 dark:text-slate-500">Sắp có</span>
                         ) : selectedLanguage === lang.code ? (
-                          <Check className="h-3.5 w-3.5 text-blue-600" />
+                          <Check className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
                         ) : null}
                       </button>
                     ))}
@@ -933,19 +928,22 @@ export default function TeacherSettingsPage() {
 
           {/* CARD 4.5: CÀI ĐẶT ỨNG DỤNG PWA */}
           <PwaInstallCard variant="lms" />
+
+          {/* CARD 4.6: ĐĂNG KÝ KHUÔN MẶT CHẤM CÔNG */}
+          <FaceEnrollmentCard />
         </div>
 
         {/* ================= CỘT PHẢI (RIGHT COLUMN) ================= */}
         <div className="space-y-5">
           {/* CARD 5: THÔNG BÁO GIẢNG DẠY */}
-          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg">
+          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/95">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs dark:bg-blue-500/15 dark:text-sky-400">
                 <Bell className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-[#102f63]">Thông báo Giảng dạy</h2>
-                <p className="text-xs text-slate-500">Tùy chỉnh thông báo nhắc lịch dạy và bài nộp</p>
+                <h2 className="text-base font-bold text-[#102f63] dark:text-white">Thông báo Giảng dạy</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Tùy chỉnh thông báo nhắc lịch dạy và bài nộp</p>
               </div>
             </div>
 
@@ -953,12 +951,12 @@ export default function TeacherSettingsPage() {
               {/* Option 1: Nhắc nhở Lịch dạy & Buổi học */}
               <div className="flex items-center justify-between py-1">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400">
                     <Calendar className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-800 sm:text-sm">Lịch dạy & Buổi học trực tuyến</p>
-                    <p className="text-xs text-slate-500">Nhắc nhở trước khi buổi dạy bắt đầu 15 phút và thay đổi lịch</p>
+                    <p className="text-xs font-bold text-slate-800 dark:text-white sm:text-sm">Lịch dạy & Buổi học trực tuyến</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Nhắc nhở trước khi buổi dạy bắt đầu 15 phút và thay đổi lịch</p>
                   </div>
                 </div>
                 <button
@@ -967,7 +965,7 @@ export default function TeacherSettingsPage() {
                   aria-checked={notifications.schedules}
                   onClick={() => handleToggleNotification("schedules")}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    notifications.schedules ? "bg-blue-600" : "bg-slate-200"
+                    notifications.schedules ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700"
                   }`}
                 >
                   <span
@@ -981,12 +979,12 @@ export default function TeacherSettingsPage() {
               {/* Option 2: Bài tập & Bài nộp cần chấm */}
               <div className="flex items-center justify-between py-1">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400">
                     <ClipboardCheck className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-800 sm:text-sm">Bài nộp chờ chấm điểm</p>
-                    <p className="text-xs text-slate-500">Thông báo khi có học viên mới nộp bài tập hoặc bài kiểm tra</p>
+                    <p className="text-xs font-bold text-slate-800 dark:text-white sm:text-sm">Bài nộp chờ chấm điểm</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Thông báo khi có học viên mới nộp bài tập hoặc bài kiểm tra</p>
                   </div>
                 </div>
                 <button
@@ -995,7 +993,7 @@ export default function TeacherSettingsPage() {
                   aria-checked={notifications.grading}
                   onClick={() => handleToggleNotification("grading")}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    notifications.grading ? "bg-blue-600" : "bg-slate-200"
+                    notifications.grading ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700"
                   }`}
                 >
                   <span
@@ -1009,12 +1007,12 @@ export default function TeacherSettingsPage() {
               {/* Option 3: Chuyên cần & Học viên */}
               <div className="flex items-center justify-between py-1">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50 text-rose-500">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50 text-rose-500 dark:bg-rose-500/15 dark:text-rose-400">
                     <Users className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-800 sm:text-sm">Học viên & Chuyên cần</p>
-                    <p className="text-xs text-slate-500">Cảnh báo học viên vắng mặt nhiều buổi hoặc xin nghỉ phép</p>
+                    <p className="text-xs font-bold text-slate-800 dark:text-white sm:text-sm">Học viên & Chuyên cần</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Cảnh báo học viên vắng mặt nhiều buổi hoặc xin nghỉ phép</p>
                   </div>
                 </div>
                 <button
@@ -1023,7 +1021,7 @@ export default function TeacherSettingsPage() {
                   aria-checked={notifications.attendance}
                   onClick={() => handleToggleNotification("attendance")}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    notifications.attendance ? "bg-blue-600" : "bg-slate-200"
+                    notifications.attendance ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700"
                   }`}
                 >
                   <span
@@ -1037,12 +1035,12 @@ export default function TeacherSettingsPage() {
               {/* Option 4: Thù lao & Quyết toán giảng dạy */}
               <div className="flex items-center justify-between py-1">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400">
                     <Wallet className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-800 sm:text-sm">Thù lao & Quyết toán giảng dạy</p>
-                    <p className="text-xs text-slate-500">Thông báo bảng lương hàng tháng và thông báo từ ban quản trị</p>
+                    <p className="text-xs font-bold text-slate-800 dark:text-white sm:text-sm">Thù lao & Quyết toán giảng dạy</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Thông báo bảng lương hàng tháng và thông báo từ ban quản trị</p>
                   </div>
                 </div>
                 <button
@@ -1051,7 +1049,7 @@ export default function TeacherSettingsPage() {
                   aria-checked={notifications.payroll}
                   onClick={() => handleToggleNotification("payroll")}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    notifications.payroll ? "bg-blue-600" : "bg-slate-200"
+                    notifications.payroll ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700"
                   }`}
                 >
                   <span
@@ -1065,14 +1063,14 @@ export default function TeacherSettingsPage() {
           </div>
 
           {/* CARD 6: GIAO DIỆN */}
-          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg">
+          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/95">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs dark:bg-blue-500/15 dark:text-sky-400">
                 <Palette className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-[#102f63]">Giao diện</h2>
-                <p className="text-xs text-slate-500">Tùy chọn hiển thị không gian làm việc</p>
+                <h2 className="text-base font-bold text-[#102f63] dark:text-white">Giao diện</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Tùy chọn hiển thị không gian làm việc</p>
               </div>
             </div>
 
@@ -1084,7 +1082,7 @@ export default function TeacherSettingsPage() {
                 className={`group relative cursor-pointer rounded-2xl p-2.5 transition ${
                   !isDarkMode
                     ? "border-2 border-blue-500 bg-white dark:bg-slate-900 shadow-sm ring-2 ring-blue-500/20 hover:shadow-md"
-                    : "border border-slate-200 bg-slate-50/70 opacity-85 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/50"
+                    : "border border-slate-200 bg-slate-50/70 opacity-85 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-800/50 dark:hover:border-slate-700"
                 }`}
               >
                 <div className="relative h-20 w-full overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
@@ -1113,8 +1111,8 @@ export default function TeacherSettingsPage() {
                 onClick={() => handleSelectTheme("dark")}
                 className={`group relative cursor-pointer rounded-2xl p-2.5 transition ${
                   isDarkMode
-                    ? "border-2 border-blue-500 bg-slate-900 shadow-sm ring-2 ring-blue-500/20 hover:shadow-md"
-                    : "border border-slate-200 bg-slate-50/70 opacity-85 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/50"
+                    ? "border-2 border-blue-500 bg-slate-900 shadow-sm ring-2 ring-blue-500/20 hover:shadow-md dark:bg-slate-800/90"
+                    : "border border-slate-200 bg-slate-50/70 opacity-85 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-800/50"
                 }`}
               >
                 <div className="relative h-20 w-full overflow-hidden rounded-xl bg-slate-900">
@@ -1141,7 +1139,7 @@ export default function TeacherSettingsPage() {
               {/* Theme 3: Theo hệ thống */}
               <div
                 onClick={() => handleSelectTheme("system")}
-                className="group relative cursor-pointer rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 opacity-85 transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/50"
+                className="group relative cursor-pointer rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 opacity-85 transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-800/50 dark:hover:border-slate-700"
               >
                 <div className="relative flex h-20 w-full overflow-hidden rounded-xl">
                   <div className="h-full w-1/2 overflow-hidden">
@@ -1162,8 +1160,8 @@ export default function TeacherSettingsPage() {
                 <div className="mt-2.5 flex items-center gap-2">
                   <Monitor className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                   <div>
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Theo hệ thống</p>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500">Tự động theo thiết bị</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Theo hệ thống</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-400">Tự động theo thiết bị</p>
                   </div>
                 </div>
               </div>
@@ -1171,14 +1169,14 @@ export default function TeacherSettingsPage() {
           </div>
 
           {/* CARD 7: TÙY CHỈNH ẢNH NỀN PHONG CẢNH Á ĐÔNG */}
-          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg">
+          <div className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/95">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-2xs dark:bg-blue-500/15 dark:text-sky-400">
                 <ImageIcon className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-[#102f63]">Tùy chỉnh ảnh nền</h2>
-                <p className="text-xs text-slate-500">Hình nền phong cảnh Á Đông cho toàn bộ bàn làm việc giảng viên</p>
+                <h2 className="text-base font-bold text-[#102f63] dark:text-white">Tùy chỉnh ảnh nền</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Hình nền phong cảnh Á Đông cho toàn bộ bàn làm việc giảng viên</p>
               </div>
             </div>
 
@@ -1194,7 +1192,7 @@ export default function TeacherSettingsPage() {
                     className={`group relative h-20 w-32 shrink-0 overflow-hidden rounded-xl border-2 transition-all focus:outline-none ${
                       isSelected
                         ? "border-blue-600 ring-2 ring-blue-500/30 scale-[1.02] shadow-md"
-                        : "border-slate-200 hover:border-blue-300 hover:scale-[1.01]"
+                        : "border-slate-200 hover:border-blue-300 hover:scale-[1.01] dark:border-slate-700 dark:hover:border-sky-500/50"
                     }`}
                     title={wp.title}
                   >
@@ -1220,10 +1218,10 @@ export default function TeacherSettingsPage() {
               <button
                 type="button"
                 onClick={() => setAddWallpaperModalOpen(true)}
-                className="flex h-20 w-28 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-300 bg-white/60 text-slate-500 transition hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600"
+                className="group flex h-20 w-28 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-300 bg-white/60 text-slate-500 transition hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400 dark:hover:border-sky-500/50 dark:hover:bg-slate-800 dark:hover:text-sky-300"
                 title="Thêm ảnh nền tùy chỉnh"
               >
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 group-hover:bg-blue-100">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 group-hover:bg-blue-100 dark:bg-slate-700 dark:group-hover:bg-sky-500/20">
                   <Plus className="h-4 w-4" />
                 </div>
                 <span className="text-[11px] font-bold">Thêm ảnh nền</span>
@@ -1237,11 +1235,11 @@ export default function TeacherSettingsPage() {
 
       {/* 1. EDIT TEACHER INFO MODAL */}
       {editInfoModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-lg rounded-3xl border border-white/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 shadow-2xs">
+                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-sky-400 shadow-2xs">
                   <Pencil className="h-4 w-4" />
                 </span>
                 <h3 className="text-base font-bold text-[#102f63] dark:text-white">Cập nhật thông tin Giảng viên</h3>
@@ -1257,73 +1255,73 @@ export default function TeacherSettingsPage() {
 
             <form onSubmit={handleSaveEditInfo} className="mt-5 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Họ và tên *</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Họ và tên *</label>
                 <input
                   type="text"
                   required
                   value={infoForm.fullName}
                   onChange={(e) => setInfoForm({ ...infoForm, fullName: e.target.value })}
                   placeholder="Ví dụ: ThS. Nguyễn Hà"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:bg-slate-800"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Học vị / Chức danh</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Học vị / Chức danh</label>
                 <input
                   type="text"
                   value={infoForm.title}
                   onChange={(e) => setInfoForm({ ...infoForm, title: e.target.value })}
                   placeholder="Ví dụ: Giảng viên chính CSCA / Thạc sĩ Sư phạm"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:bg-slate-800"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Khoa / Tổ chuyên môn</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Khoa / Tổ chuyên môn</label>
                 <input
                   type="text"
                   value={infoForm.department}
                   onChange={(e) => setInfoForm({ ...infoForm, department: e.target.value })}
                   placeholder="Ví dụ: Tổ Toán & Khoa Học Tự Nhiên CSCA"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:bg-slate-800"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Kinh nghiệm giảng dạy</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Kinh nghiệm giảng dạy</label>
                 <input
                   type="text"
                   value={infoForm.experience}
                   onChange={(e) => setInfoForm({ ...infoForm, experience: e.target.value })}
                   placeholder="Ví dụ: 5+ năm kinh nghiệm giảng dạy & luyện thi CSCA"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:bg-slate-800"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Tiểu sử / Giới thiệu bản thân</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Tiểu sử / Giới thiệu bản thân</label>
                 <textarea
                   rows={3}
                   value={infoForm.bio}
                   onChange={(e) => setInfoForm({ ...infoForm, bio: e.target.value })}
                   placeholder="Mô tả ngắn gọn về kinh nghiệm, phong cách giảng dạy và triết lý giáo dục..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:bg-slate-800"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setEditInfoModalOpen(false)}
-                  className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                  className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="rounded-xl bg-[#102f63] hover:bg-blue-700 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
+                  className="rounded-xl bg-[#102f63] hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
                 >
                   {saving ? "Đang lưu..." : "Lưu thay đổi"}
                 </button>
@@ -1335,11 +1333,11 @@ export default function TeacherSettingsPage() {
 
       {/* 2. CHANGE PASSWORD MODAL */}
       {passwordModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-md rounded-3xl border border-white/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 shadow-2xs">
+                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-sky-400 shadow-2xs">
                   <Lock className="h-4 w-4" />
                 </span>
                 <h3 className="text-base font-bold text-[#102f63] dark:text-white">Đổi mật khẩu tài khoản</h3>
@@ -1355,19 +1353,19 @@ export default function TeacherSettingsPage() {
 
             <form onSubmit={handleSavePassword} className="mt-5 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Mật khẩu hiện tại *</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Mật khẩu hiện tại *</label>
                 <div className="relative">
                   <input
                     type={showPassword.current ? "text" : "password"}
                     required
                     value={passwordForm.currentPassword}
                     onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white pr-9"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white pr-9 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword({ ...showPassword, current: !showPassword.current })}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   >
                     {showPassword.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -1375,19 +1373,19 @@ export default function TeacherSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Mật khẩu mới (tối thiểu 6 ký tự) *</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Mật khẩu mới (tối thiểu 6 ký tự) *</label>
                 <div className="relative">
                   <input
                     type={showPassword.new ? "text" : "password"}
                     required
                     value={passwordForm.newPassword}
                     onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white pr-9"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white pr-9 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword({ ...showPassword, new: !showPassword.new })}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   >
                     {showPassword.new ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -1395,37 +1393,37 @@ export default function TeacherSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Xác nhận mật khẩu mới *</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Xác nhận mật khẩu mới *</label>
                 <div className="relative">
                   <input
                     type={showPassword.confirm ? "text" : "password"}
                     required
                     value={passwordForm.confirmPassword}
                     onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white pr-9"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white pr-9 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword({ ...showPassword, confirm: !showPassword.confirm })}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   >
                     {showPassword.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setPasswordModalOpen(false)}
-                  className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                  className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={passwordLoading}
-                  className="rounded-xl bg-[#102f63] hover:bg-blue-700 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
+                  className="rounded-xl bg-[#102f63] hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
                 >
                   {passwordLoading ? "Đang cập nhật..." : "Lưu mật khẩu"}
                 </button>
@@ -1437,11 +1435,11 @@ export default function TeacherSettingsPage() {
 
       {/* 3. TRUSTED DEVICES MODAL */}
       {devicesModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-lg rounded-3xl border border-white/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shadow-2xs">
+                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 shadow-2xs">
                   <Laptop className="h-4 w-4" />
                 </span>
                 <div>
@@ -1467,11 +1465,11 @@ export default function TeacherSettingsPage() {
                   Đang tải danh sách thiết bị...
                 </div>
               ) : devicesError ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-700">
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-300">
                   {devicesError}
                 </div>
               ) : trustedDevices.devices?.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500">
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
                   Chưa có thông tin thiết bị nào được ghi nhận.
                 </div>
               ) : (
@@ -1480,17 +1478,17 @@ export default function TeacherSettingsPage() {
                   return (
                     <div
                       key={dev.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3.5"
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-800/60"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-600 shadow-2xs">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-600 shadow-2xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                           {isMobile ? <Smartphone className="h-4 w-4" /> : <Laptop className="h-4 w-4" />}
                         </span>
                         <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-800 truncate">
+                          <p className="text-xs font-bold text-slate-800 dark:text-white truncate">
                             {dev.deviceName || (isMobile ? "Điện thoại / Di động" : "Máy tính / Trình duyệt")}
                             {dev.isCurrent && (
-                              <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
+                              <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                                 Thiết bị này
                               </span>
                             )}
@@ -1506,11 +1504,11 @@ export default function TeacherSettingsPage() {
               )}
             </div>
 
-            <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
+            <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
               <button
                 type="button"
                 onClick={() => setDevicesModalOpen(false)}
-                className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition"
+                className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition"
               >
                 Đóng
               </button>
@@ -1521,11 +1519,11 @@ export default function TeacherSettingsPage() {
 
       {/* 4. ADD CUSTOM WALLPAPER MODAL */}
       {addWallpaperModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-md rounded-3xl border border-white/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 shadow-2xs">
+                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-sky-400 shadow-2xs">
                   <ImageIcon className="h-4 w-4" />
                 </span>
                 <h3 className="text-base font-bold text-[#102f63] dark:text-white">Thêm ảnh nền tùy chỉnh</h3>
@@ -1541,39 +1539,39 @@ export default function TeacherSettingsPage() {
 
             <form onSubmit={handleAddCustomWallpaper} className="mt-5 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Tên hình nền</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Tên hình nền</label>
                 <input
                   type="text"
                   value={newWallpaperTitle}
                   onChange={(e) => setNewWallpaperTitle(e.target.value)}
                   placeholder="Ví dụ: Lớp học CSCA mùa thu"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Chọn ảnh từ máy tính</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Chọn ảnh từ máy tính</label>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleCustomFileSelect}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-1 file:text-xs file:font-bold file:text-white hover:file:bg-blue-700"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-1 file:text-xs file:font-bold file:text-white hover:file:bg-blue-700"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Hoặc dán URL ảnh</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Hoặc dán URL ảnh</label>
                 <input
                   type="url"
                   value={newWallpaperUrl}
                   onChange={(e) => setNewWallpaperUrl(e.target.value)}
                   placeholder="https://images.unsplash.com/..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
               </div>
 
               {newWallpaperUrl && (
-                <div className="relative h-28 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                <div className="relative h-28 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800">
                   <img
                     src={newWallpaperUrl}
                     alt="Xem trước hình nền"
@@ -1585,18 +1583,18 @@ export default function TeacherSettingsPage() {
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setAddWallpaperModalOpen(false)}
-                  className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                  className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={!newWallpaperUrl}
-                  className="rounded-xl bg-[#102f63] hover:bg-blue-700 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
+                  className="rounded-xl bg-[#102f63] hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 px-5 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 transition"
                 >
                   Áp dụng hình nền
                 </button>

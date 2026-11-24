@@ -219,6 +219,57 @@ export default function TeacherSalarySection({ salaryData, onRefresh, refreshing
             </div>
           </div>
 
+          {/* Dải chi tiết Chấm công Ra/Vào & Quyết toán thực nhận */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-2xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-3 text-xs shadow-2xs backdrop-blur-md">
+            <div className="rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/50 px-3 py-2">
+              <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400 font-mono">Thực lĩnh sau thưởng/phạt</p>
+              <p className="mt-0.5 text-sm font-black text-emerald-700 dark:text-emerald-300 font-mono">
+                {formatVnd(summary.netAccruedSalary ?? summary.accruedSalary)}
+              </p>
+              <p className="text-[10px] text-slate-500 font-mono">
+                Thưởng +{formatVnd(summary.bonusAmount || 0)} · Trừ -{formatVnd(summary.deductionAmount || 0)}
+              </p>
+            </div>
+
+            <div className={`rounded-xl border px-3 py-2 ${
+              (summary.attendancePendingSessions || 0) > 0
+                ? "bg-amber-50/80 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/60"
+                : "bg-slate-50/80 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800"
+            }`}>
+              <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 font-mono">Thiếu chấm công Ra/Vào</p>
+              <p className={`mt-0.5 text-sm font-black font-mono ${
+                (summary.attendancePendingSessions || 0) > 0 ? "text-amber-700 dark:text-amber-400" : "text-slate-800 dark:text-white"
+              }`}>
+                {summary.attendancePendingSessions || 0} buổi
+              </p>
+              <p className="text-[10px] text-slate-500">
+                {(summary.attendancePendingSessions || 0) > 0 ? "Chờ Admin xác nhận" : "Tất cả đã đối soát"}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 px-3 py-2">
+              <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 font-mono">Đi muộn / Về sớm</p>
+              <p className="mt-0.5 text-sm font-black text-slate-800 dark:text-white font-mono">
+                {summary.lateSessionsCount || 0} muộn · {summary.earlyLeaveSessionsCount || 0} sớm
+              </p>
+              <p className="text-[10px] text-slate-500">Tính theo giờ thực tế</p>
+            </div>
+
+            <div className="rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 px-3 py-2">
+              <p className="text-[10px] font-bold uppercase text-indigo-700 dark:text-sky-400 font-mono">Khuôn mặt chấm công</p>
+              <p className="mt-0.5 text-xs font-black text-indigo-900 dark:text-white">
+                {salaryData?.teacher?.faceEnrollmentStatus === "approved"
+                  ? "Đã duyệt & khóa"
+                  : salaryData?.teacher?.faceEnrollmentStatus === "pending_approval"
+                    ? "Đang chờ duyệt"
+                    : "Chưa đăng ký"}
+              </p>
+              <Link to="/lms/teach/settings" className="text-[10px] font-bold text-indigo-600 hover:underline dark:text-sky-400">
+                Xem trong Cài đặt →
+              </Link>
+            </div>
+          </div>
+
           {/* Tiêu đề danh sách lớp & Ô tìm kiếm */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1 px-1">
             <div className="flex items-center gap-2">
@@ -344,6 +395,7 @@ export default function TeacherSalarySection({ salaryData, onRefresh, refreshing
                                   <th className="py-2.5 px-3">Tên buổi học</th>
                                   <th className="py-2.5 px-3">Thời gian</th>
                                   <th className="py-2.5 px-3 text-center">Thời lượng</th>
+                                  <th className="py-2.5 px-3">Chấm công Ra / Vào</th>
                                   <th className="py-2.5 px-3 text-center">Trạng thái</th>
                                   <th className="py-2.5 px-3 text-right">Thù lao buổi dạy</th>
                                 </tr>
@@ -351,34 +403,105 @@ export default function TeacherSalarySection({ salaryData, onRefresh, refreshing
                               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 {cls.sessions.map((sess) => {
                                   const startDate = sess.startTime ? new Date(sess.startTime) : null;
+                                  const endDate = sess.endTime ? new Date(sess.endTime) : null;
                                   const dateFormatted = startDate && !Number.isNaN(startDate.getTime())
                                     ? startDate.toLocaleDateString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })
                                     : "Chưa định";
                                   const timeFormatted = startDate && !Number.isNaN(startDate.getTime())
                                     ? startDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
                                     : "";
+                                  const endFormatted = endDate && !Number.isNaN(endDate.getTime())
+                                    ? endDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+                                    : "";
+                                  const fa = sess.faceAttendance || {};
+                                  const fmtHm = (val) => (
+                                    val && !Number.isNaN(new Date(val).getTime())
+                                      ? new Date(val).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+                                      : "--:--"
+                                  );
+                                  const actualDurationText = (() => {
+                                    if (!fa.checkInAt || !fa.checkOutAt) return null;
+                                    const mins = Math.max(0, Math.round((new Date(fa.checkOutAt) - new Date(fa.checkInAt)) / 60000));
+                                    const h = Math.floor(mins / 60);
+                                    const m = mins % 60;
+                                    return h > 0 ? `${h}h${m > 0 ? ` ${m}p` : ""}` : `${m}p`;
+                                  })();
 
                                   return (
                                     <tr
                                       key={sess.id}
                                       className={`hover:bg-sky-50/40 dark:hover:bg-slate-800/50 transition ${
-                                        sess.isCompleted ? "bg-emerald-50/20 dark:bg-emerald-950/20" : ""
+                                        sess.isAttendancePending
+                                          ? "bg-amber-50/40 dark:bg-amber-950/15"
+                                          : sess.isCompleted
+                                            ? "bg-emerald-50/20 dark:bg-emerald-950/20"
+                                            : ""
                                       }`}
                                     >
                                       <td className="py-2.5 px-3 font-mono font-bold text-slate-400 dark:text-slate-500">
                                         {sess.sessionNumber}
                                       </td>
                                       <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white max-w-[200px] truncate">
-                                        {sess.title}
+                                        <Link
+                                          to={`/lms/teach/classes/${cls.classId}/sessions/${sess.id}`}
+                                          className="hover:text-blue-600 hover:underline dark:hover:text-sky-400"
+                                        >
+                                          {sess.title}
+                                        </Link>
                                       </td>
                                       <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
-                                        {dateFormatted} {timeFormatted && `(${timeFormatted})`}
+                                        {dateFormatted} {timeFormatted && `(${timeFormatted}${endFormatted ? `–${endFormatted}` : ""})`}
                                       </td>
                                       <td className="py-2.5 px-3 text-center font-mono font-bold text-[#102f63] dark:text-slate-200">
                                         {sess.durationHours}h
+                                        {actualDurationText && (
+                                          <span className="block text-[9px] font-normal text-slate-400">
+                                            Thực tế: {actualDurationText}
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-[11px]">
+                                        {!fa.required && !fa.hasRecord ? (
+                                          <span className="text-slate-400">Không bắt buộc</span>
+                                        ) : (
+                                          <div className="space-y-0.5 font-mono">
+                                            <div className="flex flex-wrap items-center gap-1">
+                                              <span>Vào: <strong>{fmtHm(fa.checkInAt)}</strong></span>
+                                              {fa.lateMinutes > 0 && (
+                                                <span className="rounded bg-amber-100 px-1 text-[9px] font-bold text-amber-800">
+                                                  Muộn {fa.lateMinutes}p
+                                                </span>
+                                              )}
+                                              <span className="text-slate-300">|</span>
+                                              <span>Ra: <strong>{fmtHm(fa.checkOutAt)}</strong></span>
+                                              {fa.earlyLeaveMinutes > 0 && (
+                                                <span className="rounded bg-amber-100 px-1 text-[9px] font-bold text-amber-800">
+                                                  Sớm {fa.earlyLeaveMinutes}p
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                              {fa.adminOverrideStatus === "approved" && (
+                                                <span className="font-sans font-bold text-emerald-700">Admin đã duyệt</span>
+                                              )}
+                                              {fa.adminOverrideStatus === "rejected" && (
+                                                <span className="font-sans font-bold text-rose-600">Admin từ chối</span>
+                                              )}
+                                              {fa.checkInFaceSimilarity != null && (
+                                                <span className="text-slate-400">
+                                                  Khớp {fa.checkInFaceSimilarity}%
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
                                       </td>
                                       <td className="py-2.5 px-3 text-center">
-                                        {sess.isCompleted ? (
+                                        {sess.isAttendancePending ? (
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                            Thiếu Ra/Vào
+                                          </span>
+                                        ) : sess.isCompleted ? (
                                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                                             <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Đã hoàn thành
                                           </span>

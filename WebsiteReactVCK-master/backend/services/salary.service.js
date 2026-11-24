@@ -1,5 +1,20 @@
 import { query as defaultQuery } from "../db/connect.js";
 import { recordAuditEvent } from "./audit.service.js";
+import { getPrivateFacePreviewUrl } from "./teacherFaceAttendance.service.js";
+
+/**
+ * Determines whether Cách 1 facial attendance enforcement applies to a specific session.
+ * Historical sessions before the teacher's face enrollment was approved retain legacy behavior.
+ */
+export const isFaceAttendanceRequiredForSession = ({ sessionStartTime, enrollment }) => {
+  if (!enrollment || enrollment.status !== "approved" || !enrollment.reviewed_at) {
+    return false;
+  }
+  const startMs = new Date(sessionStartTime).getTime();
+  const approvedMs = new Date(enrollment.reviewed_at).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(approvedMs)) return false;
+  return startMs >= approvedMs;
+};
 
 /**
  * Calculates duration in hours between two timestamps, with safe rounding, explicit override support, and fallbacks.
@@ -122,14 +137,48 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
     settlement = null;
   }
 
+  // Load optional facial enrollment & per-session face attendance records (Cách 1)
+  let faceEnrollment = null;
+  const faceAttendanceBySessionId = new Map();
+  try {
+    const enrollmentRes = await db.query(
+      `SELECT id, teacher_id, status, reviewed_at, submitted_at, review_note
+       FROM teacher_face_enrollments
+       WHERE teacher_id = $1`,
+      [teacherId],
+    );
+    faceEnrollment = enrollmentRes.rows[0] || null;
+
+    const allSessionIds = Object.values(sessionsByClass)
+      .flat()
+      .map((s) => s.id);
+    if (allSessionIds.length > 0) {
+      const attRes = await db.query(
+        `SELECT *
+         FROM teacher_session_attendance
+         WHERE teacher_id = $1 AND session_id = ANY($2::bigint[])`,
+        [teacherId, allSessionIds],
+      );
+      for (const row of attRes.rows) {
+        faceAttendanceBySessionId.set(String(row.session_id), row);
+      }
+    }
+  } catch {
+    // Graceful fallback if migration 087 hasn't run in a test sandbox
+    faceEnrollment = null;
+  }
+
   let totalScheduledSessions = 0;
   let totalCompletedSessions = 0;
   let totalCompletedHours = 0;
   let totalProjectedHours = 0;
   let totalAccruedSalary = 0;
   let totalProjectedSalary = 0;
+  let attendancePendingSessions = 0;
+  let lateSessionsCount = 0;
+  let earlyLeaveSessionsCount = 0;
 
-  const classes = classRows.map((cls) => {
+  const classes = await Promise.all(classRows.map(async (cls) => {
     // Effective rate: check teacher-class override, then class override, then teacher default
     const effectiveRate = Number(
       cls.teacher_class_rate_override ?? cls.class_rate_override ?? teacherHourlyRate,
@@ -142,10 +191,42 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
     let classAccruedSalary = 0;
     let classProjectedSalary = 0;
 
-    const sessions = rawSessions.map((session, index) => {
+    const sessions = await Promise.all(rawSessions.map(async (session, index) => {
       const durationHours = calculateSessionDurationHours(session.start_time, session.end_time, session.duration_hours);
-      const completed = isSessionCompleted(session);
+      const timeCompleted = isSessionCompleted(session);
       const isLive = session.status === "live";
+
+      const attRow = faceAttendanceBySessionId.get(String(session.id)) || null;
+      const faceRequired = isFaceAttendanceRequiredForSession({
+        sessionStartTime: session.start_time,
+        enrollment: faceEnrollment,
+      });
+
+      const payrollEligibleByFace = attRow ? Boolean(attRow.payroll_eligible) : false;
+      const isExplicitlyRejected = attRow?.admin_override_status === "rejected";
+      const isExplicitlyApproved = attRow?.admin_override_status === "approved";
+
+      let completed = timeCompleted;
+      let isAttendancePending = false;
+
+      if (isExplicitlyRejected) {
+        completed = false;
+      } else if (isExplicitlyApproved && session.status !== "cancelled" && session.is_payable !== false) {
+        completed = timeCompleted || Boolean(attRow?.check_in_at || attRow?.check_out_at || attRow?.admin_override_status === "approved");
+      } else if (faceRequired && timeCompleted) {
+        if (payrollEligibleByFace) {
+          completed = true;
+        } else {
+          completed = false;
+          isAttendancePending = true;
+        }
+      }
+
+      const lateMinutes = Number(attRow?.late_minutes || 0);
+      const earlyLeaveMinutes = Number(attRow?.early_leave_minutes || 0);
+      if (isAttendancePending) attendancePendingSessions += 1;
+      if (attRow?.check_in_status === "late" || lateMinutes > 0) lateSessionsCount += 1;
+      if (attRow?.check_out_status === "early_leave" || earlyLeaveMinutes > 0) earlyLeaveSessionsCount += 1;
 
       const sessionSalary = completed ? Math.round(durationHours * effectiveRate) : 0;
       const projectedSalary = session.is_payable === false ? 0 : Math.round(durationHours * effectiveRate);
@@ -159,6 +240,13 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
       classTotalHours += durationHours;
       classProjectedSalary += projectedSalary;
 
+      const [checkInPhotoUrl, checkOutPhotoUrl] = attRow
+        ? await Promise.all([
+            attRow.check_in_r2_key ? getPrivateFacePreviewUrl(attRow.check_in_r2_key) : null,
+            attRow.check_out_r2_key ? getPrivateFacePreviewUrl(attRow.check_out_r2_key) : null,
+          ])
+        : [null, null];
+
       return {
         id: session.id,
         sessionNumber: index + 1,
@@ -169,11 +257,40 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
         durationHours,
         isCustomDuration: session.duration_hours !== null && session.duration_hours !== undefined,
         isCompleted: completed,
+        isTimeCompleted: timeCompleted,
+        isAttendancePending,
         isLive,
         earnedAmount: sessionSalary,
         projectedAmount: projectedSalary,
+        faceAttendance: {
+          required: faceRequired,
+          hasRecord: Boolean(attRow),
+          checkInAt: attRow?.check_in_at || null,
+          checkInStatus: attRow?.check_in_status || null,
+          lateMinutes,
+          checkInLivenessScore: attRow?.check_in_liveness_score !== null && attRow?.check_in_liveness_score !== undefined
+            ? Number(attRow.check_in_liveness_score)
+            : null,
+          checkInFaceSimilarity: attRow?.check_in_face_similarity !== null && attRow?.check_in_face_similarity !== undefined
+            ? Number(attRow.check_in_face_similarity)
+            : null,
+          checkInPhotoUrl,
+          checkOutAt: attRow?.check_out_at || null,
+          checkOutStatus: attRow?.check_out_status || null,
+          earlyLeaveMinutes,
+          checkOutLivenessScore: attRow?.check_out_liveness_score !== null && attRow?.check_out_liveness_score !== undefined
+            ? Number(attRow.check_out_liveness_score)
+            : null,
+          checkOutFaceSimilarity: attRow?.check_out_face_similarity !== null && attRow?.check_out_face_similarity !== undefined
+            ? Number(attRow.check_out_face_similarity)
+            : null,
+          checkOutPhotoUrl,
+          payrollEligible: payrollEligibleByFace,
+          adminOverrideStatus: attRow?.admin_override_status || null,
+          adminOverrideNote: attRow?.admin_override_note || "",
+        },
       };
-    });
+    }));
 
     const totalSessions = sessions.length;
     const remainingSessions = Math.max(0, totalSessions - classCompletedSessions);
@@ -208,7 +325,7 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
       progressPct,
       sessions,
     };
-  });
+  }));
 
   const totalRemainingSessions = Math.max(0, totalScheduledSessions - totalCompletedSessions);
   const overallProgressPct = totalScheduledSessions > 0
@@ -231,6 +348,8 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
       avatarUrl: teacher.avatar_url,
       role: teacher.role,
       hourlyRate: teacherHourlyRate,
+      faceEnrollmentStatus: faceEnrollment?.status || "not_enrolled",
+      faceEnrollmentApprovedAt: faceEnrollment?.reviewed_at || null,
     },
     settlement: {
       bonusAmount,
@@ -248,6 +367,9 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
       totalSessions: totalScheduledSessions,
       completedSessions: totalCompletedSessions,
       remainingSessions: totalRemainingSessions,
+      attendancePendingSessions,
+      lateSessionsCount,
+      earlyLeaveSessionsCount,
       completedHours: Number(totalCompletedHours.toFixed(1)),
       totalHours: Number(totalProjectedHours.toFixed(1)),
       accruedSalary: Math.round(totalAccruedSalary),
@@ -257,7 +379,9 @@ export const getTeacherSalaryDetail = async (teacherId, db = { query: defaultQue
       paymentStatus,
       projectedSalary: Math.round(totalProjectedSalary),
       progressPct: overallProgressPct,
-      formulaNote: "Thực nhận = (Số buổi đã dạy × Số giờ/buổi × Mức lương theo giờ) + Thưởng - Khấu trừ",
+      formulaNote: faceEnrollment?.status === "approved"
+        ? "Thực nhận = (Số buổi đủ chấm công Ra/Vào hoặc Admin duyệt × Số giờ/buổi × Đơn giá) + Thưởng - Khấu trừ"
+        : "Thực nhận = (Số buổi đã dạy × Số giờ/buổi × Mức lương theo giờ) + Thưởng - Khấu trừ",
     },
     classes,
   };
@@ -291,27 +415,72 @@ export const getAllTeachersSalaryOverview = async (
 
   const whereClause = filters.length ? `AND ${filters.join(" AND ")}` : "";
 
-  // Check if teacher_salary_settlements table exists, fallback gracefully if not
+  // Check if teacher_salary_settlements & face attendance tables exist, fallback gracefully if not
   let hasSettlementTable = true;
+  let hasFaceAttendanceTables = false;
   try {
-    const regRes = await db.query("SELECT to_regclass('public.teacher_salary_settlements') AS tbl");
-    hasSettlementTable = Boolean(regRes.rows[0]?.tbl);
+    const regRes = await db.query(
+      `SELECT to_regclass('public.teacher_salary_settlements') AS settlement_tbl,
+              to_regclass('public.teacher_face_enrollments') AS face_enroll_tbl,
+              to_regclass('public.teacher_session_attendance') AS face_att_tbl`,
+    );
+    hasSettlementTable = Boolean(regRes.rows[0]?.settlement_tbl);
+    hasFaceAttendanceTables = Boolean(regRes.rows[0]?.face_enroll_tbl && regRes.rows[0]?.face_att_tbl);
   } catch {
     hasSettlementTable = false;
+    hasFaceAttendanceTables = false;
   }
 
   const settlementJoin = hasSettlementTable
     ? "LEFT JOIN teacher_salary_settlements tss ON tss.teacher_id = u.id AND tss.period = 'all'"
     : "LEFT JOIN (SELECT NULL::bigint AS teacher_id, 0::numeric AS bonus_amount, 0::numeric AS deduction_amount, 'pending'::text AS payment_status, NULL::text AS notes, NULL::timestamptz AS paid_at) tss ON false";
 
+  const faceEnrollmentJoin = hasFaceAttendanceTables
+    ? "LEFT JOIN teacher_face_enrollments tfe ON tfe.teacher_id = u.id"
+    : "LEFT JOIN (SELECT NULL::bigint AS teacher_id, NULL::text AS status, NULL::timestamptz AS reviewed_at) tfe ON false";
+
+  const faceAttendanceJoin = hasFaceAttendanceTables
+    ? "LEFT JOIN teacher_session_attendance tsa ON tsa.session_id = cs.id AND tsa.teacher_id = u.id"
+    : "LEFT JOIN (SELECT NULL::bigint AS session_id, NULL::bigint AS teacher_id, FALSE AS payroll_eligible, NULL::text AS admin_override_status) tsa ON false";
+
+  // Cách 1 completion condition in SQL:
+  // - If explicitly rejected by admin -> not payable
+  // - If explicitly approved by admin -> payable (as long as not cancelled & is_payable)
+  // - If teacher has approved face enrollment and session starts >= enrollment.reviewed_at -> requires tsa.payroll_eligible = TRUE
+  // - Otherwise legacy behavior (ended or past end_time)
+  const sessionTimeDoneCond = "(cs.status = 'ended' OR (cs.status <> 'cancelled' AND cs.end_time <= NOW()))";
+  const faceRequiredCond = "(tfe.status = 'approved' AND tfe.reviewed_at IS NOT NULL AND cs.start_time >= tfe.reviewed_at)";
+  const payableCompletedCond = `(
+    cs.is_payable = TRUE
+    AND cs.status <> 'cancelled'
+    AND COALESCE(tsa.admin_override_status, '') <> 'rejected'
+    AND (
+      tsa.admin_override_status = 'approved'
+      OR (
+        ${sessionTimeDoneCond}
+        AND (NOT ${faceRequiredCond} OR COALESCE(tsa.payroll_eligible, FALSE) = TRUE)
+      )
+    )
+  )`;
+  const attendancePendingCond = `(
+    cs.is_payable = TRUE
+    AND cs.status <> 'cancelled'
+    AND ${sessionTimeDoneCond}
+    AND ${faceRequiredCond}
+    AND COALESCE(tsa.payroll_eligible, FALSE) = FALSE
+    AND COALESCE(tsa.admin_override_status, '') <> 'rejected'
+  )`;
+
   const sql = `
     SELECT u.id, u.username, u.email, u.avatar_url, u.role,
            COALESCE(u.hourly_rate, 0)::numeric(12,2) AS hourly_rate,
            COALESCE(sp.full_name, u.username) AS full_name,
            u.created_at,
+           COALESCE(tfe.status, 'not_enrolled') AS face_enrollment_status,
            COALESCE(stats.classes_count, 0)::int AS classes_count,
            COALESCE(stats.total_sessions, 0)::int AS total_sessions,
            COALESCE(stats.completed_sessions, 0)::int AS completed_sessions,
+           COALESCE(stats.attendance_pending_sessions, 0)::int AS attendance_pending_sessions,
            COALESCE(stats.completed_hours, 0)::numeric(10,2) AS completed_hours,
            COALESCE(stats.total_hours, 0)::numeric(10,2) AS total_hours,
            COALESCE(tss.bonus_amount, 0)::numeric(12,2) AS bonus_amount,
@@ -322,16 +491,19 @@ export const getAllTeachersSalaryOverview = async (
     FROM users u
     LEFT JOIN student_profiles sp ON sp.user_id = u.id
     ${settlementJoin}
+    ${faceEnrollmentJoin}
     LEFT JOIN LATERAL (
       SELECT COUNT(DISTINCT lc.id)::int AS classes_count,
              COUNT(cs.id) FILTER (WHERE cs.status <> 'cancelled' AND cs.is_payable = TRUE)::int AS total_sessions,
-             COUNT(cs.id) FILTER (WHERE cs.is_payable = TRUE AND (cs.status = 'ended' OR (cs.status <> 'cancelled' AND cs.end_time <= NOW())))::int AS completed_sessions,
+             COUNT(cs.id) FILTER (WHERE ${payableCompletedCond})::int AS completed_sessions,
+             COUNT(cs.id) FILTER (WHERE ${attendancePendingCond})::int AS attendance_pending_sessions,
              COALESCE(SUM(ROUND((EXTRACT(EPOCH FROM (cs.end_time - cs.start_time)) / 3600.0)::numeric, 2))
-               FILTER (WHERE cs.is_payable = TRUE AND (cs.status = 'ended' OR (cs.status <> 'cancelled' AND cs.end_time <= NOW()))), 0)::numeric(10,2) AS completed_hours,
+               FILTER (WHERE ${payableCompletedCond}), 0)::numeric(10,2) AS completed_hours,
              COALESCE(SUM(ROUND((EXTRACT(EPOCH FROM (cs.end_time - cs.start_time)) / 3600.0)::numeric, 2))
                FILTER (WHERE cs.status <> 'cancelled' AND cs.is_payable = TRUE), 0)::numeric(10,2) AS total_hours
       FROM live_classes lc
       LEFT JOIN class_sessions cs ON cs.live_class_id = lc.id
+      ${faceAttendanceJoin}
       WHERE (lc.instructor_id = u.id AND NOT EXISTS (
         SELECT 1 FROM class_teachers mapping
         WHERE mapping.live_class_id = lc.id AND mapping.teacher_id = u.id
@@ -399,6 +571,8 @@ export const getAllTeachersSalaryOverview = async (
       classesCount: Number(row.classes_count || 0),
       totalSessions: totSessions,
       completedSessions: compSessions,
+      attendancePendingSessions: Number(row.attendance_pending_sessions || 0),
+      faceEnrollmentStatus: row.face_enrollment_status || "not_enrolled",
       remainingSessions: Math.max(0, totSessions - compSessions),
       completedHours: compHours,
       totalHours: totHours,

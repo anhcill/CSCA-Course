@@ -30,6 +30,8 @@ import {
   adminTeacherSalariesExportUrl,
 } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
+import AdminTeacherFaceEnrollmentsPanel from "../components/AdminTeacherFaceEnrollmentsPanel.jsx";
+import { overrideAdminSessionFaceAttendance } from "../../api/teacherFaceAttendanceClient";
 
 const PRESET_RATES = [150000, 200000, 250000, 300000, 400000, 500000];
 
@@ -77,6 +79,10 @@ export default function AdminTeacherSalaryPage() {
   const [settlementStatusInput, setSettlementStatusInput] = useState("pending");
   const [notesInput, setNotesInput] = useState("");
   const [savingSettlement, setSavingSettlement] = useState(false);
+
+  // Face attendance photo preview & override busy state
+  const [facePreviewSession, setFacePreviewSession] = useState(null);
+  const [overridingSessionId, setOverridingSessionId] = useState(null);
 
   const loadSalaries = useCallback(async () => {
     setLoading(true);
@@ -130,6 +136,34 @@ export default function AdminTeacherSalaryPage() {
   const handleOpenEditModal = (teacher) => {
     setEditingTeacher(teacher);
     setHourlyRateInput(String(teacher.hourlyRate || 0));
+  };
+
+  const handleFaceAttendanceOverride = async (sess, decision) => {
+    if (!detailModalTeacherId) return;
+    let note = "";
+    if (decision === "approved" || decision === "rejected") {
+      const promptLabel =
+        decision === "approved"
+          ? "Ghi chú duyệt tính lương cho buổi này (tùy chọn):"
+          : "Nhập lý do từ chối tính lương buổi này:";
+      const entered = window.prompt(promptLabel, "");
+      if (entered === null) return;
+      note = entered;
+    }
+
+    try {
+      setOverridingSessionId(sess.id);
+      const res = await overrideAdminSessionFaceAttendance(sess.id, detailModalTeacherId, {
+        decision,
+        note,
+      });
+      toast.success(res?.message || "Đã cập nhật trạng thái chấm công tính lương");
+      await Promise.all([loadDetailData(detailModalTeacherId), loadSalaries()]);
+    } catch (error) {
+      toast.error(error?.message || "Không thể cập nhật trạng thái chấm công");
+    } finally {
+      setOverridingSessionId(null);
+    }
   };
 
   const handleSaveHourlyRate = async (e) => {
@@ -468,6 +502,9 @@ export default function AdminTeacherSalaryPage() {
         </div>
       </div>
 
+      {/* Facial Enrollment Approval Panel (AWS Rekognition) */}
+      <AdminTeacherFaceEnrollmentsPanel onEnrollmentReviewed={loadSalaries} />
+
       {/* Toolbar: Search, Filters */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="relative w-full md:w-80">
@@ -607,13 +644,18 @@ export default function AdminTeacherSalaryPage() {
 
                       {/* Sessions Progress */}
                       <td className="py-3.5 px-3 text-center">
-                        <div className="inline-flex flex-col items-center">
+                        <div className="inline-flex flex-col items-center gap-0.5">
                           <span className="font-bold text-slate-900 dark:text-white">
                             {t.completedSessions} / {t.totalSessions} buổi
                           </span>
                           <span className="text-[10px] text-slate-400">
                             ({t.progressPct}%)
                           </span>
+                          {t.attendancePendingSessions > 0 && (
+                            <span className="rounded-full bg-amber-100 border border-amber-200 px-1.5 py-0.2 text-[9px] font-bold text-amber-800">
+                              {t.attendancePendingSessions} thiếu Ra/Vào
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -887,6 +929,39 @@ export default function AdminTeacherSalaryPage() {
               </div>
             )}
 
+            {/* Attendance Audit Strip inside Teacher Detail Modal */}
+            {teacherDetail && (
+              <div className="flex flex-wrap items-center gap-2 px-5 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 text-[11px] shrink-0">
+                <span className="font-bold text-slate-600 dark:text-slate-300">Đối soát chấm công:</span>
+                <span className={`rounded-full border px-2 py-0.5 font-bold ${
+                  teacherDetail.teacher?.faceEnrollmentStatus === "approved"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : teacherDetail.teacher?.faceEnrollmentStatus === "pending_approval"
+                      ? "border-amber-200 bg-amber-50 text-amber-800"
+                      : "border-slate-200 bg-white text-slate-500"
+                }`}>
+                  Khuôn mặt: {teacherDetail.teacher?.faceEnrollmentStatus === "approved"
+                    ? "Đã duyệt & khóa"
+                    : teacherDetail.teacher?.faceEnrollmentStatus === "pending_approval"
+                      ? "Chờ duyệt"
+                      : "Chưa đăng ký"}
+                </span>
+                <span className={`rounded-full border px-2 py-0.5 font-mono font-bold ${
+                  (teacherDetail.summary?.attendancePendingSessions || 0) > 0
+                    ? "border-amber-200 bg-amber-100 text-amber-800"
+                    : "border-slate-200 bg-white text-slate-600"
+                }`}>
+                  Thiếu Ra/Vào: {teacherDetail.summary?.attendancePendingSessions || 0} buổi
+                </span>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono font-bold text-slate-600">
+                  Đi muộn: {teacherDetail.summary?.lateSessionsCount || 0}
+                </span>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono font-bold text-slate-600">
+                  Về sớm: {teacherDetail.summary?.earlyLeaveSessionsCount || 0}
+                </span>
+              </div>
+            )}
+
             {/* Modal Tabs Navigation */}
             <div className="flex items-center gap-2 px-5 pt-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900 shrink-0">
               <button
@@ -1046,6 +1121,7 @@ export default function AdminTeacherSalaryPage() {
                                   <th className="py-2.5 px-3">Tên buổi học</th>
                                   <th className="py-2.5 px-3">Thời gian</th>
                                   <th className="py-2.5 px-3 text-center">Thời lượng</th>
+                                  <th className="py-2.5 px-3">Chấm công Ra/Vào</th>
                                   <th className="py-2.5 px-3 text-center">Trạng thái</th>
                                   <th className="py-2.5 px-3 text-right">Thù lao</th>
                                   <th className="py-2.5 px-3 text-right">Thao tác</th>
@@ -1054,17 +1130,41 @@ export default function AdminTeacherSalaryPage() {
                               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                                 {cls.sessions.map((sess) => {
                                   const sDate = sess.startTime ? new Date(sess.startTime) : null;
+                                  const eDate = sess.endTime ? new Date(sess.endTime) : null;
                                   const dateStr = sDate && !Number.isNaN(sDate.getTime())
                                     ? sDate.toLocaleDateString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })
                                     : "Chưa định";
                                   const timeStr = sDate && !Number.isNaN(sDate.getTime())
                                     ? sDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
                                     : "";
+                                  const endTimeStr = eDate && !Number.isNaN(eDate.getTime())
+                                    ? eDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+                                    : "";
+                                  const fa = sess.faceAttendance || {};
+                                  const fmtHm = (val) => (
+                                    val && !Number.isNaN(new Date(val).getTime())
+                                      ? new Date(val).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+                                      : "--:--"
+                                  );
+                                  const actualDurationStr = (() => {
+                                    if (!fa.checkInAt || !fa.checkOutAt) return null;
+                                    const mins = Math.max(0, Math.round((new Date(fa.checkOutAt) - new Date(fa.checkInAt)) / 60000));
+                                    const h = Math.floor(mins / 60);
+                                    const m = mins % 60;
+                                    return h > 0 ? `${h}h${m > 0 ? ` ${m}p` : ""}` : `${m}p`;
+                                  })();
+                                  const isBusyOverride = overridingSessionId === sess.id;
 
                                   return (
                                     <tr
                                       key={sess.id}
-                                      className={sess.isCompleted ? "bg-emerald-50/20 dark:bg-emerald-950/10" : ""}
+                                      className={
+                                        sess.isAttendancePending
+                                          ? "bg-amber-50/40 dark:bg-amber-950/15"
+                                          : sess.isCompleted
+                                            ? "bg-emerald-50/20 dark:bg-emerald-950/10"
+                                            : ""
+                                      }
                                     >
                                       <td className="py-2 px-3 font-mono font-bold text-slate-400">
                                         {sess.sessionNumber}
@@ -1073,7 +1173,7 @@ export default function AdminTeacherSalaryPage() {
                                         {sess.title}
                                       </td>
                                       <td className="py-2 px-3 font-mono text-[11px] text-slate-500">
-                                        {dateStr} {timeStr && `(${timeStr})`}
+                                        {dateStr} {timeStr && `(${timeStr}${endTimeStr ? `–${endTimeStr}` : ""})`}
                                       </td>
                                       <td className="py-2 px-3 text-center font-mono font-bold">
                                         <span className="inline-flex items-center gap-1">
@@ -1082,9 +1182,105 @@ export default function AdminTeacherSalaryPage() {
                                             <span className="text-[9px] text-blue-600" title="Thời lượng tùy chỉnh">(sửa)</span>
                                           )}
                                         </span>
+                                        {actualDurationStr && (
+                                          <span className="block text-[9px] font-normal text-slate-400">
+                                            Thực tế: {actualDurationStr}
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="py-2 px-3 text-[11px]">
+                                        {!fa.required && !fa.hasRecord ? (
+                                          <span className="text-slate-400">Không bắt buộc</span>
+                                        ) : (
+                                          <div className="space-y-1">
+                                            <div className="flex flex-wrap items-center gap-1 font-mono">
+                                              <span className="text-slate-600 dark:text-slate-300">
+                                                Vào: <strong>{fmtHm(fa.checkInAt)}</strong>
+                                              </span>
+                                              {fa.lateMinutes > 0 && (
+                                                <span className="rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800">
+                                                  Muộn {fa.lateMinutes}p
+                                                </span>
+                                              )}
+                                              <span className="text-slate-300">|</span>
+                                              <span className="text-slate-600 dark:text-slate-300">
+                                                Ra: <strong>{fmtHm(fa.checkOutAt)}</strong>
+                                              </span>
+                                              {fa.earlyLeaveMinutes > 0 && (
+                                                <span className="rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800">
+                                                  Sớm {fa.earlyLeaveMinutes}p
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                              {fa.adminOverrideStatus === "approved" && (
+                                                <span className="rounded bg-emerald-100 px-1.5 py-0.2 text-[9px] font-bold text-emerald-700">
+                                                  Admin đã duyệt
+                                                </span>
+                                              )}
+                                              {fa.adminOverrideStatus === "rejected" && (
+                                                <span className="rounded bg-rose-100 px-1.5 py-0.2 text-[9px] font-bold text-rose-700">
+                                                  Admin từ chối
+                                                </span>
+                                              )}
+                                              {sess.isAttendancePending && (
+                                                <span className="rounded bg-amber-100 px-1.5 py-0.2 text-[9px] font-bold text-amber-800">
+                                                  Chờ xác nhận lương
+                                                </span>
+                                              )}
+                                              {(fa.checkInPhotoUrl || fa.checkOutPhotoUrl) && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setFacePreviewSession(sess)}
+                                                  className="text-[10px] font-bold text-indigo-600 hover:underline dark:text-sky-400"
+                                                >
+                                                  Xem ảnh
+                                                </button>
+                                              )}
+                                              {(fa.required || fa.hasRecord) && (
+                                                <>
+                                                  {fa.adminOverrideStatus !== "approved" && !fa.payrollEligible && (
+                                                    <button
+                                                      type="button"
+                                                      disabled={isBusyOverride}
+                                                      onClick={() => handleFaceAttendanceOverride(sess, "approved")}
+                                                      className="rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                                    >
+                                                      Duyệt lương
+                                                    </button>
+                                                  )}
+                                                  {fa.adminOverrideStatus !== "rejected" && (
+                                                    <button
+                                                      type="button"
+                                                      disabled={isBusyOverride}
+                                                      onClick={() => handleFaceAttendanceOverride(sess, "rejected")}
+                                                      className="rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                                                    >
+                                                      Từ chối
+                                                    </button>
+                                                  )}
+                                                  {fa.adminOverrideStatus && (
+                                                    <button
+                                                      type="button"
+                                                      disabled={isBusyOverride}
+                                                      onClick={() => handleFaceAttendanceOverride(sess, "reset")}
+                                                      className="text-[9px] font-bold text-slate-500 hover:underline"
+                                                    >
+                                                      Hoàn tác
+                                                    </button>
+                                                  )}
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
                                       </td>
                                       <td className="py-2 px-3 text-center">
-                                        {sess.isCompleted ? (
+                                        {sess.isAttendancePending ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                            Thiếu Ra/Vào
+                                          </span>
+                                        ) : sess.isCompleted ? (
                                           <button
                                             type="button"
                                             onClick={() => handleToggleSessionStatus(sess)}
@@ -1564,6 +1760,101 @@ export default function AdminTeacherSalaryPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Face Attendance Snapshot Lightbox Modal */}
+      {facePreviewSession && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-xs"
+          onClick={() => setFacePreviewSession(null)}
+        >
+          <div
+            className="w-full max-w-xl rounded-3xl bg-white p-5 shadow-2xl dark:bg-slate-900 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+              <div>
+                <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                  Ảnh đối chiếu chấm công: {facePreviewSession.title}
+                </h4>
+                <p className="text-xs text-slate-500">
+                  AWS Rekognition Face Liveness + CompareFaces
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFacePreviewSession(null)}
+                className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2 rounded-2xl border border-slate-200 p-3 dark:border-slate-800">
+                <p className="text-xs font-bold text-slate-800 dark:text-white">
+                  Vào ca (Check-in)
+                </p>
+                {facePreviewSession.faceAttendance?.checkInPhotoUrl ? (
+                  <img
+                    src={facePreviewSession.faceAttendance.checkInPhotoUrl}
+                    alt="Ảnh chấm công vào"
+                    className="aspect-square w-full rounded-xl object-cover bg-slate-100"
+                  />
+                ) : (
+                  <div className="flex aspect-square items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400">
+                    Chưa có ảnh vào ca
+                  </div>
+                )}
+                <div className="text-[11px] text-slate-500 space-y-0.5 font-mono">
+                  <p>
+                    Giờ vào:{" "}
+                    {facePreviewSession.faceAttendance?.checkInAt
+                      ? new Date(facePreviewSession.faceAttendance.checkInAt).toLocaleString("vi-VN")
+                      : "—"}
+                  </p>
+                  {facePreviewSession.faceAttendance?.checkInLivenessScore != null && (
+                    <p>Liveness: {facePreviewSession.faceAttendance.checkInLivenessScore}%</p>
+                  )}
+                  {facePreviewSession.faceAttendance?.checkInFaceSimilarity != null && (
+                    <p>Khớp mặt: {facePreviewSession.faceAttendance.checkInFaceSimilarity}%</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-2xl border border-slate-200 p-3 dark:border-slate-800">
+                <p className="text-xs font-bold text-slate-800 dark:text-white">
+                  Ra ca (Check-out)
+                </p>
+                {facePreviewSession.faceAttendance?.checkOutPhotoUrl ? (
+                  <img
+                    src={facePreviewSession.faceAttendance.checkOutPhotoUrl}
+                    alt="Ảnh chấm công ra"
+                    className="aspect-square w-full rounded-xl object-cover bg-slate-100"
+                  />
+                ) : (
+                  <div className="flex aspect-square items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400">
+                    Chưa có ảnh ra ca
+                  </div>
+                )}
+                <div className="text-[11px] text-slate-500 space-y-0.5 font-mono">
+                  <p>
+                    Giờ ra:{" "}
+                    {facePreviewSession.faceAttendance?.checkOutAt
+                      ? new Date(facePreviewSession.faceAttendance.checkOutAt).toLocaleString("vi-VN")
+                      : "—"}
+                  </p>
+                  {facePreviewSession.faceAttendance?.checkOutLivenessScore != null && (
+                    <p>Liveness: {facePreviewSession.faceAttendance.checkOutLivenessScore}%</p>
+                  )}
+                  {facePreviewSession.faceAttendance?.checkOutFaceSimilarity != null && (
+                    <p>Khớp mặt: {facePreviewSession.faceAttendance.checkOutFaceSimilarity}%</p>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

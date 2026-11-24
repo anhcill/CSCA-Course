@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
   FileQuestion,
   FolderOpen,
   Home,
@@ -25,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import NotificationBell from '../../features/notifications/components/NotificationBell';
+import TeacherHeaderAttendanceButton from '../../features/teacher/components/TeacherHeaderAttendanceButton.jsx';
 import { useAuthContext } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import useLogout from '../../hooks/useLogout';
@@ -48,11 +50,53 @@ const TEACHER_NAV = [
       { label: 'Cảnh báo chuyên cần', path: '/lms/teach/student-progress?tab=alerts', icon: AlertTriangle },
     ],
   },
-  { label: 'Giáo trình lớp', path: '/lms/teach/classes', icon: BookOpen, permission: 'lms.student.view' },
   { label: 'Bảng lương', path: '/lms/teach/salary', icon: Wallet },
   { label: 'Tài liệu học tập', path: '/lms/teach/files', icon: FolderOpen, permission: 'lms.file.manage' },
   { label: 'Ngân hàng câu hỏi', path: '/lms/teach/question-bank', icon: Library, permission: 'lms.quiz.manage' },
   { label: 'Hỗ trợ học viên', path: '/lms/teach/support', icon: MessageSquare, permission: 'lms.support.manage' },
+];
+
+const MOBILE_BOTTOM_NAV = [
+  {
+    id: 'overview',
+    label: 'Tổng quan',
+    path: '/lms/teach',
+    icon: Presentation,
+    permission: 'lms.student.view',
+    isActive: (pathname) => pathname === '/lms/teach',
+  },
+  {
+    id: 'schedule',
+    label: 'Lịch dạy',
+    path: '/lms/teach/calendar',
+    icon: CalendarDays,
+    permission: 'lms.schedule.manage',
+    isActive: (pathname) => pathname.startsWith('/lms/teach/calendar') || pathname === '/lms/teach/classes',
+  },
+  {
+    id: 'attendance',
+    label: 'Điểm danh',
+    path: '/lms/teach/student-progress?tab=attendance',
+    icon: Users,
+    permission: 'lms.student.view',
+    altPermission: 'lms.attendance.manage',
+    isActive: (pathname) => (
+      pathname.startsWith('/lms/teach/student-progress')
+      || /^\/lms\/teach(?:er)?\/classes\/[^/]+\/attendance(?:\/|$)/.test(pathname)
+    ),
+  },
+  {
+    id: 'grading',
+    label: 'Chấm bài',
+    path: '/lms/teacher/assignments/review',
+    icon: ClipboardCheck,
+    permission: 'lms.assignment.grade',
+    isActive: (pathname) => (
+      pathname.startsWith('/lms/teacher/assignments/review')
+      || pathname.startsWith('/lms/teacher/quizzes')
+      || pathname.startsWith('/lms/teach/quizzes')
+    ),
+  },
 ];
 
 const getTeacherRouteAccess = (pathname) => {
@@ -427,15 +471,6 @@ export default function TeacherLmsLayout({ children }) {
         backgroundAttachment: 'fixed',
       } : undefined}
     >
-      <button
-        type="button"
-        onClick={() => setMobileOpen((open) => !open)}
-        className="fixed left-3 top-3 z-50 rounded-xl bg-white/90 p-2.5 text-slate-600 shadow-sm backdrop-blur dark:bg-slate-800/90 dark:text-slate-300 lg:hidden"
-        aria-label={mobileOpen ? 'Đóng menu giảng viên' : 'Mở menu giảng viên'}
-      >
-        {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-      </button>
-
       {/* Floating Sidebar Card - Exactly matching Student LMS */}
       <aside className={`fixed bottom-4 left-4 top-4 z-50 hidden overflow-hidden rounded-3xl border border-white/80 bg-white/92 dark:bg-slate-900/90 dark:border-slate-800 shadow-[0_16px_50px_rgba(32,78,120,0.15)] backdrop-blur-xl transition-[width] duration-300 ease-in-out lg:flex lg:flex-col ${
         isSidebarCollapsed ? 'w-[74px]' : 'w-[230px]'
@@ -454,27 +489,40 @@ export default function TeacherLmsLayout({ children }) {
         <>
           <button
             type="button"
-            className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-sm lg:hidden"
+            className="fixed inset-0 z-50 bg-slate-950/45 backdrop-blur-sm lg:hidden"
             onClick={closeMobile}
             aria-label="Đóng menu giảng viên"
           />
-          <div className="fixed inset-y-3 left-3 z-50 w-[min(18rem,88vw)] overflow-hidden rounded-3xl bg-white/95 dark:bg-slate-900/95 shadow-2xl lg:hidden">
+          <div className="fixed inset-y-3 left-3 z-[60] w-[min(18rem,88vw)] overflow-hidden rounded-3xl border border-white/80 bg-white/95 dark:border-slate-800 dark:bg-slate-900/95 shadow-2xl lg:hidden">
             <TeacherSidebarContent onNavigate={closeMobile} isAdmin={isAdmin} permissions={permissions} collapsed={false} />
           </div>
         </>
       )}
 
       {/* Main Content Area */}
-      <main className={`min-h-screen pt-16 transition-[padding] duration-300 ease-in-out ${
+      <main className={`min-h-screen pt-16 pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0 transition-[padding] duration-300 ease-in-out ${
         isSidebarCollapsed ? 'lg:pl-[98px]' : 'lg:pl-[260px]'
       }`}>
-        <header className={`teacher-lms-header fixed right-0 top-0 z-30 flex h-16 items-center justify-between gap-2 bg-transparent px-4 sm:px-6 transition-[left] duration-300 ease-in-out ${
+        <header className={`teacher-lms-header fixed right-0 top-0 z-30 flex h-16 items-center justify-between gap-2 bg-transparent px-3 sm:px-6 transition-[left] duration-300 ease-in-out ${
           isSidebarCollapsed ? 'left-0 lg:left-[98px]' : 'left-0 lg:left-[260px]'
         }`}>
-          {!permissionsReady ? (
-            <span className="hidden text-xs font-semibold text-slate-500 sm:inline">Đang đồng bộ quyền truy cập...</span>
-          ) : <div />}
           <div className="flex items-center gap-2">
+            <Link
+              to="/lms/teach"
+              className="flex items-center gap-2 rounded-xl border border-white/85 bg-white/85 px-2.5 py-1.5 shadow-sm backdrop-blur lg:hidden dark:border-slate-700 dark:bg-slate-800/90"
+              aria-label="CSCA LMS - Tổng quan giảng dạy"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
+                <BookOpen className="h-4 w-4" />
+              </span>
+              <span className="text-xs font-black tracking-tight text-[#102f63] dark:text-white">CSCA LMS</span>
+            </Link>
+            {!permissionsReady && (
+              <span className="hidden text-xs font-semibold text-slate-500 sm:inline">Đang đồng bộ quyền truy cập...</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+          <TeacherHeaderAttendanceButton isDarkMode={isDarkMode} />
           <button
             type="button"
             onClick={toggleTheme}
@@ -491,7 +539,7 @@ export default function TeacherLmsLayout({ children }) {
           <button
             type="button"
             onClick={cycleWallpaper}
-            className="teacher-wallpaper-button rounded-xl border border-white/85 bg-[#e4f4ff]/85 p-2 text-[#17365f] shadow-[0_5px_18px_rgba(32,91,135,0.18)] backdrop-blur-md transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+            className="teacher-wallpaper-button hidden sm:inline-flex rounded-xl border border-white/85 bg-[#e4f4ff]/85 p-2 text-[#17365f] shadow-[0_5px_18px_rgba(32,91,135,0.18)] backdrop-blur-md transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
             title="Đổi ảnh nền"
             aria-label="Đổi ảnh nền"
           >
@@ -502,7 +550,7 @@ export default function TeacherLmsLayout({ children }) {
             <button
               type="button"
               onClick={() => setProfileMenuOpen((open) => !open)}
-              className="teacher-profile-trigger relative flex items-center gap-2.5 overflow-hidden rounded-xl border border-white/90 bg-[#d9efff]/85 px-2 py-1.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_7px_22px_rgba(24,75,118,0.18)] backdrop-blur-xl transition before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white dark:before:via-white/10 before:to-transparent hover:bg-[#e8f6ff] dark:hover:bg-slate-800 dark:border-slate-700 dark:bg-slate-900/85"
+              className="teacher-profile-trigger relative flex items-center gap-2 overflow-hidden rounded-xl border border-white/90 bg-[#d9efff]/85 px-2 py-1.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_7px_22px_rgba(24,75,118,0.18)] backdrop-blur-xl transition before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white dark:before:via-white/10 before:to-transparent hover:bg-[#e8f6ff] dark:hover:bg-slate-800 dark:border-slate-700 dark:bg-slate-900/85"
               aria-expanded={profileMenuOpen}
             >
               <img src={getAvatarUrl(authUser)} onError={handleAvatarError} alt="" className="h-8 w-8 rounded-full border-2 border-white object-cover shadow-sm" />
@@ -510,7 +558,7 @@ export default function TeacherLmsLayout({ children }) {
                 <span className="block truncate text-xs font-black text-[#102f63] dark:text-white">{authUser?.fullName || authUser?.username}</span>
                 <span className="block text-[10px] text-slate-500 dark:text-sky-400">{isAdmin ? 'Quản trị viên' : 'Giảng viên'}</span>
               </span>
-              <ChevronDown className="h-4 w-4 text-[#17365f] dark:text-slate-400" />
+              <ChevronDown className="hidden sm:block h-4 w-4 text-[#17365f] dark:text-slate-400" />
             </button>
             {profileMenuOpen && (
               <div className="absolute right-0 mt-2 w-56 overflow-hidden rounded-2xl border border-[#c4def0] bg-[#eef8ff]/95 p-2 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95">
@@ -538,6 +586,55 @@ export default function TeacherLmsLayout({ children }) {
           </div>
         ) : children}
       </main>
+
+      {/* Mobile PWA Bottom Navigation Bar (< lg) */}
+      <nav
+        aria-label="Điều hướng nhanh di động"
+        className="teacher-mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-sky-200/80 bg-[#e6f4fd]/95 px-2 pt-1.5 pb-[calc(0.4rem+env(safe-area-inset-bottom))] shadow-[0_-8px_28px_rgba(20,60,100,0.1)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_-8px_28px_rgba(0,0,0,0.5)] lg:hidden"
+      >
+        <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+          {MOBILE_BOTTOM_NAV
+            .filter((item) => (
+              isAdmin
+              || !item.permission
+              || permissions.has(item.permission)
+              || (item.altPermission && permissions.has(item.altPermission))
+            ))
+            .map((item) => {
+              const Icon = item.icon;
+              const active = !mobileOpen && item.isActive(location.pathname);
+              return (
+                <Link
+                  key={item.id}
+                  to={item.path}
+                  onClick={closeMobile}
+                  className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-bold transition ${
+                    active
+                      ? 'bg-blue-600/12 text-blue-700 dark:bg-sky-500/20 dark:text-sky-300 font-black'
+                      : 'text-[#17365f]/80 hover:text-blue-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Icon className={`h-4.5 w-4.5 shrink-0 ${active ? 'text-blue-600 dark:text-sky-400' : ''}`} />
+                  <span className="truncate max-w-full px-1">{item.label}</span>
+                </Link>
+              );
+            })}
+
+          <button
+            type="button"
+            onClick={() => setMobileOpen((open) => !open)}
+            aria-expanded={mobileOpen}
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-bold transition ${
+              mobileOpen
+                ? 'bg-blue-600/12 text-blue-700 dark:bg-sky-500/20 dark:text-sky-300 font-black'
+                : 'text-[#17365f]/80 hover:text-blue-700 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            {mobileOpen ? <X className="h-4.5 w-4.5 shrink-0 text-blue-600 dark:text-sky-400" /> : <Menu className="h-4.5 w-4.5 shrink-0" />}
+            <span>Menu</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }

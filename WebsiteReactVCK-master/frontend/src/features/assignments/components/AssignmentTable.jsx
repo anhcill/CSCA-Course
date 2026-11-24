@@ -74,6 +74,16 @@ export default function AssignmentTable({
     return getStatusBadge(item.normalizedStatus);
   };
 
+  const getDeadlineHintClass = (tone) => {
+    if (tone === "overdue" || tone === "urgent") {
+      return "border-rose-200 bg-rose-50 text-rose-600 dark:border-rose-800/70 dark:bg-rose-950/60 dark:text-rose-300";
+    }
+    if (tone === "soon") {
+      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300";
+    }
+    return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/70 dark:bg-sky-950/60 dark:text-sky-300";
+  };
+
   const getActionButton = (item) => {
     const status = item.normalizedStatus || "todo";
     if (item.isInProgress || item.canRetry || item.canResubmit) {
@@ -81,7 +91,7 @@ export default function AssignmentTable({
         <button
           type="button"
           onClick={() => onAction && onAction(item, item.isQuiz ? "play" : "submit")}
-          className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold text-blue-600 shadow-2xs transition hover:bg-blue-600 hover:text-white dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white whitespace-nowrap"
+          className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-bold text-blue-600 shadow-2xs transition hover:bg-blue-600 hover:text-white dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white whitespace-nowrap"
         >
           {item.isInProgress ? "Tiếp tục" : item.isQuiz ? "Làm lại" : "Nộp lại"}
         </button>
@@ -92,7 +102,7 @@ export default function AssignmentTable({
         <button
           type="button"
           onClick={() => onAction && onAction(item, item.isQuiz ? "play" : "submit")}
-          className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold text-blue-600 shadow-2xs transition hover:bg-blue-600 hover:text-white dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white whitespace-nowrap"
+          className="rounded-lg bg-blue-600 px-3 py-1 text-[10px] font-bold text-white shadow-2xs transition hover:bg-blue-500 whitespace-nowrap"
         >
           {item.isQuiz ? "Làm bài" : "Nộp bài"}
         </button>
@@ -103,7 +113,7 @@ export default function AssignmentTable({
         <button
           type="button"
           onClick={() => onAction && onAction(item, "view")}
-          className="rounded-md border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-blue-400 whitespace-nowrap"
+          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-blue-400 whitespace-nowrap"
         >
           Xem chi tiết
         </button>
@@ -114,7 +124,7 @@ export default function AssignmentTable({
         <button
           type="button"
           onClick={() => onAction && onAction(item, "review")}
-          className="rounded-md border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-blue-400 whitespace-nowrap"
+          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-blue-400 whitespace-nowrap"
         >
           {item.isQuiz ? "Xem lại" : "Xem bài"}
         </button>
@@ -125,7 +135,7 @@ export default function AssignmentTable({
         <button
           type="button"
           onClick={() => onAction && onAction(item, "open")}
-          className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[10px] font-bold text-rose-700 shadow-2xs transition hover:bg-rose-600 hover:text-white dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-600 dark:hover:text-white whitespace-nowrap"
+          className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[10px] font-bold text-rose-700 shadow-2xs transition hover:bg-rose-600 hover:text-white dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-600 dark:hover:text-white whitespace-nowrap"
         >
           {item.isQuiz ? "Xem đề & đáp án" : "Xem bài"}
         </button>
@@ -135,7 +145,7 @@ export default function AssignmentTable({
       <button
         type="button"
         onClick={() => onAction && onAction(item, "view")}
-        className="rounded-md border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-blue-400 whitespace-nowrap"
+        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-blue-400 whitespace-nowrap"
       >
         Xem bài
       </button>
@@ -150,10 +160,10 @@ export default function AssignmentTable({
             <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-semibold text-slate-400 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-400">
               <th className="py-2 pl-3.5 pr-1.5 min-w-[160px]">Tiêu đề</th>
               <th className="py-2 px-1.5 min-w-[100px] max-w-[140px]">Khóa học</th>
-              <th className="py-2 px-1.5 whitespace-nowrap min-w-[78px]">Hạn nộp</th>
+              <th className="py-2 px-1.5 whitespace-nowrap min-w-[95px]">Hạn nộp</th>
               <th className="py-2 px-1.5 whitespace-nowrap min-w-[90px]">Trạng thái</th>
               <th className="py-2 px-1 text-center whitespace-nowrap min-w-[50px]">Điểm</th>
-              <th className="py-2 pr-3 pl-1 text-right whitespace-nowrap min-w-[70px]">Thao tác</th>
+              <th className="py-2 pr-3 pl-1 text-right whitespace-nowrap min-w-[76px]">Thao tác</th>
             </tr>
           </thead>
 
@@ -174,7 +184,7 @@ export default function AssignmentTable({
                     className="transition hover:bg-blue-50/40 dark:hover:bg-slate-800/50"
                   >
                     {/* Tiêu đề & Loại bài tập */}
-                    <td className="py-1.5 pl-3.5 pr-1.5 min-w-[160px] align-middle">
+                    <td className="py-2 pl-3.5 pr-1.5 min-w-[160px] align-middle">
                       <div className="flex items-center gap-2 min-w-0">
                         <span
                           className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
@@ -200,7 +210,7 @@ export default function AssignmentTable({
                     </td>
 
                     {/* Khóa học & Mã môn */}
-                    <td className="py-1.5 px-1.5 min-w-[100px] max-w-[140px] align-middle">
+                    <td className="py-2 px-1.5 min-w-[100px] max-w-[140px] align-middle">
                       <div className="min-w-0">
                         <p
                           className="font-semibold text-[11px] text-slate-800 dark:text-slate-200 leading-snug truncate"
@@ -214,32 +224,41 @@ export default function AssignmentTable({
                       </div>
                     </td>
 
-                    {/* Hạn nộp & Giờ */}
-                    <td className="py-1.5 px-1.5 whitespace-nowrap align-middle">
-                      <div>
+                    {/* Hạn nộp & Giờ + Đếm ngược */}
+                    <td className="py-2 px-1.5 whitespace-nowrap align-middle">
+                      <div className="space-y-0.5">
                         <p className="font-semibold text-[11px] text-slate-800 dark:text-slate-200 leading-snug">
                           {item.dueDateFormatted || "—"}
                         </p>
-                        <p className="text-[9px] font-medium text-slate-400 dark:text-slate-500 leading-tight">
-                          {item.dueTimeFormatted || ""}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          {item.dueTimeFormatted && (
+                            <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 leading-tight">
+                              {item.dueTimeFormatted}
+                            </span>
+                          )}
+                          {item.deadlineHint && (
+                            <span className={`inline-flex items-center rounded border px-1 py-0.2 text-[9px] font-bold leading-tight ${getDeadlineHintClass(item.deadlineTone)}`}>
+                              {item.deadlineHint}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
 
                     {/* Trạng thái */}
-                    <td className="py-1.5 px-1.5 whitespace-nowrap align-middle">
+                    <td className="py-2 px-1.5 whitespace-nowrap align-middle">
                       {getItemStatusBadge(item)}
                     </td>
 
                     {/* Điểm */}
-                    <td className="py-1.5 px-1 text-center whitespace-nowrap align-middle">
+                    <td className="py-2 px-1 text-center whitespace-nowrap align-middle">
                       <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200">
                         {item.scoreDisplay || "-"}
                       </span>
                     </td>
 
                     {/* Thao tác */}
-                    <td className="py-1.5 pr-3 pl-1 text-right whitespace-nowrap align-middle">
+                    <td className="py-2 pr-3 pl-1 text-right whitespace-nowrap align-middle">
                       {getActionButton(item)}
                     </td>
                   </tr>
