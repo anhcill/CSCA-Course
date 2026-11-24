@@ -111,3 +111,25 @@ export const verifyAdminFaceSelfTest = ({
     }),
   );
 };
+
+// Device-native WebAuthn Biometrics (Face ID / Touch ID / Android Fingerprint / Windows Hello)
+export const beginTeacherBiometricRegistration = () =>
+  unwrap(axios.post(`${BASE_URL}/biometrics/register/options`, {}, { withCredentials: true }));
+
+export const verifyTeacherBiometricRegistration = (payload) =>
+  unwrap(axios.post(`${BASE_URL}/biometrics/register/verify`, payload, { withCredentials: true }));
+
+export const deleteTeacherBiometricCredential = (credentialRowId) =>
+  unwrap(axios.delete(`${BASE_URL}/biometrics/${credentialRowId}`, { withCredentials: true }));
+
+export const beginTeacherBiometricSelfTest = () =>
+  unwrap(axios.post(`${BASE_URL}/biometrics/test/options`, {}, { withCredentials: true }));
+
+export const verifyTeacherBiometricSelfTest = (payload) =>
+  unwrap(axios.post(`${BASE_URL}/biometrics/test/verify`, payload, { withCredentials: true }));
+
+export const beginTeacherSessionBiometric = (sessionId, type) =>
+  unwrap(axios.post(`${BASE_URL}/sessions/${sessionId}/biometric/options`, { type }, { withCredentials: true }));
+
+export const verifyTeacherSessionBiometric = (sessionId, payload) =>
+  unwrap(axios.post(`${BASE_URL}/sessions/${sessionId}/biometric/verify`, payload, { withCredentials: true }));

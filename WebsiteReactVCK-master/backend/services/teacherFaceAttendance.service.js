@@ -18,6 +18,11 @@ import {
   isR2Configured,
   uploadPrivateR2Buffer,
 } from "./video.service.js";
+import {
+  beginTeacherBiometricAssertion,
+  listTeacherBiometricCredentials,
+  verifyTeacherBiometricAssertion,
+} from "./teacherDeviceBiometrics.service.js";
 
 export const CHECK_IN_EARLY_WINDOW_MINUTES = 30;
 export const CHECK_IN_LATE_GRACE_MINUTES = 10;
@@ -579,8 +584,9 @@ export const getTeacherSessionAttendanceState = async ({
   db = { query: defaultQuery },
 }) => {
   const session = await loadSessionAndVerifyTeacher({ sessionId, teacherId, role, db });
-  const [enrollment, attendanceRes] = await Promise.all([
+  const [enrollment, biometricCredentials, attendanceRes] = await Promise.all([
     getTeacherFaceEnrollment(teacherId, db),
+    listTeacherBiometricCredentials(teacherId, db).catch(() => []),
     db.query(
       "SELECT * FROM teacher_session_attendance WHERE session_id = $1 AND teacher_id = $2",
       [sessionId, teacherId],
@@ -616,6 +622,7 @@ export const getTeacherSessionAttendanceState = async ({
     },
     aws: getPublicAwsRekognitionStatus(),
     enrollment,
+    biometricCredentials,
     attendance: await serializeSessionAttendance(existing),
     policies: {
       checkIn: checkInPolicy,
@@ -650,8 +657,9 @@ export const getTeacherTodaySmartAttendance = async ({
     nowDate.getTime() - CHECK_OUT_POST_SESSION_WINDOW_MINUTES * 60 * 1000,
   ).toISOString();
 
-  const [enrollment, sessionsRes] = await Promise.all([
+  const [enrollment, biometricCredentials, sessionsRes] = await Promise.all([
     getTeacherFaceEnrollment(teacherId, db),
+    listTeacherBiometricCredentials(teacherId, db).catch(() => []),
     db.query(
       `SELECT cs.id,
               cs.live_class_id,
@@ -781,6 +789,7 @@ export const getTeacherTodaySmartAttendance = async ({
     todayDate: vnToday,
     aws: getPublicAwsRekognitionStatus(),
     enrollment,
+    biometricCredentials,
     summary: {
       totalTodaySessions: sessions.length,
       completedTodayCount,
@@ -1144,6 +1153,255 @@ export const completeTeacherSessionFaceVerification = async ({
       provider,
       livenessScore,
       faceSimilarity,
+      lateMinutes,
+      earlyLeaveMinutes,
+      payrollEligible,
+    },
+  }).catch(() => {});
+
+  return serializeSessionAttendance(upsertRes.rows[0]);
+};
+
+// ---------------------------------------------------------------------------
+// Device-Native WebAuthn Biometrics (iOS Face ID / Touch ID / Android / WinHello)
+// ---------------------------------------------------------------------------
+export const startTeacherSessionDeviceBiometric = async ({
+  sessionId,
+  teacherId,
+  role = "creator",
+  type,
+  rpId,
+  expectedOrigin,
+  now = new Date(),
+  db = { query: defaultQuery },
+}) => {
+  if (type !== "check_in" && type !== "check_out") {
+    throw makeError(422, "Loại chấm công phải là check_in hoặc check_out.", "INVALID_TYPE");
+  }
+
+  const session = await loadSessionAndVerifyTeacher({ sessionId, teacherId, role, db });
+  const attendanceRes = await db.query(
+    "SELECT * FROM teacher_session_attendance WHERE session_id = $1 AND teacher_id = $2",
+    [sessionId, teacherId],
+  );
+  const existing = attendanceRes.rows[0] || null;
+
+  if (type === "check_in") {
+    const policy = evaluateTeacherCheckInPolicy({
+      startTime: session.start_time,
+      endTime: session.end_time,
+      status: session.status,
+      now,
+      existingAttendance: existing,
+    });
+    if (!policy.canCheckIn) {
+      throw makeError(422, policy.reason || "Không thể chấm công Vào lúc này.", "CHECK_IN_NOT_ALLOWED");
+    }
+  } else {
+    const policy = evaluateTeacherCheckOutPolicy({
+      startTime: session.start_time,
+      endTime: session.end_time,
+      status: session.status,
+      now,
+      existingAttendance: existing,
+    });
+    if (!policy.canCheckOut) {
+      throw makeError(422, policy.reason || "Không thể chấm công Ra lúc này.", "CHECK_OUT_NOT_ALLOWED");
+    }
+  }
+
+  return beginTeacherBiometricAssertion({
+    teacherId,
+    purpose: "attendance",
+    sessionId,
+    type,
+    rpId,
+    expectedOrigin,
+    db,
+  });
+};
+
+export const completeTeacherSessionDeviceBiometricVerification = async ({
+  sessionId,
+  teacherId,
+  role = "creator",
+  type,
+  challengeToken,
+  credentialId,
+  clientDataJSON,
+  authenticatorData,
+  signature,
+  ip = null,
+  userAgent = null,
+  now = new Date(),
+  db = { query: defaultQuery },
+}) => {
+  if (type !== "check_in" && type !== "check_out") {
+    throw makeError(422, "Loại chấm công phải là check_in hoặc check_out.", "INVALID_TYPE");
+  }
+
+  const session = await loadSessionAndVerifyTeacher({ sessionId, teacherId, role, db });
+  const existingRes = await db.query(
+    "SELECT * FROM teacher_session_attendance WHERE session_id = $1 AND teacher_id = $2",
+    [sessionId, teacherId],
+  );
+  const existing = existingRes.rows[0] || null;
+
+  let timeStatus = "on_time";
+  let lateMinutes = 0;
+  let earlyLeaveMinutes = 0;
+
+  if (type === "check_in") {
+    const policy = evaluateTeacherCheckInPolicy({
+      startTime: session.start_time,
+      endTime: session.end_time,
+      status: session.status,
+      now,
+      existingAttendance: existing,
+    });
+    if (!policy.canCheckIn) {
+      throw makeError(422, policy.reason || "Không thể chấm công Vào lúc này.", "CHECK_IN_NOT_ALLOWED");
+    }
+    timeStatus = policy.isLate ? "late" : "on_time";
+    lateMinutes = policy.lateMinutes;
+  } else {
+    const policy = evaluateTeacherCheckOutPolicy({
+      startTime: session.start_time,
+      endTime: session.end_time,
+      status: session.status,
+      now,
+      existingAttendance: existing,
+    });
+    if (!policy.canCheckOut) {
+      throw makeError(422, policy.reason || "Không thể chấm công Ra lúc này.", "CHECK_OUT_NOT_ALLOWED");
+    }
+    timeStatus = policy.isEarlyLeave ? "early_leave" : "on_time";
+    earlyLeaveMinutes = policy.earlyLeaveMinutes;
+  }
+
+  const bio = await verifyTeacherBiometricAssertion({
+    teacherId,
+    purpose: "attendance",
+    sessionId,
+    type,
+    challengeToken,
+    credentialId,
+    clientDataJSON,
+    authenticatorData,
+    signature,
+    db,
+  });
+
+  const nowIso = new Date(now).toISOString();
+  const merged = {
+    ...(existing || {}),
+    ...(type === "check_in"
+      ? {
+          check_in_at: nowIso,
+          check_in_status: timeStatus,
+          late_minutes: lateMinutes,
+          check_in_liveness_session_id: `webauthn:${bio.credentialRowId}`,
+          check_in_liveness_score: 100,
+          check_in_face_similarity: 100,
+          check_in_r2_key: null,
+          check_in_provider: "device_webauthn",
+          check_in_ip: ip,
+          check_in_user_agent: userAgent,
+        }
+      : {
+          check_out_at: nowIso,
+          check_out_status: timeStatus,
+          early_leave_minutes: earlyLeaveMinutes,
+          check_out_liveness_session_id: `webauthn:${bio.credentialRowId}`,
+          check_out_liveness_score: 100,
+          check_out_face_similarity: 100,
+          check_out_r2_key: null,
+          check_out_provider: "device_webauthn",
+          check_out_ip: ip,
+          check_out_user_agent: userAgent,
+        }),
+  };
+
+  const payrollEligible = computePayrollEligibility(merged);
+
+  const upsertRes = await db.query(
+    `INSERT INTO teacher_session_attendance (
+       session_id, teacher_id,
+       check_in_at, check_in_status, late_minutes, check_in_liveness_session_id,
+       check_in_liveness_score, check_in_face_similarity, check_in_r2_key, check_in_provider,
+       check_in_ip, check_in_user_agent,
+       check_out_at, check_out_status, early_leave_minutes, check_out_liveness_session_id,
+       check_out_liveness_score, check_out_face_similarity, check_out_r2_key, check_out_provider,
+       check_out_ip, check_out_user_agent,
+       payroll_eligible, updated_at
+     )
+     VALUES (
+       $1, $2,
+       $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+       $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
+       $23, NOW()
+     )
+     ON CONFLICT (session_id, teacher_id)
+     DO UPDATE SET
+       check_in_at = EXCLUDED.check_in_at,
+       check_in_status = EXCLUDED.check_in_status,
+       late_minutes = EXCLUDED.late_minutes,
+       check_in_liveness_session_id = EXCLUDED.check_in_liveness_session_id,
+       check_in_liveness_score = EXCLUDED.check_in_liveness_score,
+       check_in_face_similarity = EXCLUDED.check_in_face_similarity,
+       check_in_r2_key = EXCLUDED.check_in_r2_key,
+       check_in_provider = EXCLUDED.check_in_provider,
+       check_in_ip = EXCLUDED.check_in_ip,
+       check_in_user_agent = EXCLUDED.check_in_user_agent,
+       check_out_at = EXCLUDED.check_out_at,
+       check_out_status = EXCLUDED.check_out_status,
+       early_leave_minutes = EXCLUDED.early_leave_minutes,
+       check_out_liveness_session_id = EXCLUDED.check_out_liveness_session_id,
+       check_out_liveness_score = EXCLUDED.check_out_liveness_score,
+       check_out_face_similarity = EXCLUDED.check_out_face_similarity,
+       check_out_r2_key = EXCLUDED.check_out_r2_key,
+       check_out_provider = EXCLUDED.check_out_provider,
+       check_out_ip = EXCLUDED.check_out_ip,
+       check_out_user_agent = EXCLUDED.check_out_user_agent,
+       payroll_eligible = EXCLUDED.payroll_eligible,
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      sessionId,
+      teacherId,
+      merged.check_in_at || null,
+      merged.check_in_status || null,
+      Number(merged.late_minutes || 0),
+      merged.check_in_liveness_session_id || null,
+      merged.check_in_liveness_score ?? null,
+      merged.check_in_face_similarity ?? null,
+      merged.check_in_r2_key || null,
+      merged.check_in_provider || null,
+      merged.check_in_ip || null,
+      merged.check_in_user_agent || null,
+      merged.check_out_at || null,
+      merged.check_out_status || null,
+      Number(merged.early_leave_minutes || 0),
+      merged.check_out_liveness_session_id || null,
+      merged.check_out_liveness_score ?? null,
+      merged.check_out_face_similarity ?? null,
+      merged.check_out_r2_key || null,
+      merged.check_out_provider || null,
+      merged.check_out_ip || null,
+      merged.check_out_user_agent || null,
+      payrollEligible,
+    ],
+  );
+
+  await recordAuditEvent({
+    actorId: teacherId,
+    action: `teacher.session_biometric.${type}`,
+    targetType: "class_session",
+    targetId: String(sessionId),
+    metadata: {
+      timeStatus,
+      provider: "device_webauthn",
+      deviceLabel: bio.deviceLabel,
       lateMinutes,
       earlyLeaveMinutes,
       payrollEligible,

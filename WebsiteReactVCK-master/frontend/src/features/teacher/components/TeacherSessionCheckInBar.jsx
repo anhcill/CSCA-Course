@@ -1,18 +1,22 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import {
-  AlertTriangle,
   CheckCircle2,
   Clock,
-  FlaskConical,
+  Fingerprint,
   Loader2,
   LogIn,
   LogOut,
-  ScanFace,
   ShieldCheck,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { useAuthContext } from "../../../context/AuthContext";
 import { fetchTeacherSessionFaceState } from "../../api/teacherFaceAttendanceClient";
+import {
+  checkInOrOutWithDeviceBiometrics,
+  isDeviceBiometricsSupported,
+  registerDeviceBiometrics,
+  testDeviceBiometrics,
+} from "../utils/deviceBiometrics";
 
 const AwsFaceLivenessModal = lazy(() => import("./AwsFaceLivenessModal.jsx"));
 
@@ -27,9 +31,12 @@ const formatTime = (value) => {
 export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
   const { authUser } = useAuthContext();
   const isAdmin = authUser?.role === "admin";
+  const bioSupported = isDeviceBiometricsSupported();
+
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [modalConfig, setModalConfig] = useState(null); // { type, adminTestMode }
+  const [bioBusy, setBioBusy] = useState(false);
+  const [modalConfig, setModalConfig] = useState(null);
 
   const loadState = useCallback(async () => {
     if (!sessionId) return;
@@ -55,15 +62,60 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
     return (
       <div className="flex items-center gap-2 rounded-2xl border border-white/80 bg-white/85 px-4 py-2.5 text-xs text-slate-500 shadow-2xs dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-400">
         <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
-        Đang tải Face ID...
+        Đang tải chấm công...
       </div>
     );
   }
 
   if (!state) return null;
 
-  const { enrollment, attendance, policies } = state;
+  const { enrollment, biometricCredentials = [], attendance, policies } = state;
+  const hasDeviceBio = biometricCredentials.length > 0;
   const enrollmentApproved = enrollment?.status === "approved";
+  const canAttend = hasDeviceBio || enrollmentApproved;
+
+  const handleAction = async (type) => {
+    if (hasDeviceBio && bioSupported) {
+      try {
+        setBioBusy(true);
+        const res = await checkInOrOutWithDeviceBiometrics({ sessionId, type });
+        toast.success(res?.message || (type === "check_in" ? "Chấm Vào thành công!" : "Chấm Ra thành công!"));
+        await loadState();
+      } catch (error) {
+        toast.error(error?.message || "Xác thực Face ID / Vân tay thất bại");
+      } finally {
+        setBioBusy(false);
+      }
+      return;
+    }
+    setModalConfig({ type, adminTestMode: false });
+  };
+
+  const handleRegister = async () => {
+    try {
+      setBioBusy(true);
+      await registerDeviceBiometrics();
+      toast.success("Đã bật Face ID / Vân tay thiết bị này!");
+      await loadState();
+    } catch (error) {
+      toast.error(error?.message || "Không thể đăng ký Face ID / Vân tay");
+    } finally {
+      setBioBusy(false);
+    }
+  };
+
+  const handleTest = async () => {
+    try {
+      setBioBusy(true);
+      const res = await testDeviceBiometrics();
+      const ms = res?.data?.latencyMs ?? "";
+      toast.success(`Face ID / Vân tay OK!${ms ? ` (${ms}ms)` : ""}`);
+    } catch (error) {
+      toast.error(error?.message || "Xác thực thất bại");
+    } finally {
+      setBioBusy(false);
+    }
+  };
 
   return (
     <>
@@ -71,23 +123,26 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {/* Left: Compact Status Pills */}
           <div className="min-w-0 flex-1 flex flex-wrap items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 text-[11px] font-black text-indigo-700 dark:bg-indigo-950/60 dark:border-indigo-800 dark:text-sky-300">
-              <ScanFace className="h-3.5 w-3.5" /> Face ID
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-black text-emerald-700 dark:bg-emerald-950/60 dark:border-emerald-800 dark:text-emerald-300">
+              <Fingerprint className="h-3.5 w-3.5" /> Chấm công
             </span>
 
-            {!enrollmentApproved ? (
-              <div className="flex flex-wrap items-center gap-1.5 text-amber-800 dark:text-amber-300">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                <span className="font-semibold">
-                  {enrollment?.status === "pending_approval" ? "Chờ duyệt ảnh mẫu" : "Chưa đăng ký"}
-                </span>
-                <Link
-                  to="/lms/teach/settings#face-enrollment"
-                  className="font-bold text-indigo-700 underline dark:text-sky-400"
+            {!canAttend ? (
+              bioSupported ? (
+                <button
+                  type="button"
+                  disabled={bioBusy}
+                  onClick={handleRegister}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  Cài đặt →
-                </Link>
-              </div>
+                  {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Fingerprint className="h-3.5 w-3.5" />}
+                  Bật Face ID / Vân tay máy này
+                </button>
+              ) : (
+                <span className="text-amber-700 dark:text-amber-300 font-semibold">
+                  Trình duyệt chưa hỗ trợ Face ID / Vân tay
+                </span>
+              )
             ) : (
               <>
                 <div className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/90 px-2.5 py-1 dark:border-slate-700/80 dark:bg-slate-800/70">
@@ -131,16 +186,16 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
 
           {/* Right: Action Buttons */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {enrollmentApproved && (
+            {canAttend && (
               !attendance?.checkInAt || attendance?.checkInStatus === "rejected" ? (
                 <button
                   type="button"
-                  disabled={!policies?.checkIn?.canCheckIn}
-                  onClick={() => setModalConfig({ type: "check_in", adminTestMode: false })}
+                  disabled={bioBusy || !policies?.checkIn?.canCheckIn}
+                  onClick={() => handleAction("check_in")}
                   title={policies?.checkIn?.reason || "Chấm Vào"}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                 >
-                  <LogIn className="h-3.5 w-3.5" />
+                  {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogIn className="h-3.5 w-3.5" />}
                   {policies?.checkIn?.canCheckIn
                     ? "Chấm Vào"
                     : policies?.checkIn?.opensAt
@@ -150,12 +205,12 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
               ) : !attendance?.checkOutAt || attendance?.checkOutStatus === "rejected" ? (
                 <button
                   type="button"
-                  disabled={!policies?.checkOut?.canCheckOut}
-                  onClick={() => setModalConfig({ type: "check_out", adminTestMode: false })}
+                  disabled={bioBusy || !policies?.checkOut?.canCheckOut}
+                  onClick={() => handleAction("check_out")}
                   title={policies?.checkOut?.reason || "Chấm Ra"}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                 >
-                  <LogOut className="h-3.5 w-3.5" />
+                  {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
                   Chấm Ra
                 </button>
               ) : (
@@ -165,13 +220,14 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
               )
             )}
 
-            {isAdmin && (
+            {isAdmin && hasDeviceBio && bioSupported && (
               <button
                 type="button"
-                onClick={() => setModalConfig({ type: "admin_test", adminTestMode: true })}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-violet-700"
+                disabled={bioBusy}
+                onClick={handleTest}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-50"
               >
-                <FlaskConical className="h-3.5 w-3.5" /> Test Face ID
+                <Fingerprint className="h-3.5 w-3.5" /> Test máy
               </button>
             )}
           </div>

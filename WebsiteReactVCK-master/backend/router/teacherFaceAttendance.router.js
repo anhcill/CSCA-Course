@@ -6,6 +6,7 @@ import requireRole from "../middleware/requireRole.js";
 import { getPublicAwsRekognitionStatus } from "../services/awsRekognition.service.js";
 import {
   adminOverrideSessionAttendance,
+  completeTeacherSessionDeviceBiometricVerification,
   completeTeacherSessionFaceVerification,
   getTeacherFaceEnrollment,
   getTeacherSessionAttendanceState,
@@ -14,10 +15,20 @@ import {
   readLocalFacePreviewBuffer,
   reviewTeacherFaceEnrollment,
   startAdminFaceSelfTest,
+  startTeacherSessionDeviceBiometric,
   startTeacherSessionFaceLiveness,
   submitTeacherFaceEnrollment,
   verifyAdminFaceSelfTest,
 } from "../services/teacherFaceAttendance.service.js";
+import {
+  beginTeacherBiometricAssertion,
+  beginTeacherBiometricRegistration,
+  completeTeacherBiometricRegistration,
+  listTeacherBiometricCredentials,
+  resolveWebAuthnContext,
+  revokeTeacherBiometricCredential,
+  verifyTeacherBiometricAssertion,
+} from "../services/teacherDeviceBiometrics.service.js";
 
 const router = express.Router();
 
@@ -73,19 +84,180 @@ router.get("/local-preview", protectRoute, requireTeacher, async (req, res) => {
   }
 });
 
-// Teacher status & enrollment info
+// Teacher status, device biometrics & enrollment info
 router.get("/status", protectRoute, requireTeacher, async (req, res) => {
   try {
-    const enrollment = await getTeacherFaceEnrollment(req.user.id);
+    const [enrollment, biometricCredentials] = await Promise.all([
+      getTeacherFaceEnrollment(req.user.id),
+      listTeacherBiometricCredentials(req.user.id).catch(() => []),
+    ]);
     return res.json({
       success: true,
       data: {
         aws: getPublicAwsRekognitionStatus(),
         enrollment,
+        biometricCredentials,
       },
     });
   } catch (error) {
-    return handleRouteError(res, error, "Không thể kiểm tra trạng thái đăng ký khuôn mặt");
+    return handleRouteError(res, error, "Không thể kiểm tra trạng thái chấm công sinh trắc học");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Device-native WebAuthn Biometrics (iOS Face ID / Touch ID / Android / Windows Hello)
+// ---------------------------------------------------------------------------
+router.post("/biometrics/register/options", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const ctx = resolveWebAuthnContext(req);
+    const data = await beginTeacherBiometricRegistration({
+      teacherId: req.user.id,
+      username: req.user.username,
+      fullName: req.user.fullName || req.user.full_name || req.user.username,
+      ...ctx,
+    });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return handleRouteError(res, error, "Không thể khởi tạo đăng ký Face ID / Vân tay thiết bị");
+  }
+});
+
+router.post("/biometrics/register/verify", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const saved = await completeTeacherBiometricRegistration({
+      teacherId: req.user.id,
+      challengeToken: req.body?.challengeToken,
+      credentialId: req.body?.credentialId,
+      clientDataJSON: req.body?.clientDataJSON,
+      authenticatorData: req.body?.authenticatorData || null,
+      publicKeySpki: req.body?.publicKeySpki,
+      publicKeyAlg: req.body?.publicKeyAlg ?? -7,
+      transports: req.body?.transports,
+      deviceLabel: req.body?.deviceLabel || "",
+      userAgent: req.headers["user-agent"] || "",
+    });
+    return res.status(201).json({
+      success: true,
+      message: "Đã đăng ký Face ID / Vân tay cho thiết bị này!",
+      data: saved,
+    });
+  } catch (error) {
+    return handleRouteError(res, error, "Không thể lưu Face ID / Vân tay thiết bị");
+  }
+});
+
+router.delete("/biometrics/:credentialRowId", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const credentialRowId = parsePositiveId(req.params.credentialRowId);
+    if (!credentialRowId) {
+      return res.status(422).json({ success: false, message: "ID thiết bị không hợp lệ." });
+    }
+    const removed = await revokeTeacherBiometricCredential({
+      teacherId: req.user.id,
+      credentialRowId,
+    });
+    return res.json({
+      success: true,
+      message: "Đã gỡ Face ID / Vân tay khỏi thiết bị.",
+      data: removed,
+    });
+  } catch (error) {
+    return handleRouteError(res, error, "Không thể gỡ thiết bị sinh trắc học");
+  }
+});
+
+router.post("/biometrics/test/options", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const ctx = resolveWebAuthnContext(req);
+    const data = await beginTeacherBiometricAssertion({
+      teacherId: req.user.id,
+      purpose: "self_test",
+      sessionId: 0,
+      type: "self_test",
+      ...ctx,
+    });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return handleRouteError(res, error, "Không thể khởi tạo test Face ID / Vân tay thiết bị");
+  }
+});
+
+router.post("/biometrics/test/verify", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const startedAt = Date.now();
+    const result = await verifyTeacherBiometricAssertion({
+      teacherId: req.user.id,
+      purpose: "self_test",
+      sessionId: 0,
+      type: "self_test",
+      challengeToken: req.body?.challengeToken,
+      credentialId: req.body?.credentialId,
+      clientDataJSON: req.body?.clientDataJSON,
+      authenticatorData: req.body?.authenticatorData,
+      signature: req.body?.signature,
+    });
+    return res.json({
+      success: true,
+      message: "Xác thực Face ID / Vân tay thiết bị thành công!",
+      data: {
+        ...result,
+        latencyMs: Date.now() - startedAt,
+        dryRun: true,
+      },
+    });
+  } catch (error) {
+    return handleRouteError(res, error, "Xác thực Face ID / Vân tay thiết bị thất bại");
+  }
+});
+
+router.post("/sessions/:sessionId/biometric/options", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const sessionId = parsePositiveId(req.params.sessionId);
+    if (!sessionId) {
+      return res.status(422).json({ success: false, message: "sessionId không hợp lệ." });
+    }
+    const ctx = resolveWebAuthnContext(req);
+    const data = await startTeacherSessionDeviceBiometric({
+      sessionId,
+      teacherId: req.user.id,
+      role: req.user.role,
+      type: String(req.body?.type || ""),
+      ...ctx,
+    });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return handleRouteError(res, error, "Không thể khởi tạo chấm công bằng Face ID / Vân tay máy");
+  }
+});
+
+router.post("/sessions/:sessionId/biometric/verify", protectRoute, requireTeacher, async (req, res) => {
+  try {
+    const sessionId = parsePositiveId(req.params.sessionId);
+    if (!sessionId) {
+      return res.status(422).json({ success: false, message: "sessionId không hợp lệ." });
+    }
+    const type = String(req.body?.type || "");
+    const record = await completeTeacherSessionDeviceBiometricVerification({
+      sessionId,
+      teacherId: req.user.id,
+      role: req.user.role,
+      type,
+      challengeToken: req.body?.challengeToken,
+      credentialId: req.body?.credentialId,
+      clientDataJSON: req.body?.clientDataJSON,
+      authenticatorData: req.body?.authenticatorData,
+      signature: req.body?.signature,
+      ip: req.ip || req.headers["x-forwarded-for"] || null,
+      userAgent: req.headers["user-agent"] || null,
+    });
+    const label = type === "check_in" ? "Chấm Vào" : "Chấm Ra";
+    return res.json({
+      success: true,
+      message: `${label} bằng Face ID / Vân tay thiết bị thành công!`,
+      data: record,
+    });
+  } catch (error) {
+    return handleRouteError(res, error, "Không thể xác thực chấm công bằng Face ID / Vân tay máy");
   }
 });
 

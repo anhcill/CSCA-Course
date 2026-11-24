@@ -1,20 +1,25 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  AlertTriangle,
   CalendarDays,
   CheckCircle2,
   Clock,
-  FlaskConical,
+  Fingerprint,
   Loader2,
   LogIn,
   LogOut,
   RefreshCw,
-  ScanFace,
   ShieldCheck,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { useAuthContext } from "../../../context/AuthContext";
 import { fetchTeacherTodaySmartAttendance } from "../../api/teacherFaceAttendanceClient";
+import {
+  checkInOrOutWithDeviceBiometrics,
+  isDeviceBiometricsSupported,
+  registerDeviceBiometrics,
+  testDeviceBiometrics,
+} from "../utils/deviceBiometrics";
 
 const AwsFaceLivenessModal = lazy(() => import("./AwsFaceLivenessModal.jsx"));
 
@@ -29,10 +34,13 @@ const fmtTime = (value) => {
 export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
   const { authUser } = useAuthContext();
   const isAdmin = authUser?.role === "admin";
+  const bioSupported = isDeviceBiometricsSupported();
+
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [activeModal, setActiveModal] = useState(null); // { session, type, adminTestMode }
+  const [bioBusy, setBioBusy] = useState(false);
+  const [activeModal, setActiveModal] = useState(null);
   const containerRef = useRef(null);
 
   const loadToday = useCallback(async () => {
@@ -71,15 +79,66 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
     };
   }, []);
 
+  const biometrics = data?.biometricCredentials || [];
+  const hasDeviceBio = biometrics.length > 0;
   const enrollment = data?.enrollment || null;
   const enrollmentApproved = enrollment?.status === "approved";
+  const canAttend = hasDeviceBio || enrollmentApproved;
+
   const recommended = data?.recommended || null;
   const sessions = data?.sessions || [];
   const summary = data?.summary || { totalTodaySessions: 0, completedTodayCount: 0 };
 
-  const isCheckInReady = enrollmentApproved && recommended?.actionType === "check_in";
-  const isCheckOutReady = enrollmentApproved && recommended?.actionType === "check_out";
-  const isAllDone = enrollmentApproved && recommended?.actionType === "completed_today" && summary.totalTodaySessions > 0;
+  const isCheckInReady = canAttend && recommended?.actionType === "check_in";
+  const isCheckOutReady = canAttend && recommended?.actionType === "check_out";
+  const isAllDone = canAttend && recommended?.actionType === "completed_today" && summary.totalTodaySessions > 0;
+
+  const triggerAttendance = async (session, type) => {
+    if (hasDeviceBio && bioSupported) {
+      try {
+        setBioBusy(true);
+        const res = await checkInOrOutWithDeviceBiometrics({ sessionId: session.id, type });
+        toast.success(res?.message || (type === "check_in" ? "Chấm Vào thành công!" : "Chấm Ra thành công!"));
+        setOpen(false);
+        await loadToday();
+      } catch (error) {
+        toast.error(error?.message || "Xác thực Face ID / Vân tay thất bại");
+      } finally {
+        setBioBusy(false);
+      }
+      return;
+    }
+
+    setOpen(false);
+    setActiveModal({ session, type, adminTestMode: false });
+  };
+
+  const handleQuickRegister = async () => {
+    try {
+      setBioBusy(true);
+      await registerDeviceBiometrics();
+      toast.success("Đã bật Face ID / Vân tay máy này!");
+      await loadToday();
+    } catch (error) {
+      toast.error(error?.message || "Không thể đăng ký Face ID / Vân tay");
+    } finally {
+      setBioBusy(false);
+    }
+  };
+
+  const handleQuickTest = async () => {
+    try {
+      setBioBusy(true);
+      const res = await testDeviceBiometrics();
+      const ms = res?.data?.latencyMs ?? "";
+      toast.success(`Face ID / Vân tay OK!${ms ? ` (${ms}ms)` : ""}`);
+      await loadToday();
+    } catch (error) {
+      toast.error(error?.message || "Xác thực thất bại");
+    } finally {
+      setBioBusy(false);
+    }
+  };
 
   const triggerClass = isCheckInReady
     ? "border-indigo-400/70 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 hover:bg-indigo-500"
@@ -95,7 +154,7 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
       ? "Chấm Ra"
       : isAllDone
         ? "Đã chấm"
-        : "Face ID";
+        : "Chấm công";
 
   return (
     <>
@@ -108,13 +167,13 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
             if (next) loadToday();
           }}
           aria-expanded={open}
-          title="Face ID chấm công"
+          title="Chấm công Face ID / Vân tay"
           className={`relative inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-bold transition ${triggerClass}`}
         >
           {isAllDone ? (
             <ShieldCheck className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
           ) : (
-            <ScanFace className="h-4 w-4" />
+            <Fingerprint className="h-4 w-4" />
           )}
           <span className="hidden sm:inline">{triggerLabel}</span>
           {(isCheckInReady || isCheckOutReady) && (
@@ -124,12 +183,12 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
 
         {open && (
           <div className="fixed inset-x-3 top-[4.5rem] z-[60] max-h-[calc(100dvh-5.5rem)] overflow-hidden rounded-2xl border border-[#c4def0] bg-white/95 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(20.5rem,calc(100vw-2rem))]">
-            {/* Popover Header */}
+            {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <ScanFace className="h-4 w-4 text-indigo-600 dark:text-sky-400" />
+                <Fingerprint className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 <span className="text-xs font-black text-slate-900 dark:text-white">
-                  Face ID chấm công
+                  Face ID / Vân tay
                 </span>
               </div>
               <button
@@ -144,51 +203,42 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
             </div>
 
             <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto p-3 space-y-2.5 text-xs sm:max-h-[70vh]">
-              {/* Admin 1-Tap Test Right At Top */}
-              {isAdmin && (
-                <div className="flex items-center gap-2">
+              {/* Primary 1-Tap Device Biometrics Action */}
+              {bioSupported && (
+                !hasDeviceBio ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      setActiveModal({ session: null, type: "admin_test", adminTestMode: true });
-                    }}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-violet-700"
+                    disabled={bioBusy}
+                    onClick={handleQuickRegister}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
                   >
-                    <FlaskConical className="h-3.5 w-3.5" />
-                    Test Face ID
+                    {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Fingerprint className="h-4 w-4" />}
+                    Bật Face ID / Vân tay máy này
                   </button>
-                  <Link
-                    to="/lms/teach/settings#face-enrollment"
-                    onClick={() => setOpen(false)}
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                  >
-                    Ảnh mẫu
-                  </Link>
-                </div>
-              )}
-
-              {/* Enrollment notice */}
-              {!enrollmentApproved && !isAdmin && (
-                <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-                    <span className="truncate font-bold">
-                      {enrollment?.status === "pending_approval" ? "Đang chờ duyệt" : "Chưa đăng ký Face ID"}
-                    </span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={bioBusy}
+                      onClick={handleQuickTest}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Fingerprint className="h-3.5 w-3.5" />}
+                      Test Face ID / Vân tay
+                    </button>
+                    <Link
+                      to="/lms/teach/settings#face-enrollment"
+                      onClick={() => setOpen(false)}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    >
+                      Thiết bị
+                    </Link>
                   </div>
-                  <Link
-                    to="/lms/teach/settings#face-enrollment"
-                    onClick={() => setOpen(false)}
-                    className="shrink-0 font-black text-indigo-700 underline dark:text-sky-400"
-                  >
-                    Cài đặt
-                  </Link>
-                </div>
+                )
               )}
 
               {/* Recommended active session */}
-              {recommended?.session && enrollmentApproved && (
+              {recommended?.session && canAttend && (
                 <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/70 p-2.5 dark:border-indigo-900/60 dark:bg-indigo-950/30 space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-bold text-slate-900 dark:text-white truncate">
@@ -202,26 +252,24 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
                   {isCheckInReady && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setOpen(false);
-                        setActiveModal({ session: recommended.session, type: "check_in", adminTestMode: false });
-                      }}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2 text-xs font-black text-white shadow-sm hover:bg-indigo-700"
+                      disabled={bioBusy}
+                      onClick={() => triggerAttendance(recommended.session, "check_in")}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2 text-xs font-black text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
                     >
-                      <LogIn className="h-3.5 w-3.5" /> Chấm Vào ngay
+                      {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogIn className="h-3.5 w-3.5" />}
+                      Chấm Vào ngay
                     </button>
                   )}
 
                   {isCheckOutReady && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setOpen(false);
-                        setActiveModal({ session: recommended.session, type: "check_out", adminTestMode: false });
-                      }}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2 text-xs font-black text-white shadow-sm hover:bg-emerald-700"
+                      disabled={bioBusy}
+                      onClick={() => triggerAttendance(recommended.session, "check_out")}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2 text-xs font-black text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                     >
-                      <LogOut className="h-3.5 w-3.5" /> Chấm Ra ngay
+                      {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+                      Chấm Ra ngay
                     </button>
                   )}
 
@@ -247,8 +295,8 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
                   </p>
                   {sessions.map((sess) => {
                     const att = sess.attendance;
-                    const canIn = enrollmentApproved && sess.policies?.checkIn?.canCheckIn;
-                    const canOut = enrollmentApproved && sess.policies?.checkOut?.canCheckOut;
+                    const canIn = canAttend && sess.policies?.checkIn?.canCheckIn;
+                    const canOut = canAttend && sess.policies?.checkOut?.canCheckOut;
                     return (
                       <div
                         key={sess.id}
@@ -269,10 +317,8 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
                         ) : canOut ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              setOpen(false);
-                              setActiveModal({ session: sess, type: "check_out", adminTestMode: false });
-                            }}
+                            disabled={bioBusy}
+                            onClick={() => triggerAttendance(sess, "check_out")}
                             className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-[10px] font-bold text-white"
                           >
                             Ra
@@ -280,10 +326,8 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
                         ) : canIn ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              setOpen(false);
-                              setActiveModal({ session: sess, type: "check_in", adminTestMode: false });
-                            }}
+                            disabled={bioBusy}
+                            onClick={() => triggerAttendance(sess, "check_in")}
                             className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white"
                           >
                             Vào
@@ -314,8 +358,18 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
                     onClick={() => setOpen(false)}
                     className="font-semibold text-indigo-600 hover:underline dark:text-sky-400"
                   >
-                    Duyệt Face ID & Lương →
+                    Bảng lương & Công →
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      setActiveModal({ session: null, type: "admin_test", adminTestMode: true });
+                    }}
+                    className="font-semibold text-slate-400 hover:text-violet-600 dark:hover:text-violet-400"
+                  >
+                    Test AWS
+                  </button>
                 </div>
               )}
             </div>
