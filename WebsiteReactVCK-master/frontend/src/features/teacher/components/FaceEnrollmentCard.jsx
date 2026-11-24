@@ -25,6 +25,7 @@ import {
   submitTeacherFaceEnrollment,
 } from "../../api/teacherFaceAttendanceClient";
 import {
+  detectDeviceBiometricInfo,
   isDeviceBiometricsSupported,
   registerDeviceBiometrics,
   testDeviceBiometrics,
@@ -64,6 +65,8 @@ export default function FaceEnrollmentCard() {
   const { authUser } = useAuthContext();
   const isAdmin = authUser?.role === "admin";
   const bioSupported = isDeviceBiometricsSupported();
+  const bioInfo = detectDeviceBiometricInfo();
+  const BioIcon = bioInfo.kind === "face_id" ? ScanFace : Fingerprint;
 
   const [loading, setLoading] = useState(true);
   const [biometrics, setBiometrics] = useState([]);
@@ -268,11 +271,11 @@ export default function FaceEnrollmentCard() {
         <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-100 pb-3 dark:border-slate-800">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
-              <Fingerprint className="h-5 w-5" />
+              <BioIcon className="h-5 w-5" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-sm sm:text-base font-bold text-[#102f63] dark:text-white">
-                Face ID / Vân tay thiết bị
+                {bioInfo.label} chấm công
               </h2>
               <span
                 className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${
@@ -294,8 +297,8 @@ export default function FaceEnrollmentCard() {
               onClick={handleTestDevice}
               className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
             >
-              {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Fingerprint className="h-3.5 w-3.5" />}
-              Test thử
+              {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BioIcon className="h-3.5 w-3.5" />}
+              Test {bioInfo.shortLabel}
             </button>
           )}
         </div>
@@ -350,8 +353,8 @@ export default function FaceEnrollmentCard() {
                 onClick={handleRegisterDevice}
                 className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
               >
-                {bioBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Fingerprint className="h-4 w-4" />}
-                {hasDeviceBio ? "Thêm thiết bị này" : "Đăng ký Face ID / Vân tay máy này"}
+                {bioBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BioIcon className="h-4 w-4" />}
+                {hasDeviceBio ? "Thêm thiết bị này" : `Đăng ký ${bioInfo.label} máy này`}
               </button>
             ) : (
               <p className="text-xs text-amber-700 dark:text-amber-300">

@@ -9,6 +9,7 @@ import {
   LogIn,
   LogOut,
   RefreshCw,
+  ScanFace,
   ShieldCheck,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -16,6 +17,7 @@ import { useAuthContext } from "../../../context/AuthContext";
 import { fetchTeacherTodaySmartAttendance } from "../../api/teacherFaceAttendanceClient";
 import {
   checkInOrOutWithDeviceBiometrics,
+  detectDeviceBiometricInfo,
   isDeviceBiometricsSupported,
   registerDeviceBiometrics,
   testDeviceBiometrics,
@@ -35,6 +37,8 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
   const { authUser } = useAuthContext();
   const isAdmin = authUser?.role === "admin";
   const bioSupported = isDeviceBiometricsSupported();
+  const bioInfo = detectDeviceBiometricInfo();
+  const BioIcon = bioInfo.kind === "face_id" ? ScanFace : Fingerprint;
 
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
@@ -167,13 +171,13 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
             if (next) loadToday();
           }}
           aria-expanded={open}
-          title="Chấm công Face ID / Vân tay"
+          title={`Chấm công ${bioInfo.label}`}
           className={`relative inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-bold transition ${triggerClass}`}
         >
           {isAllDone ? (
             <ShieldCheck className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
           ) : (
-            <Fingerprint className="h-4 w-4" />
+            <BioIcon className="h-4 w-4" />
           )}
           <span className="hidden sm:inline">{triggerLabel}</span>
           {(isCheckInReady || isCheckOutReady) && (
@@ -186,9 +190,9 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <Fingerprint className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <BioIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 <span className="text-xs font-black text-slate-900 dark:text-white">
-                  Face ID / Vân tay
+                  Chấm công · {bioInfo.label}
                 </span>
               </div>
               <button
@@ -212,8 +216,8 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
                     onClick={handleQuickRegister}
                     className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
                   >
-                    {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Fingerprint className="h-4 w-4" />}
-                    Bật Face ID / Vân tay máy này
+                    {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BioIcon className="h-4 w-4" />}
+                    Bật {bioInfo.label} máy này
                   </button>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -223,8 +227,8 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
                       onClick={handleQuickTest}
                       className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50"
                     >
-                      {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Fingerprint className="h-3.5 w-3.5" />}
-                      Test Face ID / Vân tay
+                      {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BioIcon className="h-3.5 w-3.5" />}
+                      Test {bioInfo.label}
                     </button>
                     <Link
                       to="/lms/teach/settings#face-enrollment"

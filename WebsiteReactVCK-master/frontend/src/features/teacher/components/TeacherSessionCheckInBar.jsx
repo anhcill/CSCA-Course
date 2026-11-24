@@ -6,6 +6,7 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  ScanFace,
   ShieldCheck,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -13,6 +14,7 @@ import { useAuthContext } from "../../../context/AuthContext";
 import { fetchTeacherSessionFaceState } from "../../api/teacherFaceAttendanceClient";
 import {
   checkInOrOutWithDeviceBiometrics,
+  detectDeviceBiometricInfo,
   isDeviceBiometricsSupported,
   registerDeviceBiometrics,
   testDeviceBiometrics,
@@ -32,6 +34,8 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
   const { authUser } = useAuthContext();
   const isAdmin = authUser?.role === "admin";
   const bioSupported = isDeviceBiometricsSupported();
+  const bioInfo = detectDeviceBiometricInfo();
+  const BioIcon = bioInfo.kind === "face_id" ? ScanFace : Fingerprint;
 
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -124,7 +128,7 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
           {/* Left: Compact Status Pills */}
           <div className="min-w-0 flex-1 flex flex-wrap items-center gap-2 text-xs">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-black text-emerald-700 dark:bg-emerald-950/60 dark:border-emerald-800 dark:text-emerald-300">
-              <Fingerprint className="h-3.5 w-3.5" /> Chấm công
+              <BioIcon className="h-3.5 w-3.5" /> {bioInfo.label}
             </span>
 
             {!canAttend ? (
@@ -135,8 +139,8 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
                   onClick={handleRegister}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Fingerprint className="h-3.5 w-3.5" />}
-                  Bật Face ID / Vân tay máy này
+                  {bioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BioIcon className="h-3.5 w-3.5" />}
+                  Bật {bioInfo.label} máy này
                 </button>
               ) : (
                 <span className="text-amber-700 dark:text-amber-300 font-semibold">
@@ -227,7 +231,7 @@ export default function TeacherSessionCheckInBar({ sessionId, sessionTitle }) {
                 onClick={handleTest}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-50"
               >
-                <Fingerprint className="h-3.5 w-3.5" /> Test máy
+                <BioIcon className="h-3.5 w-3.5" /> Test {bioInfo.shortLabel}
               </button>
             )}
           </div>

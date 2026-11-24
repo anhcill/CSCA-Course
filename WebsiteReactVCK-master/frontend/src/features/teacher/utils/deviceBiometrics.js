@@ -13,6 +13,35 @@ export const isDeviceBiometricsSupported = () =>
   && Boolean(navigator?.credentials?.create)
   && Boolean(navigator?.credentials?.get);
 
+/**
+ * Detects whether the current device uses Apple Face ID vs Fingerprint / Touch ID / Windows Hello.
+ * - Every Face ID iPhone (X -> 17 Pro Max) has screen max dimension >= 812pt; Touch ID iPhones (SE/6/7/8) are <= 736pt.
+ * - Android, Mac Touch ID, and Windows default to Fingerprint icon & native label.
+ */
+export const detectDeviceBiometricInfo = () => {
+  if (typeof navigator === "undefined" || typeof window === "undefined") {
+    return { kind: "fingerprint", label: "Vân tay", shortLabel: "Vân tay" };
+  }
+  const ua = navigator.userAgent || "";
+  const maxDim = Math.max(window.screen?.width || 0, window.screen?.height || 0);
+  const isIPhone = /iPhone/i.test(ua);
+  const isIPad = /iPad/i.test(ua) || (navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1);
+
+  if ((isIPhone && maxDim >= 812) || (isIPad && maxDim >= 1180)) {
+    return { kind: "face_id", label: "Face ID", shortLabel: "Face ID" };
+  }
+  if (isIPhone || isIPad || /Macintosh|Mac OS X/i.test(ua)) {
+    return { kind: "fingerprint", label: "Touch ID", shortLabel: "Touch ID" };
+  }
+  if (/Android/i.test(ua)) {
+    return { kind: "fingerprint", label: "Vân tay", shortLabel: "Vân tay" };
+  }
+  if (/Windows/i.test(ua)) {
+    return { kind: "fingerprint", label: "Windows Hello", shortLabel: "Vân tay" };
+  }
+  return { kind: "fingerprint", label: "Vân tay", shortLabel: "Vân tay" };
+};
+
 const base64UrlToUint8Array = (base64url) => {
   const str = String(base64url || "").replace(/-/g, "+").replace(/_/g, "/");
   const pad = str.length % 4 ? "=".repeat(4 - (str.length % 4)) : "";
