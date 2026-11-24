@@ -167,11 +167,11 @@ export default function NotificationBell({ variant = "default" }) {
       </button>
 
       {open && (
-        <div className={`absolute right-0 z-[60] mt-3 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border shadow-2xl ${palette.border} ${palette.menu}`}>
-          <div className={`flex items-center justify-between border-b ${palette.border} p-4 ${palette.header}`}>
-            <div>
+        <div className={`fixed inset-x-3 top-[4.5rem] z-[60] max-h-[calc(100dvh-5.25rem)] overflow-hidden rounded-3xl border shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-3 sm:w-[min(24rem,calc(100vw-2rem))] ${palette.border} ${palette.menu}`}>
+          <div className={`flex items-start justify-between gap-3 border-b ${palette.border} p-3.5 sm:p-4 ${palette.header}`}>
+            <div className="min-w-0">
               <p className={`text-sm font-black ${palette.title}`}>Thông báo</p>
-              <p className={`mt-0.5 text-[11px] ${palette.muted}`}>
+              <p className={`mt-0.5 break-words text-[11px] ${palette.muted}`}>
                 {unreadCount ? `${unreadCount} thông báo chưa đọc` : "Bạn đã đọc hết thông báo"}
               </p>
             </div>
@@ -179,14 +179,14 @@ export default function NotificationBell({ variant = "default" }) {
               <button
                 type="button"
                 onClick={markAll}
-                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition ${palette.mark}`}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition ${palette.mark}`}
               >
                 <CheckCheck className="h-3.5 w-3.5" /> Đọc tất cả
               </button>
             )}
           </div>
 
-          <div className="max-h-[min(29rem,65vh)] overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:max-h-[min(29rem,65vh)]">
             {loading ? (
               <Loading loading={true} text="Đang tải thông báo..." fullScreen={false} className="py-8" />
             ) : notifications.length === 0 ? (
@@ -200,7 +200,7 @@ export default function NotificationBell({ variant = "default" }) {
                     key={notification.id}
                     type="button"
                     onClick={() => openNotification(notification)}
-                    className={`flex w-full items-start gap-3 border-b ${palette.border} p-4 text-left transition last:border-b-0 ${palette.item} ${notification.is_read ? palette.read : palette.unread}`}
+                    className={`flex w-full items-start gap-2.5 border-b ${palette.border} p-3.5 text-left transition last:border-b-0 sm:gap-3 sm:p-4 ${palette.item} ${notification.is_read ? palette.read : palette.unread}`}
                   >
                     <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-base ${palette.icon}`}>
                       {meta.icon}
@@ -212,10 +212,10 @@ export default function NotificationBell({ variant = "default" }) {
                           <span className={`h-1.5 w-1.5 rounded-full ${palette.unreadDot}`} />
                         )}
                       </span>
-                      <span className={`mt-1 block truncate text-xs ${notification.is_read ? "font-semibold opacity-85" : "font-extrabold"} ${palette.title}`}>
+                      <span className={`mt-1 block break-words text-xs leading-5 ${notification.is_read ? "font-semibold opacity-85" : "font-extrabold"} ${palette.title}`}>
                         {notification.title}
                       </span>
-                      <span className={`mt-1 block line-clamp-2 text-[11px] leading-4 ${palette.muted}`}>
+                      <span className={`mt-1 block break-words text-[11px] leading-4 ${palette.muted}`}>
                         {notification.message}
                       </span>
                       <span className={`mt-1.5 block text-[10px] ${palette.muted}`}>

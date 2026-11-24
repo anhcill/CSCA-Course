@@ -123,7 +123,7 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
         </button>
 
         {open && (
-          <div className="absolute right-0 mt-2 w-[min(22rem,92vw)] overflow-hidden rounded-2xl border border-[#c4def0] bg-white/95 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95">
+          <div className="fixed inset-x-3 top-[4.5rem] z-[60] max-h-[calc(100dvh-5.5rem)] overflow-hidden rounded-2xl border border-[#c4def0] bg-white/95 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(22rem,calc(100vw-2rem))]">
             {/* Popover Header */}
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
               <div className="flex items-center gap-2">
@@ -143,7 +143,7 @@ export default function TeacherHeaderAttendanceButton({ isDarkMode }) {
               </button>
             </div>
 
-            <div className="max-h-[70vh] overflow-y-auto p-3.5 space-y-3 text-xs">
+            <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto p-3.5 space-y-3 text-xs sm:max-h-[70vh]">
               {/* Enrollment notice */}
               {!enrollmentApproved && !isAdmin && (
                 <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">

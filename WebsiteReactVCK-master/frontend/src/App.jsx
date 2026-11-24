@@ -46,6 +46,27 @@ import FloatingContactMenu from "./components/common/FloatingContactMenu.jsx";
 import AppErrorBoundary from "./components/common/AppErrorBoundary.jsx";
 import RouteLoadingFallback from "./components/common/RouteLoadingFallback.jsx";
 
+function GlobalToaster() {
+  return (
+    <Toaster
+      position="top-center"
+      reverseOrder={false}
+      containerStyle={{
+        top: "max(12px, env(safe-area-inset-top))",
+        left: 12,
+        right: 12,
+      }}
+      toastOptions={{
+        style: {
+          maxWidth: "min(420px, calc(100vw - 24px))",
+          overflowWrap: "anywhere",
+          padding: "12px 14px",
+        },
+      }}
+    />
+  );
+}
+
 // LMS feature pages
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.jsx"));
 const Dashboard = lazy(() => import("./pages/admin/Dashboard.jsx"));
@@ -339,7 +360,7 @@ function AppContent() {
   if (shouldShowWelcome) {
     return (
       <div className="fixed inset-0 z-[9999] h-screen w-screen overflow-hidden bg-slate-950">
-        <Toaster position="top-center" reverseOrder={false} />
+        <GlobalToaster />
         <FirstTimeWelcomeModal />
       </div>
     );
@@ -348,7 +369,7 @@ function AppContent() {
   if (isLiveRoomPage) {
     return (
       <div className="fixed inset-0 z-50 h-screen w-screen overflow-hidden bg-slate-950">
-        <Toaster position="top-center" reverseOrder={false} />
+        <GlobalToaster />
         <LmsRouteGuard allowedRoles={[...TEACHER_ROLES, USER_ROLES.STUDENT]}>
           <AppRoutes pathname={pathname} />
         </LmsRouteGuard>
@@ -371,7 +392,7 @@ function AppContent() {
     const assessmentContent = <AppRoutes pathname={pathname} />;
     return (
       <div className="assessment-shell">
-        <Toaster position="top-center" reverseOrder={false} />
+        <GlobalToaster />
         {isLmsPage ? (
           <LmsRouteGuard allowedRoles={[USER_ROLES.STUDENT]}>
             {assessmentContent}
@@ -394,7 +415,7 @@ function AppContent() {
   if (isVideoCoursePage) {
     return (
       <div className="min-h-screen bg-[#f8fafc] dark:bg-slate-950">
-        <Toaster position="top-center" reverseOrder={false} />
+        <GlobalToaster />
         <AppRoutes pathname={pathname} />
         <PwaInstallPrompt />
         <SessionExpiredModal
@@ -421,7 +442,7 @@ function AppContent() {
 
     return (
       <div className="min-h-screen">
-        <Toaster position="top-center" reverseOrder={false} />
+        <GlobalToaster />
         <LmsRouteGuard allowedRoles={allowedRoles}>
           <AppErrorBoundary resetKey={pathname}>
             <Suspense fallback={<RouteLoadingFallback />}>
@@ -448,7 +469,7 @@ function AppContent() {
   return (
     <div className="flex flex-col min-h-screen">
       {!isAdminPage && <Navbar />}
-      <Toaster position="top-center" reverseOrder={false} />
+      <GlobalToaster />
       <main className={`flex-grow ${isAdminPage ? "" : "pt-16 xl:pt-[108px]"}`}>
         <AppRoutes pathname={pathname} />
       </main>

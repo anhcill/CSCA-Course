@@ -99,11 +99,11 @@ export default function NotificationItemCard({
   return (
     <article
       onClick={handleCardClick}
-      className="group relative flex items-center justify-between gap-3.5 sm:gap-4 rounded-3xl border border-white/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 p-4 sm:p-5 shadow-[0_4px_24px_rgba(32,78,120,0.06)] hover:shadow-md transition-all duration-200 backdrop-blur-md cursor-pointer hover:border-sky-200 dark:hover:border-slate-700"
+      className="group relative flex cursor-pointer items-start justify-between gap-2.5 rounded-3xl border border-white/90 bg-white/95 p-3.5 shadow-[0_4px_24px_rgba(32,78,120,0.06)] backdrop-blur-md transition-all duration-200 hover:border-sky-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/90 dark:hover:border-slate-700 sm:items-center sm:gap-4 sm:p-5"
     >
       {/* Icon Box */}
       <div
-        className={`flex h-12 w-12 sm:h-13 sm:w-13 shrink-0 items-center justify-center rounded-2xl shadow-2xs transition-transform duration-200 group-hover:scale-105 ${visual.boxClass}`}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl shadow-2xs transition-transform duration-200 group-hover:scale-105 sm:h-12 sm:w-12 ${visual.boxClass}`}
       >
         <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
       </div>
@@ -111,7 +111,7 @@ export default function NotificationItemCard({
       {/* Content info */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <h3 className="text-sm sm:text-base font-bold text-[#102f63] dark:text-white line-clamp-1 group-hover:text-blue-700 dark:group-hover:text-sky-300 transition">
+          <h3 className="break-words text-sm font-bold text-[#102f63] transition group-hover:text-blue-700 dark:text-white dark:group-hover:text-sky-300 sm:text-base">
             {notification.title}
           </h3>
           {isNew && (
@@ -120,24 +120,27 @@ export default function NotificationItemCard({
             </span>
           )}
         </div>
-        <p className="mt-1 text-xs text-[#487291] dark:text-slate-400 leading-relaxed line-clamp-2">
+        <p className="mt-1 break-words text-xs leading-relaxed text-[#487291] dark:text-slate-400">
           {notification.message}
         </p>
+        <span className="mt-1.5 block text-[10px] font-medium text-slate-400 dark:text-slate-500 sm:hidden">
+          {notification.timeDisplay || "Vừa xong"}
+        </span>
       </div>
 
       {/* Right meta actions */}
       <div
-        className="flex items-center gap-2.5 sm:gap-3.5 shrink-0 ml-1"
+        className="ml-0 flex shrink-0 items-center gap-1.5 sm:ml-1 sm:gap-3.5"
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="text-xs text-slate-400 dark:text-slate-500 font-medium whitespace-nowrap">
+        <span className="hidden whitespace-nowrap text-xs font-medium text-slate-400 dark:text-slate-500 sm:inline">
           {notification.timeDisplay || "Vừa xong"}
         </span>
 
         {/* Read / Unread Indicator Dot */}
         {!isRead && (
           <span
-            className="h-2.5 w-2.5 rounded-full bg-blue-600 shrink-0 shadow-xs shadow-blue-500/50"
+            className="hidden h-2.5 w-2.5 shrink-0 rounded-full bg-blue-600 shadow-xs shadow-blue-500/50 sm:block"
             title="Chưa đọc"
           />
         )}
