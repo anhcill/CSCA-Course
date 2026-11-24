@@ -26,7 +26,6 @@ import {
   FiUploadCloud,
   FiUsers,
   FiUserX,
-  FiVideo,
   FiX,
   FiXCircle,
 } from "react-icons/fi";
@@ -42,18 +41,14 @@ import {
   fetchAdminVideoCourseDetail,
   fetchAdminVideoCourseStudents,
   fetchAdminVideoCoursesOverview,
-  fetchPendingMembershipApprovals,
   publishAdminVideo,
   publishAdminVideoCourse,
   reorderAdminVideoCourseCurriculum,
   replaceAdminVideo,
-  reviewAdminMembership,
   revokeAdminUserTrustedDevice,
   revokeAdminVideoCourseStudentAccess,
   saveAdminVideoCourseProfile,
   unpublishAdminVideo,
-  updateAdminVideoCourseLesson,
-  updateAdminReferencedVideoCourseUnit,
   updateAdminVideoCourseUnitPreview,
 } from "../../features/api/lmsClient";
 import UnitContentEditorModal from "../../features/admin/components/UnitContentEditorModal";
@@ -150,27 +145,27 @@ const VIDEO_STATUS_META = {
     dotClass: "bg-slate-400",
   },
   uploading: {
-    label: "Uploading",
+    label: "Đang tải lên",
     badgeClass: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-800",
     dotClass: "bg-sky-500 animate-pulse",
   },
   processing: {
-    label: "Processing",
+    label: "Đang xử lý",
     badgeClass: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800",
     dotClass: "bg-amber-500 animate-pulse",
   },
   ready: {
-    label: "Ready (Chưa publish)",
+    label: "Sẵn sàng (chưa xuất bản)",
     badgeClass: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800",
     dotClass: "bg-indigo-500",
   },
   published: {
-    label: "Published",
+    label: "Đã xuất bản",
     badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800",
     dotClass: "bg-emerald-500",
   },
   failed: {
-    label: "Encode Failed",
+    label: "Lỗi xử lý",
     badgeClass: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800",
     dotClass: "bg-rose-500",
   },
@@ -182,22 +177,6 @@ const formatDuration = (seconds) => {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-};
-
-const normalizeRecordLessonTitle = (value) => {
-  const seen = new Set();
-  return String(value || "")
-    .trim()
-    .split(/\s*;\s*/u)
-    .map((part) => part.replace(/^\s*chương\s+\d+(?:[.-]\d+)*\s*[:–—-]\s*/iu, "").trim())
-    .filter(Boolean)
-    .filter((part) => {
-      const key = part.toLocaleLowerCase("vi");
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .join(" · ");
 };
 
 const formatStudentDate = (value) => {
@@ -227,8 +206,6 @@ const AdminVideoCoursesPage = () => {
   const [studentQuery, setStudentQuery] = useState("");
   const [studentFilter, setStudentFilter] = useState("all");
   const [revokingStudentId, setRevokingStudentId] = useState(null);
-  const [pendingRecordApprovals, setPendingRecordApprovals] = useState([]);
-  const [reviewingMembershipId, setReviewingMembershipId] = useState(null);
 
   // Profile configuration form state
   const [modeInput, setModeInput] = useState("MIRROR");
@@ -245,8 +222,6 @@ const AdminVideoCoursesPage = () => {
   const [addingSection, setAddingSection] = useState(false);
   const [newLessonBySection, setNewLessonBySection] = useState({});
   const [addingLessonSectionId, setAddingLessonSectionId] = useState(null);
-  const [editingLesson, setEditingLesson] = useState(null);
-  const [savingLesson, setSavingLesson] = useState(false);
 
   // Video Upload / Attach modal state
   const [uploadModalUnit, setUploadModalUnit] = useState(null); // { id, title, unitType: 'class_session' | 'lesson', replaceVideoId?: string }
@@ -263,22 +238,10 @@ const AdminVideoCoursesPage = () => {
   const loadOverview = useCallback(async (keepCourseId = null) => {
     try {
       setLoadingOverview(true);
-      const [res, approvalsRes] = await Promise.all([
-        fetchAdminVideoCoursesOverview(),
-        fetchPendingMembershipApprovals().catch(() => null),
-      ]);
+      const res = await fetchAdminVideoCoursesOverview();
       const list = res?.data?.courses || [];
       setCourses(list);
       setOverLimitAccounts(res?.data?.overLimitDeviceAccounts || []);
-      const allPending = Array.isArray(approvalsRes?.data) ? approvalsRes.data : [];
-      const videoCourseIds = new Set(list.map((c) => String(c.id)));
-      setPendingRecordApprovals(
-        allPending.filter(
-          (item) =>
-            String(item.learning_mode || "").toLowerCase() === "recording"
-            || (item.course_id != null && videoCourseIds.has(String(item.course_id))),
-        ),
-      );
       const targetId = keepCourseId || selectedCourseId || list[0]?.id || null;
       if (targetId) {
         setSelectedCourseId(String(targetId));
@@ -358,7 +321,7 @@ const AdminVideoCoursesPage = () => {
     e?.preventDefault();
     if (!selectedCourseId) return;
     if (modeInput === "MIRROR" && !sourceLiveClassIdInput) {
-      toast.error("Chế độ MIRROR bắt buộc phải chọn Lớp Live nguồn cùng khóa học");
+      toast.error("Chế độ đồng bộ lớp trực tuyến cần chọn lớp nguồn cùng khóa học");
       return;
     }
 
@@ -393,7 +356,7 @@ const AdminVideoCoursesPage = () => {
       toast.success(res?.message || (publishState ? "Đã xuất bản khóa học!" : "Đã chuyển về nháp"));
       await Promise.all([loadOverview(selectedCourseId), loadCourseDetail(selectedCourseId)]);
     } catch (error) {
-      toast.error(error?.message || "Chưa đạt đủ 5 tiêu chí Publish Checklist");
+      toast.error(error?.message || "Chưa đạt đủ 5 tiêu chí điều kiện xuất bản");
       if (error?.details?.data?.publishChecklist && courseDetail) {
         setCourseDetail({
           ...courseDetail,
@@ -487,8 +450,7 @@ const AdminVideoCoursesPage = () => {
 
   const handleAddLesson = async (sectionId) => {
     const draft = newLessonBySection[sectionId] || {};
-    const rawTitle = (draft.title || "").trim();
-    const title = normalizeRecordLessonTitle(rawTitle);
+    const title = (draft.title || "").trim();
     if (!title) {
       toast.error("Vui lòng nhập tên bài học");
       return;
@@ -499,7 +461,7 @@ const AdminVideoCoursesPage = () => {
         sectionId: sectionId === "unsectioned" ? null : Number(sectionId),
         title,
         durationSeconds: Number(draft.durationMinutes || 15) * 60,
-        isPublished: !/^\s*buổi\s+học\s+bù\s+26\s*\/\s*10(?:\b|\s|$)/iu.test(rawTitle),
+        isPublished: true,
       });
       setNewLessonBySection((prev) => ({
         ...prev,
@@ -536,7 +498,6 @@ const AdminVideoCoursesPage = () => {
   };
 
   const handleDeleteLesson = async (lessonId) => {
-    if (!window.confirm("Xóa hẳn bài học khỏi khóa Record? Nếu chỉ muốn học viên không thấy, hãy dùng nút Ẩn khỏi khóa.")) return;
     try {
       await deleteAdminVideoCourseLesson(lessonId);
       toast.success("Đã xóa bài học");
@@ -546,93 +507,15 @@ const AdminVideoCoursesPage = () => {
     }
   };
 
-  const openLessonEditor = (lesson) => {
-    setEditingLesson({
-      id: lesson.id,
-      title: lesson.title || "",
-      description: lesson.description || "",
-      durationMinutes: Math.max(0, Math.round(Number(lesson.durationSeconds || 0) / 60)),
-      isPublished: lesson.isPublished !== false,
-      unitType: lesson.unitType || "lesson",
-    });
-  };
-
-  const handleSaveLesson = async (e) => {
-    e.preventDefault();
-    if (!editingLesson?.id) return;
-    const title = normalizeRecordLessonTitle(editingLesson.title);
-    if (!title) {
-      toast.error("Vui lòng nhập tên bài học");
-      return;
-    }
-    const minutes = Number(editingLesson.durationMinutes);
-    if (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440) {
-      toast.error("Thời lượng phải từ 0 đến 1440 phút");
-      return;
-    }
-
-    try {
-      setSavingLesson(true);
-      const save = editingLesson.unitType === "recording_reference"
-        ? updateAdminReferencedVideoCourseUnit(
-          selectedCourseId,
-          editingLesson.sourceClassSessionId || editingLesson.id,
-          {
-            unitOverrideId: editingLesson.unitOverrideId,
-          title,
-          description: editingLesson.description || "",
-          durationSeconds: Math.round(minutes * 60),
-          isPublished: Boolean(editingLesson.isPublished),
-          },
-        )
-        : updateAdminVideoCourseLesson(editingLesson.id, {
-          title,
-          description: editingLesson.description || "",
-          durationSeconds: Math.round(minutes * 60),
-          isPublished: Boolean(editingLesson.isPublished),
-        });
-      const res = await save;
-      toast.success(res?.message || "Đã cập nhật bài học");
-      setEditingLesson(null);
-      await Promise.all([loadOverview(selectedCourseId), loadCourseDetail(selectedCourseId)]);
-    } catch (error) {
-      toast.error(error?.message || "Không thể cập nhật bài học");
-    } finally {
-      setSavingLesson(false);
-    }
-  };
-
-  const handleToggleLessonVisibility = async (lesson) => {
-    try {
-      const nextValue = !lesson.isPublished;
-      if (lesson.unitType === "recording_reference") {
-        await updateAdminReferencedVideoCourseUnit(
-          selectedCourseId,
-          lesson.sourceClassSessionId || lesson.id,
-          { unitOverrideId: lesson.unitOverrideId, isPublished: nextValue },
-        );
-      } else {
-        await updateAdminVideoCourseLesson(lesson.id, { isPublished: nextValue });
-      }
-      toast.success(nextValue ? "Đã hiện bài học trong khóa Record" : "Đã ẩn bài học, dữ liệu vẫn được giữ nguyên");
-      await Promise.all([loadOverview(selectedCourseId), loadCourseDetail(selectedCourseId)]);
-    } catch (error) {
-      toast.error(error?.message || "Không thể cập nhật trạng thái bài học");
-    }
-  };
-
   // Bunny Stream TUS Upload Intent & Attach Workflow
   const openUploadModal = (unit, unitType, replaceVideoId = null) => {
     setUploadModalUnit({
       id: unit.id,
-      sourceClassSessionId: unit.sourceClassSessionId || null,
-      unitOverrideId: unit.unitOverrideId || null,
       title: unit.title,
       unitType,
-      profileId: courseDetail?.profile?.id || null,
       replaceVideoId,
     });
-    setUploadVideoTitle(unit.title || "Video bài giảng Bunny Stream");
+    setUploadVideoTitle(unit.title || "Video bài giảng");
     setUploadFile(null);
     setUploadProgress(0);
     setUploadStage("idle");
@@ -644,7 +527,7 @@ const AdminVideoCoursesPage = () => {
     e.preventDefault();
     if (!uploadModalUnit || !uploadVideoTitle.trim()) return;
     if (!uploadFile) {
-      toast.error("Vui lòng chọn file video cần tải lên Bunny Stream");
+      toast.error("Vui lòng chọn tệp video cần tải lên");
       return;
     }
 
@@ -678,18 +561,13 @@ const AdminVideoCoursesPage = () => {
       if (uploadModalUnit.replaceVideoId) {
         await replaceAdminVideo(uploadModalUnit.replaceVideoId, Number(intent.assetId));
       } else {
-        await attachVideoToLearningUnit(
-          uploadModalUnit.sourceClassSessionId || uploadModalUnit.id,
-          {
+        await attachVideoToLearningUnit(uploadModalUnit.id, {
           videoAssetId: Number(intent.assetId),
           unitType: uploadModalUnit.unitType,
-          profileId: uploadModalUnit.profileId,
-          unitOverrideId: uploadModalUnit.unitOverrideId,
           title: uploadVideoTitle.trim(),
           videoType: "primary",
           isPublished: uploadAutoPublish,
-          },
-        );
+        });
       }
 
       setUploadProgress(100);
@@ -722,14 +600,14 @@ const AdminVideoCoursesPage = () => {
     try {
       if (video.isPublished) {
         await unpublishAdminVideo(video.assetId);
-        toast.success("Đã ẩn video (Unpublished)");
+        toast.success("Đã ẩn video");
       } else {
         await publishAdminVideo(video.assetId);
-        toast.success("Đã xuất bản video (Published)");
+        toast.success("Đã xuất bản video");
       }
       await Promise.all([loadOverview(selectedCourseId), loadCourseDetail(selectedCourseId)]);
     } catch (error) {
-      toast.error(error?.message || "Không thể thay đổi trạng thái publish của video");
+      toast.error(error?.message || "Không thể thay đổi trạng thái xuất bản của video");
     }
   };
 
@@ -746,13 +624,7 @@ const AdminVideoCoursesPage = () => {
   const handleTogglePublicPreview = async (unit, unitType) => {
     try {
       const nextValue = !unit.isPublicPreview;
-      const res = unit.unitType === "recording_reference"
-        ? await updateAdminReferencedVideoCourseUnit(
-          selectedCourseId,
-          unit.sourceClassSessionId || unit.id,
-          { unitOverrideId: unit.unitOverrideId, isPublicPreview: nextValue },
-        )
-        : await updateAdminVideoCourseUnitPreview(unitType, unit.id, nextValue);
+      const res = await updateAdminVideoCourseUnitPreview(unitType, unit.id, nextValue);
       toast.success(res?.message || (nextValue ? "Đã mở buổi học thử" : "Đã tắt buổi học thử"));
       await loadCourseDetail(selectedCourseId);
     } catch (error) {
@@ -799,150 +671,75 @@ const AdminVideoCoursesPage = () => {
     });
   }, [courseStudents, studentFilter, studentQuery]);
   const uploadBusy = ["intent", "tus", "attaching"].includes(uploadStage);
-
-  const handleReviewRecordMembership = async (membershipId, decision) => {
-    setReviewingMembershipId(`${membershipId}:${decision}`);
-    try {
-      await reviewAdminMembership(membershipId, decision);
-      toast.success(decision === "approved" ? "Đã duyệt ghi danh khóa Record" : "Đã từ chối ghi danh khóa Record");
-      await loadOverview(selectedCourseId);
-      if (selectedCourseId) {
-        await loadCourseStudents(selectedCourseId, courseDetail?.profile?.id);
-      }
-    } catch (error) {
-      toast.error(error?.message || "Không thể xử lý yêu cầu duyệt ghi danh");
-    } finally {
-      setReviewingMembershipId(null);
-    }
-  };
+  const cardClass =
+    "rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 p-4 sm:p-5 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none";
+  const inputClass =
+    "w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header Banner */}
-      <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 p-6 text-white shadow-xl">
-        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-200 ring-1 ring-blue-400/30">
-              <FiVideo className="h-3.5 w-3.5" />
-              <span>BUNNY STREAM VIDEO STUDIO • DUAL-MODE</span>
-            </div>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
-              Quản trị Khóa Học Video & Bản Ghi
-            </h1>
-            <p className="mt-1 max-w-3xl text-sm text-slate-300">
-              Vận hành song song 2 mô hình: <strong className="text-white">Mode 1 (MIRROR)</strong> kế thừa giáo trình từ lớp Live nguồn và{" "}
-              <strong className="text-white">Mode 2 (INDEPENDENT)</strong> xây dựng giáo trình video tự học độc lập có kiểm duyệt Publish Checklist 5 bước.
-            </p>
-          </div>
+    <div className="min-w-0 space-y-5 text-slate-900 dark:text-slate-100">
+      {/* Compact Page Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63] dark:text-white">
+            Khóa học Video & Bản ghi
+          </h1>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Cấu hình khóa video đồng bộ lớp trực tuyến hoặc tự học độc lập, quản lý học viên và tải video bài giảng.
+          </p>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {selectedCourseId && (
-              <Link
-                to={`/lms/video-courses/${selectedCourseId}`}
-                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-xs font-semibold text-white backdrop-blur-md transition hover:bg-white/20"
-              >
-                <FiExternalLink className="h-4 w-4" />
-                <span>Mở Workspace Học viên</span>
-              </Link>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                loadOverview(selectedCourseId);
-                if (selectedCourseId) {
-                  loadCourseDetail(selectedCourseId);
-                  loadCourseStudents(selectedCourseId, courseDetail?.profile?.id);
-                }
-              }}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-500"
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedCourseId && (
+            <Link
+              to={`/lms/video-courses/${selectedCourseId}`}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition"
             >
-              <FiRefreshCw className={`h-4 w-4 ${loadingOverview || loadingDetail || loadingStudents ? "animate-spin" : ""}`} />
-              <span>Làm mới dữ liệu</span>
-            </button>
-          </div>
+              <FiExternalLink className="h-3.5 w-3.5" />
+              <span>Xem trang học viên</span>
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              loadOverview(selectedCourseId);
+              if (selectedCourseId) {
+                loadCourseDetail(selectedCourseId);
+                loadCourseStudents(selectedCourseId, courseDetail?.profile?.id);
+              }
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition"
+          >
+            <FiRefreshCw className={`h-3.5 w-3.5 ${loadingOverview || loadingDetail || loadingStudents ? "animate-spin" : ""}`} />
+            <span>Làm mới dữ liệu</span>
+          </button>
         </div>
       </div>
 
-      {/* Pending Record Membership Approvals from InternalManagement */}
-      {pendingRecordApprovals.length > 0 && (
-        <div className="rounded-2xl border border-amber-300/80 bg-amber-50/90 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-950/30">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-bold text-amber-950 dark:text-amber-100">
-                Chờ duyệt học viên khóa Record từ hệ thống quản lý ({pendingRecordApprovals.length})
-              </h3>
-              <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-200">
-                Học viên đồng bộ từ InternalManagement vào khóa Record cần quản trị viên duyệt để mở quyền truy cập.
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 space-y-2">
-            {pendingRecordApprovals.map((item) => (
-              <div
-                key={`record-approval-${item.id}`}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-800/70 dark:bg-slate-900"
-              >
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="font-bold text-slate-900 dark:text-white">{item.student_name}</span>
-                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300">
-                    Record
-                  </span>
-                  <span className="text-slate-600 dark:text-slate-300">{item.class_title}</span>
-                  <span className="text-slate-400">· {item.email}</span>
-                  {item.management_membership_status && item.management_membership_status !== "active" && (
-                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
-                      Internal: {item.management_membership_status}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={Boolean(reviewingMembershipId)}
-                    onClick={() => handleReviewRecordMembership(item.id, "approved")}
-                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50"
-                  >
-                    Duyệt ghi danh
-                  </button>
-                  <button
-                    type="button"
-                    disabled={Boolean(reviewingMembershipId)}
-                    onClick={() => handleReviewRecordMembership(item.id, "rejected")}
-                    className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-300"
-                  >
-                    Từ chối
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Section 5.1: Over-Limit Trusted Devices Warning Banner */}
+      {/* Over-Limit Trusted Devices Warning Banner */}
       {overLimitAccounts.length > 0 && (
-        <div className="rounded-2xl border border-amber-300/80 bg-amber-50/90 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-950/30">
+        <div className="rounded-2xl sm:rounded-3xl border border-amber-200/90 bg-amber-50/85 p-4 dark:border-amber-800/80 dark:bg-amber-950/30">
           <div className="flex items-start gap-3">
-            <FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-            <div className="flex-1">
-              <h3 className="text-sm font-bold text-amber-900 dark:text-amber-200">
-                Cảnh báo bảo mật thiết bị: Phát hiện {overLimitAccounts.length} tài khoản đang có hơn 2 thiết bị tin cậy
+            <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-xs sm:text-sm font-black text-amber-900 dark:text-amber-200">
+                Cảnh báo thiết bị: {overLimitAccounts.length} tài khoản vượt giới hạn 2 thiết bị tin cậy
               </h3>
               <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
-                Theo chính sách giới hạn 2 thiết bị/học viên, hệ thống không tự động xóa thiết bị cũ mà để Quản trị viên chủ động chọn thiết bị cần gỡ.
+                Chọn thiết bị cần gỡ để đảm bảo chính sách giới hạn 2 thiết bị cho mỗi học viên.
               </p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
                 {overLimitAccounts.map((acc) => (
                   <div
                     key={acc.userId}
-                    className="rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-800/60 dark:bg-slate-900"
+                    className="rounded-2xl border border-amber-200/80 bg-white/95 p-3 dark:border-amber-800/60 dark:bg-slate-900/95"
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
                         <span className="text-xs font-bold text-slate-900 dark:text-white">{acc.username}</span>
                         <span className="ml-2 text-xs text-slate-500">{acc.email}</span>
                       </div>
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                         {acc.activeDeviceCount}/2 thiết bị
                       </span>
                     </div>
@@ -950,9 +747,9 @@ const AdminVideoCoursesPage = () => {
                       {acc.devices.map((dev) => (
                         <div
                           key={dev.id}
-                          className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs dark:bg-slate-800"
+                          className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-2.5 py-1.5 text-xs dark:bg-slate-800"
                         >
-                          <div className="truncate pr-2">
+                          <div className="min-w-0 truncate">
                             <span className="font-medium text-slate-700 dark:text-slate-200">
                               {dev.deviceLabel || "Thiết bị trình duyệt"}
                             </span>
@@ -963,7 +760,7 @@ const AdminVideoCoursesPage = () => {
                           <button
                             type="button"
                             onClick={() => handleRevokeExcessDevice(acc.userId, dev.id)}
-                            className="shrink-0 rounded-md bg-rose-100 px-2 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-200"
+                            className="shrink-0 rounded-lg bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700 transition hover:bg-rose-100 dark:bg-rose-950/50 dark:text-rose-300"
                           >
                             Gỡ thiết bị
                           </button>
@@ -979,16 +776,16 @@ const AdminVideoCoursesPage = () => {
       )}
 
       {/* Main Grid: Course Selector (Left 4 cols) + Course Studio (Right 8 cols) */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
         {/* Left Column: Video Course List */}
-        <div className="space-y-4 lg:col-span-4">
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
-              <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Danh sách Khóa Video</h2>
-                <p className="text-xs text-slate-500">Chọn khóa học để cấu hình Mirror / Independent</p>
+        <div className="min-w-0 space-y-4 lg:col-span-4">
+          <div className={cardClass}>
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+              <div className="min-w-0">
+                <h2 className="text-sm font-black text-slate-900 dark:text-white">Danh sách khóa video</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Chọn khóa học để cấu hình và quản lý video</p>
               </div>
-              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+              <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-sky-300">
                 {courses.length} khóa
               </span>
             </div>
@@ -996,11 +793,13 @@ const AdminVideoCoursesPage = () => {
             {loadingOverview ? (
               <div className="space-y-2.5 py-4">
                 {[1, 2, 3].map((n) => (
-                  <div key={n} className="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+                  <div key={n} className="h-20 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" />
                 ))}
               </div>
             ) : courses.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">Chưa có khóa học nào trong hệ thống.</div>
+              <div className="py-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                Chưa có khóa học nào trong hệ thống.
+              </div>
             ) : (
               <div className="mt-3 max-h-[640px] space-y-2.5 overflow-y-auto pr-1">
                 {courses.map((c) => {
@@ -1012,26 +811,26 @@ const AdminVideoCoursesPage = () => {
                       key={c.id}
                       type="button"
                       onClick={() => setSelectedCourseId(String(c.id))}
-                      className={`w-full rounded-2xl border p-3.5 text-left transition-all ${
+                      className={`w-full rounded-2xl border p-3.5 text-left transition ${
                         isSelected
-                          ? "border-blue-600 bg-blue-50/70 shadow-sm ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/30"
-                          : "border-slate-200/80 bg-white hover:border-blue-300 hover:bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700"
+                          ? "border-blue-500 bg-blue-50/70 ring-2 ring-blue-500/15 dark:border-blue-500 dark:bg-blue-950/30"
+                          : "border-slate-200/80 bg-slate-50/50 hover:border-blue-300 hover:bg-white dark:border-slate-800 dark:bg-slate-800/40 dark:hover:border-slate-700"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-start justify-between gap-1.5">
                         <span
-                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                          className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[10px] font-bold ${
                             isIndependent
-                              ? "bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300"
-                              : "bg-cyan-100 text-cyan-800 dark:bg-cyan-950/70 dark:text-cyan-300"
+                              ? "bg-purple-50 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300"
+                              : "bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-sky-300"
                           }`}
                         >
-                          {isIndependent ? "INDEPENDENT • Độc lập" : "MIRROR • Kế thừa Live"}
+                          {isIndependent ? "Khóa độc lập" : "Đồng bộ lớp trực tuyến"}
                         </span>
                         <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
                             c.isPublished
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
                               : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
                           }`}
                         >
@@ -1048,17 +847,17 @@ const AdminVideoCoursesPage = () => {
                           Bài học: <strong className="text-slate-700 dark:text-slate-200">{c.stats?.totalUnits || 0}</strong>
                         </span>
                         <span>
-                          Video Ready:{" "}
+                          Sẵn sàng:{" "}
                           <strong className="text-emerald-600 dark:text-emerald-400">
                             {c.stats?.readyUnitsCount || 0}/{c.stats?.totalUnits || 0}
                           </strong>
                         </span>
                         <span
-                          className={`font-semibold ${
-                            checklistReady ? "text-emerald-600" : "text-amber-600"
+                          className={`font-bold ${
+                            checklistReady ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
                           }`}
                         >
-                          {checklistReady ? "✓ Đạt Checklist" : "• Chưa đủ Checklist"}
+                          {checklistReady ? "Đạt điều kiện" : "Chưa đủ điều kiện"}
                         </span>
                       </div>
                     </button>
@@ -1070,32 +869,34 @@ const AdminVideoCoursesPage = () => {
         </div>
 
         {/* Right Column: Active Course Studio */}
-        <div className="space-y-6 lg:col-span-8">
+        <div className="min-w-0 space-y-5 lg:col-span-8">
           {!courseDetail ? (
-            <div className="flex h-72 items-center justify-center rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+            <div className={`${cardClass} flex h-64 items-center justify-center text-xs font-medium text-slate-500 dark:text-slate-400`}>
               {loadingDetail ? "Đang tải dữ liệu cấu hình khóa học..." : "Chọn một khóa học ở cột bên trái để bắt đầu."}
             </div>
           ) : (
             <>
               {/* 1. Mode Switcher & Profile Configuration Card */}
-              <form
-                onSubmit={handleSaveProfile}
-                className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-              >
+              <form onSubmit={handleSaveProfile} className={cardClass}>
                 <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <FiSliders className="h-4 w-4 text-blue-600" />
-                      <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                        Cấu hình Chế độ Khóa Video: {courseDetail.course.title}
+                      <FiSliders className="h-4 w-4 shrink-0 text-blue-600 dark:text-sky-400" />
+                      <h2 className="truncate text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                        Cấu hình khóa video: {courseDetail.course.title}
                       </h2>
                     </div>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Slug: <code className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800">{courseDetail.course.slug}</code>
+                    <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                      <span>
+                        Đường dẫn:{" "}
+                        <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] dark:bg-slate-800">
+                          {courseDetail.course.slug}
+                        </code>
+                      </span>
                       {courseDetail.course.externalCourseId && (
-                        <span className="ml-2">
-                          • Management ID:{" "}
-                          <code className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                        <span>
+                          Mã quản lý:{" "}
+                          <code className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-700 dark:bg-blue-950/50 dark:text-sky-300">
                             {courseDetail.course.externalCourseId}
                           </code>
                         </span>
@@ -1106,9 +907,9 @@ const AdminVideoCoursesPage = () => {
                   <button
                     type="submit"
                     disabled={savingProfile}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-500 disabled:opacity-50"
+                    className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
                   >
-                    <FiSave className="h-4 w-4" />
+                    <FiSave className="h-3.5 w-3.5" />
                     <span>{savingProfile ? "Đang lưu..." : "Lưu cấu hình"}</span>
                   </button>
                 </div>
@@ -1118,149 +919,149 @@ const AdminVideoCoursesPage = () => {
                   <button
                     type="button"
                     onClick={() => setModeInput("MIRROR")}
-                    className={`flex flex-col items-start rounded-2xl border p-4 text-left transition ${
+                    className={`flex flex-col items-start rounded-2xl border p-3.5 text-left transition ${
                       modeInput === "MIRROR"
-                        ? "border-blue-600 bg-blue-50/60 ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/30"
-                        : "border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
+                        ? "border-blue-500 bg-blue-50/70 ring-2 ring-blue-500/15 dark:border-blue-500 dark:bg-blue-950/30"
+                        : "border-slate-200/80 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
                     }`}
                   >
-                    <div className="flex w-full items-center justify-between">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
-                        <FiCopy className="h-4 w-4" />
-                        MODE 1: MIRROR (Kế thừa lớp Live)
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-black text-blue-700 dark:text-sky-300">
+                        <FiCopy className="h-3.5 w-3.5" />
+                        Đồng bộ lớp trực tuyến
                       </span>
-                      {modeInput === "MIRROR" && <FiCheckCircle className="h-4 w-4 text-blue-600" />}
+                      {modeInput === "MIRROR" && <FiCheckCircle className="h-4 w-4 shrink-0 text-blue-600 dark:text-sky-400" />}
                     </div>
                     <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
-                      Kế thừa toàn bộ danh sách buổi học, tài liệu, bài tập, quiz, từ vựng và công thức từ lớp Live nguồn đã chọn.
+                      Kế thừa toàn bộ danh sách buổi học, tài liệu, bài tập, trắc nghiệm, từ vựng và công thức từ lớp nguồn.
                     </p>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setModeInput("INDEPENDENT")}
-                    className={`flex flex-col items-start rounded-2xl border p-4 text-left transition ${
+                    className={`flex flex-col items-start rounded-2xl border p-3.5 text-left transition ${
                       modeInput === "INDEPENDENT"
-                        ? "border-purple-600 bg-purple-50/60 ring-2 ring-purple-500/20 dark:border-purple-500 dark:bg-purple-950/30"
-                        : "border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
+                        ? "border-purple-500 bg-purple-50/70 ring-2 ring-purple-500/15 dark:border-purple-500 dark:bg-purple-950/30"
+                        : "border-slate-200/80 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
                     }`}
                   >
-                    <div className="flex w-full items-center justify-between">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-700 dark:text-purple-300">
-                        <FiLayers className="h-4 w-4" />
-                        MODE 2: INDEPENDENT (Khóa video độc lập)
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-black text-purple-700 dark:text-purple-300">
+                        <FiLayers className="h-3.5 w-3.5" />
+                        Khóa video độc lập
                       </span>
-                      {modeInput === "INDEPENDENT" && <FiCheckCircle className="h-4 w-4 text-purple-600" />}
+                      {modeInput === "INDEPENDENT" && <FiCheckCircle className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />}
                     </div>
                     <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
-                      Không cần lớp Live. Tự tạo chương (`sections`), bài học (`lessons`), lý thuyết, tài liệu, từ vựng, công thức và video riêng.
+                      Tự tạo chương, bài học, lý thuyết, tài liệu, từ vựng, công thức và video riêng không phụ thuộc lớp trực tuyến.
                     </p>
                   </button>
                 </div>
 
                 {/* Configuration Fields */}
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-3">
                   {modeInput === "MIRROR" ? (
                     <div className="sm:col-span-2">
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                        Lớp Live nguồn kế thừa (Chỉ hiển thị lớp cùng khóa học & chưa hủy)
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Lớp trực tuyến nguồn (cùng khóa học & đang hoạt động)
                       </label>
                       <select
                         value={sourceLiveClassIdInput}
                         onChange={(e) => setSourceLiveClassIdInput(e.target.value)}
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        className={inputClass}
                       >
-                        <option value="">-- Chọn lớp Live nguồn --</option>
+                        <option value="">-- Chọn lớp nguồn --</option>
                         {(courseDetail.availableLiveClasses || []).map((lc) => (
                           <option key={lc.id} value={lc.id}>
-                            #{lc.id} — {lc.title} ({lc.sessionsCount} buổi • {lc.status})
+                            #{lc.id} — {lc.title} ({lc.sessionsCount} buổi · {lc.status})
                           </option>
                         ))}
                       </select>
                     </div>
                   ) : (
                     <div className="sm:col-span-2">
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                        Chế độ Giáo trình Độc lập (INDEPENDENT)
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Chế độ giáo trình độc lập
                       </label>
-                      <div className="mt-1 flex items-center gap-2 rounded-xl border border-purple-200 bg-purple-50/50 px-3 py-2 text-xs text-purple-800 dark:border-purple-900/50 dark:bg-purple-950/30 dark:text-purple-200">
-                        <FiCheckCircle className="h-4 w-4 shrink-0 text-purple-600" />
-                        <span>Không phụ thuộc lớp Live (`source_live_class_id = NULL`). Quản lý chương & bài học trực tiếp bên dưới.</span>
+                      <div className="flex items-center gap-2 rounded-xl border border-purple-200/80 bg-purple-50/50 px-3 py-2 text-xs text-purple-800 dark:border-purple-900/50 dark:bg-purple-950/30 dark:text-purple-200">
+                        <FiCheckCircle className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+                        <span>Không phụ thuộc lớp trực tuyến. Quản lý chương và bài học trực tiếp bên dưới.</span>
                       </div>
                     </div>
                   )}
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Giới hạn thiết bị tin cậy / học viên
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Giới hạn thiết bị / học viên
                     </label>
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <input
                         type="number"
                         min={1}
                         max={10}
                         value={deviceLimitInput}
                         onChange={(e) => setDeviceLimitInput(e.target.value)}
-                        className="w-20 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        className="w-20 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-bold text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-white"
                       />
-                      <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                      <label className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={enforceDevicesInput}
                           onChange={(e) => setEnforceDevicesInput(e.target.checked)}
-                          className="rounded border-slate-300 text-blue-600"
+                          className="rounded border-slate-300 accent-blue-600"
                         />
-                        <span>Bắt buộc kiểm tra</span>
+                        <span>Bắt buộc</span>
                       </label>
                     </div>
                   </div>
 
                   <div className="sm:col-span-3">
-                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 dark:border-slate-700 dark:bg-slate-800/60">
+                    <label className="flex items-start gap-2.5 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/50 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={allowFileDownloadInput}
                         onChange={(e) => setAllowFileDownloadInput(e.target.checked)}
-                        className="mt-0.5 rounded border-slate-300 text-blue-600"
+                        className="mt-0.5 rounded border-slate-300 accent-blue-600"
                       />
                       <span>
                         <span className="block text-xs font-bold text-slate-800 dark:text-slate-100">
                           Cho phép học viên tải tài liệu xuống
                         </span>
-                        <span className="mt-0.5 block text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-                          Tắt: tài liệu mở trong tab Chỉ xem và backend chặn tải xuống. Bật: học viên có thêm nút tải file.
+                        <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">
+                          Khi tắt, học viên chỉ xem trực tuyến và không thể tải tệp về máy.
                         </span>
                       </span>
                     </label>
                   </div>
 
                   <div className="sm:col-span-3">
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      URL Ảnh đại diện khóa học (Thumbnail URL — bắt buộc trong Publish Checklist)
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Đường dẫn ảnh đại diện khóa học (bắt buộc để xuất bản)
                     </label>
                     <input
                       type="text"
-                      placeholder="https://vz-cdn.b-cdn.net/course-thumbnail.jpg"
+                      placeholder="https://..."
                       value={thumbnailUrlInput}
                       onChange={(e) => setThumbnailUrlInput(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      className={inputClass}
                     />
                   </div>
                 </div>
               </form>
 
               {/* 2. Learner access control for the selected Video/Record offering */}
-              <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className={cardClass}>
                 <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <FiUsers className="h-4 w-4 text-cyan-600" />
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                        Danh sách học viên khóa Video/Record
+                      <FiUsers className="h-4 w-4 shrink-0 text-blue-600 dark:text-sky-400" />
+                      <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                        Danh sách học viên khóa Video/Bản ghi
                       </h3>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Thu hồi tại đây chỉ chặn quyền xem khóa Video/Record này, không xóa học viên khỏi lớp Live hoặc LMS.
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      Thu hồi tại đây chỉ chặn quyền xem khóa Video/Bản ghi này, không ảnh hưởng lớp trực tuyến.
                     </p>
                   </div>
 
@@ -1268,50 +1069,50 @@ const AdminVideoCoursesPage = () => {
                     type="button"
                     onClick={() => loadCourseStudents(selectedCourseId, courseDetail?.profile?.id)}
                     disabled={loadingStudents}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
                     <FiRefreshCw className={`h-3.5 w-3.5 ${loadingStudents ? "animate-spin" : ""}`} />
-                    <span>Làm mới học viên</span>
+                    <span>Làm mới</span>
                   </button>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <div className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/70">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Tổng cộng</p>
+                <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  <div className="rounded-2xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/70">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tổng cộng</p>
                     <p className="mt-0.5 text-lg font-black text-slate-900 dark:text-white">{studentStats.total}</p>
                   </div>
-                  <div className="rounded-xl bg-emerald-50 px-3 py-2.5 dark:bg-emerald-950/30">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Đang có quyền</p>
+                  <div className="rounded-2xl bg-emerald-50/80 px-3 py-2.5 dark:bg-emerald-950/30">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Đang có quyền</p>
                     <p className="mt-0.5 text-lg font-black text-emerald-700 dark:text-emerald-300">{studentStats.activeCount}</p>
                   </div>
-                  <div className="rounded-xl bg-rose-50 px-3 py-2.5 dark:bg-rose-950/30">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-rose-600 dark:text-rose-400">Đã thu hồi</p>
+                  <div className="rounded-2xl bg-rose-50/80 px-3 py-2.5 dark:bg-rose-950/30">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">Đã thu hồi</p>
                     <p className="mt-0.5 text-lg font-black text-rose-700 dark:text-rose-300">{studentStats.revokedCount}</p>
                   </div>
-                  <div className="rounded-xl bg-cyan-50 px-3 py-2.5 dark:bg-cyan-950/30">
-                    <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
+                  <div className="rounded-2xl bg-blue-50/80 px-3 py-2.5 dark:bg-blue-950/30">
+                    <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-sky-400">
                       <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                      Đang online
+                      Trực tuyến
                     </p>
-                    <p className="mt-0.5 text-lg font-black text-cyan-700 dark:text-cyan-300">{studentStats.onlineCount}</p>
+                    <p className="mt-0.5 text-lg font-black text-blue-700 dark:text-sky-300">{studentStats.onlineCount}</p>
                   </div>
                 </div>
 
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <div className="relative flex-1">
+                  <div className="relative flex-1 min-w-0">
                     <FiSearch className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                     <input
                       type="search"
                       value={studentQuery}
                       onChange={(event) => setStudentQuery(event.target.value)}
                       placeholder="Tìm theo họ tên, tài khoản hoặc email..."
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs text-slate-900 outline-none transition focus:border-cyan-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2 pl-9 pr-3 text-xs font-medium text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
                     />
                   </div>
                   <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
                     {[
                       ["all", "Tất cả"],
-                      ["online", `Online (${studentStats.onlineCount})`],
+                      ["online", `Trực tuyến (${studentStats.onlineCount})`],
                       ["active", "Có quyền"],
                       ["revoked", "Đã thu hồi"],
                     ].map(([value, label]) => (
@@ -1321,7 +1122,7 @@ const AdminVideoCoursesPage = () => {
                         onClick={() => setStudentFilter(value)}
                         className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition ${
                           studentFilter === value
-                            ? "bg-white text-cyan-700 shadow-sm dark:bg-slate-700 dark:text-cyan-300"
+                            ? "bg-white text-blue-600 shadow-xs dark:bg-slate-700 dark:text-sky-300"
                             : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
                         }`}
                       >
@@ -1330,13 +1131,13 @@ const AdminVideoCoursesPage = () => {
                     ))}
                   </div>
                 </div>
-                <p className="mt-1.5 text-[10px] text-slate-400">Online nghĩa là tài khoản có hoạt động trong 10 phút gần nhất.</p>
+                <p className="mt-1.5 text-[11px] text-slate-400">Trực tuyến là tài khoản có hoạt động trong 10 phút gần nhất.</p>
 
-                <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200/80 dark:border-slate-800">
                   {loadingStudents ? (
                     <div className="space-y-2 p-3">
                       {[1, 2, 3].map((item) => (
-                        <div key={item} className="h-16 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+                        <div key={item} className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
                       ))}
                     </div>
                   ) : studentsError ? (
@@ -1346,7 +1147,7 @@ const AdminVideoCoursesPage = () => {
                       <button
                         type="button"
                         onClick={() => loadCourseStudents(selectedCourseId, courseDetail?.profile?.id)}
-                        className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white dark:bg-blue-600"
+                        className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
                       >
                         Thử lại
                       </button>
@@ -1354,8 +1155,8 @@ const AdminVideoCoursesPage = () => {
                   ) : filteredCourseStudents.length === 0 ? (
                     <div className="px-4 py-9 text-center">
                       <FiUsers className="mx-auto h-7 w-7 text-slate-300 dark:text-slate-600" />
-                      <p className="mt-2 text-xs font-semibold text-slate-500">
-                        {studentQuery.trim() ? "Không tìm thấy học viên phù hợp." : "Khóa Video/Record này chưa có học viên."}
+                      <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        {studentQuery.trim() ? "Không tìm thấy học viên phù hợp." : "Khóa học này chưa có học viên."}
                       </p>
                     </div>
                   ) : (
@@ -1365,8 +1166,8 @@ const AdminVideoCoursesPage = () => {
                         const isRevoking = String(revokingStudentId) === String(student.userId);
                         const displayName = student.fullName || student.username || student.email || `Học viên #${student.userId}`;
                         const sourceLabel = student.accessSource === "LIVE_MIRROR"
-                          ? "Kế thừa lớp Live"
-                          : "Quyền Record độc lập";
+                          ? "Đồng bộ lớp trực tuyến"
+                          : "Quyền khóa độc lập";
                         const initials = displayName.trim().slice(0, 1).toUpperCase();
                         const isOnline = Boolean(student.isOnline);
 
@@ -1382,10 +1183,10 @@ const AdminVideoCoursesPage = () => {
                                 <img
                                   src={student.avatarUrl}
                                   alt=""
-                                  className="h-10 w-10 shrink-0 rounded-full border border-slate-200 object-cover dark:border-slate-700"
+                                  className="h-9 w-9 shrink-0 rounded-full border border-slate-200 object-cover dark:border-slate-700"
                                 />
                               ) : (
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-100 text-sm font-black text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-black text-blue-700 dark:bg-blue-950/60 dark:text-sky-300">
                                   {initials}
                                 </div>
                               )}
@@ -1393,17 +1194,19 @@ const AdminVideoCoursesPage = () => {
                               <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   <p className="truncate text-xs font-bold text-slate-900 dark:text-white">{displayName}</p>
-                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                    isRevoked
-                                      ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
-                                      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-                                  }`}>
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                      isRevoked
+                                        ? "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                                        : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                    }`}
+                                  >
                                     {isRevoked ? "Đã thu hồi" : "Đang có quyền"}
                                   </span>
                                   {isOnline && (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-bold text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300">
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950/60 dark:text-sky-300">
                                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                                      Đang online
+                                      Trực tuyến
                                     </span>
                                   )}
                                 </div>
@@ -1413,7 +1216,7 @@ const AdminVideoCoursesPage = () => {
                                   <span>
                                     {isOnline
                                       ? `${Number(student.activeSessions || 1)} phiên đang hoạt động`
-                                      : `Online gần nhất: ${formatStudentDate(student.lastOnlineAt)}`}
+                                      : `Hoạt động gần nhất: ${formatStudentDate(student.lastOnlineAt)}`}
                                   </span>
                                   <span>{isRevoked ? `Thu hồi: ${formatStudentDate(student.revokedAt)}` : `Cấp quyền: ${formatStudentDate(student.enrolledAt)}`}</span>
                                 </div>
@@ -1425,7 +1228,7 @@ const AdminVideoCoursesPage = () => {
                               onClick={() => handleRevokeStudentAccess(student)}
                               disabled={isRevoked || student.canRevoke === false || isRevoking}
                               title={student.canRevoke === false && !isRevoked ? "Quyền này không thể thu hồi thủ công" : undefined}
-                              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300 dark:disabled:border-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300 dark:disabled:border-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                             >
                               <FiUserX className="h-3.5 w-3.5" />
                               <span>{isRevoking ? "Đang thu hồi..." : isRevoked ? "Đã thu hồi" : "Thu hồi quyền"}</span>
@@ -1438,49 +1241,49 @@ const AdminVideoCoursesPage = () => {
                 </div>
               </div>
 
-              {/* 3. 5-Point Publish Checklist Gate (Section 9.2) */}
-              <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              {/* 3. 5-Point Publish Checklist Gate */}
+              <div className={cardClass}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <FiShield className="h-4 w-4 text-emerald-600" />
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                        Publish Checklist 5 Tiêu Chí ({passedChecksCount}/5 đạt)
+                      <FiShield className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                      <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                        Điều kiện xuất bản ({passedChecksCount}/5 đạt)
                       </h3>
                     </div>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Khóa học video chỉ được phép xuất bản khi cả 5 tiêu chí kỹ thuật & đồng bộ dưới đây đều hợp lệ.
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      Khóa học video có thể xuất bản khi cả 5 tiêu chí dưới đây đều hợp lệ.
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {courseDetail.course.isPublished && (
                       <button
                         type="button"
                         disabled={publishingCourse}
                         onClick={() => handlePublishCourse(false)}
-                        className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                       >
-                        Chuyển về Nháp
+                        Chuyển về nháp
                       </button>
                     )}
                     <button
                       type="button"
                       disabled={publishingCourse}
                       onClick={() => handlePublishCourse(true)}
-                      className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm transition ${
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white shadow-sm transition ${
                         courseDetail.publishChecklist?.isReadyToPublish
-                          ? "bg-emerald-600 hover:bg-emerald-500"
-                          : "bg-amber-600 hover:bg-amber-500"
+                          ? "bg-emerald-600 hover:bg-emerald-700"
+                          : "bg-amber-600 hover:bg-amber-700"
                       }`}
                     >
-                      <FiCheckCircle className="h-4 w-4" />
+                      <FiCheckCircle className="h-3.5 w-3.5" />
                       <span>
                         {publishingCourse
-                          ? "Đang kiểm duyệt..."
+                          ? "Đang kiểm tra..."
                           : courseDetail.course.isPublished
-                            ? "Cập nhật & Kiểm tra lại Publish"
-                            : "Kiểm duyệt & Xuất bản Khóa Video"}
+                            ? "Kiểm tra & cập nhật xuất bản"
+                            : "Kiểm tra & xuất bản khóa học"}
                       </span>
                     </button>
                   </div>
@@ -1490,17 +1293,17 @@ const AdminVideoCoursesPage = () => {
                   {checklistEntries.map((item) => (
                     <div
                       key={item.key}
-                      className={`rounded-xl border p-3 ${
+                      className={`rounded-2xl border p-3 ${
                         item.passed
-                          ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20"
-                          : "border-rose-200 bg-rose-50/50 dark:border-rose-900/50 dark:bg-rose-950/20"
+                          ? "border-emerald-200/80 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20"
+                          : "border-rose-200/80 bg-rose-50/50 dark:border-rose-900/50 dark:bg-rose-950/20"
                       }`}
                     >
                       <div className="flex items-center gap-1.5">
                         {item.passed ? (
-                          <FiCheckCircle className="h-4 w-4 shrink-0 text-emerald-600" />
+                          <FiCheckCircle className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                         ) : (
-                          <FiXCircle className="h-4 w-4 shrink-0 text-rose-600" />
+                          <FiXCircle className="h-3.5 w-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
                         )}
                         <span className="text-xs font-bold text-slate-900 dark:text-white">{item.label}</span>
                       </div>
@@ -1510,27 +1313,27 @@ const AdminVideoCoursesPage = () => {
                 </div>
               </div>
 
-              {/* 3. Mode-Specific Workspace: MIRROR vs INDEPENDENT */}
+              {/* 4. Mode-Specific Workspace */}
               {modeInput === "MIRROR" ? (
-                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <div className="flex flex-col gap-2 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                        Danh sách Buổi học Kế thừa từ Lớp Live Nguồn (Read-only Lịch học)
+                <div className={cardClass}>
+                  <div className="flex flex-col gap-2.5 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+                    <div className="min-w-0">
+                      <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                        Danh sách buổi học đồng bộ từ lớp trực tuyến
                       </h3>
-                      <p className="text-xs text-slate-500">
-                        Lịch học của lớp Live được bảo vệ (Read-only). Quản trị viên gắn video Bunny Stream, thay thế hoặc Publish từng buổi.
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        Lịch học của lớp nguồn được bảo vệ chỉ xem. Quản trị viên tải, thay thế hoặc xuất bản video cho từng buổi.
                       </p>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                       <FiLock className="h-3.5 w-3.5 text-slate-500" />
-                      <span>Không sửa lịch lớp Live từ trang Record</span>
+                      <span>Lịch học chỉ xem</span>
                     </span>
                   </div>
 
                   {(courseDetail.mirrorSessions || []).length === 0 ? (
-                    <div className="py-10 text-center text-xs text-slate-500">
-                      Lớp Live nguồn chưa có buổi học nào hoặc bạn chưa chọn lớp Live nguồn.
+                    <div className="py-10 text-center text-xs text-slate-500 dark:text-slate-400">
+                      Lớp trực tuyến nguồn chưa có buổi học nào hoặc bạn chưa chọn lớp nguồn.
                     </div>
                   ) : (
                     <div className="mt-4 space-y-3">
@@ -1540,45 +1343,45 @@ const AdminVideoCoursesPage = () => {
                         return (
                           <div
                             key={sess.id}
-                            className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200/90 bg-slate-50/60 p-4 transition hover:border-blue-300 sm:flex-row sm:items-center dark:border-slate-800 dark:bg-slate-800/40"
+                            className="flex flex-col justify-between gap-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/50 p-3.5 sm:p-4 transition hover:border-blue-300 sm:flex-row sm:items-center dark:border-slate-800 dark:bg-slate-800/40"
                           >
-                            <div className="space-y-1">
+                            <div className="min-w-0 space-y-1.5">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="rounded-lg bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white">
                                   Buổi {sess.sessionNumber}
                                 </span>
                                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">{sess.title}</h4>
                                 <span
-                                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusMeta.badgeClass}`}
+                                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${statusMeta.badgeClass}`}
                                 >
                                   <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dotClass}`} />
                                   {statusMeta.label}
                                 </span>
                               </div>
 
-                              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
                                 <span>Lý thuyết: {sess.counts?.theory ? "Đã có" : "Chưa có"}</span>
-                                <span>• Tài liệu & Slide: {sess.counts?.files || 0}</span>
-                                <span>• Bài tập: {sess.counts?.assignments || 0}</span>
-                                <span>• Quiz: {sess.counts?.quizzes || 0}</span>
-                                <span>• Từ vựng: {sess.counts?.vocabulary || 0}</span>
-                                <span>• Công thức: {sess.counts?.formulas || 0}</span>
+                                <span>· Tài liệu: {sess.counts?.files || 0}</span>
+                                <span>· Bài tập: {sess.counts?.assignments || 0}</span>
+                                <span>· Trắc nghiệm: {sess.counts?.quizzes || 0}</span>
+                                <span>· Từ vựng: {sess.counts?.vocabulary || 0}</span>
+                                <span>· Công thức: {sess.counts?.formulas || 0}</span>
                                 {primaryVideo && (
-                                  <span className="font-mono text-[11px] text-blue-600 dark:text-blue-400">
-                                    • Bunny ID: {primaryVideo.videoId || primaryVideo.assetId} ({formatDuration(primaryVideo.durationSeconds)})
+                                  <span className="font-mono text-[11px] text-blue-600 dark:text-sky-400">
+                                    · Mã video: {primaryVideo.videoId || primaryVideo.assetId} ({formatDuration(primaryVideo.durationSeconds)})
                                   </span>
                                 )}
                               </div>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => handleTogglePublicPreview(sess, "class_session")}
-                                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                                className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition ${
                                   sess.isPublicPreview
                                     ? "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-200"
-                                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                                 }`}
                                 title="Cho mọi tài khoản xem buổi này như bài học thử"
                               >
@@ -1588,28 +1391,28 @@ const AdminVideoCoursesPage = () => {
                               <button
                                 type="button"
                                 onClick={() => openContentEditor(sess, "class_session")}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 border border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-800 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 transition hover:bg-indigo-100"
-                                title="Biên soạn đầy đủ tài liệu, slide, bài tập, quiz, từ vựng và lý thuyết"
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300"
+                                title="Biên soạn tài liệu, bài tập, trắc nghiệm, từ vựng và lý thuyết"
                               >
-                                <FiBookOpen className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                <span>Quản lý học liệu & bài tập</span>
+                                <FiBookOpen className="h-3.5 w-3.5" />
+                                <span>Học liệu & bài tập</span>
                               </button>
 
                               {!primaryVideo ? (
                                 <button
                                   type="button"
                                   onClick={() => openUploadModal(sess, "class_session")}
-                                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-500"
+                                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
                                 >
                                   <FiUploadCloud className="h-3.5 w-3.5" />
-                                  <span>Upload Bunny TUS</span>
+                                  <span>Tải video lên</span>
                                 </button>
                               ) : (
                                 <>
                                   <button
                                     type="button"
                                     onClick={() => openUploadModal(sess, "class_session", primaryVideo.assetId)}
-                                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                                   >
                                     <FiRefreshCw className="h-3.5 w-3.5" />
                                     <span>Thay video</span>
@@ -1619,17 +1422,17 @@ const AdminVideoCoursesPage = () => {
                                     onClick={() => handleToggleVideoPublish(primaryVideo)}
                                     className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold text-white ${
                                       primaryVideo.isPublished
-                                        ? "bg-amber-600 hover:bg-amber-500"
-                                        : "bg-emerald-600 hover:bg-emerald-500"
+                                        ? "bg-amber-600 hover:bg-amber-700"
+                                        : "bg-emerald-600 hover:bg-emerald-700"
                                     }`}
                                   >
                                     <FiPlay className="h-3.5 w-3.5" />
-                                    <span>{primaryVideo.isPublished ? "Unpublish" : "Publish"}</span>
+                                    <span>{primaryVideo.isPublished ? "Ẩn video" : "Xuất bản"}</span>
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => handleRemoveVideo(primaryVideo)}
-                                    className="inline-flex items-center rounded-xl border border-rose-200 bg-rose-50 p-1.5 text-rose-600 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/40"
+                                    className="inline-flex items-center rounded-xl border border-rose-200 bg-rose-50 p-1.5 text-rose-600 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-400"
                                     title="Xóa video"
                                   >
                                     <FiTrash2 className="h-3.5 w-3.5" />
@@ -1644,40 +1447,40 @@ const AdminVideoCoursesPage = () => {
                   )}
                 </div>
               ) : (
-                /* Mode 2: INDEPENDENT Curriculum Builder */
-                <div className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                /* Mode 2: Independent Curriculum Builder */
+                <div className={`${cardClass} space-y-4`}>
                   <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                        Giáo trình Khóa Video Độc Lập (Independent Curriculum Builder)
+                    <div className="min-w-0">
+                      <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                        Giáo trình khóa video độc lập
                       </h3>
-                      <p className="text-xs text-slate-500">
-                        Tạo chương (`sections`), bài học (`lessons`), sắp xếp thứ tự, tải video Bunny Stream và biên soạn Lý thuyết, Từ vựng, Công thức riêng.
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        Tạo chương, bài học, sắp xếp thứ tự, tải video và biên soạn học liệu riêng cho khóa học.
                       </p>
                     </div>
 
-                    <form onSubmit={handleAddSection} className="flex items-center gap-2">
+                    <form onSubmit={handleAddSection} className="flex flex-col sm:flex-row sm:items-center gap-2">
                       <input
                         type="text"
                         placeholder="Tên chương mới (VD: Chương 1: Nhập môn)..."
                         value={newSectionTitle}
                         onChange={(e) => setNewSectionTitle(e.target.value)}
-                        className="w-64 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 focus:border-purple-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        className="w-full sm:w-64 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
                       />
                       <button
                         type="submit"
                         disabled={addingSection}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-purple-500 disabled:opacity-50"
+                        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
                       >
-                        <FiFolderPlus className="h-4 w-4" />
-                        <span>Thêm Chương</span>
+                        <FiFolderPlus className="h-3.5 w-3.5" />
+                        <span>Thêm chương</span>
                       </button>
                     </form>
                   </div>
 
                   {(courseDetail.independentSections || []).length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-xs text-slate-500 dark:border-slate-800">
-                      Chưa có chương học nào. Hãy nhập tên chương và bấm <strong>Thêm Chương</strong> ở góc phải phía trên.
+                    <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                      Chưa có chương học nào. Nhập tên chương và bấm <strong>Thêm chương</strong> ở góc trên.
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -1686,15 +1489,15 @@ const AdminVideoCoursesPage = () => {
                         return (
                           <div
                             key={sec.id}
-                            className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-800/30"
+                            className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-3.5 sm:p-4 dark:border-slate-800 dark:bg-slate-800/30"
                           >
-                            <div className="flex items-center justify-between border-b border-slate-200/70 pb-3 dark:border-slate-700">
-                              <div className="flex items-center gap-2">
-                                <span className="rounded-lg bg-purple-100 px-2.5 py-1 text-xs font-bold text-purple-800 dark:bg-purple-950/70 dark:text-purple-300">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/70 pb-3 dark:border-slate-700">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="shrink-0 rounded-lg bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-700 dark:bg-purple-950/70 dark:text-purple-300">
                                   Chương {secIdx + 1}
                                 </span>
-                                <h4 className="text-sm font-bold text-slate-900 dark:text-white">{sec.title}</h4>
-                                <span className="text-xs text-slate-400">({(sec.lessons || []).length} bài học)</span>
+                                <h4 className="truncate text-sm font-bold text-slate-900 dark:text-white">{sec.title}</h4>
+                                <span className="shrink-0 text-xs text-slate-400">({(sec.lessons || []).length} bài)</span>
                               </div>
 
                               {sec.id !== "unsectioned" && (
@@ -1735,13 +1538,9 @@ const AdminVideoCoursesPage = () => {
                                 return (
                                   <div
                                     key={lesson.id}
-                                    className={`flex flex-col justify-between gap-3 rounded-xl border p-3.5 shadow-2xs sm:flex-row sm:items-center ${
-                                      lesson.isPublished
-                                        ? "border-slate-200/90 bg-white dark:border-slate-700 dark:bg-slate-900"
-                                        : "border-amber-200 bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/20"
-                                    }`}
+                                    className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 sm:flex-row sm:items-center dark:border-slate-700 dark:bg-slate-900"
                                   >
-                                    <div className="space-y-1">
+                                    <div className="min-w-0 space-y-1">
                                       <div className="flex flex-wrap items-center gap-2">
                                         <span className="font-mono text-xs font-bold text-slate-400">
                                           #{lIdx + 1}
@@ -1750,25 +1549,20 @@ const AdminVideoCoursesPage = () => {
                                           {lesson.title}
                                         </span>
                                         <span
-                                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusMeta.badgeClass}`}
+                                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${statusMeta.badgeClass}`}
                                         >
                                           <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dotClass}`} />
                                           {statusMeta.label}
                                         </span>
-                                        {!lesson.isPublished && (
-                                          <span className="rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
-                                            Đang ẩn khỏi học viên
-                                          </span>
-                                        )}
                                       </div>
 
-                                      <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs text-slate-500">
+                                      <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-slate-500">
                                         <span className="font-medium text-slate-600 dark:text-slate-400">
                                           {Math.round((lesson.durationSeconds || 600) / 60)} phút
                                         </span>
-                                        <span className="text-slate-300 dark:text-slate-600">•</span>
+                                        <span className="text-slate-300 dark:text-slate-600">·</span>
                                         <span
-                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-medium ${
                                             lesson.counts?.theory
                                               ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
                                               : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
@@ -1777,16 +1571,16 @@ const AdminVideoCoursesPage = () => {
                                           Lý thuyết: {lesson.counts?.theory ? "Đã có" : "0"}
                                         </span>
                                         <span
-                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-medium ${
                                             (lesson.counts?.files || 0) > 0
-                                              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                                              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-sky-300"
                                               : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
                                           }`}
                                         >
-                                          Tài liệu & Slide: {lesson.counts?.files || 0}
+                                          Tài liệu: {lesson.counts?.files || 0}
                                         </span>
                                         <span
-                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-medium ${
                                             (lesson.counts?.assignments || 0) > 0
                                               ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
                                               : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
@@ -1795,16 +1589,16 @@ const AdminVideoCoursesPage = () => {
                                           Bài tập: {lesson.counts?.assignments || 0}
                                         </span>
                                         <span
-                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-medium ${
                                             (lesson.counts?.quizzes || 0) > 0
                                               ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300"
                                               : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
                                           }`}
                                         >
-                                          Quiz: {lesson.counts?.quizzes || 0}
+                                          Trắc nghiệm: {lesson.counts?.quizzes || 0}
                                         </span>
                                         <span
-                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-medium ${
                                             (lesson.counts?.vocabulary || 0) > 0
                                               ? "bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300"
                                               : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
@@ -1813,9 +1607,9 @@ const AdminVideoCoursesPage = () => {
                                           Từ vựng: {lesson.counts?.vocabulary || 0}
                                         </span>
                                         <span
-                                          className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-medium ${
                                             (lesson.counts?.formulas || 0) > 0
-                                              ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300"
+                                              ? "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
                                               : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
                                           }`}
                                         >
@@ -1827,85 +1621,59 @@ const AdminVideoCoursesPage = () => {
                                     <div className="flex flex-wrap items-center gap-1.5">
                                       <button
                                         type="button"
-                                        onClick={() => openLessonEditor(lesson)}
-                                        className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300"
-                                        title="Sửa tên, mô tả, thời lượng và trạng thái bài học"
-                                      >
-                                        <FiEdit3 className="h-3.5 w-3.5" />
-                                        <span>Sửa thông tin</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleToggleLessonVisibility(lesson)}
-                                        className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold transition ${
-                                          lesson.isPublished
-                                            ? "border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
-                                            : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
-                                        }`}
-                                        title={lesson.isPublished ? "Ẩn khỏi danh sách học viên nhưng giữ nguyên dữ liệu" : "Hiện lại bài học trong khóa Record"}
-                                      >
-                                        {lesson.isPublished ? <FiEyeOff className="h-3.5 w-3.5" /> : <FiEye className="h-3.5 w-3.5" />}
-                                        <span>{lesson.isPublished ? "Ẩn khỏi khóa" : "Hiện lại"}</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleTogglePublicPreview(lesson, lesson.unitType || "lesson")}
+                                        onClick={() => handleTogglePublicPreview(lesson, "lesson")}
                                         className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold transition ${
                                           lesson.isPublicPreview
                                             ? "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-200"
-                                            : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                                            : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                                         }`}
                                         title="Cho mọi tài khoản xem bài này như bài học thử"
                                       >
                                         {lesson.isPublicPreview ? <FiEyeOff className="h-3.5 w-3.5" /> : <FiEye className="h-3.5 w-3.5" />}
                                         <span>{lesson.isPublicPreview ? "Tắt xem thử" : "Mở xem thử"}</span>
                                       </button>
-                                      {lesson.unitType !== "recording_reference" && <button
+                                      <button
                                         type="button"
                                         onClick={() => handleMoveLesson(sec, lIdx, -1)}
-                                        className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-100 dark:border-slate-700"
-                                        title="Lên"
+                                        className="rounded-xl border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                                        title="Đẩy lên"
                                       >
                                         <FiArrowUp className="h-3.5 w-3.5" />
-                                      </button>}
-                                      {lesson.unitType !== "recording_reference" && <button
+                                      </button>
+                                      <button
                                         type="button"
                                         onClick={() => handleMoveLesson(sec, lIdx, 1)}
-                                        className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-100 dark:border-slate-700"
-                                        title="Xuống"
+                                        className="rounded-xl border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                                        title="Đẩy xuống"
                                       >
                                         <FiArrowDown className="h-3.5 w-3.5" />
-                                      </button>}
+                                      </button>
 
-                                      {lesson.unitType !== "recording_reference" ? <button
+                                      <button
                                         type="button"
                                         onClick={() => openContentEditor(lesson, "lesson")}
-                                        className="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-bold text-purple-700 shadow-2xs hover:bg-purple-100 dark:border-purple-900/40 dark:bg-purple-950/40 dark:text-purple-300"
-                                        title="Biên soạn lý thuyết, slide, tài liệu, bài tập, quiz, từ vựng và công thức"
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-2.5 py-1.5 text-xs font-bold text-purple-700 hover:bg-purple-100 dark:border-purple-900/40 dark:bg-purple-950/40 dark:text-purple-300"
+                                        title="Biên soạn lý thuyết, tài liệu, bài tập, trắc nghiệm, từ vựng và công thức"
                                       >
-                                        <FiEdit3 className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
-                                        <span>Học liệu & Bài tập</span>
-                                      </button> : (
-                                        <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-bold text-cyan-700 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-200">
-                                          Học liệu dùng chung · video riêng
-                                        </span>
-                                      )}
+                                        <FiEdit3 className="h-3.5 w-3.5" />
+                                        <span>Học liệu & bài tập</span>
+                                      </button>
 
                                       {!primaryVideo ? (
                                         <button
                                           type="button"
-                                          onClick={() => openUploadModal(lesson, lesson.unitType || "lesson")}
-                                          className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-500"
+                                          onClick={() => openUploadModal(lesson, "lesson")}
+                                          className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
                                         >
                                           <FiUploadCloud className="h-3.5 w-3.5" />
-                                          <span>Upload Video</span>
+                                          <span>Tải video lên</span>
                                         </button>
                                       ) : (
                                         <>
                                           <button
                                             type="button"
-                                            onClick={() => openUploadModal(lesson, lesson.unitType || "lesson", primaryVideo.assetId)}
-                                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                            onClick={() => openUploadModal(lesson, "lesson", primaryVideo.assetId)}
+                                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                                           >
                                             <FiRefreshCw className="h-3.5 w-3.5" />
                                             <span>Thay video</span>
@@ -1915,24 +1683,24 @@ const AdminVideoCoursesPage = () => {
                                             onClick={() => handleToggleVideoPublish(primaryVideo)}
                                             className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold text-white ${
                                               primaryVideo.isPublished
-                                                ? "bg-amber-600 hover:bg-amber-500"
-                                                : "bg-emerald-600 hover:bg-emerald-500"
+                                                ? "bg-amber-600 hover:bg-amber-700"
+                                                : "bg-emerald-600 hover:bg-emerald-700"
                                             }`}
                                           >
                                             <FiPlay className="h-3.5 w-3.5" />
-                                            <span>{primaryVideo.isPublished ? "Unpublish" : "Publish"}</span>
+                                            <span>{primaryVideo.isPublished ? "Ẩn video" : "Xuất bản"}</span>
                                           </button>
                                         </>
                                       )}
 
-                                      {lesson.unitType !== "recording_reference" && <button
+                                      <button
                                         type="button"
                                         onClick={() => handleDeleteLesson(lesson.id)}
-                                        className="rounded-xl border border-rose-200 bg-rose-50 p-1.5 text-rose-600 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/40"
-                                        title="Xóa hẳn bài học (nên dùng Ẩn khỏi khóa nếu chỉ không muốn hiển thị)"
+                                        className="rounded-xl border border-rose-200 bg-rose-50 p-1.5 text-rose-600 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-400"
+                                        title="Xóa bài học"
                                       >
                                         <FiTrash2 className="h-3.5 w-3.5" />
-                                      </button>}
+                                      </button>
                                     </div>
                                   </div>
                                 );
@@ -1950,7 +1718,7 @@ const AdminVideoCoursesPage = () => {
                                       [sec.id]: { ...draftLesson, title: e.target.value },
                                     }))
                                   }
-                                  className="min-w-[220px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-purple-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                 />
                                 <input
                                   type="number"
@@ -1964,13 +1732,13 @@ const AdminVideoCoursesPage = () => {
                                       [sec.id]: { ...draftLesson, durationMinutes: e.target.value },
                                     }))
                                   }
-                                  className="w-20 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                  className="w-20 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                 />
                                 <button
                                   type="button"
                                   disabled={addingLessonSectionId === sec.id}
                                   onClick={() => handleAddLesson(sec.id)}
-                                  className="inline-flex items-center gap-1 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-purple-600 dark:hover:bg-purple-500"
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
                                 >
                                   <FiPlus className="h-3.5 w-3.5" />
                                   <span>Thêm bài học</span>
@@ -1989,146 +1757,41 @@ const AdminVideoCoursesPage = () => {
         </div>
       </div>
 
-      {/* Edit Independent Record lesson metadata without touching source Live data */}
-      {editingLesson && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
-              <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white">Chỉnh sửa buổi video</h3>
-                <p className="mt-0.5 text-xs text-slate-500">Tên hiển thị, mô tả, thời lượng và trạng thái trong khóa Record.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingLesson(null)}
-                disabled={savingLesson}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 dark:hover:bg-slate-800"
-                title="Đóng"
-              >
-                <FiX className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveLesson} className="mt-4 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Tên bài học</label>
-                <input
-                  type="text"
-                  required
-                  maxLength={1000}
-                  value={editingLesson.title}
-                  onChange={(e) => setEditingLesson((prev) => ({ ...prev, title: e.target.value }))}
-                  onBlur={() => setEditingLesson((prev) => ({ ...prev, title: normalizeRecordLessonTitle(prev.title) }))}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  placeholder="Ví dụ: Tập hợp · Bất đẳng thức"
-                />
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Tiền tố “Chương 1:”, “Chương 2:” sẽ tự bỏ; nhiều tên được nối bằng dấu ·.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Mô tả ngắn</label>
-                <textarea
-                  rows={4}
-                  maxLength={5000}
-                  value={editingLesson.description}
-                  onChange={(e) => setEditingLesson((prev) => ({ ...prev, description: e.target.value }))}
-                  className="mt-1 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  placeholder="Tóm tắt nội dung buổi học cho học viên..."
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Thời lượng (phút)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={1440}
-                    step={1}
-                    value={editingLesson.durationMinutes}
-                    onChange={(e) => setEditingLesson((prev) => ({ ...prev, durationMinutes: e.target.value }))}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-
-                <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
-                  <span>
-                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Hiện trong khóa Record</span>
-                    <span className="mt-0.5 block text-[10px] text-slate-500">Tắt để ẩn, không xóa dữ liệu.</span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={editingLesson.isPublished}
-                    onChange={(e) => setEditingLesson((prev) => ({ ...prev, isPublished: e.target.checked }))}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                </label>
-              </div>
-
-              <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-[11px] text-cyan-800 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-200">
-                Lưu thay đổi sẽ phát bản cập nhật curriculum sang Moly. Nếu không có thay đổi, máy chủ không tạo revision/outbox trùng.
-              </div>
-
-              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setEditingLesson(null)}
-                  disabled={savingLesson}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingLesson}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <FiSave className="h-4 w-4" />
-                  <span>{savingLesson ? "Đang lưu..." : "Lưu thay đổi"}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 1: Bunny Stream Direct TUS Upload & Attach */}
+      {/* Modal 1: Direct Video Upload & Attach */}
       {uploadModalUnit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-3 sm:p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-3xl border border-white/80 bg-white p-5 sm:p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <FiFilm className="h-5 w-5 text-blue-600" />
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  {uploadModalUnit.replaceVideoId ? "Thay thế Video Bunny Stream" : "Upload Video Bunny Stream (TUS)"}
+              <div className="flex items-center gap-2 min-w-0">
+                <FiFilm className="h-4 w-4 shrink-0 text-blue-600 dark:text-sky-400" />
+                <h3 className="truncate text-base font-black text-slate-900 dark:text-white">
+                  {uploadModalUnit.replaceVideoId ? "Thay thế video bài giảng" : "Tải video bài giảng"}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setUploadModalUnit(null)}
                 disabled={uploadBusy}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-slate-800"
-                title={uploadBusy ? "Vui lòng chờ quá trình upload hoàn tất" : "Đóng"}
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
+                title={uploadBusy ? "Vui lòng chờ quá trình tải lên hoàn tất" : "Đóng"}
               >
-                <FiX className="h-5 w-5" />
+                <FiX className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleStartBunnyUpload} className="mt-4 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Đơn vị bài học
                 </label>
-                <div className="mt-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-800 dark:bg-slate-800 dark:text-slate-200">
-                  {uploadModalUnit.title} ({uploadModalUnit.unitType === "class_session" ? "Buổi học Mirror" : "Bài học Independent"})
+                <div className="rounded-xl bg-slate-100/80 px-3 py-2 text-xs font-bold text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                  {uploadModalUnit.title} ({uploadModalUnit.unitType === "class_session" ? "Buổi học đồng bộ" : "Bài học độc lập"})
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Tiêu đề Video trên Bunny Stream Library
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Tiêu đề video
                 </label>
                 <input
                   type="text"
@@ -2136,13 +1799,13 @@ const AdminVideoCoursesPage = () => {
                   disabled={uploadBusy || uploadStage === "done"}
                   value={uploadVideoTitle}
                   onChange={(e) => setUploadVideoTitle(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  className={inputClass}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Chọn tệp Video MP4/MOV (Tải thẳng qua giao thức TUS lên Bunny Stream)
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Chọn tệp video (MP4, MOV, WebM, MKV)
                 </label>
                 <input
                   type="file"
@@ -2150,37 +1813,39 @@ const AdminVideoCoursesPage = () => {
                   disabled={uploadBusy || uploadStage === "done"}
                   accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
                   onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  className="mt-1 w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  className="w-full rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300"
                 />
               </div>
 
-              <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
                 <input
                   type="checkbox"
                   disabled={uploadBusy || uploadStage === "done"}
                   checked={uploadAutoPublish}
                   onChange={(e) => setUploadAutoPublish(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600"
+                  className="rounded border-slate-300 accent-blue-600"
                 />
-                <span>Xuất bản (Publish) ngay khi video sẵn sàng</span>
+                <span>Tự động xuất bản ngay khi video xử lý xong</span>
               </label>
 
               {uploadStage !== "idle" && (
-                <div className={`space-y-2 rounded-xl border p-3.5 ${
-                  uploadStage === "done"
-                    ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/35"
-                    : uploadStage === "error"
-                      ? "border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/35"
-                      : "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/40"
-                }`}
-                >
-                  <div className={`flex items-start gap-2 text-xs font-bold ${
+                <div
+                  className={`space-y-2 rounded-2xl border p-3.5 ${
                     uploadStage === "done"
-                      ? "text-emerald-800 dark:text-emerald-200"
+                      ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/35"
                       : uploadStage === "error"
-                        ? "text-rose-800 dark:text-rose-200"
-                        : "text-blue-800 dark:text-blue-200"
+                        ? "border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/35"
+                        : "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/40"
                   }`}
+                >
+                  <div
+                    className={`flex items-start gap-2 text-xs font-bold ${
+                      uploadStage === "done"
+                        ? "text-emerald-800 dark:text-emerald-200"
+                        : uploadStage === "error"
+                          ? "text-rose-800 dark:text-rose-200"
+                          : "text-blue-800 dark:text-blue-200"
+                    }`}
                   >
                     {uploadStage === "done" ? (
                       <FiCheckCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -2189,13 +1854,13 @@ const AdminVideoCoursesPage = () => {
                     ) : (
                       <FiRefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
                     )}
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <p>
                         {uploadStage === "done"
-                          ? "Upload video thành công"
+                          ? "Tải video thành công"
                           : uploadStage === "error"
-                            ? "Upload video thất bại"
-                            : "Đang upload video"}
+                            ? "Tải video thất bại"
+                            : "Đang tải video lên"}
                       </p>
                       <p className="mt-0.5 font-medium opacity-90">{uploadStatusMessage}</p>
                       {uploadStage === "done" && uploadAutoPublish && (
@@ -2207,9 +1872,10 @@ const AdminVideoCoursesPage = () => {
                     {uploadStage !== "error" && <span className="shrink-0 font-mono">{uploadProgress}%</span>}
                   </div>
                   {uploadStage !== "error" && (
-                    <div className={`h-2 w-full overflow-hidden rounded-full ${
-                      uploadStage === "done" ? "bg-emerald-200 dark:bg-emerald-900" : "bg-blue-200 dark:bg-blue-900"
-                    }`}
+                    <div
+                      className={`h-2 w-full overflow-hidden rounded-full ${
+                        uploadStage === "done" ? "bg-emerald-200 dark:bg-emerald-900" : "bg-blue-200 dark:bg-blue-900"
+                      }`}
                     >
                       <div
                         className={`h-full transition-all duration-300 ${uploadStage === "done" ? "bg-emerald-600" : "bg-blue-600"}`}
@@ -2220,12 +1886,12 @@ const AdminVideoCoursesPage = () => {
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setUploadModalUnit(null)}
                   disabled={uploadBusy}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300"
+                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition"
                 >
                   {uploadStage === "done" ? "Đóng" : "Hủy"}
                 </button>
@@ -2233,10 +1899,10 @@ const AdminVideoCoursesPage = () => {
                   <button
                     type="submit"
                     disabled={uploadBusy}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 transition"
                   >
-                    <FiUploadCloud className="h-4 w-4" />
-                    <span>{uploadStage === "error" ? "Thử upload lại" : "Tải lên & Gắn Video"}</span>
+                    <FiUploadCloud className="h-3.5 w-3.5" />
+                    <span>{uploadStage === "error" ? "Thử tải lại" : "Tải lên & gắn video"}</span>
                   </button>
                 )}
               </div>

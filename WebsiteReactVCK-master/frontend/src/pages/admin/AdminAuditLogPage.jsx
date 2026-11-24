@@ -1,20 +1,41 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  FiFileText,
-  FiSearch,
-  FiCheckCircle,
-  FiAlertTriangle,
-  FiRefreshCw,
-  FiUser,
-  FiGlobe,
-  FiClock,
-  FiEye,
-  FiX,
-  FiChevronLeft,
-  FiChevronRight,
-} from "react-icons/fi";
+  AlertTriangle,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Eye,
+  Globe,
+  RefreshCw,
+  Search,
+  User,
+  X,
+} from "lucide-react";
 import { fetchAdminAuditLogs } from "../../features/api/lmsClient";
 import Loading from "../../components/Loading.jsx";
+
+const ACTION_OPTIONS = [
+  { key: "ALL", label: "Tất cả" },
+  { key: "ENTITLEMENT_GRANT", label: "Cấp quyền học" },
+  { key: "GRADE_SUBMISSION", label: "Cập nhật điểm" },
+  { key: "MOLY_BRIDGE_SYNC", label: "Đồng bộ dữ liệu" },
+];
+
+const ACTION_LABELS = {
+  ENTITLEMENT_GRANT: "Cấp quyền học",
+  GRADE_SUBMISSION: "Cập nhật điểm",
+  MOLY_BRIDGE_SYNC: "Đồng bộ dữ liệu",
+};
+
+const CARD_CLASS =
+  "rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none";
+const FILTER_BAR_CLASS =
+  "rounded-2xl border border-slate-200/80 bg-white/90 p-3 dark:border-slate-800 dark:bg-slate-900/90";
+const INPUT_CLASS =
+  "w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
+const BTN_SECONDARY =
+  "inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800";
 
 export default function AdminAuditLogPage() {
   const [logs, setLogs] = useState([]);
@@ -31,14 +52,22 @@ export default function AdminAuditLogPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const res = await fetchAdminAuditLogs({ action: actionFilter, search: appliedSearch, page, limit: 20 });
-      if (!res?.success) throw new Error(res?.message || "Không thể tải nhật ký kiểm toán.");
+      const res = await fetchAdminAuditLogs({
+        action: actionFilter,
+        search: appliedSearch,
+        page,
+        limit: 20,
+      });
+      if (!res?.success) throw new Error(res?.message || "Không thể tải nhật ký hoạt động.");
       setLogs(Array.isArray(res.data?.logs) ? res.data.logs : []);
-      setPagination({ total: Number(res.data?.total || 0), limit: Number(res.data?.limit || 20) });
+      setPagination({
+        total: Number(res.data?.total || 0),
+        limit: Number(res.data?.limit || 20),
+      });
     } catch (err) {
       console.error("Error loading audit logs:", err);
       setLogs([]);
-      setErrorMessage(err.message || "Không thể tải nhật ký kiểm toán!");
+      setErrorMessage(err.message || "Không thể tải nhật ký hoạt động.");
     } finally {
       setLoading(false);
     }
@@ -63,151 +92,178 @@ export default function AdminAuditLogPage() {
   };
 
   return (
-    <div className="space-y-8 font-sans pb-16">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-gray-800">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 mb-2">
-            <FiFileText className="w-3.5 h-3.5" />
-            <span>Immutable Security Audit Log</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-            Nhật Ký Kiểm Toán (Audit Trail)
+    <div className="min-w-0 space-y-5 pb-8">
+      {/* Compact Header */}
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63] dark:text-white">
+            Nhật ký hoạt động
           </h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Ghi vết bất biến mọi hành vi quan trọng: cấp quyền học, sửa điểm, đồng bộ Moly và thao tác bảo mật.
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Lịch sử cấp quyền học, cập nhật điểm số, đồng bộ dữ liệu và thao tác quản trị.
           </p>
         </div>
-        <button
-          onClick={loadLogs}
-          disabled={loading}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold transition border border-gray-700"
-        >
-          <FiRefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          <span>Làm mới nhật ký</span>
-        </button>
-      </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
-        {/* Action Filter Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-          {["ALL", "ENTITLEMENT_GRANT", "GRADE_SUBMISSION", "MOLY_BRIDGE_SYNC"].map((act) => (
-            <button
-              key={act}
-              onClick={() => changeAction(act)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                actionFilter === act
-                  ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
-                  : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-              }`}
-            >
-              {act === "ALL" ? "Tất cả hành động" : act}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={loadLogs} disabled={loading} className={BTN_SECONDARY}>
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            <span>Làm mới</span>
+          </button>
         </div>
+      </header>
 
-        {/* Search Box */}
-        <div className="relative w-full sm:w-72">
-          <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Tìm toàn bộ nhật ký theo tài khoản, hành động, đối tượng..."
-            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-amber-500 transition"
-          />
+      {/* Filter & Search Bar */}
+      <div className={FILTER_BAR_CLASS}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {ACTION_OPTIONS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => changeAction(key)}
+                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                  actionFilter === key
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm tài khoản, hành động, đối tượng..."
+              className={`${INPUT_CLASS} pl-8`}
+            />
+          </div>
         </div>
       </div>
 
       {errorMessage && (
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 px-4 py-3 text-xs text-rose-700 dark:text-rose-300">
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
+        >
           <span>{errorMessage}</span>
-          <button type="button" onClick={loadLogs} className="shrink-0 font-bold underline">Thử lại</button>
+          <button type="button" onClick={loadLogs} className="font-bold underline">
+            Thử lại
+          </button>
         </div>
       )}
 
       {/* Audit Log Table */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
+      <section className={`${CARD_CLASS} overflow-hidden`}>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3.5 dark:border-slate-800">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+              Bản ghi hoạt động ({pagination.total})
+            </h2>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Bấm biểu tượng xem để kiểm tra nội dung chi tiết của từng bản ghi.
+            </p>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 uppercase text-[10px] tracking-wider border-b border-gray-200 dark:border-gray-800">
+          <table className="w-full min-w-[820px] text-left text-xs">
+            <thead className="border-b border-slate-200/80 bg-slate-50/90 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-400">
               <tr>
-                <th className="py-3.5 px-5">Tài Khoản (Actor)</th>
-                <th className="py-3.5 px-4">Hành Động (Action)</th>
-                <th className="py-3.5 px-4">Đối Tượng (Target)</th>
-                <th className="py-3.5 px-4">Địa Chỉ IP</th>
-                <th className="py-3.5 px-4">Thời Gian</th>
-                <th className="py-3.5 px-4 text-center">Trạng Thái</th>
-                <th className="py-3.5 px-5 text-right">Chi Tiết</th>
+                <th className="px-3 py-2.5">Người thực hiện</th>
+                <th className="px-3 py-2.5">Hành động</th>
+                <th className="px-3 py-2.5">Đối tượng</th>
+                <th className="px-3 py-2.5">Địa chỉ IP</th>
+                <th className="px-3 py-2.5">Thời gian</th>
+                <th className="px-3 py-2.5 text-center">Kết quả</th>
+                <th className="px-3 py-2.5 text-right">Chi tiết</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-200">
+            <tbody className="divide-y divide-slate-100 text-slate-700 dark:divide-slate-800/70 dark:text-slate-200">
               {loading ? (
                 <tr>
                   <td colSpan={7} className="py-12">
-                    <Loading loading={true} text="Đang tải nhật ký kiểm toán..." fullScreen={false} />
+                    <Loading
+                      loading={true}
+                      text="Đang tải nhật ký hoạt động..."
+                      fullScreen={false}
+                    />
                   </td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-gray-400">
-                    Không có bản ghi nhật ký kiểm toán nào.
+                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
+                    Chưa có bản ghi nhật ký hoạt động nào phù hợp.
                   </td>
                 </tr>
               ) : (
                 logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition">
-                    <td className="py-4 px-5">
-                      <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                        <FiUser className="w-3.5 h-3.5 text-gray-400" />
+                  <tr
+                    key={log.id}
+                    className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
+                  >
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1.5 font-semibold text-slate-900 dark:text-white">
+                        <User className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                         <span>{log.actor}</span>
                       </div>
-                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-gray-100 dark:bg-gray-800 text-gray-500 mt-1">
+                      <span className="mt-0.5 inline-block rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                         {log.role}
                       </span>
                     </td>
-                    <td className="py-4 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400 text-[11px]">
-                      {log.action}
+                    <td className="px-3 py-2.5">
+                      <div className="font-semibold text-slate-900 dark:text-white">
+                        {ACTION_LABELS[log.action] || log.action}
+                      </div>
+                      {ACTION_LABELS[log.action] && (
+                        <div className="mt-0.5 font-mono text-[10px] text-slate-400">
+                          {log.action}
+                        </div>
+                      )}
                     </td>
-                    <td className="py-4 px-4 font-medium text-gray-900 dark:text-white max-w-xs truncate">
+                    <td className="max-w-xs truncate px-3 py-2.5 font-medium text-slate-800 dark:text-slate-200">
                       {log.target}
                     </td>
-                    <td className="py-4 px-4 font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
                       <div className="flex items-center gap-1">
-                        <FiGlobe className="w-3 h-3 text-gray-400" />
-                        <span>{log.ipAddress}</span>
+                        <Globe className="h-3 w-3 shrink-0 text-slate-400" />
+                        <span>{log.ipAddress || "—"}</span>
                       </div>
                     </td>
-                    <td className="py-4 px-4 font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                    <td className="whitespace-nowrap px-3 py-2.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
                       <div className="flex items-center gap-1">
-                        <FiClock className="w-3 h-3 text-gray-400" />
+                        <Clock className="h-3 w-3 shrink-0 text-slate-400" />
                         <span>
-                          {new Date(log.timestamp).toLocaleTimeString("vi-VN")} -{" "}
+                          {new Date(log.timestamp).toLocaleTimeString("vi-VN")} ·{" "}
                           {new Date(log.timestamp).toLocaleDateString("vi-VN")}
                         </span>
                       </div>
                     </td>
-                    <td className="py-4 px-4 text-center">
+                    <td className="px-3 py-2.5 text-center">
                       {log.status === "SUCCESS" ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                          <FiCheckCircle className="w-3 h-3" />
-                          SUCCESS
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/50 dark:text-emerald-300">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Thành công
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-500 border border-rose-500/20">
-                          <FiAlertTriangle className="w-3 h-3" />
-                          FAILED
+                        <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 dark:border-rose-800/60 dark:bg-rose-950/50 dark:text-rose-300">
+                          <AlertTriangle className="h-3 w-3" />
+                          Thất bại
                         </span>
                       )}
                     </td>
-                    <td className="py-4 px-5 text-right">
+                    <td className="px-3 py-2.5 text-right">
                       <button
+                        type="button"
                         onClick={() => setSelectedLog(log)}
-                        className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition"
-                        title="Xem chi tiết"
+                        className="rounded-xl border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                        title="Xem chi tiết bản ghi"
                       >
-                        <FiEye className="w-4 h-4" />
+                        <Eye className="h-3.5 w-3.5" />
                       </button>
                     </td>
                   </tr>
@@ -216,62 +272,120 @@ export default function AdminAuditLogPage() {
             </tbody>
           </table>
         </div>
-      </div>
 
-      {pagination.total > pagination.limit && (
-        <div className="flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
-          <span>Hiển thị trang {page}/{totalPages} · {pagination.total} bản ghi</span>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40 transition"><FiChevronLeft className="h-3.5 w-3.5" /> Trước</button>
-            <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40 transition">Sau <FiChevronRight className="h-3.5 w-3.5" /></button>
+        {pagination.total > pagination.limit && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            <span>
+              Trang {page}/{totalPages} · {pagination.total} bản ghi
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page === 1}
+                className={BTN_SECONDARY}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                <span>Trước</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={page >= totalPages}
+                className={BTN_SECONDARY}
+              >
+                <span>Sau</span>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </section>
 
       {/* Log Detail Modal */}
       {selectedLog && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
-            <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-3 sm:p-4 backdrop-blur-xs">
+          <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/80 bg-white p-5 sm:p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 space-y-4">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3.5 dark:border-slate-800">
               <div>
-                <h3 className="text-lg font-black text-gray-900 dark:text-white">
-                  Chi Tiết Audit Log #{selectedLog.id}
+                <h3 className="text-base font-black text-[#102f63] dark:text-white">
+                  Chi tiết nhật ký #{selectedLog.id}
                 </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Bản ghi xác thực hành vi quản trị bảo mật.
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  Thông tin bản ghi hoạt động hệ thống.
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedLog(null)}
-                className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 hover:text-white transition"
+                className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="Đóng"
               >
-                <FiX className="w-5 h-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50">
-                <span className="text-gray-400 block text-[10px] uppercase font-bold">Thực hiện bởi</span>
-                <span className="font-bold text-gray-900 dark:text-white">{selectedLog.actor}</span>
-                <span className="ml-2 font-mono text-[10px] text-purple-400">({selectedLog.role})</span>
+            <div className="space-y-2.5 text-xs">
+              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Người thực hiện
+                </span>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {selectedLog.actor}
+                  </span>
+                  <span className="rounded-md bg-blue-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                    {selectedLog.role}
+                  </span>
+                </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50">
-                <span className="text-gray-400 block text-[10px] uppercase font-bold">Hành động & Đối tượng</span>
-                <span className="font-mono text-indigo-400 font-bold block">{selectedLog.action}</span>
-                <span className="text-gray-900 dark:text-white mt-1 block">{selectedLog.target}</span>
+              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Hành động & Đối tượng
+                </span>
+                <span className="mt-1 block font-bold text-blue-700 dark:text-blue-400">
+                  {ACTION_LABELS[selectedLog.action] || selectedLog.action}
+                </span>
+                <span className="mt-0.5 block text-slate-800 dark:text-slate-200">
+                  {selectedLog.target}
+                </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50">
-                <span className="text-gray-400 block text-[10px] uppercase font-bold">Nội dung chi tiết</span>
-                <p className="text-gray-900 dark:text-white mt-1 leading-relaxed">{selectedLog.details}</p>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Thời gian
+                  </span>
+                  <span className="mt-1 block font-mono text-slate-800 dark:text-slate-200">
+                    {new Date(selectedLog.timestamp).toLocaleString("vi-VN")}
+                  </span>
+                </div>
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Địa chỉ IP
+                  </span>
+                  <span className="mt-1 block font-mono text-slate-800 dark:text-slate-200">
+                    {selectedLog.ipAddress || "—"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Nội dung chi tiết
+                </span>
+                <p className="mt-1 whitespace-pre-wrap break-words leading-relaxed text-slate-800 dark:text-slate-200">
+                  {selectedLog.details || "Không có chi tiết bổ sung."}
+                </p>
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end border-t border-slate-100 pt-3.5 dark:border-slate-800">
               <button
+                type="button"
                 onClick={() => setSelectedLog(null)}
-                className="px-5 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                className={BTN_SECONDARY}
               >
                 Đóng
               </button>

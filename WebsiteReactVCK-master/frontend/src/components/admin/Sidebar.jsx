@@ -1,109 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  BarChart3,
-  BookOpen,
-  CalendarDays,
-  CheckSquare,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Clapperboard,
-  ClipboardCheck,
-  FolderOpen,
-  GraduationCap,
   Home,
-  LayoutDashboard,
-  Library,
-  MessageSquare,
   Presentation,
-  RefreshCw,
-  ScrollText,
   Search,
   Shield,
-  Sigma,
-  Sparkles,
-  TrendingUp,
-  UserCheck,
-  Users,
-  Video,
-  Wallet,
   X,
 } from 'lucide-react';
 import { useAuthContext } from '../../context/AuthContext';
-
-export const ADMIN_NAV_GROUPS = [
-  {
-    id: 'operations',
-    label: 'Vận hành',
-    defaultOpen: true,
-    items: [
-      { title: 'Tổng quan', path: '/admin/dashboard', icon: LayoutDashboard, match: (p) => p === '/admin' || p === '/admin/dashboard' },
-      { title: 'Lớp học', path: '/admin/classes', icon: BookOpen },
-      { title: 'Lịch học', path: '/admin/calendar', icon: CalendarDays },
-      { title: 'Lương & Chấm công', path: '/admin/salaries', icon: Wallet },
-      { title: 'Người dùng', path: '/admin/users', icon: Users, adminOnly: true },
-    ],
-  },
-  {
-    id: 'academics',
-    label: 'Học liệu & Đề thi',
-    defaultOpen: true,
-    items: [
-      { title: 'Khóa học & Giáo trình', path: '/admin/curriculum', icon: GraduationCap },
-      { title: 'Khóa video', path: '/admin/video-courses', icon: Clapperboard },
-      {
-        title: 'Chấm bài & Quiz',
-        path: '/admin/assignments/review',
-        icon: ClipboardCheck,
-        match: (p) => p.startsWith('/admin/assignments/review') || p.startsWith('/admin/quizzes'),
-      },
-      { title: 'Ngân hàng câu hỏi', path: '/admin/question-bank', icon: Library },
-      { title: 'Tài liệu học tập', path: '/admin/files', icon: FolderOpen },
-      { title: 'Bản ghi buổi học', path: '/admin/recordings', icon: Video },
-      { title: 'Quản lý công thức', path: '/admin/formulas', icon: Sigma },
-    ],
-  },
-  {
-    id: 'reports',
-    label: 'Báo cáo & Học viên',
-    defaultOpen: false,
-    items: [
-      { title: 'Báo cáo điểm danh', path: '/admin/attendance-report', icon: UserCheck },
-      { title: 'Duyệt sửa điểm danh', path: '/admin/attendance-review', icon: CheckSquare },
-      { title: 'Báo cáo điểm số', path: '/admin/grades-report', icon: BarChart3 },
-      { title: 'Sổ điểm & Tiến độ', path: '/admin/student-progress', icon: TrendingUp },
-      { title: 'Hỗ trợ học viên', path: '/admin/support', icon: MessageSquare },
-    ],
-  },
-  {
-    id: 'system',
-    label: 'Hệ thống',
-    defaultOpen: false,
-    items: [
-      { title: 'Phân quyền', path: '/admin/permissions', icon: Shield },
-      { title: 'Đồng bộ dữ liệu', path: '/admin/sync', icon: RefreshCw },
-      { title: 'Nhật ký hệ thống', path: '/admin/audit-logs', icon: ScrollText },
-      { title: 'Màn hình mở đầu', path: '/admin/welcome-screen', icon: Sparkles },
-    ],
-  },
-];
-
-export const isAdminNavItemActive = (item, pathname) => {
-  if (typeof item.match === 'function') return item.match(pathname);
-  return pathname === item.path || pathname.startsWith(`${item.path}/`);
-};
-
-export const getAdminRouteMeta = (pathname) => {
-  for (const group of ADMIN_NAV_GROUPS) {
-    for (const item of group.items) {
-      if (isAdminNavItemActive(item, pathname)) {
-        return { group: group.label, title: item.title, groupId: group.id };
-      }
-    }
-  }
-  return { group: 'Quản trị', title: 'Tổng quan', groupId: 'operations' };
-};
+import {
+  ADMIN_NAV_GROUPS,
+  getAdminRouteMeta,
+  isAdminNavItemActive,
+} from './adminNavigation';
 
 function SidebarInner({ collapsed, onNavigate, onToggleCollapse, isMobile = false }) {
   const { authUser } = useAuthContext();
@@ -134,6 +46,7 @@ function SidebarInner({ collapsed, onNavigate, onToggleCollapse, isMobile = fals
         if (!normalizedQuery) return true;
         return (
           item.title.toLowerCase().includes(normalizedQuery)
+          || (item.keywords || '').toLowerCase().includes(normalizedQuery)
           || group.label.toLowerCase().includes(normalizedQuery)
         );
       });

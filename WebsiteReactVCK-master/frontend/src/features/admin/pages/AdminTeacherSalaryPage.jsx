@@ -17,6 +17,8 @@ import {
   FiLayers,
   FiSave,
   FiCheck,
+  FiX,
+  FiShield,
 } from "react-icons/fi";
 import toast from "react-hot-toast";
 import {
@@ -49,6 +51,8 @@ export default function AdminTeacherSalaryPage() {
   const [search, setSearch] = useState("");
   const [rateStatus, setRateStatus] = useState("all"); // all | assigned | unassigned
   const [paymentStatus, setPaymentStatus] = useState("all"); // all | pending | processing | paid | hold
+  const [activeSection, setActiveSection] = useState("payroll"); // payroll | biometrics
+  const [pendingFaceCount, setPendingFaceCount] = useState(0);
 
   // Base rate edit modal
   const [editingTeacher, setEditingTeacher] = useState(null);
@@ -63,12 +67,12 @@ export default function AdminTeacherSalaryPage() {
   const [selectedClassFilter, setSelectedClassFilter] = useState("all");
 
   // Class rate override modal
-  const [editingClassRate, setEditingClassRate] = useState(null); // { classId, title, currentRate, defaultRate }
+  const [editingClassRate, setEditingClassRate] = useState(null);
   const [classRateInput, setClassRateInput] = useState("");
   const [submittingClassRate, setSubmittingClassRate] = useState(false);
 
   // Session edit modal
-  const [editingSession, setEditingSession] = useState(null); // { id, title, durationHours, status }
+  const [editingSession, setEditingSession] = useState(null);
   const [sessionHoursInput, setSessionHoursInput] = useState("");
   const [sessionStatusInput, setSessionStatusInput] = useState("ended");
   const [submittingSession, setSubmittingSession] = useState(false);
@@ -83,6 +87,8 @@ export default function AdminTeacherSalaryPage() {
   // Face attendance photo preview & override busy state
   const [facePreviewSession, setFacePreviewSession] = useState(null);
   const [overridingSessionId, setOverridingSessionId] = useState(null);
+
+  const formatVnd = (amount) => `${Number(amount || 0).toLocaleString("vi-VN")} ₫`;
 
   const loadSalaries = useCallback(async () => {
     setLoading(true);
@@ -104,7 +110,6 @@ export default function AdminTeacherSalaryPage() {
     return () => clearTimeout(timer);
   }, [loadSalaries]);
 
-  // Load / Reload teacher detail modal
   const loadDetailData = useCallback(async (teacherId) => {
     setLoadingDetail(true);
     try {
@@ -172,7 +177,7 @@ export default function AdminTeacherSalaryPage() {
 
     const rateNum = Number(String(hourlyRateInput).replace(/\D/g, ""));
     if (!Number.isFinite(rateNum) || rateNum < 0) {
-      toast.error("Vui lòng nhập mức lương hợp lệ!");
+      toast.error("Vui lòng nhập mức lương hợp lệ.");
       return;
     }
 
@@ -180,7 +185,7 @@ export default function AdminTeacherSalaryPage() {
     try {
       await updateTeacherHourlyRate(editingTeacher.id, rateNum);
       toast.success(
-        `Đã gán mức lương ${rateNum.toLocaleString("vi-VN")} ₫/giờ cho giảng viên ${editingTeacher.fullName || editingTeacher.username}! 🎉`,
+        `Đã gán mức lương ${rateNum.toLocaleString("vi-VN")} ₫/giờ cho ${editingTeacher.fullName || editingTeacher.username}.`,
       );
       setEditingTeacher(null);
       loadSalaries();
@@ -195,11 +200,12 @@ export default function AdminTeacherSalaryPage() {
     }
   };
 
-  // Open & Save Class Override Rate
   const handleOpenClassRateModal = (cls) => {
     setEditingClassRate(cls);
     setClassRateInput(
-      cls.teacherClassRateOverride ? String(cls.teacherClassRateOverride) : String(cls.effectiveHourlyRate || 0),
+      cls.teacherClassRateOverride
+        ? String(cls.teacherClassRateOverride)
+        : String(cls.effectiveHourlyRate || 0),
     );
   };
 
@@ -211,7 +217,7 @@ export default function AdminTeacherSalaryPage() {
     if (!resetToDefault) {
       const num = Number(String(classRateInput).replace(/\D/g, ""));
       if (!Number.isFinite(num) || num < 0) {
-        toast.error("Vui lòng nhập mức thù lao hợp lệ!");
+        toast.error("Vui lòng nhập mức thù lao hợp lệ.");
         return;
       }
       targetRate = num;
@@ -219,11 +225,15 @@ export default function AdminTeacherSalaryPage() {
 
     setSubmittingClassRate(true);
     try {
-      await updateTeacherClassHourlyRate(teacherDetail.teacher.id, editingClassRate.classId, targetRate);
+      await updateTeacherClassHourlyRate(
+        teacherDetail.teacher.id,
+        editingClassRate.classId,
+        targetRate,
+      );
       toast.success(
         resetToDefault
-          ? `Đã khôi phục mức lương mặc định của giảng viên cho lớp ${editingClassRate.code}!`
-          : `Đã cập nhật đơn giá ${targetRate.toLocaleString("vi-VN")} ₫/giờ cho lớp ${editingClassRate.code}!`,
+          ? `Đã khôi phục đơn giá mặc định cho lớp ${editingClassRate.code}.`
+          : `Đã cập nhật đơn giá ${targetRate.toLocaleString("vi-VN")} ₫/giờ cho lớp ${editingClassRate.code}.`,
       );
       setEditingClassRate(null);
       loadDetailData(teacherDetail.teacher.id);
@@ -236,7 +246,6 @@ export default function AdminTeacherSalaryPage() {
     }
   };
 
-  // Open & Save Session Adjustments
   const handleOpenSessionModal = (session) => {
     setEditingSession(session);
     setSessionHoursInput(String(session.durationHours || 2.0));
@@ -249,14 +258,17 @@ export default function AdminTeacherSalaryPage() {
 
     const numH = Number(sessionHoursInput);
     if (!Number.isFinite(numH) || numH <= 0 || numH > 16) {
-      toast.error("Số giờ của buổi học phải từ 0.25h đến 16h!");
+      toast.error("Số giờ của buổi học phải từ 0.25h đến 16h.");
       return;
     }
 
     setSubmittingSession(true);
     try {
       if (sessionStatusInput === "cancelled") {
-        const reason = window.prompt("Nhập lý do hủy buổi học (giáo trình sẽ tự dồn sang buổi tiếp theo):", "Giáo viên bận");
+        const reason = window.prompt(
+          "Nhập lý do hủy buổi học (giáo trình sẽ tự dồn sang buổi tiếp theo):",
+          "Giáo viên bận",
+        );
         if (!reason?.trim()) {
           setSubmittingSession(false);
           return;
@@ -268,9 +280,11 @@ export default function AdminTeacherSalaryPage() {
           status: sessionStatusInput,
         });
       }
-      toast.success(sessionStatusInput === "cancelled"
-        ? `Đã hủy buổi "${editingSession.title}", không tính lương và xử lý lại tiến độ giáo trình.`
-        : `Đã cập nhật buổi học "${editingSession.title}" (${numH}h, ${sessionStatusInput})!`);
+      toast.success(
+        sessionStatusInput === "cancelled"
+          ? `Đã hủy buổi "${editingSession.title}", không tính lương và cập nhật lại lịch.`
+          : `Đã cập nhật buổi học "${editingSession.title}" (${numH}h).`,
+      );
       setEditingSession(null);
       loadDetailData(teacherDetail.teacher.id);
       loadSalaries();
@@ -282,7 +296,6 @@ export default function AdminTeacherSalaryPage() {
     }
   };
 
-  // Toggle quick session completed status
   const handleToggleSessionStatus = async (session) => {
     if (!teacherDetail?.teacher) return;
     const nextStatus = session.isCompleted ? "scheduled" : "ended";
@@ -301,7 +314,6 @@ export default function AdminTeacherSalaryPage() {
     }
   };
 
-  // Save Settlement & Payment Status
   const handleSaveSettlement = async (e) => {
     e.preventDefault();
     if (!teacherDetail?.teacher) return;
@@ -314,7 +326,7 @@ export default function AdminTeacherSalaryPage() {
         paymentStatus: settlementStatusInput,
         notes: notesInput,
       });
-      toast.success("Đã lưu quyết toán thù lao và cập nhật trạng thái thanh toán thành công! 💰");
+      toast.success("Đã lưu quyết toán thù lao và cập nhật trạng thái thanh toán.");
       loadDetailData(teacherDetail.teacher.id);
       loadSalaries();
     } catch (error) {
@@ -323,10 +335,6 @@ export default function AdminTeacherSalaryPage() {
     } finally {
       setSavingSettlement(false);
     }
-  };
-
-  const formatVnd = (amount) => {
-    return Number(amount || 0).toLocaleString("vi-VN") + " ₫";
   };
 
   const kpis = data.kpis || {
@@ -342,7 +350,6 @@ export default function AdminTeacherSalaryPage() {
     pendingCount: 0,
   };
 
-  // Filtered classes inside detail modal
   const displayedDetailClasses = useMemo(() => {
     if (!teacherDetail?.classes) return [];
     if (selectedClassFilter === "all") return teacherDetail.classes;
@@ -353,416 +360,484 @@ export default function AdminTeacherSalaryPage() {
     switch (status) {
       case "paid":
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase font-mono bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-            <FiCheck className="w-3 h-3" /> Đã thanh toán
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300">
+            <FiCheck className="h-3 w-3" /> Đã thanh toán
           </span>
         );
       case "processing":
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase font-mono bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-sky-300 border border-blue-200 dark:border-blue-800">
-            <FiClock className="w-3 h-3" /> Đang xử lý
+          <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold text-blue-700 dark:border-blue-800/70 dark:bg-blue-950/60 dark:text-sky-300">
+            <FiClock className="h-3 w-3" /> Đang xử lý
           </span>
         );
       case "hold":
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase font-mono bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-            <FiAlertCircle className="w-3 h-3" /> Tạm giữ
+          <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[10px] font-bold text-rose-700 dark:border-rose-800/70 dark:bg-rose-950/60 dark:text-rose-300">
+            <FiAlertCircle className="h-3 w-3" /> Tạm giữ
           </span>
         );
       case "pending":
       default:
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase font-mono bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-            <FiClock className="w-3 h-3" /> Chưa thanh toán
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300">
+            <FiClock className="h-3 w-3" /> Chưa thanh toán
           </span>
         );
     }
   };
 
   return (
-    <div className="space-y-6 font-sans pb-16">
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-gray-800">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              Quản Trị Hệ Thống & Tài Chính Đào Tạo
-            </span>
-          </div>
-          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2.5">
-            <FiDollarSign className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-            Quản Lý & Quyết Toán Bảng Lương Giảng Viên
+    <div className="min-w-0 space-y-5 pb-12">
+      {/* Page Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63] dark:text-white">
+            Lương & chấm công giảng viên
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm mt-1">
-            Admin quản lý đơn giá theo giờ, điều chỉnh thù lao theo từng lớp học & buổi học, ghi nhận thưởng / phạt và quyết toán chi trả.
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Quản lý đơn giá theo giờ, đối soát chấm công khuôn mặt và quyết toán chi trả.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <a
-            href={adminTeacherSalariesExportUrl({ format: "xlsx", search, rateStatus, paymentStatus })}
+            href={adminTeacherSalariesExportUrl({
+              format: "xlsx",
+              search,
+              rateStatus,
+              paymentStatus,
+            })}
             download
-            className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition shadow-sm"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
             title="Xuất file Excel bảng lương chi tiết"
           >
-            <FiDownload className="w-4 h-4" />
+            <FiDownload className="h-3.5 w-3.5" />
             <span>Xuất Excel</span>
           </a>
           <a
-            href={adminTeacherSalariesExportUrl({ format: "csv", search, rateStatus, paymentStatus })}
+            href={adminTeacherSalariesExportUrl({
+              format: "csv",
+              search,
+              rateStatus,
+              paymentStatus,
+            })}
             download
-            className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs transition shadow-2xs"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             title="Xuất file CSV"
           >
-            <FiDownload className="w-4 h-4" />
+            <FiDownload className="h-3.5 w-3.5" />
             <span>Xuất CSV</span>
           </a>
           <button
             type="button"
             onClick={loadSalaries}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 transition"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            <FiRefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            <FiRefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>Làm mới</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Overview Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* KPI 1: Tổng thù lao tạm tính */}
-        <div className="rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent p-4 dark:bg-none dark:bg-slate-900">
-          <div className="flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-400 font-bold uppercase tracking-wider font-mono">
-            <span>Tổng thù lao dạy học</span>
-            <FiDollarSign className="w-4 h-4" />
+      {/* KPI Summary Cards (2x2 mobile / 4-col desktop) */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="min-w-0 rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 p-3.5 sm:p-4 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Thù lao dạy học
+            </span>
+            <span className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+              <FiDollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </span>
           </div>
-          <p className="text-xl sm:text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-1.5 leading-tight font-mono">
+          <p className="mt-2 truncate font-mono text-base sm:text-xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">
             {formatVnd(kpis.totalAccruedSalary)}
           </p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Từ {kpis.totalCompletedSessions} buổi ({kpis.totalCompletedHours}h đã dạy)
+          <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
+            {kpis.totalCompletedSessions} buổi ({kpis.totalCompletedHours}h)
           </p>
         </div>
 
-        {/* KPI 2: Tổng thực chi quyết toán */}
-        <div className="rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent p-4 dark:bg-none dark:bg-slate-900">
-          <div className="flex items-center justify-between text-xs text-blue-800 dark:text-sky-400 font-bold uppercase tracking-wider font-mono">
-            <span>Tổng thực chi sau điều chỉnh</span>
-            <FiTrendingUp className="w-4 h-4" />
+        <div className="min-w-0 rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 p-3.5 sm:p-4 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Thực chi quyết toán
+            </span>
+            <span className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+              <FiTrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </span>
           </div>
-          <p className="text-xl sm:text-2xl font-black text-blue-700 dark:text-sky-300 mt-1.5 leading-tight font-mono">
+          <p className="mt-2 truncate font-mono text-base sm:text-xl font-black tabular-nums text-blue-600 dark:text-sky-400">
             {formatVnd(kpis.totalNetSalary)}
           </p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Đã cộng thưởng và trừ phạt
+          <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
+            Sau thưởng & khấu trừ
           </p>
         </div>
 
-        {/* KPI 3: Tình trạng thanh toán */}
-        <div className="rounded-2xl border border-purple-200/80 dark:border-purple-900/60 bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent p-4 dark:bg-none dark:bg-slate-900">
-          <div className="flex items-center justify-between text-xs text-purple-800 dark:text-purple-400 font-bold uppercase tracking-wider font-mono">
-            <span>Tiến độ thanh toán</span>
-            <FiCheckCircle className="w-4 h-4" />
+        <div className="min-w-0 rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 p-3.5 sm:p-4 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Tiến độ chi trả
+            </span>
+            <span className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400">
+              <FiCheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </span>
           </div>
-          <div className="flex items-baseline gap-1.5 mt-1.5 font-mono">
-            <span className="text-xl sm:text-2xl font-black text-purple-700 dark:text-purple-300 leading-tight">
+          <div className="mt-2 flex items-baseline gap-1 font-mono">
+            <span className="text-base sm:text-xl font-black tabular-nums text-purple-600 dark:text-purple-400">
               {kpis.paidCount}
             </span>
-            <span className="text-xs font-bold text-slate-400">/ {kpis.totalTeachersCount} đã chi trả</span>
+            <span className="truncate text-[11px] font-bold text-slate-400">
+              / {kpis.totalTeachersCount} đã trả
+            </span>
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Còn {kpis.pendingCount} giảng viên chưa quyết toán
+          <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
+            Còn {kpis.pendingCount} chưa quyết toán
           </p>
         </div>
 
-        {/* KPI 4: Đơn giá & Nhân sự */}
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider font-mono">
-            <span>Gán đơn giá</span>
-            <FiUsers className="w-4 h-4 text-slate-400" />
+        <div className="min-w-0 rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 p-3.5 sm:p-4 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Gán đơn giá
+            </span>
+            <span className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <FiUsers className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </span>
           </div>
-          <div className="flex items-baseline gap-1.5 mt-1.5 font-mono">
-            <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-tight">
+          <div className="mt-2 flex items-baseline gap-1 font-mono">
+            <span className="text-base sm:text-xl font-black tabular-nums text-slate-900 dark:text-white">
               {kpis.assignedHourlyRateCount}
             </span>
-            <span className="text-xs font-bold text-slate-400">/ {kpis.totalTeachersCount} giảng viên</span>
+            <span className="truncate text-[11px] font-bold text-slate-400">
+              / {kpis.totalTeachersCount} GV
+            </span>
           </div>
-          <p className="text-[11px] mt-1 flex items-center gap-1">
+          <p className="mt-0.5 truncate text-[11px]">
             {kpis.unassignedHourlyRateCount > 0 ? (
-              <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
-                <FiAlertCircle className="w-3 h-3" /> {kpis.unassignedHourlyRateCount} người chưa gán lương
+              <span className="inline-flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
+                <FiAlertCircle className="h-3 w-3 shrink-0" /> {kpis.unassignedHourlyRateCount} chưa gán
               </span>
             ) : (
-              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                <FiCheckCircle className="w-3 h-3" /> Tất cả đã gán đơn giá
+              <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                <FiCheckCircle className="h-3 w-3 shrink-0" /> Đã gán đầy đủ
               </span>
             )}
           </p>
         </div>
       </div>
 
-      {/* Facial Enrollment Approval Panel (AWS Rekognition) */}
-      <AdminTeacherFaceEnrollmentsPanel onEnrollmentReviewed={loadSalaries} />
+      {/* Section Switcher Tabs (Payroll vs Biometrics) */}
+      <div className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-2xl border border-slate-200/80 bg-white/90 p-1.5 dark:border-slate-800 dark:bg-slate-900/90">
+        <button
+          type="button"
+          onClick={() => setActiveSection("payroll")}
+          className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+            activeSection === "payroll"
+              ? "bg-blue-600 text-white shadow-xs"
+              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          }`}
+        >
+          <FiDollarSign className="h-3.5 w-3.5" />
+          <span>Bảng lương & quyết toán</span>
+        </button>
 
-      {/* Toolbar: Search, Filters */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
-        <div className="relative w-full md:w-80">
-          <FiSearch className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm theo tên, email giảng viên..."
-            className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-          {/* Rate status filter */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-slate-500 font-medium hidden lg:inline">Đơn giá:</span>
-            <select
-              value={rateStatus}
-              onChange={(e) => setRateStatus(e.target.value)}
-              className="bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none"
+        <button
+          type="button"
+          onClick={() => setActiveSection("biometrics")}
+          className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+            activeSection === "biometrics"
+              ? "bg-blue-600 text-white shadow-xs"
+              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          }`}
+        >
+          <FiShield className="h-3.5 w-3.5" />
+          <span>Xác thực khuôn mặt</span>
+          {pendingFaceCount > 0 && (
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-[10px] font-black leading-none ${
+                activeSection === "biometrics"
+                  ? "bg-white text-blue-700"
+                  : "bg-amber-500 text-white"
+              }`}
             >
-              <option value="all">Tất cả đơn giá</option>
-              <option value="assigned">Đã gán lương (&gt; 0đ)</option>
-              <option value="unassigned">Chưa gán lương (0đ)</option>
-            </select>
-          </div>
-
-          {/* Payment status filter */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-slate-500 font-medium hidden lg:inline">Thanh toán:</span>
-            <select
-              value={paymentStatus}
-              onChange={(e) => setPaymentStatus(e.target.value)}
-              className="bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none"
-            >
-              <option value="all">Tất cả thanh toán</option>
-              <option value="pending">Chưa thanh toán</option>
-              <option value="processing">Đang xử lý</option>
-              <option value="paid">Đã thanh toán</option>
-              <option value="hold">Tạm giữ</option>
-            </select>
-          </div>
-        </div>
+              {pendingFaceCount}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* Main Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800 text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/60 uppercase tracking-wider text-[10px] font-bold text-slate-500 dark:text-slate-400 font-mono">
-              <tr>
-                <th className="py-3.5 px-5">Giảng Viên</th>
-                <th className="py-3.5 px-3 text-center">Đơn Giá Cơ Bản</th>
-                <th className="py-3.5 px-3 text-center">Lớp Phụ Trách</th>
-                <th className="py-3.5 px-3 text-center">Tiến Độ Buổi Dạy</th>
-                <th className="py-3.5 px-3 text-center">Giờ Dạy Thực Tế</th>
-                <th className="py-3.5 px-3 text-right">Lương Dạy Học</th>
-                <th className="py-3.5 px-3 text-right">Thưởng / Phạt</th>
-                <th className="py-3.5 px-4 text-right">Thực Lĩnh</th>
-                <th className="py-3.5 px-3 text-center">Trạng Thái</th>
-                <th className="py-3.5 px-5 text-right">Hành Động</th>
-              </tr>
-            </thead>
+      {/* Biometrics Panel (kept mounted for instant switching & live pending badge) */}
+      <div className={activeSection === "biometrics" ? "block" : "hidden"}>
+        <AdminTeacherFaceEnrollmentsPanel
+          onEnrollmentReviewed={loadSalaries}
+          onPendingCountChange={setPendingFaceCount}
+        />
+      </div>
 
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-              {loading ? (
-                <tr>
-                  <td colSpan={10} className="py-12">
-                    <Loading loading={true} text="Đang tải dữ liệu bảng lương..." fullScreen={false} />
-                  </td>
-                </tr>
-              ) : data.teachers.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400">
-                    Không tìm thấy giảng viên nào phù hợp với điều kiện tìm kiếm.
-                  </td>
-                </tr>
-              ) : (
-                data.teachers.map((t) => {
-                  const roleBadge =
-                    t.role === "admin"
-                      ? "bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200"
-                      : "bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200";
+      {/* Payroll Section */}
+      {activeSection === "payroll" && (
+        <div className="space-y-4">
+          {/* Filter Toolbar */}
+          <div className="flex flex-col gap-2.5 rounded-2xl border border-slate-200/80 bg-white/90 p-3 md:flex-row md:items-center md:justify-between dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="relative w-full md:w-72">
+              <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Tìm tên, email giảng viên..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 pl-9 pr-3 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
+              />
+            </div>
 
-                  const adjustNet = Number(t.bonusAmount || 0) - Number(t.deductionAmount || 0);
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={rateStatus}
+                onChange={(e) => setRateStatus(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
+              >
+                <option value="all">Tất cả đơn giá</option>
+                <option value="assigned">Đã gán lương (&gt; 0đ)</option>
+                <option value="unassigned">Chưa gán lương (0đ)</option>
+              </select>
 
-                  return (
-                    <tr
-                      key={t.id}
-                      className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition"
-                    >
-                      {/* Teacher Profile */}
-                      <td className="py-3.5 px-5">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={
-                              t.avatarUrl ||
-                              `https://api.dicebear.com/7.x/avataaars/svg?seed=${t.username || "Teacher"}`
-                            }
-                            alt=""
-                            className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-                          />
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-bold text-slate-900 dark:text-white text-sm">
-                                {t.fullName || t.username}
-                              </p>
-                              <span
-                                className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase font-mono border ${roleBadge}`}
-                              >
-                                {t.role === "admin" ? "Admin" : "Giảng viên"}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-slate-400 font-mono">@{t.username} · {t.email}</p>
-                          </div>
-                        </div>
-                      </td>
+              <select
+                value={paymentStatus}
+                onChange={(e) => setPaymentStatus(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
+              >
+                <option value="all">Tất cả thanh toán</option>
+                <option value="pending">Chưa thanh toán</option>
+                <option value="processing">Đang xử lý</option>
+                <option value="paid">Đã thanh toán</option>
+                <option value="hold">Tạm giữ</option>
+              </select>
+            </div>
+          </div>
 
-                      {/* Hourly rate */}
-                      <td className="py-3.5 px-3 text-center">
-                        {t.hourlyRate > 0 ? (
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono font-bold">
-                            <span>{formatVnd(t.hourlyRate)}/h</span>
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200">
-                            Chưa gán
-                          </span>
-                        )}
-                      </td>
+          {/* Main Payroll Table */}
+          <div className="rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800 text-left text-xs">
+                <thead className="bg-slate-50/90 dark:bg-slate-800/70 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <tr>
+                    <th className="px-3 py-2.5 pl-4">Giảng viên</th>
+                    <th className="px-3 py-2.5 text-center">Đơn giá cơ bản</th>
+                    <th className="px-3 py-2.5 text-center">Lớp</th>
+                    <th className="px-3 py-2.5 text-center">Tiến độ buổi</th>
+                    <th className="px-3 py-2.5 text-center">Giờ dạy</th>
+                    <th className="px-3 py-2.5 text-right">Lương dạy</th>
+                    <th className="px-3 py-2.5 text-right">Thưởng / Phạt</th>
+                    <th className="px-3 py-2.5 text-right">Thực lĩnh</th>
+                    <th className="px-3 py-2.5 text-center">Trạng thái</th>
+                    <th className="px-3 py-2.5 pr-4 text-right">Thao tác</th>
+                  </tr>
+                </thead>
 
-                      {/* Classes Count */}
-                      <td className="py-3.5 px-3 text-center font-bold text-slate-700 dark:text-slate-300">
-                        {t.classesCount} lớp
-                      </td>
-
-                      {/* Sessions Progress */}
-                      <td className="py-3.5 px-3 text-center">
-                        <div className="inline-flex flex-col items-center gap-0.5">
-                          <span className="font-bold text-slate-900 dark:text-white">
-                            {t.completedSessions} / {t.totalSessions} buổi
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            ({t.progressPct}%)
-                          </span>
-                          {t.attendancePendingSessions > 0 && (
-                            <span className="rounded-full bg-amber-100 border border-amber-200 px-1.5 py-0.2 text-[9px] font-bold text-amber-800">
-                              {t.attendancePendingSessions} thiếu Ra/Vào
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Completed Hours */}
-                      <td className="py-3.5 px-3 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
-                        {t.completedHours}h
-                        <span className="text-[10px] text-slate-400 block font-normal">
-                          / {t.totalHours}h dự kiến
-                        </span>
-                      </td>
-
-                      {/* Accrued Salary from hours */}
-                      <td className="py-3.5 px-3 text-right font-mono font-bold text-slate-700 dark:text-slate-300">
-                        {formatVnd(t.accruedSalary)}
-                      </td>
-
-                      {/* Bonus / Deduction */}
-                      <td className="py-3.5 px-3 text-right font-mono text-[11px]">
-                        {adjustNet > 0 ? (
-                          <span className="text-emerald-600 font-bold">+{formatVnd(adjustNet)}</span>
-                        ) : adjustNet < 0 ? (
-                          <span className="text-rose-600 font-bold">{formatVnd(adjustNet)}</span>
-                        ) : (
-                          <span className="text-slate-400">0 ₫</span>
-                        )}
-                      </td>
-
-                      {/* Net Salary (Thực lĩnh) */}
-                      <td className="py-3.5 px-4 text-right font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
-                        {formatVnd(t.netAccruedSalary)}
-                      </td>
-
-                      {/* Payment Status Badge */}
-                      <td className="py-3.5 px-3 text-center">
-                        {renderPaymentBadge(t.paymentStatus)}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3.5 px-5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenDetailModal(t)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-2xs"
-                            title="Xem chi tiết các lớp, buổi học & quyết toán"
-                          >
-                            <FiEye className="w-3.5 h-3.5" />
-                            <span>Chi tiết & Quyết toán</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(t)}
-                            className="p-1.5 rounded-xl text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                            title="Gán mức lương theo giờ cơ bản"
-                          >
-                            <FiEdit2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={10} className="py-12">
+                        <Loading
+                          loading={true}
+                          text="Đang tải dữ liệu bảng lương..."
+                          fullScreen={false}
+                        />
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                  ) : data.teachers.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                        Không tìm thấy giảng viên nào phù hợp.
+                      </td>
+                    </tr>
+                  ) : (
+                    data.teachers.map((t) => {
+                      const roleBadge =
+                        t.role === "admin"
+                          ? "bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/70"
+                          : "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/70";
+
+                      const adjustNet = Number(t.bonusAmount || 0) - Number(t.deductionAmount || 0);
+
+                      return (
+                        <tr
+                          key={t.id}
+                          className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
+                        >
+                          <td className="px-3 py-2.5 pl-4">
+                            <div className="flex items-center gap-2.5 min-w-[190px]">
+                              <img
+                                src={
+                                  t.avatarUrl ||
+                                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${t.username || "Teacher"}`
+                                }
+                                alt=""
+                                className="h-9 w-9 shrink-0 rounded-full border border-slate-200 bg-slate-100 object-cover dark:border-slate-700 dark:bg-slate-800"
+                              />
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <p className="truncate font-bold text-slate-900 dark:text-white text-xs sm:text-sm max-w-[160px]">
+                                    {t.fullName || t.username}
+                                  </p>
+                                  <span
+                                    className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase ${roleBadge}`}
+                                  >
+                                    {t.role === "admin" ? "Admin" : "GV"}
+                                  </span>
+                                </div>
+                                <p className="truncate font-mono text-[11px] text-slate-400 max-w-[200px]">
+                                  @{t.username} · {t.email}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                            {t.hourlyRate > 0 ? (
+                              <span className="inline-flex items-center rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-mono text-[11px] font-bold text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/50 dark:text-emerald-300">
+                                {formatVnd(t.hourlyRate)}/h
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/50 dark:text-amber-300">
+                                Chưa gán
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2.5 text-center font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                            {t.classesCount} lớp
+                          </td>
+
+                          <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                            <div className="inline-flex flex-col items-center gap-0.5">
+                              <span className="font-bold text-slate-900 dark:text-white">
+                                {t.completedSessions} / {t.totalSessions} buổi
+                              </span>
+                              <span className="text-[10px] text-slate-400">({t.progressPct}%)</span>
+                              {t.attendancePendingSessions > 0 && (
+                                <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.2 text-[9px] font-bold text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300">
+                                  {t.attendancePendingSessions} thiếu vào/ra
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                            {t.completedHours}h
+                            <span className="block font-sans text-[10px] font-normal text-slate-400">
+                              / {t.totalHours}h
+                            </span>
+                          </td>
+
+                          <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                            {formatVnd(t.accruedSalary)}
+                          </td>
+
+                          <td className="px-3 py-2.5 text-right font-mono text-[11px] whitespace-nowrap">
+                            {adjustNet > 0 ? (
+                              <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                +{formatVnd(adjustNet)}
+                              </span>
+                            ) : adjustNet < 0 ? (
+                              <span className="font-bold text-rose-600 dark:text-rose-400">
+                                {formatVnd(adjustNet)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">0 ₫</span>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2.5 text-right font-mono text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                            {formatVnd(t.netAccruedSalary)}
+                          </td>
+
+                          <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                            {renderPaymentBadge(t.paymentStatus)}
+                          </td>
+
+                          <td className="px-3 py-2.5 pr-4 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDetailModal(t)}
+                                className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-xs transition hover:bg-blue-700"
+                                title="Xem chi tiết các lớp, buổi học & quyết toán"
+                              >
+                                <FiEye className="h-3.5 w-3.5" />
+                                <span>Chi tiết</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(t)}
+                                className="rounded-xl border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
+                                title="Gán đơn giá theo giờ cơ bản"
+                              >
+                                <FiEdit2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Modal: Gán / Chỉnh sửa mức lương cơ bản theo giờ */}
       {editingTeacher && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <FiDollarSign className="w-5 h-5 text-emerald-600" />
-                Đơn Giá Lương Theo Giờ Cơ Bản
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-3 sm:p-4 backdrop-blur-xs"
+          onClick={() => setEditingTeacher(null)}
+        >
+          <div
+            className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-3xl border border-white/80 bg-white p-5 sm:p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+              <h3 className="flex items-center gap-2 text-base font-black text-[#102f63] dark:text-white">
+                <FiDollarSign className="h-5 w-5 text-emerald-600" />
+                Đơn giá lương cơ bản
               </h3>
               <button
                 type="button"
                 onClick={() => setEditingTeacher(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-lg"
+                className="rounded-xl bg-slate-100 p-1.5 text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
-                ✕
+                <FiX className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleSaveHourlyRate} className="space-y-4">
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-800/60">
                 <img
                   src={
                     editingTeacher.avatarUrl ||
                     `https://api.dicebear.com/7.x/avataaars/svg?seed=${editingTeacher.username || "Teacher"}`
                   }
                   alt=""
-                  className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-600"
+                  className="h-10 w-10 shrink-0 rounded-full border border-slate-200 object-cover dark:border-slate-600"
                 />
                 <div className="min-w-0">
-                  <p className="font-bold text-slate-900 dark:text-white text-sm">
+                  <p className="truncate text-sm font-bold text-slate-900 dark:text-white">
                     {editingTeacher.fullName || editingTeacher.username}
                   </p>
-                  <p className="text-xs text-slate-500 font-mono truncate">{editingTeacher.email}</p>
+                  <p className="truncate font-mono text-xs text-slate-500 dark:text-slate-400">
+                    {editingTeacher.email}
+                  </p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Mức lương theo giờ cơ bản (VNĐ / giờ):
+                <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Mức lương theo giờ (VNĐ / giờ)
                 </label>
                 <div className="relative">
                   <input
@@ -773,18 +848,17 @@ export default function AdminTeacherSalaryPage() {
                     value={hourlyRateInput}
                     onChange={(e) => setHourlyRateInput(e.target.value)}
                     placeholder="Ví dụ: 250000"
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 font-mono"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 pr-20 font-mono text-sm font-black text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-white"
                   />
-                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                  <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                     VNĐ / giờ
                   </span>
                 </div>
               </div>
 
-              {/* Quick Select Presets */}
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-2">
-                  Chọn nhanh mức lương chuẩn:
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Chọn nhanh mức chuẩn
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   {PRESET_RATES.map((rate) => (
@@ -792,10 +866,10 @@ export default function AdminTeacherSalaryPage() {
                       key={rate}
                       type="button"
                       onClick={() => setHourlyRateInput(String(rate))}
-                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition border ${
+                      className={`rounded-xl border px-2 py-1.5 font-mono text-xs font-bold transition ${
                         Number(hourlyRateInput) === rate
-                          ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                          : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-500"
+                          ? "border-blue-600 bg-blue-600 text-white shadow-xs"
+                          : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                       }`}
                     >
                       {formatVnd(rate)}/h
@@ -804,20 +878,20 @@ export default function AdminTeacherSalaryPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setEditingTeacher(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={submittingRate}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition disabled:opacity-50"
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {submittingRate ? "Đang lưu..." : "Lưu Đơn Giá"}
+                  {submittingRate ? "Đang lưu..." : "Lưu đơn giá"}
                 </button>
               </div>
             </form>
@@ -825,13 +899,19 @@ export default function AdminTeacherSalaryPage() {
         </div>
       )}
 
-      {/* Modal: CHI TIẾT BẢNG LƯƠNG & QUYẾT TOÁN TOÀN DIỆN */}
+      {/* Modal: CHI TIẾT BẢNG LƯƠNG & QUYẾT TOÁN */}
       {detailModalTeacherId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-3 sm:p-4 backdrop-blur-xs"
+          onClick={() => setDetailModalTeacherId(null)}
+        >
+          <div
+            className="flex max-h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/80 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Header */}
-            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0 bg-slate-50/50 dark:bg-slate-800/40">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-800/40">
+              <div className="flex min-w-0 items-center gap-3">
                 {teacherDetail?.teacher && (
                   <img
                     src={
@@ -839,19 +919,24 @@ export default function AdminTeacherSalaryPage() {
                       `https://api.dicebear.com/7.x/avataaars/svg?seed=${teacherDetail.teacher.username || "Teacher"}`
                     }
                     alt=""
-                    className="w-12 h-12 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 bg-white shrink-0"
+                    className="h-11 w-11 shrink-0 rounded-2xl border border-slate-200 bg-white object-cover dark:border-slate-700"
                   />
                 )}
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white truncate">
-                      {teacherDetail?.teacher?.fullName || teacherDetail?.teacher?.username || "Chi Tiết Bảng Lương"}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate text-base sm:text-lg font-black text-[#102f63] dark:text-white">
+                      {teacherDetail?.teacher?.fullName ||
+                        teacherDetail?.teacher?.username ||
+                        "Chi tiết bảng lương"}
                     </h3>
-                    {teacherDetail?.summary?.paymentStatus && renderPaymentBadge(teacherDetail.summary.paymentStatus)}
+                    {teacherDetail?.summary?.paymentStatus &&
+                      renderPaymentBadge(teacherDetail.summary.paymentStatus)}
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5 truncate font-mono">
-                    @{teacherDetail?.teacher?.username} · {teacherDetail?.teacher?.email} · Đơn giá chuẩn:{" "}
-                    <strong className="text-emerald-600">{formatVnd(teacherDetail?.teacher?.hourlyRate)}/h</strong>
+                  <p className="mt-0.5 truncate font-mono text-xs text-slate-500 dark:text-slate-400">
+                    @{teacherDetail?.teacher?.username} · {teacherDetail?.teacher?.email} · Đơn giá:{" "}
+                    <strong className="text-emerald-600 dark:text-emerald-400">
+                      {formatVnd(teacherDetail?.teacher?.hourlyRate)}/h
+                    </strong>
                   </p>
                 </div>
               </div>
@@ -860,184 +945,196 @@ export default function AdminTeacherSalaryPage() {
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 transition"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                   title="In phiếu lương này"
                 >
-                  <FiPrinter className="w-3.5 h-3.5" />
+                  <FiPrinter className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">In phiếu lương</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setDetailModalTeacherId(null)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  className="rounded-xl bg-slate-100 p-2 text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 >
-                  ✕
+                  <FiX className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
             {/* Teacher KPI Strip */}
             {teacherDetail && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
-                {/* Lương dạy học */}
-                <div className="p-3 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/50">
-                  <p className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-400 font-mono">
+              <div className="grid shrink-0 grid-cols-2 gap-2.5 border-b border-slate-100 bg-white p-4 sm:grid-cols-4 sm:px-5 dark:border-slate-800 dark:bg-slate-900">
+                <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/60 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+                  <p className="text-[10px] font-bold uppercase text-emerald-800 dark:text-emerald-400">
                     Lương giờ dạy
                   </p>
-                  <p className="text-base sm:text-lg font-black text-emerald-700 dark:text-emerald-300 font-mono mt-0.5">
+                  <p className="mt-0.5 truncate font-mono text-sm sm:text-base font-black text-emerald-700 dark:text-emerald-300">
                     {formatVnd(teacherDetail.summary.accruedSalary)}
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
-                    {teacherDetail.summary.completedSessions} buổi ({teacherDetail.summary.completedHours}h)
+                  <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                    {teacherDetail.summary.completedSessions} buổi (
+                    {teacherDetail.summary.completedHours}h)
                   </p>
                 </div>
 
-                {/* Thưởng / Phụ cấp */}
-                <div className="p-3 rounded-2xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50">
-                  <p className="text-[10px] uppercase font-bold text-blue-800 dark:text-sky-400 font-mono">
+                <div className="rounded-2xl border border-blue-200/70 bg-blue-50/60 p-3 dark:border-blue-900/50 dark:bg-blue-950/30">
+                  <p className="text-[10px] font-bold uppercase text-blue-800 dark:text-sky-400">
                     Thưởng / Phụ cấp
                   </p>
-                  <p className="text-base sm:text-lg font-black text-blue-700 dark:text-sky-300 font-mono mt-0.5">
+                  <p className="mt-0.5 truncate font-mono text-sm sm:text-base font-black text-blue-700 dark:text-sky-300">
                     +{formatVnd(teacherDetail.summary.bonusAmount)}
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Điều chỉnh cộng</p>
+                  <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                    Điều chỉnh cộng
+                  </p>
                 </div>
 
-                {/* Khấu trừ */}
-                <div className="p-3 rounded-2xl bg-rose-50/60 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/50">
-                  <p className="text-[10px] uppercase font-bold text-rose-800 dark:text-rose-400 font-mono">
+                <div className="rounded-2xl border border-rose-200/70 bg-rose-50/60 p-3 dark:border-rose-900/50 dark:bg-rose-950/30">
+                  <p className="text-[10px] font-bold uppercase text-rose-800 dark:text-rose-400">
                     Khấu trừ / Phạt
                   </p>
-                  <p className="text-base sm:text-lg font-black text-rose-700 dark:text-rose-300 font-mono mt-0.5">
+                  <p className="mt-0.5 truncate font-mono text-sm sm:text-base font-black text-rose-700 dark:text-rose-300">
                     -{formatVnd(teacherDetail.summary.deductionAmount)}
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Điều chỉnh giảm</p>
+                  <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                    Điều chỉnh giảm
+                  </p>
                 </div>
 
-                {/* Thực nhận ròng */}
-                <div className="p-3 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-xs">
-                  <p className="text-[10px] uppercase font-bold text-emerald-100 font-mono">
+                <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 p-3 text-white shadow-xs">
+                  <p className="text-[10px] font-bold uppercase text-blue-100">
                     Thực lĩnh quyết toán
                   </p>
-                  <p className="text-base sm:text-xl font-black font-mono mt-0.5">
+                  <p className="mt-0.5 truncate font-mono text-sm sm:text-lg font-black">
                     {formatVnd(teacherDetail.summary.netAccruedSalary)}
                   </p>
-                  <p className="text-[10px] text-emerald-100/80 mt-0.5 truncate">
-                    Trạng thái: {PAYMENT_STATUS_LABELS[teacherDetail.summary.paymentStatus] || teacherDetail.summary.paymentStatus}
+                  <p className="mt-0.5 truncate text-[10px] text-blue-100/85">
+                    {PAYMENT_STATUS_LABELS[teacherDetail.summary.paymentStatus] ||
+                      teacherDetail.summary.paymentStatus}
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Attendance Audit Strip inside Teacher Detail Modal */}
+            {/* Attendance Audit Strip */}
             {teacherDetail && (
-              <div className="flex flex-wrap items-center gap-2 px-5 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 text-[11px] shrink-0">
-                <span className="font-bold text-slate-600 dark:text-slate-300">Đối soát chấm công:</span>
-                <span className={`rounded-full border px-2 py-0.5 font-bold ${
-                  teacherDetail.teacher?.faceEnrollmentStatus === "approved"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : teacherDetail.teacher?.faceEnrollmentStatus === "pending_approval"
-                      ? "border-amber-200 bg-amber-50 text-amber-800"
-                      : "border-slate-200 bg-white text-slate-500"
-                }`}>
-                  Khuôn mặt: {teacherDetail.teacher?.faceEnrollmentStatus === "approved"
+              <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5 text-[11px] sm:px-5 dark:border-slate-800 dark:bg-slate-900/60">
+                <span className="font-bold text-slate-600 dark:text-slate-300">
+                  Đối soát chấm công:
+                </span>
+                <span
+                  className={`rounded-full border px-2 py-0.5 font-bold ${
+                    teacherDetail.teacher?.faceEnrollmentStatus === "approved"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/50 dark:text-emerald-300"
+                      : teacherDetail.teacher?.faceEnrollmentStatus === "pending_approval"
+                        ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/50 dark:text-amber-300"
+                        : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                  }`}
+                >
+                  Khuôn mặt:{" "}
+                  {teacherDetail.teacher?.faceEnrollmentStatus === "approved"
                     ? "Đã duyệt & khóa"
                     : teacherDetail.teacher?.faceEnrollmentStatus === "pending_approval"
                       ? "Chờ duyệt"
                       : "Chưa đăng ký"}
                 </span>
-                <span className={`rounded-full border px-2 py-0.5 font-mono font-bold ${
-                  (teacherDetail.summary?.attendancePendingSessions || 0) > 0
-                    ? "border-amber-200 bg-amber-100 text-amber-800"
-                    : "border-slate-200 bg-white text-slate-600"
-                }`}>
-                  Thiếu Ra/Vào: {teacherDetail.summary?.attendancePendingSessions || 0} buổi
+                <span
+                  className={`rounded-full border px-2 py-0.5 font-mono font-bold ${
+                    (teacherDetail.summary?.attendancePendingSessions || 0) > 0
+                      ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300"
+                      : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  }`}
+                >
+                  Thiếu vào/ra: {teacherDetail.summary?.attendancePendingSessions || 0} buổi
                 </span>
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono font-bold text-slate-600">
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   Đi muộn: {teacherDetail.summary?.lateSessionsCount || 0}
                 </span>
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono font-bold text-slate-600">
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   Về sớm: {teacherDetail.summary?.earlyLeaveSessionsCount || 0}
                 </span>
               </div>
             )}
 
             {/* Modal Tabs Navigation */}
-            <div className="flex items-center gap-2 px-5 pt-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900 shrink-0">
+            <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-100 bg-slate-50/30 px-4 pt-2.5 sm:px-5 dark:border-slate-800 dark:bg-slate-900">
               <button
                 type="button"
                 onClick={() => setDetailTab("classes")}
-                className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 ${
+                className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 pb-2.5 text-xs font-bold transition ${
                   detailTab === "classes"
-                    ? "border-emerald-600 text-emerald-600 dark:text-emerald-400"
-                    : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300"
+                    ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
+                    : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
                 }`}
               >
-                <FiLayers className="w-4 h-4" />
-                <span>Chi Tiết Lớp & Buổi Học ({teacherDetail?.classes?.length || 0})</span>
+                <FiLayers className="h-3.5 w-3.5" />
+                <span>Lớp & buổi học ({teacherDetail?.classes?.length || 0})</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setDetailTab("settlement")}
-                className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 ${
+                className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 pb-2.5 text-xs font-bold transition ${
                   detailTab === "settlement"
-                    ? "border-emerald-600 text-emerald-600 dark:text-emerald-400"
-                    : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300"
+                    ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
+                    : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
                 }`}
               >
-                <FiSliders className="w-4 h-4" />
-                <span>Quyết Toán & Điều Chỉnh Thù Lao</span>
+                <FiSliders className="h-3.5 w-3.5" />
+                <span>Quyết toán & điều chỉnh</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setDetailTab("payslip")}
-                className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 ${
+                className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 pb-2.5 text-xs font-bold transition ${
                   detailTab === "payslip"
-                    ? "border-emerald-600 text-emerald-600 dark:text-emerald-400"
-                    : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300"
+                    ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
+                    : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
                 }`}
               >
-                <FiFileText className="w-4 h-4" />
-                <span>Phiếu Lương In Ấn</span>
+                <FiFileText className="h-3.5 w-3.5" />
+                <span>Phiếu lương</span>
               </button>
             </div>
 
             {/* Modal Scrollable Body */}
-            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+            <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
               {loadingDetail ? (
                 <div className="py-16">
-                  <Loading loading={true} text="Đang tải dữ liệu chi tiết giảng viên..." fullScreen={false} />
+                  <Loading
+                    loading={true}
+                    text="Đang tải dữ liệu chi tiết giảng viên..."
+                    fullScreen={false}
+                  />
                 </div>
               ) : !teacherDetail ? (
-                <p className="text-center py-12 text-slate-400 text-xs">Không tìm thấy dữ liệu.</p>
+                <p className="py-12 text-center text-xs text-slate-400">Không tìm thấy dữ liệu.</p>
               ) : detailTab === "classes" ? (
                 /* TAB 1: CHI TIẾT TỪNG LỚP & BUỔI HỌC */
                 <div className="space-y-4">
-                  {/* Class selector bar if multiple classes */}
                   {teacherDetail.classes.length > 1 && (
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
                       <button
                         type="button"
                         onClick={() => setSelectedClassFilter("all")}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 ${
+                        className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
                           selectedClassFilter === "all"
-                            ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                            ? "bg-blue-600 text-white shadow-xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                         }`}
                       >
-                        Tất cả các lớp ({teacherDetail.classes.length})
+                        Tất cả ({teacherDetail.classes.length})
                       </button>
                       {teacherDetail.classes.map((cls) => (
                         <button
                           key={cls.classId}
                           type="button"
                           onClick={() => setSelectedClassFilter(cls.classId)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 ${
+                          className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
                             String(selectedClassFilter) === String(cls.classId)
-                              ? "bg-emerald-600 text-white shadow-2xs"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                              ? "bg-blue-600 text-white shadow-xs"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                           }`}
                         >
                           {cls.code}: {cls.title}
@@ -1047,62 +1144,68 @@ export default function AdminTeacherSalaryPage() {
                   )}
 
                   {displayedDetailClasses.length === 0 ? (
-                    <div className="p-8 text-center text-xs text-slate-400 border border-dashed rounded-2xl">
+                    <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-400 dark:border-slate-700">
                       Giảng viên chưa được phân công lớp học nào hoặc chưa có buổi học.
                     </div>
                   ) : (
                     displayedDetailClasses.map((cls) => (
                       <div
                         key={cls.classId}
-                        className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 p-4 sm:p-5 space-y-3.5"
+                        className="space-y-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-800/30"
                       >
                         {/* Class Card Header */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/60 dark:border-slate-800 pb-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-sky-300 border border-blue-200">
+                        <div className="flex flex-col justify-between gap-3 border-b border-slate-200/70 pb-3 sm:flex-row sm:items-center dark:border-slate-700/80">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-black uppercase text-blue-700 dark:border-blue-800/70 dark:bg-blue-950/60 dark:text-sky-300">
                                 {cls.code}
                               </span>
-                              <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                              <h4 className="truncate text-sm font-black text-slate-900 dark:text-white">
                                 {cls.title}
                               </h4>
                             </div>
-                            <p className="text-xs text-slate-500 mt-1">
-                              {cls.courseTitle} · Vai trò:{" "}
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                              {cls.courseTitle} ·{" "}
                               <strong className="text-slate-700 dark:text-slate-300">
-                                {cls.teachingRole === "lead" ? "Giảng viên chính" : "Trợ giảng / Đồng giảng"}
+                                {cls.teachingRole === "lead" ? "Giảng viên chính" : "Trợ giảng"}
                               </strong>{" "}
-                              · Đã dạy: <strong>{cls.completedSessions}/{cls.totalSessions} buổi</strong> ({cls.completedHours}h)
+                              · Đã dạy:{" "}
+                              <strong>
+                                {cls.completedSessions}/{cls.totalSessions} buổi
+                              </strong>{" "}
+                              ({cls.completedHours}h)
                             </p>
                           </div>
 
-                          <div className="flex items-center sm:items-end justify-between sm:justify-start gap-4">
-                            {/* Class rate info & override button */}
+                          <div className="flex items-center justify-between gap-4 sm:items-end sm:justify-start">
                             <div className="text-left sm:text-right">
-                              <div className="flex items-center gap-1.5 justify-start sm:justify-end">
-                                <span className="text-[10px] font-mono uppercase font-bold text-slate-400">Đơn giá lớp:</span>
-                                <span className="text-xs font-black text-[#102f63] dark:text-sky-300 font-mono">
+                              <div className="flex flex-wrap items-center justify-start gap-1.5 sm:justify-end">
+                                <span className="text-[10px] font-bold uppercase text-slate-400">
+                                  Đơn giá lớp:
+                                </span>
+                                <span className="font-mono text-xs font-black text-[#102f63] dark:text-sky-300">
                                   {formatVnd(cls.effectiveHourlyRate)}/h
                                 </span>
                                 {cls.hasCustomRate && (
-                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                    Đơn giá riêng
+                                  <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/50 dark:text-amber-300">
+                                    Riêng
                                   </span>
                                 )}
                               </div>
                               <button
                                 type="button"
                                 onClick={() => handleOpenClassRateModal(cls)}
-                                className="mt-1 text-[11px] font-bold text-blue-600 dark:text-sky-400 hover:underline flex items-center gap-1 sm:justify-end"
+                                className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:underline dark:text-sky-400"
                               >
-                                <FiEdit2 className="w-3 h-3" /> Sửa đơn giá lớp này
+                                <FiEdit2 className="h-3 w-3" /> Sửa đơn giá lớp
                               </button>
                             </div>
 
-                            {/* Class Accrued Total */}
-                            <div className="text-right pl-3 border-l border-slate-200 dark:border-slate-800">
-                              <p className="text-[10px] font-mono font-bold uppercase text-slate-400">Lương tạm tính</p>
-                              <p className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                            <div className="border-l border-slate-200 pl-3 text-right dark:border-slate-700">
+                              <p className="text-[10px] font-bold uppercase text-slate-400">
+                                Lương tạm tính
+                              </p>
+                              <p className="font-mono text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400">
                                 {formatVnd(cls.accruedSalary)}
                               </p>
                             </div>
@@ -1111,44 +1214,67 @@ export default function AdminTeacherSalaryPage() {
 
                         {/* Sessions Table */}
                         {cls.sessions.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic py-2">Lớp này chưa có buổi học nào.</p>
+                          <p className="py-2 text-xs italic text-slate-400">
+                            Lớp này chưa có buổi học nào.
+                          </p>
                         ) : (
-                          <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900">
-                            <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800 text-left text-xs">
-                              <thead className="bg-slate-50 dark:bg-slate-800/60 font-mono uppercase text-[10px] text-slate-400 font-bold">
+                          <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+                            <table className="min-w-full divide-y divide-slate-100 text-left text-xs dark:divide-slate-800">
+                              <thead className="bg-slate-50/90 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
                                 <tr>
-                                  <th className="py-2.5 px-3">#</th>
-                                  <th className="py-2.5 px-3">Tên buổi học</th>
-                                  <th className="py-2.5 px-3">Thời gian</th>
-                                  <th className="py-2.5 px-3 text-center">Thời lượng</th>
-                                  <th className="py-2.5 px-3">Chấm công Ra/Vào</th>
-                                  <th className="py-2.5 px-3 text-center">Trạng thái</th>
-                                  <th className="py-2.5 px-3 text-right">Thù lao</th>
-                                  <th className="py-2.5 px-3 text-right">Thao tác</th>
+                                  <th className="px-3 py-2">#</th>
+                                  <th className="px-3 py-2">Buổi học</th>
+                                  <th className="px-3 py-2">Thời gian</th>
+                                  <th className="px-3 py-2 text-center">Thời lượng</th>
+                                  <th className="px-3 py-2">Chấm công vào/ra</th>
+                                  <th className="px-3 py-2 text-center">Trạng thái</th>
+                                  <th className="px-3 py-2 text-right">Thù lao</th>
+                                  <th className="px-3 py-2 text-right">Sửa</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                                 {cls.sessions.map((sess) => {
                                   const sDate = sess.startTime ? new Date(sess.startTime) : null;
                                   const eDate = sess.endTime ? new Date(sess.endTime) : null;
-                                  const dateStr = sDate && !Number.isNaN(sDate.getTime())
-                                    ? sDate.toLocaleDateString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })
-                                    : "Chưa định";
-                                  const timeStr = sDate && !Number.isNaN(sDate.getTime())
-                                    ? sDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
-                                    : "";
-                                  const endTimeStr = eDate && !Number.isNaN(eDate.getTime())
-                                    ? eDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
-                                    : "";
+                                  const dateStr =
+                                    sDate && !Number.isNaN(sDate.getTime())
+                                      ? sDate.toLocaleDateString("vi-VN", {
+                                          weekday: "short",
+                                          day: "2-digit",
+                                          month: "2-digit",
+                                          year: "numeric",
+                                        })
+                                      : "Chưa định";
+                                  const timeStr =
+                                    sDate && !Number.isNaN(sDate.getTime())
+                                      ? sDate.toLocaleTimeString("vi-VN", {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })
+                                      : "";
+                                  const endTimeStr =
+                                    eDate && !Number.isNaN(eDate.getTime())
+                                      ? eDate.toLocaleTimeString("vi-VN", {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })
+                                      : "";
                                   const fa = sess.faceAttendance || {};
-                                  const fmtHm = (val) => (
+                                  const fmtHm = (val) =>
                                     val && !Number.isNaN(new Date(val).getTime())
-                                      ? new Date(val).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
-                                      : "--:--"
-                                  );
+                                      ? new Date(val).toLocaleTimeString("vi-VN", {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })
+                                      : "--:--";
                                   const actualDurationStr = (() => {
                                     if (!fa.checkInAt || !fa.checkOutAt) return null;
-                                    const mins = Math.max(0, Math.round((new Date(fa.checkOutAt) - new Date(fa.checkInAt)) / 60000));
+                                    const mins = Math.max(
+                                      0,
+                                      Math.round(
+                                        (new Date(fa.checkOutAt) - new Date(fa.checkInAt)) / 60000,
+                                      ),
+                                    );
                                     const h = Math.floor(mins / 60);
                                     const m = mins % 60;
                                     return h > 0 ? `${h}h${m > 0 ? ` ${m}p` : ""}` : `${m}p`;
@@ -1166,20 +1292,27 @@ export default function AdminTeacherSalaryPage() {
                                             : ""
                                       }
                                     >
-                                      <td className="py-2 px-3 font-mono font-bold text-slate-400">
+                                      <td className="px-3 py-2 font-mono font-bold text-slate-400">
                                         {sess.sessionNumber}
                                       </td>
-                                      <td className="py-2 px-3 font-bold text-slate-900 dark:text-white max-w-[200px] truncate">
+                                      <td className="max-w-[200px] truncate px-3 py-2 font-bold text-slate-900 dark:text-white">
                                         {sess.title}
                                       </td>
-                                      <td className="py-2 px-3 font-mono text-[11px] text-slate-500">
-                                        {dateStr} {timeStr && `(${timeStr}${endTimeStr ? `–${endTimeStr}` : ""})`}
+                                      <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                                        {dateStr}{" "}
+                                        {timeStr &&
+                                          `(${timeStr}${endTimeStr ? `–${endTimeStr}` : ""})`}
                                       </td>
-                                      <td className="py-2 px-3 text-center font-mono font-bold">
+                                      <td className="whitespace-nowrap px-3 py-2 text-center font-mono font-bold text-slate-700 dark:text-slate-200">
                                         <span className="inline-flex items-center gap-1">
                                           {sess.durationHours}h
                                           {sess.isCustomDuration && (
-                                            <span className="text-[9px] text-blue-600" title="Thời lượng tùy chỉnh">(sửa)</span>
+                                            <span
+                                              className="text-[9px] text-blue-600 dark:text-blue-400"
+                                              title="Thời lượng tùy chỉnh"
+                                            >
+                                              (sửa)
+                                            </span>
                                           )}
                                         </span>
                                         {actualDurationStr && (
@@ -1188,7 +1321,7 @@ export default function AdminTeacherSalaryPage() {
                                           </span>
                                         )}
                                       </td>
-                                      <td className="py-2 px-3 text-[11px]">
+                                      <td className="px-3 py-2 text-[11px]">
                                         {!fa.required && !fa.hasRecord ? (
                                           <span className="text-slate-400">Không bắt buộc</span>
                                         ) : (
@@ -1198,33 +1331,35 @@ export default function AdminTeacherSalaryPage() {
                                                 Vào: <strong>{fmtHm(fa.checkInAt)}</strong>
                                               </span>
                                               {fa.lateMinutes > 0 && (
-                                                <span className="rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800">
+                                                <span className="rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                                                   Muộn {fa.lateMinutes}p
                                                 </span>
                                               )}
-                                              <span className="text-slate-300">|</span>
+                                              <span className="text-slate-300 dark:text-slate-600">
+                                                |
+                                              </span>
                                               <span className="text-slate-600 dark:text-slate-300">
                                                 Ra: <strong>{fmtHm(fa.checkOutAt)}</strong>
                                               </span>
                                               {fa.earlyLeaveMinutes > 0 && (
-                                                <span className="rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800">
+                                                <span className="rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                                                   Sớm {fa.earlyLeaveMinutes}p
                                                 </span>
                                               )}
                                             </div>
                                             <div className="flex flex-wrap items-center gap-1.5">
                                               {fa.adminOverrideStatus === "approved" && (
-                                                <span className="rounded bg-emerald-100 px-1.5 py-0.2 text-[9px] font-bold text-emerald-700">
-                                                  Admin đã duyệt
+                                                <span className="rounded bg-emerald-100 px-1.5 py-0.2 text-[9px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                                  Đã duyệt
                                                 </span>
                                               )}
                                               {fa.adminOverrideStatus === "rejected" && (
-                                                <span className="rounded bg-rose-100 px-1.5 py-0.2 text-[9px] font-bold text-rose-700">
-                                                  Admin từ chối
+                                                <span className="rounded bg-rose-100 px-1.5 py-0.2 text-[9px] font-bold text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                                                  Từ chối
                                                 </span>
                                               )}
                                               {sess.isAttendancePending && (
-                                                <span className="rounded bg-amber-100 px-1.5 py-0.2 text-[9px] font-bold text-amber-800">
+                                                <span className="rounded bg-amber-100 px-1.5 py-0.2 text-[9px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                                                   Chờ xác nhận lương
                                                 </span>
                                               )}
@@ -1232,29 +1367,40 @@ export default function AdminTeacherSalaryPage() {
                                                 <button
                                                   type="button"
                                                   onClick={() => setFacePreviewSession(sess)}
-                                                  className="text-[10px] font-bold text-indigo-600 hover:underline dark:text-sky-400"
+                                                  className="text-[10px] font-bold text-blue-600 hover:underline dark:text-sky-400"
                                                 >
                                                   Xem ảnh
                                                 </button>
                                               )}
                                               {(fa.required || fa.hasRecord) && (
                                                 <>
-                                                  {fa.adminOverrideStatus !== "approved" && !fa.payrollEligible && (
-                                                    <button
-                                                      type="button"
-                                                      disabled={isBusyOverride}
-                                                      onClick={() => handleFaceAttendanceOverride(sess, "approved")}
-                                                      className="rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                                                    >
-                                                      Duyệt lương
-                                                    </button>
-                                                  )}
+                                                  {fa.adminOverrideStatus !== "approved" &&
+                                                    !fa.payrollEligible && (
+                                                      <button
+                                                        type="button"
+                                                        disabled={isBusyOverride}
+                                                        onClick={() =>
+                                                          handleFaceAttendanceOverride(
+                                                            sess,
+                                                            "approved",
+                                                          )
+                                                        }
+                                                        className="rounded-md bg-emerald-600 px-1.5 py-0.5 text-[9px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                                      >
+                                                        Duyệt lương
+                                                      </button>
+                                                    )}
                                                   {fa.adminOverrideStatus !== "rejected" && (
                                                     <button
                                                       type="button"
                                                       disabled={isBusyOverride}
-                                                      onClick={() => handleFaceAttendanceOverride(sess, "rejected")}
-                                                      className="rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                                                      onClick={() =>
+                                                        handleFaceAttendanceOverride(
+                                                          sess,
+                                                          "rejected",
+                                                        )
+                                                      }
+                                                      className="rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50 dark:border-rose-800/70 dark:bg-rose-950/60 dark:text-rose-300"
                                                     >
                                                       Từ chối
                                                     </button>
@@ -1263,8 +1409,10 @@ export default function AdminTeacherSalaryPage() {
                                                     <button
                                                       type="button"
                                                       disabled={isBusyOverride}
-                                                      onClick={() => handleFaceAttendanceOverride(sess, "reset")}
-                                                      className="text-[9px] font-bold text-slate-500 hover:underline"
+                                                      onClick={() =>
+                                                        handleFaceAttendanceOverride(sess, "reset")
+                                                      }
+                                                      className="text-[9px] font-bold text-slate-500 hover:underline dark:text-slate-400"
                                                     >
                                                       Hoàn tác
                                                     </button>
@@ -1275,50 +1423,50 @@ export default function AdminTeacherSalaryPage() {
                                           </div>
                                         )}
                                       </td>
-                                      <td className="py-2 px-3 text-center">
+                                      <td className="whitespace-nowrap px-3 py-2 text-center">
                                         {sess.isAttendancePending ? (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                                            Thiếu Ra/Vào
+                                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300">
+                                            Thiếu vào/ra
                                           </span>
                                         ) : sess.isCompleted ? (
                                           <button
                                             type="button"
                                             onClick={() => handleToggleSessionStatus(sess)}
-                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 hover:bg-rose-50 hover:text-rose-700 transition"
-                                            title="Click để chuyển về chưa diễn ra"
+                                            className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 transition hover:bg-rose-50 hover:text-rose-700 dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                            title="Bấm để chuyển về chưa diễn ra"
                                           >
-                                            <FiCheckCircle className="w-2.5 h-2.5" /> Đã dạy
+                                            <FiCheckCircle className="h-2.5 w-2.5" /> Đã dạy
                                           </button>
                                         ) : (
                                           <button
                                             type="button"
                                             onClick={() => handleToggleSessionStatus(sess)}
-                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-emerald-50 hover:text-emerald-700 transition"
-                                            title="Click để đánh dấu đã dạy"
+                                            className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 transition hover:bg-emerald-50 hover:text-emerald-700 dark:bg-slate-800 dark:text-slate-400"
+                                            title="Bấm để đánh dấu đã dạy"
                                           >
                                             Chưa diễn ra
                                           </button>
                                         )}
                                       </td>
-                                      <td className="py-2 px-3 text-right font-mono font-black">
+                                      <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-black">
                                         {sess.isCompleted ? (
                                           <span className="text-emerald-600 dark:text-emerald-400">
                                             +{formatVnd(sess.earnedAmount)}
                                           </span>
                                         ) : (
-                                          <span className="text-slate-400 text-[11px]">
+                                          <span className="text-[11px] font-semibold text-slate-400">
                                             Dự kiến: {formatVnd(sess.projectedAmount)}
                                           </span>
                                         )}
                                       </td>
-                                      <td className="py-2 px-3 text-right">
+                                      <td className="px-3 py-2 text-right">
                                         <button
                                           type="button"
                                           onClick={() => handleOpenSessionModal(sess)}
-                                          className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-sky-300 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                                          className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-sky-300"
                                           title="Chỉnh sửa giờ dạy / trạng thái buổi học"
                                         >
-                                          <FiEdit2 className="w-3.5 h-3.5" />
+                                          <FiEdit2 className="h-3.5 w-3.5" />
                                         </button>
                                       </td>
                                     </tr>
@@ -1334,22 +1482,21 @@ export default function AdminTeacherSalaryPage() {
                 </div>
               ) : detailTab === "settlement" ? (
                 /* TAB 2: QUYẾT TOÁN & ĐIỀU CHỈNH THÙ LAO */
-                <form onSubmit={handleSaveSettlement} className="max-w-2xl mx-auto space-y-4">
-                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4 space-y-3">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      <FiSliders className="w-4 h-4 text-emerald-600" />
-                      Điều Chỉnh Quyết Toán & Thanh Toán Lương
+                <form onSubmit={handleSaveSettlement} className="mx-auto max-w-2xl space-y-4">
+                  <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/40 space-y-1">
+                    <h4 className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-white">
+                      <FiSliders className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      Điều chỉnh quyết toán & thanh toán
                     </h4>
-                    <p className="text-xs text-slate-500">
-                      Ghi nhận các khoản thưởng chuyên cần, phụ cấp hỗ trợ học viên, các khoản khấu trừ và cập nhật trạng thái chi trả.
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Ghi nhận thưởng, phụ cấp, khấu trừ và cập nhật trạng thái chi trả cho giảng viên.
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    {/* Thưởng / Phụ cấp */}
+                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Thưởng / Phụ cấp (VNĐ):
+                      <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Thưởng / Phụ cấp (VNĐ)
                       </label>
                       <input
                         type="number"
@@ -1358,14 +1505,13 @@ export default function AdminTeacherSalaryPage() {
                         value={bonusInput}
                         onChange={(e) => setBonusInput(e.target.value)}
                         placeholder="0"
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-emerald-600 focus:outline-none focus:border-emerald-500"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 font-mono text-xs font-bold text-emerald-600 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-emerald-400"
                       />
                     </div>
 
-                    {/* Khấu trừ */}
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Khấu trừ / Phạt (VNĐ):
+                      <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Khấu trừ / Phạt (VNĐ)
                       </label>
                       <input
                         type="number"
@@ -1374,53 +1520,51 @@ export default function AdminTeacherSalaryPage() {
                         value={deductionInput}
                         onChange={(e) => setDeductionInput(e.target.value)}
                         placeholder="0"
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-rose-600 focus:outline-none focus:border-rose-500"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 font-mono text-xs font-bold text-rose-600 focus:border-rose-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-rose-400"
                       />
                     </div>
                   </div>
 
-                  {/* Trạng thái thanh toán */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                      Trạng thái thanh toán thù lao:
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Trạng thái thanh toán
                     </label>
                     <select
                       value={settlementStatusInput}
                       onChange={(e) => setSettlementStatusInput(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
                     >
                       <option value="pending">Chưa thanh toán</option>
-                      <option value="processing">Đang xử lý thanh toán (Kế toán đã duyệt)</option>
+                      <option value="processing">Đang xử lý thanh toán</option>
                       <option value="paid">Đã thanh toán hoàn tất</option>
                       <option value="hold">Tạm giữ chi trả</option>
                     </select>
                   </div>
 
-                  {/* Ghi chú quyết toán */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                      Ghi chú quyết toán & Chuyển khoản:
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Ghi chú quyết toán & chuyển khoản
                     </label>
                     <textarea
                       rows={3}
                       value={notesInput}
                       onChange={(e) => setNotesInput(e.target.value)}
-                      placeholder="Ví dụ: Đã chuyển khoản qua VCB số GD 882910 vào ngày 20/10; Thưởng 200k hỗ trợ học sinh ôn thi giải tỉnh..."
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+                      placeholder="Ví dụ: Đã chuyển khoản qua VCB ngày 20/10; Thưởng hỗ trợ học viên ôn thi..."
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
                     />
                   </div>
 
-                  {/* Tính toán thực lĩnh tạm tính theo form */}
-                  <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 flex items-center justify-between text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-xs dark:border-emerald-800/80 dark:bg-emerald-950/40">
                     <div>
                       <p className="font-bold text-emerald-900 dark:text-emerald-300">
-                        Thực nhận dự kiến sau lưu:
+                        Thực nhận dự kiến sau lưu
                       </p>
-                      <p className="text-[11px] text-slate-500">
-                        {formatVnd(teacherDetail.summary.accruedSalary)} (Lương dạy) + {formatVnd(bonusInput)} (Thưởng) - {formatVnd(deductionInput)} (Phạt)
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {formatVnd(teacherDetail.summary.accruedSalary)} + {formatVnd(bonusInput)} −{" "}
+                        {formatVnd(deductionInput)}
                       </p>
                     </div>
-                    <p className="text-lg font-black text-emerald-700 dark:text-emerald-300 font-mono">
+                    <p className="font-mono text-lg font-black text-emerald-700 dark:text-emerald-300">
                       {formatVnd(
                         Math.max(
                           0,
@@ -1432,109 +1576,121 @@ export default function AdminTeacherSalaryPage() {
                     </p>
                   </div>
 
-                  <div className="flex justify-end pt-2">
+                  <div className="flex justify-end pt-1">
                     <button
                       type="submit"
                       disabled={savingSettlement}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-md transition disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
                     >
-                      <FiSave className="w-4 h-4" />
-                      <span>{savingSettlement ? "Đang lưu..." : "Lưu Quyết Toán Lương"}</span>
+                      <FiSave className="h-3.5 w-3.5" />
+                      <span>{savingSettlement ? "Đang lưu..." : "Lưu quyết toán"}</span>
                     </button>
                   </div>
                 </form>
               ) : (
                 /* TAB 3: PHIẾU LƯƠNG IN ẤN */
-                <div className="max-w-2xl mx-auto bg-white dark:bg-slate-950 p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 text-slate-800 dark:text-slate-200">
-                  <div className="flex items-center justify-between border-b pb-4 border-slate-200 dark:border-slate-800">
+                <div className="mx-auto max-w-2xl space-y-5 rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 text-slate-800 shadow-xs dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800">
                     <div>
-                      <h2 className="text-lg font-black tracking-tight text-slate-900 dark:text-white uppercase">
+                      <h2 className="text-base sm:text-lg font-black uppercase tracking-tight text-slate-900 dark:text-white">
                         Học Viện Tin Học CSCA
                       </h2>
-                      <p className="text-xs text-slate-500">PHIẾU THANH TOÁN THÙ LAO GIẢNG DẠY</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        PHIẾU THANH TOÁN THÙ LAO GIẢNG DẠY
+                      </p>
                     </div>
-                    <div className="text-right text-xs font-mono text-slate-400">
+                    <div className="text-left sm:text-right font-mono text-xs text-slate-400">
                       <p>Ngày xuất: {new Date().toLocaleDateString("vi-VN")}</p>
                       <p>Kỳ lương: Tổng hợp tích lũy</p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
                     <div>
-                      <p className="text-slate-400">Họ và tên giảng viên:</p>
-                      <p className="font-bold text-slate-900 dark:text-white text-sm">
+                      <p className="text-slate-400">Họ và tên giảng viên</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">
                         {teacherDetail.teacher.fullName || teacherDetail.teacher.username}
                       </p>
                     </div>
                     <div>
-                      <p className="text-slate-400">Email & Tài khoản:</p>
-                      <p className="font-mono">{teacherDetail.teacher.email}</p>
+                      <p className="text-slate-400">Email & tài khoản</p>
+                      <p className="break-all font-mono">{teacherDetail.teacher.email}</p>
                     </div>
                   </div>
 
-                  <table className="w-full text-xs divide-y divide-slate-200 dark:divide-slate-800 border-y border-slate-200 dark:border-slate-800">
-                    <thead className="text-[10px] uppercase font-bold text-slate-500 font-mono">
-                      <tr>
-                        <th className="py-2 text-left">Nội dung</th>
-                        <th className="py-2 text-center">Số buổi / Giờ</th>
-                        <th className="py-2 text-right">Đơn giá</th>
-                        <th className="py-2 text-right">Thành tiền</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
-                      {teacherDetail.classes.map((cls) => (
-                        <tr key={cls.classId}>
-                          <td className="py-2 text-left font-sans font-medium">
-                            {cls.code}: {cls.title}
-                          </td>
-                          <td className="py-2 text-center">
-                            {cls.completedSessions} buổi ({cls.completedHours}h)
-                          </td>
-                          <td className="py-2 text-right">{formatVnd(cls.effectiveHourlyRate)}/h</td>
-                          <td className="py-2 text-right font-bold text-emerald-600">
-                            {formatVnd(cls.accruedSalary)}
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 border-y border-slate-200 text-xs dark:divide-slate-800 dark:border-slate-800">
+                      <thead className="bg-slate-50/90 text-[10px] font-bold uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
+                        <tr>
+                          <th className="px-2 py-2 text-left">Nội dung</th>
+                          <th className="px-2 py-2 text-center">Số buổi / Giờ</th>
+                          <th className="px-2 py-2 text-right">Đơn giá</th>
+                          <th className="px-2 py-2 text-right">Thành tiền</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono dark:divide-slate-800/60">
+                        {teacherDetail.classes.map((cls) => (
+                          <tr key={cls.classId}>
+                            <td className="px-2 py-2 text-left font-sans font-medium">
+                              {cls.code}: {cls.title}
+                            </td>
+                            <td className="whitespace-nowrap px-2 py-2 text-center">
+                              {cls.completedSessions} buổi ({cls.completedHours}h)
+                            </td>
+                            <td className="whitespace-nowrap px-2 py-2 text-right">
+                              {formatVnd(cls.effectiveHourlyRate)}/h
+                            </td>
+                            <td className="whitespace-nowrap px-2 py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                              {formatVnd(cls.accruedSalary)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
 
-                  <div className="space-y-1.5 text-xs font-mono pt-2 border-t border-slate-100 dark:border-slate-800">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500 font-sans">1. Tổng thù lao theo giờ:</span>
-                      <span className="font-bold">{formatVnd(teacherDetail.summary.accruedSalary)}</span>
+                  <div className="space-y-1.5 border-t border-slate-100 pt-2 font-mono text-xs dark:border-slate-800">
+                    <div className="flex justify-between gap-4">
+                      <span className="font-sans text-slate-500 dark:text-slate-400">
+                        1. Tổng thù lao theo giờ:
+                      </span>
+                      <span className="font-bold">
+                        {formatVnd(teacherDetail.summary.accruedSalary)}
+                      </span>
                     </div>
-                    <div className="flex justify-between text-blue-600">
-                      <span className="font-sans">2. Thưởng & Phụ cấp:</span>
+                    <div className="flex justify-between gap-4 text-blue-600 dark:text-sky-400">
+                      <span className="font-sans">2. Thưởng & phụ cấp:</span>
                       <span>+{formatVnd(teacherDetail.summary.bonusAmount)}</span>
                     </div>
-                    <div className="flex justify-between text-rose-600">
+                    <div className="flex justify-between gap-4 text-rose-600 dark:text-rose-400">
                       <span className="font-sans">3. Khấu trừ:</span>
                       <span>-{formatVnd(teacherDetail.summary.deductionAmount)}</span>
                     </div>
-                    <div className="flex justify-between text-base font-black text-emerald-600 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex justify-between gap-4 border-t border-slate-200 pt-2 text-base font-black text-emerald-600 dark:border-slate-700 dark:text-emerald-400">
                       <span className="font-sans">TỔNG THỰC LĨNH:</span>
                       <span>{formatVnd(teacherDetail.summary.netAccruedSalary)}</span>
                     </div>
                   </div>
 
                   {teacherDetail.summary.paymentNotes && (
-                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 text-xs">
-                      <p className="font-bold text-slate-500">Ghi chú quyết toán:</p>
+                    <div className="rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-900">
+                      <p className="font-bold text-slate-500 dark:text-slate-400">
+                        Ghi chú quyết toán:
+                      </p>
                       <p className="mt-0.5">{teacherDetail.summary.paymentNotes}</p>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-4 text-center text-xs pt-8">
+                  <div className="grid grid-cols-2 gap-4 pt-6 text-center text-xs">
                     <div>
                       <p className="font-bold">Người lập bảng</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">(Ký và ghi rõ họ tên)</p>
-                      <div className="h-16" />
+                      <p className="mt-0.5 text-[11px] text-slate-400">(Ký và ghi rõ họ tên)</p>
+                      <div className="h-14" />
                     </div>
                     <div>
                       <p className="font-bold">Người nhận tiền</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">(Ký và ghi rõ họ tên)</p>
-                      <div className="h-16" />
+                      <p className="mt-0.5 text-[11px] text-slate-400">(Ký và ghi rõ họ tên)</p>
+                      <div className="h-14" />
                     </div>
                   </div>
                 </div>
@@ -1542,14 +1698,14 @@ export default function AdminTeacherSalaryPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900">
-              <span className="text-xs text-slate-500 font-mono hidden sm:inline">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/50 px-4 py-3 sm:px-5 dark:border-slate-800 dark:bg-slate-900">
+              <span className="hidden truncate font-mono text-xs text-slate-500 sm:inline dark:text-slate-400">
                 {teacherDetail?.summary?.formulaNote}
               </span>
               <button
                 type="button"
                 onClick={() => setDetailModalTeacherId(null)}
-                className="ml-auto px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs"
+                className="ml-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 Đóng
               </button>
@@ -1560,38 +1716,45 @@ export default function AdminTeacherSalaryPage() {
 
       {/* SUB-MODAL: Chỉnh sửa đơn giá riêng theo từng lớp học */}
       {editingClassRate && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <FiDollarSign className="w-5 h-5 text-emerald-600" />
-                Đơn Giá Riêng Cho Lớp Học
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/65 p-3 sm:p-4 backdrop-blur-xs"
+          onClick={() => setEditingClassRate(null)}
+        >
+          <div
+            className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-3xl border border-white/80 bg-white p-5 sm:p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+              <h3 className="flex items-center gap-2 text-base font-black text-[#102f63] dark:text-white">
+                <FiDollarSign className="h-5 w-5 text-emerald-600" />
+                Đơn giá riêng cho lớp
               </h3>
               <button
                 type="button"
                 onClick={() => setEditingClassRate(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-lg"
+                className="rounded-xl bg-slate-100 p-1.5 text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
-                ✕
+                <FiX className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={(e) => handleSaveClassRate(e, false)} className="space-y-4">
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-sky-300 border border-blue-200">
+              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+                <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-black uppercase text-blue-700 dark:border-blue-800/70 dark:bg-blue-950/60 dark:text-sky-300">
                   {editingClassRate.code}
                 </span>
-                <p className="font-bold text-slate-900 dark:text-white text-sm mt-1">
+                <p className="mt-1 text-sm font-bold text-slate-900 dark:text-white">
                   {editingClassRate.title}
                 </p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Đơn giá cơ bản của GV: <strong>{formatVnd(teacherDetail?.teacher?.hourlyRate)}/h</strong>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  Đơn giá cơ bản của GV:{" "}
+                  <strong>{formatVnd(teacherDetail?.teacher?.hourlyRate)}/h</strong>
                 </p>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Mức lương riêng áp dụng cho lớp này (VNĐ / giờ):
+                <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Mức lương áp dụng cho lớp này (VNĐ / giờ)
                 </label>
                 <div className="relative">
                   <input
@@ -1602,25 +1765,24 @@ export default function AdminTeacherSalaryPage() {
                     value={classRateInput}
                     onChange={(e) => setClassRateInput(e.target.value)}
                     placeholder="Ví dụ: 350000"
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 font-mono"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 pr-20 font-mono text-sm font-black text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-white"
                   />
-                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                  <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                     VNĐ / giờ
                   </span>
                 </div>
               </div>
 
-              {/* Quick Select Presets */}
               <div className="grid grid-cols-3 gap-2">
                 {PRESET_RATES.map((rate) => (
                   <button
                     key={rate}
                     type="button"
                     onClick={() => setClassRateInput(String(rate))}
-                    className={`px-2 py-1.5 rounded-xl text-xs font-bold font-mono transition border ${
+                    className={`rounded-xl border px-2 py-1.5 font-mono text-xs font-bold transition ${
                       Number(classRateInput) === rate
-                        ? "bg-emerald-600 text-white border-emerald-600"
-                        : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                     }`}
                   >
                     {formatVnd(rate)}/h
@@ -1628,12 +1790,12 @@ export default function AdminTeacherSalaryPage() {
                 ))}
               </div>
 
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => handleSaveClassRate(null, true)}
                   disabled={submittingClassRate}
-                  className="text-xs text-rose-600 hover:underline font-bold"
+                  className="text-xs font-bold text-rose-600 hover:underline dark:text-rose-400"
                 >
                   Dùng lương mặc định
                 </button>
@@ -1642,16 +1804,16 @@ export default function AdminTeacherSalaryPage() {
                   <button
                     type="button"
                     onClick={() => setEditingClassRate(null)}
-                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                   >
                     Hủy
                   </button>
                   <button
                     type="submit"
                     disabled={submittingClassRate}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition disabled:opacity-50"
+                    className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
                   >
-                    {submittingClassRate ? "Đang lưu..." : "Lưu Đơn Giá Lớp"}
+                    {submittingClassRate ? "Đang lưu..." : "Lưu đơn giá"}
                   </button>
                 </div>
               </div>
@@ -1660,37 +1822,43 @@ export default function AdminTeacherSalaryPage() {
         </div>
       )}
 
-      {/* SUB-MODAL: Chỉnh sửa thông số buổi học (Thời lượng & Trạng thái) */}
+      {/* SUB-MODAL: Chỉnh sửa thông số buổi học */}
       {editingSession && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <FiClock className="w-5 h-5 text-emerald-600" />
-                Chỉnh Sửa Giờ Dạy & Trạng Thái Buổi Học
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/65 p-3 sm:p-4 backdrop-blur-xs"
+          onClick={() => setEditingSession(null)}
+        >
+          <div
+            className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-3xl border border-white/80 bg-white p-5 sm:p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+              <h3 className="flex items-center gap-2 text-base font-black text-[#102f63] dark:text-white">
+                <FiClock className="h-5 w-5 text-blue-600" />
+                Chỉnh sửa giờ dạy & buổi học
               </h3>
               <button
                 type="button"
                 onClick={() => setEditingSession(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-lg"
+                className="rounded-xl bg-slate-100 p-1.5 text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
-                ✕
+                <FiX className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleSaveSession} className="space-y-4">
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                <p className="font-bold text-slate-900 dark:text-white text-sm">
+              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+                <p className="text-sm font-bold text-slate-900 dark:text-white">
                   {editingSession.title}
                 </p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  ID: #{editingSession.id} · Buổi #{editingSession.sessionNumber}
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  Mã buổi: #{editingSession.id} · Buổi #{editingSession.sessionNumber}
                 </p>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Thời lượng giảng dạy thực tế (Giờ):
+                <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Thời lượng giảng dạy thực tế (Giờ)
                 </label>
                 <div className="relative">
                   <input
@@ -1702,23 +1870,22 @@ export default function AdminTeacherSalaryPage() {
                     value={sessionHoursInput}
                     onChange={(e) => setSessionHoursInput(e.target.value)}
                     placeholder="2.0"
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 font-mono"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 pr-14 font-mono text-sm font-black text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-white"
                   />
-                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                  <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                     giờ
                   </span>
                 </div>
-                {/* Preset session hour buttons */}
-                <div className="flex gap-2 mt-2">
+                <div className="mt-2 flex flex-wrap gap-1.5">
                   {[1.0, 1.5, 2.0, 2.5, 3.0].map((h) => (
                     <button
                       key={h}
                       type="button"
                       onClick={() => setSessionHoursInput(String(h))}
-                      className={`px-2 py-1 rounded-lg text-xs font-mono font-bold border ${
+                      className={`rounded-lg border px-2.5 py-1 font-mono text-xs font-bold transition ${
                         Number(sessionHoursInput) === h
-                          ? "bg-emerald-600 text-white border-emerald-600"
-                          : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                          ? "border-blue-600 bg-blue-600 text-white"
+                          : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                       }`}
                     >
                       {h}h
@@ -1728,35 +1895,35 @@ export default function AdminTeacherSalaryPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Trạng thái buổi học:
+                <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Trạng thái buổi học
                 </label>
                 <select
                   value={sessionStatusInput}
                   onChange={(e) => setSessionStatusInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
                 >
-                  <option value="ended">Đã dạy / Kết thúc (Được tính thù lao)</option>
-                  <option value="scheduled">Chưa diễn ra (Dự kiến, chưa tính lương)</option>
+                  <option value="ended">Đã dạy / Kết thúc (tính thù lao)</option>
+                  <option value="scheduled">Chưa diễn ra (dự kiến, chưa tính lương)</option>
                   <option value="live">Đang diễn ra</option>
-                  <option value="cancelled">Đã hủy (Không tính thù lao)</option>
+                  <option value="cancelled">Đã hủy (không tính thù lao)</option>
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setEditingSession(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={submittingSession}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition disabled:opacity-50"
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {submittingSession ? "Đang lưu..." : "Cập Nhật Buổi Học"}
+                  {submittingSession ? "Đang lưu..." : "Cập nhật buổi học"}
                 </button>
               </div>
             </form>
@@ -1767,90 +1934,100 @@ export default function AdminTeacherSalaryPage() {
       {/* Face Attendance Snapshot Lightbox Modal */}
       {facePreviewSession && (
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/65 p-3 sm:p-4 backdrop-blur-xs"
           onClick={() => setFacePreviewSession(null)}
         >
           <div
-            className="w-full max-w-xl rounded-3xl bg-white p-5 shadow-2xl dark:bg-slate-900 space-y-4"
+            className="max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-3xl border border-white/80 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
-              <div>
-                <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                  Ảnh đối chiếu chấm công: {facePreviewSession.title}
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+              <div className="min-w-0">
+                <h4 className="truncate text-sm font-black text-[#102f63] dark:text-white">
+                  Ảnh chấm công: {facePreviewSession.title}
                 </h4>
-                <p className="text-xs text-slate-500">
-                  AWS Rekognition Face Liveness + CompareFaces
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Ảnh đối chiếu khuôn mặt khi vào lớp và ra lớp
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setFacePreviewSession(null)}
-                className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100"
+                className="shrink-0 rounded-xl bg-slate-100 p-1.5 text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
-                ✕
+                <FiX className="h-4 w-4" />
               </button>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-2 rounded-2xl border border-slate-200 p-3 dark:border-slate-800">
-                <p className="text-xs font-bold text-slate-800 dark:text-white">
-                  Vào ca (Check-in)
-                </p>
+              <div className="space-y-2 rounded-2xl border border-slate-200/80 p-3 dark:border-slate-800">
+                <p className="text-xs font-bold text-slate-800 dark:text-white">Vào ca</p>
                 {facePreviewSession.faceAttendance?.checkInPhotoUrl ? (
                   <img
                     src={facePreviewSession.faceAttendance.checkInPhotoUrl}
                     alt="Ảnh chấm công vào"
-                    className="aspect-square w-full rounded-xl object-cover bg-slate-100"
+                    className="aspect-square w-full rounded-xl bg-slate-100 object-cover dark:bg-slate-800"
                   />
                 ) : (
-                  <div className="flex aspect-square items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400">
+                  <div className="flex aspect-square items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400 dark:bg-slate-800 dark:text-slate-500">
                     Chưa có ảnh vào ca
                   </div>
                 )}
-                <div className="text-[11px] text-slate-500 space-y-0.5 font-mono">
+                <div className="space-y-0.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
                   <p>
                     Giờ vào:{" "}
                     {facePreviewSession.faceAttendance?.checkInAt
-                      ? new Date(facePreviewSession.faceAttendance.checkInAt).toLocaleString("vi-VN")
+                      ? new Date(facePreviewSession.faceAttendance.checkInAt).toLocaleString(
+                          "vi-VN",
+                        )
                       : "—"}
                   </p>
                   {facePreviewSession.faceAttendance?.checkInLivenessScore != null && (
-                    <p>Liveness: {facePreviewSession.faceAttendance.checkInLivenessScore}%</p>
+                    <p>
+                      Xác thực trực tiếp:{" "}
+                      {facePreviewSession.faceAttendance.checkInLivenessScore}%
+                    </p>
                   )}
                   {facePreviewSession.faceAttendance?.checkInFaceSimilarity != null && (
-                    <p>Khớp mặt: {facePreviewSession.faceAttendance.checkInFaceSimilarity}%</p>
+                    <p>
+                      Khớp khuôn mặt: {facePreviewSession.faceAttendance.checkInFaceSimilarity}%
+                    </p>
                   )}
                 </div>
               </div>
 
-              <div className="space-y-2 rounded-2xl border border-slate-200 p-3 dark:border-slate-800">
-                <p className="text-xs font-bold text-slate-800 dark:text-white">
-                  Ra ca (Check-out)
-                </p>
+              <div className="space-y-2 rounded-2xl border border-slate-200/80 p-3 dark:border-slate-800">
+                <p className="text-xs font-bold text-slate-800 dark:text-white">Ra ca</p>
                 {facePreviewSession.faceAttendance?.checkOutPhotoUrl ? (
                   <img
                     src={facePreviewSession.faceAttendance.checkOutPhotoUrl}
                     alt="Ảnh chấm công ra"
-                    className="aspect-square w-full rounded-xl object-cover bg-slate-100"
+                    className="aspect-square w-full rounded-xl bg-slate-100 object-cover dark:bg-slate-800"
                   />
                 ) : (
-                  <div className="flex aspect-square items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400">
+                  <div className="flex aspect-square items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400 dark:bg-slate-800 dark:text-slate-500">
                     Chưa có ảnh ra ca
                   </div>
                 )}
-                <div className="text-[11px] text-slate-500 space-y-0.5 font-mono">
+                <div className="space-y-0.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
                   <p>
                     Giờ ra:{" "}
                     {facePreviewSession.faceAttendance?.checkOutAt
-                      ? new Date(facePreviewSession.faceAttendance.checkOutAt).toLocaleString("vi-VN")
+                      ? new Date(facePreviewSession.faceAttendance.checkOutAt).toLocaleString(
+                          "vi-VN",
+                        )
                       : "—"}
                   </p>
                   {facePreviewSession.faceAttendance?.checkOutLivenessScore != null && (
-                    <p>Liveness: {facePreviewSession.faceAttendance.checkOutLivenessScore}%</p>
+                    <p>
+                      Xác thực trực tiếp:{" "}
+                      {facePreviewSession.faceAttendance.checkOutLivenessScore}%
+                    </p>
                   )}
                   {facePreviewSession.faceAttendance?.checkOutFaceSimilarity != null && (
-                    <p>Khớp mặt: {facePreviewSession.faceAttendance.checkOutFaceSimilarity}%</p>
+                    <p>
+                      Khớp khuôn mặt: {facePreviewSession.faceAttendance.checkOutFaceSimilarity}%
+                    </p>
                   )}
                 </div>
               </div>

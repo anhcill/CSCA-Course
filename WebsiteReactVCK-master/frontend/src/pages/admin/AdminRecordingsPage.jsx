@@ -4,11 +4,11 @@ import toast from "react-hot-toast";
 import {
   CalendarDays,
   ExternalLink,
-  Film,
   FolderOpen,
   Link2,
   Pencil,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Trash2,
@@ -221,57 +221,413 @@ export default function AdminRecordingsPage() {
     }
   };
 
-  return (
-    <div className="space-y-5 pb-12 text-slate-900 dark:text-slate-100">
-      <section className="rounded-3xl border border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-sky-50 p-5 shadow-sm dark:border-cyan-900/50 dark:from-slate-900 dark:via-slate-900 dark:to-cyan-950/30 sm:p-6">
-        <span className="inline-flex items-center gap-2 rounded-full bg-cyan-100 px-3 py-1 text-xs font-black text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300"><Film className="h-4 w-4" /> Google Drive Record Hub</span>
-        <h1 className="mt-3 text-2xl font-black">Quản lý bản ghi buổi học</h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Gắn từng video với đúng lớp và buổi học. Mỗi video có thể dùng link Drive riêng hoặc dùng thư mục Drive chung của lớp.</p>
-      </section>
+  const inputClass =
+    "mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
 
-      <div className="grid gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
-        <form onSubmit={submit} className="h-fit space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 xl:sticky xl:top-20">
-          <div className="flex items-center justify-between">
-            <div><h2 className="font-black">{editingId ? "Sửa video" : "Thêm video theo ngày"}</h2><p className="text-xs text-slate-500">Chọn lớp, buổi học và link bản ghi tương ứng.</p></div>
-            {editingId && <button type="button" onClick={resetForm} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Hủy chỉnh sửa"><X className="h-4 w-4" /></button>}
+  return (
+    <div className="min-w-0 space-y-5 text-slate-900 dark:text-slate-100">
+      {/* Compact Page Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63] dark:text-white">
+            Kho bản ghi buổi học
+          </h1>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Gắn video theo lớp và buổi học bằng đường dẫn riêng hoặc thư mục Google Drive chung của lớp.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={loadCatalog}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            <span>{loading ? "Đang tải..." : "Làm mới"}</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+        {/* Form Card */}
+        <form
+          onSubmit={submit}
+          className="h-fit space-y-3.5 rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 p-4 sm:p-5 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none xl:sticky xl:top-20"
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+            <div className="min-w-0">
+              <h2 className="text-sm font-black text-slate-900 dark:text-white">
+                {editingId ? "Cập nhật bản ghi" : "Thêm video theo ngày"}
+              </h2>
+              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                Chọn lớp, buổi học và liên kết video tương ứng.
+              </p>
+            </div>
+            {editingId && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
+                aria-label="Hủy chỉnh sửa"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
-          <label className="block text-xs font-bold">Lớp học *<select required value={form.classId} onChange={(event) => selectClass(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"><option value="">Chọn lớp</option>{catalog.classes.map((item) => <option key={item.id} value={item.id}>{item.title}{item.courseTitle ? ` · ${item.courseTitle}` : ""}</option>)}</select></label>
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            Lớp học *
+            <select
+              required
+              value={form.classId}
+              onChange={(event) => selectClass(event.target.value)}
+              className={inputClass}
+            >
+              <option value="">Chọn lớp</option>
+              {catalog.classes.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.title}
+                  {item.courseTitle ? ` · ${item.courseTitle}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <label className="block text-xs font-bold">Buổi học<select disabled={!form.classId} value={form.sessionId} onChange={(event) => selectSession(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-cyan-500 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:disabled:bg-slate-800"><option value="">Không gắn buổi cụ thể</option>{availableSessions.map((item) => <option key={item.id} value={item.id}>{displayDate(item.startTime)} · {item.title}</option>)}</select><span className="mt-1 block font-normal text-slate-500">Khi chọn buổi, tiêu đề và ngày sẽ được điền nếu đang để trống.</span></label>
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            Buổi học
+            <select
+              disabled={!form.classId}
+              value={form.sessionId}
+              onChange={(event) => selectSession(event.target.value)}
+              className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
+            >
+              <option value="">Không gắn buổi cụ thể</option>
+              {availableSessions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {displayDate(item.startTime)} · {item.title}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+              Chọn buổi để tự điền tiêu đề và ngày nếu đang trống.
+            </span>
+          </label>
 
-          <label className="block text-xs font-bold">Tiêu đề video *<input required maxLength={255} value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ví dụ: Dãy số và số phức" className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950" /></label>
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            Tiêu đề video *
+            <input
+              required
+              maxLength={255}
+              value={form.title}
+              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+              placeholder="Ví dụ: Dãy số và số phức"
+              className={inputClass}
+            />
+          </label>
 
-          <label className="block text-xs font-bold">Link video Google Drive<span className="relative mt-1.5 block"><Link2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="url" value={form.driveUrl} onChange={(event) => setForm((current) => ({ ...current, driveUrl: event.target.value }))} placeholder="https://drive.google.com/file/d/..." className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950" /></span><span className="mt-1 block font-normal text-slate-500">Link riêng được ưu tiên. Để trống để dùng thư mục chung đã xuất bản của lớp.</span></label>
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            Liên kết video Google Drive
+            <span className="relative mt-1.5 block">
+              <Link2 className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="url"
+                value={form.driveUrl}
+                onChange={(event) => setForm((current) => ({ ...current, driveUrl: event.target.value }))}
+                placeholder="https://drive.google.com/file/d/..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2 pl-9 pr-3 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
+              />
+            </span>
+            <span className="mt-1 block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+              Ưu tiên liên kết riêng; để trống sẽ dùng thư mục chung của lớp.
+            </span>
+          </label>
 
-          <div className="grid grid-cols-2 gap-3"><label className="block text-xs font-bold">Ngày ghi hình *<input required type="datetime-local" value={form.recordedAt} onChange={(event) => setForm((current) => ({ ...current, recordedAt: event.target.value }))} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-2 outline-none dark:border-slate-700 dark:bg-slate-950" /></label><label className="block text-xs font-bold">Thời lượng (phút)<input type="number" min="1" max="1440" value={form.durationMinutes} onChange={(event) => setForm((current) => ({ ...current, durationMinutes: event.target.value }))} className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none dark:border-slate-700 dark:bg-slate-950" /></label></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              Ngày ghi hình *
+              <input
+                required
+                type="datetime-local"
+                value={form.recordedAt}
+                onChange={(event) => setForm((current) => ({ ...current, recordedAt: event.target.value }))}
+                className={inputClass}
+              />
+            </label>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              Thời lượng (phút)
+              <input
+                type="number"
+                min="1"
+                max="1440"
+                value={form.durationMinutes}
+                onChange={(event) => setForm((current) => ({ ...current, durationMinutes: event.target.value }))}
+                className={inputClass}
+              />
+            </label>
+          </div>
 
-          <label className="block text-xs font-bold">Mô tả<textarea rows="3" maxLength={3000} value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950" /></label>
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            Mô tả
+            <textarea
+              rows="3"
+              maxLength={3000}
+              value={form.description}
+              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+              className={`${inputClass} resize-none`}
+            />
+          </label>
 
-          <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-slate-200 px-3 py-3 text-xs dark:border-slate-700"><span><b>Hiện cho học viên</b><span className="mt-0.5 block font-normal text-slate-500">{form.driveUrl.trim() ? "Học viên mở link video riêng." : selectedClass?.folderPublished ? "Học viên mở thư mục Drive chung của lớp." : "Cần link video riêng hoặc thư mục lớp đã xuất bản."}</span></span><input type="checkbox" checked={form.isPublished} onChange={(event) => setForm((current) => ({ ...current, isPublished: event.target.checked }))} className="h-5 w-5 accent-cyan-600" /></label>
+          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 px-3 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/50">
+            <span className="min-w-0">
+              <b className="text-slate-800 dark:text-slate-100">Hiển thị cho học viên</b>
+              <span className="mt-0.5 block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                {form.driveUrl.trim()
+                  ? "Học viên mở liên kết video riêng."
+                  : selectedClass?.folderPublished
+                    ? "Học viên mở thư mục Drive chung của lớp."
+                    : "Cần liên kết riêng hoặc thư mục lớp đã xuất bản."}
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={form.isPublished}
+              onChange={(event) => setForm((current) => ({ ...current, isPublished: event.target.checked }))}
+              className="h-4 w-4 shrink-0 accent-blue-600"
+            />
+          </label>
 
-          <button disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-3 text-sm font-black text-white hover:bg-cyan-700 disabled:opacity-50">{editingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}{saving ? "Đang lưu..." : editingId ? "Lưu thay đổi" : "Thêm video"}</button>
+          <button
+            disabled={saving}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3.5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
+          >
+            {editingId ? <Save className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+            <span>{saving ? "Đang lưu..." : editingId ? "Lưu thay đổi" : "Thêm video"}</span>
+          </button>
         </form>
 
-        <section className="space-y-4">
-          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row"><label className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm video, buổi học, lớp hoặc ngày..." className="h-10 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm outline-none dark:border-slate-700 dark:bg-slate-950" /></label><select value={classFilter} onChange={(event) => setClassFilter(event.target.value)} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold dark:border-slate-700 dark:bg-slate-950"><option value="all">Tất cả lớp</option>{catalog.classes.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></div>
+        {/* Recording Groups */}
+        <section className="min-w-0 space-y-4">
+          {/* Inset Filter Bar */}
+          <div className="flex flex-col gap-2.5 rounded-2xl border border-slate-200/80 bg-white/90 p-3 dark:border-slate-800 dark:bg-slate-900/90 sm:flex-row">
+            <label className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tìm video, buổi học, lớp hoặc ngày..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2 pl-9 pr-3 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
+              />
+            </label>
+            <select
+              value={classFilter}
+              onChange={(event) => setClassFilter(event.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100 sm:w-56"
+            >
+              <option value="all">Tất cả lớp</option>
+              {catalog.classes.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.title}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          {loading ? <LoadingState message="Đang tải kho bản ghi..." /> : error ? <ErrorState message={error} onRetry={loadCatalog} /> : groups.length === 0 ? <EmptyState icon={Video} title="Chưa có lớp phù hợp" description="Không tìm thấy lớp hoặc video khớp bộ lọc." /> : groups.map((group) => {
-            const draft = folderDrafts[group.id] || { driveUrl: "", isPublished: false };
-            return (
-              <article key={group.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <header className="space-y-3 border-b border-slate-100 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-black">{group.title}</h2><p className="text-xs text-slate-500">{group.courseTitle || "Khóa học"} · {group.items.length} video</p></div>{group.folderOpenUrl && <a href={group.folderOpenUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-xs font-black text-cyan-700 dark:text-cyan-300"><FolderOpen className="h-4 w-4" /> Mở thư mục hiện tại <ExternalLink className="h-3.5 w-3.5" /></a>}</div>
-                  <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]"><label className="relative"><Link2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="url" value={draft.driveUrl} onChange={(event) => setFolderDrafts((current) => ({ ...current, [group.id]: { ...draft, driveUrl: event.target.value } }))} placeholder="Link thư mục Google Drive chung của lớp" className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950" /></label><label className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-bold dark:border-slate-700"><input type="checkbox" checked={draft.isPublished} onChange={(event) => setFolderDrafts((current) => ({ ...current, [group.id]: { ...draft, isPublished: event.target.checked } }))} className="h-4 w-4 accent-cyan-600" /> Cho học viên mở</label><button type="button" disabled={savingFolderId === group.id} onClick={() => saveFolder(group)} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 text-xs font-black text-white hover:bg-cyan-700 disabled:opacity-50"><Save className="h-4 w-4" /> {savingFolderId === group.id ? "Đang lưu..." : "Lưu thư mục"}</button></div>
-                </header>
+          {loading ? (
+            <LoadingState message="Đang tải kho bản ghi..." />
+          ) : error ? (
+            <ErrorState message={error} onRetry={loadCatalog} />
+          ) : groups.length === 0 ? (
+            <EmptyState
+              icon={Video}
+              title="Chưa có lớp phù hợp"
+              description="Không tìm thấy lớp hoặc video khớp bộ lọc."
+            />
+          ) : (
+            groups.map((group) => {
+              const draft = folderDrafts[group.id] || { driveUrl: "", isPublished: false };
+              return (
+                <article
+                  key={group.id}
+                  className="overflow-hidden rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none"
+                >
+                  <header className="space-y-3 border-b border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <h2 className="text-sm font-black text-slate-900 dark:text-white truncate">
+                          {group.title}
+                        </h2>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {group.courseTitle || "Khóa học"} · {group.items.length} video
+                        </p>
+                      </div>
+                      {group.folderOpenUrl && (
+                        <a
+                          href={group.folderOpenUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline dark:text-sky-400 shrink-0"
+                        >
+                          <FolderOpen className="h-3.5 w-3.5" />
+                          <span>Mở thư mục hiện tại</span>
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
 
-                {group.days.length === 0 ? <p className="p-4 text-sm text-slate-500">Chưa có video theo ngày. Thư mục chung vẫn có thể mở độc lập.</p> : <div className="space-y-5 p-4">{group.days.map(([day, items]) => <div key={day}><h3 className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500"><CalendarDays className="h-4 w-4 text-cyan-600" /> {dayLabel(day)}</h3><div className="space-y-2">{items.map((item) => {
-                  const canOpen = item.hasDirectUrl || Boolean(group.folderOpenUrl);
-                  return <div key={item.id} className="rounded-2xl border border-slate-200 p-3 dark:border-slate-800"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${item.isPublished ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"}`}>{item.isPublished ? "ĐÃ HIỆN" : "BẢN NHÁP"}</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${item.sessionId ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "bg-slate-100 text-slate-500 dark:bg-slate-800"}`}>{item.sessionTitle || "Chưa gắn buổi học"}</span><span className="text-[10px] font-bold text-slate-500">{item.hasDirectUrl ? "Link video riêng" : "Thư mục chung của lớp"}</span></div><h4 className="mt-2 font-black">{item.title}</h4><p className="mt-1 text-xs text-slate-500">{displayDate(item.recordedAt)}{item.durationMinutes ? ` · ${item.durationMinutes} phút` : ""}</p></div><div className="flex shrink-0 flex-wrap gap-2">{item.sessionId && <Link to={`/admin/classes/${item.classId}/sessions/${item.sessionId}`} className="inline-flex items-center gap-1 rounded-xl border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-950"><CalendarDays className="h-4 w-4" /> Mở buổi</Link>}{canOpen && <a href={item.openUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-xl border border-cyan-200 px-3 py-2 text-xs font-bold text-cyan-700 hover:bg-cyan-50 dark:border-cyan-900 dark:text-cyan-300 dark:hover:bg-cyan-950"><ExternalLink className="h-4 w-4" /> Mở video</a>}<button type="button" onClick={() => editRecording(item)} title="Sửa" className="rounded-xl border border-slate-200 p-2 text-blue-600 hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-blue-950"><Pencil className="h-4 w-4" /></button><button type="button" onClick={() => remove(item)} title="Xóa" className="rounded-xl border border-rose-200 p-2 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:hover:bg-rose-950"><Trash2 className="h-4 w-4" /></button></div></div>{item.description && <p className="mt-3 border-t border-slate-100 pt-3 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-300">{item.description}</p>}</div>;
-                })}</div></div>)}</div>}
-              </article>
-            );
-          })}
+                    <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+                      <label className="relative min-w-0">
+                        <Link2 className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="url"
+                          value={draft.driveUrl}
+                          onChange={(event) =>
+                            setFolderDrafts((current) => ({
+                              ...current,
+                              [group.id]: { ...draft, driveUrl: event.target.value },
+                            }))
+                          }
+                          placeholder="Liên kết thư mục Google Drive chung của lớp"
+                          className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                        />
+                      </label>
+                      <label className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={draft.isPublished}
+                          onChange={(event) =>
+                            setFolderDrafts((current) => ({
+                              ...current,
+                              [group.id]: { ...draft, isPublished: event.target.checked },
+                            }))
+                          }
+                          className="h-4 w-4 accent-blue-600"
+                        />
+                        <span>Cho học viên mở</span>
+                      </label>
+                      <button
+                        type="button"
+                        disabled={savingFolderId === group.id}
+                        onClick={() => saveFolder(group)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                        <span>{savingFolderId === group.id ? "Đang lưu..." : "Lưu thư mục"}</span>
+                      </button>
+                    </div>
+                  </header>
+
+                  {group.days.length === 0 ? (
+                    <p className="p-4 text-xs text-slate-500 dark:text-slate-400">
+                      Chưa có video theo ngày. Thư mục chung vẫn có thể mở độc lập.
+                    </p>
+                  ) : (
+                    <div className="space-y-4 p-4">
+                      {group.days.map(([day, items]) => (
+                        <div key={day}>
+                          <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                            <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-sky-400" />
+                            <span>{dayLabel(day)}</span>
+                          </h3>
+                          <div className="space-y-2">
+                            {items.map((item) => {
+                              const canOpen = item.hasDirectUrl || Boolean(group.folderOpenUrl);
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/40"
+                                >
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span
+                                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                            item.isPublished
+                                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                              : "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                                          }`}
+                                        >
+                                          {item.isPublished ? "Đang hiển thị" : "Bản nháp"}
+                                        </span>
+                                        <span
+                                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                            item.sessionId
+                                              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+                                              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                          }`}
+                                        >
+                                          {item.sessionTitle || "Chưa gắn buổi học"}
+                                        </span>
+                                        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                          {item.hasDirectUrl ? "Liên kết riêng" : "Thư mục chung"}
+                                        </span>
+                                      </div>
+                                      <h4 className="mt-1.5 text-sm font-bold text-slate-900 dark:text-white">
+                                        {item.title}
+                                      </h4>
+                                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                                        {displayDate(item.recordedAt)}
+                                        {item.durationMinutes ? ` · ${item.durationMinutes} phút` : ""}
+                                      </p>
+                                    </div>
+
+                                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                                      {item.sessionId && (
+                                        <Link
+                                          to={`/admin/classes/${item.classId}/sessions/${item.sessionId}`}
+                                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition"
+                                        >
+                                          <CalendarDays className="h-3.5 w-3.5" />
+                                          <span>Mở buổi</span>
+                                        </Link>
+                                      )}
+                                      {canOpen && (
+                                        <a
+                                          href={item.openUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 rounded-xl bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-900/60 transition"
+                                        >
+                                          <ExternalLink className="h-3.5 w-3.5" />
+                                          <span>Mở video</span>
+                                        </a>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => editRecording(item)}
+                                        title="Sửa"
+                                        className="rounded-xl border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-slate-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition"
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => remove(item)}
+                                        title="Xóa"
+                                        className="rounded-xl border border-rose-200 bg-rose-50 p-1.5 text-rose-600 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-400 transition"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  {item.description && (
+                                    <p className="mt-2.5 border-t border-slate-200/70 pt-2.5 text-xs text-slate-600 dark:border-slate-700/70 dark:text-slate-300">
+                                      {item.description}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              );
+            })
+          )}
         </section>
       </div>
     </div>

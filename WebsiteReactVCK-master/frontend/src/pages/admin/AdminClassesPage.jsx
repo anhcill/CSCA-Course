@@ -17,10 +17,16 @@ import {
   FiShuffle,
   FiCheck,
   FiTrash2,
+  FiChevronDown,
+  FiChevronUp,
+  FiAlertCircle,
 } from "react-icons/fi";
 import {
-  fetchAdminClasses, updateAdminClassMapping, reviewAdminClass,
-  fetchPendingMembershipApprovals, reviewAdminMembership,
+  fetchAdminClasses,
+  updateAdminClassMapping,
+  reviewAdminClass,
+  fetchPendingMembershipApprovals,
+  reviewAdminMembership,
   updateAdminClassFileDownloadPolicy,
   updateAdminClassPresentation,
   updateAdminClassTeacher,
@@ -37,6 +43,7 @@ import Loading from "../../components/Loading.jsx";
 export default function AdminClassesPage() {
   const [classes, setClasses] = useState([]);
   const [pendingMemberships, setPendingMemberships] = useState([]);
+  const [pendingExpanded, setPendingExpanded] = useState(true);
   const [reviewing, setReviewing] = useState("");
   const [savingDownloadPolicy, setSavingDownloadPolicy] = useState("");
   const [loading, setLoading] = useState(true);
@@ -59,9 +66,16 @@ export default function AdminClassesPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const [res, memberships] = await Promise.all([fetchAdminClasses(), fetchPendingMembershipApprovals()]);
-      if (!res?.success || !Array.isArray(res.data)) throw new Error(res?.message || "Không thể tải danh sách lớp học.");
-      if (!memberships?.success || !Array.isArray(memberships.data)) throw new Error(memberships?.message || "Không thể tải ghi danh chờ duyệt.");
+      const [res, memberships] = await Promise.all([
+        fetchAdminClasses(),
+        fetchPendingMembershipApprovals(),
+      ]);
+      if (!res?.success || !Array.isArray(res.data)) {
+        throw new Error(res?.message || "Không thể tải danh sách lớp học.");
+      }
+      if (!memberships?.success || !Array.isArray(memberships.data)) {
+        throw new Error(memberships?.message || "Không thể tải ghi danh chờ duyệt.");
+      }
       setClasses(res.data);
       setPendingMemberships(memberships.data);
     } catch (err) {
@@ -94,13 +108,19 @@ export default function AdminClassesPage() {
       .finally(() => {
         if (!cancelled) setTeachersLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const openMappingModal = (cls) => {
     setMappingModalClass(cls);
-    setMolyClassIdInput(cls.managementClassId.startsWith("MOLY_CLS_Pending") ? "" : cls.managementClassId);
-    setMolyCourseIdInput(cls.managementCourseId.startsWith("MOLY_CRS_Pending") ? "" : cls.managementCourseId);
+    setMolyClassIdInput(
+      cls.managementClassId.startsWith("MOLY_CLS_Pending") ? "" : cls.managementClassId,
+    );
+    setMolyCourseIdInput(
+      cls.managementCourseId.startsWith("MOLY_CRS_Pending") ? "" : cls.managementCourseId,
+    );
   };
 
   const openPresentationModal = (cls) => {
@@ -137,7 +157,9 @@ export default function AdminClassesPage() {
     if (!presentationModalClass) return;
     setSavingPresentation(true);
     try {
-      const selectedTeacher = teachers.find((teacher) => String(teacher.id) === String(teacherIdInput));
+      const selectedTeacher = teachers.find(
+        (teacher) => String(teacher.id) === String(teacherIdInput),
+      );
       const teacherName = selectedTeacher
         ? selectedTeacher.fullName || selectedTeacher.username || selectedTeacher.email
         : "";
@@ -150,7 +172,7 @@ export default function AdminClassesPage() {
       ]);
       await loadClasses();
       setPresentationModalClass(null);
-      toast.success("Đã cập nhật giáo viên phụ trách và ảnh lớp.");
+      toast.success("Đã cập nhật giảng viên phụ trách và ảnh lớp.");
     } catch (error) {
       toast.error(error?.message || "Không thể cập nhật thẻ lớp.");
     } finally {
@@ -160,7 +182,7 @@ export default function AdminClassesPage() {
 
   const handleSaveMapping = async () => {
     if (!molyClassIdInput.trim() || !molyCourseIdInput.trim()) {
-      toast.error("Vui lòng nhập đầy đủ Moly Class ID và Moly Course ID!");
+      toast.error("Vui lòng nhập đầy đủ mã lớp và mã khóa học đồng bộ.");
       return;
     }
 
@@ -170,10 +192,10 @@ export default function AdminClassesPage() {
         managementCourseId: molyCourseIdInput.trim(),
       });
       await loadClasses();
-      toast.success(`Đã lưu ánh xạ lớp [${mappingModalClass.code}] vào MolyInternal! 🎉`);
+      toast.success(`Đã lưu mã đồng bộ cho lớp [${mappingModalClass.code}].`);
       setMappingModalClass(null);
     } catch (error) {
-      toast.error(error?.message || "Lưu mapping thất bại!");
+      toast.error(error?.message || "Lưu liên kết mã lớp thất bại.");
     }
   };
 
@@ -196,9 +218,11 @@ export default function AdminClassesPage() {
     try {
       const allowFileDownload = !cls.allowFileDownload;
       await updateAdminClassFileDownloadPolicy(cls.id, allowFileDownload);
-      setClasses((current) => current.map((item) => (
-        item.id === cls.id ? { ...item, allowFileDownload } : item
-      )));
+      setClasses((current) =>
+        current.map((item) =>
+          item.id === cls.id ? { ...item, allowFileDownload } : item,
+        ),
+      );
       toast.success(allowFileDownload ? "Đã cho phép tải tài liệu" : "Đã bật chế độ chỉ xem");
     } catch (error) {
       toast.error(error?.message || "Không thể cập nhật quyền tải tài liệu");
@@ -206,6 +230,11 @@ export default function AdminClassesPage() {
       setSavingDownloadPolicy("");
     }
   };
+
+  const pendingClasses = classes.filter((item) => item.approvalStatus === "pending");
+  const totalPendingCount = pendingClasses.length + pendingMemberships.length;
+  const mappedCount = classes.filter((c) => c.mappingStatus === "MAPPED").length;
+  const pendingMappingCount = classes.filter((c) => c.mappingStatus === "PENDING").length;
 
   const filteredClasses = classes.filter((cls) => {
     const matchesStatus = statusFilter === "ALL" || cls.mappingStatus === statusFilter;
@@ -219,270 +248,378 @@ export default function AdminClassesPage() {
   });
 
   return (
-    <div className="space-y-8 font-sans pb-16">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-gray-800">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 mb-2">
-            <FiLink className="w-3.5 h-3.5" />
-            <span>Moly Course & Class Mapping Bridge</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-            Quản Lý Lớp Học & Ánh Xạ Moly
+    <div className="min-w-0 space-y-5 pb-12">
+      {/* Page Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63] dark:text-white">
+            Quản lý lớp học
           </h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Liên kết lớp học LMS với Master Data từ MolyInternal để quản trị sĩ số và quyền học.
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Theo dõi lớp học, phân công giảng viên, quyền tải tài liệu và liên kết mã đồng bộ.
           </p>
         </div>
-        <button
-          onClick={loadClasses}
-          disabled={loading}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold transition border border-gray-700"
-        >
-          <FiRefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          <span>Làm mới danh sách</span>
-        </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={loadClasses}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <FiRefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            <span>Làm mới</span>
+          </button>
+        </div>
       </div>
 
-      {(classes.some((item) => item.approvalStatus === "pending") || pendingMemberships.length > 0) && (
-        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
-          <h2 className="text-base font-bold text-amber-950 dark:text-amber-100">Chờ duyệt từ hệ thống quản lý</h2>
-          <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">Lịch học vẫn đồng bộ; lớp và ghi danh chỉ mở cho học viên sau khi quản trị viên duyệt.</p>
-          <div className="mt-4 space-y-2">
-            {classes.filter((item) => item.approvalStatus === "pending").map((item) => (
-              <div key={`class-${item.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-800 dark:bg-gray-900">
-                <div><span className="font-bold">Lớp: {item.name}</span><span className="ml-2 text-xs text-gray-500">{item.managementClassId}</span></div>
-                <div className="flex gap-2">
-                  <button type="button" disabled={Boolean(reviewing)} onClick={() => review("class", item.id, "approved")} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">Duyệt lớp</button>
-                  <button type="button" disabled={Boolean(reviewing)} onClick={() => review("class", item.id, "rejected")} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-bold text-rose-700 disabled:opacity-50">Từ chối</button>
-                </div>
+      {/* Collapsible Pending Approvals Alert (hidden when 0) */}
+      {totalPendingCount > 0 && (
+        <section className="rounded-2xl sm:rounded-3xl border border-amber-200/90 bg-amber-50/90 shadow-xs dark:border-amber-800/70 dark:bg-amber-950/30 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setPendingExpanded((prev) => !prev)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-amber-100/50 dark:hover:bg-amber-950/50"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                <FiAlertCircle className="h-4 w-4" />
               </div>
-            ))}
-            {pendingMemberships.map((item) => (
-              <div key={`membership-${item.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-800 dark:bg-gray-900">
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold">Học viên: {item.student_name}</span>
-                  {String(item.learning_mode || "").toLowerCase() === "recording" && (
-                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300">
-                      Record
-                    </span>
-                  )}
-                  <span className="text-xs text-gray-500">{item.class_title} · {item.email}</span>
-                  {item.management_membership_status && item.management_membership_status !== "active" && (
-                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
-                      Internal: {item.management_membership_status}
-                    </span>
-                  )}
+                  <h2 className="text-xs sm:text-sm font-black text-amber-950 dark:text-amber-100">
+                    Ghi danh & lớp chờ duyệt
+                  </h2>
+                  <span className="rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                    {totalPendingCount} yêu cầu
+                  </span>
                 </div>
-                <div className="flex gap-2">
-                  <button type="button" disabled={Boolean(reviewing)} onClick={() => review("membership", item.id, "approved")} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">Duyệt ghi danh</button>
-                  <button type="button" disabled={Boolean(reviewing)} onClick={() => review("membership", item.id, "rejected")} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-bold text-rose-700 disabled:opacity-50">Từ chối</button>
-                </div>
+                <p className="text-[11px] text-amber-800/90 dark:text-amber-200/80 truncate">
+                  Lớp và học viên chỉ được mở quyền học sau khi quản trị viên xác nhận.
+                </p>
               </div>
-            ))}
-          </div>
+            </div>
+            <span className="shrink-0 rounded-lg p-1 text-amber-700 dark:text-amber-300">
+              {pendingExpanded ? <FiChevronUp className="h-4 w-4" /> : <FiChevronDown className="h-4 w-4" />}
+            </span>
+          </button>
+
+          {pendingExpanded && (
+            <div className="space-y-2 border-t border-amber-200/80 px-4 py-3 dark:border-amber-800/60">
+              {pendingClasses.map((item) => (
+                <div
+                  key={`class-${item.id}`}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/80 bg-white px-3 py-2.5 dark:border-amber-800/60 dark:bg-slate-900"
+                >
+                  <div className="min-w-0 text-xs">
+                    <span className="mr-2 inline-flex rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                      Mở lớp
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-white">{item.name}</span>
+                    <span className="ml-2 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                      {item.managementClassId}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={Boolean(reviewing)}
+                      onClick={() => review("class", item.id, "approved")}
+                      className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      Duyệt lớp
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(reviewing)}
+                      onClick={() => review("class", item.id, "rejected")}
+                      className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300"
+                    >
+                      Từ chối
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {pendingMemberships.map((item) => (
+                <div
+                  key={`membership-${item.id}`}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/80 bg-white px-3 py-2.5 dark:border-amber-800/60 dark:bg-slate-900"
+                >
+                  <div className="min-w-0 text-xs">
+                    <span className="mr-2 inline-flex rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                      Ghi danh
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {item.student_name}
+                    </span>
+                    <span className="ml-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      {item.class_title} · {item.email}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={Boolean(reviewing)}
+                      onClick={() => review("membership", item.id, "approved")}
+                      className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      Duyệt ghi danh
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(reviewing)}
+                      onClick={() => review("membership", item.id, "rejected")}
+                      className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300"
+                    >
+                      Từ chối
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
-      {/* KPI Stats Bento */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Tổng Số Lớp Học
+      {/* KPI Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 p-4 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Tổng số lớp
             </span>
-            <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500">
-              <FiBookOpen className="w-5 h-5" />
-            </div>
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+              <FiBookOpen className="h-4 w-4" />
+            </span>
           </div>
-          <div className="text-3xl font-black text-gray-900 dark:text-white mt-3 font-mono">
+          <p className="mt-2 text-2xl font-black tabular-nums text-slate-900 dark:text-white">
             {classes.length}
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Đang vận hành trong học kỳ</p>
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+            Lớp đang quản lý
+          </p>
         </div>
 
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Đã Ánh Xạ Moly (Mapped)
+        <div className="rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 p-4 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Đã liên kết mã
             </span>
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500">
-              <FiCheckCircle className="w-5 h-5" />
-            </div>
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+              <FiCheckCircle className="h-4 w-4" />
+            </span>
           </div>
-          <div className="text-3xl font-black text-emerald-500 mt-3 font-mono">
-            {classes.filter((c) => c.mappingStatus === "MAPPED").length}
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Đồng bộ hai chiều tự động</p>
+          <p className="mt-2 text-2xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+            {mappedCount}
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+            Đồng bộ dữ liệu tự động
+          </p>
         </div>
 
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Chờ Ánh Xạ (Pending Bridge)
+        <div className="col-span-2 sm:col-span-1 rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 p-4 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Chờ liên kết mã
             </span>
-            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
-              <FiClock className="w-5 h-5" />
-            </div>
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+              <FiClock className="h-4 w-4" />
+            </span>
           </div>
-          <div className="text-3xl font-black text-amber-500 mt-3 font-mono">
-            {classes.filter((c) => c.mappingStatus === "PENDING").length}
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Chưa gán Management IDs</p>
+          <p className="mt-2 text-2xl font-black tabular-nums text-amber-600 dark:text-amber-400">
+            {pendingMappingCount}
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+            Chưa gán mã hệ thống
+          </p>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
-        {/* Status Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-          {["ALL", "MAPPED", "PENDING"].map((st) => (
+      {/* Filter & Search Bar */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-3 dark:border-slate-800 dark:bg-slate-900/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[
+            { id: "ALL", label: "Tất cả" },
+            { id: "MAPPED", label: "Đã liên kết" },
+            { id: "PENDING", label: "Chờ liên kết" },
+          ].map((item) => (
             <button
-              key={st}
-              onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                statusFilter === st
-                  ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
-                  : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+              key={item.id}
+              type="button"
+              onClick={() => setStatusFilter(item.id)}
+              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                statusFilter === item.id
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               }`}
             >
-              {st === "ALL" ? "Tất cả trạng thái" : st}
+              {item.label}
             </button>
           ))}
         </div>
 
-        {/* Search Box */}
         <div className="relative w-full sm:w-72">
-          <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Tìm theo mã lớp, tên lớp, giáo viên..."
-            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-emerald-500 transition"
+            placeholder="Tìm mã lớp, tên lớp, giảng viên..."
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/80 pl-9 pr-3 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
           />
         </div>
       </div>
 
-      {/* Classes Table */}
+      {/* Error Alert */}
       {errorMessage && (
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
           <span>{errorMessage}</span>
-          <button type="button" onClick={loadClasses} className="shrink-0 font-bold underline">Thử lại</button>
+          <button type="button" onClick={loadClasses} className="shrink-0 font-bold underline">
+            Thử lại
+          </button>
         </div>
       )}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
+
+      {/* Classes Table */}
+      <div className="rounded-2xl sm:rounded-3xl border border-white/85 bg-white/95 shadow-[0_6px_24px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 uppercase text-[10px] tracking-wider border-b border-gray-200 dark:border-gray-800">
+          <table className="min-w-full text-left text-xs">
+            <thead className="bg-slate-50/90 dark:bg-slate-800/70 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200/80 dark:border-slate-800">
               <tr>
-                <th className="py-3.5 px-5">Mã & Tên Lớp Học</th>
-                <th className="py-3.5 px-4">Giáo Viên Phụ Trách</th>
-                <th className="py-3.5 px-4">Moly Class ID</th>
-                <th className="py-3.5 px-4">Moly Course ID</th>
-                <th className="py-3.5 px-4 text-center">Sĩ Số</th>
-                <th className="py-3.5 px-4 text-center">Trạng Thái Mapping</th>
-                <th className="py-3.5 px-4 text-center">Tài Liệu</th>
-                <th className="py-3.5 px-5 text-right">Thao Tác</th>
+                <th className="px-3 py-2.5 pl-4">Lớp học</th>
+                <th className="px-3 py-2.5">Giảng viên</th>
+                <th className="px-3 py-2.5">Mã đồng bộ</th>
+                <th className="px-3 py-2.5 text-center">Sĩ số</th>
+                <th className="px-3 py-2.5 text-center">Trạng thái</th>
+                <th className="px-3 py-2.5 text-center">Tài liệu</th>
+                <th className="px-3 py-2.5 pr-4 text-right">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-gray-700 dark:text-gray-200">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-200">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-12">
-                    <Loading loading={true} text="Đang tải danh sách lớp học & Moly..." fullScreen={false} />
+                  <td colSpan={7} className="py-12">
+                    <Loading loading={true} text="Đang tải danh sách lớp học..." fullScreen={false} />
                   </td>
                 </tr>
               ) : filteredClasses.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-gray-400">
-                    {errorMessage ? "Danh sách lớp học chưa tải được." : "Không tìm thấy lớp học nào phù hợp."}
+                  <td colSpan={7} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                    {errorMessage
+                      ? "Danh sách lớp học chưa tải được."
+                      : "Không tìm thấy lớp học nào phù hợp."}
                   </td>
                 </tr>
               ) : (
                 filteredClasses.map((cls) => (
-                  <tr key={cls.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition">
-                    <td className="py-4 px-5">
-                      <div className="flex items-center gap-3">
+                  <tr
+                    key={cls.id}
+                    className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
+                  >
+                    <td className="px-3 py-2.5 pl-4">
+                      <div className="flex items-center gap-3 min-w-[200px]">
                         <img
                           src={getClassCoverImage(cls)}
                           alt={cls.name}
-                          className="h-10 w-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700 shrink-0 shadow-xs"
+                          className="h-10 w-16 shrink-0 rounded-xl border border-slate-200 object-cover dark:border-slate-700"
                           loading="lazy"
                         />
                         <div className="min-w-0">
-                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-[11px] block">
+                          <span className="block font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">
                             {cls.code}
                           </span>
-                          <span className="font-bold text-gray-900 dark:text-white mt-0.5 block truncate">
+                          <span className="mt-0.5 block truncate font-bold text-slate-900 dark:text-white max-w-[220px]">
                             {cls.name}
                           </span>
                         </div>
                       </div>
                     </td>
-                    <td className="py-4 px-4 font-medium text-gray-900 dark:text-white">
-                      {cls.teacherName}
+
+                    <td className="px-3 py-2.5 font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                      {cls.teacherName || (
+                        <span className="text-slate-400 italic">Chưa phân công</span>
+                      )}
                     </td>
-                    <td className="py-4 px-4 font-mono text-[11px] text-gray-500 dark:text-gray-400">
-                      {cls.managementClassId}
+
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="space-y-0.5">
+                        <p className="truncate max-w-[160px]" title={`Mã lớp: ${cls.managementClassId}`}>
+                          Lớp: <span className="text-slate-700 dark:text-slate-300">{cls.managementClassId}</span>
+                        </p>
+                        <p className="truncate max-w-[160px]" title={`Mã khóa: ${cls.managementCourseId}`}>
+                          Khóa: <span className="text-slate-700 dark:text-slate-300">{cls.managementCourseId}</span>
+                        </p>
+                      </div>
                     </td>
-                    <td className="py-4 px-4 font-mono text-[11px] text-gray-500 dark:text-gray-400">
-                      {cls.managementCourseId}
+
+                    <td className="px-3 py-2.5 text-center font-mono">
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {cls.studentCount}
+                      </span>
+                      <span className="block text-[10px] font-sans text-slate-400">học viên</span>
                     </td>
-                    <td className="py-4 px-4 text-center font-mono font-bold">
-                      <span className="text-gray-900 dark:text-white">{cls.studentCount}</span>
-                      <span className="text-[10px] text-gray-400 block font-normal">học viên</span>
-                    </td>
-                    <td className="py-4 px-4 text-center">
+
+                    <td className="px-3 py-2.5 text-center whitespace-nowrap">
                       {cls.mappingStatus === "MAPPED" ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          MAPPED
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/50 dark:text-emerald-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          Đã liên kết
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                          PENDING
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 dark:border-amber-800/70 dark:bg-amber-950/50 dark:text-amber-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          Chờ liên kết
                         </span>
                       )}
                     </td>
-                    <td className="py-4 px-4 text-center">
+
+                    <td className="px-3 py-2.5 text-center whitespace-nowrap">
                       <button
                         type="button"
                         disabled={savingDownloadPolicy === cls.id}
                         onClick={() => toggleDownloadPolicy(cls)}
-                        className={`inline-flex min-w-[104px] items-center justify-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${
+                        className={`inline-flex min-w-[92px] items-center justify-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-60 ${
                           cls.allowFileDownload
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
-                            : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/70 dark:bg-emerald-950/40 dark:text-emerald-300"
+                            : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-300"
                         }`}
-                        title="Bấm để đổi chính sách tải tài liệu của lớp"
+                        title="Bấm để đổi quyền tải tài liệu của lớp"
                       >
-                        {cls.allowFileDownload ? <FiDownload className="h-3.5 w-3.5" /> : <FiEye className="h-3.5 w-3.5" />}
+                        {cls.allowFileDownload ? (
+                          <FiDownload className="h-3 w-3" />
+                        ) : (
+                          <FiEye className="h-3 w-3" />
+                        )}
                         {cls.allowFileDownload ? "Cho tải" : "Chỉ xem"}
                       </button>
                     </td>
-                    <td className="py-4 px-5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => openPresentationModal(cls)}
-                        className="mr-2 inline-flex items-center gap-1.5 rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700 transition hover:bg-sky-100 dark:bg-sky-950/40 dark:text-sky-300"
-                      >
-                        <FiEdit3 className="h-3.5 w-3.5" /> Thẻ lớp
-                      </button>
-                      <Link
-                        to={`/admin/classes/${cls.id}`}
-                        className="mr-2 inline-flex items-center gap-1.5 rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
-                      >
-                        <FiExternalLink className="h-3.5 w-3.5" /> Xem lớp
-                      </Link>
-                      <button
-                        onClick={() => openMappingModal(cls)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-bold text-xs transition shadow-sm"
-                      >
-                        <FiLink className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>Cấu hình Mapping</span>
-                      </button>
+
+                    <td className="px-3 py-2.5 pr-4 text-right whitespace-nowrap">
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openPresentationModal(cls)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                          <FiEdit3 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                          <span>Thẻ lớp</span>
+                        </button>
+                        <Link
+                          to={`/admin/classes/${cls.id}`}
+                          className="inline-flex items-center gap-1 rounded-xl bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-950/80"
+                        >
+                          <FiExternalLink className="h-3.5 w-3.5" />
+                          <span>Xem lớp</span>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => openMappingModal(cls)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                          <FiLink className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span>Liên kết mã</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -492,27 +629,44 @@ export default function AdminClassesPage() {
         </div>
       </div>
 
+      {/* Modal: Thẻ lớp & Phân công giảng viên */}
       {presentationModalClass && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white/95 px-6 py-4 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/95">
-              <div>
-                <h3 className="text-lg font-black text-gray-900 dark:text-white">Thẻ lớp — {presentationModalClass.name}</h3>
-                <p className="mt-0.5 text-xs text-gray-500">Thông tin hiển thị trên thẻ lớp học viên. Nếu chưa cài ảnh riêng, hệ thống tự động gán ảnh ngẫu nhiên từ học viện.</p>
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-3 sm:p-4 backdrop-blur-xs"
+          onClick={() => setPresentationModalClass(null)}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[90dvh] overflow-y-auto rounded-3xl border border-white/80 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white/95 px-5 py-4 backdrop-blur-xs dark:border-slate-800 dark:bg-slate-900/95">
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-black text-[#102f63] dark:text-white">
+                  Thẻ lớp — {presentationModalClass.name}
+                </h3>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  Cập nhật giảng viên phụ trách và ảnh nền hiển thị cho học viên.
+                </p>
               </div>
-              <button type="button" onClick={() => setPresentationModalClass(null)} className="rounded-xl bg-gray-100 p-2 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700">
-                <FiX className="h-5 w-5" />
+              <button
+                type="button"
+                onClick={() => setPresentationModalClass(null)}
+                className="shrink-0 rounded-xl bg-slate-100 p-2 text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                <FiX className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="space-y-5 p-6">
+            <div className="space-y-5 p-5">
               <div>
-                <label className="mb-1.5 block text-xs font-bold text-gray-700 dark:text-gray-300">Giáo viên phụ trách lớp</label>
+                <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Giảng viên phụ trách lớp
+                </label>
                 <select
                   value={teacherIdInput}
                   onChange={(event) => setTeacherIdInput(event.target.value)}
                   disabled={teachersLoading || savingPresentation}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-sky-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
                 >
                   <option value="">Chưa phân công</option>
                   {teachers.map((teacher) => (
@@ -521,15 +675,17 @@ export default function AdminClassesPage() {
                     </option>
                   ))}
                 </select>
-                <p className="mt-1.5 text-[11px] text-gray-500">
-                  Chọn tài khoản giảng viên thật để họ có quyền vào lớp, đăng bài và quản lý buổi học.
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Giảng viên được chọn sẽ có quyền vào lớp, đăng bài và quản lý buổi học.
                 </p>
               </div>
 
               <div>
-                <div className="mb-1.5 flex items-center justify-between">
-                  <label className="text-xs font-bold text-gray-700 dark:text-gray-300">Ảnh nền của lớp</label>
-                  <div className="flex items-center gap-2">
+                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Ảnh nền của lớp
+                  </label>
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => {
@@ -537,7 +693,7 @@ export default function AdminClassesPage() {
                         setCoverImageUrlInput(randomWp.cloudinaryUrl);
                         toast.success(`Đã chọn ngẫu nhiên: ${randomWp.title}`);
                       }}
-                      className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 hover:bg-sky-100 dark:bg-sky-950/40 dark:text-sky-300"
+                      className="inline-flex items-center gap-1 rounded-xl bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300"
                     >
                       <FiShuffle className="h-3 w-3" /> Đổi ngẫu nhiên
                     </button>
@@ -546,9 +702,9 @@ export default function AdminClassesPage() {
                         type="button"
                         onClick={() => {
                           setCoverImageUrlInput("");
-                          toast.success("Đã khôi phục ảnh ngẫu nhiên mặc định.");
+                          toast.success("Đã khôi phục ảnh mặc định.");
                         }}
-                        className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-300"
+                        className="inline-flex items-center gap-1 rounded-xl bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
                       >
                         <FiTrash2 className="h-3 w-3" /> Gỡ ảnh riêng
                       </button>
@@ -560,36 +716,45 @@ export default function AdminClassesPage() {
                   <input
                     value={coverImageUrlInput}
                     onChange={(event) => setCoverImageUrlInput(event.target.value)}
-                    placeholder="Dán link ảnh hoặc tải ảnh lên bên cạnh"
-                    className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-sky-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                    placeholder="Dán link ảnh hoặc tải ảnh lên"
+                    className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
                   />
-                  <input ref={coverInputRef} type="file" accept="image/*" onChange={handleCoverUpload} className="hidden" />
+                  <input
+                    ref={coverInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCoverUpload}
+                    className="hidden"
+                  />
                   <button
                     type="button"
                     onClick={() => coverInputRef.current?.click()}
                     disabled={uploadingCover}
-                    className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-sky-700 disabled:opacity-60"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-blue-700 disabled:opacity-60"
                   >
-                    <FiUploadCloud className="h-4 w-4" /> {uploadingCover ? "Đang tải..." : "Tải ảnh"}
+                    <FiUploadCloud className="h-4 w-4" />
+                    {uploadingCover ? "Đang tải..." : "Tải ảnh"}
                   </button>
                 </div>
               </div>
 
-              {/* Preview Box */}
+              {/* Preview */}
               <div>
-                <div className="mb-2 flex items-center justify-between text-xs">
-                  <span className="font-bold text-gray-600 dark:text-gray-400">Xem trước hiển thị học viên</span>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-slate-600 dark:text-slate-400">
+                    Xem trước thẻ lớp
+                  </span>
                   {coverImageUrlInput ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
-                      <FiCheck className="h-3 w-3" /> Ảnh riêng của lớp (Admin cài đặt)
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+                      <FiCheck className="h-3 w-3" /> Ảnh riêng của lớp
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800">
-                      Ảnh ngẫu nhiên học viện (Tự động)
+                    <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
+                      Ảnh mặc định tự động
                     </span>
                   )}
                 </div>
-                <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-slate-900 shadow-md dark:border-gray-800">
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm dark:border-slate-800">
                   <img
                     src={coverImageUrlInput || getClassCoverImage(presentationModalClass)}
                     alt="Xem trước ảnh lớp"
@@ -597,29 +762,33 @@ export default function AdminClassesPage() {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-black/20 to-transparent" />
                   <div className="absolute inset-x-4 bottom-3">
-                    <span className="rounded bg-sky-500/80 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider backdrop-blur-xs">
+                    <span className="rounded bg-blue-500/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-xs">
                       {presentationModalClass.code}
                     </span>
                     <h4 className="mt-1 text-base font-black text-white drop-shadow">
                       {presentationModalClass.name}
                     </h4>
                     <p className="text-xs text-sky-200">
-                      GV: {teachers.find((teacher) => String(teacher.id) === String(teacherIdInput))?.fullName
-                        || teachers.find((teacher) => String(teacher.id) === String(teacherIdInput))?.username
-                        || "Chưa phân công"}
+                      GV:{" "}
+                      {teachers.find((teacher) => String(teacher.id) === String(teacherIdInput))
+                        ?.fullName ||
+                        teachers.find((teacher) => String(teacher.id) === String(teacherIdInput))
+                          ?.username ||
+                        "Chưa phân công"}
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Quick Wallpaper Picker Gallery (15 aesthetic oriental landscape wallpapers) */}
+              {/* Wallpaper Gallery */}
               <div>
-                <label className="mb-2 block text-xs font-bold text-gray-700 dark:text-gray-300">
-                  Hoặc chọn nhanh từ bộ sưu tập 15 ảnh nền học viện CSCA:
+                <label className="mb-2 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Chọn nhanh từ bộ sưu tập ảnh nền CSCA
                 </label>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-52 overflow-y-auto p-1.5 rounded-2xl border border-gray-200 bg-gray-50/70 dark:border-gray-800 dark:bg-gray-800/50">
+                <div className="grid max-h-52 grid-cols-3 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/70 p-2 sm:grid-cols-5 dark:border-slate-800 dark:bg-slate-800/50">
                   {CSCA_WALLPAPERS.map((wp) => {
-                    const isSelected = coverImageUrlInput === wp.cloudinaryUrl || coverImageUrlInput === wp.url;
+                    const isSelected =
+                      coverImageUrlInput === wp.cloudinaryUrl || coverImageUrlInput === wp.url;
                     return (
                       <button
                         key={wp.id}
@@ -630,11 +799,11 @@ export default function AdminClassesPage() {
                         }}
                         className={`group relative overflow-hidden rounded-xl border text-left transition duration-200 ${
                           isSelected
-                            ? "border-sky-500 ring-2 ring-sky-500 shadow-md"
-                            : "border-gray-200 hover:border-sky-300 dark:border-gray-700"
+                            ? "border-blue-500 ring-2 ring-blue-500 shadow-sm"
+                            : "border-slate-200 hover:border-blue-300 dark:border-slate-700"
                         }`}
                       >
-                        <div className="relative aspect-video w-full overflow-hidden bg-slate-200 dark:bg-gray-700">
+                        <div className="relative aspect-video w-full overflow-hidden bg-slate-200 dark:bg-slate-700">
                           <img
                             src={wp.cloudinaryUrl || wp.url}
                             alt={wp.title}
@@ -642,15 +811,15 @@ export default function AdminClassesPage() {
                             loading="lazy"
                           />
                           {isSelected && (
-                            <div className="absolute inset-0 bg-sky-600/40 flex items-center justify-center">
-                              <span className="rounded-full bg-white p-1 text-sky-600 shadow">
+                            <div className="absolute inset-0 flex items-center justify-center bg-blue-600/40">
+                              <span className="rounded-full bg-white p-1 text-blue-600 shadow">
                                 <FiCheck className="h-3 w-3 stroke-[3]" />
                               </span>
                             </div>
                           )}
                         </div>
-                        <div className="p-1 bg-white dark:bg-gray-900">
-                          <p className="truncate text-[10px] font-bold text-gray-800 dark:text-gray-200">
+                        <div className="bg-white p-1 dark:bg-slate-900">
+                          <p className="truncate text-[10px] font-bold text-slate-800 dark:text-slate-200">
                             {wp.title}
                           </p>
                         </div>
@@ -661,11 +830,11 @@ export default function AdminClassesPage() {
               </div>
             </div>
 
-            <div className="sticky bottom-0 z-10 flex justify-end gap-3 border-t border-gray-200 bg-white/95 px-6 py-4 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/95">
+            <div className="sticky bottom-0 z-10 flex justify-end gap-2 border-t border-slate-200/80 bg-white/95 px-5 py-3.5 backdrop-blur-xs dark:border-slate-800 dark:bg-slate-900/95">
               <button
                 type="button"
                 onClick={() => setPresentationModalClass(null)}
-                className="rounded-xl bg-gray-100 px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 Hủy
               </button>
@@ -673,7 +842,7 @@ export default function AdminClassesPage() {
                 type="button"
                 onClick={handleSavePresentation}
                 disabled={savingPresentation || uploadingCover}
-                className="rounded-xl bg-sky-600 px-5 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-60 shadow-md"
+                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
               >
                 {savingPresentation ? "Đang lưu..." : "Lưu thẻ lớp"}
               </button>
@@ -682,68 +851,77 @@ export default function AdminClassesPage() {
         </div>
       )}
 
-            {/* Mapping Configuration Modal */}
+      {/* Modal: Liên kết mã lớp đồng bộ */}
       {mappingModalClass && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
-            <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-4">
-              <div>
-                <h3 className="text-lg font-black text-gray-900 dark:text-white">
-                  Ánh Xạ MolyInternal — {mappingModalClass.code}
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-3 sm:p-4 backdrop-blur-xs"
+          onClick={() => setMappingModalClass(null)}
+        >
+          <div
+            className="w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-3xl border border-white/80 bg-white p-5 sm:p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 pb-3.5 dark:border-slate-800">
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-black text-[#102f63] dark:text-white">
+                  Liên kết mã đồng bộ — {mappingModalClass.code}
                 </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Gán các ID định danh từ hệ thống quản lý trung tâm.
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  Nhập mã lớp và mã khóa học từ hệ thống quản lý để đồng bộ sĩ số và quyền học.
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setMappingModalClass(null)}
-                className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 hover:text-white transition"
+                className="shrink-0 rounded-xl bg-slate-100 p-2 text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
-                <FiX className="w-5 h-5" />
+                <FiX className="h-4 w-4" />
               </button>
             </div>
 
             <div className="space-y-4 text-xs">
               <div>
-                <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Moly Management Class ID:
+                <label className="mb-1.5 block font-bold text-slate-700 dark:text-slate-300">
+                  Mã lớp trên hệ thống quản lý
                 </label>
                 <input
                   type="text"
                   value={molyClassIdInput}
                   onChange={(e) => setMolyClassIdInput(e.target.value)}
                   placeholder="Ví dụ: MOLY_CLS_8820"
-                  className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-xs text-gray-900 dark:text-white font-mono outline-none focus:border-emerald-500 transition"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 font-mono text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Moly Management Course ID:
+                <label className="mb-1.5 block font-bold text-slate-700 dark:text-slate-300">
+                  Mã khóa học trên hệ thống quản lý
                 </label>
                 <input
                   type="text"
                   value={molyCourseIdInput}
                   onChange={(e) => setMolyCourseIdInput(e.target.value)}
                   placeholder="Ví dụ: MOLY_CRS_9921"
-                  className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-xs text-gray-900 dark:text-white font-mono outline-none focus:border-emerald-500 transition"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 font-mono text-xs font-medium text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
                 />
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
+                type="button"
                 onClick={() => setMappingModalClass(null)}
-                className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
-                Hủy bỏ
+                Hủy
               </button>
               <button
+                type="button"
                 onClick={handleSaveMapping}
-                className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
               >
-                <FiCheckCircle className="w-4 h-4" />
-                <span>Lưu & Kích hoạt Mapping</span>
+                <FiCheckCircle className="h-3.5 w-3.5" />
+                <span>Lưu liên kết</span>
               </button>
             </div>
           </div>
