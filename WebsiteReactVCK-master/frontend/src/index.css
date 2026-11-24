@@ -15,8 +15,14 @@
   scroll-behavior: smooth;
 }
 
+html,
+body {
+  overflow-x: clip;
+}
+
 html.dark {
   color-scheme: dark;
+  background: #020617 !important;
 }
 
 /* Assessments own the viewport; scenic page themes must not bleed through. */

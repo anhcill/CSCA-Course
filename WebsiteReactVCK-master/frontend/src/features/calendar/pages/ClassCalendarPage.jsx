@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useOutletContext } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useAuthContext } from "../../../context/AuthContext";
 import { isTeacherRole } from "../../../constants/roles";
 import { fetchMyLiveSchedule, fetchAssignments, getLiveSessionAccess } from "../../api/lmsClient";
 import Loading from "../../../components/Loading.jsx";
 import { ErrorState } from "../../../components/common/StateView";
-import usePersistentClassSelectionBase from "../../../hooks/usePersistentClassSelection";
 
 import ScheduleControlBar from "../components/ScheduleControlBar";
 import ScheduleWeeklyTimetable from "../components/ScheduleWeeklyTimetable";
@@ -49,6 +48,7 @@ export default function ClassCalendarPage() {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [selectedCalendarClassId, setSelectedCalendarClassId] = useState(() => (classId ? String(classId) : "all"));
 
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -56,6 +56,7 @@ export default function ClassCalendarPage() {
 
   useEffect(() => {
     didPositionInitialCalendar.current = false;
+    setSelectedCalendarClassId(classId ? String(classId) : "all");
   }, [classId, courseId]);
 
   const loadData = useCallback(async ({ silent = false } = {}) => {
@@ -84,7 +85,7 @@ export default function ClassCalendarPage() {
       }
     } catch (err) {
       console.error("Unable to load calendar", err);
-      if (!silent) setErrorMessage("Không thể tải lịch học. Vui lòng thử lại sau.");
+      if (!silent) setErrorMessage("Không thể tải lịch. Vui lòng thử lại sau.");
     } finally {
       if (!silent) setLoading(false);
     }
@@ -122,7 +123,6 @@ export default function ClassCalendarPage() {
       uiState: getSessionUiState(s),
     }));
 
-    // Gộp bài tập & quiz từ API thật và outletContext nếu có
     const combinedAssignments = [
       ...(Array.isArray(assignments) ? assignments : []),
       ...(Array.isArray(outletContext?.assignments) ? outletContext.assignments : []),
@@ -169,22 +169,27 @@ export default function ClassCalendarPage() {
     return [...map.entries()].map(([id, title]) => ({ id, title }));
   }, [allEvents]);
 
-  const calendarClassIds = useMemo(() => calendarClasses.map((c) => c.id), [calendarClasses]);
-
-  const [selectedCalendarClassId, setSelectedCalendarClassId] = usePersistentClassSelectionBase({
-    storageNamespace: isTeacher || isAdmin ? "teacher" : "student",
-    scope: "calendar",
-    availableClassIds: calendarClassIds,
-    allValue: "all",
-    ready: !loading,
-    preferredValue: classId || null,
-    shareLastActive: true,
-  });
+  // Reset filter to "all" if the selected class is no longer in the dataset
+  useEffect(() => {
+    if (
+      !classId
+      && selectedCalendarClassId !== "all"
+      && calendarClasses.length > 0
+      && !calendarClasses.some((cls) => cls.id === selectedCalendarClassId)
+    ) {
+      setSelectedCalendarClassId("all");
+    }
+  }, [classId, selectedCalendarClassId, calendarClasses]);
 
   const visibleEvents = useMemo(() => {
     if (classId || selectedCalendarClassId === "all") return allEvents;
     return allEvents.filter((evt) => String(evt.live_class_id ?? evt.class_id ?? "") === String(selectedCalendarClassId));
   }, [allEvents, classId, selectedCalendarClassId]);
+
+  const activeFilterClass = useMemo(
+    () => calendarClasses.find((cls) => cls.id === selectedCalendarClassId) || null,
+    [calendarClasses, selectedCalendarClassId],
+  );
 
   const handleJoinSession = async (session) => {
     const meetingWindowState = getMeetingWindowState(session);
@@ -222,7 +227,7 @@ export default function ClassCalendarPage() {
   const handleNext = () => {
     const d = new Date(currentDate);
     if (viewMode === "week") d.setDate(d.getDate() + 7);
-    else if (viewMode === "month") d.setMonth(d.getMonth() + 1);
+    else if (viewMode === "month") d.setMonth(d.getMonth() - 1);
     else d.setDate(d.getDate() + 7);
     setCurrentDate(d);
   };
@@ -232,13 +237,24 @@ export default function ClassCalendarPage() {
   };
 
   if (loading) {
-    return <Loading loading={true} text="Đang tải lịch học & nhiệm vụ..." fullScreen={false} className="min-h-[50vh] py-16" />;
+    return (
+      <Loading
+        loading={true}
+        text={isTeacher ? "Đang tải lịch dạy..." : "Đang tải lịch học..."}
+        fullScreen={false}
+        className="min-h-[50vh] py-16"
+      />
+    );
   }
 
   if (errorMessage) {
     return (
       <div className="py-12">
-        <ErrorState title="Chưa thể tải lịch học" message={errorMessage} onRetry={loadData} />
+        <ErrorState
+          title={isTeacher ? "Chưa thể tải lịch dạy" : "Chưa thể tải lịch học"}
+          message={errorMessage}
+          onRetry={loadData}
+        />
       </div>
     );
   }
@@ -249,21 +265,25 @@ export default function ClassCalendarPage() {
     : basePath;
 
   return (
-    <div className="min-h-full p-3 sm:p-4 xl:px-4 xl:py-3 dark:bg-slate-950 dark:text-slate-100">
-      <div className="mx-auto max-w-[1440px]">
-        {/* Thanh lọc lớp & Nút thêm lịch */}
+    <div className="min-h-full w-full overflow-x-clip p-3 sm:p-4 xl:px-4 xl:py-3 dark:bg-slate-950 dark:text-slate-100">
+      <div className="mx-auto max-w-[1440px] min-w-0">
+        {/* Top Action & Class Filter Bar */}
         {((!classId && calendarClasses.length > 1) || canManageFixedSchedule || isTeacher) && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             {!classId && calendarClasses.length > 1 ? (
-              <div className="flex items-center gap-2">
-                <label htmlFor="calendar-class-filter" className="text-xs font-bold text-[#102f63] dark:text-slate-300">
-                  Lớp học:
+              <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial">
+                <label
+                  htmlFor="calendar-class-filter"
+                  className="hidden sm:inline shrink-0 text-xs font-bold text-[#102f63] dark:text-slate-300"
+                >
+                  Lớp:
                 </label>
                 <select
                   id="calendar-class-filter"
+                  aria-label="Lọc theo lớp học"
                   value={selectedCalendarClassId}
                   onChange={(e) => setSelectedCalendarClassId(e.target.value)}
-                  className="rounded-xl border border-white/85 bg-white/90 px-3 py-1.5 text-xs font-bold text-[#102f63] shadow-sm outline-none backdrop-blur focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  className="min-w-0 max-w-full flex-1 sm:flex-initial sm:max-w-[260px] rounded-xl border border-white/85 bg-white/90 px-3 py-2 text-xs font-bold text-[#102f63] shadow-sm outline-none backdrop-blur focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 >
                   <option value="all">Tất cả lớp ({calendarClasses.length})</option>
                   {calendarClasses.map((cls) => (
@@ -272,40 +292,52 @@ export default function ClassCalendarPage() {
                     </option>
                   ))}
                 </select>
+                {activeFilterClass && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCalendarClassId("all")}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] font-bold text-blue-700 hover:bg-blue-100 dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-300"
+                    title="Hiện tất cả các lớp"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    <span className="hidden xs:inline">Tất cả</span>
+                  </button>
+                )}
               </div>
-            ) : <div />}
+            ) : (
+              <div />
+            )}
 
             {(canManageFixedSchedule || isTeacher) && (
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 sm:px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" />
-                Thêm buổi học
+                <span>Thêm buổi</span>
               </button>
             )}
           </div>
         )}
 
-        {/* Bố cục 2 cột chính:
-            Cột trái (Lịch học + Thanh điều khiển + Bảng tuần)
-            Cột phải (Lịch tháng mini + Sự kiện sắp tới + Lịch học hôm nay + Góc châm ngôn)
-            Các box bên phải được đẩy lên trên cùng ngang hàng với tiêu đề Lịch học */}
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_310px] xl:grid-cols-[minmax(0,1fr)_330px]">
-          {/* Cột trái */}
+        {/* Main 2-column responsive layout */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_310px] xl:grid-cols-[minmax(0,1fr)_330px]">
+          {/* Left Column */}
           <div className="space-y-3 min-w-0">
-            {/* Chữ Lịch học gắn trực tiếp lên nền, không dùng khung thẻ nền */}
-            <div className="pt-0.5 pb-1">
-              <h1 className="font-['Dancing_Script',cursive] text-4xl font-extrabold tracking-tight text-[#102f63] dark:text-sky-300 drop-shadow-xs sm:text-5xl">
-                Lịch học
-              </h1>
-              <p className="mt-1 text-xs font-semibold italic text-slate-800 dark:text-slate-200 sm:text-sm">
-                {isTeacher ? "“Dạy học tận tâm, khai mở tri thức.”" : "“Học có kế hoạch, tương lai rộng mở.”"}
-              </p>
-              <p className="mt-0.5 font-['Ma_Shan_Zheng',cursive] text-sm tracking-wider text-slate-600 dark:text-slate-400 sm:text-base">
-                {isTeacher ? "—— 师者，所以传道受业解惑也。" : "—— 凡事预则立，不预则废。"}
-              </p>
+            {/* Compact Scenic Title */}
+            <div className="flex flex-wrap items-end justify-between gap-2 pt-0.5 pb-1">
+              <div className="min-w-0">
+                <h1 className="font-['Dancing_Script',cursive] text-3xl font-extrabold tracking-tight text-[#102f63] dark:text-sky-300 drop-shadow-xs sm:text-5xl">
+                  {isTeacher ? "Lịch dạy" : "Lịch học"}
+                </h1>
+                <p className="mt-0.5 text-xs font-semibold italic text-slate-700 dark:text-slate-300 sm:text-sm">
+                  {isTeacher ? "“Dạy học tận tâm, khai mở tri thức.”" : "“Học có kế hoạch, tương lai rộng mở.”"}
+                </p>
+              </div>
+              <span className="rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300">
+                {visibleEvents.filter((e) => e.eventType === "SESSION").length} buổi · {visibleEvents.filter((e) => e.eventType !== "SESSION").length} bài tập
+              </span>
             </div>
 
             <ScheduleControlBar
@@ -327,7 +359,7 @@ export default function ClassCalendarPage() {
             )}
 
             {viewMode === "month" && (
-              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]">
+              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-2.5 sm:p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]">
                 <CalendarMonthView
                   currentDate={currentDate}
                   events={visibleEvents}
@@ -341,7 +373,7 @@ export default function ClassCalendarPage() {
             )}
 
             {viewMode === "list" && (
-              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]">
+              <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-3 sm:p-4 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]">
                 <CalendarListView
                   events={visibleEvents}
                   onSelectEvent={setSelectedEvent}
@@ -352,19 +384,16 @@ export default function ClassCalendarPage() {
             )}
           </div>
 
-          {/* Cột phải: 4 card widget bắt đầu ngay từ trên cùng */}
-          <div className="space-y-4">
-            {/* Widget 1: Lịch tháng mini */}
+          {/* Right Column */}
+          <div className="space-y-4 min-w-0">
             <ScheduleMiniCalendar
               currentDate={currentDate}
               onDateChange={setCurrentDate}
               events={visibleEvents}
             />
 
-            {/* Widget 2: Sự kiện sắp tới */}
             <ScheduleUpcomingEvents events={visibleEvents} onSelectEvent={setSelectedEvent} isTeacher={isTeacher} />
 
-            {/* Widget 3: Lịch học hôm nay */}
             <ScheduleTodayList
               currentDate={currentDate}
               events={visibleEvents}
@@ -373,13 +402,13 @@ export default function ClassCalendarPage() {
               isAdmin={isAdmin}
             />
 
-            {/* Widget 4: Góc châm ngôn truyền cảm hứng */}
-            <ScheduleMottoCard />
+            <div className="hidden lg:block">
+              <ScheduleMottoCard />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Modal chi tiết buổi học */}
       {selectedEvent && selectedEvent.eventType === "SESSION" && (
         <SessionDetailModal
           session={selectedEvent}
@@ -391,7 +420,6 @@ export default function ClassCalendarPage() {
         />
       )}
 
-      {/* Modal chi tiết hạn nộp & danh sách bài nộp (Học viên & Giảng viên) */}
       {selectedEvent && (selectedEvent.eventType === "ASSIGNMENT_DUE" || selectedEvent.eventType === "QUIZ_DUE") && (
         <AssignmentSubmissionsModal
           event={selectedEvent}
@@ -400,7 +428,6 @@ export default function ClassCalendarPage() {
         />
       )}
 
-      {/* Modal tạo lịch (Admin / Giáo viên) */}
       {showCreateModal && (
         <CreateScheduleModal
           classId={classId}

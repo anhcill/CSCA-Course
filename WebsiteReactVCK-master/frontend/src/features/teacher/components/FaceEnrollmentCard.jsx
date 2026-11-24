@@ -1,39 +1,45 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import {
   Camera,
   CheckCircle2,
   Clock,
+  FlaskConical,
   Loader2,
   Lock,
   RefreshCw,
   ScanFace,
   ShieldAlert,
+  Unlock,
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAuthContext } from "../../../context/AuthContext";
 import {
   fetchTeacherFaceStatus,
+  reviewAdminTeacherFaceEnrollment,
   submitTeacherFaceEnrollment,
 } from "../../api/teacherFaceAttendanceClient";
 
+const AwsFaceLivenessModal = lazy(() => import("./AwsFaceLivenessModal.jsx"));
+
 const STATUS_BADGES = {
   approved: {
-    label: "Đã duyệt & khóa",
+    label: "Đã khóa",
     className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-950/60 dark:text-emerald-300",
     icon: Lock,
   },
   pending_approval: {
-    label: "Đang chờ Admin duyệt",
+    label: "Chờ duyệt",
     className: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/60 dark:text-amber-300",
     icon: Clock,
   },
   rejected: {
-    label: "Bị từ chối — Cần chụp lại",
+    label: "Cần chụp lại",
     className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800/70 dark:bg-rose-950/60 dark:text-rose-300",
     icon: ShieldAlert,
   },
   unlocked: {
-    label: "Đã mở khóa — Mời chụp lại",
+    label: "Đã mở khóa",
     className: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/70 dark:bg-sky-950/60 dark:text-sky-300",
     icon: RefreshCw,
   },
@@ -45,6 +51,9 @@ const STATUS_BADGES = {
 };
 
 export default function FaceEnrollmentCard() {
+  const { authUser } = useAuthContext();
+  const isAdmin = authUser?.role === "admin";
+
   const [loading, setLoading] = useState(true);
   const [enrollment, setEnrollment] = useState(null);
   const [awsStatus, setAwsStatus] = useState(null);
@@ -52,11 +61,23 @@ export default function FaceEnrollmentCard() {
   const [cameraError, setCameraError] = useState("");
   const [capturedBlob, setCapturedBlob] = useState(null);
   const [capturedPreview, setCapturedPreview] = useState("");
-  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [consentAccepted, setConsentAccepted] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [reviewingSelf, setReviewingSelf] = useState(false);
+  const [testModalOpen, setTestModalOpen] = useState(false);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+
+  const attachStreamToVideo = useCallback((videoEl) => {
+    videoRef.current = videoEl;
+    if (videoEl && streamRef.current) {
+      if (videoEl.srcObject !== streamRef.current) {
+        videoEl.srcObject = streamRef.current;
+      }
+      videoEl.play().catch(() => {});
+    }
+  }, []);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -98,6 +119,7 @@ export default function FaceEnrollmentCard() {
       setCapturedPreview("");
     }
     setCameraOpen(true);
+    stopCamera();
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -110,16 +132,14 @@ export default function FaceEnrollmentCard() {
         await videoRef.current.play().catch(() => {});
       }
     } catch {
-      setCameraError(
-        "Không thể mở camera. Vui lòng cấp quyền Camera cho trình duyệt / ứng dụng PWA rồi thử lại.",
-      );
+      setCameraError("Chưa có quyền Camera. Hãy cho phép truy cập Camera rồi thử lại.");
     }
   };
 
   const handleCapture = () => {
     const video = videoRef.current;
     if (!video || !video.videoWidth) {
-      toast.error("Camera chưa sẵn sàng, vui lòng chờ 1 giây.");
+      toast.error("Camera chưa sẵn sàng, chờ 1 giây.");
       return;
     }
     const canvas = document.createElement("canvas");
@@ -134,7 +154,7 @@ export default function FaceEnrollmentCard() {
     canvas.toBlob(
       (blob) => {
         if (!blob) {
-          toast.error("Không thể chụp ảnh từ camera.");
+          toast.error("Không thể chụp ảnh.");
           return;
         }
         setCapturedBlob(blob);
@@ -148,29 +168,44 @@ export default function FaceEnrollmentCard() {
 
   const handleSubmit = async () => {
     if (!capturedBlob) {
-      toast.error("Vui lòng chụp ảnh khuôn mặt trước khi gửi.");
+      toast.error("Chưa có ảnh khuôn mặt.");
       return;
     }
     if (!consentAccepted) {
-      toast.error("Vui lòng tích đồng ý sử dụng ảnh cho mục đích chấm công.");
+      toast.error("Vui lòng xác nhận đồng ý.");
       return;
     }
 
     try {
       setSubmitting(true);
-      const res = await submitTeacherFaceEnrollment({
+      await submitTeacherFaceEnrollment({
         blob: capturedBlob,
         consentAccepted: true,
       });
-      toast.success(res?.message || "Đã gửi ảnh khuôn mặt mẫu thành công!");
+      toast.success("Đã lưu ảnh Face ID!");
       setCameraOpen(false);
       setCapturedBlob(null);
       await loadStatus();
       window.dispatchEvent(new CustomEvent("csca:teacher-face-attendance-updated"));
     } catch (error) {
-      toast.error(error?.message || "Không thể gửi ảnh đăng ký khuôn mặt");
+      toast.error(error?.message || "Không thể đăng ký khuôn mặt");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleAdminSelfReview = async (action) => {
+    if (!authUser?.id) return;
+    try {
+      setReviewingSelf(true);
+      await reviewAdminTeacherFaceEnrollment(authUser.id, { action, note: "" });
+      toast.success(action === "approve" ? "Đã duyệt & khóa Face ID!" : "Đã mở khóa Face ID.");
+      await loadStatus();
+      window.dispatchEvent(new CustomEvent("csca:teacher-face-attendance-updated"));
+    } catch (error) {
+      toast.error(error?.message || "Không thể cập nhật trạng thái");
+    } finally {
+      setReviewingSelf(false);
     }
   };
 
@@ -180,192 +215,243 @@ export default function FaceEnrollmentCard() {
   const isLocked = statusKey === "approved";
 
   return (
-    <div
-      id="face-enrollment"
-      className="rounded-3xl border border-white/80 bg-white/95 p-5 sm:p-6 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none space-y-4"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-2xs dark:bg-indigo-950/60 dark:text-indigo-400">
-            <ScanFace className="h-5 w-5" />
-          </div>
-          <div>
+    <>
+      <div
+        id="face-enrollment"
+        className="rounded-3xl border border-white/80 bg-white/95 p-4 sm:p-5 shadow-[0_8px_30px_rgba(20,60,100,0.06)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none space-y-3.5"
+      >
+        {/* Compact Header */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-100 pb-3 dark:border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+              <ScanFace className="h-5 w-5" />
+            </div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-bold text-[#102f63] dark:text-white">Khuôn mặt chấm công</h2>
+              <h2 className="text-sm sm:text-base font-bold text-[#102f63] dark:text-white">
+                Face ID chấm công
+              </h2>
               <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${badge.className}`}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${badge.className}`}
               >
                 <BadgeIcon className="h-3 w-3" />
                 {badge.label}
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Dùng để chấm công Vào / Ra trước và sau mỗi buổi dạy bằng AWS Rekognition
-            </p>
           </div>
-        </div>
-      </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-6 text-xs text-slate-500 dark:text-slate-400">
-          <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
-          Đang kiểm tra hồ sơ khuôn mặt...
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {enrollment?.photoUrl && !cameraOpen && (
-            <div className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 dark:border-slate-800 dark:bg-slate-800/60">
-              <img
-                src={enrollment.photoUrl}
-                alt="Ảnh khuôn mặt mẫu"
-                className="h-16 w-16 rounded-2xl object-cover ring-2 ring-white dark:ring-slate-700 shadow-xs"
-              />
-              <div className="min-w-0 flex-1 text-xs space-y-1">
-                <p className="font-bold text-slate-800 dark:text-white">
-                  {isLocked
-                    ? "Khuôn mặt mẫu đã được Admin duyệt & khóa"
-                    : statusKey === "pending_approval"
-                      ? "Ảnh mẫu đang chờ Admin duyệt"
-                      : "Ảnh mẫu gần nhất"}
-                </p>
-                {enrollment.submittedAt && (
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Gửi lúc: {new Date(enrollment.submittedAt).toLocaleString("vi-VN")}
-                  </p>
-                )}
-                {enrollment.reviewNote && (
-                  <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                    Ghi chú Admin: {enrollment.reviewNote}
-                  </p>
-                )}
-              </div>
-            </div>
+          {isAdmin && !cameraOpen && (
+            <button
+              type="button"
+              onClick={() => setTestModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-violet-700"
+            >
+              <FlaskConical className="h-3.5 w-3.5" />
+              Test Face ID
+            </button>
           )}
+        </div>
 
-          {isLocked ? (
-            <div className="flex items-start gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <p className="leading-relaxed">
-                Bạn đã sẵn sàng chấm công khuôn mặt Vào / Ra trước mỗi buổi học. Vì lý do bảo mật lương, ảnh gốc đã được khóa — nếu cần chụp lại, vui lòng nhắn Admin mở khóa.
-              </p>
-            </div>
-          ) : !cameraOpen ? (
-            <div className="space-y-3">
-              <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-                Chụp 1 ảnh chính diện trực tiếp từ camera nơi đủ sáng (không đeo khẩu trang/kính râm). Sau khi gửi, Admin sẽ duyệt và khóa ảnh gốc để kích hoạt chấm công tự động.
-              </p>
-              <button
-                type="button"
-                onClick={startCamera}
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-indigo-700"
-              >
-                <Camera className="h-4 w-4" />
-                {enrollment ? "Chụp đăng ký lại khuôn mặt" : "Mở camera đăng ký khuôn mặt"}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 dark:border-indigo-900/60 dark:bg-indigo-950/30">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-[#102f63] dark:text-white">
-                  Chụp ảnh khuôn mặt trực tiếp
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopCamera();
-                    setCameraOpen(false);
-                    setCapturedBlob(null);
-                  }}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-5 text-xs text-slate-500 dark:text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
+            Đang tải...
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Enrolled Photo Preview */}
+            {enrollment?.photoUrl && !cameraOpen && (
+              <div className="flex items-center gap-3.5 rounded-2xl border border-slate-100 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-800/60">
+                <img
+                  src={enrollment.photoUrl}
+                  alt="Ảnh Face ID"
+                  className="h-14 w-14 shrink-0 rounded-2xl object-cover ring-2 ring-white dark:ring-slate-700 shadow-xs"
+                />
+                <div className="min-w-0 flex-1 text-xs space-y-0.5">
+                  <p className="font-bold text-slate-800 dark:text-white">
+                    {isLocked ? "Sẵn sàng chấm công" : statusKey === "pending_approval" ? "Đã gửi ảnh mẫu" : "Ảnh gần nhất"}
+                  </p>
+                  {enrollment.submittedAt && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {new Date(enrollment.submittedAt).toLocaleString("vi-VN")}
+                    </p>
+                  )}
+                  {enrollment.reviewNote && (
+                    <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 truncate">
+                      {enrollment.reviewNote}
+                    </p>
+                  )}
+                </div>
               </div>
+            )}
 
-              {cameraError ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-800/70 dark:bg-rose-950/50 dark:text-rose-300">
-                  {cameraError}
-                </div>
-              ) : capturedPreview ? (
-                <div className="flex flex-col items-center gap-3">
-                  <img
-                    src={capturedPreview}
-                    alt="Ảnh vừa chụp"
-                    className="h-56 w-56 rounded-2xl object-cover ring-4 ring-white shadow-md dark:ring-slate-700"
-                  />
-                  <label className="flex items-start gap-2 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300 max-w-md">
-                    <input
-                      type="checkbox"
-                      checked={consentAccepted}
-                      onChange={(e) => setConsentAccepted(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900"
-                    />
-                    <span>
-                      Tôi đồng ý cung cấp ảnh khuôn mặt này cho hệ thống Moly Course để xác thực chấm công Vào/Ra và tính lương giảng dạy (theo Nghị định 13/2023/NĐ-CP).
-                    </span>
-                  </label>
+            {/* Action Row */}
+            {!cameraOpen ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {!isLocked && (
+                  <button
+                    type="button"
+                    onClick={startCamera}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-indigo-700"
+                  >
+                    <Camera className="h-4 w-4" />
+                    {enrollment ? "Chụp lại" : "Đăng ký Face ID"}
+                  </button>
+                )}
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={startCamera}
-                      disabled={submitting}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" /> Chụp lại
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSubmit}
-                      disabled={submitting || !consentAccepted}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
-                    >
-                      {submitting ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang gửi...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Gửi Admin duyệt & khóa
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-3">
-                  <div className="relative h-64 w-64 overflow-hidden rounded-3xl bg-slate-900 ring-4 ring-white shadow-md dark:ring-slate-700">
-                    <video
-                      ref={videoRef}
-                      playsInline
-                      muted
-                      autoPlay
-                      className="h-full w-full -scale-x-100 object-cover"
-                    />
-                    <div className="pointer-events-none absolute inset-4 rounded-full border-2 border-dashed border-white/75" />
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">
-                    Đưa khuôn mặt vào giữa vòng tròn, nhìn thẳng camera và giữ yên khi chụp.
+                {isAdmin && statusKey === "pending_approval" && (
+                  <button
+                    type="button"
+                    disabled={reviewingSelf}
+                    onClick={() => handleAdminSelfReview("approve")}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {reviewingSelf ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    )}
+                    Duyệt & Khóa
+                  </button>
+                )}
+
+                {isAdmin && isLocked && (
+                  <button
+                    type="button"
+                    disabled={reviewingSelf}
+                    onClick={() => handleAdminSelfReview("unlock")}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 disabled:opacity-50"
+                  >
+                    <Unlock className="h-3.5 w-3.5" />
+                    Mở khóa để chụp lại
+                  </button>
+                )}
+
+                {!isAdmin && isLocked && (
+                  <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    Đã kích hoạt chấm công Vào / Ra.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3.5 dark:border-indigo-900/60 dark:bg-indigo-950/30">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-[#102f63] dark:text-white">
+                    {capturedPreview ? "Xem lại ảnh" : "Nhìn thẳng vào vòng tròn"}
                   </p>
                   <button
                     type="button"
-                    onClick={handleCapture}
-                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-700"
+                    onClick={() => {
+                      stopCamera();
+                      setCameraOpen(false);
+                      setCapturedBlob(null);
+                    }}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    aria-label="Đóng camera"
                   >
-                    <Camera className="h-4 w-4" /> Chụp ảnh mẫu
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
-              )}
-            </div>
-          )}
 
-          {awsStatus && !awsStatus.configured && !awsStatus.mockMode && (
-            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 dark:border-amber-800/70 dark:bg-amber-950/50 dark:text-amber-300">
-              Lưu ý hệ thống: Key AWS Rekognition chưa được điền trên server — bạn vẫn có thể chụp và gửi ảnh mẫu trước để Admin duyệt sẵn.
-            </p>
-          )}
-        </div>
+                {cameraError ? (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-800/70 dark:bg-rose-950/50 dark:text-rose-300">
+                    {cameraError}
+                  </div>
+                ) : capturedPreview ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <img
+                      src={capturedPreview}
+                      alt="Ảnh vừa chụp"
+                      className="h-52 w-52 rounded-3xl object-cover ring-4 ring-white shadow-md dark:ring-slate-700"
+                    />
+                    <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={consentAccepted}
+                        onChange={(e) => setConsentAccepted(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900"
+                      />
+                      <span>Đồng ý dùng ảnh này để chấm công khuôn mặt</span>
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={startCamera}
+                        disabled={submitting}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" /> Chụp lại
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSubmit}
+                        disabled={submitting || !consentAccepted}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        {submitting ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        )}
+                        {submitting ? "Đang gửi..." : "Lưu Face ID"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="relative h-56 w-56 overflow-hidden rounded-3xl bg-slate-900 ring-4 ring-white shadow-md dark:ring-slate-700">
+                      <video
+                        ref={attachStreamToVideo}
+                        playsInline
+                        muted
+                        autoPlay
+                        className="h-full w-full -scale-x-100 object-cover"
+                      />
+                      <div className="pointer-events-none absolute inset-4 rounded-full border-2 border-dashed border-white/80" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCapture}
+                      className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-700"
+                    >
+                      <Camera className="h-4 w-4" /> Chụp ảnh
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {awsStatus && !awsStatus.configured && !awsStatus.mockMode && (
+              <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 dark:border-amber-800/70 dark:bg-amber-950/50 dark:text-amber-300">
+                Server chưa cấu hình AWS Rekognition key.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {testModalOpen && (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs">
+              <div className="flex items-center gap-2 rounded-2xl bg-white px-5 py-4 text-xs font-bold text-slate-700 shadow-xl dark:bg-slate-900 dark:text-slate-100">
+                <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                Đang mở camera...
+              </div>
+            </div>
+          }
+        >
+          <AwsFaceLivenessModal
+            isOpen={testModalOpen}
+            adminTestMode={true}
+            defaultCompareTeacherId={authUser?.id ? String(authUser.id) : ""}
+            sessionId={0}
+            type="admin_test"
+            onClose={() => setTestModalOpen(false)}
+          />
+        </Suspense>
       )}
-    </div>
+    </>
   );
 }

@@ -85,7 +85,7 @@ export default function CalendarMonthView({
                 <div
                   key={dateStr}
                   onClick={() => onSelectDate && onSelectDate(date)}
-                  className={`p-1 flex flex-col justify-between transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer ${
+                  className={`min-w-0 overflow-hidden p-1 flex flex-col justify-between transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer ${
                     !isCurrentMonth ? "bg-slate-50/40 dark:bg-slate-950/40 text-slate-400 dark:text-slate-600" : ""
                   } ${isToday ? "bg-blue-50/30 dark:bg-blue-950/20" : ""}`}
                 >

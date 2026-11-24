@@ -131,6 +131,18 @@ export default function ScheduleWeeklyTimetable({
 
   const hasAnySessionThisWeek = displayEvents.some((ev) => ev.eventType === "SESSION");
 
+  const hiddenOutOfRangeSessionsCount = useMemo(() => {
+    const maxHour = minHour + hours.length;
+    return displayEvents.filter((ev) => {
+      if (ev.eventType && ev.eventType !== "SESSION") return false;
+      const start = new Date(ev.start_time || ev.due_date);
+      const end = ev.end_time ? new Date(ev.end_time) : new Date(start.getTime() + 90 * 60 * 1000);
+      const startHours = start.getHours() + start.getMinutes() / 60;
+      const endHours = end.getHours() + end.getMinutes() / 60;
+      return endHours <= minHour || startHours >= maxHour;
+    }).length;
+  }, [displayEvents, minHour, hours.length]);
+
   return (
     <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-[0_10px_35px_rgba(32,78,120,0.06)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]">
       {/* Thanh bộ lọc khung giờ (Đẩy buổi tối lên đầu theo yêu cầu) */}
@@ -163,6 +175,21 @@ export default function ScheduleWeeklyTimetable({
           })}
         </div>
       </div>
+
+      {hiddenOutOfRangeSessionsCount > 0 && rangeKey !== "all_day" && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/70 bg-amber-50/80 px-4 py-2 text-xs dark:border-amber-900/50 dark:bg-amber-950/30">
+          <span className="font-semibold text-amber-900 dark:text-amber-200">
+            Có <strong>{hiddenOutOfRangeSessionsCount}</strong> buổi học tuần này nằm ngoài khung giờ đang chọn.
+          </span>
+          <button
+            type="button"
+            onClick={() => handleRangeChange("all_day")}
+            className="rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700"
+          >
+            Xem Cả ngày (08h–23h)
+          </button>
+        </div>
+      )}
 
       {!hasAnySessionThisWeek && (
         <div className="flex items-center justify-between px-4 py-2 bg-blue-50/40 border-b border-blue-100/60 dark:bg-slate-900/90 dark:border-slate-800 text-xs">

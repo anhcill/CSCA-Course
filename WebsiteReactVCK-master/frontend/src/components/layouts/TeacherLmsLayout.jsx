@@ -460,7 +460,7 @@ export default function TeacherLmsLayout({ children }) {
 
   return (
     <div
-      className={`teacher-lms min-h-screen text-slate-900 transition-colors ${
+      className={`teacher-lms min-h-screen overflow-x-clip text-slate-900 transition-colors ${
         !isDarkMode ? 'teacher-lms--dashboard bg-[#dff1ff]' : 'bg-slate-950 text-slate-100'
       }`}
       style={!isDarkMode ? {
@@ -500,11 +500,15 @@ export default function TeacherLmsLayout({ children }) {
       )}
 
       {/* Main Content Area */}
-      <main className={`min-h-screen pt-16 pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0 transition-[padding] duration-300 ease-in-out ${
+      <main className={`min-h-screen min-w-0 pt-16 pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0 transition-[padding] duration-300 ease-in-out ${
         isSidebarCollapsed ? 'lg:pl-[98px]' : 'lg:pl-[260px]'
       }`}>
-        <header className={`teacher-lms-header fixed right-0 top-0 z-30 flex h-16 items-center justify-between gap-2 bg-transparent px-3 sm:px-6 transition-[left] duration-300 ease-in-out ${
+        <header className={`teacher-lms-header fixed right-0 top-0 z-30 flex h-16 items-center justify-between gap-2 px-3 sm:px-6 transition-[left,background-color] duration-300 ease-in-out ${
           isSidebarCollapsed ? 'left-0 lg:left-[98px]' : 'left-0 lg:left-[260px]'
+        } ${
+          isDarkMode
+            ? 'border-b border-slate-800/80 bg-slate-950/90 shadow-sm backdrop-blur-xl'
+            : 'border-b border-white/60 bg-[#dff1ff]/80 backdrop-blur-xl'
         }`}>
           <div className="flex items-center gap-2">
             <Link

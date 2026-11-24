@@ -403,7 +403,7 @@ export default function StudentLmsLayout({ children }) {
 
   return (
     <div
-      className={`student-lms min-h-screen transition-colors duration-200 ${
+      className={`student-lms min-h-screen overflow-x-clip transition-colors duration-200 ${
         !isDarkMode
           ? (hasScenicBackground ? "student-lms--dashboard bg-[#dff1ff] text-slate-900" : "bg-[#f6f9fd] text-slate-900")
           : "bg-slate-950 text-slate-100"
@@ -541,7 +541,7 @@ export default function StudentLmsLayout({ children }) {
         </>
       )}
 
-      <main className={`min-h-screen pt-16 pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0 transition-[padding] duration-300 ease-in-out ${
+      <main className={`min-h-screen min-w-0 pt-16 pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0 transition-[padding] duration-300 ease-in-out ${
         isSidebarCollapsed ? "lg:pl-[98px]" : "lg:pl-[256px]"
       }`}>{children}</main>
 
