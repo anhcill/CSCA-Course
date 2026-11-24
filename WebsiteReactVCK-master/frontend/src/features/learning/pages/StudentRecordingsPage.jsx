@@ -203,10 +203,10 @@ export default function StudentRecordingsPage() {
   };
 
   return (
-    <div className="min-h-full p-2.5 sm:p-3.5 xl:px-4 xl:py-3">
-      <div className="mx-auto max-w-[1440px]">
+    <div className="min-h-full w-full overflow-x-clip p-2.5 sm:p-3.5 xl:px-4 xl:py-3">
+      <div className="mx-auto max-w-[1440px] min-w-0">
         {/* Main 2-Column Grid */}
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_310px]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_310px] min-w-0">
           {/* Left Column: Hero Header + Search Bar + Class Groups & Video Cards */}
           <div className="space-y-4 min-w-0">
             {/* Title & Inspirational Quote Banner */}

@@ -177,7 +177,7 @@ function DashboardClassCard({ course, liveClass, index }) {
   const displayClassTitle = liveClass ? formatClassTitle(liveClass.title) : course.title;
 
   return (
-    <div className="group flex flex-col justify-between overflow-hidden rounded-3xl border border-white/85 bg-white shadow-[0_8px_24px_rgba(45,87,122,0.1)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(45,87,122,0.18)] hover:border-sky-300 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none dark:hover:border-sky-500/50">
+    <div className="group min-w-0 w-full flex flex-col justify-between overflow-hidden rounded-3xl border border-white/85 bg-white shadow-[0_8px_24px_rgba(45,87,122,0.1)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(45,87,122,0.18)] hover:border-sky-300 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none dark:hover:border-sky-500/50">
       <Link to={classBasePath} className="block">
         <div className="relative h-28 sm:h-32 w-full overflow-hidden bg-sky-100 dark:bg-slate-800">
           <img
@@ -439,8 +439,8 @@ export default function StudentDashboardPage() {
   }
 
   return (
-    <div className="student-dashboard-page min-h-full p-3 sm:p-4 lg:px-6 lg:py-4">
-      <div className="mx-auto max-w-[1440px] space-y-5">
+    <div className="student-dashboard-page min-h-full w-full overflow-x-clip p-3 sm:p-4 lg:px-6 lg:py-4">
+      <div className="mx-auto max-w-[1440px] min-w-0 space-y-5">
         {/* 1. Compact Header + 3 Actionable KPI Cards */}
         <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="px-1">
@@ -492,9 +492,9 @@ export default function StudentDashboardPage() {
         </section>
 
         {/* 2. TODAY FOCUS DOCK (2 Columns: Live Sessions 1-Tap + Pending Assignments 1-Tap) */}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 min-w-0">
           {/* Cột 1: Lịch học hôm nay / sắp tới (kèm Vào phòng & Báo có mặt 1 chạm) */}
-          <section className="flex flex-col justify-between rounded-3xl border border-white/85 bg-white/92 p-4 sm:p-5 shadow-[0_10px_35px_rgba(56,96,130,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
+          <section className="min-w-0 flex flex-col justify-between rounded-3xl border border-white/85 bg-white/92 p-4 sm:p-5 shadow-[0_10px_35px_rgba(56,96,130,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
             <div>
               <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
                 <div className="flex items-center gap-2">
@@ -628,7 +628,7 @@ export default function StudentDashboardPage() {
           </section>
 
           {/* Cột 2: Bài tập & Quiz cần hoàn thành */}
-          <section className="flex flex-col justify-between rounded-3xl border border-white/85 bg-white/92 p-4 sm:p-5 shadow-[0_10px_35px_rgba(56,96,130,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
+          <section className="min-w-0 flex flex-col justify-between rounded-3xl border border-white/85 bg-white/92 p-4 sm:p-5 shadow-[0_10px_35px_rgba(56,96,130,0.09)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
             <div>
               <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
                 <div className="flex items-center gap-2">
@@ -741,7 +741,7 @@ export default function StudentDashboardPage() {
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Lớp học sẽ xuất hiện sau khi quản trị viên cấp quyền và xếp lớp.</p>
             </div>
           ) : (
-            <div className="mt-4 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 min-w-0">
               {classCards.slice(0, 8).map(({ course, liveClass }, index) => (
                 <DashboardClassCard
                   key={`${course.course_id}-${liveClass?.id || index}`}

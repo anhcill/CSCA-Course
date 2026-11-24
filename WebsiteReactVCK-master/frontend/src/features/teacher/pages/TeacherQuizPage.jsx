@@ -984,7 +984,7 @@ function QuizStatsModal({ quiz, onClose }) {
   );
 }
 
-export default function TeacherQuizPage() {
+export default function TeacherQuizPage({ embedded = false } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -2007,73 +2007,67 @@ export default function TeacherQuizPage() {
   };
 
   return (
-    <div className="min-h-screen bg-transparent px-4 py-5 pb-20 font-sans text-slate-900 dark:text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        {/* Top Calligraphic Hero Header */}
-        <header className="relative overflow-hidden rounded-3xl border border-white/80 bg-white/92 px-6 py-6 shadow-[0_14px_40px_rgba(32,78,120,0.1)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 md:flex md:items-center md:justify-between md:gap-6 sm:px-8">
-          <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-200/40 blur-3xl" />
-          <div className="pointer-events-none absolute -left-12 -bottom-16 h-48 w-48 rounded-full bg-indigo-200/30 blur-3xl" />
-          <div className="relative z-10">
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-sky-200/80 bg-sky-50/80 px-3 py-1 text-xs font-bold text-[#102f63] dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-300 shadow-2xs">
-              <FiClipboard className="h-3.5 w-3.5 text-blue-600" />
-              <span>Trung Tâm Đề & Chấm Quiz</span>
-              <span className="text-slate-300 dark:text-slate-600">|</span>
-              <span className="font-['Ma_Shan_Zheng',cursive] text-xs tracking-wider text-slate-700 dark:text-sky-300">博观而约取，厚积而薄发</span>
+    <div className={embedded ? "w-full min-w-0 overflow-x-clip font-sans text-slate-900 dark:text-slate-100" : "min-h-screen w-full overflow-x-clip bg-transparent px-3 py-4 pb-20 font-sans text-slate-900 dark:text-slate-100 sm:px-5 lg:px-6"}>
+      <div className={embedded ? "space-y-3.5 min-w-0" : "mx-auto max-w-[1440px] min-w-0 space-y-4"}>
+        {/* Compact Action Bar — Clean & Focused */}
+        <header className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-white/85 bg-white/92 px-3.5 py-3 shadow-xs backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            {!embedded && (
+              <h1 className="text-base sm:text-lg font-black tracking-tight text-[#102f63] dark:text-white">
+                Đăng đề & Quiz
+              </h1>
+            )}
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+              <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                Đang mở: {quizOverview.active}
+              </span>
+              {quizOverview.drafts > 0 && (
+                <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                  Nháp: {quizOverview.drafts}
+                </span>
+              )}
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                Lượt nộp: {quizOverview.submissions}
+              </span>
             </div>
-            <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] drop-shadow-xs dark:text-white">
-              Đăng Đề & Trung Tâm Quiz
-            </h1>
-            <p className="mt-1.5 max-w-2xl text-xs sm:text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-              Không gian quản lý ngân hàng đề, phân phối câu hỏi theo buổi và ưu tiên các bài tự luận chờ chấm điểm.
-            </p>
           </div>
 
-          {/* 2 Tabs chuyển đổi chính */}
-          <div className="relative z-10 mt-4 inline-flex rounded-2xl border border-white/90 bg-white/70 p-1.5 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-950/60 md:mt-0">
+          <div className="flex items-center gap-1.5 rounded-xl bg-slate-100/90 p-1 dark:bg-slate-950/80 self-stretch sm:self-auto">
             <button
               type="button"
               onClick={() => setActiveTab("assigned")}
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                 activeTab === "assigned"
-                  ? "bg-white text-blue-700 shadow-sm dark:bg-slate-800 dark:text-sky-300"
+                  ? "bg-white text-blue-700 shadow-xs dark:bg-slate-800 dark:text-sky-300"
                   : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
               }`}
             >
-              <FiClipboard className="h-4 w-4" />
-              <span>Quiz đã giao ({quizzes.length})</span>
+              <FiClipboard className="h-3.5 w-3.5" />
+              <span>Đã đăng ({quizzes.length})</span>
             </button>
             <button
               type="button"
               onClick={openNewQuizEditor}
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                 activeTab === "create"
-                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20"
+                  ? "bg-blue-600 text-white shadow-xs"
                   : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
               }`}
             >
-              <FiPlus className="h-4 w-4" />
-              <span>Tạo quiz mới</span>
+              <FiPlus className="h-3.5 w-3.5" />
+              <span>Tạo đề mới</span>
             </button>
+            {!embedded && (
+              <button
+                type="button"
+                onClick={() => navigate("/lms/teacher/assignments/review")}
+                className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-indigo-600 hover:bg-white/70 dark:text-sky-400 dark:hover:bg-slate-800"
+              >
+                Chấm bài →
+              </button>
+            )}
           </div>
         </header>
-
-        {activeTab === "assigned" && (
-          <section className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Tổng quan kho quiz">
-            {[
-              { label: "Đang mở", value: quizOverview.active, detail: "Học viên đang có thể làm", tone: "sky" },
-              { label: "Bản nháp", value: quizOverview.drafts, detail: "Cần hoàn thiện hoặc xuất bản", tone: "amber" },
-              { label: "Đã kết thúc", value: quizOverview.expired, detail: "Xem lại điểm và bài nộp", tone: "slate" },
-              { label: "Lượt đã nộp", value: quizOverview.submissions, detail: "Tổng bài làm đã ghi nhận", tone: "emerald" },
-              { label: "Tổng số đề", value: quizOverview.total, detail: "Trong phạm vi bạn phụ trách", tone: "blue" },
-            ].map((item) => (
-              <div key={item.label} className="rounded-3xl border border-white/80 bg-white/92 p-4 shadow-[0_8px_30px_rgba(49,91,125,0.06)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90">
-                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{item.label}</p>
-                <p className={`mt-1 text-2xl font-black tabular-nums ${item.tone === "amber" ? "text-amber-600" : item.tone === "emerald" ? "text-emerald-600" : item.tone === "slate" ? "text-slate-600 dark:text-slate-300" : "text-[#102f63] dark:text-sky-300"}`}>{item.value}</p>
-                <p className="mt-0.5 text-[10px] leading-4 text-slate-500 dark:text-slate-400">{item.detail}</p>
-              </div>
-            ))}
-          </section>
-        )}
 
         {/* TAB 1: DANH SÁCH QUIZ ĐÃ GIAO */}
         {activeTab === "assigned" && (

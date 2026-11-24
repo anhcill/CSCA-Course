@@ -208,7 +208,7 @@ export default function StudentCourseListPage() {
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Bạn có khóa học nhưng chưa được xếp lớp, hoặc không có lớp khớp bộ lọc hiện tại.</p>
           </div>
         ) : (
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-w-0">
             {classCards.map(({ course, liveClass }, index) => {
               const targetItem = liveClass || course;
               const recordingMode = isRecordingMode(liveClass, course);

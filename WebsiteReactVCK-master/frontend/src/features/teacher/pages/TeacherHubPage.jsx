@@ -140,8 +140,8 @@ export default function TeacherHubPage() {
   }
 
   return (
-    <div className="min-h-full px-3 pb-12 pt-1 sm:px-5 lg:px-6 text-slate-900 dark:text-slate-100 transition-colors">
-      <div className="mx-auto max-w-[1480px] space-y-4">
+    <div className="min-h-full w-full overflow-x-clip px-3 pb-12 pt-1 sm:px-5 lg:px-6 text-slate-900 dark:text-slate-100 transition-colors">
+      <div className="mx-auto max-w-[1480px] min-w-0 space-y-4">
         {/* 1. Tiêu đề Tổng quan giảng dạy (Khắc họa trực tiếp trên nền phong cảnh Á Đông) */}
         <section className="pt-0.5 pb-1">
           <h1 className="font-['Dancing_Script',cursive] text-4xl sm:text-5xl font-extrabold tracking-tight text-[#102f63] dark:text-sky-200 drop-shadow-xs">
@@ -230,23 +230,23 @@ export default function TeacherHubPage() {
           </div>
         ) : (
           /* 3. Bố cục 2 cột chính */
-          <div className="grid gap-5 xl:grid-cols-12 items-start">
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-12 items-start min-w-0">
             {/* Cột trái: Lớp đang phụ trách (8/12 cols) */}
-            <div className="space-y-3.5 xl:col-span-8">
+            <div className="min-w-0 space-y-3.5 xl:col-span-8">
               {/* Header của danh sách lớp học: tích hợp gọn gàng ô tìm kiếm, không dùng thanh ngang cồng kềnh */}
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 px-1">
-                <div>
-                  <h2 className="text-lg font-black text-[#102f63] dark:text-white flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    Lớp đang phụ trách ({data.classes.length})
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2.5">
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-lg font-black text-[#102f63] dark:text-white flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 shrink-0 text-blue-600 dark:text-blue-400" />
+                    <span className="truncate">Lớp đang phụ trách ({data.classes.length})</span>
                   </h2>
                   <p className="mt-0.5 text-xs text-[#487291] dark:text-slate-400">
                     Mỗi thẻ là một lớp học bạn đang quản lý giảng dạy.
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2.5">
-                  <div className="relative w-48 sm:w-56">
+                <div className="flex w-full sm:w-auto items-center gap-2 min-w-0">
+                  <div className="relative min-w-0 flex-1 sm:flex-initial sm:w-56">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                     <input
                       value={search}
@@ -268,9 +268,9 @@ export default function TeacherHubPage() {
 
                   <Link
                     to="/lms/teach/classes"
-                    className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 dark:text-sky-300 hover:text-sky-900 dark:hover:text-sky-100 transition shrink-0 ml-1"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 dark:text-sky-300 hover:text-sky-900 dark:hover:text-sky-100 transition shrink-0"
                   >
-                    Xem tất cả <ArrowRight className="h-3.5 w-3.5" />
+                    Tất cả <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                 </div>
               </div>
@@ -289,7 +289,7 @@ export default function TeacherHubPage() {
                 </div>
               ) : (
                 /* Thẻ lớp học của Giảng viên - Hoàn toàn đồng nhất ảnh nền, phong cách và bố cục với thẻ học viên */
-                <div className="grid gap-3.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 min-w-0">
                   {filteredClasses.map((item, index) => {
                     const tone = TONES_ARRAY[index % TONES_ARRAY.length];
                     const cover = getClassCoverImage(item, item.id);
@@ -305,7 +305,7 @@ export default function TeacherHubPage() {
                     return (
                       <article
                         key={item.id}
-                        className="group flex flex-col justify-between overflow-hidden rounded-3xl border border-white/85 dark:border-slate-800 bg-white dark:bg-slate-900/95 shadow-[0_8px_24px_rgba(45,87,122,0.1)] dark:shadow-none transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(45,87,122,0.18)] hover:border-sky-300 dark:hover:border-slate-700"
+                        className="group min-w-0 w-full flex flex-col justify-between overflow-hidden rounded-3xl border border-white/85 dark:border-slate-800 bg-white dark:bg-slate-900/95 shadow-[0_8px_24px_rgba(45,87,122,0.1)] dark:shadow-none transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(45,87,122,0.18)] hover:border-sky-300 dark:hover:border-slate-700"
                       >
                         {/* Banner ảnh phong cảnh Á Đông CSCA - Đồng nhất 100% với ô học viên */}
                         <div className="relative h-28 sm:h-32 w-full overflow-hidden bg-sky-100 dark:bg-slate-800">
@@ -410,7 +410,7 @@ export default function TeacherHubPage() {
             </div>
 
             {/* Cột phải: Buổi dạy hôm nay & Tiện ích giảng dạy (4/12 cols) */}
-            <div className="space-y-4 xl:col-span-4">
+            <div className="min-w-0 space-y-4 xl:col-span-4">
               {/* Buổi dạy hôm nay */}
               <section className="rounded-3xl border border-white/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 p-4 sm:p-5 shadow-[0_12px_35px_rgba(49,91,125,0.08)] dark:shadow-none backdrop-blur-md space-y-3">
                 <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
