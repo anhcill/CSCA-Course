@@ -1,32 +1,41 @@
-import { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { FiBookOpen, FiMenu, FiSun, FiMoon, FiUser, FiHome, FiLogOut } from 'react-icons/fi';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import {
+  ChevronDown,
+  Globe,
+  Home,
+  LogOut,
+  Moon,
+  Presentation,
+  Shield,
+  Sun,
+  User,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuthContext } from '../../context/AuthContext';
 import useLogout from '../../hooks/useLogout';
-import Logo from '../Logo';
-import VNFlag from '../../assets/VN.png';
-import UKFlag from '../../assets/UK.png';
 import { getAvatarUrl, handleAvatarError } from '../../utils/avatar';
 import NotificationBell from '../../features/notifications/components/NotificationBell';
+import { getAdminRouteMeta } from './Sidebar';
 
-const AdminNavbar = ({ toggleSidebar, collapsed = false }) => {
+const AdminNavbar = ({ collapsed = false }) => {
   const { t, i18n } = useTranslation();
   const { isDarkMode, toggleTheme } = useTheme();
   const { authUser } = useAuthContext();
   const { logout } = useLogout();
-  const [showLangMenu, setShowLangMenu] = useState(false);
+  const location = useLocation();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-
-  const langRef = useRef(null);
   const profileRef = useRef(null);
+
+  const routeMeta = useMemo(() => getAdminRouteMeta(location.pathname), [location.pathname]);
+
+  useEffect(() => {
+    setShowProfileMenu(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (langRef.current && !langRef.current.contains(e.target)) {
-        setShowLangMenu(false);
-      }
       if (profileRef.current && !profileRef.current.contains(e.target)) {
         setShowProfileMenu(false);
       }
@@ -35,162 +44,168 @@ const AdminNavbar = ({ toggleSidebar, collapsed = false }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const changeLanguage = (lng) => {
-    i18n.changeLanguage(lng);
-    setShowLangMenu(false);
+  const toggleLanguage = () => {
+    i18n.changeLanguage(i18n.language === 'vi' ? 'en' : 'vi');
+    setShowProfileMenu(false);
   };
 
   return (
-    <nav className="fixed left-0 top-0 z-50 h-16 w-full border-b border-white/80 bg-[#e8f5fd]/88 shadow-[0_8px_30px_rgba(34,88,128,0.09)] backdrop-blur-xl transition-colors dark:border-slate-800 dark:bg-slate-900/95">
-      <div className="w-full h-full flex items-center justify-between">
-        {/* Left: Sidebar toggle + Logo - Khớp chiều rộng với Sidebar bên dưới */}
-        <div className={`flex h-full items-center gap-3 px-3 transition-[width] duration-300 ease-in-out lg:border-r border-gray-200 dark:border-slate-800 ${collapsed ? 'lg:w-20 lg:justify-center' : 'lg:w-64'}`}>
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className="rounded-xl border border-white/80 bg-[#d9effc] p-2 text-[#17365f] shadow-sm transition hover:bg-white hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-            title="Bật/Tắt Menu Sidebar"
-            aria-label="Toggle Sidebar"
-          >
-            <FiMenu className="h-5 w-5" />
-          </button>
+    <header
+      className={`fixed right-0 top-0 z-30 flex h-16 items-center justify-between gap-2 px-3 sm:px-6 transition-[left,background-color] duration-300 ease-in-out ${
+        collapsed ? 'left-0 lg:left-[98px]' : 'left-0 lg:left-[268px]'
+      } ${
+        isDarkMode
+          ? 'border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-xl'
+          : 'border-b border-white/70 bg-[#e6f4fd]/85 backdrop-blur-xl'
+      }`}
+    >
+      {/* Left: Brand Pill on Mobile + Current Page Breadcrumb */}
+      <div className="flex min-w-0 items-center gap-2.5">
+        <Link
+          to="/admin/dashboard"
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-white/85 bg-white/90 px-2.5 py-1.5 shadow-2xs dark:border-slate-700 dark:bg-slate-800/90 lg:hidden"
+          aria-label="CSCA Admin"
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-white">
+            <Shield className="h-3.5 w-3.5" />
+          </span>
+          <span className="text-xs font-black tracking-tight text-[#102f63] dark:text-white">
+            Admin
+          </span>
+        </Link>
 
-          {!collapsed && (
-            <Link to="/admin/dashboard" className="flex items-center gap-2.5 truncate">
-              <Logo className="h-8" />
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-mono">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                Admin
-              </span>
-            </Link>
-          )}
-        </div>
-
-        {/* Right: Theme Toggle, Language Selector, User Profile */}
-        <div className="flex items-center space-x-2 sm:space-x-3 px-4 sm:px-6">
-          <NotificationBell variant="bare" />
-          {/* Dark Mode Toggle */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="p-2.5 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-300 transition"
-            title={isDarkMode ? t('lightMode') : t('darkMode')}
-            aria-label="Toggle Theme"
-          >
-            {isDarkMode ? (
-              <FiSun className="h-4 w-4 text-amber-400" />
-            ) : (
-              <FiMoon className="h-4 w-4 text-gray-600" />
-            )}
-          </button>
-
-          {/* Language Selector */}
-          <div className="relative" ref={langRef}>
-            <button
-              type="button"
-              onClick={() => setShowLangMenu(!showLangMenu)}
-              className="flex items-center space-x-1.5 bg-gray-100 dark:bg-slate-800 text-xs font-bold text-gray-700 dark:text-slate-300 rounded-xl px-3 py-2 hover:bg-gray-200 dark:hover:bg-slate-700 transition"
-            >
-              <img
-                src={i18n.language === 'vi' ? VNFlag : UKFlag}
-                alt={i18n.language?.toUpperCase()}
-                className="w-4 h-3 object-cover rounded-sm"
-              />
-              <span>{i18n.language?.toUpperCase() || 'VI'}</span>
-            </button>
-
-            {showLangMenu && (
-              <div className="absolute right-0 mt-2 w-32 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-gray-100 dark:border-slate-800 py-1 z-50 animate-fade-in text-xs">
-                <button
-                  type="button"
-                  onClick={() => changeLanguage('vi')}
-                  className="flex items-center space-x-2 w-full px-3 py-2 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
-                >
-                  <img src={VNFlag} alt="VN" className="w-4 h-3 object-cover rounded-sm" />
-                  <span>Tiếng Việt</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => changeLanguage('en')}
-                  className="flex items-center space-x-2 w-full px-3 py-2 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
-                >
-                  <img src={UKFlag} alt="UK" className="w-4 h-3 object-cover rounded-sm" />
-                  <span>English</span>
-                </button>
-              </div>
-            )}
+        <div className="min-w-0">
+          <div className="hidden items-center gap-1.5 text-[11px] font-semibold text-slate-400 sm:flex">
+            <span>{routeMeta.group}</span>
+            <span>/</span>
           </div>
-
-          {/* Profile Dropdown */}
-          <div className="relative" ref={profileRef}>
-            <button
-              type="button"
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="flex items-center rounded-full hover:ring-2 hover:ring-blue-500/50 transition focus:outline-none"
-            >
-              <img
-                src={getAvatarUrl(authUser)}
-                onError={handleAvatarError}
-                alt={authUser?.username || 'User'}
-                className="h-9 w-9 rounded-full object-cover border border-gray-200 dark:border-slate-700 shadow-sm"
-              />
-            </button>
-
-            {showProfileMenu && (
-              <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl py-2 border border-gray-100 dark:border-slate-800 z-50 animate-fade-in">
-                <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-800 mb-1">
-                  <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
-                    {authUser?.fullName || authUser?.username}
-                  </p>
-                  <p className="text-[10px] text-gray-400 font-mono truncate">{authUser?.email}</p>
-                </div>
-
-                <Link
-                  to="/profile"
-                  className="flex items-center gap-2.5 px-4 py-2 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
-                  onClick={() => setShowProfileMenu(false)}
-                >
-                  <FiUser className="w-4 h-4 text-gray-400" />
-                  <span>{t('profileLink')}</span>
-                </Link>
-
-                <Link
-                  to="/lms/teach"
-                  className="flex items-center gap-2.5 px-4 py-2 text-xs text-emerald-700 hover:bg-emerald-50 transition dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-                  onClick={() => setShowProfileMenu(false)}
-                >
-                  <FiBookOpen className="w-4 h-4" />
-                  <span>Chế độ giảng viên</span>
-                </Link>
-
-                <Link
-                  to="/"
-                  className="flex items-center gap-2.5 px-4 py-2 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition"
-                  onClick={() => setShowProfileMenu(false)}
-                >
-                  <FiHome className="w-4 h-4 text-gray-400" />
-                  <span>{t('home')}</span>
-                </Link>
-
-                <div className="border-t border-gray-100 dark:border-slate-800 mt-1 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      logout();
-                      setShowProfileMenu(false);
-                    }}
-                    className="flex items-center gap-2.5 w-full text-left px-4 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
-                  >
-                    <FiLogOut className="w-4 h-4" />
-                    <span>{t('logout')}</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <p className="truncate text-sm font-black tracking-tight text-[#102f63] dark:text-white sm:text-base leading-tight">
+            {routeMeta.title}
+          </p>
         </div>
       </div>
-    </nav>
+
+      {/* Right: Teacher Switcher, Theme, Notifications, Profile */}
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <Link
+          to="/lms/teach"
+          title="Chuyển sang không gian Giảng viên"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200/80 bg-emerald-50/90 px-2.5 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-800/70 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:bg-emerald-950"
+        >
+          <Presentation className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:inline">Giảng viên</span>
+        </Link>
+
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className={`rounded-xl border p-2 transition ${
+            !isDarkMode
+              ? 'border-white/85 bg-white/85 text-[#17365f] shadow-2xs hover:bg-white hover:text-blue-700'
+              : 'border-slate-700 bg-slate-800 text-amber-400 hover:bg-slate-700'
+          }`}
+          title={isDarkMode ? 'Giao diện sáng' : 'Giao diện tối'}
+          aria-label={isDarkMode ? 'Giao diện sáng' : 'Giao diện tối'}
+        >
+          {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+
+        <NotificationBell variant="bare" />
+
+        <div className="relative" ref={profileRef}>
+          <button
+            type="button"
+            onClick={() => setShowProfileMenu((open) => !open)}
+            aria-expanded={showProfileMenu}
+            className="flex items-center gap-2 rounded-xl border border-white/85 bg-white/85 p-1 sm:px-2 sm:py-1.5 text-left shadow-2xs transition hover:bg-white dark:border-slate-700 dark:bg-slate-800/90 dark:hover:bg-slate-800"
+          >
+            <img
+              src={getAvatarUrl(authUser)}
+              onError={handleAvatarError}
+              alt={authUser?.username || 'Admin'}
+              className="h-8 w-8 rounded-full border border-white object-cover dark:border-slate-700"
+            />
+            <span className="hidden min-w-0 sm:block">
+              <span className="block max-w-[110px] truncate text-xs font-black text-[#102f63] dark:text-white">
+                {authUser?.fullName || authUser?.username}
+              </span>
+              <span className="block text-[10px] font-semibold text-blue-600 dark:text-sky-400">
+                Quản trị viên
+              </span>
+            </span>
+            <ChevronDown className="hidden h-3.5 w-3.5 text-slate-400 sm:block" />
+          </button>
+
+          {showProfileMenu && (
+            <div className="absolute right-0 mt-2 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white/98 p-1.5 shadow-2xl backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/98 z-50">
+              <div className="border-b border-slate-100 px-3 py-2 mb-1 dark:border-slate-800">
+                <p className="truncate text-xs font-black text-slate-900 dark:text-white">
+                  {authUser?.fullName || authUser?.username}
+                </p>
+                <p className="truncate font-mono text-[10px] text-slate-400">
+                  {authUser?.email}
+                </p>
+              </div>
+
+              <Link
+                to="/profile"
+                onClick={() => setShowProfileMenu(false)}
+                className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <User className="h-4 w-4 text-slate-400" />
+                <span>{t('profileLink') || 'Hồ sơ cá nhân'}</span>
+              </Link>
+
+              <Link
+                to="/lms/teach"
+                onClick={() => setShowProfileMenu(false)}
+                className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+              >
+                <Presentation className="h-4 w-4" />
+                <span>Chế độ Giảng viên</span>
+              </Link>
+
+              <button
+                type="button"
+                onClick={toggleLanguage}
+                className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <span className="flex items-center gap-2.5">
+                  <Globe className="h-4 w-4 text-slate-400" />
+                  Ngôn ngữ
+                </span>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase dark:bg-slate-800">
+                  {i18n.language || 'vi'}
+                </span>
+              </button>
+
+              <Link
+                to="/"
+                onClick={() => setShowProfileMenu(false)}
+                className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <Home className="h-4 w-4 text-slate-400" />
+                <span>{t('home') || 'Trang chủ'}</span>
+              </Link>
+
+              <div className="mt-1 border-t border-slate-100 pt-1 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    logout();
+                    setShowProfileMenu(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>{t('logout') || 'Đăng xuất'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
   );
 };
 

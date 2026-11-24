@@ -1,19 +1,24 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  FiUsers,
-  FiBook,
-  FiCheckCircle,
-  FiVideo,
-  FiTrendingUp,
-  FiCalendar,
-  FiDownload,
-  FiPlus,
-  FiArrowUpRight,
-  FiClock,
-  FiLayers
-} from "react-icons/fi";
+  AlertTriangle,
+  ArrowUpRight,
+  BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardCheck,
+  Clock,
+  Download,
+  GraduationCap,
+  MessageSquare,
+  RefreshCw,
+  Shield,
+  TrendingUp,
+  Users,
+  Video,
+  Wallet,
+} from "lucide-react";
 import { fetchAdminDashboardKpi } from "../../features/api/lmsClient";
 import Loading from "../../components/Loading.jsx";
 import { ErrorState } from "../../components/common/StateView";
@@ -34,22 +39,75 @@ const EMPTY_ADMIN_KPIS = {
   syncJobs: { deadLetter: 0 },
 };
 
+const QUICK_WORKSPACES = [
+  {
+    label: "Lớp học",
+    hint: "Duyệt & ánh xạ lớp",
+    to: "/admin/classes",
+    icon: BookOpen,
+    tone: "bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-sky-400",
+  },
+  {
+    label: "Lịch dạy",
+    hint: "Điều phối buổi học",
+    to: "/admin/calendar",
+    icon: CalendarDays,
+    tone: "bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400",
+  },
+  {
+    label: "Lương & Công",
+    hint: "Chấm công Face ID",
+    to: "/admin/salaries",
+    icon: Wallet,
+    tone: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400",
+  },
+  {
+    label: "Chấm bài & Quiz",
+    hint: "Bài tập & ngân hàng đề",
+    to: "/admin/assignments/review",
+    icon: ClipboardCheck,
+    tone: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400",
+  },
+  {
+    label: "Người dùng",
+    hint: "Học viên & giảng viên",
+    to: "/admin/users",
+    icon: Users,
+    tone: "bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400",
+  },
+  {
+    label: "Hỗ trợ HV",
+    hint: "Phản hồi yêu cầu",
+    to: "/admin/support",
+    icon: MessageSquare,
+    tone: "bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400",
+  },
+];
+
 export default function Dashboard() {
   const [kpiData, setKpiData] = useState(EMPTY_ADMIN_KPIS);
   const [loadingKpi, setLoadingKpi] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [kpiError, setKpiError] = useState("");
 
-  const loadKpis = useCallback(async () => {
-    setLoadingKpi(true);
+  const loadKpis = useCallback(async ({ silent = false } = {}) => {
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoadingKpi(true);
+    }
     setKpiError("");
     try {
       const res = await fetchAdminDashboardKpi();
-      if (!res?.success || !res.data) throw new Error(res?.message || "Không thể tải KPI quản trị");
+      if (!res?.success || !res.data) {
+        throw new Error(res?.message || "Không thể tải dữ liệu quản trị");
+      }
       setKpiData({ ...EMPTY_ADMIN_KPIS, ...res.data });
     } catch (error) {
-      setKpiError(error?.message || "Không thể tải KPI quản trị");
+      setKpiError(error?.message || "Không thể tải dữ liệu quản trị");
     } finally {
       setLoadingKpi(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -57,428 +115,368 @@ export default function Dashboard() {
     loadKpis();
   }, [loadKpis]);
 
-  const chartMax = useMemo(() => Math.max(
-    1,
-    ...kpiData.monthlyEnrollmentStats.flatMap((item) => [Number(item.enrollments) || 0, Number(item.users) || 0]),
-  ), [kpiData.monthlyEnrollmentStats]);
+  const chartMax = useMemo(
+    () =>
+      Math.max(
+        1,
+        ...kpiData.monthlyEnrollmentStats.flatMap((item) => [
+          Number(item.enrollments) || 0,
+          Number(item.users) || 0,
+        ]),
+      ),
+    [kpiData.monthlyEnrollmentStats],
+  );
 
   const kpiCards = useMemo(
     () => [
       {
         id: "users",
-        title: "Tổng Học Viên & Người Dùng",
+        label: "Người dùng",
         value: kpiData.users.total,
-        subtext: `${kpiData.activeLearnersCount} học viên đang học`,
-        icon: FiUsers,
-        color: "from-blue-600 to-indigo-600",
-        link: "/admin/users",
+        sub: `${kpiData.activeLearnersCount} học viên đang học`,
+        icon: Users,
+        accent: "from-blue-600 to-indigo-600",
+        to: "/admin/users",
       },
       {
         id: "courses",
-        title: "Khóa Học & Giáo Trình",
+        label: "Khóa học",
         value: kpiData.courses.total,
-        subtext: `${kpiData.courses.published} công khai · ${kpiData.courses.drafts} bản nháp`,
-        icon: FiBook,
-        color: "from-emerald-600 to-teal-600",
-        link: "/admin/courses",
+        sub: `${kpiData.courses.published} công khai · ${kpiData.courses.drafts} nháp`,
+        icon: GraduationCap,
+        accent: "from-emerald-600 to-teal-600",
+        to: "/admin/curriculum",
       },
       {
         id: "enrollments",
-        title: "Lượt Ghi Danh Khóa Học",
+        label: "Lượt ghi danh",
         value: kpiData.totalEnrollmentsCount,
-        subtext: `Tỷ lệ hoàn thành: ${kpiData.completionRate}`,
-        growth: kpiData.monthlyGrowthPct,
-        icon: FiCheckCircle,
-        color: "from-purple-600 to-pink-600",
-        link: "/admin/courses",
+        sub: `Hoàn thành ${kpiData.completionRate}`,
+        badge: kpiData.monthlyGrowthPct,
+        icon: CheckCircle2,
+        accent: "from-violet-600 to-purple-600",
+        to: "/admin/classes",
       },
       {
         id: "attendance",
-        title: "Chuyên Cần Lớp Live Meet",
+        label: "Chuyên cần Live",
         value: kpiData.avgAttendanceRate,
-        subtext: "Xem báo cáo theo lớp và buổi",
-        icon: FiVideo,
-        color: "from-amber-600 to-orange-600",
-        link: "/admin/attendance-report",
+        sub: `${kpiData.pendingGradingCount} bài chờ chấm`,
+        icon: Video,
+        accent: "from-amber-500 to-orange-600",
+        to: "/admin/attendance-report",
       },
     ],
-    [kpiData]
+    [kpiData],
   );
 
-  // Export CSV simulation
   const handleExportKpi = () => {
     const csvContent =
       "data:text/csv;charset=utf-8," +
       [
         "Chỉ số KPI,Giá trị,Ghi chú",
         `Tổng người dùng,${kpiData.users.total},Tài khoản hệ thống`,
-        `Khóa học xuất bản,${kpiData.courses.published},Khóa học đang hoạt động`,
-        `Lượt ghi danh,${kpiData.totalEnrollmentsCount},Học viên đã enroll`,
-        `Chuyên cần lớp Live,${kpiData.avgAttendanceRate},Tỷ lệ có mặt trung bình`,
-        `Bài tập chờ chấm,${kpiData.pendingGradingCount},Cần phản hồi trong 48h`,
+        `Khóa học xuất bản,${kpiData.courses.published},Đang hoạt động`,
+        `Lượt ghi danh,${kpiData.totalEnrollmentsCount},Tổng ghi danh`,
+        `Chuyên cần lớp Live,${kpiData.avgAttendanceRate},Tỷ lệ có mặt`,
+        `Bài tập chờ chấm,${kpiData.pendingGradingCount},Cần chấm`,
       ].join("\n");
 
-    const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `csca_lms_kpi_report_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("href", encodeURI(csvContent));
+    link.setAttribute("download", `csca_kpi_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Xuất báo cáo KPI hệ thống CSCA LMS thành công! 📊");
+    toast.success("Đã xuất báo cáo KPI (.csv)");
   };
 
-  const isLoading = loadingKpi;
-
-  if (isLoading) {
-    return <Loading loading={true} text="Đang đồng bộ dữ liệu KPI hệ thống..." fullScreen={false} className="min-h-[60vh] py-16" />;
+  if (loadingKpi) {
+    return (
+      <Loading
+        loading={true}
+        text="Đang tải tổng quan quản trị..."
+        fullScreen={false}
+        className="min-h-[55vh] py-16"
+      />
+    );
   }
 
   if (kpiError) {
-    return <div className="mx-auto max-w-xl py-16"><ErrorState title="Chưa thể tải bảng điều khiển" message={kpiError} onRetry={loadKpis} /></div>;
+    return (
+      <div className="mx-auto max-w-xl py-16">
+        <ErrorState
+          title="Chưa thể tải tổng quan quản trị"
+          message={kpiError}
+          onRetry={() => loadKpis()}
+        />
+      </div>
+    );
   }
 
+  const dlqCount = Number(kpiData.syncJobs?.deadLetter) || 0;
+  const recentItems = (kpiData.recentActivities || []).slice(0, 6);
+
   return (
-    <div className="space-y-6 font-sans pb-12">
-      {/* Top Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-gray-700">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 mb-2">
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <span>Executive Admin Console — MOLY COURSE</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-            Tổng Quan Hệ Thống Quản Trị
+    <div className="min-w-0 space-y-5">
+      {/* Compact Header Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#102f63] dark:text-white">
+            Tổng quan trung tâm
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-            Theo dõi thời gian thực các chỉ số KPI học tập, người dùng, lớp trực tuyến và tiến độ giáo trình.
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Theo dõi nhanh số liệu vận hành và truy cập trực tiếp các khu vực chính.
           </p>
         </div>
 
-        {/* Action Toolbar */}
-        <div className="flex flex-wrap items-center gap-3">
-          <Link
-            to="/admin/curriculum"
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/25"
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={refreshing}
+            onClick={() => loadKpis({ silent: true })}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            <FiPlus className="w-4 h-4" />
-            <span>Thêm Khóa Học</span>
-          </Link>
-
-          <Link
-            to="/admin/curriculum"
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-bold rounded-xl text-xs transition border border-gray-200 dark:border-gray-700"
-          >
-            <FiLayers className="w-4 h-4 text-emerald-500" />
-            <span>Quản Lý Giáo Trình R2</span>
-          </Link>
-
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            <span className="hidden sm:inline">Làm mới</span>
+          </button>
           <button
             type="button"
             onClick={handleExportKpi}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-bold rounded-xl text-xs transition border border-gray-200 dark:border-gray-700"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700"
           >
-            <FiDownload className="w-4 h-4 text-sky-500" />
-            <span>Xuất Báo Cáo KPI</span>
+            <Download className="h-3.5 w-3.5" />
+            <span>Xuất CSV</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* 4 Clean KPI Tiles */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {kpiCards.map((kpi) => {
           const Icon = kpi.icon;
           return (
             <Link
               key={kpi.id}
-              to={kpi.link}
-              className="group bg-white dark:bg-gray-800/90 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:border-blue-500/40 transition-all duration-200 relative overflow-hidden flex flex-col justify-between"
+              to={kpi.to}
+              className="group flex flex-col justify-between rounded-2xl border border-white/85 bg-white/95 p-3.5 sm:p-4 shadow-[0_6px_24px_rgba(20,60,100,0.06)] transition hover:-translate-y-0.5 hover:border-blue-300 dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none dark:hover:border-sky-800"
             >
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    {kpi.title}
-                  </span>
-                  <p className="text-2xl font-black text-gray-900 dark:text-white font-mono tracking-tight">
-                  {kpi.value}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 truncate">
+                    {kpi.label}
+                  </p>
+                  <p className="mt-1 font-mono text-xl sm:text-2xl font-black tracking-tight text-[#102f63] dark:text-white">
+                    {kpi.value}
                   </p>
                 </div>
-
-                <div
-                  className={`w-9 h-9 rounded-xl bg-gradient-to-br ${kpi.color} flex items-center justify-center text-white shadow-lg shrink-0 group-hover:scale-110 transition`}
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${kpi.accent} text-white shadow-sm transition group-hover:scale-105`}
                 >
-                  <Icon className="w-5 h-5" />
-                </div>
+                  <Icon className="h-4.5 w-4.5" />
+                </span>
               </div>
 
-              <div className="pt-2 mt-2 border-t border-gray-100 dark:border-gray-700/60 flex items-center justify-between text-xs">
-                <span className="text-gray-500 dark:text-gray-400 truncate max-w-[150px]">
-                  {kpi.subtext}
-                </span>
-                {kpi.growth && <span className="text-emerald-600 dark:text-emerald-400 font-bold font-mono flex items-center gap-0.5 shrink-0"><FiTrendingUp className="w-3 h-3" />{kpi.growth}</span>}
+              <div className="mt-2.5 flex items-center justify-between gap-1 border-t border-slate-100 pt-2 text-[11px] dark:border-slate-800">
+                <span className="truncate text-slate-500 dark:text-slate-400">{kpi.sub}</span>
+                {kpi.badge && (
+                  <span className="shrink-0 font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    {kpi.badge}
+                  </span>
+                )}
               </div>
             </Link>
           );
         })}
       </div>
 
-      {/* SECTION 1.5: MOLYBRIDGE & ENTITLEMENT HEALTH */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-4 sm:p-5 border border-indigo-900/40 text-white shadow-xl">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-              <span>Cầu Nối Quản Trị Trung Tâm MolyInternal</span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-black tracking-tight">
-              Trạng Thái Quyền Học (Entitlements) & Hàng Đợi Đồng Bộ
-            </h2>
-            <p className="text-xs text-indigo-200/80 max-w-2xl leading-relaxed">
-              Dữ liệu học viên, lớp học và quyền truy cập được đồng bộ tự động theo thời gian thực qua cơ chế Idempotent Outbox Queue.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
+      {/* Quick Workspaces — 6 Zero-Duplicate Shortcuts */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        {QUICK_WORKSPACES.map((item) => {
+          const Icon = item.icon;
+          return (
             <Link
-              to="/admin/sync"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-lg shadow-indigo-600/30"
+              key={item.to}
+              to={item.to}
+              className="group flex items-center gap-2.5 rounded-2xl border border-white/85 bg-white/95 p-3 shadow-[0_4px_18px_rgba(20,60,100,0.05)] transition hover:border-blue-300 dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none dark:hover:border-sky-800"
             >
-              <FiClock className="w-4 h-4" />
-              <span>Kiểm Tra Outbox</span>
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${item.tone}`}>
+                <Icon className="h-4.5 w-4.5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-extrabold text-[#102f63] group-hover:text-blue-600 dark:text-white dark:group-hover:text-sky-400">
+                  {item.label}
+                </span>
+                <span className="block truncate text-[10px] text-slate-400">
+                  {item.hint}
+                </span>
+              </span>
             </Link>
-            <Link
-              to="/admin/permissions"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition border border-white/10"
-            >
-              <span>Ma Trận Quyền</span>
-            </Link>
-            <Link
-              to="/admin/classes"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition border border-white/10"
-            >
-              <span>Ánh Xạ Lớp</span>
-            </Link>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-4 pt-4 border-t border-indigo-900/60">
-          <div className="bg-slate-900/60 rounded-xl p-2.5 border border-indigo-500/20">
-            <span className="text-[10px] uppercase font-bold text-indigo-300">Quyền Đang Hoạt Động</span>
-              <div className="text-xl font-black font-mono text-emerald-400 mt-0.5">{kpiData.entitlements.active}</div>
-            <span className="text-[11px] text-indigo-200/60">Active Entitlements</span>
-          </div>
-
-          <div className="bg-slate-900/60 rounded-xl p-2.5 border border-indigo-500/20">
-            <span className="text-[10px] uppercase font-bold text-indigo-300">Đang tạm dừng</span>
-            <div className="text-xl font-black font-mono text-amber-400 mt-0.5">{kpiData.entitlements.suspended}</div>
-            <span className="text-[11px] text-indigo-200/60">Suspended entitlements</span>
-          </div>
-
-          <div className="bg-slate-900/60 rounded-xl p-2.5 border border-indigo-500/20">
-            <span className="text-[10px] uppercase font-bold text-indigo-300">Đã Thu Hồi / Hết Hạn</span>
-            <div className="text-xl font-black font-mono text-rose-400 mt-0.5">{kpiData.entitlements.inactive}</div>
-            <span className="text-[11px] text-indigo-200/60">Revoked / Expired</span>
-          </div>
-
-          <div className="bg-slate-900/60 rounded-xl p-2.5 border border-indigo-500/20">
-            <span className="text-[10px] uppercase font-bold text-indigo-300">Dead-Letter Queue (DLQ)</span>
-            <div className="text-xl font-black font-mono text-rose-500 mt-0.5">{kpiData.syncJobs.deadLetter}</div>
-            <span className="text-[11px] text-indigo-200/60">Cần retry thủ công</span>
-          </div>
-        </div>
+          );
+        })}
       </div>
 
-      {/* SECTION 2: ENROLLMENT TREND & SYSTEM HEALTH */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left 8 Cols: Growth Chart Visual */}
-        <div className="lg:col-span-8 bg-white dark:bg-gray-800/90 rounded-3xl p-6 sm:p-8 border border-gray-200 dark:border-gray-700 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-700/80 pb-4">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <FiTrendingUp className="w-5 h-5 text-blue-500" />
-                <span>Tăng Trưởng Ghi Danh & Học Viên Mới</span>
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Xu hướng người học ghi danh các khóa CSCA Du học Trung Quốc và luyện thi HSK 4-5.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-4 text-xs font-mono">
-              <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-                <span className="w-3 h-3 rounded-full bg-blue-500" /> Lượt ghi danh
-              </span>
-              <span className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
-                <span className="w-3 h-3 rounded-full bg-purple-500" /> Học viên mới
-              </span>
-            </div>
-          </div>
-
-          {/* Lightweight Responsive SVG Bar Chart */}
-          <div className="h-64 flex items-end justify-between gap-3 sm:gap-6 pt-6 px-2">
-            {kpiData.monthlyEnrollmentStats.map((item) => {
-              const enrollHeight = Math.round(((Number(item.enrollments) || 0) / chartMax) * 100);
-              const userHeight = Math.round(((Number(item.users) || 0) / chartMax) * 100);
-
-              return (
-                <div key={item.month} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
-                  <div className="w-full flex items-end justify-center gap-1 sm:gap-2 h-48">
-                    {/* Bar 1: Enrollments */}
-                    <div
-                      className="w-1/2 max-w-[20px] bg-blue-500 hover:bg-blue-400 rounded-t-lg transition-all duration-300 relative group-hover:scale-y-105 origin-bottom"
-                      style={{ height: `${enrollHeight}%` }}
-                      title={`${item.month}: ${item.enrollments} lượt ghi danh`}
-                    />
-                    {/* Bar 2: Users */}
-                    <div
-                      className="w-1/2 max-w-[20px] bg-purple-500 hover:bg-purple-400 rounded-t-lg transition-all duration-300 relative group-hover:scale-y-105 origin-bottom"
-                      style={{ height: `${userHeight}%` }}
-                      title={`${item.month}: ${item.users} học viên mới`}
-                    />
-                  </div>
-                  <span className="text-[11px] font-mono font-bold text-gray-500 dark:text-gray-400">
-                    {item.month}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="bg-gray-50 dark:bg-gray-900/60 rounded-2xl p-4 flex flex-wrap items-center justify-between text-xs text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-gray-800">
-            <span>Biểu đồ hiển thị 7 tháng gần nhất từ dữ liệu ghi danh và tài khoản mới.</span>
-            <span className="font-mono text-emerald-500 font-bold">Doanh thu đã thanh toán: {kpiData.totalRevenueVnd}</span>
-          </div>
+      {/* Compact 1-Row System & Sync Health Strip */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/85 bg-white/95 px-4 py-3 text-xs shadow-[0_4px_18px_rgba(20,60,100,0.05)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <span className="inline-flex items-center gap-1.5 font-bold text-[#102f63] dark:text-white">
+            <span className={`h-2 w-2 rounded-full ${dlqCount > 0 ? "bg-rose-500 animate-pulse" : "bg-emerald-500"}`} />
+            Hệ thống
+          </span>
+          <span className="text-slate-500 dark:text-slate-400">
+            Quyền học hoạt động:{" "}
+            <strong className="font-mono text-emerald-600 dark:text-emerald-400">
+              {kpiData.entitlements.active}
+            </strong>
+          </span>
+          {kpiData.entitlements.suspended > 0 && (
+            <span className="text-slate-500 dark:text-slate-400">
+              Tạm dừng:{" "}
+              <strong className="font-mono text-amber-600 dark:text-amber-400">
+                {kpiData.entitlements.suspended}
+              </strong>
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
+            {dlqCount > 0 && <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />}
+            Lỗi đồng bộ:{" "}
+            <strong className={`font-mono ${dlqCount > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-700 dark:text-slate-200"}`}>
+              {dlqCount}
+            </strong>
+          </span>
         </div>
 
-        {/* Right 4 Cols: Quick Actions & Operations */}
-        <div className="lg:col-span-4 space-y-6">
-          <div className="bg-white dark:bg-gray-800/90 rounded-3xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-              Nghiệp Vụ Quản Trị Nhanh
-            </h3>
-
-            <div className="space-y-2.5">
-              <Link
-                to="/admin/curriculum"
-                className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-900/70 hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-gray-100 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-800 transition group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
-                    <FiBook className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-gray-900 dark:text-white group-hover:text-blue-500">
-                      Quản Trị Khóa Học
-                    </p>
-                    <p className="text-[10px] text-gray-500">Thêm, sửa & xuất bản khóa</p>
-                  </div>
-                </div>
-                <FiArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition" />
-              </Link>
-
-              <Link
-                to="/admin/curriculum"
-                className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-900/70 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border border-gray-100 dark:border-gray-800 hover:border-emerald-300 dark:hover:border-emerald-800 transition group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-                    <FiLayers className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-gray-900 dark:text-white group-hover:text-emerald-500">
-                      Soạn Giáo Trình & Video R2
-                    </p>
-                    <p className="text-[10px] text-gray-500">Tải video, sắp xếp chương học</p>
-                  </div>
-                </div>
-                <FiArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-emerald-500 transition" />
-              </Link>
-
-              <Link
-                to="/admin/users"
-                className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-900/70 hover:bg-purple-50 dark:hover:bg-purple-950/30 border border-gray-100 dark:border-gray-800 hover:border-purple-300 dark:hover:border-purple-800 transition group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
-                    <FiUsers className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-gray-900 dark:text-white group-hover:text-purple-500">
-                      Quản Lý Người Dùng
-                    </p>
-                    <p className="text-[10px] text-gray-500">Phân quyền, khóa/mở tài khoản</p>
-                  </div>
-                </div>
-                <FiArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-purple-500 transition" />
-              </Link>
-
-              <Link
-                to="/admin/calendar"
-                className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-900/70 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-gray-100 dark:border-gray-800 hover:border-amber-300 dark:hover:border-amber-800 transition group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-                    <FiCalendar className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-gray-900 dark:text-white group-hover:text-amber-500">
-                      Lịch Lớp Học Trực Tuyến
-                    </p>
-                    <p className="text-[10px] text-gray-500">Thời khóa biểu trực tuyến</p>
-                  </div>
-                </div>
-                <FiArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-amber-500 transition" />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 3: RECENT ACTIVITIES & AUDIT STREAM */}
-      <div className="bg-white dark:bg-gray-800/90 rounded-3xl p-6 sm:p-8 border border-gray-200 dark:border-gray-700 shadow-sm space-y-6">
-        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700/80 pb-4">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <FiClock className="w-5 h-5 text-purple-500" />
-              <span>Nhật Ký Hoạt Động Hệ Thống Gần Nhất (Audit Stream)</span>
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Ghi nhận các sự kiện nộp bài, chấm điểm, ghi danh và tạo khóa học mới theo thời gian thực.
-            </p>
-          </div>
-
-          <Link to="/admin/audit-logs" className="text-[11px] font-bold text-blue-600 hover:underline dark:text-blue-400">
-            Xem nhật ký đầy đủ
+        <div className="flex items-center gap-2">
+          <Link
+            to="/admin/sync"
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          >
+            <RefreshCw className="h-3 w-3" /> Đồng bộ
+          </Link>
+          <Link
+            to="/admin/permissions"
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          >
+            <Shield className="h-3 w-3" /> Phân quyền
           </Link>
         </div>
+      </div>
 
-        <div className="divide-y divide-gray-100 dark:divide-gray-700/60">
-          {kpiData.recentActivities.length === 0 && <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Chưa có hoạt động quản trị nào để hiển thị.</p>}
-          {kpiData.recentActivities.map((act) => (
-            <div key={act.id} className="py-3.5 flex items-center justify-between gap-4 text-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center shrink-0 overflow-hidden">
-                  {act.avatar ? (
-                    <img src={act.avatar} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <FiLayers className="w-4 h-4 text-gray-500" />
-                  )}
-                </div>
-
-                <div>
-                  <p className="text-gray-900 dark:text-white font-medium">
-                    <strong className="font-bold">{act.actor}</strong> {act.action}:{" "}
-                    <span className="text-blue-600 dark:text-blue-400 font-semibold">{act.target}</span>
-                  </p>
-                  <p className="text-[10px] text-gray-400 font-mono mt-0.5">{act.time}</p>
-                </div>
-              </div>
-
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-                {act.type}
+      {/* Main Split: Growth Chart (7 cols) + Recent Activities (5 cols) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Growth Chart */}
+        <section className="lg:col-span-7 flex flex-col justify-between rounded-3xl border border-white/85 bg-white/95 p-4 sm:p-5 shadow-[0_8px_28px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+            <h2 className="flex items-center gap-2 text-sm font-black text-[#102f63] dark:text-white">
+              <TrendingUp className="h-4 w-4 text-blue-600 dark:text-sky-400" />
+              Tăng trưởng 7 tháng gần nhất
+            </h2>
+            <div className="flex items-center gap-3 text-[11px] font-semibold">
+              <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                <span className="h-2.5 w-2.5 rounded-full bg-blue-500" /> Ghi danh
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                <span className="h-2.5 w-2.5 rounded-full bg-violet-500" /> Học viên mới
               </span>
             </div>
-          ))}
-        </div>
+          </div>
+
+          <div className="flex h-52 items-end justify-between gap-2 sm:gap-4 pt-4 px-1">
+            {kpiData.monthlyEnrollmentStats.length === 0 ? (
+              <p className="w-full self-center text-center text-xs text-slate-400">
+                Chưa có dữ liệu thống kê theo tháng.
+              </p>
+            ) : (
+              kpiData.monthlyEnrollmentStats.map((item) => {
+                const enrollCount = Number(item.enrollments) || 0;
+                const userCount = Number(item.users) || 0;
+                const enrollPct = Math.max(enrollCount > 0 ? 8 : 3, Math.round((enrollCount / chartMax) * 100));
+                const userPct = Math.max(userCount > 0 ? 8 : 3, Math.round((userCount / chartMax) * 100));
+
+                return (
+                  <div key={item.month} className="group flex h-full flex-1 flex-col items-center justify-end gap-1.5">
+                    <div className="flex h-40 w-full items-end justify-center gap-1">
+                      <div
+                        className="relative flex w-1/2 max-w-[18px] items-start justify-center rounded-t-md bg-blue-500 transition-all hover:bg-blue-400"
+                        style={{ height: `${enrollPct}%` }}
+                        title={`${item.month}: ${enrollCount} ghi danh`}
+                      >
+                        {enrollCount > 0 && (
+                          <span className="absolute -top-4 font-mono text-[9px] font-bold text-slate-500 dark:text-slate-400">
+                            {enrollCount}
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className="relative flex w-1/2 max-w-[18px] items-start justify-center rounded-t-md bg-violet-500 transition-all hover:bg-violet-400"
+                        style={{ height: `${userPct}%` }}
+                        title={`${item.month}: ${userCount} học viên mới`}
+                      >
+                        {userCount > 0 && (
+                          <span className="absolute -top-4 font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500">
+                            {userCount}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="font-mono text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                      {item.month}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-slate-50 px-3.5 py-2.5 text-xs dark:bg-slate-800/60">
+            <span className="text-slate-500 dark:text-slate-400">Doanh thu ghi nhận</span>
+            <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
+              {kpiData.totalRevenueVnd}
+            </span>
+          </div>
+        </section>
+
+        {/* Recent Activity Feed */}
+        <section className="lg:col-span-5 flex flex-col rounded-3xl border border-white/85 bg-white/95 p-4 sm:p-5 shadow-[0_8px_28px_rgba(20,60,100,0.06)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+            <h2 className="flex items-center gap-2 text-sm font-black text-[#102f63] dark:text-white">
+              <Clock className="h-4 w-4 text-violet-500" />
+              Hoạt động gần đây
+            </h2>
+            <Link
+              to="/admin/audit-logs"
+              className="inline-flex items-center gap-0.5 text-[11px] font-bold text-blue-600 hover:underline dark:text-sky-400"
+            >
+              Xem tất cả <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          </div>
+
+          <div className="mt-2 flex-1 divide-y divide-slate-100 dark:divide-slate-800">
+            {recentItems.length === 0 ? (
+              <p className="py-10 text-center text-xs text-slate-400">
+                Chưa có hoạt động nào gần đây.
+              </p>
+            ) : (
+              recentItems.map((act) => (
+                <div key={act.id} className="flex items-start justify-between gap-2.5 py-2.5 text-xs">
+                  <div className="min-w-0">
+                    <p className="text-slate-700 dark:text-slate-200 leading-snug break-words">
+                      <strong className="font-bold text-slate-900 dark:text-white">{act.actor}</strong>{" "}
+                      {act.action}{" "}
+                      <span className="font-semibold text-blue-600 dark:text-sky-400">{act.target}</span>
+                    </p>
+                    <p className="mt-0.5 font-mono text-[10px] text-slate-400">{act.time}</p>
+                  </div>
+                  {act.type && (
+                    <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      {act.type}
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
