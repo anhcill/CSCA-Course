@@ -1,13 +1,11 @@
 import express from "express";
+import { Readable } from "node:stream";
 import multer from "multer";
 import protectRoute from "../middleware/protectRoute.js";
 import requireTeacher from "../middleware/requireTeacher.js";
 import requirePermission from "../middleware/requirePermission.js";
 import { hasActiveStudentLmsAccess } from "../middleware/requireActiveStudentLmsAccess.js";
-import {
-  EFFECTIVE_COURSE_GRANT_EXISTS_SQL,
-  EFFECTIVE_MIRROR_PROFILE_GRANT_EXISTS_SQL,
-} from "../services/externalEntitlementAccess.service.js";
+import { EFFECTIVE_COURSE_GRANT_EXISTS_SQL } from "../services/externalEntitlementAccess.service.js";
 import { query } from "../db/connect.js";
 import { recordAuditEvent } from "../services/audit.service.js";
 import {
@@ -27,7 +25,7 @@ import {
   getR2PublicUrl,
 } from "../services/video.service.js";
 import { createCloudinaryUploadSignature } from "../services/cloudinary.service.js";
-import { hasLiveReviewMembership, isVideoCourseUnitUnlocked } from "../services/videoCourseUnitAccess.service.js";
+import { isVideoCourseUnitUnlocked } from "../services/videoCourseUnitAccess.service.js";
 import { isVideoCourseProfileAccessRevoked } from "../services/videoCourseAccessRevocation.service.js";
 import { reviewIsAvailable } from "../services/assessmentPolicy.service.js";
 import {
@@ -115,7 +113,8 @@ const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (character
   "'": "&#39;",
 }[character]));
 
-const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
+const protectedPdfViewerHtml = ({ filename, signedUrl, contentUrl = null, fileSizeBytes = 0 }) => {
+  const effectiveFetchUrl = contentUrl || signedUrl;
   let r2Origin = "";
   try {
     r2Origin = new URL(signedUrl).origin;
@@ -127,17 +126,20 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
 <html lang="vi">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>${escapeHtml(filename)}</title>
   ${r2Origin ? `<link rel="dns-prefetch" href="${r2Origin}"><link rel="preconnect" href="${r2Origin}" crossorigin>` : ""}
   <style>
     *{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden;background:#0f172a;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    header{height:52px;display:flex;align-items:center;gap:12px;padding:0 16px;background:#0f172a;color:#fff;border-bottom:1px solid #334155}
-    strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.badge{flex:none;border:1px solid #38bdf8;border-radius:999px;padding:4px 8px;color:#7dd3fc;font-size:10px;font-weight:800;letter-spacing:.08em}
-    .controls{margin-left:auto;display:flex;align-items:center;gap:7px}.zoom-value{min-width:48px;text-align:center;color:#cbd5e1;font-size:12px;font-weight:800}
-    button{flex:none;border:1px solid #475569;border-radius:9px;background:#1e293b;color:#e2e8f0;padding:7px 12px;font-weight:800;cursor:pointer}button:hover{background:#334155}.zoom-button{width:34px;padding:7px 0;font-size:18px;line-height:1}.close-button{margin-left:5px}
-    main{position:fixed;inset:52px 0 0;overflow:hidden;background:#0f172a}
+    header{height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#0f172a;color:#fff;border-bottom:1px solid #334155}
+    strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.badge{flex:none;border:1px solid #38bdf8;border-radius:999px;padding:3px 8px;color:#7dd3fc;font-size:10px;font-weight:800;letter-spacing:.08em}
+    .controls{margin-left:auto;display:flex;align-items:center;gap:6px}.zoom-value{min-width:44px;text-align:center;color:#cbd5e1;font-size:12px;font-weight:800}
+    button{flex:none;border:1px solid #475569;border-radius:9px;background:#1e293b;color:#e2e8f0;padding:6px 10px;font-weight:800;font-size:12px;cursor:pointer}button:hover{background:#334155}.zoom-button{width:32px;padding:6px 0;font-size:16px;line-height:1}.close-button{margin-left:4px}
+    main{position:fixed;inset:52px 0 0;overflow:auto;-webkit-overflow-scrolling:touch;background:#0f172a}
     iframe{position:absolute;top:-56px;left:0;width:100%;height:calc(100% + 56px);border:0;background:#0f172a;transform-origin:top left;transition:transform .15s ease}
+    @media (pointer: coarse), (max-width: 768px) {
+      iframe{top:0;height:100%}
+    }
     body.is-embedded header{display:none}body.is-embedded main{inset:0}
     #loader{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;color:#fff;z-index:20;transition:opacity .45s cubic-bezier(0.16,1,0.3,1),visibility .45s cubic-bezier(0.16,1,0.3,1);padding:24px}
     .loader-card{display:flex;flex-direction:column;align-items:center;background:rgba(30,41,59,.92);border:1px solid rgba(71,85,105,.55);border-radius:24px;padding:32px 36px;box-shadow:0 24px 48px -12px rgba(0,0,0,.65);backdrop-filter:blur(14px);max-width:400px;width:100%;text-align:center}
@@ -210,7 +212,7 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
         document.body.classList.add('is-embedded');
       }
     } catch (_) {}
-    const signedUrl = "${signedUrl.replace(/"/g, '\\"')}";
+    const signedUrl = "${effectiveFetchUrl.replace(/"/g, '\\"')}";
     const knownTotalBytes = ${Number(fileSizeBytes || 0)};
     const isSlideFile = ${isSlide};
     const docLabel = "${docTypeLabel}";
@@ -379,7 +381,7 @@ const protectedPdfViewerHtml = ({ filename, signedUrl, fileSizeBytes = 0 }) => {
     } else {
       async function streamPdf() {
         try {
-          const res = await fetch(signedUrl);
+          const res = await fetch(signedUrl, { credentials: 'include' });
           if (!res.ok) throw new Error('Fetch failed: ' + res.status);
           const headerLen = res.headers.get('content-length');
           const total = knownTotalBytes || (headerLen ? parseInt(headerLen, 10) : 0);
@@ -511,7 +513,7 @@ const courseAccess = async (courseId, user) => {
   return { error: "forbidden" };
 };
 
-const fileAccess = async (fileId, user, requestedClassId = null, requestedVideoProfileId = null) => {
+const fileAccess = async (fileId, user, requestedClassId = null) => {
   const result = await query(
     `SELECT f.*, lc.instructor_id, lc.course_id AS class_course_id,
             COALESCE(lc.allow_file_download, TRUE) AS allow_file_download,
@@ -559,70 +561,41 @@ const fileAccess = async (fileId, user, requestedClassId = null, requestedVideoP
   }
   if (user.role !== "user") return { error: "forbidden" };
   if (file.visibility === "PRIVATE") return { error: "forbidden" };
-  const effectiveReferenceGrant = `
-    ($5::bigint IS NOT NULL AND $1::bigint IS NOT NULL AND EXISTS (
-      SELECT 1
-      FROM video_course_profiles vcp_ref
-      JOIN recording_curriculum_references r_ref
-        ON r_ref.video_course_profile_id = vcp_ref.id
-       AND r_ref.source_live_class_id = $1
-      LEFT JOIN management_class_learning_aliases alias_ref
-        ON LOWER(alias_ref.alias_class_source_id) = LOWER(vcp_ref.management_class_id)
-       AND alias_ref.status = 'active'
-      WHERE vcp_ref.id = $5
-        AND vcp_ref.mode = 'INDEPENDENT'
-        AND vcp_ref.status = 'active'
-        AND vcp_ref.deleted_at IS NULL
-        AND ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "vcp_ref.course_id")}
-        AND EXISTS (
-          SELECT 1 FROM class_enrollments ce_ref
-          WHERE ce_ref.user_id = $2 AND ce_ref.status = 'active'
-            AND (
-              ce_ref.video_course_profile_id = vcp_ref.id
-              OR (ce_ref.video_course_profile_id IS NULL
-                AND ce_ref.learning_mode = 'recording'
-                AND ce_ref.management_class_alias_id = alias_ref.id)
-              OR (ce_ref.video_course_profile_id IS NULL
-                AND vcp_ref.management_class_id IS NULL
-                AND ce_ref.course_id = vcp_ref.course_id)
-            )
-        )
-    ))`;
+  const effectiveCourseId = file.live_class_id ? file.class_course_id : file.course_id;
   const access = await query(
     `SELECT 1
-     WHERE (
-       ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "$3")}
-       OR ${EFFECTIVE_MIRROR_PROFILE_GRANT_EXISTS_SQL("$2", "$1::bigint")}
-       OR ${effectiveReferenceGrant}
-     )
-       AND ($4 = 'COURSE' OR ($4 = 'CLASS_ONLY' AND $1::bigint IS NOT NULL
-         AND EXISTS (
-           SELECT 1 FROM live_classes lc
-           WHERE lc.id = $1 AND lc.status = 'active'
-             AND (
-               EXISTS (
-                 SELECT 1 FROM class_enrollments ce
-                 WHERE ce.live_class_id = lc.id AND ce.user_id = $2 AND ce.status = 'active'
+     WHERE ${EFFECTIVE_COURSE_GRANT_EXISTS_SQL("$2", "$3")}
+       AND (
+         $4 = 'COURSE'
+         OR ($4 = 'CLASS_ONLY' AND $1::bigint IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM live_classes lc
+             WHERE lc.id = $1 AND lc.status = 'active'
+               AND (
+                 EXISTS (
+                   SELECT 1 FROM class_enrollments ce
+                   WHERE ce.live_class_id = lc.id AND ce.user_id = $2 AND ce.status = 'active'
+                 )
+                 OR EXISTS (
+                   SELECT 1 FROM external_entitlements ee
+                   LEFT JOIN video_course_profiles vcp ON vcp.id = ee.local_video_course_profile_id AND vcp.deleted_at IS NULL
+                   WHERE ee.user_id = $2 AND ee.status = 'active'
+                     AND ee.valid_from <= NOW() AND (ee.valid_until IS NULL OR ee.valid_until > NOW())
+                     AND (ee.local_live_class_id = lc.id OR vcp.source_live_class_id = lc.id)
+                 )
                )
-               OR ${EFFECTIVE_MIRROR_PROFILE_GRANT_EXISTS_SQL("$2", "lc.id")}
-               OR EXISTS (
-                 SELECT 1 FROM external_entitlements ee
-                 LEFT JOIN video_course_profiles vcp ON vcp.id = ee.local_video_course_profile_id AND vcp.deleted_at IS NULL
-                 WHERE ee.user_id = $2 AND ee.status = 'active'
-                   AND ee.valid_from <= NOW() AND (ee.valid_until IS NULL OR ee.valid_until > NOW())
-                   AND (ee.local_live_class_id = lc.id OR vcp.source_live_class_id = lc.id)
-               )
-               OR ${effectiveReferenceGrant}
-             )
-         )))
+           ))
+         OR EXISTS (
+           SELECT 1
+           FROM lesson_learning_file_placements llfp
+           JOIN lessons l ON l.id = llfp.lesson_id
+           WHERE llfp.file_id = $5
+             AND l.course_id = $3
+             AND l.is_published = TRUE
+         )
+       )
      LIMIT 1`,
-    [
-      file.live_class_id,
-      user.id,
-      file.live_class_id ? file.class_course_id : file.course_id,
-      file.visibility,
-      requestedVideoProfileId,
-    ],
+    [file.live_class_id, user.id, effectiveCourseId, file.visibility, fileId],
   );
   if (!access.rows.length) {
     const preview = await query(
@@ -671,10 +644,21 @@ const fileAccess = async (fileId, user, requestedClassId = null, requestedVideoP
   const policies = await query(
     `SELECT lc.allow_file_download
      FROM live_classes lc
-     JOIN class_enrollments ce ON ce.live_class_id = lc.id
-     WHERE ce.user_id = $1 AND ce.status = 'active'
-       AND lc.course_id = $2 AND lc.status = 'active'
-       ${requestedClassFilter}`,
+     WHERE lc.course_id = $2 AND lc.status = 'active'
+       ${requestedClassFilter}
+       AND (
+         EXISTS (
+           SELECT 1 FROM class_enrollments ce
+           WHERE ce.live_class_id = lc.id AND ce.user_id = $1 AND ce.status = 'active'
+         )
+         OR EXISTS (
+           SELECT 1 FROM external_entitlements ee
+           LEFT JOIN video_course_profiles vcp ON vcp.id = ee.local_video_course_profile_id AND vcp.deleted_at IS NULL
+           WHERE ee.user_id = $1 AND ee.status = 'active'
+             AND ee.valid_from <= NOW() AND (ee.valid_until IS NULL OR ee.valid_until > NOW())
+             AND (ee.local_live_class_id = lc.id OR vcp.source_live_class_id = lc.id)
+         )
+       )`,
     policyParams,
   );
   if (requestedClassId && policies.rows.length === 0) return { error: "forbidden" };
@@ -1463,230 +1447,301 @@ router.delete("/teacher/files/:fileId", protectRoute, requireTeacher, requirePer
   }
 });
 
-router.get("/files/:fileId/download", protectRoute, async (req, res) => {
+const authorizeLearningFileRequest = async (req) => {
   const fileId = parseId(req.params.fileId);
-  if (!fileId) return errorResponse(res, 422, "fileId không hợp lệ", "VALIDATION_ERROR");
+  if (!fileId) return { status: 422, message: "fileId không hợp lệ", errorCode: "VALIDATION_ERROR" };
   const requestedClassId = req.query?.classId === undefined ? null : parseId(req.query.classId);
   if (req.query?.classId !== undefined && !requestedClassId) {
-    return errorResponse(res, 422, "classId không hợp lệ", "VALIDATION_ERROR");
+    return { status: 422, message: "classId không hợp lệ", errorCode: "VALIDATION_ERROR" };
   }
   const videoCourseId = req.query?.videoCourseId === undefined ? null : parseId(req.query.videoCourseId);
   if (req.query?.videoCourseId !== undefined && !videoCourseId) {
-    return errorResponse(res, 422, "videoCourseId không hợp lệ", "VALIDATION_ERROR");
+    return { status: 422, message: "videoCourseId không hợp lệ", errorCode: "VALIDATION_ERROR" };
   }
   const videoCourseProfileId = req.query?.videoCourseProfileId === undefined
     ? null
     : parseId(req.query.videoCourseProfileId);
   if (req.query?.videoCourseProfileId !== undefined && !videoCourseProfileId) {
-    return errorResponse(res, 422, "videoCourseProfileId không hợp lệ", "VALIDATION_ERROR");
+    return { status: 422, message: "videoCourseProfileId không hợp lệ", errorCode: "VALIDATION_ERROR" };
   }
-  try {
-    const access = await fileAccess(fileId, req.user, requestedClassId, videoCourseProfileId);
-    if (access.error === "not_found") return errorResponse(res, 404, "Không tìm thấy tài liệu", "NOT_FOUND");
-    if (access.error) return errorResponse(res, 403, "Bạn chưa được cấp quyền tải tài liệu", "FORBIDDEN");
-    let videoCourseAllowsDownload = true;
-    let selectedVideoProfile = null;
-    const fileCourseId = access.file.course_id || access.file.class_course_id;
-    const fileLiveClassId = access.file.live_class_id || requestedClassId || null;
-    if (videoCourseProfileId) {
-      const policyRes = await query(
+
+  const access = await fileAccess(fileId, req.user, requestedClassId);
+  if (access.error === "not_found") return { status: 404, message: "Không tìm thấy tài liệu", errorCode: "NOT_FOUND" };
+  if (access.error) return { status: 403, message: "Bạn chưa được cấp quyền tải tài liệu", errorCode: "FORBIDDEN" };
+
+  let videoCourseAllowsDownload = true;
+  let selectedVideoProfile = null;
+  const fileCourseId = access.file.course_id || access.file.class_course_id;
+  if (videoCourseProfileId) {
+    const policyRes = await query(
+      `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
+       FROM video_course_profiles
+       WHERE id = $1 AND course_id = $2
+         AND ($3::bigint IS NULL OR course_id = $3)`,
+      [videoCourseProfileId, fileCourseId, videoCourseId],
+    );
+    if (!policyRes.rows[0]) {
+      const fallbackRes = await query(
         `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
          FROM video_course_profiles
-         WHERE id = $1
-           AND deleted_at IS NULL
-           AND status <> 'archived'
-           AND ($3::bigint IS NULL OR course_id = $3)
-           AND (
-             course_id = $2
-             OR (mode = 'MIRROR' AND $4::bigint IS NOT NULL AND source_live_class_id = $4)
-             OR (mode = 'INDEPENDENT' AND $4::bigint IS NOT NULL AND EXISTS (
-               SELECT 1 FROM recording_curriculum_references r
-               WHERE r.video_course_profile_id = video_course_profiles.id
-                 AND r.source_live_class_id = $4
-             ))
-           )`,
-        [videoCourseProfileId, fileCourseId, videoCourseId, fileLiveClassId],
+         WHERE course_id = $1 ORDER BY (status = 'active') DESC, id DESC LIMIT 1`,
+        [fileCourseId || videoCourseId],
       );
-      if (!policyRes.rows[0]) {
-        const fallbackRes = await query(
-          `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
-           FROM video_course_profiles
-           WHERE deleted_at IS NULL
-             AND status <> 'archived'
-             AND (
-               course_id = $1
-               OR (mode = 'MIRROR' AND $2::bigint IS NOT NULL AND source_live_class_id = $2)
-               OR (mode = 'INDEPENDENT' AND $2::bigint IS NOT NULL AND EXISTS (
-                 SELECT 1 FROM recording_curriculum_references r
-                 WHERE r.video_course_profile_id = video_course_profiles.id
-                   AND r.source_live_class_id = $2
-               ))
-             )
-           ORDER BY (status = 'active') DESC, id DESC LIMIT 1`,
-          [fileCourseId || videoCourseId, fileLiveClassId],
-        );
-        if (fallbackRes.rows[0]) {
-          selectedVideoProfile = fallbackRes.rows[0];
-          videoCourseAllowsDownload = selectedVideoProfile.allow_file_download === true;
-        } else {
-          return errorResponse(res, 404, "Không tìm thấy cấu hình khóa học video", "NOT_FOUND");
-        }
-      } else {
-        selectedVideoProfile = policyRes.rows[0];
+      if (fallbackRes.rows[0]) {
+        selectedVideoProfile = fallbackRes.rows[0];
         videoCourseAllowsDownload = selectedVideoProfile.allow_file_download === true;
+      } else {
+        return { status: 404, message: "Không tìm thấy cấu hình khóa học video", errorCode: "NOT_FOUND" };
       }
-    } else if (videoCourseId) {
-      const policyRes = await query(
-        `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
-         FROM video_course_profiles
-         WHERE course_id = $1
-           AND deleted_at IS NULL
-           AND status <> 'archived'
-           AND (
-             course_id = $2
-             OR (mode = 'MIRROR' AND $3::bigint IS NOT NULL AND source_live_class_id = $3)
-             OR (mode = 'INDEPENDENT' AND $3::bigint IS NOT NULL AND EXISTS (
-               SELECT 1 FROM recording_curriculum_references r
-               WHERE r.video_course_profile_id = video_course_profiles.id
-                 AND r.source_live_class_id = $3
-             ))
-           )
-         ORDER BY (status = 'active') DESC, id DESC`,
-        [videoCourseId, fileCourseId, fileLiveClassId],
-      );
-      if (policyRes.rows.length === 0) {
-        if (String(videoCourseId) !== String(fileCourseId)) {
-          return errorResponse(res, 403, "Tài liệu không thuộc khóa học video này", "FORBIDDEN");
-        }
-        return errorResponse(res, 404, "Không tìm thấy cấu hình khóa học video", "NOT_FOUND");
-      }
+    } else {
       selectedVideoProfile = policyRes.rows[0];
-      videoCourseAllowsDownload = policyRes.rows.every((row) => row.allow_file_download === true);
-    } else if (req.user.role === "user") {
-      // Do not trust the browser to preserve video-course query parameters.
-      // A Record learner must keep the selected profile's download policy even
-      // when a direct file URL is copied or manually edited.
-      const inferredPolicy = await query(
-        `SELECT vcp.id, vcp.course_id, vcp.mode, vcp.source_live_class_id,
-                vcp.management_class_id, vcp.allow_file_download
-         FROM video_course_profiles vcp
-         WHERE vcp.status = 'active'
-           AND vcp.deleted_at IS NULL
-           AND (
-             vcp.course_id = $1
-             OR (vcp.mode = 'MIRROR' AND $3::bigint IS NOT NULL AND vcp.source_live_class_id = $3)
-           )
-           AND EXISTS (
-             SELECT 1
-             FROM class_enrollments ce
-             LEFT JOIN management_class_learning_aliases alias
-               ON alias.id = ce.management_class_alias_id AND alias.status = 'active'
-             WHERE ce.user_id = $2 AND ce.status = 'active' AND ce.learning_mode = 'recording'
-               AND (
-                 (ce.video_course_profile_id = vcp.id)
-                 OR (ce.video_course_profile_id IS NULL AND vcp.management_class_id IS NOT NULL
-                   AND LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id))
-                 OR (ce.video_course_profile_id IS NULL AND vcp.management_class_id IS NULL AND vcp.mode = 'MIRROR'
-                   AND ce.live_class_id = vcp.source_live_class_id)
-                 OR (ce.video_course_profile_id IS NULL AND vcp.management_class_id IS NULL AND vcp.mode = 'INDEPENDENT'
-                   AND ce.course_id = vcp.course_id)
-               )
-           )
-         ORDER BY vcp.id`,
-        [fileCourseId, req.user.id, fileLiveClassId],
-      );
-      if (inferredPolicy.rows.length > 0) {
-        selectedVideoProfile = inferredPolicy.rows[0];
-        videoCourseAllowsDownload = inferredPolicy.rows.every((row) => row.allow_file_download === true);
+      videoCourseAllowsDownload = selectedVideoProfile.allow_file_download === true;
+    }
+  } else if (videoCourseId) {
+    if (String(videoCourseId) !== String(fileCourseId)) {
+      return { status: 403, message: "Tài liệu không thuộc khóa học video này", errorCode: "FORBIDDEN" };
+    }
+    const policyRes = await query(
+      `SELECT id, course_id, mode, source_live_class_id, management_class_id, allow_file_download
+       FROM video_course_profiles
+       WHERE course_id = $1 ORDER BY (status = 'active') DESC, id DESC`,
+      [videoCourseId],
+    );
+    if (policyRes.rows.length === 0) {
+      return { status: 404, message: "Không tìm thấy cấu hình khóa học video", errorCode: "NOT_FOUND" };
+    }
+    selectedVideoProfile = policyRes.rows[0];
+    videoCourseAllowsDownload = policyRes.rows.every((row) => row.allow_file_download === true);
+  } else if (req.user.role === "user") {
+    const inferredPolicy = await query(
+      `SELECT vcp.id, vcp.course_id, vcp.mode, vcp.source_live_class_id,
+              vcp.management_class_id, vcp.allow_file_download
+       FROM video_course_profiles vcp
+       WHERE vcp.course_id = $1 AND vcp.status = 'active'
+         AND EXISTS (
+           SELECT 1
+           FROM class_enrollments ce
+           LEFT JOIN management_class_learning_aliases alias
+             ON alias.id = ce.management_class_alias_id AND alias.status = 'active'
+           WHERE ce.user_id = $2 AND ce.status = 'active' AND ce.learning_mode = 'recording'
+             AND (
+               (vcp.management_class_id IS NOT NULL
+                 AND LOWER(alias.alias_class_source_id) = LOWER(vcp.management_class_id))
+               OR (vcp.management_class_id IS NULL AND vcp.mode = 'MIRROR'
+                 AND ce.live_class_id = vcp.source_live_class_id)
+               OR (vcp.management_class_id IS NULL AND vcp.mode = 'INDEPENDENT'
+                 AND ce.course_id = vcp.course_id)
+             )
+         )
+       ORDER BY vcp.id`,
+      [fileCourseId, req.user.id],
+    );
+    if (inferredPolicy.rows.length > 0) {
+      selectedVideoProfile = inferredPolicy.rows[0];
+      videoCourseAllowsDownload = inferredPolicy.rows.every((row) => row.allow_file_download === true);
+    }
+  }
+
+  if (req.user.role === "user" && selectedVideoProfile) {
+    const revokedProfile = await isVideoCourseProfileAccessRevoked({
+      db: { query },
+      userId: req.user.id,
+      profileId: selectedVideoProfile.id,
+    });
+    if (revokedProfile) {
+      return { status: 403, message: "Quyền truy cập khóa học video này đã bị thu hồi", errorCode: "VIDEO_COURSE_ACCESS_REVOKED" };
+    }
+  }
+
+  if (req.user.role === "user") {
+    const solutionQuizzes = (await query(
+      `SELECT id, review_policy, available_until, due_date, activity_scope
+       FROM quizzes
+       WHERE solution_file_id = $1 AND status = 'PUBLISHED'`,
+      [fileId],
+    )).rows;
+    for (const sq of solutionQuizzes) {
+      if (!reviewIsAvailable(sq)) {
+        return { status: 403, message: "Đáp án bài kiểm tra hiện chưa mở để xem", errorCode: "SOLUTION_EMBARGOED" };
+      }
+      if ((sq.review_policy || "after_submit") === "after_submit") {
+        const submittedRes = await query(
+          `SELECT 1 FROM quiz_attempts
+           WHERE quiz_id = $1 AND user_id = $2
+             AND (status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR submitted_at IS NOT NULL)
+           LIMIT 1`,
+          [sq.id, req.user.id],
+        );
+        if (submittedRes.rows.length === 0) {
+          return { status: 403, message: "Cần nộp bài kiểm tra trước khi xem đáp án", errorCode: "SOLUTION_EMBARGOED" };
+        }
       }
     }
+  }
 
-    if (req.user.role === "user" && selectedVideoProfile) {
-      const revokedProfile = await isVideoCourseProfileAccessRevoked({
+  if (req.user.role === "user" && selectedVideoProfile) {
+    let unit = null;
+    if (selectedVideoProfile.mode === "MIRROR") {
+      unit = (await query(
+        `SELECT cs.id
+         FROM class_sessions cs
+         WHERE cs.live_class_id = $2
+           AND (cs.id = $3 OR EXISTS (
+             SELECT 1 FROM lms_learning_file_placements placement
+             WHERE placement.file_id = $1 AND placement.class_session_id = cs.id AND placement.deleted_at IS NULL
+           ))
+         ORDER BY cs.start_time, cs.id LIMIT 1`,
+        [fileId, selectedVideoProfile.source_live_class_id, access.file.class_session_id],
+      )).rows[0] || null;
+      if (unit && !(await isVideoCourseUnitUnlocked({
         db: { query },
         userId: req.user.id,
-        profileId: selectedVideoProfile.id,
+        unitType: "class_session",
+        unitId: unit.id,
+        videoCourseProfileId: selectedVideoProfile.id,
+      }))) {
+        return { status: 403, message: "Tài liệu này sẽ mở sau khi bạn hoàn thành buổi học trước nhé.", errorCode: "VIDEO_UNIT_LOCKED" };
+      }
+    } else {
+      unit = (await query(
+        `SELECT l.id
+         FROM lessons l
+         JOIN lesson_learning_file_placements placement ON placement.lesson_id = l.id
+         WHERE placement.file_id = $1 AND l.course_id = $2 AND l.is_published = TRUE
+         ORDER BY l.sort_order, l.id LIMIT 1`,
+        [fileId, selectedVideoProfile.course_id],
+      )).rows[0] || null;
+      if (unit && !(await isVideoCourseUnitUnlocked({
+        db: { query },
+        userId: req.user.id,
+        unitType: "lesson",
+        unitId: unit.id,
+        videoCourseProfileId: selectedVideoProfile.id,
+      }))) {
+        return { status: 403, message: "Tài liệu này sẽ mở sau khi bạn hoàn thành bài học trước nhé.", errorCode: "VIDEO_UNIT_LOCKED" };
+      }
+    }
+  }
+
+  const canDownload = access.canDownload !== false && videoCourseAllowsDownload;
+  const forceDownload = ["1", "true"].includes(String(req.query?.download || "").toLowerCase());
+  const enforceViewOnly = !canDownload && (req.user.role === "user" || Boolean(selectedVideoProfile));
+
+  const queryParts = [];
+  if (requestedClassId) queryParts.push(`classId=${encodeURIComponent(requestedClassId)}`);
+  if (videoCourseId) queryParts.push(`videoCourseId=${encodeURIComponent(videoCourseId)}`);
+  if (videoCourseProfileId) queryParts.push(`videoCourseProfileId=${encodeURIComponent(videoCourseProfileId)}`);
+  const contentUrl = `/api/files/${fileId}/content${queryParts.length ? `?${queryParts.join("&")}` : ""}`;
+
+  return {
+    fileId,
+    access,
+    canDownload,
+    forceDownload,
+    enforceViewOnly,
+    contentUrl,
+  };
+};
+
+// GET /api/files/:fileId/content — Same-origin authenticated inline binary stream for PDF.js & images
+router.get("/files/:fileId/content", protectRoute, async (req, res) => {
+  try {
+    const auth = await authorizeLearningFileRequest(req);
+    if (auth.status) {
+      return errorResponse(res, auth.status, auth.message, auth.errorCode);
+    }
+    const { access, enforceViewOnly } = auth;
+    if (enforceViewOnly && !canDisplayInline(access.file)) {
+      return errorResponse(res, 415, "Định dạng tài liệu này chưa hỗ trợ xem trực tuyến", "INLINE_VIEW_UNSUPPORTED");
+    }
+    const playbackMimeType = isPdfFile(access.file)
+      ? "application/pdf"
+      : (access.file.mime_type || "application/octet-stream");
+    const { downloadUrl } = await generateLearningFilePlaybackSignedUrl({
+      r2Key: access.file.storage_key,
+      filename: access.file.original_name,
+      disposition: "inline",
+      mimeType: playbackMimeType,
+    });
+
+    const upstreamHeaders = {};
+    const rangeHeader = typeof req.get === "function" ? req.get("range") : req.headers?.range;
+    if (rangeHeader) {
+      upstreamHeaders.Range = String(rangeHeader);
+    }
+
+    const upstreamRes = await fetch(downloadUrl, {
+      method: "GET",
+      headers: upstreamHeaders,
+    });
+
+    if (upstreamRes.status === 416) {
+      const contentRange = upstreamRes.headers?.get?.("content-range");
+      if (typeof res.set === "function") {
+        res.set({
+          "Accept-Ranges": "bytes",
+          ...(contentRange ? { "Content-Range": contentRange } : {}),
+          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+          "X-Content-Type-Options": "nosniff",
+        });
+      }
+      return res.status(416).end ? res.status(416).end() : res.status(416).send("");
+    }
+
+    if (!upstreamRes.ok) {
+      return errorResponse(res, 502, "Không thể tải nội dung tài liệu từ máy chủ lưu trữ", "STORAGE_FETCH_FAILED");
+    }
+
+    const responseHeaders = {
+      "Content-Type": playbackMimeType,
+      "Content-Disposition": "inline",
+      "Accept-Ranges": upstreamRes.headers?.get?.("accept-ranges") || "bytes",
+      "Cache-Control": "private, no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "SAMEORIGIN",
+    };
+    const contentLength = upstreamRes.headers?.get?.("content-length");
+    if (contentLength) responseHeaders["Content-Length"] = contentLength;
+    const contentRange = upstreamRes.headers?.get?.("content-range");
+    if (contentRange) responseHeaders["Content-Range"] = contentRange;
+
+    if (typeof res.set === "function") {
+      res.set(responseHeaders);
+    }
+    res.status(upstreamRes.status);
+
+    if (upstreamRes.body && typeof Readable.fromWeb === "function" && typeof res.write === "function") {
+      const nodeStream = Readable.fromWeb(upstreamRes.body);
+      nodeStream.on("error", (streamErr) => {
+        console.error("Error streaming file content:", streamErr);
+        if (!res.headersSent) {
+          errorResponse(res, 502, "Lỗi đường truyền khi tải tài liệu", "STREAM_ERROR");
+        } else if (typeof res.end === "function") {
+          res.end();
+        }
       });
-      if (revokedProfile) {
-        return errorResponse(res, 403, "Quyền truy cập khóa học video này đã bị thu hồi", "VIDEO_COURSE_ACCESS_REVOKED");
-      }
+      nodeStream.pipe(res);
+      return undefined;
     }
 
-    const canBypassSolutionEmbargo = Boolean(
-      selectedVideoProfile && await hasLiveReviewMembership({ query }, selectedVideoProfile, req.user.id),
-    );
-    if (req.user.role === "user" && !canBypassSolutionEmbargo) {
-      const solutionQuizzes = (await query(
-        `SELECT id, review_policy, available_until, due_date, activity_scope
-         FROM quizzes
-         WHERE solution_file_id = $1 AND status = 'PUBLISHED'`,
-        [fileId],
-      )).rows;
-      for (const sq of solutionQuizzes) {
-        if (!reviewIsAvailable(sq)) {
-          return errorResponse(res, 403, "Đáp án bài kiểm tra hiện chưa mở để xem", "SOLUTION_EMBARGOED");
-        }
-        if ((sq.review_policy || "after_submit") === "after_submit") {
-          const submittedRes = await query(
-            `SELECT 1 FROM quiz_attempts
-             WHERE quiz_id = $1 AND user_id = $2
-               AND (status IN ('SUBMITTED', 'GRADED', 'COMPLETED', 'submitted', 'graded', 'completed') OR submitted_at IS NOT NULL)
-             LIMIT 1`,
-            [sq.id, req.user.id],
-          );
-          if (submittedRes.rows.length === 0) {
-            return errorResponse(res, 403, "Cần nộp bài kiểm tra trước khi xem đáp án", "SOLUTION_EMBARGOED");
-          }
-        }
-      }
-    }
+    const buf = Buffer.from(await upstreamRes.arrayBuffer());
+    return res.send(buf);
+  } catch (error) {
+    if (error.code === "R2_NOT_CONFIGURED") return errorResponse(res, 503, "Kho R2 chưa được cấu hình", error.code);
+    console.error("Error streaming learning file content:", error);
+    return errorResponse(res, 500, "Không thể mở nội dung tài liệu", "INTERNAL_ERROR");
+  }
+});
 
-    if (req.user.role === "user" && selectedVideoProfile) {
-      let unit = null;
-      if (selectedVideoProfile.mode === "MIRROR") {
-        unit = (await query(
-          `SELECT cs.id
-           FROM class_sessions cs
-           WHERE cs.live_class_id = $2
-             AND (cs.id = $3 OR EXISTS (
-               SELECT 1 FROM lms_learning_file_placements placement
-               WHERE placement.file_id = $1 AND placement.class_session_id = cs.id AND placement.deleted_at IS NULL
-             ))
-           ORDER BY cs.start_time, cs.id LIMIT 1`,
-          [fileId, selectedVideoProfile.source_live_class_id, access.file.class_session_id],
-        )).rows[0] || null;
-        if (unit && !(await isVideoCourseUnitUnlocked({
-          db: { query },
-          userId: req.user.id,
-          unitType: "class_session",
-          unitId: unit.id,
-          videoCourseProfileId: selectedVideoProfile.id,
-        }))) {
-          return errorResponse(res, 403, "Tài liệu này sẽ mở sau khi bạn hoàn thành buổi học trước nhé.", "VIDEO_UNIT_LOCKED");
-        }
-      } else {
-        unit = (await query(
-          `SELECT l.id
-           FROM lessons l
-           JOIN lesson_learning_file_placements placement ON placement.lesson_id = l.id
-           WHERE placement.file_id = $1 AND l.course_id = $2 AND l.is_published = TRUE
-           ORDER BY l.sort_order, l.id LIMIT 1`,
-          [fileId, selectedVideoProfile.course_id],
-        )).rows[0] || null;
-        if (unit && !(await isVideoCourseUnitUnlocked({
-          db: { query },
-          userId: req.user.id,
-          unitType: "lesson",
-          unitId: unit.id,
-          videoCourseProfileId: selectedVideoProfile.id,
-        }))) {
-          return errorResponse(res, 403, "Tài liệu này sẽ mở sau khi bạn hoàn thành bài học trước nhé.", "VIDEO_UNIT_LOCKED");
-        }
-      }
+router.get("/files/:fileId/download", protectRoute, async (req, res) => {
+  try {
+    const auth = await authorizeLearningFileRequest(req);
+    if (auth.status) {
+      return errorResponse(res, auth.status, auth.message, auth.errorCode);
     }
-    const canDownload = access.canDownload !== false && videoCourseAllowsDownload;
-    const forceDownload = ["1", "true"].includes(String(req.query?.download || "").toLowerCase());
-    const enforceViewOnly = !canDownload && (req.user.role === "user" || Boolean(selectedVideoProfile));
+    const { access, forceDownload, enforceViewOnly, contentUrl } = auth;
     if (forceDownload && enforceViewOnly) {
       return errorResponse(res, 403, "Khóa học này chỉ cho phép xem tài liệu trực tuyến", "FILE_DOWNLOAD_DISABLED");
     }
@@ -1719,6 +1774,7 @@ router.get("/files/:fileId/download", protectRoute, async (req, res) => {
       return res.status(200).send(protectedPdfViewerHtml({
         filename: access.file.original_name,
         signedUrl: downloadUrl,
+        contentUrl,
         fileSizeBytes: Number(access.file.size_bytes || access.file.file_size || access.file.file_size_bytes || 0),
       }));
     }

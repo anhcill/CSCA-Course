@@ -172,6 +172,7 @@ if (process.env.NODE_ENV === "production") {
   app.use(express.static(distPath, {
     maxAge: "7d",
     setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".mjs")) res.setHeader("Content-Type", "application/javascript; charset=utf-8");
       // Content-hashed Vite bundle assets (/assets/*) are immutable
       if (filePath.includes(`${path.sep}assets${path.sep}`) || /\.[a-f0-9]{8,}\.(js|css|png|jpg|jpeg|webp|svg)$/i.test(filePath)) {
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");

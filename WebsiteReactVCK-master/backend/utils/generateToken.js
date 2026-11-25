@@ -23,7 +23,7 @@ export const getJwtExpirationDate = () => new Date(Date.now() + parseDurationMs(
 export const jwtCookieOptions = () => ({
     maxAge: parseDurationMs(getJwtExpiresIn()),
     httpOnly: true,
-    sameSite: "strict",
+    sameSite: "lax",
     secure: process.env.NODE_ENV !== 'development',
     path: "/"
 });

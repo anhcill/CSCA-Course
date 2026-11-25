@@ -22,6 +22,7 @@ import {
 import { fetchStudentFiles, fetchStudentClassesLookup } from "../../api/lmsClient";
 import { ErrorState } from "../../../components/common/StateView";
 import usePersistentClassSelection from "../hooks/usePersistentClassSelection";
+import DocumentPreviewModal from "../components/DocumentPreviewModal";
 
 const mimeType = (file) => String(file.mimeType || file.mime_type || "").toLowerCase();
 const fileSize = (value) => {
@@ -107,13 +108,14 @@ const fileConfig = {
   },
 };
 
-function StudentFileCard({ file, onDownload }) {
+function StudentFileCard({ file, onPreview, onDownload }) {
   const kind = kindForFile(file);
   const config = fileConfig[kind] || fileConfig.other;
   const Icon = config.icon;
   const downloadUrl = file.downloadUrl || file.download_url;
   const viewUrl = file.viewUrl || file.view_url || downloadUrl;
   const canDownload = file.canDownload !== false && Boolean(downloadUrl);
+  const canInlinePreview = Boolean(viewUrl) && (kind === "pdf" || kind === "image");
 
   return (
     <div className="group/file flex flex-col justify-between rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-2xs hover:border-blue-300 dark:hover:border-blue-500/50 hover:shadow-xs transition space-y-2">
@@ -139,8 +141,16 @@ function StudentFileCard({ file, onDownload }) {
             className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-2 leading-snug group-hover/file:text-blue-600 dark:group-hover/file:text-blue-400 transition"
             title={file.name}
           >
-            {viewUrl ? (
-              <a href={viewUrl} target="_blank" rel="noreferrer" className="hover:underline">
+            {canInlinePreview ? (
+              <button
+                type="button"
+                onClick={() => onPreview(file)}
+                className="text-left hover:underline"
+              >
+                {file.name}
+              </button>
+            ) : viewUrl ? (
+              <a href={viewUrl} target="_blank" rel="noopener" className="hover:underline">
                 {file.name}
               </a>
             ) : (
@@ -160,18 +170,28 @@ function StudentFileCard({ file, onDownload }) {
           {file.uploadedBy || "Giáo viên"}
         </span>
         <div className="flex items-center gap-1 shrink-0">
-          {viewUrl && (
+          {canInlinePreview ? (
+            <button
+              type="button"
+              onClick={() => onPreview(file)}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-slate-600 transition"
+              title="Xem trực tuyến"
+            >
+              <Eye className="h-3 w-3" />
+              <span>Xem</span>
+            </button>
+          ) : viewUrl ? (
             <a
               href={viewUrl}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener"
               className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-slate-600 transition"
               title="Xem trực tuyến"
             >
               <Eye className="h-3 w-3" />
               <span>Xem</span>
             </a>
-          )}
+          ) : null}
           {canDownload ? (
             <button
               type="button"
@@ -206,6 +226,7 @@ export default function StudentFilesPage() {
   const [selectedKind, setSelectedKind] = useState("all");
   const [viewMode, setViewMode] = useState("by_class"); // 'by_class' (default) | 'timeline' | 'cards'
   const [sessionVisibilityFilter, setSessionVisibilityFilter] = useState("all_sessions"); // 'all_sessions' | 'only_with_files'
+  const [previewFile, setPreviewFile] = useState(null);
 
   // URL / route filters
   const selectedCourseId = routeCourseId || searchParams.get("courseId") || "all";
@@ -465,7 +486,12 @@ export default function StudentFilesPage() {
   const download = (file) => {
     const url = file.downloadUrl || file.download_url;
     if (!url) return toast.error("Tài liệu này chưa có đường dẫn tải xuống.");
-    window.open(url, "_blank", "noopener,noreferrer");
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleCourseFilterChange = (e) => {
@@ -626,7 +652,7 @@ export default function StudentFilesPage() {
             )}
 
             {/* Format Chips */}
-            <div className="flex items-center bg-slate-100/90 dark:bg-slate-800/90 rounded-xl p-0.5 text-xs">
+            <div className="flex max-w-full items-center overflow-x-auto [scrollbar-width:none] bg-slate-100/90 dark:bg-slate-800/90 rounded-xl p-0.5 text-xs">
               {[
                 ["all", "Tất cả"],
                 ["pdf", "PDF"],
@@ -843,7 +869,7 @@ export default function StudentFilesPage() {
 
                   <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                     {systemGeneralFiles.map((file) => (
-                      <StudentFileCard key={file.instanceId || file.id} file={file} onDownload={download} />
+                      <StudentFileCard key={file.instanceId || file.id} file={file} onPreview={setPreviewFile} onDownload={download} />
                     ))}
                   </div>
                 </div>
@@ -939,7 +965,7 @@ export default function StudentFilesPage() {
                   </div>
                   <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                     {activeClassGeneralFiles.map((file) => (
-                      <StudentFileCard key={file.instanceId || file.id} file={file} onDownload={download} />
+                      <StudentFileCard key={file.instanceId || file.id} file={file} onPreview={setPreviewFile} onDownload={download} />
                     ))}
                   </div>
                 </section>
@@ -1019,7 +1045,7 @@ export default function StudentFilesPage() {
                         {session.files.length > 0 ? (
                           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                             {session.files.map((file) => (
-                              <StudentFileCard key={file.instanceId || file.id} file={file} onDownload={download} />
+                              <StudentFileCard key={file.instanceId || file.id} file={file} onPreview={setPreviewFile} onDownload={download} />
                             ))}
                           </div>
                         ) : (
@@ -1064,7 +1090,7 @@ export default function StudentFilesPage() {
                 {/* Danh sách file của ngày */}
                 <div className="p-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {groupFiles.map((file) => (
-                    <StudentFileCard key={file.instanceId || file.id} file={file} onDownload={download} />
+                    <StudentFileCard key={file.instanceId || file.id} file={file} onPreview={setPreviewFile} onDownload={download} />
                   ))}
                 </div>
               </section>
@@ -1074,11 +1100,19 @@ export default function StudentFilesPage() {
           /* ================= CARDS GRID VIEW ================= */
           <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
             {visibleFiles.map((file) => (
-              <StudentFileCard key={file.instanceId || file.id} file={file} onDownload={download} />
+              <StudentFileCard key={file.instanceId || file.id} file={file} onPreview={setPreviewFile} onDownload={download} />
             ))}
           </section>
         )}
       </div>
+
+      {previewFile && (
+        <DocumentPreviewModal
+          file={previewFile}
+          onClose={() => setPreviewFile(null)}
+          onDownload={previewFile.downloadUrl ? () => download(previewFile) : undefined}
+        />
+      )}
     </div>
   );
 }
